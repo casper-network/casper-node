@@ -80,7 +80,7 @@ impl<C: Context> Observation<C> {
     /// Returns the missing dependency if `self` is referring to a vertex we don't know yet.
     fn missing_dep(&self, state: &State<C>, idx: ValidatorIndex) -> Option<Dependency<C>> {
         match self {
-            Observation::Faulty if !state.has_evidence(idx) => Some(Dependency::Evidence(idx)),
+            Observation::Faulty if !state.is_faulty(idx) => Some(Dependency::Evidence(idx)),
             Observation::Correct(hash) if !state.has_vote(hash) => {
                 Some(Dependency::Vote(hash.clone()))
             }

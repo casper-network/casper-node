@@ -83,9 +83,14 @@ impl EraId {
         EraId(self.0 + 1)
     }
 
-    /// Returns an iterator over all eras that are still bonded in this one.
+    /// Returns an iterator over all eras that are still bonded in this one, including this one.
     fn iter_bonded(&self) -> impl Iterator<Item = EraId> {
         (self.0.saturating_sub(BONDED_ERAS)..=self.0).map(EraId)
+    }
+
+    /// Returns an iterator over all eras that are still bonded in this one, excluding this one.
+    fn iter_other_bonded(&self) -> impl Iterator<Item = EraId> {
+        (self.0.saturating_sub(BONDED_ERAS)..self.0).map(EraId)
     }
 
     /// Returns the current era minus `x`, or `None` if that would be less than `0`.
@@ -133,17 +138,22 @@ pub struct Era<I> {
     /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
     /// has been validated; the vector contains the list of accused validators missing evidence.
     candidates: Vec<PendingCandidate>,
+    /// Validators banned in this and the next BONDED_ERAS eras, because they were slashed in the
+    /// previous switch block.
+    newly_banned: Vec<PublicKey>,
 }
 
 impl<I> Era<I> {
     fn new<C: 'static + ConsensusProtocol<I, CandidateBlock, PublicKey>>(
         consensus: C,
         start_height: u64,
+        newly_banned: Vec<PublicKey>,
     ) -> Self {
         Era {
             consensus: Box::new(consensus),
             start_height,
             candidates: Vec::new(),
+            newly_banned,
         }
     }
 
@@ -160,6 +170,7 @@ impl<I> Era<I> {
         for pc in &mut self.candidates {
             pc.missing_evidence.retain(|pk| pk != pub_key);
         }
+        self.consensus.mark_faulty(pub_key);
         self.remove_complete_candidates()
     }
 
@@ -211,6 +222,7 @@ where
             consensus,
             start_height,
             candidates,
+            newly_banned,
         } = self;
 
         // `DataSize` cannot be made object safe due its use of associated constants. We implement
@@ -230,7 +242,10 @@ where
             }
         };
 
-        consensus_heap_size + start_height.estimate_heap_size() + candidates.estimate_heap_size()
+        consensus_heap_size
+            + start_height.estimate_heap_size()
+            + candidates.estimate_heap_size()
+            + newly_banned.estimate_heap_size()
     }
 }
 
@@ -291,7 +306,8 @@ where
             EraId(0),
             timestamp,
             validator_stakes,
-            0, // hardcoded seed for era 0
+            vec![], // no banned validators in era 0
+            0,      // hardcoded seed for era 0
             chainspec.genesis.highway_config.genesis_era_start_timestamp,
             0, // the first block has height 0
             genesis_state_root_hash,
@@ -388,6 +404,7 @@ where
         era_id: EraId,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
+        newly_banned: Vec<PublicKey>,
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
@@ -417,8 +434,16 @@ where
         let scale_stake = |(key, stake): (PublicKey, Motes)| {
             (key, AsPrimitive::<u64>::as_(stake.value() / scaling_factor))
         };
-        let validators: Validators<PublicKey> =
+        let mut validators: Validators<PublicKey> =
             validator_stakes.into_iter().map(scale_stake).collect();
+
+        for pub_key in era_id
+            .iter_other_bonded()
+            .flat_map(|e_id| &self.active_eras[&e_id].newly_banned)
+            .chain(&newly_banned)
+        {
+            validators.ban(pub_key);
+        }
 
         let ftt = validators.total_weight()
             * u64::from(self.highway_config().finality_threshold_percent)
@@ -471,7 +496,7 @@ where
             Vec::new()
         };
 
-        let era = Era::new(highway, start_height);
+        let era = Era::new(highway, start_height, newly_banned);
         let _ = self.active_eras.insert(era_id, era);
 
         // Remove the era that has become obsolete now. We keep 2 * BONDED_ERAS past eras because
@@ -587,7 +612,7 @@ where
         // TODO: Only include _new_ accusations.
         let accusations = era_id
             .iter_bonded()
-            .flat_map(|e_id| self.era(e_id).consensus.faulty_validators())
+            .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
             .unique()
             .cloned()
             .collect();
@@ -676,6 +701,11 @@ where
             .current_era_mut()
             .consensus
             .deactivate_validator();
+        let newly_banned = block_header
+            .era_end()
+            .expect("switch block must have era_end")
+            .equivocators
+            .clone();
         let era_id = block_header.era_id().successor();
         info!(era = era_id.0, "era created");
         let seed = EraSupervisor::<I>::era_seed(booking_block_hash, key_block_seed);
@@ -684,6 +714,7 @@ where
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
             validator_stakes,
+            newly_banned,
             seed,
             block_header.timestamp(),
             block_header.height() + 1,
@@ -897,6 +928,14 @@ where
                 }
                 effects
             }
+            ConsensusProtocolResult::SendEvidence(sender, pub_key) => era_id
+                .iter_other_bonded()
+                .flat_map(|e_id| {
+                    self.delegate_to_era(e_id, |consensus, _| {
+                        consensus.request_evidence(sender.clone(), &pub_key)
+                    })
+                })
+                .collect(),
         }
     }
 }

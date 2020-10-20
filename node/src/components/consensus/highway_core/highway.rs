@@ -12,7 +12,7 @@ use crate::{
         highway_core::{
             active_validator::{ActiveValidator, Effect},
             evidence::EvidenceError,
-            state::{State, VoteError},
+            state::{Fault, State, VoteError},
             validators::{Validator, Validators},
         },
         traits::Context,
@@ -84,6 +84,17 @@ impl<C: Context> ValidVertex<C> {
     }
 }
 
+/// A result indicating whether and how a requested dependency is satisfied.
+pub(crate) enum GetDepOutcome<C: Context> {
+    /// We don't have this dependency.
+    None,
+    /// This vertex satisfies the dependency.
+    Vertex(ValidVertex<C>),
+    /// The dependency must be satisfied by providing evidence against this faulty validator, but
+    /// this `Highway` instance does not have direct evidence.
+    Evidence(C::ValidatorId),
+}
+
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -116,7 +127,9 @@ impl<C: Context> Highway<C> {
         params: Params,
     ) -> Highway<C> {
         info!(%validators, "creating Highway instance {:?}", instance_id);
-        let state = State::new(validators.iter().map(Validator::weight), params);
+        let weights = validators.iter().map(Validator::weight);
+        let banned = validators.iter_banned_idx();
+        let state = State::new(weights, params, banned);
         Highway {
             instance_id,
             validators,
@@ -219,34 +232,49 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    /// Returns whether the validator is known to be faulty.
+    /// Returns whether the validator is known to be faulty and we have evidence.
     pub(crate) fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
         self.validators
             .get_index(vid)
             .map_or(false, |vidx| self.state.has_evidence(vidx))
     }
 
+    /// Marks the given validator as faulty, if it exists.
+    pub(crate) fn mark_faulty(&mut self, vid: &C::ValidatorId) {
+        if let Some(vidx) = self.validators.get_index(vid) {
+            self.state.mark_faulty(vidx);
+        }
+    }
+
     /// Returns whether we have a vertex that satisfies the dependency.
     pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> bool {
         match dependency {
             Dependency::Vote(hash) => self.state.has_vote(hash),
-            Dependency::Evidence(idx) => self.state.has_evidence(*idx),
+            Dependency::Evidence(idx) => self.state.is_faulty(*idx),
         }
     }
 
     /// Returns a vertex that satisfies the dependency, if available.
     ///
     /// If we send a vertex to a peer who is missing a dependency, they will ask us for it. In that
-    /// case, `get_dependency` will always return `Some`, unless the peer is faulty.
-    pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> Option<ValidVertex<C>> {
-        let state = &self.state;
+    /// case, `get_dependency` will never return `None`, unless the peer is faulty.
+    pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> GetDepOutcome<C> {
         match dependency {
-            Dependency::Vote(hash) => state
-                .wire_vote(hash, self.instance_id.clone())
-                .map(Vertex::Vote),
-            Dependency::Evidence(idx) => state.opt_evidence(*idx).cloned().map(Vertex::Evidence),
+            Dependency::Vote(hash) => match self.state.wire_vote(hash, self.instance_id.clone()) {
+                None => GetDepOutcome::None,
+                Some(vote) => GetDepOutcome::Vertex(ValidVertex(Vertex::Vote(vote))),
+            },
+            Dependency::Evidence(idx) => match self.state.opt_fault(*idx) {
+                None | Some(Fault::Banned) => GetDepOutcome::None,
+                Some(Fault::Direct(ev)) => {
+                    GetDepOutcome::Vertex(ValidVertex(Vertex::Evidence(ev.clone())))
+                }
+                Some(Fault::Indirect) => {
+                    let vid = self.validators.id(*idx).expect("missing validator").clone();
+                    GetDepOutcome::Evidence(vid)
+                }
+            },
         }
-        .map(ValidVertex)
     }
 
     pub(crate) fn handle_timer(
@@ -317,8 +345,8 @@ impl<C: Context> Highway<C> {
         &self.validators
     }
 
-    /// Returns an iterator over all validators known to be faulty.
-    pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = &C::ValidatorId> {
+    /// Returns an iterator over all validators against which we have direct evidence.
+    pub(crate) fn validators_with_evidence(&self) -> impl Iterator<Item = &C::ValidatorId> {
         self.validators
             .iter()
             .enumerate()

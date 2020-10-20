@@ -16,8 +16,8 @@ use super::{
     evidence::Evidence,
     finality_detector::{FinalityDetector, FttExceeded},
     highway::{
-        Dependency, Highway, Params, PreValidatedVertex, SignedWireVote, ValidVertex, Vertex,
-        VertexError,
+        Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, SignedWireVote,
+        ValidVertex, Vertex, VertexError,
     },
     validators::Validators,
     Weight,
@@ -604,15 +604,19 @@ where
         sender: ValidatorId,
         delivery_time: Timestamp,
     ) -> TestRunResult<Vec<HighwayMessage>> {
-        let vertex = self
+        match self
             .node_mut(&sender)?
             .validator_mut()
             .highway()
             .get_dependency(&missing_dependency)
-            .map(|vv| vv.0)
-            .ok_or_else(|| TestRunError::SenderMissingDependency(sender, missing_dependency))?;
-
-        self.add_vertex(rng, recipient, sender, vertex, delivery_time)
+        {
+            GetDepOutcome::Vertex(vv) => {
+                self.add_vertex(rng, recipient, sender, vv.0, delivery_time)
+            }
+            GetDepOutcome::Evidence(_) | GetDepOutcome::None => Err(
+                TestRunError::SenderMissingDependency(sender, missing_dependency),
+            ),
+        }
     }
 
     /// Returns a `MutableHandle` on the `HighwayTestHarness` object
@@ -1187,7 +1191,7 @@ mod test_harness {
                     v.finalized_values().cloned().collect::<Vec<_>>(),
                     v.validator()
                         .highway()
-                        .faulty_validators()
+                        .validators_with_evidence()
                         .cloned()
                         .collect::<HashSet<_>>(),
                 )
