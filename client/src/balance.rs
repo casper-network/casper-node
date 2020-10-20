@@ -2,7 +2,6 @@ use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-use casper_client::RpcCall;
 use casper_node::rpcs::state::GetBalance;
 
 use crate::{command::ClientCommand, common};
@@ -65,11 +64,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let rpc = RpcCall::new(
-            common::rpc_id::get(matches),
-            common::node_address::get(matches),
-            common::verbose::get(matches),
-        );
+        let rpc = common::rpc(matches);
 
         let state_root_hash = common::state_root_hash::get(&matches);
         let purse_uref = purse_uref::get(&matches);

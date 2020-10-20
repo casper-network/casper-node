@@ -1,7 +1,5 @@
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_client::RpcCall;
-
 use super::creation_common::{self, DisplayOrder};
 use crate::{command::ClientCommand, common};
 
@@ -24,11 +22,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let rpc = RpcCall::new(
-            common::rpc_id::get(matches),
-            common::node_address::get(matches),
-            common::verbose::get(matches),
-        );
+        let rpc = common::rpc(matches);
 
         let input_path = creation_common::input::get(matches);
         let response = rpc

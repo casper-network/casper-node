@@ -98,7 +98,7 @@ impl RpcCall {
     pub fn transfer(
         self,
         amount: U512,
-        source_purse: Option<URef>, // TODO un-option and multivariate
+        source_purse: Option<URef>,
         target_account: Option<PublicKey>,
         target_purse: Option<URef>,
         deploy_params: DeployParams,

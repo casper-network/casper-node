@@ -2,7 +2,6 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_client::RpcCall;
 use casper_node::rpcs::chain::GetStateRootHash;
 
 use crate::{command::ClientCommand, common};
@@ -32,11 +31,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetStateRootHash {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let rpc = RpcCall::new(
-            common::rpc_id::get(matches),
-            common::node_address::get(matches),
-            common::verbose::get(matches),
-        );
+        let rpc = common::rpc(matches);
 
         let maybe_block_hash = common::block_hash::get(matches);
 

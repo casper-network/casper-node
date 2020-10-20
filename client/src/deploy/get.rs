@@ -2,7 +2,6 @@ use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-use casper_client::RpcCall;
 use casper_node::{crypto::hash::Digest, rpcs::info::GetDeploy, types::DeployHash};
 
 use crate::{command::ClientCommand, common};
@@ -58,11 +57,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let rpc = RpcCall::new(
-            common::rpc_id::get(matches),
-            common::node_address::get(matches),
-            common::verbose::get(matches),
-        );
+        let rpc = common::rpc(matches);
 
         let deploy_hash = deploy_hash::get(matches);
         let response = rpc

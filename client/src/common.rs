@@ -3,6 +3,7 @@ use std::{fs, path::PathBuf};
 use clap::{Arg, ArgMatches};
 use rand::Rng;
 
+use casper_client::RpcCall;
 use casper_node::{
     crypto::{asymmetric_key::SecretKey, hash::Digest},
     types::BlockHash,
@@ -215,4 +216,12 @@ pub mod block_hash {
 
 pub fn read_file(path: &str) -> Vec<u8> {
     fs::read(path).unwrap_or_else(|error| panic!("should read {}: {}", path, error))
+}
+
+pub fn rpc(matches: &ArgMatches) -> RpcCall {
+    RpcCall::new(
+        rpc_id::get(matches),
+        node_address::get(matches),
+        verbose::get(matches),
+    )
 }

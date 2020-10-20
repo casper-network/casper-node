@@ -1,6 +1,5 @@
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
-use casper_client::RpcCall;
 use casper_node::crypto::asymmetric_key::PublicKey;
 use casper_types::{URef, U512};
 
@@ -158,11 +157,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
     fn run(matches: &ArgMatches<'_>) {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
-        let rpc = RpcCall::new(
-            common::rpc_id::get(matches),
-            common::node_address::get(matches),
-            common::verbose::get(matches),
-        );
+        let rpc = common::rpc(matches);
 
         let amount = amount::get(matches);
         let source_purse = source_purse::get(matches);

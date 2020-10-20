@@ -4,7 +4,6 @@ use clap::{App, ArgMatches, SubCommand};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_client::RpcCall;
 use casper_node::{rpcs::chain::GetBlockResult, types::DeployHash};
 
 use crate::{command::ClientCommand, common};
@@ -56,11 +55,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let rpc = RpcCall::new(
-            common::rpc_id::get(matches),
-            common::node_address::get(matches),
-            common::verbose::get(matches),
-        );
+        let rpc = common::rpc(matches);
 
         let maybe_block_hash = common::block_hash::get(matches);
 
