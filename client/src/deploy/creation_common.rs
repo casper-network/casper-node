@@ -11,7 +11,7 @@ use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
 use serde::{self, Deserialize};
 
-use casper_client::{DeployParams, ExecutableDeployItemExt};
+use casper_client::{cl_type, DeployParams, ExecutableDeployItemExt};
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
     crypto::{asymmetric_key::PublicKey as NodePublicKey, hash::Digest},
@@ -20,8 +20,7 @@ use casper_node::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, ToBytes},
-    AccessRights, CLType, CLTyped, CLValue, ContractHash, Key, NamedArg, PublicKey, RuntimeArgs,
-    URef, U128, U256, U512,
+    AccessRights, CLType, CLValue, ContractHash, Key, NamedArg, RuntimeArgs, URef, U512,
 };
 
 use crate::common;
@@ -326,44 +325,18 @@ pub(super) mod session {
 
 /// Handles providing the arg for and retrieval of simple session and payment args.
 pub(super) mod arg_simple {
+
     use super::*;
 
     const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE'";
 
     lazy_static! {
-        static ref SUPPORTED_TYPES: Vec<(&'static str, CLType)> = vec![
-            ("bool", CLType::Bool),
-            ("i32", CLType::I32),
-            ("i64", CLType::I64),
-            ("u8", CLType::U8),
-            ("u32", CLType::U32),
-            ("u64", CLType::U64),
-            ("u128", CLType::U128),
-            ("u256", CLType::U256),
-            ("u512", CLType::U512),
-            ("unit", CLType::Unit),
-            ("string", CLType::String),
-            ("key", CLType::Key),
-            ("account_hash", AccountHash::cl_type()),
-            ("uref", CLType::URef),
-            ("public_key", CLType::PublicKey),
-        ];
-        static ref SUPPORTED_LIST: String = {
-            let mut msg = String::new();
-            for (index, item) in SUPPORTED_TYPES.iter().map(|(name, _)| name).enumerate() {
-                msg.push_str(item);
-                if index < SUPPORTED_TYPES.len() - 1 {
-                    msg.push_str(", ")
-                }
-            }
-            msg
-        };
         static ref ARG_HELP: String = format!(
             "For simple CLTypes, a named and typed arg which is passed to the Wasm code. To see \
             an example for each type, run '--{}'. This arg can be repeated to pass multiple named, \
             typed args, but can only be used for the following types: {}",
             super::show_arg_examples::ARG_NAME,
-            *SUPPORTED_LIST
+            cl_type::supported_cl_type_list()
         );
     }
 
@@ -425,117 +398,21 @@ pub(super) mod arg_simple {
         if parts.len() != 3 {
             panic!("arg {} should be formatted as {}", arg, ARG_VALUE_NAME);
         }
-        let cl_type = match parts[1].to_lowercase() {
-            t if t == SUPPORTED_TYPES[0].0 => SUPPORTED_TYPES[0].1.clone(),
-            t if t == SUPPORTED_TYPES[1].0 => SUPPORTED_TYPES[1].1.clone(),
-            t if t == SUPPORTED_TYPES[2].0 => SUPPORTED_TYPES[2].1.clone(),
-            t if t == SUPPORTED_TYPES[3].0 => SUPPORTED_TYPES[3].1.clone(),
-            t if t == SUPPORTED_TYPES[4].0 => SUPPORTED_TYPES[4].1.clone(),
-            t if t == SUPPORTED_TYPES[5].0 => SUPPORTED_TYPES[5].1.clone(),
-            t if t == SUPPORTED_TYPES[6].0 => SUPPORTED_TYPES[6].1.clone(),
-            t if t == SUPPORTED_TYPES[7].0 => SUPPORTED_TYPES[7].1.clone(),
-            t if t == SUPPORTED_TYPES[8].0 => SUPPORTED_TYPES[8].1.clone(),
-            t if t == SUPPORTED_TYPES[9].0 => SUPPORTED_TYPES[9].1.clone(),
-            t if t == SUPPORTED_TYPES[10].0 => SUPPORTED_TYPES[10].1.clone(),
-            t if t == SUPPORTED_TYPES[11].0 => SUPPORTED_TYPES[11].1.clone(),
-            t if t == SUPPORTED_TYPES[12].0 => SUPPORTED_TYPES[12].1.clone(),
-            t if t == SUPPORTED_TYPES[13].0 => SUPPORTED_TYPES[13].1.clone(),
-            t if t == SUPPORTED_TYPES[14].0 => SUPPORTED_TYPES[14].1.clone(),
-            _ => panic!(
+        let cl_type = cl_type::parse(&parts[1]).unwrap_or_else(|_| {
+            panic!(
                 "unknown variant {}, expected one of {}",
-                parts[1], *SUPPORTED_LIST
-            ),
-        };
+                parts[1],
+                cl_type::supported_cl_type_list()
+            )
+        });
         (parts[0], cl_type, parts[2].trim_matches('\''))
     }
 
     /// Insert a value built from a single arg which has been split into its constituent parts.
     fn parts_to_cl_value(parts: (&str, CLType, &str), runtime_args: &mut RuntimeArgs) {
         let (name, cl_type, value) = parts;
-        let cl_value = match cl_type {
-            CLType::Bool => match value.to_lowercase().as_str() {
-                "true" | "t" => CLValue::from_t(true).unwrap(),
-                "false" | "f" => CLValue::from_t(false).unwrap(),
-                invalid => panic!(
-                    "can't parse {} as a bool.  Should be 'true' or 'false'",
-                    invalid
-                ),
-            },
-            CLType::I32 => {
-                let x = i32::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as i32: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::I64 => {
-                let x = i64::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as i64: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U8 => {
-                let x = u8::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as u8: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U32 => {
-                let x = u32::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as u32: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U64 => {
-                let x = u64::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as u64: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U128 => {
-                let x = U128::from_dec_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as U128: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U256 => {
-                let x = U256::from_dec_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as U256: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U512 => {
-                let x = U512::from_dec_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as U512: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::Unit => {
-                if !value.is_empty() {
-                    panic!("can't parse {} as unit.  Should be ''", value)
-                }
-                CLValue::from_t(()).unwrap()
-            }
-            CLType::String => CLValue::from_t(value).unwrap(),
-            CLType::Key => {
-                let key = Key::from_formatted_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as Key: {:?}", value, error));
-                CLValue::from_t(key).unwrap()
-            }
-            CLType::FixedList(ty, 32) => match *ty {
-                CLType::U8 => {
-                    let account_hash =
-                        AccountHash::from_formatted_str(value).unwrap_or_else(|error| {
-                            panic!("can't parse {} as AccountHash: {:?}", value, error)
-                        });
-                    CLValue::from_t(account_hash).unwrap()
-                }
-                _ => unreachable!(),
-            },
-            CLType::URef => {
-                let uref = URef::from_formatted_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as URef: {:?}", value, error));
-                CLValue::from_t(uref).unwrap()
-            }
-            CLType::PublicKey => {
-                let pub_key = NodePublicKey::from_hex(value).unwrap_or_else(|error| {
-                    panic!("can't parse {} as PublicKey: {:?}", value, error)
-                });
-                CLValue::from_t(PublicKey::from(pub_key)).unwrap()
-            }
-            _ => unreachable!(),
-        };
+        let cl_value = cl_type::parse_value(cl_type, value)
+            .unwrap_or_else(|error| panic!("error parsing cl_value {}", error));
         runtime_args.insert_cl_value(name, cl_value);
     }
 }

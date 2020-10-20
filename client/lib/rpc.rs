@@ -16,7 +16,7 @@ use casper_node::{
     },
     types::{BlockHash, Deploy, DeployHash},
 };
-use casper_types::{Key, RuntimeArgs, U512, URef, bytesrepr::ToBytes};
+use casper_types::{bytesrepr::ToBytes, Key, RuntimeArgs, URef, U512};
 
 use crate::{
     deploy::{DeployExt, DeployParams, ListDeploys, SendDeploy, Transfer},
@@ -59,15 +59,11 @@ impl RpcCall {
     }
 
     /// Queries the node for an item at `key`, given a `path` and a `state_root_hash`.
-    /// - `state_root_hash` - Hash representing a pointer to the current state from which a value can be extracted. See `get_state_root_hash`.
+    /// - `state_root_hash` - Hash representing a pointer to the current state from which a value
+    ///   can be extracted. See `get_state_root_hash`.
     /// - `key` - Key from which to get a value. See (Key)[casper_types::Key].
     /// - `path` - Path components starting with the `key`.
-    pub fn get_item(
-        self,
-        state_root_hash: Digest,
-        key: Key,
-        path: Vec<String>,
-    ) -> Result<JsonRpc> {
+    pub fn get_item(self, state_root_hash: Digest, key: Key, path: Vec<String>) -> Result<JsonRpc> {
         let params = GetItemParams {
             state_root_hash,
             key: key.to_formatted_string(),
@@ -89,8 +85,10 @@ impl RpcCall {
     }
 
     /// Gets the balance from a purse.
-    /// - `state_root_hash` - Hash representing a pointer to the current state from which a balance can be extracted. See `get_state_root_hash`.
-    /// - `purse_uref` - Represents the purse from which the balance will be obtained. Can be obtained with `get_item`.
+    /// - `state_root_hash` - Hash representing a pointer to the current state from which a balance
+    ///   can be extracted. See `get_state_root_hash`.
+    /// - `purse_uref` - Represents the purse from which the balance will be obtained. Can be
+    ///   obtained with `get_item`.
     pub fn get_balance(self, state_root_hash: Digest, purse_uref: URef) -> Result<JsonRpc> {
         let params = GetBalanceParams {
             state_root_hash,
@@ -101,9 +99,12 @@ impl RpcCall {
 
     /// Transfers an amount between purses.
     /// - `amount` - Specifies the amount to be transferred.
-    /// - `source_purse` - Source purse in the sender's account that this amount will be drawn from, if it is not specified, it will defaul to their main purse.
-    /// - `target_account` - Target account for this transfer. Mutually exclusive with `target_purse`.
-    /// - `target_purse` - Target purse for this transfer, only valid for transfers within the same account.
+    /// - `source_purse` - Source purse in the sender's account that this amount will be drawn from,
+    ///   if it is not specified, it will defaul to their main purse.
+    /// - `target_account` - Target account for this transfer. Mutually exclusive with
+    ///   `target_purse`.
+    /// - `target_purse` - Target purse for this transfer, only valid for transfers within the same
+    ///   account.
     pub fn transfer(
         self,
         amount: U512,
