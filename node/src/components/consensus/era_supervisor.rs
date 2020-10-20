@@ -420,9 +420,9 @@ where
         let validators: Validators<PublicKey> =
             validator_stakes.into_iter().map(scale_stake).collect();
 
-        let ftt = validators.total_weight()
-            * u64::from(self.highway_config().finality_threshold_percent)
-            / 100;
+        let total_weight = u128::from(validators.total_weight());
+        let ftt_percent = u128::from(self.highway_config().finality_threshold_percent);
+        let ftt = ((total_weight * ftt_percent / 100) as u64).into();
         // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
             seed,
