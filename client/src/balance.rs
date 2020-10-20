@@ -19,7 +19,7 @@ enum DisplayOrder {
 /// Handles providing the arg for and retrieval of the purse URef.
 mod purse_uref {
 
-use super::*;
+    use super::*;
 
     const ARG_NAME: &str = "purse-uref";
     const ARG_SHORT: &str = "p";

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
@@ -17,6 +19,10 @@ pub enum Error {
     /// Failed to parse the response from the node.
     #[error("failed to parse as json-rpc response: {0}")]
     FailedToParseResponse(reqwest::Error),
+
+    /// Failed to create new key file because it already exists.
+    #[error("file already exists: {0:?}")]
+    FileAlreadyExists(PathBuf),
 
     /// JSON-RPC error returned from the node.
     #[error("rpc response is error: {0}")]

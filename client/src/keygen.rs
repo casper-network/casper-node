@@ -1,10 +1,12 @@
-use std::{fs, path::PathBuf, process};
+use std::{path::PathBuf, process};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 use lazy_static::lazy_static;
 
-use casper_client::keygen::{self, FILES, PUBLIC_KEY_HEX};
-use casper_node::crypto::asymmetric_key::SecretKey;
+use casper_client::{
+    keygen::{self, FILES, PUBLIC_KEY_HEX},
+    Error,
+};
 
 use crate::{command::ClientCommand, common};
 
@@ -50,13 +52,15 @@ mod output_dir {
 
 /// Handles providing the arg for and retrieval of the key algorithm.
 mod algorithm {
+    use std::str::FromStr;
+
+    use keygen::Algorithm;
+
     use super::*;
 
     const ARG_NAME: &str = "algorithm";
     const ARG_SHORT: &str = "a";
     const ARG_VALUE_NAME: &str = common::ARG_STRING;
-    pub(super) const ED25519: &str = "Ed25519";
-    pub(super) const SECP256K1: &str = "secp256k1";
     const ARG_HELP: &str = "The type of keys to generate";
 
     pub fn arg() -> Arg<'static, 'static> {
@@ -64,19 +68,20 @@ mod algorithm {
             .long(ARG_NAME)
             .short(ARG_SHORT)
             .required(false)
-            .default_value(ED25519)
-            .possible_value(ED25519)
-            .possible_value(SECP256K1)
+            .default_value(keygen::ED25519)
+            .possible_value(keygen::ED25519)
+            .possible_value(keygen::SECP256K1)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::Algorithm as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> String {
-        matches
+    pub fn get(matches: &ArgMatches) -> Algorithm {
+        let value = matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
+
+        Algorithm::from_str(value).unwrap_or_else(|_| panic!("Invalid key algorithm"))
     }
 }
 
@@ -98,37 +103,20 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Keygen {
 
     fn run(matches: &ArgMatches<'_>) {
         let output_dir = output_dir::get(matches);
-        let force = common::force::get(matches);
         let algorithm = algorithm::get(matches);
+        let force = common::force::get(matches);
 
-        let _ = fs::create_dir_all(&output_dir)
-            .unwrap_or_else(|error| panic!("should create {}: {}", output_dir.display(), error));
-        let output_dir = output_dir.canonicalize().expect("should canonicalize path");
-
-        if !force {
-            for file in FILES.iter().map(|filename| output_dir.join(filename)) {
-                if file.exists() {
-                    eprintln!(
-                        "{} exists. To overwrite, rerun with --{}",
-                        file.display(),
-                        common::force::ARG_NAME
-                    );
-                    process::exit(1);
-                }
+        match keygen::generate_files(&output_dir, algorithm, force) {
+            Err(Error::FileAlreadyExists(existing)) => {
+                eprintln!(
+                    "{} exists. To overwrite, rerun with --{}",
+                    existing.display(),
+                    common::force::ARG_NAME
+                );
+                process::exit(1);
             }
+            Err(error) => panic!("should write key files: {}", error),
+            Ok(_) => println!("Wrote files to {}", output_dir.display()),
         }
-
-        let secret_key = if algorithm == algorithm::ED25519 {
-            SecretKey::generate_ed25519()
-        } else if algorithm == algorithm::SECP256K1 {
-            SecretKey::generate_secp256k1()
-        } else {
-            panic!("Invalid key algorithm");
-        };
-
-        keygen::write_to_files(&output_dir, secret_key)
-            .unwrap_or_else(|error| panic!("should write key files: {}", error));
-
-        println!("Wrote files to {}", output_dir.display());
     }
 }
