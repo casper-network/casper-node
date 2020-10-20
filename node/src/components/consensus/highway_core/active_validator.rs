@@ -4,7 +4,7 @@ use std::fmt::{self, Debug};
 
 use tracing::{error, warn};
 
-use self::round_success_meter::{ExponentChange, RoundSuccessMeter};
+use self::round_success_meter::RoundSuccessMeter;
 
 use super::{
     evidence::Evidence,
@@ -61,7 +61,7 @@ pub(crate) struct ActiveValidator<C: Context> {
     next_timer: Timestamp,
     /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
     next_proposal: Option<(Timestamp, Panorama<C>)>,
-    /// A tracker for whether we are keeping up with the current round exponent or not
+    /// A tracker for whether we are keeping up with the current round exponent or not.
     round_success_meter: RoundSuccessMeter,
 }
 
@@ -223,19 +223,14 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Registers the finalization of a block and checks whether the round exponent should be
     /// changed
-    pub(crate) fn handle_finalized_block(&mut self, block_timestamp: Timestamp) {
-        match self
+    pub(crate) fn handle_finalized_block(
+        &mut self,
+        block_timestamp: Timestamp,
+        finalization_timestamp: Timestamp,
+    ) {
+        self.next_round_exp = self
             .round_success_meter
-            .handle_finalized_block(block_timestamp, Timestamp::now())
-        {
-            ExponentChange::Increase => {
-                self.next_round_exp += 1;
-            }
-            ExponentChange::Decrease => {
-                self.next_round_exp -= 1;
-            }
-            ExponentChange::Nothing => (),
-        }
+            .handle_finalized_block(block_timestamp, finalization_timestamp);
     }
 
     /// Returns whether the incoming message is a proposal that we need to send a confirmation for.

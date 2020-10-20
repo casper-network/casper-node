@@ -167,9 +167,13 @@ impl<C: Context> Highway<C> {
     }
 
     /// Notifies the active validator of a new finalized block
-    pub(crate) fn handle_finalized_block(&mut self, block_timestamp: Timestamp) {
+    pub(crate) fn handle_finalized_block(
+        &mut self,
+        block_timestamp: Timestamp,
+        finalization_timestamp: Timestamp,
+    ) {
         if let Some(av) = self.active_validator.as_mut() {
-            av.handle_finalized_block(block_timestamp);
+            av.handle_finalized_block(block_timestamp, finalization_timestamp);
         }
     }
 

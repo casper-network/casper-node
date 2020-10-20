@@ -10,15 +10,10 @@ pub(super) struct RoundSuccessMeter {
     // store whether a particular round was successful
     // index 0 is the last handled round, 1 is the second-to-last etc.
     rounds: VecDeque<bool>,
+    round_exp: u8,
     round_length: u64,
     last_exponent_change_index: usize,
     latest_handled_round_index: Option<usize>,
-}
-
-pub(super) enum ExponentChange {
-    Increase,
-    Decrease,
-    Nothing,
 }
 
 impl RoundSuccessMeter {
@@ -26,6 +21,7 @@ impl RoundSuccessMeter {
         let round_length = 1u64 << round_exp;
         Self {
             rounds: VecDeque::with_capacity(NUM_ROUNDS_TO_CONSIDER),
+            round_exp,
             round_length,
             last_exponent_change_index: (timestamp.millis() / round_length) as usize,
             latest_handled_round_index: None,
@@ -34,16 +30,19 @@ impl RoundSuccessMeter {
 
     pub fn change_exponent(&mut self, new_exp: u8, timestamp: Timestamp) {
         self.rounds = VecDeque::with_capacity(NUM_ROUNDS_TO_CONSIDER);
+        self.round_exp = new_exp;
         self.round_length = 1u64 << new_exp;
         self.last_exponent_change_index = (timestamp.millis() / self.round_length) as usize;
         self.latest_handled_round_index = None;
     }
 
+    /// Registers the success or failure of finalizing a block within a round, and returns the new
+    /// round exponent based on whether we are keeping up with the blocks or not.
     pub fn handle_finalized_block(
         &mut self,
         block_timestamp: Timestamp,
         time_finalized: Timestamp,
-    ) -> ExponentChange {
+    ) -> u8 {
         // in case the block timestamp isn't at the beginning of the round
         let block_round_start_index = (block_timestamp.millis() / self.round_length) as usize;
         let finalization_round_index = (time_finalized.millis() / self.round_length) as usize;
@@ -76,7 +75,7 @@ impl RoundSuccessMeter {
             _ => (),
         }
         self.clean_old_rounds();
-        self.should_change_exponent(block_round_start_index)
+        self.new_exponent(block_round_start_index)
     }
 
     fn clean_old_rounds(&mut self) {
@@ -89,13 +88,13 @@ impl RoundSuccessMeter {
         self.rounds.iter().filter(|&success| !success).count()
     }
 
-    fn should_change_exponent(&self, block_round_start_index: usize) -> ExponentChange {
+    fn new_exponent(&self, block_round_start_index: usize) -> u8 {
         if block_round_start_index % 2 == 0 && self.count_failures() > MAX_FAILED_ROUNDS {
-            ExponentChange::Increase
+            self.round_exp + 1
         } else if block_round_start_index % ACCELERATION_PARAMETER == 0 {
-            ExponentChange::Decrease
+            self.round_exp - 1
         } else {
-            ExponentChange::Nothing
+            self.round_exp
         }
     }
 }

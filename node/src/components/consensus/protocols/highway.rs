@@ -124,8 +124,10 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             .run(&self.highway)
             .expect("too many faulty validators")
             .collect::<Vec<_>>();
+        let current_timestamp = Timestamp::now();
         for block in &finalized_blocks {
-            self.highway.handle_finalized_block(block.timestamp);
+            self.highway
+                .handle_finalized_block(block.timestamp, current_timestamp);
         }
         finalized_blocks
             .into_iter()
