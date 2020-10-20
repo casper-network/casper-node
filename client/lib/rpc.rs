@@ -86,10 +86,10 @@ impl RpcCall {
     }
 
     /// Gets the balance from a purse.
-    pub fn get_balance(self, state_root_hash: Digest, purse_uref: String) -> Result<JsonRpc> {
+    pub fn get_balance(self, state_root_hash: Digest, purse_uref: URef) -> Result<JsonRpc> {
         let params = GetBalanceParams {
             state_root_hash,
-            purse_uref,
+            purse_uref: purse_uref.to_formatted_string(),
         };
         GetBalance::request_with_map_params(self, params)
     }
