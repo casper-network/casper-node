@@ -17,7 +17,9 @@ use crate::{
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::FinalityDetector,
-            highway::{Dependency, Highway, Params, PreValidatedVertex, ValidVertex, Vertex},
+            highway::{
+                Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex, Vertex,
+            },
             validators::Validators,
             Weight,
         },
@@ -317,8 +319,15 @@ where
                     _ => self.add_vertices(vec![(sender, pvv)], rng),
                 }
             }
-            Ok(HighwayMessage::RequestDependency(dep)) => {
-                if let Some(vv) = self.highway.get_dependency(&dep) {
+            Ok(HighwayMessage::RequestDependency(dep)) => match self.highway.get_dependency(&dep) {
+                GetDepOutcome::None => {
+                    info!(?dep, ?sender, "requested dependency doesn't exist");
+                    vec![]
+                }
+                GetDepOutcome::Evidence(vid) => {
+                    vec![ConsensusProtocolResult::SendEvidence(sender, vid)]
+                }
+                GetDepOutcome::Vertex(vv) => {
                     let msg = HighwayMessage::NewVertex(vv.into());
                     let serialized_msg =
                         bincode::serialize(&msg).expect("should serialize message");
@@ -327,11 +336,8 @@ where
                         serialized_msg,
                         sender,
                     )]
-                } else {
-                    info!(?dep, ?sender, "requested dependency doesn't exist");
-                    vec![]
                 }
-            }
+            },
         }
     }
 
@@ -393,22 +399,34 @@ where
         self.highway.has_evidence(vid)
     }
 
+    fn mark_faulty(&mut self, vid: &C::ValidatorId) {
+        self.highway.mark_faulty(vid);
+    }
+
     fn request_evidence(&self, sender: I, vid: &C::ValidatorId) -> Vec<CpResult<I, C>> {
         self.highway
             .validators()
             .get_index(vid)
-            .and_then(|vidx| self.highway.get_dependency(&Dependency::Evidence(vidx)))
-            .map(|vv| {
-                let msg = HighwayMessage::NewVertex(vv.into());
-                let serialized_msg = bincode::serialize(&msg).expect("should serialize message");
-                ConsensusProtocolResult::CreatedTargetedMessage(serialized_msg, sender)
-            })
+            .and_then(
+                move |vidx| match self.highway.get_dependency(&Dependency::Evidence(vidx)) {
+                    GetDepOutcome::None | GetDepOutcome::Evidence(_) => None,
+                    GetDepOutcome::Vertex(vv) => {
+                        let msg = HighwayMessage::NewVertex(vv.into());
+                        let serialized_msg =
+                            bincode::serialize(&msg).expect("should serialize message");
+                        Some(ConsensusProtocolResult::CreatedTargetedMessage(
+                            serialized_msg,
+                            sender,
+                        ))
+                    }
+                },
+            )
             .into_iter()
             .collect()
     }
 
-    fn faulty_validators(&self) -> Vec<&C::ValidatorId> {
-        self.highway.faulty_validators().collect()
+    fn validators_with_evidence(&self) -> Vec<&C::ValidatorId> {
+        self.highway.validators_with_evidence().collect()
     }
 
     fn as_any(&self) -> &dyn Any {
