@@ -3,14 +3,14 @@
 use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
+use derive_more::From;
+use prometheus::Registry;
+use tracing::{error, info, warn};
 
 use block_executor::BlockExecutor;
 use consensus::EraSupervisor;
 use deploy_acceptor::DeployAcceptor;
-use derive_more::From;
-use prometheus::Registry;
 use small_network::GossipedAddress;
-use tracing::{error, info, warn};
 
 use crate::{
     components::{
@@ -648,6 +648,8 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
+        let linear_chain = self.linear_chain.linear_chain();
+        let finalized_deploys = self.storage.get_finalized_deploys(linear_chain).await;
         let (net, config) = (
             self.net,
             ValidatorInitConfig {
@@ -657,7 +659,8 @@ impl Reactor {
                 storage: self.storage,
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
-                linear_chain: self.linear_chain.linear_chain().clone(),
+                linear_chain: linear_chain.clone(),
+                finalized_deploys,
             },
         );
         net.finalize().await;
