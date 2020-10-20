@@ -3,44 +3,44 @@ use casper_types::{bytesrepr::ToBytes, ContractPackageHash, RuntimeArgs};
 
 use crate::error::Result;
 
-/// Extention trait for ExecutableDeploysItem, contains convenience constructors.
+/// Extension trait for `ExecutableDeployItem`, containing convenience constructors.
 pub trait ExecutableDeployItemExt {
-    /// Helper for creating an `ExecutableDeployItem::StoredContractByName`.
-    fn stored_contract_by_name(
+    /// Creates an `ExecutableDeployItem::StoredContractByName`.
+    fn new_stored_contract_by_name(
         name: String,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem>;
 
-    /// Helper to create a `ExecutableDeployItem::StoredContractByHash`.
-    fn stored_contract_by_hash(
+    /// Creates an `ExecutableDeployItem::StoredContractByHash`.
+    fn new_stored_contract_by_hash(
         hash: ContractPackageHash,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem>;
 
-    /// Helper to create a `ExecutableDeployItem::StoredVersionedContractByHash`.
-    fn stored_versioned_contract_by_hash(
+    /// Creates an `ExecutableDeployItem::StoredVersionedContractByHash`.
+    fn new_stored_versioned_contract_by_hash(
         hash: ContractPackageHash,
         version: u32,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem>;
 
-    /// Helper to create a `ExecutableDeployItem::StoredVersionedContractByName`.
-    fn stored_versioned_contract_by_name(
+    /// Creates an `ExecutableDeployItem::StoredVersionedContractByName`.
+    fn new_stored_versioned_contract_by_name(
         name: String,
         version: u32,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem>;
 
-    /// Helper to create a `ExecutableDeployItem::ModuleBytes`.
-    fn from_module_bytes(module_bytes: Vec<u8>, args: RuntimeArgs) -> Result<ExecutableDeployItem>;
+    /// Creates an `ExecutableDeployItem::ModuleBytes`.
+    fn new_module_bytes(module_bytes: Vec<u8>, args: RuntimeArgs) -> Result<ExecutableDeployItem>;
 }
 
 impl ExecutableDeployItemExt for ExecutableDeployItem {
-    fn stored_contract_by_name(
+    fn new_stored_contract_by_name(
         name: String,
         entry_point: String,
         args: RuntimeArgs,
@@ -52,7 +52,7 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
         })
     }
 
-    fn stored_contract_by_hash(
+    fn new_stored_contract_by_hash(
         hash: ContractPackageHash,
         entry_point: String,
         args: RuntimeArgs,
@@ -64,7 +64,7 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
         })
     }
 
-    fn stored_versioned_contract_by_name(
+    fn new_stored_versioned_contract_by_name(
         name: String,
         version: u32,
         entry_point: String,
@@ -78,7 +78,7 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
         })
     }
 
-    fn stored_versioned_contract_by_hash(
+    fn new_stored_versioned_contract_by_hash(
         hash: ContractPackageHash,
         version: u32,
         entry_point: String,
@@ -92,7 +92,7 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
         })
     }
 
-    fn from_module_bytes(module_bytes: Vec<u8>, args: RuntimeArgs) -> Result<ExecutableDeployItem> {
+    fn new_module_bytes(module_bytes: Vec<u8>, args: RuntimeArgs) -> Result<ExecutableDeployItem> {
         Ok(ExecutableDeployItem::ModuleBytes {
             module_bytes,
             args: args.to_bytes()?,

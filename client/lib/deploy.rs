@@ -21,7 +21,7 @@ use casper_node::{
 use crate::{error::Result, rpc::RpcClient};
 
 /// SendDeploy allows sending a deploy to the node.
-pub struct SendDeploy;
+pub(crate) struct SendDeploy;
 
 /// Transfer allows transferring an amount between accounts.
 pub struct Transfer {}
@@ -81,52 +81,53 @@ fn output_or_stdout(maybe_path: &Option<&str>) -> io::Result<Box<dyn Write>> {
     }
 }
 
-/// DeployParams are used as a helper to construct a Deploy with
+/// `DeployParams` are used as a helper to construct a `Deploy` with
 /// `DeployExt::with_payment_and_session`.
 pub struct DeployParams {
-    /// The secret key for this deploy.
+    /// The secret key for this `Deploy`.
     pub secret_key: SecretKey,
 
-    /// The timestamp that this deploy was created.
+    /// The creation timestamp of this `Deploy`.
     pub timestamp: Timestamp,
 
-    /// Time to live for this deploy.
+    /// The time to live for this `Deploy`.
     pub ttl: TimeDiff,
 
-    /// Gas price for this deploy.
+    /// The gas price for this `Deploy`.
     pub gas_price: u64,
 
-    /// A list of other deploys (hashes) that this deploy depends upon.
+    /// A list of other `Deploy`s (hashes) that this `Deploy` depends upon.
     pub dependencies: Vec<DeployHash>,
 
-    /// The name of the chain this deploy will be considered for inclusion in.
+    /// The name of the chain this `Deploy` will be considered for inclusion in.
     pub chain_name: String,
 }
 
-/// `DeployExt` is an extension trait that adds some client-specific functionality to `Deploy`.
+/// An extension trait that adds some client-specific functionality to `Deploy`.
 pub trait DeployExt {
-    /// Constructor for `Deploy`.
+    /// Constructs a `Deploy`.
     fn with_payment_and_session(
         params: DeployParams,
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
     ) -> Deploy;
 
-    /// Write the deploy to a file, or if maybe_path is None, `stdout`.
+    /// Writes the `Deploy` to a file, or if `maybe_path` is `None`, `stdout`.
     fn write_deploy(&self, maybe_path: Option<&str>) -> Result<()>;
 
-    /// Read a deploy from file.
+    /// Reads a `Deploy` from the file at `input_path`.
     fn read_deploy(input_path: &str) -> Result<Deploy>;
 
-    /// Read a deploy from file, sign it, write it back to a file (or `stdout` if no file is
-    /// specified).
+    /// Reads a `Deploy` from the file at `input_path`, signs it, then writes it back to a file at
+    /// `maybe_output_path` if `Some` or `stdout` if `None`.
     fn sign_deploy_file(
         input_path: &str,
         secret_key: SecretKey,
-        output_path: Option<&str>,
+        maybe_output_path: Option<&str>,
     ) -> Result<()>;
 
-    /// Create a deploy from parts and save to deploy file, or if maybe_path is None, `stdout`.
+    /// Constructs a `Deploy` and writes it to a file at `maybe_output_path` if `Some` or `stdout`
+    /// if `None`.
     fn make_deploy(
         maybe_output_path: Option<&str>,
         deploy_params: DeployParams,
@@ -187,12 +188,12 @@ impl DeployExt for Deploy {
     fn sign_deploy_file(
         input_path: &str,
         secret_key: SecretKey,
-        output_path: Option<&str>,
+        maybe_output_path: Option<&str>,
     ) -> Result<()> {
         let mut deploy = Deploy::read_deploy(input_path)?;
         let mut rng = rand::thread_rng();
         deploy.sign(&secret_key, &mut rng);
-        deploy.write_deploy(output_path)?;
+        deploy.write_deploy(maybe_output_path)?;
         Ok(())
     }
 }

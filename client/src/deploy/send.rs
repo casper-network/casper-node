@@ -24,12 +24,15 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let verbose = common::verbose::get(matches);
-        let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+        let rpc = RpcCall::new(
+            common::rpc_id::get(matches),
+            common::node_address::get(matches),
+            common::verbose::get(matches),
+        );
+
         let input_path = creation_common::input::get(matches);
-        let response = RpcCall::new(rpc_id, verbose)
-            .send_deploy_file(&node_address, &input_path)
+        let response = rpc
+            .send_deploy_file(&input_path)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

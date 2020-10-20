@@ -1,20 +1,12 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process,
-};
+use std::{fs, path::PathBuf, process};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 use lazy_static::lazy_static;
 
-use casper_node::crypto::asymmetric_key::{PublicKey, SecretKey};
+use casper_client::keygen::{self, FILES, PUBLIC_KEY_HEX};
+use casper_node::crypto::asymmetric_key::SecretKey;
 
 use crate::{command::ClientCommand, common};
-
-const PUBLIC_KEY_HEX: &str = "public_key_hex";
-const SECRET_KEY_PEM: &str = "secret_key.pem";
-const PUBLIC_KEY_PEM: &str = "public_key.pem";
-const FILES: [&str; 3] = [PUBLIC_KEY_HEX, SECRET_KEY_PEM, PUBLIC_KEY_PEM];
 
 lazy_static! {
     static ref MORE_ABOUT: String = format!(
@@ -133,30 +125,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Keygen {
         } else {
             panic!("Invalid key algorithm");
         };
-        let public_key = PublicKey::from(&secret_key);
 
-        write_file(PUBLIC_KEY_HEX, output_dir.as_path(), public_key.to_hex());
-
-        let secret_key_path = output_dir.join(SECRET_KEY_PEM);
-        secret_key
-            .to_file(&secret_key_path)
-            .unwrap_or_else(|error| {
-                panic!("should write {}: {}", secret_key_path.display(), error)
-            });
-
-        let public_key_path = output_dir.join(PUBLIC_KEY_PEM);
-        public_key
-            .to_file(&public_key_path)
-            .unwrap_or_else(|error| {
-                panic!("should write {}: {}", public_key_path.display(), error)
-            });
+        keygen::write_to_files(&output_dir, secret_key)
+            .unwrap_or_else(|error| panic!("should write key files: {}", error));
 
         println!("Wrote files to {}", output_dir.display());
     }
-}
-
-fn write_file(filename: &str, dir: &Path, value: String) {
-    let path = dir.join(filename);
-    fs::write(&path, value)
-        .unwrap_or_else(|error| panic!("should write {}: {}", path.display(), error))
 }

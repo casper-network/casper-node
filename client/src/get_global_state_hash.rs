@@ -32,12 +32,16 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetGlobalStateHash {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let verbose = common::verbose::get(matches);
-        let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+        let rpc = RpcCall::new(
+            common::rpc_id::get(matches),
+            common::node_address::get(matches),
+            common::verbose::get(matches),
+        );
+
         let maybe_block_hash = common::block_hash::get(matches);
-        let response = RpcCall::new(rpc_id, verbose)
-            .get_global_state_hash(node_address, maybe_block_hash)
+
+        let response = rpc
+            .get_global_state_hash(maybe_block_hash)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

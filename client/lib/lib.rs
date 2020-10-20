@@ -11,20 +11,18 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
+
 mod balance;
 mod block;
-mod common;
+mod deploy;
 mod error;
+mod executable_deploy_item_ext;
 mod get_global_state_hash;
+pub mod keygen;
 mod query_state;
 mod rpc;
 
-/// Types and extensions relates to `Deploy`s.
-pub mod deploy;
-
-/// Types related to generating keys.
-pub mod keygen;
-
-pub use common::ExecutableDeployItemExt;
-pub use error::{Error, Result};
+pub use deploy::{DeployExt, DeployParams};
+pub use error::Error;
+pub use executable_deploy_item_ext::ExecutableDeployItemExt;
 pub use rpc::RpcCall;

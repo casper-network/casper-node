@@ -128,15 +128,18 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let verbose = common::verbose::get(matches);
-        let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+        let rpc = RpcCall::new(
+            common::rpc_id::get(matches),
+            common::node_address::get(matches),
+            common::verbose::get(matches),
+        );
+
         let global_state_hash = common::global_state_hash::get(matches);
         let key = key::get(matches);
         let path = path::get(matches);
 
-        let response = RpcCall::new(rpc_id, verbose)
-            .get_item(node_address, global_state_hash, key, path)
+        let response = rpc
+            .get_item(global_state_hash, key, path)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

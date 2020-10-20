@@ -56,13 +56,16 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let verbose = common::verbose::get(matches);
-        let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+        let rpc = RpcCall::new(
+            common::rpc_id::get(matches),
+            common::node_address::get(matches),
+            common::verbose::get(matches),
+        );
+
         let maybe_block_hash = common::block_hash::get(matches);
 
-        let response_value = RpcCall::new(rpc_id, verbose)
-            .list_deploys(node_address, maybe_block_hash)
+        let response_value = rpc
+            .list_deploys(maybe_block_hash)
             .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
         println!(
             "{}",
