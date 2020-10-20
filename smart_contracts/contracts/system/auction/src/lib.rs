@@ -295,7 +295,7 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new(ARG_DELEGATION_RATE, DelegationRate::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
-        <(URef, U512)>::cl_type(),
+        U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
@@ -322,7 +322,7 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
             Parameter::new(ARG_AMOUNT, U512::cl_type()),
         ],
-        <(URef, U512)>::cl_type(),
+        U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Contract,
     );
