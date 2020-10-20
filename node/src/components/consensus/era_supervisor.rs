@@ -140,20 +140,20 @@ pub struct Era<I> {
     candidates: Vec<PendingCandidate>,
     /// Validators banned in this and the next BONDED_ERAS eras, because they were slashed in the
     /// previous switch block.
-    banned: Vec<PublicKey>,
+    newly_banned: Vec<PublicKey>,
 }
 
 impl<I> Era<I> {
     fn new<C: 'static + ConsensusProtocol<I, CandidateBlock, PublicKey>>(
         consensus: C,
         start_height: u64,
-        banned: Vec<PublicKey>,
+        newly_banned: Vec<PublicKey>,
     ) -> Self {
         Era {
             consensus: Box::new(consensus),
             start_height,
             candidates: Vec::new(),
-            banned,
+            newly_banned,
         }
     }
 
@@ -222,7 +222,7 @@ where
             consensus,
             start_height,
             candidates,
-            banned,
+            newly_banned,
         } = self;
 
         // `DataSize` cannot be made object safe due its use of associated constants. We implement
@@ -245,7 +245,7 @@ where
         consensus_heap_size
             + start_height.estimate_heap_size()
             + candidates.estimate_heap_size()
-            + banned.estimate_heap_size()
+            + newly_banned.estimate_heap_size()
     }
 }
 
@@ -404,7 +404,7 @@ where
         era_id: EraId,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
-        banned: Vec<PublicKey>,
+        newly_banned: Vec<PublicKey>,
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
@@ -437,10 +437,12 @@ where
         let mut validators: Validators<PublicKey> =
             validator_stakes.into_iter().map(scale_stake).collect();
 
-        for e_id in era_id.iter_other_bonded() {
-            for pub_key in &self.active_eras[&e_id].banned {
-                validators.ban(pub_key);
-            }
+        for pub_key in era_id
+            .iter_other_bonded()
+            .flat_map(|e_id| &self.active_eras[&e_id].newly_banned)
+            .chain(&newly_banned)
+        {
+            validators.ban(pub_key);
         }
 
         let ftt = validators.total_weight()
@@ -494,7 +496,7 @@ where
             Vec::new()
         };
 
-        let era = Era::new(highway, start_height, banned);
+        let era = Era::new(highway, start_height, newly_banned);
         let _ = self.active_eras.insert(era_id, era);
 
         // Remove the era that has become obsolete now. We keep 2 * BONDED_ERAS past eras because
@@ -699,7 +701,7 @@ where
             .current_era_mut()
             .consensus
             .deactivate_validator();
-        let banned = block_header
+        let newly_banned = block_header
             .era_end()
             .expect("switch block must have era_end")
             .equivocators
@@ -712,7 +714,7 @@ where
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
             validator_stakes,
-            banned,
+            newly_banned,
             seed,
             block_header.timestamp(),
             block_header.height() + 1,
