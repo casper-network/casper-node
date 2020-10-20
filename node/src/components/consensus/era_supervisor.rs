@@ -6,7 +6,7 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     rc::Rc,
@@ -140,20 +140,25 @@ pub struct Era<I> {
     candidates: Vec<PendingCandidate>,
     /// Validators banned in this and the next BONDED_ERAS eras, because they were slashed in the
     /// previous switch block.
-    newly_banned: Vec<PublicKey>,
+    newly_slashed: Vec<PublicKey>,
+    /// Validators that have been slashed in any of the recent BONDED_ERAS switch blocks. This
+    /// includes `newly_slashed`.
+    slashed: HashSet<PublicKey>,
 }
 
 impl<I> Era<I> {
     fn new<C: 'static + ConsensusProtocol<I, CandidateBlock, PublicKey>>(
         consensus: C,
         start_height: u64,
-        newly_banned: Vec<PublicKey>,
+        newly_slashed: Vec<PublicKey>,
+        slashed: HashSet<PublicKey>,
     ) -> Self {
         Era {
             consensus: Box::new(consensus),
             start_height,
             candidates: Vec::new(),
-            newly_banned,
+            newly_slashed,
+            slashed,
         }
     }
 
@@ -222,7 +227,8 @@ where
             consensus,
             start_height,
             candidates,
-            newly_banned,
+            newly_slashed,
+            slashed,
         } = self;
 
         // `DataSize` cannot be made object safe due its use of associated constants. We implement
@@ -245,7 +251,8 @@ where
         consensus_heap_size
             + start_height.estimate_heap_size()
             + candidates.estimate_heap_size()
-            + newly_banned.estimate_heap_size()
+            + newly_slashed.estimate_heap_size()
+            + slashed.estimate_heap_size()
     }
 }
 
@@ -404,7 +411,7 @@ where
         era_id: EraId,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
-        newly_banned: Vec<PublicKey>,
+        newly_slashed: Vec<PublicKey>,
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
@@ -437,11 +444,14 @@ where
         let mut validators: Validators<PublicKey> =
             validator_stakes.into_iter().map(scale_stake).collect();
 
-        for pub_key in era_id
+        let slashed = era_id
             .iter_other_bonded()
-            .flat_map(|e_id| &self.active_eras[&e_id].newly_banned)
-            .chain(&newly_banned)
-        {
+            .flat_map(|e_id| &self.active_eras[&e_id].newly_slashed)
+            .chain(&newly_slashed)
+            .cloned()
+            .collect();
+
+        for pub_key in &slashed {
             validators.ban(pub_key);
         }
 
@@ -497,7 +507,7 @@ where
             Vec::new()
         };
 
-        let era = Era::new(highway, start_height, newly_banned);
+        let era = Era::new(highway, start_height, newly_slashed, slashed);
         let _ = self.active_eras.insert(era_id, era);
 
         // Remove the era that has become obsolete now. We keep 2 * BONDED_ERAS past eras because
@@ -606,15 +616,19 @@ where
         proto_block: ProtoBlock,
         block_context: BlockContext,
     ) -> Effects<Event<I>> {
+        if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+            warn!(era = era_id.0, "new proto block in outdated era");
+            return Effects::new();
+        }
         let mut effects = self
             .effect_builder
             .announce_proposed_proto_block(proto_block.clone())
             .ignore();
-        // TODO: Only include _new_ accusations.
         let accusations = era_id
             .iter_bonded()
             .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
             .unique()
+            .filter(|pub_key| self.era(era_id).slashed.contains(pub_key))
             .cloned()
             .collect();
         let candidate_block = CandidateBlock::new(proto_block, accusations);
@@ -702,7 +716,7 @@ where
             .current_era_mut()
             .consensus
             .deactivate_validator();
-        let newly_banned = block_header
+        let newly_slashed = block_header
             .era_end()
             .expect("switch block must have era_end")
             .equivocators
@@ -715,7 +729,7 @@ where
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
             validator_stakes,
-            newly_banned,
+            newly_slashed,
             seed,
             block_header.timestamp(),
             block_header.height() + 1,
