@@ -68,8 +68,6 @@ fn should_run_auction_install_contract() {
 
     let genesis_validators: BTreeMap<casper_types::PublicKey, U512> = BTreeMap::new();
 
-    let auction_delay = runtime::get_named_arg(AUCTION_DELAY_KEY);
-
     let res = exec_with_return::exec(
         engine_config,
         &mut builder,
