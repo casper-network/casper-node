@@ -384,7 +384,7 @@ pub enum ApiRequest<I> {
     /// Query the global state at the given root hash.
     QueryEraValidators {
         /// The global state hash.
-        global_state_hash: Digest,
+        state_root_hash: Digest,
         /// The era that auction state is requested from.
         era_id: u64,
         /// The protocol version.
@@ -457,14 +457,10 @@ impl<I> Display for ApiRequest<I> {
                 state_root_hash, base_key, path
             ),
             ApiRequest::QueryEraValidators {
-                global_state_hash,
+                state_root_hash,
                 era_id,
                 ..
-            } => write!(
-                formatter,
-                "auction {}, era_id: {}",
-                global_state_hash, era_id
-            ),
+            } => write!(formatter, "auction {}, era_id: {}", state_root_hash, era_id),
             ApiRequest::GetBalance {
                 state_root_hash,
                 purse_uref,

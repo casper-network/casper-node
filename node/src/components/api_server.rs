@@ -145,13 +145,13 @@ impl ApiServer {
     fn handle_era_validators<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        global_state_hash: Digest,
+        state_root_hash: Digest,
         era_id: u64,
         protocol_version: ProtocolVersion,
         responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
     ) -> Effects<Event> {
         let request =
-            GetEraValidatorsRequest::new(global_state_hash.into(), era_id, protocol_version);
+            GetEraValidatorsRequest::new(state_root_hash.into(), era_id, protocol_version);
         effect_builder.get_validators(request).event(move |result| {
             Event::QueryEraValidatorsResult {
                 result,
@@ -241,13 +241,13 @@ where
                 responder,
             }) => self.handle_query(effect_builder, state_root_hash, base_key, path, responder),
             Event::ApiRequest(ApiRequest::QueryEraValidators {
-                global_state_hash,
+                state_root_hash,
                 era_id,
                 protocol_version,
                 responder,
             }) => self.handle_era_validators(
                 effect_builder,
-                global_state_hash,
+                state_root_hash,
                 era_id,
                 protocol_version,
                 responder,

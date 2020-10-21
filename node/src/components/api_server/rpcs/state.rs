@@ -7,7 +7,7 @@ use http::Response;
 use hyper::Body;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{debug, info};
 use warp_json_rpc::Builder;
 
 use casper_execution_engine::{
@@ -303,14 +303,14 @@ impl RpcWithParamsExt for GetAuctionInfo {
             // bids named key in auction contract
             let path = vec![casper_types::auction::BIDS_KEY.to_string()];
             // the global state hash of the last block
-            let global_state_hash = *block.post_state_hash();
+            let state_root_hash = *block.header().state_root_hash();
             // the era of the last block
             let era_id = block.header().era_id().0;
 
             let query_result = effect_builder
                 .make_request(
                     |responder| ApiRequest::QueryGlobalState {
-                        global_state_hash,
+                        state_root_hash,
                         base_key,
                         path,
                         responder,
@@ -332,7 +332,7 @@ impl RpcWithParamsExt for GetAuctionInfo {
             let era_validators_result = effect_builder
                 .make_request(
                     |responder| ApiRequest::QueryEraValidators {
-                        global_state_hash,
+                        state_root_hash,
                         era_id,
                         protocol_version,
                         responder,
@@ -349,9 +349,8 @@ impl RpcWithParamsExt for GetAuctionInfo {
                 }
             };
 
-            let auction_state =
-                AuctionState::new(global_state_hash, era_id, bids, validator_weights);
-            info!("AuctionState --auction_state: {:?}", auction_state);
+            let auction_state = AuctionState::new(state_root_hash, era_id, bids, validator_weights);
+            debug!("AuctionState --auction_state: {:?}", auction_state);
             Ok(response_builder.success(auction_state)?)
         }
         .boxed()
