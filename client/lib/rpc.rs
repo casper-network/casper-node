@@ -23,6 +23,14 @@ use crate::{
     error::{Error, Result},
 };
 
+/// Target for a given transfer.
+pub enum TransferTarget {
+    /// Transfer to another purse within an account.
+    OwnPurse(URef),
+    /// Transfer to another account.
+    Account(PublicKey),
+}
+
 /// Struct representing a single JSON-RPC call to the casper node.
 #[derive(Debug, Default)]
 pub struct RpcCall {
@@ -59,6 +67,7 @@ impl RpcCall {
     }
 
     /// Queries the node for an item at `key`, given a `path` and a `state_root_hash`.
+    ///
     /// - `state_root_hash` - Hash representing a pointer to the current state from which a value
     ///   can be extracted. See `get_state_root_hash`.
     /// - `key` - Key from which to get a value. See (Key)[casper_types::Key].
@@ -85,10 +94,10 @@ impl RpcCall {
     }
 
     /// Gets the balance from a purse.
+    ///
     /// - `state_root_hash` - Hash representing a pointer to the current state from which a balance
     ///   can be extracted. See `get_state_root_hash`.
-    /// - `purse_uref` - Represents the purse from which the balance will be obtained. Can be
-    ///   obtained with `get_item`.
+    /// - `purse_uref` - The purse `URef` that can obtained with `get_item`.
     pub fn get_balance(self, state_root_hash: Digest, purse_uref: URef) -> Result<JsonRpc> {
         let params = GetBalanceParams {
             state_root_hash,
@@ -98,19 +107,16 @@ impl RpcCall {
     }
 
     /// Transfers an amount between purses.
+    ///
     /// - `amount` - Specifies the amount to be transferred.
     /// - `source_purse` - Source purse in the sender's account that this amount will be drawn from,
-    ///   if it is not specified, it will defaul to their main purse.
-    /// - `target_account` - Target account for this transfer. Mutually exclusive with
-    ///   `target_purse`.
-    /// - `target_purse` - Target purse for this transfer, only valid for transfers within the same
-    ///   account.
+    ///   if it is `None`, it will default to the account's main purse.
+    /// - `target` - Target for this transfer - see (TransferTarget)[TransferTarget].
     pub fn transfer(
         self,
         amount: U512,
         source_purse: Option<URef>,
-        target_account: Option<PublicKey>,
-        target_purse: Option<URef>,
+        target: TransferTarget,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<JsonRpc> {
@@ -123,15 +129,14 @@ impl RpcCall {
         if let Some(source_purse) = source_purse {
             transfer_args.insert(TRANSFER_ARG_SOURCE, source_purse);
         }
-        match (target_account, target_purse) {
-            (Some(target_account), None) => {
+        match target {
+            TransferTarget::Account(target_account) => {
                 let target_account_hash = target_account.to_account_hash().value();
                 transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash);
             }
-            (None, Some(target_purse)) => {
+            TransferTarget::OwnPurse(target_purse) => {
                 transfer_args.insert(TRANSFER_ARG_TARGET, target_purse);
             }
-            _ => unreachable!("should have a target"),
         }
         let session = ExecutableDeployItem::Transfer {
             args: transfer_args.to_bytes()?,

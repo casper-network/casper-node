@@ -64,7 +64,7 @@ mod source_purse {
 }
 
 /// Handles providing the arg for and retrieval of the target account.
-mod target_account {
+pub(super) mod target_account {
     use super::*;
 
     pub(super) const ARG_NAME: &str = "target-account";
@@ -86,7 +86,7 @@ mod target_account {
             .display_order(DisplayOrder::TransferTargetAccount as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Option<PublicKey> {
+    pub(crate) fn get(matches: &ArgMatches) -> Option<PublicKey> {
         matches.value_of(ARG_NAME).map(|value| {
             PublicKey::from_hex(value).unwrap_or_else(|error| {
                 panic!(
@@ -99,7 +99,7 @@ mod target_account {
 }
 
 /// Handles providing the arg for and retrieval of the target purse.
-mod target_purse {
+pub(super) mod target_purse {
     use super::*;
 
     pub(super) const ARG_NAME: &str = "target-purse";
@@ -117,7 +117,7 @@ mod target_purse {
             .display_order(DisplayOrder::TransferTargetPurse as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Option<URef> {
+    pub(crate) fn get(matches: &ArgMatches) -> Option<URef> {
         matches.value_of(ARG_NAME).map(|value| {
             URef::from_formatted_str(value).unwrap_or_else(|error| {
                 panic!("can't parse --{} {} as URef: {:?}", ARG_NAME, value, error)
@@ -161,20 +161,13 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
 
         let amount = amount::get(matches);
         let source_purse = source_purse::get(matches);
-        let target_account = target_account::get(matches);
-        let target_purse = target_purse::get(matches);
         let deploy_params = creation_common::parse_deploy_params(matches);
         let payment = creation_common::parse_payment_info(matches);
 
+        let target = creation_common::get_transfer_target(matches);
+
         let response = rpc
-            .transfer(
-                amount,
-                source_purse,
-                target_account,
-                target_purse,
-                deploy_params,
-                payment,
-            )
+            .transfer(amount, source_purse, target, deploy_params, payment)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

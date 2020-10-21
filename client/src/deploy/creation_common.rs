@@ -11,7 +11,7 @@ use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
 use serde::{self, Deserialize};
 
-use casper_client::{cl_type, DeployParams, ExecutableDeployItemExt};
+use casper_client::{cl_type, DeployParams, ExecutableDeployItemExt, TransferTarget};
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
     crypto::{asymmetric_key::PublicKey as NodePublicKey, hash::Digest},
@@ -23,7 +23,10 @@ use casper_types::{
     AccessRights, CLType, CLValue, ContractHash, Key, NamedArg, RuntimeArgs, URef, U512,
 };
 
-use crate::common;
+use crate::{
+    common,
+    deploy::transfer::{target_account, target_purse},
+};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 pub(super) enum DisplayOrder {
@@ -699,6 +702,16 @@ pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
     ExecutableDeployItem::ModuleBytes {
         module_bytes,
         args: payment_args.to_bytes().expect("should serialize"),
+    }
+}
+
+pub(super) fn get_transfer_target(matches: &ArgMatches) -> TransferTarget {
+    let target_account = target_account::get(matches);
+    let target_purse = target_purse::get(matches);
+    match (target_purse, target_account) {
+        (Some(target_purse), _) => TransferTarget::OwnPurse(target_purse),
+        (None, Some(target_account)) => TransferTarget::Account(target_account),
+        _ => unreachable!(),
     }
 }
 

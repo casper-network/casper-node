@@ -26,4 +26,4 @@ mod rpc;
 pub use deploy::{DeployExt, DeployParams};
 pub use error::Error;
 pub use executable_deploy_item_ext::ExecutableDeployItemExt;
-pub use rpc::RpcCall;
+pub use rpc::{RpcCall, TransferTarget};

@@ -25,10 +25,10 @@ pub const SECP256K1: &str = "secp256k1";
 /// Algorithm parameter for `keygen` module.
 pub enum Algorithm {
     /// Ed25519 encryption algorithm.
-    ED25519,
+    Ed25519,
 
     /// secp256k1 encryption algorithm.
-    SECP256K1,
+    Secp256k1,
 }
 
 impl FromStr for Algorithm {
@@ -36,9 +36,9 @@ impl FromStr for Algorithm {
 
     fn from_str(strval: &str) -> StdResult<Self, Self::Err> {
         if strval.eq_ignore_ascii_case(ED25519) {
-            Ok(Algorithm::ED25519)
+            Ok(Algorithm::Ed25519)
         } else if strval.eq_ignore_ascii_case(SECP256K1) {
-            Ok(Algorithm::SECP256K1)
+            Ok(Algorithm::Secp256k1)
         } else {
             Err(format!("unsupported algorithm: {}", strval))
         }
@@ -48,8 +48,8 @@ impl FromStr for Algorithm {
 impl Display for Algorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Algorithm::ED25519 => write!(f, "{}", ED25519),
-            Algorithm::SECP256K1 => write!(f, "{}", SECP256K1),
+            Algorithm::Ed25519 => write!(f, "{}", ED25519),
+            Algorithm::Secp256k1 => write!(f, "{}", SECP256K1),
         }
     }
 }
@@ -84,11 +84,9 @@ pub fn generate_files(output_dir: &Path, algorithm: Algorithm, force: bool) -> R
             }
         }
     }
-
     let secret_key = match algorithm {
-        Algorithm::ED25519 => SecretKey::generate_ed25519(),
-        Algorithm::SECP256K1 => SecretKey::generate_secp256k1(),
+        Algorithm::Ed25519 => SecretKey::generate_ed25519(),
+        Algorithm::Secp256k1 => SecretKey::generate_secp256k1(),
     };
-
     write_to_files(&output_dir, secret_key)
 }
