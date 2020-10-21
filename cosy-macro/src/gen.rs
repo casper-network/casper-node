@@ -51,11 +51,11 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
         error_variants.push(quote!(#variant_ident(#full_error_type)));
 
         display_variants.push(quote!(
-           #event_ident::#variant_ident(inner) => write!(f, "{}: {}", #field_name, inner)
+            #event_ident::#variant_ident(inner) => write!(f, "{}: {}", #field_name, inner)
         ));
 
         error_display_variants.push(quote!(
-           #error_ident::#variant_ident(inner) => write!(f, "{}: {}", #field_name, inner)
+            #error_ident::#variant_ident(inner) => write!(f, "{}: {}", #field_name, inner)
         ));
 
         error_source_variants.push(quote!(
