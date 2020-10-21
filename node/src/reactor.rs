@@ -36,8 +36,8 @@ use std::{
     fmt::{Debug, Display},
     fs::File,
     mem,
-    sync::atomic::Ordering,
     str::FromStr,
+    sync::atomic::Ordering,
 };
 
 use datasize::DataSize;
