@@ -72,9 +72,9 @@ Here
 * `CompA::new` will return just the component, while `CompB::new` will return a tuple of `(component, effects)`, indicated by the `@` prefix,
 * two variants `NameOfReactorEvent::ComponentA` and `NameOfReactorEvent::ComponentB` will be added to the reactors event type,
 * these events will wrap `crate::components::comp_a::Event` (see caveat below) and `crate::components::comp_b::Event` respectively,
-* a `From<crate::components::comp_a::Event>` impl will be generated for `NameOfReactorEvent` (similary for `comp_b`),
+* a `From<crate::components::comp_a::Event>` impl will be generated for `NameOfReactorEvent` (similarly for `comp_b`),
 * the appropriate variants will similarly be added to the `NameOfReactorError` enum,
-* and all variants of `NameOfReactorEvent` that wrap a components event will be forwarded to that components `handle_event` function.
+* and all variants of `NameOfReactorEvent` that wrap a component event will be forwarded to that component's `handle_event` function.
 
 Note that during construction, the parameters `cfg`, `registry`, `event_queue` and `rng` are available, as well as the local variable `effect_builder`.
 
@@ -82,7 +82,7 @@ Note that during construction, the parameters `cfg`, `registry`, `event_queue` a
 
 Ideally all `NameOfReactorEvent` newtype variants would be written as `NameOfReactorEvent::SomeComponent(<crate::components::some_component::SomeComponent as Component<Self>::Event>` in the generated code, which unfortunately is not possible due to a current shortcoming in the Rust trait system that will likely only be fixed with [chalk](https://github.com/rust-lang/chalk).
 
-As a workround, `NameOfReactorEvent::SomeComponent(crate::components::some_component::Event` will be used as a workaround. This solution only works for event types that do not have their own type parameters. If they have, the `Event` portion can be replaced using the event override section of the macro invocation:
+As a workaround, `NameOfReactorEvent::SomeComponent(crate::components::some_component::Event` will be used instead. This solution only works for event types that do not have their own type parameters. If they have, the `Event` portion can be replaced using the event override section of the macro invocation:
 
 ```rust
     events: {
