@@ -25,8 +25,8 @@ const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
 
-// one named_key for each validator and three for the purses and one for validator slots
-const EXPECTED_KNOWN_KEYS_LEN: usize = 12;
+// one named_key for each validator and three for the purses, one for validator slots, one for auction_delay
+const EXPECTED_KNOWN_KEYS_LEN: usize = 13;
 
 #[ignore]
 #[test]
@@ -67,6 +67,8 @@ fn should_run_auction_install_contract() {
     let _auction_hash = auction.contract_package_hash();
 
     let genesis_validators: BTreeMap<casper_types::PublicKey, U512> = BTreeMap::new();
+
+    let auction_delay = runtime::get_named_arg(AUCTION_DELAY_KEY);
 
     let res = exec_with_return::exec(
         engine_config,
