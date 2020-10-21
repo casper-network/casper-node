@@ -25,9 +25,9 @@ use casper_execution_engine::{
         upgrade::{UpgradeConfig, UpgradeResult},
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
-    storage::global_state::CommitResult,
+    storage::{global_state::CommitResult, protocol_data::ProtocolData},
 };
-use casper_types::{auction::ValidatorWeights, Key, URef};
+use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
 
 use super::Responder;
 use crate::{
@@ -382,6 +382,24 @@ pub enum ApiRequest<I> {
         responder: Responder<Result<QueryResult, engine_state::Error>>,
     },
     /// Query the global state at the given root hash.
+    QueryEraValidators {
+        /// The global state hash.
+        global_state_hash: Digest,
+        /// The era that auction state is requested from.
+        era_id: u64,
+        /// The protocol version.
+        protocol_version: ProtocolVersion,
+        /// Responder to call with the result.
+        responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
+    },
+    /// Query the global state at the given root hash.
+    QueryProtocolData {
+        /// The protocol version.
+        protocol_version: ProtocolVersion,
+        /// Responder to call with the result.
+        responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
+    },
+    /// Query the global state at the given root hash.
     GetBalance {
         /// The state root hash.
         state_root_hash: Digest,
@@ -425,6 +443,9 @@ impl<I> Display for ApiRequest<I> {
             ApiRequest::GetBlock {
                 maybe_hash: None, ..
             } => write!(formatter, "get latest block"),
+            ApiRequest::QueryProtocolData {
+                protocol_version, ..
+            } => write!(formatter, "protocol_version {}", protocol_version),
             ApiRequest::QueryGlobalState {
                 state_root_hash,
                 base_key,
@@ -434,6 +455,15 @@ impl<I> Display for ApiRequest<I> {
                 formatter,
                 "query {}, base_key: {}, path: {:?}",
                 state_root_hash, base_key, path
+            ),
+            ApiRequest::QueryEraValidators {
+                global_state_hash,
+                era_id,
+                ..
+            } => write!(
+                formatter,
+                "auction {}, era_id: {}",
+                global_state_hash, era_id
             ),
             ApiRequest::GetBalance {
                 state_root_hash,
@@ -456,6 +486,13 @@ impl<I> Display for ApiRequest<I> {
 #[derive(Debug)]
 #[must_use]
 pub enum ContractRuntimeRequest {
+    /// Get `ProtocolData` by `ProtocolVersion`.
+    GetProtocolData {
+        /// The protocol version.
+        protocol_version: ProtocolVersion,
+        /// Responder to call with the result.
+        responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
+    },
     /// Commit genesis chainspec.
     CommitGenesis {
         /// The chainspec.
@@ -562,6 +599,10 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::Step { step_request, .. } => {
                 write!(formatter, "step: {:?}", step_request)
             }
+
+            ContractRuntimeRequest::GetProtocolData {
+                protocol_version, ..
+            } => write!(formatter, "protocol_version: {}", protocol_version),
         }
     }
 }

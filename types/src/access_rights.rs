@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr;
 
@@ -11,6 +12,7 @@ bitflags! {
     /// A struct which behaves like a set of bitflags to define access rights associated with a
     /// [`URef`](crate::URef).
     #[allow(clippy::derive_hash_xor_eq)]
+    #[derive(Deserialize, Serialize)]
     pub struct AccessRights: u8 {
         /// No permissions
         const NONE = 0;

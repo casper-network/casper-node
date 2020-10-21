@@ -457,7 +457,6 @@ pub trait Auction:
         assert!(previous_era_validators.is_none());
 
         internal::set_era_id(self, era_id)?;
-
         // Keep maximum of `AUCTION_DELAY + 1` elements
         let era_validators = era_validators
             .into_iter()
