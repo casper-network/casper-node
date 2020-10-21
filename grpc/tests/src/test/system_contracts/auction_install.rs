@@ -25,7 +25,8 @@ const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
 
-// one named_key for each validator and three for the purses, one for validator slots, one for auction_delay
+// one named_key for each validator and three for the purses, one for validator slots, one for
+// auction_delay
 const EXPECTED_KNOWN_KEYS_LEN: usize = 13;
 
 #[ignore]
