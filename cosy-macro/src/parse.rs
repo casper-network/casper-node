@@ -172,7 +172,7 @@ impl Parse for ReactorDefinition {
             config_type: RustType::try_from(config.ty.as_ref().clone()).map_err(|err| {
                 syn::parse::Error::new(
                     Span::call_site(), // FIXME: Can we get a better span here?
-                    err.to_string(),
+                    err,
                 )
             })?,
             components,

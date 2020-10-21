@@ -21,6 +21,7 @@ pub(crate) fn generate_reactor(def: &ReactorDefinition) -> TokenStream {
     }
 
     quote!(
+        /// Top-level reactor.
         #[derive(Debug)]
         pub struct #reactor_ident {
             #(#reactor_fields,)*
@@ -47,8 +48,15 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
         let full_error_type = component.full_error_type(quote!(#event_ident));
         let field_name = component.field_ident().to_string();
 
-        event_variants.push(quote!(#variant_ident(#full_event_type)));
-        error_variants.push(quote!(#variant_ident(#full_error_type)));
+        let event_variant_doc = format!("Event from `{}` component", field_name);
+        event_variants.push(quote!(
+            #[doc = #event_variant_doc]
+            #variant_ident(#full_event_type)));
+
+        let error_variant_doc = format!("Error constructing `{}` component", field_name);
+        error_variants.push(quote!(
+            #[doc = #error_variant_doc]
+            #variant_ident(#full_error_type)));
 
         display_variants.push(quote!(
             #event_ident::#variant_ident(inner) => write!(f, "{}: {}", #field_name, inner)
@@ -79,7 +87,10 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
         let variant_ident = request.variant_ident();
         let full_request_type = request.full_request_type();
 
-        event_variants.push(quote!(#variant_ident(#full_request_type)));
+        let event_variant_doc = format!("Incoming `{}`", variant_ident);
+        event_variants.push(quote!(
+            #[doc = #event_variant_doc]
+            #variant_ident(#full_request_type)));
 
         display_variants.push(quote!(
            #event_ident::#variant_ident(inner) => ::std::fmt::Display::fmt(inner, f)
@@ -94,15 +105,23 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
         ));
     }
 
+    // TODO: Announcements.
+
+    let event_docs = format!("Events of `{}` reactor.", reactor_ident);
+    let error_docs = format!("Construction errors of `{}` reactor.", reactor_ident);
+
     quote!(
+        #[doc = #event_docs]
         #[derive(Debug)]
         pub enum #event_ident {
            #(#event_variants,)*
         }
 
+        #[doc = #error_docs]
         #[derive(Debug)]
         pub enum #error_ident {
             #(#error_variants,)*
+            /// Failure to initialize metrics.
             MetricsInitialization(prometheus::Error),
         }
 
@@ -265,7 +284,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                 };
 
                 // To avoid unused warnings.
-                drop(effect_builder);
+                let _ = effect_builder;
 
                 Ok((reactor, all_effects))
             }
