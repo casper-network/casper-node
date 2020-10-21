@@ -392,7 +392,7 @@ pub enum ApiRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
     },
-    /// Query the global state at the given root hash.
+    /// Query the contract runtime for protocol version data.
     QueryProtocolData {
         /// The protocol version.
         protocol_version: ProtocolVersion,

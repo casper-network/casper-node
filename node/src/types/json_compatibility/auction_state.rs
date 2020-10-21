@@ -46,7 +46,7 @@ impl From<AuctionBid> for Bid {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct AuctionState {
     /// Global state hash
-    pub global_state_hash: Digest,
+    pub state_root_hash: Digest,
     /// Era id.
     pub era_id: EraId,
     /// Validator weights for this era.
@@ -58,7 +58,7 @@ pub struct AuctionState {
 impl AuctionState {
     /// Create new instance of `AuctionState`
     pub fn new(
-        global_state_hash: Digest,
+        state_root_hash: Digest,
         era_id: EraId,
         bids: Option<AuctionBids>,
         validator_weights: Option<AuctionValidatorWeights>,
@@ -78,7 +78,7 @@ impl AuctionState {
         });
 
         AuctionState {
-            global_state_hash,
+            state_root_hash,
             era_id,
             bids,
             validator_weights,
