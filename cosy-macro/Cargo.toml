@@ -13,7 +13,3 @@ syn = { version = "1.0.40", features = ["full"] }
 
 [lib]
 proc-macro = true
-
-[dev-dependencies]
-anyhow = "1.0.32"
-rand = "0.7.3"
