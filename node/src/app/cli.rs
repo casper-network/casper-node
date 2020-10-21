@@ -17,7 +17,7 @@ use tracing::{info, trace};
 use crate::config;
 use casper_node::{
     logging,
-    reactor::{initializer, initializer2, joiner, validator, Runner},
+    reactor::{initializer, joiner, validator, Runner},
     utils::WithDir,
 };
 use prometheus::Registry;
