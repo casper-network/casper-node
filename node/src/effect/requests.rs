@@ -40,8 +40,8 @@ use crate::{
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     types::{
-        json_compatibility::ExecutionResult, Block as LinearBlock, BlockHash, BlockHeader, Deploy,
-        DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
+        json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
+        Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -202,10 +202,15 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// storage.
         responder: Responder<Option<S::Block>>,
     },
-    /// Retrieve linear chain block with given height.
+    /// Retrieve block with given height.
     GetBlockAtHeight {
         /// Height of the block.
-        height: <S::BlockHeight as Value>::Id,
+        height: u64,
+        /// Responder.
+        responder: Responder<Option<S::Block>>,
+    },
+    /// Retrieve highest block.
+    GetHighestBlock {
         /// Responder.
         responder: Responder<Option<S::Block>>,
     },
@@ -277,6 +282,10 @@ impl<S: StorageType> Display for StorageRequest<S> {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
             StorageRequest::GetBlock { block_hash, .. } => write!(formatter, "get {}", block_hash),
+            StorageRequest::GetBlockAtHeight { height, .. } => {
+                write!(formatter, "get block at height {}", height)
+            }
+            StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
             }
@@ -302,9 +311,6 @@ impl<S: StorageType> Display for StorageRequest<S> {
             ),
             StorageRequest::GetChainspec { version, .. } => {
                 write!(formatter, "get chainspec {}", version)
-            }
-            StorageRequest::GetBlockAtHeight { height, .. } => {
-                write!(formatter, "get block at height {}", height)
             }
         }
     }
@@ -366,8 +372,8 @@ pub enum ApiRequest<I> {
     },
     /// Query the global state at the given root hash.
     QueryGlobalState {
-        /// The global state hash.
-        global_state_hash: Digest,
+        /// The state root hash.
+        state_root_hash: Digest,
         /// Hex-encoded `casper_types::Key`.
         base_key: Key,
         /// The path components starting from the key as base.
@@ -377,8 +383,8 @@ pub enum ApiRequest<I> {
     },
     /// Query the global state at the given root hash.
     GetBalance {
-        /// The global state hash.
-        global_state_hash: Digest,
+        /// The state root hash.
+        state_root_hash: Digest,
         /// The purse URef.
         purse_uref: URef,
         /// Responder to call with the result.
@@ -420,23 +426,23 @@ impl<I> Display for ApiRequest<I> {
                 maybe_hash: None, ..
             } => write!(formatter, "get latest block"),
             ApiRequest::QueryGlobalState {
-                global_state_hash,
+                state_root_hash,
                 base_key,
                 path,
                 ..
             } => write!(
                 formatter,
                 "query {}, base_key: {}, path: {:?}",
-                global_state_hash, base_key, path
+                state_root_hash, base_key, path
             ),
             ApiRequest::GetBalance {
-                global_state_hash,
+                state_root_hash,
                 purse_uref,
                 ..
             } => write!(
                 formatter,
                 "balance {}, purse_uref: {}",
-                global_state_hash, purse_uref
+                state_root_hash, purse_uref
             ),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::GetPeers { .. } => write!(formatter, "get peers"),
@@ -466,8 +472,8 @@ pub enum ContractRuntimeRequest {
     },
     /// A request to commit existing execution transforms.
     Commit {
-        /// A valid pre state hash.
-        pre_state_hash: Digest,
+        /// A valid state root hash.
+        state_root_hash: Digest,
         /// Effects obtained through `ExecutionResult`
         effects: AdditiveMap<Key, Transform>,
         /// Responder to call with the commit result.
@@ -476,7 +482,7 @@ pub enum ContractRuntimeRequest {
     /// A request to run upgrade.
     Upgrade {
         /// Upgrade config.
-        upgrade_config: UpgradeConfig,
+        upgrade_config: Box<UpgradeConfig>,
         /// Responder to call with the upgrade result.
         responder: Responder<Result<UpgradeResult, engine_state::Error>>,
     },
@@ -528,13 +534,13 @@ impl Display for ContractRuntimeRequest {
             ),
 
             ContractRuntimeRequest::Commit {
-                pre_state_hash,
+                state_root_hash,
                 effects,
                 ..
             } => write!(
                 formatter,
                 "commit request: {} {:?}",
-                pre_state_hash, effects
+                state_root_hash, effects
             ),
 
             ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
@@ -629,10 +635,11 @@ type BlockHeight = u64;
 pub enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.
     BlockRequest(BlockHash, I),
-    /// Get last finalized block.
-    LastFinalizedBlock(Responder<Option<LinearBlock>>),
     /// Request for a linear chain block at height.
     BlockAtHeight(BlockHeight, I),
+    /// Local request for a linear chain block at height.
+    /// TODO: Unify `BlockAtHeight` and `BlockAtHeightLocal`.
+    BlockAtHeightLocal(BlockHeight, Responder<Option<Block>>),
 }
 
 impl<I: Display> Display for LinearChainRequest<I> {
@@ -641,9 +648,11 @@ impl<I: Display> Display for LinearChainRequest<I> {
             LinearChainRequest::BlockRequest(bh, peer) => {
                 write!(f, "block request for hash {} from {}", bh, peer)
             }
-            LinearChainRequest::LastFinalizedBlock(_) => write!(f, "last finalized block request"),
             LinearChainRequest::BlockAtHeight(height, sender) => {
                 write!(f, "block request for {} from {}", height, sender)
+            }
+            LinearChainRequest::BlockAtHeightLocal(height, _) => {
+                write!(f, "local request for block at height {}", height)
             }
         }
     }

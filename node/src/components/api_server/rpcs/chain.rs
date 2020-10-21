@@ -71,32 +71,32 @@ impl RpcWithOptionalParamsExt for GetBlock {
     }
 }
 
-/// Params for "chain_get_global_state_hash" RPC request.
+/// Params for "chain_get_state_root_hash" RPC request.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct GetGlobalStateHashParams {
+pub struct GetStateRootHashParams {
     /// The block hash.
     pub block_hash: BlockHash,
 }
 
-/// Result for "chain_get_global_state_hash" RPC response.
+/// Result for "chain_get_state_root_hash" RPC response.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct GetGlobalStateHashResult {
+pub struct GetStateRootHashResult {
     /// The RPC API version.
     pub api_version: Version,
-    /// Hex-encoded global state hash.
-    pub global_state_hash: Option<Digest>,
+    /// Hex-encoded hash of the state root.
+    pub state_root_hash: Option<Digest>,
 }
 
-/// "chain_get_global_state_hash" RPC.
-pub struct GetGlobalStateHash {}
+/// "chain_get_state_root_hash" RPC.
+pub struct GetStateRootHash {}
 
-impl RpcWithOptionalParams for GetGlobalStateHash {
-    const METHOD: &'static str = "chain_get_global_state_hash";
-    type OptionalRequestParams = GetGlobalStateHashParams;
-    type ResponseResult = GetGlobalStateHashResult;
+impl RpcWithOptionalParams for GetStateRootHash {
+    const METHOD: &'static str = "chain_get_state_root_hash";
+    type OptionalRequestParams = GetStateRootHashParams;
+    type ResponseResult = GetStateRootHashResult;
 }
 
-impl RpcWithOptionalParamsExt for GetGlobalStateHash {
+impl RpcWithOptionalParamsExt for GetStateRootHash {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
@@ -113,7 +113,7 @@ impl RpcWithOptionalParamsExt for GetGlobalStateHash {
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                global_state_hash: maybe_block.map(|block| *block.global_state_hash()),
+                state_root_hash: maybe_block.map(|block| *block.state_root_hash()),
             };
             Ok(response_builder.success(result)?)
         }

@@ -814,6 +814,350 @@ impl<T1: FromBytes, T2: FromBytes, T3: FromBytes> FromBytes for (T1, T2, T3) {
     }
 }
 
+impl<T1: ToBytes, T2: ToBytes, T3: ToBytes, T4: ToBytes> ToBytes for (T1, T2, T3, T4) {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = allocate_buffer(self)?;
+        result.append(&mut self.0.to_bytes()?);
+        result.append(&mut self.1.to_bytes()?);
+        result.append(&mut self.2.to_bytes()?);
+        result.append(&mut self.3.to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+            + self.1.serialized_length()
+            + self.2.serialized_length()
+            + self.3.serialized_length()
+    }
+}
+
+impl<T1: FromBytes, T2: FromBytes, T3: FromBytes, T4: FromBytes> FromBytes for (T1, T2, T3, T4) {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (t1, remainder) = T1::from_bytes(bytes)?;
+        let (t2, remainder) = T2::from_bytes(remainder)?;
+        let (t3, remainder) = T3::from_bytes(remainder)?;
+        let (t4, remainder) = T4::from_bytes(remainder)?;
+        Ok(((t1, t2, t3, t4), remainder))
+    }
+}
+
+impl<T1: ToBytes, T2: ToBytes, T3: ToBytes, T4: ToBytes, T5: ToBytes> ToBytes
+    for (T1, T2, T3, T4, T5)
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = allocate_buffer(self)?;
+        result.append(&mut self.0.to_bytes()?);
+        result.append(&mut self.1.to_bytes()?);
+        result.append(&mut self.2.to_bytes()?);
+        result.append(&mut self.3.to_bytes()?);
+        result.append(&mut self.4.to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+            + self.1.serialized_length()
+            + self.2.serialized_length()
+            + self.3.serialized_length()
+            + self.4.serialized_length()
+    }
+}
+
+impl<T1: FromBytes, T2: FromBytes, T3: FromBytes, T4: FromBytes, T5: FromBytes> FromBytes
+    for (T1, T2, T3, T4, T5)
+{
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (t1, remainder) = T1::from_bytes(bytes)?;
+        let (t2, remainder) = T2::from_bytes(remainder)?;
+        let (t3, remainder) = T3::from_bytes(remainder)?;
+        let (t4, remainder) = T4::from_bytes(remainder)?;
+        let (t5, remainder) = T5::from_bytes(remainder)?;
+        Ok(((t1, t2, t3, t4, t5), remainder))
+    }
+}
+
+impl<T1: ToBytes, T2: ToBytes, T3: ToBytes, T4: ToBytes, T5: ToBytes, T6: ToBytes> ToBytes
+    for (T1, T2, T3, T4, T5, T6)
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = allocate_buffer(self)?;
+        result.append(&mut self.0.to_bytes()?);
+        result.append(&mut self.1.to_bytes()?);
+        result.append(&mut self.2.to_bytes()?);
+        result.append(&mut self.3.to_bytes()?);
+        result.append(&mut self.4.to_bytes()?);
+        result.append(&mut self.5.to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+            + self.1.serialized_length()
+            + self.2.serialized_length()
+            + self.3.serialized_length()
+            + self.4.serialized_length()
+            + self.5.serialized_length()
+    }
+}
+
+impl<T1: FromBytes, T2: FromBytes, T3: FromBytes, T4: FromBytes, T5: FromBytes, T6: FromBytes>
+    FromBytes for (T1, T2, T3, T4, T5, T6)
+{
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (t1, remainder) = T1::from_bytes(bytes)?;
+        let (t2, remainder) = T2::from_bytes(remainder)?;
+        let (t3, remainder) = T3::from_bytes(remainder)?;
+        let (t4, remainder) = T4::from_bytes(remainder)?;
+        let (t5, remainder) = T5::from_bytes(remainder)?;
+        let (t6, remainder) = T6::from_bytes(remainder)?;
+        Ok(((t1, t2, t3, t4, t5, t6), remainder))
+    }
+}
+
+impl<T1: ToBytes, T2: ToBytes, T3: ToBytes, T4: ToBytes, T5: ToBytes, T6: ToBytes, T7: ToBytes>
+    ToBytes for (T1, T2, T3, T4, T5, T6, T7)
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = allocate_buffer(self)?;
+        result.append(&mut self.0.to_bytes()?);
+        result.append(&mut self.1.to_bytes()?);
+        result.append(&mut self.2.to_bytes()?);
+        result.append(&mut self.3.to_bytes()?);
+        result.append(&mut self.4.to_bytes()?);
+        result.append(&mut self.5.to_bytes()?);
+        result.append(&mut self.6.to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+            + self.1.serialized_length()
+            + self.2.serialized_length()
+            + self.3.serialized_length()
+            + self.4.serialized_length()
+            + self.5.serialized_length()
+            + self.6.serialized_length()
+    }
+}
+
+impl<
+        T1: FromBytes,
+        T2: FromBytes,
+        T3: FromBytes,
+        T4: FromBytes,
+        T5: FromBytes,
+        T6: FromBytes,
+        T7: FromBytes,
+    > FromBytes for (T1, T2, T3, T4, T5, T6, T7)
+{
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (t1, remainder) = T1::from_bytes(bytes)?;
+        let (t2, remainder) = T2::from_bytes(remainder)?;
+        let (t3, remainder) = T3::from_bytes(remainder)?;
+        let (t4, remainder) = T4::from_bytes(remainder)?;
+        let (t5, remainder) = T5::from_bytes(remainder)?;
+        let (t6, remainder) = T6::from_bytes(remainder)?;
+        let (t7, remainder) = T7::from_bytes(remainder)?;
+        Ok(((t1, t2, t3, t4, t5, t6, t7), remainder))
+    }
+}
+
+impl<
+        T1: ToBytes,
+        T2: ToBytes,
+        T3: ToBytes,
+        T4: ToBytes,
+        T5: ToBytes,
+        T6: ToBytes,
+        T7: ToBytes,
+        T8: ToBytes,
+    > ToBytes for (T1, T2, T3, T4, T5, T6, T7, T8)
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = allocate_buffer(self)?;
+        result.append(&mut self.0.to_bytes()?);
+        result.append(&mut self.1.to_bytes()?);
+        result.append(&mut self.2.to_bytes()?);
+        result.append(&mut self.3.to_bytes()?);
+        result.append(&mut self.4.to_bytes()?);
+        result.append(&mut self.5.to_bytes()?);
+        result.append(&mut self.6.to_bytes()?);
+        result.append(&mut self.7.to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+            + self.1.serialized_length()
+            + self.2.serialized_length()
+            + self.3.serialized_length()
+            + self.4.serialized_length()
+            + self.5.serialized_length()
+            + self.6.serialized_length()
+            + self.7.serialized_length()
+    }
+}
+
+impl<
+        T1: FromBytes,
+        T2: FromBytes,
+        T3: FromBytes,
+        T4: FromBytes,
+        T5: FromBytes,
+        T6: FromBytes,
+        T7: FromBytes,
+        T8: FromBytes,
+    > FromBytes for (T1, T2, T3, T4, T5, T6, T7, T8)
+{
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (t1, remainder) = T1::from_bytes(bytes)?;
+        let (t2, remainder) = T2::from_bytes(remainder)?;
+        let (t3, remainder) = T3::from_bytes(remainder)?;
+        let (t4, remainder) = T4::from_bytes(remainder)?;
+        let (t5, remainder) = T5::from_bytes(remainder)?;
+        let (t6, remainder) = T6::from_bytes(remainder)?;
+        let (t7, remainder) = T7::from_bytes(remainder)?;
+        let (t8, remainder) = T8::from_bytes(remainder)?;
+        Ok(((t1, t2, t3, t4, t5, t6, t7, t8), remainder))
+    }
+}
+
+impl<
+        T1: ToBytes,
+        T2: ToBytes,
+        T3: ToBytes,
+        T4: ToBytes,
+        T5: ToBytes,
+        T6: ToBytes,
+        T7: ToBytes,
+        T8: ToBytes,
+        T9: ToBytes,
+    > ToBytes for (T1, T2, T3, T4, T5, T6, T7, T8, T9)
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = allocate_buffer(self)?;
+        result.append(&mut self.0.to_bytes()?);
+        result.append(&mut self.1.to_bytes()?);
+        result.append(&mut self.2.to_bytes()?);
+        result.append(&mut self.3.to_bytes()?);
+        result.append(&mut self.4.to_bytes()?);
+        result.append(&mut self.5.to_bytes()?);
+        result.append(&mut self.6.to_bytes()?);
+        result.append(&mut self.7.to_bytes()?);
+        result.append(&mut self.8.to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+            + self.1.serialized_length()
+            + self.2.serialized_length()
+            + self.3.serialized_length()
+            + self.4.serialized_length()
+            + self.5.serialized_length()
+            + self.6.serialized_length()
+            + self.7.serialized_length()
+            + self.8.serialized_length()
+    }
+}
+
+impl<
+        T1: FromBytes,
+        T2: FromBytes,
+        T3: FromBytes,
+        T4: FromBytes,
+        T5: FromBytes,
+        T6: FromBytes,
+        T7: FromBytes,
+        T8: FromBytes,
+        T9: FromBytes,
+    > FromBytes for (T1, T2, T3, T4, T5, T6, T7, T8, T9)
+{
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (t1, remainder) = T1::from_bytes(bytes)?;
+        let (t2, remainder) = T2::from_bytes(remainder)?;
+        let (t3, remainder) = T3::from_bytes(remainder)?;
+        let (t4, remainder) = T4::from_bytes(remainder)?;
+        let (t5, remainder) = T5::from_bytes(remainder)?;
+        let (t6, remainder) = T6::from_bytes(remainder)?;
+        let (t7, remainder) = T7::from_bytes(remainder)?;
+        let (t8, remainder) = T8::from_bytes(remainder)?;
+        let (t9, remainder) = T9::from_bytes(remainder)?;
+        Ok(((t1, t2, t3, t4, t5, t6, t7, t8, t9), remainder))
+    }
+}
+
+impl<
+        T1: ToBytes,
+        T2: ToBytes,
+        T3: ToBytes,
+        T4: ToBytes,
+        T5: ToBytes,
+        T6: ToBytes,
+        T7: ToBytes,
+        T8: ToBytes,
+        T9: ToBytes,
+        T10: ToBytes,
+    > ToBytes for (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = allocate_buffer(self)?;
+        result.append(&mut self.0.to_bytes()?);
+        result.append(&mut self.1.to_bytes()?);
+        result.append(&mut self.2.to_bytes()?);
+        result.append(&mut self.3.to_bytes()?);
+        result.append(&mut self.4.to_bytes()?);
+        result.append(&mut self.5.to_bytes()?);
+        result.append(&mut self.6.to_bytes()?);
+        result.append(&mut self.7.to_bytes()?);
+        result.append(&mut self.8.to_bytes()?);
+        result.append(&mut self.9.to_bytes()?);
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+            + self.1.serialized_length()
+            + self.2.serialized_length()
+            + self.3.serialized_length()
+            + self.4.serialized_length()
+            + self.5.serialized_length()
+            + self.6.serialized_length()
+            + self.7.serialized_length()
+            + self.8.serialized_length()
+            + self.9.serialized_length()
+    }
+}
+
+impl<
+        T1: FromBytes,
+        T2: FromBytes,
+        T3: FromBytes,
+        T4: FromBytes,
+        T5: FromBytes,
+        T6: FromBytes,
+        T7: FromBytes,
+        T8: FromBytes,
+        T9: FromBytes,
+        T10: FromBytes,
+    > FromBytes for (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)
+{
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (t1, remainder) = T1::from_bytes(bytes)?;
+        let (t2, remainder) = T2::from_bytes(remainder)?;
+        let (t3, remainder) = T3::from_bytes(remainder)?;
+        let (t4, remainder) = T4::from_bytes(remainder)?;
+        let (t5, remainder) = T5::from_bytes(remainder)?;
+        let (t6, remainder) = T6::from_bytes(remainder)?;
+        let (t7, remainder) = T7::from_bytes(remainder)?;
+        let (t8, remainder) = T8::from_bytes(remainder)?;
+        let (t9, remainder) = T9::from_bytes(remainder)?;
+        let (t10, remainder) = T10::from_bytes(remainder)?;
+        Ok(((t1, t2, t3, t4, t5, t6, t7, t8, t9, t10), remainder))
+    }
+}
+
 impl ToBytes for str {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         if self.len() > u32::max_value() as usize - U32_SERIALIZED_LENGTH {
@@ -1075,6 +1419,35 @@ mod proptests {
 
         #[test]
         fn test_tuple3(t in (any::<u8>(),any::<u32>(),any::<i32>())) {
+            bytesrepr::test_serialization_roundtrip(&t);
+        }
+
+        #[test]
+        fn test_tuple4(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>())) {
+            bytesrepr::test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple5(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>())) {
+            bytesrepr::test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple6(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
+            bytesrepr::test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple7(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
+            bytesrepr::test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple8(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
+            bytesrepr::test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple9(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
+            bytesrepr::test_serialization_roundtrip(&t);
+        }
+        #[test]
+        fn test_tuple10(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
             bytesrepr::test_serialization_roundtrip(&t);
         }
     }

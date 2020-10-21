@@ -1,9 +1,12 @@
+mod block_height_store;
 mod chainspec_store;
 mod config;
 mod error;
 mod event;
+mod in_mem_block_height_store;
 mod in_mem_chainspec_store;
 mod in_mem_store;
+mod lmdb_block_height_store;
 mod lmdb_chainspec_store;
 mod lmdb_store;
 mod store;
@@ -20,33 +23,41 @@ use datasize::DataSize;
 use futures::TryFutureExt;
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use smallvec::smallvec;
+use smallvec::{smallvec, SmallVec};
 use tokio::task;
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::{chainspec_loader::Chainspec, small_network::NodeId, Component},
+    components::{
+        chainspec_loader::Chainspec, deploy_buffer::ProtoBlockCollection, small_network::NodeId,
+        Component,
+    },
     crypto::asymmetric_key::Signature,
     effect::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{json_compatibility::ExecutionResult, Block, BlockHash, CryptoRngCore, Deploy, Item},
+    types::{
+        json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, Item, ProtoBlockHash,
+    },
     utils::WithDir,
 };
+use block_height_store::BlockHeightStore;
 use chainspec_store::ChainspecStore;
 pub use config::Config;
 pub use error::Error;
 pub(crate) use error::Result;
 pub use event::Event;
+use in_mem_block_height_store::InMemBlockHeightStore;
 use in_mem_chainspec_store::InMemChainspecStore;
 use in_mem_store::InMemStore;
+use lmdb_block_height_store::LmdbBlockHeightStore;
 use lmdb_chainspec_store::LmdbChainspecStore;
 use lmdb_store::LmdbStore;
 use store::{DeployStore, Multiple, Store};
 
-pub(crate) type Storage = LmdbStorage<Block, BlockHeightHash<BlockHash>, Deploy>;
+pub(crate) type Storage = LmdbStorage<Block, Deploy>;
 
 pub(crate) type DeployResults<S> = Multiple<Option<<S as StorageType>::Deploy>>;
 pub(crate) type DeployHashes<S> = Multiple<<<S as StorageType>::Deploy as Value>::Id>;
@@ -96,56 +107,15 @@ pub trait Value: ValueT {
     fn take_header(self) -> Self::Header;
 }
 
+pub trait WithBlockHeight: Value {
+    fn height(&self) -> u64;
+}
+
 /// Metadata associated with a block.
 #[derive(Default, Clone, Serialize, Deserialize, Debug)]
 pub struct BlockMetadata {
     /// The finalization signatures of a block.
     pub proofs: Vec<Signature>,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, Hash, Ord, PartialOrd, Eq, PartialEq)]
-pub struct BlockHeightHash<H> {
-    pub height: u64,
-    pub block_hash: H,
-}
-
-#[derive(Debug, Default)]
-pub struct BlockHeightHashMetadata;
-
-impl<H: Display> Display for BlockHeightHash<H> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "BlockHeightMetadata(height={}, hash={})",
-            self.height, self.block_hash
-        )
-    }
-}
-
-impl<H: ValueT + Hash + Ord> Value for BlockHeightHash<H> {
-    type Id = u64;
-
-    type Header = H;
-
-    fn id(&self) -> &Self::Id {
-        &self.height
-    }
-
-    fn header(&self) -> &Self::Header {
-        &self.block_hash
-    }
-
-    fn take_header(self) -> Self::Header {
-        self.block_hash
-    }
-}
-
-impl From<&Block> for BlockHeightHash<BlockHash> {
-    fn from(b: &Block) -> Self {
-        let height = b.height();
-        let block_hash = *(*b).hash();
-        BlockHeightHash { height, block_hash }
-    }
 }
 
 /// Metadata associated with a deploy.
@@ -172,18 +142,47 @@ impl<B: Value> Default for DeployMetadata<B> {
     }
 }
 
+impl LmdbStorage<Block, Deploy> {
+    /// This method is intended to only be used by the joiner when transitioning to the validator
+    /// state.
+    pub(crate) async fn get_finalized_deploys(
+        &self,
+        linear_chain: &[Block],
+    ) -> ProtoBlockCollection {
+        let mut finalized = HashMap::new();
+        let deploy_store = self.deploy_store();
+        for block in linear_chain.iter() {
+            let deploy_store = deploy_store.clone();
+            let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
+            let block_hash =
+                ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
+            let deploys = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+                .await
+                .expect("should run")
+                .into_iter()
+                .map(|result| {
+                    result.unwrap_or_else(|error| panic!("failed to get deploy: {}", error))
+                })
+                .flatten()
+                .map(|deploy| (*deploy.id(), deploy.header().clone()))
+                .collect::<HashMap<_, _>>();
+            finalized.insert(block_hash, deploys);
+        }
+        finalized
+    }
+}
+
 /// Trait which will handle management of the various storage sub-components.
 ///
 /// If this trait is ultimately only used for testing scenarios, we shouldn't need to expose it to
 /// the reactor - it can simply use a concrete type which implements this trait.
 pub trait StorageType {
-    type Block: Value;
+    type Block: Value + WithBlockHeight;
     type Deploy: Value + Item;
-    type BlockHeight: Value + for<'de> From<&'de Self::Block>;
 
     fn block_store(&self) -> Arc<dyn Store<Value = Self::Block>>;
 
-    fn block_height_store(&self) -> Arc<dyn Store<Value = Self::BlockHeight>>;
+    fn block_height_store(&self) -> Arc<dyn BlockHeightStore<<Self::Block as Value>::Id>>;
 
     fn deploy_store(
         &self,
@@ -234,20 +233,31 @@ pub trait StorageType {
     {
         let block_store = self.block_store();
         let block_height_store = self.block_height_store();
-        let block_hash = *block.id();
         async move {
             let result = task::spawn_blocking(move || {
-                let block_deref = *block;
-                let block_height_metadata = (&block_deref).into();
-                let result = block_store.put(block_deref);
-                let _ = block_height_store
-                    .put(block_height_metadata)
-                    .expect("should run");
-                result
+                let height = block.height();
+                let block_hash = *block.id();
+                let height_result =
+                    block_height_store
+                        .put(height, block_hash)
+                        .unwrap_or_else(|error| {
+                            panic!("failed to put height for {}: {}", block_hash, error)
+                        });
+                let block_result = block_store
+                    .put(*block)
+                    .unwrap_or_else(|error| panic!("failed to put {}: {}", block_hash, error));
+                // TODO: once blocks' signatures are handled as metadata, this condition can be
+                //       changed to just `height_result != block_result`.
+                if height_result != block_result && !block_result {
+                    panic!(
+                        "mismatch in put results. height_result: {}. block_result: {}",
+                        height_result, block_result
+                    );
+                }
+                height_result
             })
             .await
-            .expect("should run")
-            .unwrap_or_else(|error| panic!("failed to put {}: {}", block_hash, error));
+            .expect("should run");
             responder.respond(result).await
         }
         .ignore()
@@ -275,36 +285,59 @@ pub trait StorageType {
         .ignore()
     }
 
-    fn get_block_by_height(
+    fn get_block_at_height(
         &self,
-        block_height: <Self::BlockHeight as Value>::Id,
+        block_height: u64,
         responder: Responder<Option<Self::Block>>,
     ) -> Effects<Event<Self>>
     where
         Self: Sized,
-        <Self::Block as Value>::Id: From<<Self::BlockHeight as Value>::Header>, /* Evidence that
-                                                                                 * IDs
-                                                                                 * are interchangable.
-                                                                                 */
     {
         let block_height_store = self.block_height_store();
         let block_store = self.block_store();
         async move {
             let result = task::spawn_blocking(move || {
                 block_height_store
-                    .get(smallvec![block_height])
-                    .pop()
-                    .expect("can contain only one element")
+                    .get(block_height)
                     .unwrap_or_else(|error| {
                         panic!(
-                            "failed to get block height metadata {}: {}",
+                            "failed to get entry for block height {}: {}",
                             block_height, error
                         )
                     })
-                    .and_then(|metadata| {
-                        let block_hash = metadata.take_header();
+                    .and_then(|block_hash| {
                         block_store
-                            .get(smallvec![block_hash.clone().into()])
+                            .get(smallvec![block_hash])
+                            .pop()
+                            .expect("can only contain one result")
+                            .unwrap_or_else(|error| {
+                                panic!("failed to get block {}: {}", block_hash, error)
+                            })
+                    })
+            })
+            .await
+            .expect("should run");
+            responder.respond(result).await
+        }
+        .ignore()
+    }
+
+    fn get_highest_block(&self, responder: Responder<Option<Self::Block>>) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let block_height_store = self.block_height_store();
+        let block_store = self.block_store();
+        async move {
+            let result = task::spawn_blocking(move || {
+                block_height_store
+                    .highest()
+                    .unwrap_or_else(|error| {
+                        panic!("failed to get entry for latest block: {}", error)
+                    })
+                    .and_then(|block_hash| {
+                        block_store
+                            .get(smallvec![block_hash])
                             .pop()
                             .expect("can only contain one result")
                             .unwrap_or_else(|error| {
@@ -508,8 +541,6 @@ where
     REv: From<NetworkRequest<NodeId, Message>> + Send,
     S: StorageType,
     Self: Sized + 'static,
-    <<S as StorageType>::Block as Value>::Id:
-        From<<<S as StorageType>::BlockHeight as Value>::Header>,
 {
     type Event = Event<S>;
 
@@ -530,13 +561,16 @@ where
                 block_hash,
                 responder,
             }) => self.get_block(block_hash, responder),
+            Event::Request(StorageRequest::GetBlockAtHeight { height, responder }) => {
+                self.get_block_at_height(height, responder)
+            }
+            Event::Request(StorageRequest::GetHighestBlock { responder }) => {
+                self.get_highest_block(responder)
+            }
             Event::Request(StorageRequest::GetBlockHeader {
                 block_hash,
                 responder,
             }) => self.get_block_header(block_hash, responder),
-            Event::Request(StorageRequest::GetBlockAtHeight { height, responder }) => {
-                self.get_block_by_height(height, responder)
-            }
             Event::Request(StorageRequest::PutDeploy { deploy, responder }) => {
                 self.put_deploy(deploy, responder)
             }
@@ -570,30 +604,28 @@ where
 
 // Concrete type of `Storage` backed by in-memory stores.
 #[derive(Debug)]
-pub(crate) struct InMemStorage<B: Value, BH: Value, D: Value> {
+pub(crate) struct InMemStorage<B: Value, D: Value> {
     block_store: Arc<InMemStore<B, BlockMetadata>>,
-    block_height_store: Arc<InMemStore<BH, BlockHeightHashMetadata>>,
+    block_height_store: Arc<InMemBlockHeightStore<B::Id>>,
     deploy_store: Arc<InMemStore<D, DeployMetadata<B>>>,
     chainspec_store: Arc<InMemChainspecStore>,
 }
 
 #[allow(trivial_casts)]
-impl<
-        B: Value + 'static,
-        BH: Value + for<'de> From<&'de B> + 'static,
-        D: Value + Item + 'static,
-    > StorageType for InMemStorage<B, BH, D>
+impl<B, D> StorageType for InMemStorage<B, D>
+where
+    B: Value + WithBlockHeight + 'static,
+    D: Value + Item + 'static,
 {
     type Block = B;
     type Deploy = D;
-    type BlockHeight = BH;
 
     fn block_store(&self) -> Arc<dyn Store<Value = B>> {
         Arc::clone(&self.block_store) as Arc<dyn Store<Value = B>>
     }
 
-    fn block_height_store(&self) -> Arc<dyn Store<Value = BH>> {
-        Arc::clone(&self.block_height_store) as Arc<dyn Store<Value = BH>>
+    fn block_height_store(&self) -> Arc<dyn BlockHeightStore<B::Id>> {
+        Arc::clone(&self.block_height_store) as Arc<dyn BlockHeightStore<B::Id>>
     }
 
     fn deploy_store(&self) -> Arc<dyn DeployStore<Block = B, Deploy = D, Value = D>> {
@@ -607,7 +639,7 @@ impl<
     fn new(_config: WithDir<Config>) -> Result<Self> {
         Ok(InMemStorage {
             block_store: Arc::new(InMemStore::new()),
-            block_height_store: Arc::new(InMemStore::new()),
+            block_height_store: Arc::new(InMemBlockHeightStore::new()),
             deploy_store: Arc::new(InMemStore::new()),
             chainspec_store: Arc::new(InMemChainspecStore::new()),
         })
@@ -616,28 +648,25 @@ impl<
 
 // Concrete type of `Storage` backed by LMDB stores.
 #[derive(DataSize, Debug)]
-pub struct LmdbStorage<B, BH, D>
+pub struct LmdbStorage<B, D>
 where
     B: Value,
     D: Value,
-    BH: Value,
 {
     block_store: Arc<LmdbStore<B, BlockMetadata>>,
-    block_height_store: Arc<LmdbStore<BH, BlockHeightHashMetadata>>,
+    block_height_store: Arc<LmdbBlockHeightStore>,
     deploy_store: Arc<LmdbStore<D, DeployMetadata<B>>>,
     chainspec_store: Arc<LmdbChainspecStore>,
 }
 
 #[allow(trivial_casts)]
-impl<
-        B: Value + 'static,
-        BH: Value + for<'de> From<&'de B> + 'static,
-        D: Value + Item + 'static,
-    > StorageType for LmdbStorage<B, BH, D>
+impl<B, D> StorageType for LmdbStorage<B, D>
+where
+    B: Value + WithBlockHeight + 'static,
+    D: Value + Item + 'static,
 {
     type Block = B;
     type Deploy = D;
-    type BlockHeight = BH;
 
     fn new(config: WithDir<Config>) -> Result<Self> {
         let root = config.with_dir(config.value().path());
@@ -652,9 +681,9 @@ impl<
         let chainspec_store_path = root.join(CHAINSPEC_STORE_FILENAME);
 
         let block_store = LmdbStore::new(block_store_path, config.value().max_block_store_size())?;
-        let block_height_store = LmdbStore::new(
+        let block_height_store = LmdbBlockHeightStore::new(
             block_height_store_path,
-            config.value().max_block_store_size(),
+            config.value().max_block_height_store_size(),
         )?;
         let deploy_store =
             LmdbStore::new(deploy_store_path, config.value().max_deploy_store_size())?;
@@ -675,15 +704,15 @@ impl<
         Arc::clone(&self.block_store) as Arc<dyn Store<Value = B>>
     }
 
+    fn block_height_store(&self) -> Arc<dyn BlockHeightStore<B::Id>> {
+        Arc::clone(&self.block_height_store) as Arc<dyn BlockHeightStore<B::Id>>
+    }
+
     fn deploy_store(&self) -> Arc<dyn DeployStore<Block = B, Deploy = D, Value = D>> {
         Arc::clone(&self.deploy_store) as Arc<dyn DeployStore<Block = B, Deploy = D, Value = D>>
     }
 
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore> {
         Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
-    }
-
-    fn block_height_store(&self) -> Arc<dyn Store<Value = BH>> {
-        Arc::clone(&self.block_height_store) as Arc<dyn Store<Value = BH>>
     }
 }

@@ -30,15 +30,25 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
                 (bytes, args)
             };
 
-        let wasm_costs = if !upgrade_point.has_new_costs() {
+        let wasm_config = if !upgrade_point.has_new_wasm_config() {
             None
         } else {
-            Some(upgrade_point.mut_new_costs().take_wasm().into())
+            Some(upgrade_point.take_new_wasm_config().try_into()?)
         };
         let activation_point = if !upgrade_point.has_activation_point() {
             None
         } else {
             Some(upgrade_point.get_activation_point().rank)
+        };
+
+        let new_validator_slots: Option<u32> = if !upgrade_point.has_new_validator_slots() {
+            None
+        } else {
+            Some(
+                upgrade_point
+                    .take_new_validator_slots()
+                    .get_new_validator_slots(),
+            )
         };
 
         Ok(UpgradeConfig::new(
@@ -47,8 +57,9 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             new_protocol_version,
             upgrade_installer_args,
             upgrade_installer_bytes,
-            wasm_costs,
+            wasm_config,
             activation_point,
+            new_validator_slots,
         ))
     }
 }

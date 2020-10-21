@@ -11,8 +11,10 @@ use crate::{command::ClientCommand, common, rpc::RpcClient};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
+    Verbose,
     NodeAddress,
-    GlobalStateHash,
+    RpcId,
+    StateRootHash,
     PurseURef,
 }
 
@@ -49,11 +51,11 @@ mod balance_args {
     use super::*;
 
     pub(super) fn get(matches: &ArgMatches) -> <GetBalance as RpcWithParams>::RequestParams {
-        let global_state_hash = common::global_state_hash::get(&matches);
+        let state_hash = common::state_root_hash::get(&matches);
         let purse_uref = purse_uref::get(&matches);
 
         GetBalanceParams {
-            global_state_hash,
+            state_root_hash: state_hash,
             purse_uref,
         }
     }
@@ -71,20 +73,26 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
         SubCommand::with_name(Self::NAME)
             .about(Self::ABOUT)
             .display_order(display_order)
+            .arg(common::verbose::arg(DisplayOrder::Verbose as usize))
             .arg(common::node_address::arg(
                 DisplayOrder::NodeAddress as usize,
             ))
-            .arg(common::global_state_hash::arg(
-                DisplayOrder::GlobalStateHash as usize,
+            .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
+            .arg(common::state_root_hash::arg(
+                DisplayOrder::StateRootHash as usize,
             ))
             .arg(purse_uref::arg())
     }
 
     fn run(matches: &ArgMatches<'_>) {
+        let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
+        let rpc_id = common::rpc_id::get(matches);
         let args = balance_args::get(matches);
-        let res = Self::request_with_map_params(&node_address, args)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
-        println!("{}", res);
+        let response = Self::request_with_map_params(verbose, &node_address, rpc_id, args);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }

@@ -51,6 +51,22 @@ impl<C: Context> Vertex<C> {
             Vertex::Evidence(_) => None,
         }
     }
+
+    /// Returns whether this is evidence, as opposed to other types of vertices.
+    pub(crate) fn is_evidence(&self) -> bool {
+        match self {
+            Vertex::Vote(_) => false,
+            Vertex::Evidence(_) => true,
+        }
+    }
+
+    /// Returns a `Timestamp` provided the vertex is a `Vertex::Vote`
+    pub(crate) fn timestamp(&self) -> Option<Timestamp> {
+        match self {
+            Vertex::Vote(signed_wire_vote) => Some(signed_wire_vote.wire_vote.timestamp),
+            Vertex::Evidence(_) => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -127,7 +143,7 @@ impl<C: Context> WireVote<C> {
     // TODO: This involves serializing and hashing. Memoize?
     pub(crate) fn hash(&self) -> C::Hash {
         // TODO: Use serialize_into to avoid allocation?
-        <C as Context>::hash(&rmp_serde::to_vec(self).expect("serialize WireVote"))
+        <C as Context>::hash(&bincode::serialize(self).expect("serialize WireVote"))
     }
 
     /// Returns the time at which the round containing this vote began.

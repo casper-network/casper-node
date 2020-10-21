@@ -91,6 +91,7 @@ use crate::{
     types::CryptoRngCore,
     utils,
 };
+
 pub use config::Config;
 pub use error::Error;
 
@@ -99,11 +100,26 @@ pub use error::Error;
 /// The key fingerprint found on TLS certificates.
 pub(crate) type NodeId = KeyFingerprint;
 
+const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
+
 #[derive(DataSize, Debug)]
 pub(crate) struct OutgoingConnection<P> {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
     sender: UnboundedSender<Message<P>>,
     peer_address: SocketAddr,
+
+    // for keeping track of connection asymmetry, tracking the number of times we've seen this
+    // connection be asymmetric.
+    times_seen_asymmetric: u16,
+}
+
+#[derive(DataSize, Debug)]
+pub(crate) struct IncomingConnection {
+    peer_address: SocketAddr,
+
+    // for keeping track of connection asymmetry, tracking the number of times we've seen this
+    // connection be asymmetric.
+    times_seen_asymmetric: u16,
 }
 
 #[derive(DataSize)]
@@ -121,10 +137,15 @@ where
     our_id: NodeId,
     /// Handle to event queue.
     event_queue: EventQueueHandle<REv>,
+
     /// Incoming network connection addresses.
-    incoming: HashMap<NodeId, SocketAddr>,
+    incoming: HashMap<NodeId, IncomingConnection>,
     /// Outgoing network connections' messages.
     outgoing: HashMap<NodeId, OutgoingConnection<P>>,
+
+    /// List of addresses which this node will avoid connecting to.
+    blocklist: HashSet<SocketAddr>,
+
     /// Pending outgoing connections: ones for which we are currently trying to make a connection.
     pending: HashSet<SocketAddr>,
     /// The interval between each fresh round of gossiping the node's public listening address.
@@ -144,7 +165,6 @@ where
     /// Flag to indicate the server has stopped running.
     is_stopped: Arc<AtomicBool>,
     /// Join handle for the server thread.
-    #[allow(dead_code)]
     server_join_handle: Option<JoinHandle<()>>,
 }
 
@@ -219,6 +239,7 @@ where
             incoming: HashMap::new(),
             outgoing: HashMap::new(),
             pending: HashSet::new(),
+            blocklist: HashSet::new(),
             gossip_interval: cfg.gossip_interval,
             next_gossip_address_index: 0,
             shutdown_sender: Some(server_shutdown_sender),
@@ -366,7 +387,13 @@ where
                 // The sink is never used, as we only read data from incoming connections.
                 let (_sink, stream) = framed::<P>(transport).split();
 
-                let _ = self.incoming.insert(peer_id, peer_address);
+                let _ = self.incoming.insert(
+                    peer_id,
+                    IncomingConnection {
+                        peer_address,
+                        times_seen_asymmetric: 0,
+                    },
+                );
 
                 // If the connection is now complete, announce the new peer before starting reader.
                 let mut effects = self.check_connection_complete(effect_builder, peer_id);
@@ -432,6 +459,7 @@ where
         let connection = OutgoingConnection {
             peer_address,
             sender,
+            times_seen_asymmetric: 0,
         };
         if self.outgoing.insert(peer_id, connection).is_some() {
             // We assume that for a reconnect to have happened, the outgoing entry must have
@@ -482,7 +510,9 @@ where
     }
 
     fn remove(&mut self, peer_id: &NodeId) {
-        let _ = self.incoming.remove(&peer_id);
+        if let Some(incoming) = self.incoming.remove(&peer_id) {
+            let _ = self.pending.remove(&incoming.peer_address);
+        }
         let _ = self.outgoing.remove(&peer_id);
     }
 
@@ -499,6 +529,47 @@ where
                 .event(|_| Event::GossipOurAddress),
         );
         effects
+    }
+
+    /// Marks connections as asymmetric (only incoming or only outgoing) and removes them if they
+    /// pass the upper limit for this. Connections that are symmetrical are reset to 0.
+    fn enforce_symmetric_connections(&mut self) {
+        let mut remove = Vec::new();
+        enum Node {
+            Incoming(NodeId),
+            Outgoing(NodeId, SocketAddr),
+        }
+        for (node_id, conn) in self.incoming.iter_mut() {
+            if !self.outgoing.contains_key(node_id) {
+                if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
+                    remove.push(Node::Outgoing(*node_id, conn.peer_address));
+                } else {
+                    conn.times_seen_asymmetric += 1;
+                }
+            } else {
+                conn.times_seen_asymmetric = 0;
+            }
+        }
+        for (node_id, conn) in self.outgoing.iter_mut() {
+            if !self.incoming.contains_key(node_id) {
+                if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
+                    remove.push(Node::Incoming(*node_id));
+                } else {
+                    conn.times_seen_asymmetric += 1;
+                }
+            } else {
+                conn.times_seen_asymmetric = 0;
+            }
+        }
+        for connection in remove {
+            match connection {
+                Node::Incoming(node_id) => self.remove(&node_id),
+                Node::Outgoing(node_id, peer_address) => {
+                    self.blocklist.insert(peer_address);
+                    self.remove(&node_id);
+                }
+            }
+        }
     }
 
     /// Handles a received message.
@@ -518,12 +589,14 @@ where
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
         if self.pending.contains(&peer_address)
+            || self.blocklist.contains(&peer_address)
             || self
                 .outgoing
                 .iter()
                 .any(|(_peer_id, connection)| connection.peer_address == peer_address)
         {
-            // We're already trying to connect or are connected - do nothing.
+            // We're already trying to connect, are connected, or the connection is on the blocklist
+            // - do nothing.
             Effects::new()
         } else {
             // We need to connect.
@@ -563,27 +636,15 @@ where
     }
 
     /// Returns the set of connected nodes.
-    #[cfg(test)]
-    pub(crate) fn connected_nodes(&self) -> HashSet<NodeId> {
-        self.outgoing.keys().cloned().collect()
-    }
-
-    /// Returns the set of connected nodes.
     pub(crate) fn peers(&self) -> HashMap<NodeId, SocketAddr> {
         let mut ret: HashMap<NodeId, SocketAddr> = HashMap::new();
         for x in &self.outgoing {
             ret.insert(*x.0, x.1.peer_address);
         }
         for x in &self.incoming {
-            ret.entry(*x.0).or_insert(*x.1);
+            ret.entry(*x.0).or_insert(x.1.peer_address);
         }
         ret
-    }
-
-    /// Returns the node id of this network node.
-    #[cfg(test)]
-    pub(crate) fn node_id(&self) -> NodeId {
-        self.our_id
     }
 
     /// Returns whether or not this node has been isolated.
@@ -592,6 +653,13 @@ where
     /// connected to any peer.
     fn is_isolated(&self) -> bool {
         self.pending.is_empty() && self.outgoing.is_empty() && self.incoming.is_empty()
+    }
+
+    /// Returns the node id of this network node.
+    /// - Used in validator test.
+    #[cfg(test)]
+    pub(crate) fn node_id(&self) -> NodeId {
+        self.our_id
     }
 }
 
@@ -739,7 +807,11 @@ where
             Event::NetworkInfoRequest {
                 req: NetworkInfoRequest::GetPeers { responder },
             } => responder.respond(self.peers()).ignore(),
-            Event::GossipOurAddress => self.gossip_our_address(effect_builder),
+            Event::GossipOurAddress => {
+                let effects = self.gossip_our_address(effect_builder);
+                self.enforce_symmetric_connections();
+                effects
+            }
             Event::PeerAddressReceived(gossiped_address) => {
                 self.connect_to_peer_if_required(gossiped_address.into())
             }

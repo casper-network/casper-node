@@ -8,14 +8,15 @@ mod memory_metrics;
 #[cfg(test)]
 mod tests;
 
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
-use fmt::Debug;
 use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, error, warn};
+
+use deploy_buffer::ProtoBlockCollection;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -51,7 +52,7 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    reactor::{self, EventQueueHandle},
+    reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle},
     types::{Block, CryptoRngCore, Deploy, ProtoBlock, Tag},
     utils::Source,
 };
@@ -264,6 +265,7 @@ pub struct ValidatorInitConfig {
     pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) linear_chain: Vec<Block>,
+    pub(super) finalized_deploys: ProtoBlockCollection,
 }
 
 /// Validator node reactor.
@@ -289,6 +291,9 @@ pub struct Reactor {
     // Non-components.
     #[data_size(skip)] // Never allocates heap data.
     memory_metrics: MemoryMetrics,
+
+    #[data_size(skip)]
+    event_queue_metrics: EventQueueMetrics,
 }
 
 #[cfg(test)]
@@ -323,32 +328,39 @@ impl reactor::Reactor for Reactor {
             consensus,
             init_consensus_effects,
             linear_chain,
+            finalized_deploys,
         } = config;
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
+
+        let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
         let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network, true)?;
 
-        let address_gossiper = Gossiper::new_for_complete_items(config.gossip);
+        let address_gossiper =
+            Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.gossip);
         let deploy_gossiper = Gossiper::new_for_partial_items(
+            "deploy_gossiper",
             config.gossip,
             gossiper::get_deploy_from_storage::<Deploy, Event>,
-        );
-        let (deploy_buffer, deploy_buffer_effects) = DeployBuffer::new(effect_builder);
+            registry,
+        )?;
+        let (deploy_buffer, deploy_buffer_effects) =
+            DeployBuffer::new(registry.clone(), effect_builder, finalized_deploys)?;
         let mut effects = reactor::wrap_effects(Event::DeployBuffer, deploy_buffer_effects);
         // Post state hash is expected to be present.
-        let genesis_post_state_hash = chainspec_loader
-            .genesis_post_state_hash()
-            .expect("should have post state hash");
-        let block_executor =
-            BlockExecutor::new(genesis_post_state_hash).with_parent_map(linear_chain);
+        let genesis_state_root_hash = chainspec_loader
+            .genesis_state_root_hash()
+            .expect("should have state root hash");
+        let block_executor = BlockExecutor::new(genesis_state_root_hash)
+            .with_parent_map(linear_chain.last().cloned());
         let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();
 
@@ -376,6 +388,7 @@ impl reactor::Reactor for Reactor {
                 proto_block_validator,
                 linear_chain,
                 memory_metrics,
+                event_queue_metrics,
             },
             effects,
         ))
@@ -503,7 +516,7 @@ impl reactor::Reactor for Reactor {
                     }
                     Message::GetRequest { tag, serialized_id } => match tag {
                         Tag::Deploy => {
-                            let deploy_hash = match rmp_serde::from_read_ref(&serialized_id) {
+                            let deploy_hash = match bincode::deserialize(&serialized_id) {
                                 Ok(hash) => hash,
                                 Err(error) => {
                                     error!(
@@ -519,7 +532,7 @@ impl reactor::Reactor for Reactor {
                             })
                         }
                         Tag::Block => {
-                            let block_hash = match rmp_serde::from_read_ref(&serialized_id) {
+                            let block_hash = match bincode::deserialize(&serialized_id) {
                                 Ok(hash) => hash,
                                 Err(error) => {
                                     error!(
@@ -534,7 +547,7 @@ impl reactor::Reactor for Reactor {
                             ))
                         }
                         Tag::BlockByHeight => {
-                            let height = match rmp_serde::from_read_ref(&serialized_id) {
+                            let height = match bincode::deserialize(&serialized_id) {
                                 Ok(block_by_height) => block_by_height,
                                 Err(error) => {
                                     error!(
@@ -558,7 +571,7 @@ impl reactor::Reactor for Reactor {
                         serialized_item,
                     } => match tag {
                         Tag::Deploy => {
-                            let deploy = match rmp_serde::from_read_ref(&serialized_item) {
+                            let deploy = match bincode::deserialize(&serialized_item) {
                                 Ok(deploy) => Box::new(deploy),
                                 Err(error) => {
                                     error!("failed to decode deploy from {}: {}", sender, error);
@@ -668,7 +681,7 @@ impl reactor::Reactor for Reactor {
             }) => {
                 let block_hash = *block.hash();
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
-                    block,
+                    block: Box::new(block),
                     execution_results: execution_results.clone(),
                 });
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
@@ -705,8 +718,10 @@ impl reactor::Reactor for Reactor {
         }
     }
 
-    fn update_metrics(&mut self) {
-        self.memory_metrics.estimate(&self)
+    fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
+        self.memory_metrics.estimate(&self);
+        self.event_queue_metrics
+            .record_event_queue_counts(&event_queue_handle)
     }
 }
 

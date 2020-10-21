@@ -15,7 +15,7 @@ use casper_execution_engine::{
         genesis::{ExecConfig, GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::{motes::Motes, newtypes::Blake2bHash, test_utils, wasm_costs::WasmCosts},
+    shared::{motes::Motes, newtypes::Blake2bHash, wasm_config::WasmConfig},
 };
 use casper_types::{account::AccountHash, ProtocolVersion, PublicKey, U512};
 
@@ -33,6 +33,7 @@ pub const MINT_INSTALL_CONTRACT: &str = "mint_install.wasm";
 pub const POS_INSTALL_CONTRACT: &str = "pos_install.wasm";
 pub const STANDARD_PAYMENT_INSTALL_CONTRACT: &str = "standard_payment_install.wasm";
 pub const AUCTION_INSTALL_CONTRACT: &str = "auction_install.wasm";
+pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 
 pub const DEFAULT_CHAIN_NAME: &str = "gerald";
 pub const DEFAULT_GENESIS_TIMESTAMP: u64 = 0;
@@ -60,7 +61,7 @@ lazy_static! {
     };
     pub static ref DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
     pub static ref DEFAULT_PAYMENT: U512 = 100_000_000.into();
-    pub static ref DEFAULT_WASM_COSTS: WasmCosts = test_utils::wasm_costs_mock();
+    pub static ref DEFAULT_WASM_CONFIG: WasmConfig = WasmConfig::default();
     pub static ref DEFAULT_EXEC_CONFIG: ExecConfig = {
         let mint_installer_bytes;
         let pos_installer_bytes;
@@ -78,7 +79,8 @@ lazy_static! {
             standard_payment_installer_bytes,
             auction_installer_bytes,
             DEFAULT_ACCOUNTS.clone(),
-            *DEFAULT_WASM_COSTS,
+            *DEFAULT_WASM_CONFIG,
+            DEFAULT_VALIDATOR_SLOTS,
         )
     };
     pub static ref DEFAULT_GENESIS_CONFIG: GenesisConfig = {

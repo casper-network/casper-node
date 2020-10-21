@@ -162,11 +162,7 @@ pub(crate) struct LinearChainSync<I> {
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
-    #[allow(unused)]
-    pub fn new<REv: ReactorEventT<I>>(
-        effect_builder: EffectBuilder<REv>,
-        init_hash: Option<BlockHash>,
-    ) -> Self {
+    pub fn new(init_hash: Option<BlockHash>) -> Self {
         let state = init_hash.map_or(State::None, State::sync_trusted_hash);
         LinearChainSync {
             peers: Vec::new(),

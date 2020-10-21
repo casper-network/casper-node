@@ -1,8 +1,11 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
+
+mod candidate_block;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
 mod highway_core;
+mod metrics;
 mod protocols;
 #[cfg(test)]
 mod tests;
@@ -16,6 +19,7 @@ use casper_types::auction::ValidatorWeights;
 
 use crate::{
     components::{storage::Storage, Component},
+    crypto::{asymmetric_key::PublicKey, hash::Digest},
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -25,7 +29,7 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
 };
 
 pub use config::Config;
@@ -37,16 +41,13 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 use traits::NodeIdT;
 
-#[derive(DataSize, Clone, Serialize, Deserialize)]
-pub struct ConsensusMessage {
-    era_id: EraId,
-    payload: Vec<u8>,
-}
-
-impl ConsensusMessage {
-    fn payload(&self) -> &[u8] {
-        &self.payload
-    }
+#[derive(Debug, DataSize, Clone, Serialize, Deserialize)]
+pub enum ConsensusMessage {
+    /// A protocol message, to be handled by the instance in the specified era.
+    Protocol { era_id: EraId, payload: Vec<u8> },
+    /// A request for evidence against the specified validator, from any era that is still bonded
+    /// in `era_id`.
+    EvidenceRequest { era_id: EraId, pub_key: PublicKey },
 }
 
 /// Consensus component event.
@@ -75,33 +76,31 @@ pub enum Event<I> {
         sender: I,
         proto_block: ProtoBlock,
     },
-    /// Response from the Contract Runtime, containing the validators for the new era
-    GetValidatorsResponse {
+    /// Event raised when a new era should be created: once we get the set of validators, the
+    /// booking block hash and the seed from the key block
+    CreateNewEra {
         /// The header of the switch block
         block_header: Box<BlockHeader>,
+        /// Ok(block_hash) if the booking block was found, Err(height) if not
+        booking_block_hash: Result<BlockHash, u64>,
+        /// Ok(seed) if the key block was found, Err(height) if not
+        key_block_seed: Result<Digest, u64>,
         get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
 }
 
 impl Display for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ConsensusMessage {{ era_id: {}, {:10} }}",
-            self.era_id.0,
-            HexFmt(self.payload())
-        )
-    }
-}
-
-impl Debug for ConsensusMessage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ConsensusMessage {{ era_id: {}, {:10} }}",
-            self.era_id.0,
-            HexFmt(self.payload())
-        )
+        match self {
+            ConsensusMessage::Protocol { era_id, payload } => {
+                write!(f, "protocol message {:10} in {}", HexFmt(payload), era_id)
+            }
+            ConsensusMessage::EvidenceRequest { era_id, pub_key } => write!(
+                f,
+                "request for evidence of fault by {} in {} or earlier",
+                pub_key, era_id,
+            ),
+        }
     }
 }
 
@@ -145,13 +144,16 @@ impl<I: Debug> Display for Event<I> {
                 "A proto-block received from {:?} turned out to be invalid for era {:?}: {:?}",
                 sender, era_id, proto_block
             ),
-            Event::GetValidatorsResponse {
+            Event::CreateNewEra {
+                booking_block_hash,
+                key_block_seed,
                 get_validators_result,
                 ..
             } => write!(
                 f,
-                "We received the response to get_validators from the contract runtime: {:?}",
-                get_validators_result
+                "New era should be created; booking block hash: {:?}, key block seed: {:?}, \
+                response to get_validators from the contract runtime: {:?}",
+                booking_block_hash, key_block_seed, get_validators_result
             ),
         }
     }
@@ -220,23 +222,47 @@ where
                 sender,
                 proto_block,
             } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
-            Event::GetValidatorsResponse {
+            Event::CreateNewEra {
                 block_header,
+                booking_block_hash,
+                key_block_seed,
                 get_validators_result,
-            } => match get_validators_result {
-                Ok(Some(result)) => {
-                    handling_es.handle_get_validators_response(*block_header, result)
-                }
-                result => {
+            } => {
+                let booking_block_hash = booking_block_hash.unwrap_or_else(|height| {
                     error!(
-                        ?result,
-                        "get_validators in era {} returned an error: {:?}",
-                        block_header.era_id(),
-                        result
+                        "could not find the booking block at height {} for era {}",
+                        height,
+                        block_header.era_id().successor()
                     );
-                    panic!("couldn't get validators");
-                }
-            },
+                    panic!("couldn't get the booking block hash");
+                });
+                let key_block_seed = key_block_seed.unwrap_or_else(|height| {
+                    error!(
+                        "could not find the key block at height {} for era {}",
+                        height,
+                        block_header.era_id().successor()
+                    );
+                    panic!("couldn't get the seed from the key block");
+                });
+                let validators = match get_validators_result {
+                    Ok(Some(result)) => result,
+                    result => {
+                        error!(
+                            ?result,
+                            "get_validators in era {} returned an error: {:?}",
+                            block_header.era_id(),
+                            result
+                        );
+                        panic!("couldn't get validators");
+                    }
+                };
+                handling_es.handle_create_new_era(
+                    *block_header,
+                    booking_block_hash,
+                    key_block_seed,
+                    validators,
+                )
+            }
         }
     }
 }

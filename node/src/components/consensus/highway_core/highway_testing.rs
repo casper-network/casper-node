@@ -16,8 +16,8 @@ use super::{
     evidence::Evidence,
     finality_detector::{FinalityDetector, FttExceeded},
     highway::{
-        Dependency, Highway, Params, PreValidatedVertex, SignedWireVote, ValidVertex, Vertex,
-        VertexError,
+        Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, SignedWireVote,
+        ValidVertex, Vertex, VertexError,
     },
     validators::Validators,
     Weight,
@@ -340,7 +340,7 @@ where
             message.payload(),
         );
 
-        let messages = self.process_message(rng, recipient, message)?;
+        let messages = self.process_message(rng, recipient, message, delivery_time)?;
 
         let targeted_messages = messages
             .into_iter()
@@ -410,6 +410,7 @@ where
         rng: &mut dyn CryptoRngCore,
         validator_id: ValidatorId,
         message: Message<HighwayMessage>,
+        delivery_time: Timestamp,
     ) -> TestResult<Vec<HighwayMessage>> {
         self.node_mut(&validator_id)?
             .push_messages_received(vec![message.clone()]);
@@ -426,7 +427,7 @@ where
                     })?
                 }
                 HighwayMessage::NewVertex(v) => {
-                    match self.add_vertex(rng, validator_id, sender_id, v.clone())? {
+                    match self.add_vertex(rng, validator_id, sender_id, v.clone(), delivery_time)? {
                         Ok(msgs) => {
                             trace!("{:?} successfuly added to the state.", v);
                             msgs
@@ -476,24 +477,18 @@ where
             value,
             timestamp: _,
             height,
-            era_end,
+            rewards,
             proposer: _,
         } in finalized_values
         {
             trace!(
                 "{}consensus value finalized: {:?}, height: {:?}",
-                if era_end.is_some() { "last " } else { "" },
+                if rewards.is_some() { "last " } else { "" },
                 value,
                 height
             );
-            if let Some(ee) = era_end {
-                if !ee.equivocators.is_empty() {
-                    warn!("New equivocators detected: {:?}", ee.equivocators);
-                    recipient.new_equivocators(ee.equivocators);
-                }
-                if !ee.rewards.is_empty() {
-                    warn!("Rewards are not verified yet: {:?}", ee.rewards);
-                }
+            if let Some(r) = rewards {
+                warn!(?r, "rewards are not verified yet");
             }
             recipient.push_finalized(value);
         }
@@ -510,6 +505,7 @@ where
         recipient: ValidatorId,
         sender: ValidatorId,
         vertex: Vertex<TestContext>,
+        delivery_time: Timestamp,
     ) -> TestRunResult<Vec<HighwayMessage>> {
         // 1. pre_validate_vertex
         // 2. missing_dependency
@@ -525,7 +521,7 @@ where
                 .pre_validate_vertex(vertex)
             {
                 Err((v, error)) => Ok(Err((v, error))),
-                Ok(pvv) => self.synchronize_validator(rng, recipient, sender, pvv),
+                Ok(pvv) => self.synchronize_validator(rng, recipient, sender, pvv, delivery_time),
             }
         }?;
 
@@ -541,7 +537,8 @@ where
                     {
                         Err((pvv, error)) => return Ok(Err((pvv.into_vertex(), error))),
                         Ok(valid_vertex) => self.call_validator(rng, &recipient, |v, rng| {
-                            v.highway_mut().add_valid_vertex(valid_vertex, rng)
+                            v.highway_mut()
+                                .add_valid_vertex(valid_vertex, rng, delivery_time)
                         })?,
                     }
                 };
@@ -562,6 +559,7 @@ where
         recipient: ValidatorId,
         sender: ValidatorId,
         pvv: PreValidatedVertex<TestContext>,
+        delivery_time: Timestamp,
     ) -> TestRunResult<(PreValidatedVertex<TestContext>, Vec<HighwayMessage>)> {
         // There may be more than one dependency missing and we want to sync all of them.
         loop {
@@ -575,17 +573,19 @@ where
 
             match validator.highway().missing_dependency(&pvv) {
                 None => return Ok(Ok((pvv, messages))),
-                Some(d) => match self.synchronize_dependency(rng, d, recipient, sender)? {
-                    Ok(sync_messages) => {
-                        // `hwm` represent messages produced while synchronizing `d`.
-                        messages.extend(sync_messages)
+                Some(d) => {
+                    match self.synchronize_dependency(rng, d, recipient, sender, delivery_time)? {
+                        Ok(sync_messages) => {
+                            // `hwm` represent messages produced while synchronizing `d`.
+                            messages.extend(sync_messages)
+                        }
+                        Err(vertex_error) => {
+                            // An error occurred when trying to synchronize a missing dependency.
+                            // We must stop the synchronization process and return it to the caller.
+                            return Ok(Err(vertex_error));
+                        }
                     }
-                    Err(vertex_error) => {
-                        // An error occurred when trying to synchronize a missing dependency.
-                        // We must stop the synchronization process and return it to the caller.
-                        return Ok(Err(vertex_error));
-                    }
-                },
+                }
             }
         }
     }
@@ -602,16 +602,21 @@ where
         missing_dependency: Dependency<TestContext>,
         recipient: ValidatorId,
         sender: ValidatorId,
+        delivery_time: Timestamp,
     ) -> TestRunResult<Vec<HighwayMessage>> {
-        let vertex = self
+        match self
             .node_mut(&sender)?
             .validator_mut()
             .highway()
             .get_dependency(&missing_dependency)
-            .map(|vv| vv.0)
-            .ok_or_else(|| TestRunError::SenderMissingDependency(sender, missing_dependency))?;
-
-        self.add_vertex(rng, recipient, sender, vertex)
+        {
+            GetDepOutcome::Vertex(vv) => {
+                self.add_vertex(rng, recipient, sender, vv.0, delivery_time)
+            }
+            GetDepOutcome::Evidence(_) | GetDepOutcome::None => Err(
+                TestRunError::SenderMissingDependency(sender, missing_dependency),
+            ),
+        }
     }
 
     /// Returns a `MutableHandle` on the `HighwayTestHarness` object
@@ -1043,7 +1048,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_no_faults() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1107,7 +1112,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_mute() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1148,7 +1153,7 @@ mod test_harness {
 
     #[test]
     fn liveness_test_some_equivocate() {
-        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true));
+        let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
         let mut rng = TestRng::new();
         let cv_count = 10;
@@ -1184,7 +1189,11 @@ mod test_harness {
             .map(|v| {
                 (
                     v.finalized_values().cloned().collect::<Vec<_>>(),
-                    v.equivocators().cloned().collect::<HashSet<_>>(),
+                    v.validator()
+                        .highway()
+                        .validators_with_evidence()
+                        .cloned()
+                        .collect::<HashSet<_>>(),
                 )
             })
             .unzip();
