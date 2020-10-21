@@ -20,9 +20,9 @@ base64 = "0.12.3"
 bincode = "1.3.1"
 blake2 = { version = "0.8.1", default-features = false }
 casper-execution-engine = { version = "0.7.0", path = "../execution_engine" }
+casper-node-macros = { version = "0.1.0", path = "../casper-node-macros" }
 casper-types = { version = "0.6.0", path = "../types", features = ["std", "gens"] }
 chrono = "0.4.10"
-cosy-macro = { path = "../cosy-macro" }
 csv = "1.1.3"
 datasize = { version = "0.2.0", features = ["fake_clock-types", "futures-types", "smallvec-types", "tokio-types"] }
 derive_more = "0.99.7"

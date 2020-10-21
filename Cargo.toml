@@ -27,7 +27,7 @@ default-members = [
     "types",
 ]
 
-exclude = ["cosy-macro"]
+exclude = ["casper-node-macros"]
 
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
 # perf data.

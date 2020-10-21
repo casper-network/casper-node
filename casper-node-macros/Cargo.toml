@@ -1,9 +1,8 @@
 [package]
-name = "cosy-macro"
+name = "casper-node-macros"
 version = "0.1.0"
 authors = ["Marc Brinkmann <marc@casperlabs.io>"]
 edition = "2018"
-publish = false
 
 [dependencies]
 indexmap = "1.6.0"

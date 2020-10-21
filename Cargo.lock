@@ -580,9 +580,9 @@ dependencies = [
  "bincode",
  "blake2",
  "casper-execution-engine",
+ "casper-node-macros",
  "casper-types",
  "chrono",
- "cosy-macro",
  "csv",
  "datasize",
  "derive_more",
@@ -655,6 +655,16 @@ dependencies = [
  "warp-json-rpc",
  "wasmi",
  "wheelbuf",
+]
+
+[[package]]
+name = "casper-node-macros"
+version = "0.1.0"
+dependencies = [
+ "Inflector",
+ "indexmap",
+ "proc-macro2 1.0.24",
+ "syn 1.0.44",
 ]
 
 [[package]]
@@ -808,16 +818,6 @@ name = "core-foundation-sys"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
-
-[[package]]
-name = "cosy-macro"
-version = "0.1.0"
-dependencies = [
- "Inflector",
- "indexmap",
- "proc-macro2 1.0.24",
- "syn 1.0.44",
-]
 
 [[package]]
 name = "counter-define"

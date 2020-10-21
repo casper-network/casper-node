@@ -1,6 +1,6 @@
 //! Reactor used to initialize a node.
 
-use cosy_macro::reactor;
+use casper_node_macros::reactor;
 
 use crate::{
     components::{
