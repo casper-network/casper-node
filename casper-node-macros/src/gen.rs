@@ -106,9 +106,7 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
     }
 
     for announcement in def.announcements() {
-        for target in announcement.targets() {
-
-        }
+        for target in announcement.targets() {}
         let variant_ident = announcement.variant_ident();
         let full_announcement_type = request.full_announcement_type();
 
@@ -207,38 +205,39 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                 )
             },
         ));
+    }
 
-        for request in def.requests() {
-            let request_variant_ident = request.variant_ident();
+    // Dispatch requests as well.
+    for request in def.requests() {
+        let request_variant_ident = request.variant_ident();
 
-            match request.target() {
-                Target::Discard => {
-                    dispatches.push(quote!(
-                        #event_ident::#request_variant_ident(request) => {
-                            // Request is discarded.
-                            // TODO: Add `trace!` call here? Consider the log spam though.
-                            Default::default()
-                        },
-                    ));
-                }
-                Target::Dest(ref dest) => {
-                    let dest_component_type = def.component(dest).full_component_type();
-                    let dest_variant_ident = def.component(dest).variant_ident();
-                    let dest_field_ident = dest;
+        match request.target() {
+            Target::Discard => {
+                dispatches.push(quote!(
+                    #event_ident::#request_variant_ident(request) => {
+                        // Request is discarded.
+                        // TODO: Add `trace!` call here? Consider the log spam though.
+                        Default::default()
+                    },
+                ));
+            }
+            Target::Dest(ref dest) => {
+                let dest_component_type = def.component(dest).full_component_type();
+                let dest_variant_ident = def.component(dest).variant_ident();
+                let dest_field_ident = dest;
 
-                    dispatches.push(quote!(
-                        #event_ident::#request_variant_ident(request) => {
-                            // Turn request into event for target component.
-                            let dest_event = <#dest_component_type as crate::components::Component<Self::Event>>::Event::from(request);
+                dispatches.push(quote!(
+                            #event_ident::#request_variant_ident(request) => {
+                                // Turn request into event for target component.
+                                let dest_event = <#dest_component_type as crate::components::Component<Self::Event>>::Event::from(request);
 
-                            // Route the newly created event to the component.
-                            crate::reactor::wrap_effects(
-                                #event_ident::#dest_variant_ident,
-                                <#dest_component_type as crate::components::Component<Self::Event>>::handle_event(&mut self.#dest_field_ident, effect_builder, rng, dest_event)
-                            )
-                        },
-                    ));
-                }
+                                // Route the newly created event to the component.
+                                crate::reactor::wrap_effects(
+                                    #event_ident::#dest_variant_ident,
+                                    <#dest_component_type as crate::components::Component<Self::Event>>::handle_event(&mut self.#dest_field_ident, effect_builder, rng, dest_event)
+                                )
+                            },
+                        ));
             }
         }
     }
