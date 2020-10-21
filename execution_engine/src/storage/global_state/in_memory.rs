@@ -18,10 +18,10 @@ use crate::storage::{
         in_memory::{InMemoryEnvironment, InMemoryReadTransaction},
         Transaction, TransactionSource,
     },
-    trie::{operations::create_hashed_empty_trie, Trie},
+    trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
     trie_store::{
         in_memory::InMemoryTrieStore,
-        operations::{self, read, ReadResult, WriteResult},
+        operations::{self, read, read_with_proof, ReadResult, WriteResult},
     },
 };
 
@@ -118,6 +118,33 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
     ) -> Result<Option<StoredValue>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret = match read::<
+            Key,
+            StoredValue,
+            InMemoryReadTransaction,
+            InMemoryTrieStore,
+            Self::Error,
+        >(
+            correlation_id,
+            &txn,
+            self.store.deref(),
+            &self.root_hash,
+            key,
+        )? {
+            ReadResult::Found(value) => Some(value),
+            ReadResult::NotFound => None,
+            ReadResult::RootNotFound => panic!("InMemoryGlobalState has invalid root"),
+        };
+        txn.commit()?;
+        Ok(ret)
+    }
+
+    fn read_with_proof(
+        &self,
+        correlation_id: CorrelationId,
+        key: &Key,
+    ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let ret = match read_with_proof::<
             Key,
             StoredValue,
             InMemoryReadTransaction,
