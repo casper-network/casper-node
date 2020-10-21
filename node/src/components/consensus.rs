@@ -11,11 +11,12 @@ mod protocols;
 mod tests;
 mod traits;
 
-use datasize::DataSize;
 use std::{
     convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
 };
+
+use datasize::DataSize;
 
 use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
 use casper_types::auction::ValidatorWeights;

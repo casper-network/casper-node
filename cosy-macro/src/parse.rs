@@ -402,7 +402,7 @@ impl Parse for Target {
     }
 }
 
-/// Custom keyswords.
+/// Custom keywords.
 ///
 /// This module groups custom keywords used by the parser.
 mod kw {
