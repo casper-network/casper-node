@@ -75,7 +75,7 @@ impl ReactorDefinition {
 
     /// Returns an iterator over all announcement mappings.
     pub fn announcements(&self) -> impl Iterator<Item = &AnnouncementDefinition> {
-        &self.announcements
+        self.announcements.iter()
     }
 
     /// Returns an iterator over all component definitions.
@@ -370,6 +370,11 @@ impl AnnouncementDefinition {
         let announcement_type = self.announcement_type();
         let ty = announcement_type.ty();
         quote!(crate::effect::announcements::#ty)
+    }
+
+    /// Returns an iterator over the targets of the announcement.
+    pub(crate) fn targets(&self) -> impl Iterator<Item = &Target> {
+        self.targets.iter()
     }
 
     /// Returns an ident identifying the announcement that is suitable for a variant, e.g.

@@ -106,9 +106,8 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
     }
 
     for announcement in def.announcements() {
-        for target in announcement.targets() {}
         let variant_ident = announcement.variant_ident();
-        let full_announcement_type = request.full_announcement_type();
+        let full_announcement_type = announcement.full_announcement_type();
 
         let event_variant_doc = format!("Incoming `{}`", variant_ident);
         event_variants.push(quote!(
@@ -240,6 +239,48 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                         ));
             }
         }
+    }
+
+    // Announcements dispatched also.
+    for announcement in def.announcements() {
+        let announcement_variant_ident = announcement.variant_ident();
+
+        let mut announcement_dispatches = Vec::new();
+        for target in announcement.targets() {
+            match target {
+                Target::Discard => {
+                    // Don't do anything. TODO: Remove `Target` type and just store an ident in
+                    // intermediate representation.
+                }
+                Target::Dest(ref dest) => {
+                    let dest_component_type = def.component(dest).full_component_type();
+                    let dest_variant_ident = def.component(dest).variant_ident();
+                    let dest_field_ident = dest;
+
+                    announcement_dispatches.push(quote!(
+                        // Dispatch announcement to target:
+                        let dest_event = <#dest_component_type as crate::components::Component<Self::Event>>::Event::from(announcement);
+
+                        let effects = crate::reactor::wrap_effects(
+                            #event_ident::#dest_variant_ident,
+                            <#dest_component_type as crate::components::Component<Self::Event>>::handle_event(&mut self.#dest_field_ident, effect_builder, rng, dest_event)
+                        );
+
+                        announcement_effects.extend(effects.into_iter());
+                    ));
+                }
+            }
+        }
+
+        dispatches.push(quote!(
+            #event_ident::#announcement_variant_ident(announcement) => {
+                let mut announcement_effects = crate::effect::Multiple::new();
+
+                #(#announcement_dispatches)*
+
+                announcement_effects
+            }
+        ))
     }
 
     let mut component_instantiations = Vec::new();
