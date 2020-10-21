@@ -121,7 +121,8 @@ where
             let queue_guard = self
                 .queues
                 .get(&kind)
-                .expect("missing queue white snapshotting")
+                .expect("missing queue while snapshotting")
+                .queue
                 .lock()
                 .await;
 

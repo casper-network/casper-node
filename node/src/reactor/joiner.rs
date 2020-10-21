@@ -5,14 +5,12 @@ use std::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
+use serde::Serialize;
 use tracing::{error, info, warn};
 
 use block_executor::BlockExecutor;
 use consensus::EraSupervisor;
 use deploy_acceptor::DeployAcceptor;
-use derive_more::From;
-use prometheus::Registry;
-use serde::Serialize;
 use small_network::GossipedAddress;
 
 use crate::{
