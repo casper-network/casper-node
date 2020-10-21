@@ -18,7 +18,7 @@ use crate::storage::{
         in_memory::InMemoryEnvironment, lmdb::LmdbEnvironment, Readable, Transaction,
         TransactionSource,
     },
-    trie::{merkle_proof, merkle_proof::TrieMerkleProof, Pointer, Trie},
+    trie::{merkle_proof::TrieMerkleProof, Pointer, Trie},
     trie_store::{
         self,
         in_memory::InMemoryTrieStore,
@@ -609,7 +609,7 @@ where
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error> + From<merkle_proof::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut ret = Vec::new();
 
@@ -682,7 +682,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<merkle_proof::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     let txn: R::ReadTransaction = environment.create_read_txn()?;
 
@@ -777,7 +777,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<merkle_proof::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     let txn = environment.create_read_txn()?;
     for (index, root_hash) in root_hashes.iter().enumerate() {
@@ -894,7 +894,7 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<merkle_proof::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
     let mut states = states.to_vec();
 

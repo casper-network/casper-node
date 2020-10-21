@@ -1,10 +1,10 @@
-use std::{collections::VecDeque, convert::TryInto};
+use std::collections::VecDeque;
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::{
     shared::newtypes::Blake2bHash,
-    storage::trie::{Pointer, Trie, RADIX, USIZE_EXCEEDS_U8},
+    storage::trie::{Pointer, Trie, RADIX},
 };
 
 const TRIE_MERKLE_PROOF_STEP_NODE_ID: u8 = 0;
@@ -139,7 +139,7 @@ where
     /// 3. When there are no more steps, we return the final hash we have computed.
     ///
     /// The steps in this function reflect `operations::rehash`.
-    pub fn compute_state_hash(&self) -> Result<Blake2bHash, Error> {
+    pub fn compute_state_hash(&self) -> Result<Blake2bHash, bytesrepr::Error> {
         let mut hash = {
             let leaf_bytes = Trie::leaf(self.key, self.value).to_bytes()?;
             Blake2bHash::new(&leaf_bytes)
@@ -157,13 +157,7 @@ where
                     indexed_pointers_with_hole,
                 } => {
                     let hole_index = *hole_index;
-                    if hole_index as usize > RADIX {
-                        let proof_step_index = proof_step_index.try_into().expect(USIZE_EXCEEDS_U8);
-                        return Err(Error::HoleIndexOutOfRange {
-                            hole_index,
-                            proof_step_index,
-                        });
-                    }
+                    assert!(hole_index as usize <= RADIX, "hole_index exceeded RADIX");
                     let mut indexed_pointers = indexed_pointers_with_hole.to_owned();
                     indexed_pointers.push((hole_index, pointer));
                     Trie::<K, V>::node(&indexed_pointers).to_bytes()?
@@ -216,36 +210,6 @@ where
             },
             rem,
         ))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum Error {
-    BytesRepr(bytesrepr::Error),
-    HoleIndexOutOfRange {
-        hole_index: u8,
-        proof_step_index: u8,
-    },
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::BytesRepr(cause) => write!(f, "Byte representation error: {}", cause),
-            Error::HoleIndexOutOfRange{ proof_step_index: proof_step, hole_index} => write!(
-                f,
-                "`hole_index` with value {hole_index} must be less than {RADIX} (proof step {proof_step})",
-                hole_index = hole_index,
-                RADIX = RADIX,
-                proof_step = proof_step
-            ),
-        }
-    }
-}
-
-impl From<bytesrepr::Error> for Error {
-    fn from(cause: bytesrepr::Error) -> Self {
-        Error::BytesRepr(cause)
     }
 }
 

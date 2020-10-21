@@ -4,8 +4,6 @@ use thiserror::Error;
 
 use casper_types::bytesrepr;
 
-use crate::storage::trie::merkle_proof;
-
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
     #[error("{0}")]
@@ -32,20 +30,5 @@ impl From<bytesrepr::Error> for Error {
 impl<T> From<sync::PoisonError<T>> for Error {
     fn from(_error: sync::PoisonError<T>) -> Self {
         Error::Poison
-    }
-}
-
-impl From<merkle_proof::Error> for Error {
-    fn from(error: merkle_proof::Error) -> Self {
-        match error {
-            merkle_proof::Error::HoleIndexOutOfRange {
-                hole_index,
-                proof_step_index,
-            } => Error::HoleIndexOutOfRange {
-                hole_index,
-                proof_step_index,
-            },
-            merkle_proof::Error::BytesRepr(error) => Error::BytesRepr(error),
-        }
     }
 }
