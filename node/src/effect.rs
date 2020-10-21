@@ -88,9 +88,9 @@ use casper_execution_engine::{
         BalanceRequest, BalanceResult, QueryRequest, QueryResult,
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
-    storage::global_state::CommitResult,
+    storage::{global_state::CommitResult, protocol_data::ProtocolData},
 };
-use casper_types::{auction::ValidatorWeights, Key};
+use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion};
 
 use crate::{
     components::{
@@ -1019,6 +1019,26 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::GetBalance {
                 balance_request,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Returns `ProtocolData` by `ProtocolVersion`.
+    ///
+    /// This operation is read only.
+    pub(crate) async fn get_protocol_data(
+        self,
+        protocol_version: ProtocolVersion,
+    ) -> Result<Option<Box<ProtocolData>>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetProtocolData {
+                protocol_version,
                 responder,
             },
             QueueKind::Regular,

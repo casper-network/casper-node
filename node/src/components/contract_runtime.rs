@@ -153,6 +153,17 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::Request(ContractRuntimeRequest::GetProtocolData {
+                protocol_version,
+                responder,
+            }) => {
+                let result = self
+                    .engine_state
+                    .get_protocol_data(protocol_version)
+                    .map(|inner| inner.map(Box::new));
+
+                responder.respond(result).ignore()
+            }
             Event::Request(ContractRuntimeRequest::CommitGenesis {
                 chainspec,
                 responder,
