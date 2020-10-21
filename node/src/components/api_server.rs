@@ -110,12 +110,12 @@ impl ApiServer {
     fn handle_query<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        global_state_hash: Digest,
+        state_root_hash: Digest,
         base_key: Key,
         path: Vec<String>,
         responder: Responder<Result<QueryResult, engine_state::Error>>,
     ) -> Effects<Event> {
-        let query = QueryRequest::new(global_state_hash.into(), base_key, path);
+        let query = QueryRequest::new(state_root_hash.into(), base_key, path);
         effect_builder
             .query_global_state(query)
             .event(move |result| Event::QueryGlobalStateResult {
@@ -127,11 +127,11 @@ impl ApiServer {
     fn handle_get_balance<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        global_state_hash: Digest,
+        state_root_hash: Digest,
         purse_uref: URef,
         responder: Responder<Result<BalanceResult, engine_state::Error>>,
     ) -> Effects<Event> {
-        let query = BalanceRequest::new(global_state_hash.into(), purse_uref);
+        let query = BalanceRequest::new(state_root_hash.into(), purse_uref);
         effect_builder
             .get_balance(query)
             .event(move |result| Event::GetBalanceResult {
@@ -196,16 +196,16 @@ where
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::QueryGlobalState {
-                global_state_hash,
+                state_root_hash,
                 base_key,
                 path,
                 responder,
-            }) => self.handle_query(effect_builder, global_state_hash, base_key, path, responder),
+            }) => self.handle_query(effect_builder, state_root_hash, base_key, path, responder),
             Event::ApiRequest(ApiRequest::GetBalance {
-                global_state_hash,
+                state_root_hash,
                 purse_uref,
                 responder,
-            }) => self.handle_get_balance(effect_builder, global_state_hash, purse_uref, responder),
+            }) => self.handle_get_balance(effect_builder, state_root_hash, purse_uref, responder),
             Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
                 .get_deploy_and_metadata_from_storage(hash)
                 .event(move |result| Event::GetDeployResult {

@@ -23,19 +23,24 @@ use datasize::DataSize;
 use futures::TryFutureExt;
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use smallvec::smallvec;
+use smallvec::{smallvec, SmallVec};
 use tokio::task;
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::{chainspec_loader::Chainspec, small_network::NodeId, Component},
+    components::{
+        chainspec_loader::Chainspec, deploy_buffer::ProtoBlockCollection, small_network::NodeId,
+        Component,
+    },
     crypto::asymmetric_key::Signature,
     effect::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, Item},
+    types::{
+        json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, Item, ProtoBlockHash,
+    },
     utils::WithDir,
 };
 use block_height_store::BlockHeightStore;
@@ -134,6 +139,36 @@ impl<B: Value> Default for DeployMetadata<B> {
         DeployMetadata {
             execution_results: HashMap::new(),
         }
+    }
+}
+
+impl LmdbStorage<Block, Deploy> {
+    /// This method is intended to only be used by the joiner when transitioning to the validator
+    /// state.
+    pub(crate) async fn get_finalized_deploys(
+        &self,
+        linear_chain: &[Block],
+    ) -> ProtoBlockCollection {
+        let mut finalized = HashMap::new();
+        let deploy_store = self.deploy_store();
+        for block in linear_chain.iter() {
+            let deploy_store = deploy_store.clone();
+            let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
+            let block_hash =
+                ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
+            let deploys = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+                .await
+                .expect("should run")
+                .into_iter()
+                .map(|result| {
+                    result.unwrap_or_else(|error| panic!("failed to get deploy: {}", error))
+                })
+                .flatten()
+                .map(|deploy| (*deploy.id(), deploy.header().clone()))
+                .collect::<HashMap<_, _>>();
+            finalized.insert(block_hash, deploys);
+        }
+        finalized
     }
 }
 

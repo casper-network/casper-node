@@ -15,6 +15,8 @@ use derive_more::From;
 use prometheus::Registry;
 use tracing::{debug, error, warn};
 
+use deploy_buffer::ProtoBlockCollection;
+
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -260,6 +262,7 @@ pub struct ValidatorInitConfig {
     pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) linear_chain: Vec<Block>,
+    pub(super) finalized_deploys: ProtoBlockCollection,
 }
 
 /// Validator node reactor.
@@ -322,6 +325,7 @@ impl reactor::Reactor for Reactor {
             consensus,
             init_consensus_effects,
             linear_chain,
+            finalized_deploys,
         } = config;
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
@@ -345,13 +349,14 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
-        let (deploy_buffer, deploy_buffer_effects) = DeployBuffer::new(registry, effect_builder)?;
+        let (deploy_buffer, deploy_buffer_effects) =
+            DeployBuffer::new(registry.clone(), effect_builder, finalized_deploys)?;
         let mut effects = reactor::wrap_effects(Event::DeployBuffer, deploy_buffer_effects);
         // Post state hash is expected to be present.
-        let genesis_post_state_hash = chainspec_loader
-            .genesis_post_state_hash()
-            .expect("should have post state hash");
-        let block_executor = BlockExecutor::new(genesis_post_state_hash)
+        let genesis_state_root_hash = chainspec_loader
+            .genesis_state_root_hash()
+            .expect("should have state root hash");
+        let block_executor = BlockExecutor::new(genesis_state_root_hash)
             .with_parent_map(linear_chain.last().cloned());
         let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();

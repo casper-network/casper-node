@@ -185,11 +185,11 @@ where
                 .ignore()
             }
             Event::Request(ContractRuntimeRequest::Commit {
-                pre_state_hash,
+                state_root_hash,
                 effects,
                 responder,
             }) => {
-                trace!(?pre_state_hash, ?effects, "commit");
+                trace!(?state_root_hash, ?effects, "commit");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
@@ -198,7 +198,7 @@ where
                         let start = Instant::now();
                         let apply_result = engine_state.apply_effect(
                             correlation_id,
-                            pre_state_hash.into(),
+                            state_root_hash.into(),
                             effects,
                         );
                         metrics.apply_effect.observe(start.elapsed().as_secs_f64());

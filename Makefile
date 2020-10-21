@@ -195,6 +195,7 @@ build-for-packaging: build-system-contracts build-client-contracts
 deb: build-for-packaging
 	cd grpc/server && $(CARGO) deb -p casper-engine-grpc-server --no-build
 	cd node && $(CARGO) deb -p casper-node --no-build
+	cd client && $(CARGO) deb -p casper-client --no-build
 
 grpc/server/.rpm:
 	cd grpc/server && $(CARGO) rpm init

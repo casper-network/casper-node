@@ -3,14 +3,14 @@
 use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
+use derive_more::From;
+use prometheus::Registry;
+use tracing::{error, info, warn};
 
 use block_executor::BlockExecutor;
 use consensus::EraSupervisor;
 use deploy_acceptor::DeployAcceptor;
-use derive_more::From;
-use prometheus::Registry;
 use small_network::GossipedAddress;
-use tracing::{error, info, warn};
 
 use crate::{
     components::{
@@ -335,11 +335,11 @@ impl reactor::Reactor for Reactor {
 
         let deploy_acceptor = DeployAcceptor::new();
 
-        let genesis_post_state_hash = chainspec_loader
-            .genesis_post_state_hash()
-            .expect("Should have Genesis post state hash");
+        let genesis_state_root_hash = chainspec_loader
+            .genesis_state_root_hash()
+            .expect("Should have Genesis state root hash");
 
-        let block_executor = BlockExecutor::new(genesis_post_state_hash);
+        let block_executor = BlockExecutor::new(genesis_state_root_hash);
 
         let linear_chain = linear_chain::LinearChain::new();
 
@@ -358,7 +358,7 @@ impl reactor::Reactor for Reactor {
             validator_stakes,
             chainspec_loader.chainspec(),
             chainspec_loader
-                .genesis_post_state_hash()
+                .genesis_state_root_hash()
                 .expect("should have genesis post state hash"),
             registry,
             rng,
@@ -651,6 +651,8 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
+        let linear_chain = self.linear_chain.linear_chain();
+        let finalized_deploys = self.storage.get_finalized_deploys(linear_chain).await;
         let (net, config) = (
             self.net,
             ValidatorInitConfig {
@@ -660,7 +662,8 @@ impl Reactor {
                 storage: self.storage,
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
-                linear_chain: self.linear_chain.linear_chain().clone(),
+                linear_chain: linear_chain.clone(),
+                finalized_deploys,
             },
         );
         net.finalize().await;
