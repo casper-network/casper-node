@@ -341,16 +341,10 @@ impl RpcWithParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let validator_weights = {
-                if let Ok(validator_weights) = era_validators_result {
-                    validator_weights
-                } else {
-                    None
-                }
-            };
+            let validator_weights = era_validators_result.ok().flatten();
 
             let auction_state = AuctionState::new(state_root_hash, era_id, bids, validator_weights);
-            debug!("AuctionState --auction_state: {:?}", auction_state);
+            debug!("responding to client with: {:?}", auction_state);
             Ok(response_builder.success(auction_state)?)
         }
         .boxed()

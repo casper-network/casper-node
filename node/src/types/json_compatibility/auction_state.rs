@@ -22,7 +22,7 @@ pub struct Bid {
     pub bonding_purse: String,
     /// The total amount of staked tokens.
     pub staked_amount: U512,
-    /// Delegation rate
+    /// Delegation rate.
     pub delegation_rate: u64,
     /// A flag that represents a winning entry.
     ///
@@ -63,35 +63,19 @@ impl AuctionState {
         bids: Option<AuctionBids>,
         validator_weights: Option<AuctionValidatorWeights>,
     ) -> Self {
-        let bids: Option<Bids> = {
-            match bids {
-                None => None,
-                Some(items) => {
-                    let mut ret: BTreeMap<json_compatibility::PublicKey, Bid> = BTreeMap::new();
-                    for item in items {
-                        let key = json_compatibility::PublicKey::from(item.0);
-                        let value = item.1.into();
-                        ret.insert(key, value);
-                    }
-                    Some(ret)
-                }
-            }
-        };
+        let bids = bids.map(|items| {
+            items
+                .into_iter()
+                .map(|(public_key, bid)| (public_key.into(), bid.into()))
+                .collect()
+        });
 
-        let validator_weights: Option<ValidatorWeights> = {
-            match validator_weights {
-                None => None,
-                Some(items) => {
-                    let mut ret: BTreeMap<json_compatibility::PublicKey, U512> = BTreeMap::new();
-                    for item in items {
-                        let key = json_compatibility::PublicKey::from(item.0);
-                        let value = item.1;
-                        ret.insert(key, value);
-                    }
-                    Some(ret)
-                }
-            }
-        };
+        let validator_weights = validator_weights.map(|items| {
+            items
+                .into_iter()
+                .map(|(public_key, weight)| (public_key.into(), weight))
+                .collect()
+        });
 
         AuctionState {
             global_state_hash,
