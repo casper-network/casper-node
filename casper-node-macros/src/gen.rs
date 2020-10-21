@@ -105,7 +105,30 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
         ));
     }
 
-    // TODO: Announcements.
+    for announcement in def.announcements() {
+        for target in announcement.targets() {
+
+        }
+        let variant_ident = announcement.variant_ident();
+        let full_announcement_type = request.full_announcement_type();
+
+        let event_variant_doc = format!("Incoming `{}`", variant_ident);
+        event_variants.push(quote!(
+             #[doc = #event_variant_doc]
+             #variant_ident(#full_announcement_type)));
+
+        display_variants.push(quote!(
+           #event_ident::#variant_ident(inner) => ::std::fmt::Display::fmt(inner, f)
+        ));
+
+        from_impls.push(quote!(
+            impl From<#full_announcement_type> for #event_ident {
+                fn from(announcement: #full_announcement_type) -> Self {
+                    #event_ident::#variant_ident(announcement)
+                }
+            }
+        ));
+    }
 
     let event_docs = format!("Events of `{}` reactor.", reactor_ident);
     let error_docs = format!("Construction errors of `{}` reactor.", reactor_ident);

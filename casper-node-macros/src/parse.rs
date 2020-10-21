@@ -73,6 +73,11 @@ impl ReactorDefinition {
         to_ident(&event_str)
     }
 
+    /// Returns an iterator over all announcement mappings.
+    pub fn announcements(&self) -> impl Iterator<Item = &AnnouncementDefinition> {
+        &self.announcements
+    }
+
     /// Returns an iterator over all component definitions.
     pub fn components(&self) -> impl Iterator<Item = &ComponentDefinition> {
         self.components.values()
@@ -325,8 +330,7 @@ impl RequestDefinition {
         &self.target
     }
 
-    /// Returns the full path for a component by prefixing it with `crate::components::`, e.g.
-    /// `crate::components::small_net::SmallNet<NodeId>`
+    /// Returns the full path for a request.
     pub fn full_request_type(&self) -> TokenStream {
         let request_type = self.request_type();
         let ty = request_type.ty();
@@ -353,6 +357,26 @@ impl Parse for RequestDefinition {
 pub(crate) struct AnnouncementDefinition {
     pub announcement_type: RustType,
     pub targets: Vec<Target>,
+}
+
+impl AnnouncementDefinition {
+    /// Returns the type of the announcement.
+    pub(crate) fn announcement_type(&self) -> &RustType {
+        &self.announcement_type
+    }
+
+    /// Returns the full path for an announcement.
+    pub(crate) fn full_announcement_type(&self) -> TokenStream {
+        let announcement_type = self.announcement_type();
+        let ty = announcement_type.ty();
+        quote!(crate::effect::announcements::#ty)
+    }
+
+    /// Returns an ident identifying the announcement that is suitable for a variant, e.g.
+    /// `NetworkAnnouncement`.
+    pub fn variant_ident(&self) -> Ident {
+        self.announcement_type.ident()
+    }
 }
 
 impl Parse for AnnouncementDefinition {
