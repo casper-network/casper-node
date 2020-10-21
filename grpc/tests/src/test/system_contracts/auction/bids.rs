@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_AUCTION_DELAY, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
@@ -16,10 +16,9 @@ use casper_types::{
     auction::{
         Bids, DelegationRate, Delegators, EraId, EraValidators, SeigniorageRecipients,
         UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_PUBLIC_KEY, ARG_UNBOND_PURSE, ARG_VALIDATOR, AUCTION_DELAY, BIDS_KEY,
-        DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_UNBONDING_DELAY, DELEGATORS_KEY, ERA_ID_KEY,
-        ERA_VALIDATORS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, SNAPSHOT_SIZE,
-        UNBONDING_PURSES_KEY,
+        ARG_PUBLIC_KEY, ARG_UNBOND_PURSE, ARG_VALIDATOR, BIDS_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
+        DEFAULT_UNBONDING_DELAY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID,
+        METHOD_RUN_AUCTION, SNAPSHOT_SIZE, UNBONDING_PURSES_KEY,
     },
     runtime_args, PublicKey, RuntimeArgs, URef, U512,
 };
@@ -502,14 +501,14 @@ fn should_calculate_era_validators() {
     // elements are
     let eras = Vec::from_iter(era_validators.keys().copied());
     assert!(!era_validators.is_empty());
-    assert!(era_validators.len() >= AUCTION_DELAY as usize); // definetely more than 1 element
+    assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definetely more than 1 element
     let (first_era, _) = era_validators.iter().min().unwrap();
     let (last_era, _) = era_validators.iter().max().unwrap();
     let expected_eras: Vec<EraId> = (*first_era..=*last_era).collect();
     assert_eq!(eras, expected_eras, "Eras {:?}", eras);
 
     assert!(post_era_id > 0);
-    let consensus_next_era_id: EraId = AUCTION_DELAY + 1 + post_era_id;
+    let consensus_next_era_id: EraId = DEFAULT_AUCTION_DELAY + 1 + post_era_id;
 
     assert_eq!(
         era_validators.len(),
@@ -651,9 +650,9 @@ fn should_get_first_seigniorage_recipients() {
     let mut era_validators: EraValidators = builder.get_value(auction_hash, "era_validators");
     assert_eq!(era_validators.len(), SNAPSHOT_SIZE, "{:?}", era_validators); // eraindex==1 - ran once
 
-    assert!(era_validators.contains_key(&(AUCTION_DELAY as u64 + 1)));
+    assert!(era_validators.contains_key(&(DEFAULT_AUCTION_DELAY as u64 + 1)));
 
-    let era_id = AUCTION_DELAY - 1;
+    let era_id = DEFAULT_AUCTION_DELAY - 1;
 
     let validator_weights = era_validators.remove(&era_id).unwrap_or_else(|| {
         panic!(
@@ -1049,7 +1048,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
         .expect("should have genesis validators for initial era");
 
     // new_era is the first era in the future where new era validator weights will be calculated
-    let new_era = INITIAL_ERA_ID + AUCTION_DELAY + 1;
+    let new_era = INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
     assert!(builder.get_era_validators(new_era).is_none());
     assert_eq!(
         builder.get_era_validators(new_era - 1).unwrap(),

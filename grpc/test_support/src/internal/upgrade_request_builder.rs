@@ -1,7 +1,7 @@
 use casper_engine_grpc_server::engine_server::{
     ipc::{
-        ChainSpec_ActivationPoint, ChainSpec_NewValidatorSlots, ChainSpec_UpgradePoint,
-        ChainSpec_WasmConfig, DeployCode, UpgradeRequest,
+        ChainSpec_ActivationPoint, ChainSpec_NewAuctionDelay, ChainSpec_NewValidatorSlots,
+        ChainSpec_UpgradePoint, ChainSpec_WasmConfig, DeployCode, UpgradeRequest,
     },
     state,
 };
@@ -16,6 +16,7 @@ pub struct UpgradeRequestBuilder {
     new_wasm_config: Option<ChainSpec_WasmConfig>,
     activation_point: ChainSpec_ActivationPoint,
     new_validator_slots: Option<u32>,
+    new_auction_delay: Option<u64>,
 }
 
 impl UpgradeRequestBuilder {
@@ -53,6 +54,11 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    pub fn with_new_auction_delay(mut self, new_auction_delay: u64) -> Self {
+        self.new_auction_delay = Some(new_auction_delay);
+        self
+    }
+
     pub fn with_activation_point(mut self, rank: u64) -> Self {
         self.activation_point = {
             let mut ret = ChainSpec_ActivationPoint::new();
@@ -76,6 +82,16 @@ impl UpgradeRequestBuilder {
                 upgrade_point.set_new_validator_slots(chainspec_new_validator_slots);
             }
         }
+
+        match self.new_auction_delay {
+            None => {}
+            Some(new_auction_delay) => {
+                let mut chainspec_new_auction_delay = ChainSpec_NewAuctionDelay::new();
+                chainspec_new_auction_delay.set_new_auction_delay(new_auction_delay);
+                upgrade_point.set_new_auction_delay(chainspec_new_auction_delay);
+            }
+        }
+
         upgrade_point.set_protocol_version(self.new_protocol_version);
         upgrade_point.set_upgrade_installer(self.upgrade_installer);
 
@@ -96,6 +112,7 @@ impl Default for UpgradeRequestBuilder {
             new_wasm_config: None,
             activation_point: Default::default(),
             new_validator_slots: Default::default(),
+            new_auction_delay: Default::default(),
         }
     }
 }

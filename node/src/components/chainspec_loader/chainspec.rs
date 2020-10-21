@@ -180,6 +180,7 @@ pub struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: Timestamp,
     pub(crate) validator_slots: u32,
+    pub(crate) auction_delay: u64,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -260,6 +261,7 @@ impl GenesisConfig {
         let name = rng.gen::<char>().to_string();
         let timestamp = Timestamp::random(rng);
         let validator_slots = rng.gen::<u32>();
+        let auction_delay = rng.gen::<u64>();
         let protocol_version = Version::new(
             rng.gen_range(0, 10),
             rng.gen::<u8>() as u64,
@@ -278,6 +280,7 @@ impl GenesisConfig {
             name,
             timestamp,
             validator_slots,
+            auction_delay,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
@@ -393,6 +396,7 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.accounts,
             self.genesis.wasm_config,
             self.genesis.validator_slots,
+            self.genesis.auction_delay,
         )
     }
 }

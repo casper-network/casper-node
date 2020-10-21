@@ -224,9 +224,11 @@ pub struct ExecConfig {
     accounts: Vec<GenesisAccount>,
     wasm_config: WasmConfig,
     validator_slots: u32,
+    auction_delay: u64,
 }
 
 impl ExecConfig {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         mint_installer_bytes: Vec<u8>,
         proof_of_stake_installer_bytes: Vec<u8>,
@@ -235,6 +237,7 @@ impl ExecConfig {
         accounts: Vec<GenesisAccount>,
         wasm_config: WasmConfig,
         validator_slots: u32,
+        auction_delay: u64,
     ) -> ExecConfig {
         ExecConfig {
             mint_installer_bytes,
@@ -244,6 +247,7 @@ impl ExecConfig {
             accounts,
             wasm_config,
             validator_slots,
+            auction_delay,
         }
     }
 
@@ -284,6 +288,10 @@ impl ExecConfig {
     pub fn validator_slots(&self) -> u32 {
         self.validator_slots
     }
+
+    pub fn auction_delay(&self) -> u64 {
+        self.auction_delay
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -308,6 +316,8 @@ impl Distribution<ExecConfig> for Standard {
 
         let validator_slots = rng.gen();
 
+        let auction_delay = rng.gen();
+
         ExecConfig {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
@@ -316,6 +326,7 @@ impl Distribution<ExecConfig> for Standard {
             accounts,
             wasm_config,
             validator_slots,
+            auction_delay,
         }
     }
 }

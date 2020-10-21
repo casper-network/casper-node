@@ -64,6 +64,7 @@ pub struct UpgradeConfig {
     wasm_config: Option<WasmConfig>,
     activation_point: Option<ActivationPoint>,
     new_validator_slots: Option<u32>,
+    new_auction_delay: Option<u64>,
 }
 
 impl UpgradeConfig {
@@ -77,6 +78,7 @@ impl UpgradeConfig {
         wasm_config: Option<WasmConfig>,
         activation_point: Option<ActivationPoint>,
         new_validator_slots: Option<u32>,
+        new_auction_delay: Option<u64>,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -87,6 +89,7 @@ impl UpgradeConfig {
             wasm_config,
             activation_point,
             new_validator_slots,
+            new_auction_delay,
         }
     }
 
@@ -122,5 +125,9 @@ impl UpgradeConfig {
 
     pub fn new_validator_slots(&self) -> Option<u32> {
         self.new_validator_slots
+    }
+
+    pub fn new_auction_delay(&self) -> Option<u64> {
+        self.new_auction_delay
     }
 }

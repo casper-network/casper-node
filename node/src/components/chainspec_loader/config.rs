@@ -23,12 +23,14 @@ const DEFAULT_AUCTION_INSTALLER_PATH: &str = "auction_install.wasm";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
 const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
+const DEFAULT_AUCTION_DELAY: u64 = 3;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 struct Genesis {
     name: String,
     timestamp: Timestamp,
     validator_slots: u32,
+    auction_delay: u64,
     protocol_version: Version,
     mint_installer_path: External<Vec<u8>>,
     pos_installer_path: External<Vec<u8>>,
@@ -43,6 +45,7 @@ impl Default for Genesis {
             name: String::from(DEFAULT_CHAIN_NAME),
             timestamp: Timestamp::zero(),
             validator_slots: DEFAULT_VALIDATOR_SLOTS,
+            auction_delay: DEFAULT_AUCTION_DELAY,
             protocol_version: Version::from((1, 0, 0)),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -121,6 +124,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             name: chainspec.genesis.name.clone(),
             timestamp: chainspec.genesis.timestamp,
             validator_slots: chainspec.genesis.validator_slots,
+            auction_delay: chainspec.genesis.auction_delay,
             protocol_version: chainspec.genesis.protocol_version.clone(),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -199,6 +203,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         name: chainspec.genesis.name,
         timestamp: chainspec.genesis.timestamp,
         validator_slots: chainspec.genesis.validator_slots,
+        auction_delay: chainspec.genesis.auction_delay,
         protocol_version: chainspec.genesis.protocol_version,
         mint_installer_bytes,
         pos_installer_bytes,

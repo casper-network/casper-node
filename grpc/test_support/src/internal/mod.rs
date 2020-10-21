@@ -34,6 +34,7 @@ pub const POS_INSTALL_CONTRACT: &str = "pos_install.wasm";
 pub const STANDARD_PAYMENT_INSTALL_CONTRACT: &str = "standard_payment_install.wasm";
 pub const AUCTION_INSTALL_CONTRACT: &str = "auction_install.wasm";
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
+pub const DEFAULT_AUCTION_DELAY: u64 = 3;
 
 pub const DEFAULT_CHAIN_NAME: &str = "gerald";
 pub const DEFAULT_GENESIS_TIMESTAMP: u64 = 0;
@@ -81,6 +82,7 @@ lazy_static! {
             DEFAULT_ACCOUNTS.clone(),
             *DEFAULT_WASM_CONFIG,
             DEFAULT_VALIDATOR_SLOTS,
+            DEFAULT_AUCTION_DELAY,
         )
     };
     pub static ref DEFAULT_GENESIS_CONFIG: GenesisConfig = {

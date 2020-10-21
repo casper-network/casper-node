@@ -12,10 +12,10 @@ use casper_types::{
     auction::{
         Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraValidators, SeigniorageRecipient,
         SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorRewardMap,
-        ValidatorWeights, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_VALIDATOR_SLOTS, AUCTION_DELAY, BIDS_KEY, BID_PURSES_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
-        DELEGATORS_KEY, DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE, ERA_ID_KEY,
-        ERA_VALIDATORS_KEY, INITIAL_ERA_ID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        ValidatorWeights, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS,
+        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_VALIDATOR_SLOTS, BIDS_KEY, BID_PURSES_KEY,
+        DEFAULT_LOCKED_FUNDS_PERIOD, DELEGATORS_KEY, DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE,
+        ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
@@ -64,7 +64,8 @@ pub extern "C" fn install() {
             bid_purses.insert(validator_public_key, bonding_purse);
         }
 
-        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + AUCTION_DELAY;
+        let auction_delay: u64 = runtime::get_named_arg(ARG_AUCTION_DELAY);
+        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + auction_delay;
 
         // Starting era validators
         named_keys.insert(ERA_ID_KEY.into(), storage::new_uref(INITIAL_ERA_ID).into());
@@ -117,6 +118,10 @@ pub extern "C" fn install() {
         named_keys.insert(
             VALIDATOR_SLOTS_KEY.into(),
             storage::new_uref(validator_slots).into(),
+        );
+        named_keys.insert(
+            ARG_AUCTION_DELAY.into(),
+            storage::new_uref(auction_delay).into(),
         );
 
         named_keys

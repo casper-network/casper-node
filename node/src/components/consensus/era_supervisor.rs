@@ -30,7 +30,7 @@ use casper_execution_engine::{
     core::engine_state::era_validators::GetEraValidatorsRequest, shared::motes::Motes,
 };
 use casper_types::{
-    auction::{ValidatorWeights, AUCTION_DELAY, BLOCK_REWARD, DEFAULT_UNBONDING_DELAY},
+    auction::{ValidatorWeights, BLOCK_REWARD, DEFAULT_UNBONDING_DELAY},
     ProtocolVersion, U512,
 };
 
@@ -64,7 +64,7 @@ use crate::{
 ///
 /// A node keeps `2 * BONDED_ERAS` past eras around, because the oldest bonded era could still
 /// receive blocks that refer to `BONDED_ERAS` before that.
-const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - AUCTION_DELAY;
+const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - 3;
 
 #[derive(
     DataSize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
@@ -376,7 +376,11 @@ where
     fn booking_block_height(&self, era_id: EraId) -> u64 {
         // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
         // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1
-        let after_booking_era_id = EraId(era_id.0.saturating_sub(AUCTION_DELAY));
+        let after_booking_era_id = EraId(
+            era_id
+                .0
+                .saturating_sub(self.chainspec.genesis.auction_delay),
+        );
         self.active_eras
             .get(&after_booking_era_id)
             .expect("should have era after booking block")

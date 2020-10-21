@@ -51,6 +51,16 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             )
         };
 
+        let new_auction_delay: Option<u64> = if !upgrade_point.has_new_auction_delay() {
+            None
+        } else {
+            Some(
+                upgrade_point
+                    .take_new_auction_delay()
+                    .get_new_auction_delay(),
+            )
+        };
+
         Ok(UpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
@@ -60,6 +70,7 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             wasm_config,
             activation_point,
             new_validator_slots,
+            new_auction_delay,
         ))
     }
 }

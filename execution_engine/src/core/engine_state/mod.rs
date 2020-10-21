@@ -30,8 +30,9 @@ use tracing::{debug, error, warn};
 use casper_types::{
     account::AccountHash,
     auction::{
-        ValidatorWeights, ARG_ERA_ID, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, VALIDATOR_SLOTS_KEY,
+        ValidatorWeights, ARG_AUCTION_DELAY, ARG_ERA_ID, ARG_GENESIS_VALIDATORS,
+        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
+        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
@@ -390,11 +391,13 @@ where
             };
 
             let validator_slots = ee_config.validator_slots();
+            let auction_delay = ee_config.auction_delay();
             let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
             let args = runtime_args! {
                 ARG_MINT_CONTRACT_PACKAGE_HASH => mint_package_hash,
                 ARG_GENESIS_VALIDATORS => bonded_validators,
                 ARG_VALIDATOR_SLOTS => validator_slots,
+                ARG_AUCTION_DELAY => auction_delay,
             };
             let authorization_keys = BTreeSet::new();
             let install_deploy_hash = genesis_config_hash.value();
@@ -735,6 +738,19 @@ where
                     .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
             );
             tracking_copy.borrow_mut().write(validator_slots_key, value);
+        }
+
+        if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.auction())?;
+
+            let auction_delay_key = auction_contract.named_keys()[AUCTION_DELAY_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_auction_delay)
+                    .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
+            );
+            tracking_copy.borrow_mut().write(auction_delay_key, value);
         }
 
         let effects = tracking_copy.borrow().effect();

@@ -286,6 +286,8 @@ message ChainSpec {
             WasmConfig wasm_config = 5;
             // The total number of validator slots available to auction.
             uint32 validator_slots = 7;
+            // The amount of auction delay. 
+            uint64 auction_delay = 8;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;
@@ -446,10 +448,16 @@ message ChainSpec {
         DeployConfig new_deploy_config = 5;
         // Change the total number of validator slots to this number (optional)
         NewValidatorSlots new_validator_slots = 6;
+        // Change the amount of auction delay (optional)
+        NewAuctionDelay new_auction_delay = 7;
     }
 
     message NewValidatorSlots {
         uint32 new_validator_slots = 1;
+    }
+
+    message NewAuctionDelay {
+        uint64 new_auction_delay = 1;
     }
 
     message ActivationPoint {
