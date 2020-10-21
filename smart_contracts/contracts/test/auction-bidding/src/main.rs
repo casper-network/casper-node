@@ -60,7 +60,7 @@ fn call_bond(auction: ContractHash, public_key: PublicKey, bond_amount: U512, bo
         auction::ARG_AMOUNT => bond_amount,
     };
 
-    let (_purse, _amount): (URef, U512) = runtime::call_contract(auction, METHOD_ADD_BID, args);
+    let _amount: U512 = runtime::call_contract(auction, METHOD_ADD_BID, args);
 }
 
 fn seed_new_account() {
