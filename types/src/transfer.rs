@@ -87,3 +87,51 @@ impl ToBytes for Transfer {
             + self.gas.serialized_length()
     }
 }
+
+#[cfg(test)]
+mod gens {
+    use proptest::prelude::Strategy;
+
+    use crate::{
+        deploy_info::gens::{account_hash_arb, deploy_hash_arb},
+        gens::{u512_arb, uref_arb},
+        Transfer,
+    };
+
+    pub fn transfer_arb() -> impl Strategy<Value = Transfer> {
+        (
+            deploy_hash_arb(),
+            account_hash_arb(),
+            uref_arb(),
+            uref_arb(),
+            u512_arb(),
+            u512_arb(),
+        )
+            .prop_map(
+                |(deploy_hash, from, source, target, amount, gas)| Transfer {
+                    deploy_hash,
+                    from,
+                    source,
+                    target,
+                    amount,
+                    gas,
+                },
+            )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+
+    use crate::bytesrepr;
+
+    use super::gens;
+
+    proptest! {
+        #[test]
+        fn test_serialization_roundtrip(transfer in gens::transfer_arb()) {
+            bytesrepr::test_serialization_roundtrip(&transfer)
+        }
+    }
+}

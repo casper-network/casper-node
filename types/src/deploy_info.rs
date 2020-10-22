@@ -81,3 +81,68 @@ impl ToBytes for DeployInfo {
             + self.gas.serialized_length()
     }
 }
+
+#[cfg(test)]
+pub(crate) mod gens {
+    use proptest::{
+        array,
+        collection::{self, SizeRange},
+        prelude::{Arbitrary, Strategy},
+    };
+
+    use crate::{
+        account::AccountHash,
+        gens::{u512_arb, uref_arb},
+        DeployHash, DeployInfo, TransferAddr,
+    };
+
+    pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
+        array::uniform32(<u8>::arbitrary())
+    }
+
+    pub fn transfer_addr_arb() -> impl Strategy<Value = TransferAddr> {
+        array::uniform32(<u8>::arbitrary())
+    }
+
+    pub fn transfers_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<TransferAddr>> {
+        collection::vec(transfer_addr_arb(), size)
+    }
+
+    pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
+        array::uniform32(<u8>::arbitrary()).prop_map(AccountHash::new)
+    }
+
+    pub fn deploy_info_arb() -> impl Strategy<Value = DeployInfo> {
+        let transfers_length_range = 0..5;
+        (
+            deploy_hash_arb(),
+            transfers_arb(transfers_length_range),
+            account_hash_arb(),
+            uref_arb(),
+            u512_arb(),
+        )
+            .prop_map(|(deploy_hash, transfers, from, source, gas)| DeployInfo {
+                deploy_hash,
+                transfers,
+                from,
+                source,
+                gas,
+            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+
+    use crate::bytesrepr;
+
+    use super::gens;
+
+    proptest! {
+        #[test]
+        fn test_serialization_roundtrip(deploy_info in gens::deploy_info_arb()) {
+            bytesrepr::test_serialization_roundtrip(&deploy_info)
+        }
+    }
+}
