@@ -473,11 +473,7 @@ where
                     // If we do, it's a bug.
                     assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
                     trace!(%block_hash, "Linear block found in the local storage.");
-                    // If we found block in our local storage when syncing trusted hash
-                    // it means we have all of its parents as well (if not then that's a bug that
-                    // will pop up elsewhere). We can start downloading deploys
-                    // starting from the child of _this_ block.
-                    self.fetch_next_block_deploys(effect_builder)
+                    self.block_downloaded(rng, effect_builder, block.header())
                 }
                 Some(FetchResult::FromPeer(block, peer)) => {
                     if *block.hash() != block_hash {
