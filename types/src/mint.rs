@@ -3,6 +3,7 @@ mod constants;
 mod round_reward;
 mod runtime_provider;
 mod storage_provider;
+mod system_provider;
 
 use core::convert::TryFrom;
 use num_rational::Ratio;
@@ -11,13 +12,13 @@ use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef
 
 pub use crate::mint::{
     constants::*, round_reward::*, runtime_provider::RuntimeProvider,
-    storage_provider::StorageProvider,
+    storage_provider::StorageProvider, system_provider::SystemProvider,
 };
 
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
 /// Mint trait.
-pub trait Mint: RuntimeProvider + StorageProvider {
+pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// Mint new token with given `initial_balance` balance. Returns new purse on success, otherwise
     /// an error.
     fn mint(&mut self, initial_balance: U512) -> Result<URef, Error> {
@@ -90,6 +91,7 @@ pub trait Mint: RuntimeProvider + StorageProvider {
         };
         self.write(source_balance, source_value - amount)?;
         self.add(target_balance, amount)?;
+        self.record_transfer(source, target, amount)?;
         Ok(())
     }
 

@@ -24,7 +24,7 @@ use prometheus::Registry;
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
-#[structopt(version = casper_node::VERSION_STRING.as_str())]
+#[structopt(version = casper_node::VERSION_STRING_COLOR.as_str())]
 /// Casper blockchain node.
 pub enum Cli {
     /// Run the validator node.

@@ -118,6 +118,7 @@ fn mock_runtime_context<'a>(
     access_rights: HashMap<Address, HashSet<AccessRights>>,
     hash_address_generator: AddressGenerator,
     uref_address_generator: AddressGenerator,
+    transfer_address_generator: AddressGenerator,
 ) -> RuntimeContext<'a, InMemoryGlobalStateView> {
     let tracking_copy = mock_tracking_copy(base_key, account.clone());
     RuntimeContext::new(
@@ -135,10 +136,12 @@ fn mock_runtime_context<'a>(
         Gas::default(),
         Rc::new(RefCell::new(hash_address_generator)),
         Rc::new(RefCell::new(uref_address_generator)),
+        Rc::new(RefCell::new(transfer_address_generator)),
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
         Phase::Session,
         Default::default(),
+        Vec::default(),
     )
 }
 
@@ -171,6 +174,7 @@ where
     let mut named_keys = NamedKeys::new();
     let uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let hash_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
+    let transfer_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let runtime_context = mock_runtime_context(
         &account,
         base_key,
@@ -178,6 +182,7 @@ where
         access_rights,
         hash_address_generator,
         uref_address_generator,
+        transfer_address_generator,
     );
     query(runtime_context)
 }
@@ -329,6 +334,7 @@ fn contract_key_addable_valid() {
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let hash_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let mut uref_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let transfer_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
 
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
@@ -363,10 +369,12 @@ fn contract_key_addable_valid() {
         Gas::default(),
         Rc::new(RefCell::new(hash_address_generator)),
         Rc::new(RefCell::new(uref_address_generator)),
+        Rc::new(RefCell::new(transfer_address_generator)),
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
         PHASE,
         Default::default(),
+        Vec::default(),
     );
 
     runtime_context
@@ -399,6 +407,7 @@ fn contract_key_addable_invalid() {
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let hash_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let mut uref_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let transfer_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
 
@@ -433,10 +442,12 @@ fn contract_key_addable_invalid() {
         Gas::default(),
         Rc::new(RefCell::new(hash_address_generator)),
         Rc::new(RefCell::new(uref_address_generator)),
+        Rc::new(RefCell::new(transfer_address_generator)),
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
         PHASE,
         Default::default(),
+        Vec::default(),
     );
 
     let result = runtime_context.add_gs(contract_key, named_uref_tuple);
@@ -770,6 +781,7 @@ fn remove_uref_works() {
     let (base_key, account) = mock_account(AccountHash::new([0u8; 32]));
     let hash_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let mut uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
+    let transfer_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let uref_name = "Foo".to_owned();
     let uref_key = create_uref(&mut uref_address_generator, AccessRights::READ);
     let mut named_keys = iter::once((uref_name.clone(), uref_key)).collect();
@@ -780,6 +792,7 @@ fn remove_uref_works() {
         access_rights,
         hash_address_generator,
         uref_address_generator,
+        transfer_address_generator,
     );
 
     assert!(runtime_context.named_keys_contains_key(&uref_name));
@@ -805,6 +818,7 @@ fn validate_valid_purse_of_an_account() {
     let mut named_keys = NamedKeys::new();
     let hash_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
+    let transfer_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let runtime_context = mock_runtime_context(
         &account,
         base_key,
@@ -812,6 +826,7 @@ fn validate_valid_purse_of_an_account() {
         access_rights,
         hash_address_generator,
         uref_address_generator,
+        transfer_address_generator,
     );
 
     // URef that has the same id as purse of an account gets validated

@@ -183,7 +183,7 @@ where
                     }
                 }
             }
-            Event::LinearChainBlock{ block, execution_results } => {
+            Event::LinearChainBlock { block, execution_results } => {
                 effect_builder
                 .put_block_to_storage(block.clone())
                 .event(move |_| Event::PutBlockResult{ block, execution_results })

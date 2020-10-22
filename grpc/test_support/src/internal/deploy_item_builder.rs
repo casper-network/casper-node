@@ -1,15 +1,12 @@
 use std::{collections::BTreeSet, path::Path};
 
 use casper_execution_engine::{
-    core::{
-        engine_state::{deploy_item::DeployItem, executable_deploy_item::ExecutableDeployItem},
-        DeployHash,
-    },
+    core::engine_state::{deploy_item::DeployItem, executable_deploy_item::ExecutableDeployItem},
     shared::newtypes::Blake2bHash,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, contracts::ContractVersion, ContractHash, HashAddr,
-    RuntimeArgs,
+    account::AccountHash, bytesrepr::ToBytes, contracts::ContractVersion, ContractHash, DeployHash,
+    HashAddr, RuntimeArgs,
 };
 
 use crate::internal::utils;

@@ -54,25 +54,36 @@ pub use utils::OS_PAGE_SIZE;
 /// The maximum thread count which should be spawned by the tokio runtime.
 pub const MAX_THREAD_COUNT: usize = 512;
 
-lazy_static! {
-    /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
-    pub static ref VERSION_STRING: String = {
-        let mut version = if env!("VERGEN_SEMVER_LIGHTWEIGHT") == "UNKNOWN" {
-            env!("CARGO_PKG_VERSION").to_string()
-        } else {
-            format!(
-                "{}-{}",
-                env!("VERGEN_SEMVER_LIGHTWEIGHT"),
-                env!("VERGEN_SHA_SHORT"),
-            )
-        };
-
-        // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
-        if env!("NODE_BUILD_PROFILE") != "release" {
-            version += "@";
-            version.push_str(&Red.paint(&env!("NODE_BUILD_PROFILE").to_uppercase()).to_string());
-        }
-
-        version
+fn version_string(color: bool) -> String {
+    let mut version = if env!("VERGEN_SEMVER_LIGHTWEIGHT") == "UNKNOWN" {
+        env!("CARGO_PKG_VERSION").to_string()
+    } else {
+        format!(
+            "{}-{}",
+            env!("VERGEN_SEMVER_LIGHTWEIGHT"),
+            env!("VERGEN_SHA_SHORT"),
+        )
     };
+
+    // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
+    if env!("NODE_BUILD_PROFILE") != "release" {
+        version += "@";
+        let profile = env!("NODE_BUILD_PROFILE").to_uppercase();
+        version.push_str(&if color {
+            Red.paint(&profile).to_string()
+        } else {
+            profile
+        });
+    }
+
+    version
+}
+
+lazy_static! {
+    /// Color version string for the compiled node. Filled in at build time, output allocated at
+    /// runtime.
+    pub static ref VERSION_STRING_COLOR: String = version_string(true);
+
+    /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
+    pub static ref VERSION_STRING: String = version_string(false);
 }

@@ -50,6 +50,7 @@ pub enum FunctionIndex {
     ExtendContractUserGroupURefsIndex,
     RemoveContractUserGroupURefsIndex,
     Blake2b,
+    RecordTransfer,
 }
 
 impl Into<usize> for FunctionIndex {

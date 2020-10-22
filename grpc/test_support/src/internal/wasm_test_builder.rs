@@ -52,7 +52,8 @@ use casper_types::{
     auction::{EraId, ValidatorWeights},
     bytesrepr::{self},
     mint::TOTAL_SUPPLY_KEY,
-    CLTyped, CLValue, Contract, ContractHash, ContractWasm, Key, URef, U512,
+    CLTyped, CLValue, Contract, ContractHash, ContractWasm, DeployHash, DeployInfo, Key, Transfer,
+    TransferAddr, URef, U512,
 };
 
 use crate::internal::{utils, DEFAULT_PROTOCOL_VERSION};
@@ -692,6 +693,30 @@ where
 
         if let StoredValue::ContractWasm(contract_wasm) = contract_value {
             Some(contract_wasm)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_transfer(&self, transfer: TransferAddr) -> Option<Transfer> {
+        let transfer_value: StoredValue = self
+            .query(None, Key::Transfer(transfer), &[])
+            .expect("should have transfer value");
+
+        if let StoredValue::Transfer(transfer) = transfer_value {
+            Some(transfer)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_deploy_info(&self, deploy_hash: DeployHash) -> Option<DeployInfo> {
+        let deploy_info_value: StoredValue = self
+            .query(None, Key::DeployInfo(deploy_hash), &[])
+            .expect("should have deploy info value");
+
+        if let StoredValue::DeployInfo(deploy_info) = deploy_info_value {
+            Some(deploy_info)
         } else {
             None
         }
