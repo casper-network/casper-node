@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use casper_types::{bytesrepr::FromBytes, CLTyped, CLValue, Key};
+use casper_types::{bytesrepr::FromBytes, CLTyped, CLValue, Key, TransferAddr};
 
 use super::{error, execution_effect::ExecutionEffect, op::Op, CONV_RATE};
 use crate::{
@@ -49,10 +49,25 @@ pub enum ExecutionResult {
     Failure {
         error: error::Error,
         effect: ExecutionEffect,
+        transfers: Vec<TransferAddr>,
         cost: Gas,
     },
     /// Execution was finished successfully
-    Success { effect: ExecutionEffect, cost: Gas },
+    Success {
+        effect: ExecutionEffect,
+        transfers: Vec<TransferAddr>,
+        cost: Gas,
+    },
+}
+
+impl Default for ExecutionResult {
+    fn default() -> Self {
+        ExecutionResult::Success {
+            effect: ExecutionEffect::default(),
+            transfers: Vec::default(),
+            cost: Gas::default(),
+        }
+    }
 }
 
 /// A type alias that represents multiple execution results.
@@ -73,6 +88,7 @@ impl ExecutionResult {
         ExecutionResult::Failure {
             error,
             effect: Default::default(),
+            transfers: Vec::default(),
             cost: Gas::default(),
         }
     }
@@ -114,25 +130,77 @@ impl ExecutionResult {
         }
     }
 
+    pub fn transfers(&self) -> &Vec<TransferAddr> {
+        match self {
+            ExecutionResult::Failure { transfers, .. } => transfers,
+            ExecutionResult::Success { transfers, .. } => transfers,
+        }
+    }
+
     pub fn with_cost(self, cost: Gas) -> Self {
         match self {
-            ExecutionResult::Failure { error, effect, .. } => ExecutionResult::Failure {
+            ExecutionResult::Failure {
                 error,
                 effect,
+                transfers,
+                ..
+            } => ExecutionResult::Failure {
+                error,
+                effect,
+                transfers,
                 cost,
             },
-            ExecutionResult::Success { effect, .. } => ExecutionResult::Success { effect, cost },
+            ExecutionResult::Success {
+                effect, transfers, ..
+            } => ExecutionResult::Success {
+                effect,
+                transfers,
+                cost,
+            },
         }
     }
 
     pub fn with_effect(self, effect: ExecutionEffect) -> Self {
         match self {
-            ExecutionResult::Failure { error, cost, .. } => ExecutionResult::Failure {
+            ExecutionResult::Failure {
+                error,
+                cost,
+                transfers,
+                ..
+            } => ExecutionResult::Failure {
+                error,
+                effect,
+                transfers,
+                cost,
+            },
+            ExecutionResult::Success {
+                cost, transfers, ..
+            } => ExecutionResult::Success {
+                effect,
+                transfers,
+                cost,
+            },
+        }
+    }
+
+    pub fn with_transfers(self, transfers: Vec<TransferAddr>) -> Self {
+        match self {
+            ExecutionResult::Failure {
                 error,
                 effect,
                 cost,
+                ..
+            } => ExecutionResult::Failure {
+                error,
+                effect,
+                transfers,
+                cost,
             },
-            ExecutionResult::Success { cost, .. } => ExecutionResult::Success { effect, cost },
+            ExecutionResult::Success { cost, effect, .. } => ExecutionResult::Success {
+                effect,
+                transfers,
+                cost,
+            },
         }
     }
 
@@ -195,9 +263,11 @@ impl ExecutionResult {
             rewards_purse,
         );
         let cost = Gas::from_motes(max_payment_cost, CONV_RATE).unwrap_or_default();
+        let transfers = Vec::default();
         ExecutionResult::Failure {
             error,
             effect,
+            transfers,
             cost,
         }
     }
@@ -274,17 +344,27 @@ impl ExecutionResultBuilder {
         payment_cost + session_cost
     }
 
+    pub fn transfers(&self) -> Vec<TransferAddr> {
+        self.payment_execution_result
+            .as_ref()
+            .map(ExecutionResult::transfers)
+            .cloned()
+            .unwrap_or_default()
+    }
+
     pub fn build<R: StateReader<Key, StoredValue>>(
         self,
         reader: &R,
         correlation_id: CorrelationId,
     ) -> Result<ExecutionResult, ExecutionResultBuilderError> {
+        let transfers = self.transfers();
         let cost = self.total_cost();
         let mut ops = AdditiveMap::new();
         let mut transforms = AdditiveMap::new();
 
         let mut ret: ExecutionResult = ExecutionResult::Success {
             effect: Default::default(),
+            transfers,
             cost,
         };
 

@@ -6,7 +6,11 @@ use std::{
 
 use derive_more::From;
 
-use casper_execution_engine::core::engine_state::{self, BalanceResult, QueryResult};
+use casper_execution_engine::{
+    core::engine_state::{self, BalanceResult, GetEraValidatorsError, QueryResult},
+    storage::protocol_data::ProtocolData,
+};
+use casper_types::auction::ValidatorWeights;
 
 use crate::{
     components::{small_network::NodeId, storage::DeployMetadata},
@@ -26,9 +30,17 @@ pub enum Event {
         result: Box<Option<Block>>,
         main_responder: Responder<Option<Block>>,
     },
+    QueryProtocolDataResult {
+        result: Result<Option<Box<ProtocolData>>, engine_state::Error>,
+        main_responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
+    },
     QueryGlobalStateResult {
         result: Result<QueryResult, engine_state::Error>,
         main_responder: Responder<Result<QueryResult, engine_state::Error>>,
+    },
+    QueryEraValidatorsResult {
+        result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
+        main_responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
     },
     GetDeployResult {
         hash: DeployHash,
@@ -73,8 +85,14 @@ impl Display for Event {
                 result,
                 ..
             } => write!(formatter, "get latest block result: {:?}", result),
+            Event::QueryProtocolDataResult { result, .. } => {
+                write!(formatter, "query protocol data result: {:?}", result)
+            }
             Event::QueryGlobalStateResult { result, .. } => {
                 write!(formatter, "query result: {:?}", result)
+            }
+            Event::QueryEraValidatorsResult { result, .. } => {
+                write!(formatter, "query era validators result: {:?}", result)
             }
             Event::GetBalanceResult { result, .. } => {
                 write!(formatter, "balance result: {:?}", result)

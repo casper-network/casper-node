@@ -75,8 +75,6 @@ extern "C" {
     /// * `value_ptr` - pointer to bytes representing the value to write at the key
     /// * `value_size` - size of the value (in bytes)
     pub fn add(key_ptr: *const u8, key_size: usize, value_ptr: *const u8, value_size: usize);
-    ///
-    pub fn add_local(key_ptr: *const u8, key_size: usize, value_ptr: *const u8, value_size: usize);
     /// This function causes the runtime to generate a new [`casper_types::uref::URef`], with
     /// the provided value stored under it in the global state. The new
     /// [`casper_types::uref::URef`] is written (in serialized form) to the wasm linear
@@ -357,6 +355,28 @@ extern "C" {
     ///   target account
     /// * `amount_size` - size of the amount (in bytes)
     pub fn transfer_from_purse_to_purse(
+        source_ptr: *const u8,
+        source_size: usize,
+        target_ptr: *const u8,
+        target_size: usize,
+        amount_ptr: *const u8,
+        amount_size: usize,
+    ) -> i32;
+    /// Records a transfer.  Can only be called from within the mint contract.
+    /// Needed to support system contract-based execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_ptr` - pointer in wasm memory to bytes representing the source
+    ///   [`casper_types::uref::URef`] to transfer from
+    /// * `source_size` - size of the source [`casper_types::uref::URef`] (in bytes)
+    /// * `target_ptr` - pointer in wasm memory to bytes representing the target
+    ///   [`casper_types::uref::URef`] to transfer to
+    /// * `target_size` - size of the target (in bytes)
+    /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
+    ///   target account
+    /// * `amount_size` - size of the amount (in bytes)
+    pub fn record_transfer(
         source_ptr: *const u8,
         source_size: usize,
         target_ptr: *const u8,

@@ -11,23 +11,34 @@ use crate::{
     account::{self, AccountHash, TryFromSliceForAccountHashError},
     bytesrepr::{self, Error, FromBytes, ToBytes},
     uref::{self, URef, UREF_SERIALIZED_LENGTH},
+    DeployHash, DEPLOY_HASH_LENGTH,
 };
 
 const ACCOUNT_ID: u8 = 0;
 const HASH_ID: u8 = 1;
 const UREF_ID: u8 = 2;
+const TRANSFER_ID: u8 = 3;
+const DEPLOY_INFO_ID: u8 = 4;
 
 const HASH_PREFIX: &str = "hash-";
+const TRANSFER_PREFIX: &str = "transfer-";
+const DEPLOY_INFO_PREFIX: &str = "deploy-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
 /// The number of bytes in a [`Key::Hash`].
 pub const KEY_HASH_LENGTH: usize = 32;
+/// The number of bytes in a [`Key::Transfer`].
+pub const KEY_TRANSFER_LENGTH: usize = 32;
+/// The number of bytes in a [`Key::DeployInfo`].
+pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
 
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIALIZED_LENGTH;
+const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRANSFER_LENGTH;
+const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -44,6 +55,8 @@ pub type ContractHash = HashAddr;
 pub type ContractWasmHash = HashAddr;
 /// An alias for [`Key`]s hash variant.
 pub type ContractPackageHash = HashAddr;
+/// An alias for [`Key`]s transfer variant.
+pub type TransferAddr = HashAddr;
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
 /// are indexed on the network.
@@ -57,6 +70,10 @@ pub enum Key {
     Hash(HashAddr),
     /// A `Key` which is a [`URef`], under which most types of data can be stored.
     URef(URef),
+    /// A `Key` under which we store a transfer.
+    Transfer(TransferAddr),
+    /// A `Key` under which we store a deploy info.
+    DeployInfo(DeployHash),
 }
 
 #[derive(Debug)]
@@ -107,6 +124,8 @@ impl Key {
             Key::Account(_) => String::from("Key::Account"),
             Key::Hash(_) => String::from("Key::Hash"),
             Key::URef(_) => String::from("Key::URef"),
+            Key::Transfer(_) => String::from("Key::Transfer"),
+            Key::DeployInfo(_) => String::from("Key::DeployInfo"),
         }
     }
 
@@ -131,6 +150,10 @@ impl Key {
             Key::Account(account_hash) => account_hash.to_formatted_string(),
             Key::Hash(addr) => format!("{}{}", HASH_PREFIX, base16::encode_lower(addr)),
             Key::URef(uref) => uref.to_formatted_string(),
+            Key::Transfer(addr) => format!("{}{}", TRANSFER_PREFIX, base16::encode_lower(addr)),
+            Key::DeployInfo(addr) => {
+                format!("{}{}", DEPLOY_INFO_PREFIX, base16::encode_lower(addr))
+            }
         }
     }
 
@@ -140,6 +163,14 @@ impl Key {
             Ok(Key::Account(account_hash))
         } else if let Some(hex) = input.strip_prefix(HASH_PREFIX) {
             Ok(Key::Hash(HashAddr::try_from(
+                base16::decode(hex)?.as_ref(),
+            )?))
+        } else if let Some(hex) = input.strip_prefix(DEPLOY_INFO_PREFIX) {
+            Ok(Key::DeployInfo(DeployHash::try_from(
+                base16::decode(hex)?.as_ref(),
+            )?))
+        } else if let Some(hex) = input.strip_prefix(TRANSFER_PREFIX) {
+            Ok(Key::Transfer(TransferAddr::try_from(
                 base16::decode(hex)?.as_ref(),
             )?))
         } else {
@@ -188,6 +219,8 @@ impl Key {
             Key::Account(account_hash) => account_hash.value(),
             Key::Hash(bytes) => bytes,
             Key::URef(uref) => uref.addr(),
+            Key::Transfer(addr) => addr,
+            Key::DeployInfo(addr) => addr,
         }
     }
 }
@@ -198,6 +231,8 @@ impl Display for Key {
             Key::Account(account_hash) => write!(f, "Key::Account({})", account_hash),
             Key::Hash(addr) => write!(f, "Key::Hash({})", HexFmt(addr)),
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
+            Key::Transfer(addr) => write!(f, "Key::Transfer({})", HexFmt(addr)),
+            Key::DeployInfo(addr) => write!(f, "Key::DeployInfo({})", HexFmt(addr)),
         }
     }
 }
@@ -236,6 +271,14 @@ impl ToBytes for Key {
                 result.push(UREF_ID);
                 result.append(&mut uref.to_bytes()?);
             }
+            Key::Transfer(addr) => {
+                result.push(TRANSFER_ID);
+                result.append(&mut addr.to_bytes()?);
+            }
+            Key::DeployInfo(addr) => {
+                result.push(DEPLOY_INFO_ID);
+                result.append(&mut addr.to_bytes()?);
+            }
         }
         Ok(result)
     }
@@ -247,6 +290,8 @@ impl ToBytes for Key {
             }
             Key::Hash(_) => KEY_HASH_SERIALIZED_LENGTH,
             Key::URef(_) => KEY_UREF_SERIALIZED_LENGTH,
+            Key::Transfer(_) => KEY_TRANSFER_SERIALIZED_LENGTH,
+            Key::DeployInfo(_) => KEY_DEPLOY_INFO_SERIALIZED_LENGTH,
         }
     }
 }
@@ -266,6 +311,14 @@ impl FromBytes for Key {
             UREF_ID => {
                 let (uref, rem) = URef::from_bytes(remainder)?;
                 Ok((Key::URef(uref), rem))
+            }
+            TRANSFER_ID => {
+                let (transfer_addr, rem) = TransferAddr::from_bytes(remainder)?;
+                Ok((Key::Transfer(transfer_addr), rem))
+            }
+            DEPLOY_INFO_ID => {
+                let (deploy_hash, rem) = DeployHash::from_bytes(remainder)?;
+                Ok((Key::DeployInfo(deploy_hash), rem))
             }
             _ => Err(Error::Formatting),
         }

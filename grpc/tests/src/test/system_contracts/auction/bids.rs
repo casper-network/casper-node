@@ -7,7 +7,7 @@ use casper_engine_test_support::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
         DEFAULT_AUCTION_DELAY, DEFAULT_INITIAL_ERA_ID, DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
@@ -33,7 +33,7 @@ const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";
 
-const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
+const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 const ADD_BID_AMOUNT_1: u64 = 95_000;
@@ -54,21 +54,21 @@ const NON_FOUNDER_VALIDATOR_1_PK: PublicKey = PublicKey::Ed25519([3; 32]);
 const NON_FOUNDER_VALIDATOR_2_PK: PublicKey = PublicKey::Ed25519([4; 32]);
 
 const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([200; 32]);
-const ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
+const ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_1_BOND: u64 = 100_000;
 const ACCOUNT_1_WITHDRAW_1: u64 = 55_000;
 const ACCOUNT_1_WITHDRAW_2: u64 = 45_000;
 
 const ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([202; 32]);
-const ACCOUNT_2_BALANCE: u64 = 1_000_000_000;
+const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
 const BID_ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([204; 32]);
-const BID_ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
+const BID_ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const BID_ACCOUNT_1_BOND: u64 = 0;
 
 const BID_ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([206; 32]);
-const BID_ACCOUNT_2_BALANCE: u64 = 1_000_000_000;
+const BID_ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const BID_ACCOUNT_2_BOND: u64 = 0;
 
 lazy_static! {
@@ -1158,7 +1158,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
 #[ignore]
 #[test]
 fn undelegated_funds_should_be_released() {
-    const SYSTEM_TRANSFER_AMOUNT: u64 = 1_000_000_000;
+    const SYSTEM_TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1289,7 +1289,7 @@ fn undelegated_funds_should_be_released() {
 #[ignore]
 #[test]
 fn fully_undelegated_funds_should_be_released() {
-    const SYSTEM_TRANSFER_AMOUNT: u64 = 1_000_000_000;
+    const SYSTEM_TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

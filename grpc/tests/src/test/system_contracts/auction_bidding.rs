@@ -4,7 +4,7 @@ use casper_engine_test_support::{
         DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_INITIAL_ERA_ID, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
@@ -28,7 +28,7 @@ const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 const GENESIS_ACCOUNT_STAKE: u64 = 100_000;
-const TRANSFER_AMOUNT: u64 = 500_000_000;
+const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 const TEST_BOND_FROM_MAIN_PURSE: &str = "bond-from-main-purse";
 const TEST_SEED_NEW_ACCOUNT: &str = "seed_new_account";
@@ -260,7 +260,7 @@ fn should_fail_bonding_with_insufficient_funds() {
 fn should_fail_unbonding_validator_with_locked_funds() {
     let account_1_public_key = PublicKey::Ed25519([42; 32]);
     let account_1_hash = AccountHash::from(account_1_public_key);
-    let account_1_balance = U512::from(1_000_000_000);
+    let account_1_balance = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
 
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();

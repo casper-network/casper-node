@@ -23,6 +23,7 @@ use std::{
     rc::Rc,
 };
 
+use lazy_static::lazy_static;
 use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
@@ -40,8 +41,8 @@ use casper_types::{
     runtime_args,
     system_contract_errors::mint,
     AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractVersionKey, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef,
-    U512,
+    ContractVersionKey, DeployInfo, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
+    RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -61,7 +62,10 @@ pub use self::{
 };
 use crate::{
     core::{
-        engine_state::step::{StepRequest, StepResult},
+        engine_state::{
+            execution_result::ExecutionResultBuilder,
+            step::{StepRequest, StepResult},
+        },
         execution::{
             self, AddressGenerator, AddressGeneratorBuilder, DirectSystemContractCall, Executor,
         },
@@ -86,8 +90,11 @@ use crate::{
 
 // TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
 // TBD gas * CONV_RATE = motes
-pub const MAX_PAYMENT: u64 = 10_000_000;
 pub const CONV_RATE: u64 = 10;
+
+lazy_static! {
+    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000_000u64 * CONV_RATE);
+}
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
@@ -219,6 +226,10 @@ where
             let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
+        let transfer_address_generator = {
+            let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
+            Rc::new(RefCell::new(generator))
+        };
 
         // Spec #6: Compute initially bonded validators as the contents of accounts_path
         // filtered to non-zero staked amounts.
@@ -241,6 +252,7 @@ where
             let install_deploy_hash = genesis_config_hash.value();
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
+            let transfer_address_generator = Rc::clone(&transfer_address_generator);
             let tracking_copy = Rc::clone(&tracking_copy);
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
             let protocol_data = ProtocolData::default();
@@ -256,6 +268,7 @@ where
                 gas_limit,
                 hash_address_generator,
                 uref_address_generator,
+                transfer_address_generator,
                 protocol_version,
                 correlation_id,
                 tracking_copy,
@@ -274,6 +287,7 @@ where
             let tracking_copy = Rc::clone(&tracking_copy);
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
+            let transfer_address_generator = Rc::clone(&transfer_address_generator);
             let install_deploy_hash = genesis_config_hash.value();
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
@@ -301,6 +315,7 @@ where
                 gas_limit,
                 hash_address_generator,
                 uref_address_generator,
+                transfer_address_generator,
                 protocol_version,
                 correlation_id,
                 tracking_copy,
@@ -339,6 +354,7 @@ where
             let install_deploy_hash = genesis_config_hash.value();
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
+            let transfer_address_generator = Rc::clone(&transfer_address_generator);
             let tracking_copy = Rc::clone(&tracking_copy);
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
@@ -353,6 +369,7 @@ where
                 gas_limit,
                 hash_address_generator,
                 uref_address_generator,
+                transfer_address_generator,
                 protocol_version,
                 correlation_id,
                 tracking_copy,
@@ -406,6 +423,7 @@ where
             let install_deploy_hash = genesis_config_hash.value();
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
+            let transfer_address_generator = Rc::clone(&uref_address_generator);
             let tracking_copy = Rc::clone(&tracking_copy);
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
@@ -420,6 +438,7 @@ where
                 gas_limit,
                 hash_address_generator,
                 uref_address_generator,
+                transfer_address_generator,
                 protocol_version,
                 correlation_id,
                 tracking_copy,
@@ -505,6 +524,7 @@ where
                         .build();
                     Rc::new(RefCell::new(generator))
                 };
+                let transfer_address_generator = Rc::clone(&transfer_address_generator);
                 let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
                 let mint_result: Result<URef, mint::Error> = {
@@ -523,6 +543,7 @@ where
                         gas_limit,
                         hash_address_generator,
                         uref_address_generator,
+                        transfer_address_generator,
                         protocol_version,
                         correlation_id,
                         tracking_copy_exec,
@@ -694,6 +715,10 @@ where
                     let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
                     Rc::new(RefCell::new(generator))
                 };
+                let transfer_address_generator = {
+                    let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
+                    Rc::new(RefCell::new(generator))
+                };
                 let tracking_copy = Rc::clone(&tracking_copy);
                 let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
@@ -710,6 +735,7 @@ where
                     gas_limit,
                     hash_address_generator,
                     uref_address_generator,
+                    transfer_address_generator,
                     new_protocol_version,
                     correlation_id,
                     Rc::clone(&tracking_copy),
@@ -1191,6 +1217,7 @@ where
                 return Ok(ExecutionResult::Failure {
                     error,
                     effect: Default::default(),
+                    transfers: Vec::default(),
                     cost: Gas::default(),
                 });
             }
@@ -1203,12 +1230,13 @@ where
                     return Ok(ExecutionResult::Failure {
                         error,
                         effect: Default::default(),
+                        transfers: Vec::default(),
                         cost: Gas::default(),
                     });
                 }
             };
 
-        let (_, execution_result): (Option<Result<(), u8>>, ExecutionResult) = executor
+        let (_, mut session_result): (Option<Result<(), u8>>, ExecutionResult) = executor
             .exec_system_contract(
                 DirectSystemContractCall::Transfer,
                 mint_module,
@@ -1223,11 +1251,44 @@ where
                 gas_limit,
                 protocol_version,
                 correlation_id,
-                tracking_copy,
+                Rc::clone(&tracking_copy),
                 Phase::Session,
                 protocol_data,
                 SystemContractCache::clone(&self.system_contract_cache),
             );
+
+        let payment_result = ExecutionResult::default();
+        let payment_result_cost = payment_result.cost();
+
+        // Create + persist deploy info.
+        {
+            let transfers = session_result.transfers();
+            let cost = payment_result_cost.value() + session_result.cost().value();
+            let deploy_info = DeployInfo::new(
+                deploy_item.deploy_hash,
+                &transfers,
+                account.account_hash(),
+                account.main_purse(),
+                cost,
+            );
+            tracking_copy.borrow_mut().write(
+                Key::DeployInfo(deploy_item.deploy_hash),
+                StoredValue::DeployInfo(deploy_info),
+            );
+        }
+
+        if session_result.is_success() {
+            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect());
+        }
+
+        let mut execution_result_builder = ExecutionResultBuilder::new();
+        execution_result_builder.set_payment_execution_result(payment_result);
+        execution_result_builder.set_session_execution_result(session_result);
+        execution_result_builder.set_finalize_execution_result(ExecutionResult::default());
+
+        let execution_result = execution_result_builder
+            .build(tracking_copy.borrow().reader(), correlation_id)
+            .expect("ExecutionResultBuilder not initialized properly");
 
         Ok(execution_result)
     }
@@ -1408,7 +1469,7 @@ where
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
         };
 
-        let max_payment_cost: Motes = Motes::new(U512::from(MAX_PAYMENT));
+        let max_payment_cost: Motes = Motes::new(*MAX_PAYMENT);
 
         // Enforce minimum main purse balance validation
         // validation_spec_5: account main purse minimum balance
@@ -1564,6 +1625,10 @@ where
                     let generator = AddressGenerator::new(&deploy_hash, phase);
                     Rc::new(RefCell::new(generator))
                 };
+                let transfer_address_generator = {
+                    let generator = AddressGenerator::new(&deploy_hash, phase);
+                    Rc::new(RefCell::new(generator))
+                };
 
                 let mut runtime = match executor.create_runtime(
                     payment_module,
@@ -1579,6 +1644,7 @@ where
                     pay_gas_limit,
                     hash_address_generator,
                     uref_address_generator,
+                    transfer_address_generator,
                     protocol_version,
                     correlation_id,
                     Rc::clone(&tracking_copy),
@@ -1597,11 +1663,13 @@ where
                 match runtime.call_host_standard_payment() {
                     Ok(()) => ExecutionResult::Success {
                         effect: runtime.context().effect(),
+                        transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     },
                     Err(error) => ExecutionResult::Failure {
                         error: error.into(),
                         effect: effects_snapshot,
+                        transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     },
                 }
@@ -1730,7 +1798,7 @@ where
                 return Ok(ExecutionResult::precondition_failure(exec_err.into()));
             }
         };
-        let session_result = {
+        let mut session_result = {
             // payment_code_spec_3_b_i: if (balance of PoS pay purse) >= (gas spent during
             // payment code execution) * conv_rate, yes session
             // session_code_spec_1: gas limit = ((balance of PoS payment purse) / conv_rate)
@@ -1762,11 +1830,29 @@ where
         };
         debug!("Session result: {:?}", session_result);
 
+        // Create + persist deploy info.
+        {
+            let transfers = session_result.transfers();
+            let cost = payment_result_cost.value() + session_result.cost().value();
+            let deploy_info = DeployInfo::new(
+                deploy_hash,
+                &transfers,
+                account.account_hash(),
+                account.main_purse(),
+                cost,
+            );
+            session_tracking_copy.borrow_mut().write(
+                Key::DeployInfo(deploy_hash),
+                StoredValue::DeployInfo(deploy_info),
+            );
+        }
+
         let post_session_rc = if session_result.is_failure() {
             // If session code fails we do not include its effects,
             // so we start again from the post-payment state.
             Rc::new(RefCell::new(post_payment_tracking_copy.fork()))
         } else {
+            session_result = session_result.with_effect(session_tracking_copy.borrow().effect());
             session_tracking_copy
         };
 
@@ -1775,7 +1861,7 @@ where
         execution_result_builder.set_session_execution_result(session_result);
 
         // payment_code_spec_5: run finalize process
-        let (_, finalize_result): (Option<()>, ExecutionResult) = {
+        let finalize_result: ExecutionResult = {
             let post_session_tc = post_session_rc.borrow();
             let finalization_tc = Rc::new(RefCell::new(post_session_tc.fork()));
 
@@ -1807,25 +1893,28 @@ where
             let gas_limit = Gas::new(U512::from(std::u64::MAX));
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
-            executor.exec_system_contract(
-                DirectSystemContractCall::FinalizePayment,
-                proof_of_stake_module,
-                proof_of_stake_args,
-                &mut proof_of_stake_keys,
-                Default::default(),
-                Key::from(protocol_data.proof_of_stake()),
-                &system_account,
-                authorization_keys,
-                blocktime,
-                deploy_hash,
-                gas_limit,
-                protocol_version,
-                correlation_id,
-                finalization_tc,
-                Phase::FinalizePayment,
-                protocol_data,
-                system_contract_cache,
-            )
+            let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
+                .exec_system_contract(
+                    DirectSystemContractCall::FinalizePayment,
+                    proof_of_stake_module,
+                    proof_of_stake_args,
+                    &mut proof_of_stake_keys,
+                    Default::default(),
+                    Key::from(protocol_data.proof_of_stake()),
+                    &system_account,
+                    authorization_keys,
+                    blocktime,
+                    deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    correlation_id,
+                    finalization_tc,
+                    Phase::FinalizePayment,
+                    protocol_data,
+                    system_contract_cache,
+                );
+
+            finalize_result
         };
 
         execution_result_builder.set_finalize_execution_result(finalize_result);

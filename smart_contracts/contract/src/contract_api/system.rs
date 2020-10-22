@@ -159,3 +159,27 @@ pub fn transfer_from_purse_to_purse(
         Err(ApiError::Transfer)
     }
 }
+
+/// Records a transfer.  Can only be called from within the mint contract.
+/// Needed to support system contract-based execution.
+#[doc(hidden)]
+pub fn record_transfer(source: URef, target: URef, amount: U512) -> Result<(), ApiError> {
+    let (source_ptr, source_size, _bytes1) = contract_api::to_ptr(source);
+    let (target_ptr, target_size, _bytes2) = contract_api::to_ptr(target);
+    let (amount_ptr, amount_size, _bytes3) = contract_api::to_ptr(amount);
+    let result = unsafe {
+        ext_ffi::record_transfer(
+            source_ptr,
+            source_size,
+            target_ptr,
+            target_size,
+            amount_ptr,
+            amount_size,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(ApiError::Transfer)
+    }
+}

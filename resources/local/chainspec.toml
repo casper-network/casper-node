@@ -30,12 +30,8 @@ auction_delay = 3
 initial_era_id = 0
 
 [highway]
-# Tick unit is milliseconds.
-#
-# Timestamp for the genesis era.  At least one node has to be started when the genesis era is active in order to make
-# key blocks for the upcoming eras.  If the era is over by the time we start the nodes, they'll not be able to produce
-# blocks in it, and there won't be a new era build either.  That means when a completely new network is started, the
-# genesis era start time has to be adjusted to be active at the time.
+# Beginning of era 0. By this time, a sufficient majority (> 50% + F/2 — see finality_threshold_percent below)
+# of validator nodes must be up and running to start the blockchain.
 genesis_era_start_timestamp = '2020-10-01T00:00:01Z'
 # Era duration.
 era_duration = '41seconds'
@@ -51,7 +47,7 @@ voting_period_duration = '2days'
 # Integer between 1 and 99 representing the fault tolerance threshold as a percentage, used by the internal finalizer.
 # It is the percentage of validators that would need to equivocate to make two honest nodes see two conflicting
 # blocks as finalized: A higher value F makes it safer to rely on finalized blocks. It also makes it more difficult to
-# finalize blocks, however, and requires at least 50% + F/2 validators to be working correctly.
+# finalize blocks, however, and requires strictly more than 50% + F/2 validators to be working correctly.
 finality_threshold_percent = 10
 # Integer between 0 and 255. The power of two that is the number of milliseconds in the minimum round length, and
 # therefore the minimum delay between a block and its child. E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
@@ -120,9 +116,9 @@ regular = 210_000
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
 [wasm_config.host_function_costs]
 add = { cost = 5_800_000, arguments = [0, 1, 2, 3] }
-add_associated_key = { cost = 9_000_000, arguments = [0, 1, 2, 3] }
+add_associated_key = { cost = 9_000_000, arguments = [0, 1, 2] }
 add_contract_version = { cost = 200_000_000, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] } # Not instrumented yet, assuming a sufficiently large number
-add_local = { cost = 4_700_000, arguments = [0, 1, 2, 3] }
+blake2b = { cost = 200_000, arguments = [0, 1, 2, 3] }
 call_contract = { cost = 4_500_000, arguments = [0, 1, 2, 3, 4, 5, 6] }
 call_versioned_contract = { cost = 4_500_000, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8] } # Not instrumented yet, assuming the same as call_contract
 create_contract_package_at_hash = { cost = 200_000_000, arguments = [0, 1] } # Not instrumented yet, assuming a sufficiently large number
@@ -144,7 +140,7 @@ load_named_keys = { cost = 42_000_000, arguments = [0, 1] }
 new_uref = { cost = 17_000_000, arguments = [0, 1, 2] }
 print = { cost = 20_000_000, arguments = [0, 1] }
 provision_contract_user_group_uref = { cost = 200_000_000, arguments = [0,1,2,3,4] } # Not instrumented yet, assuming a sufficiently large number
-put_key = { cost = 38_000_000, arguments = [0, 1] }
+put_key = { cost = 38_000_000, arguments = [0, 1, 2, 3] }
 read_host_buffer = { cost = 3_500_000, arguments = [0, 1, 2] }
 read_value = { cost = 6_000_000, arguments = [0, 1, 0] }
 read_value_local = { cost = 5_500_000,  arguments = [0, 1, 0] }

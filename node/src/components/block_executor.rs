@@ -136,7 +136,15 @@ impl BlockExecutor {
                 deploys: result
                     .into_iter()
                     // Assumes all deploys are present
-                    .map(|maybe_deploy| maybe_deploy.unwrap_or_else(|| panic!("deploy for block in era={} and height={} is expected to exist in the storage", era_id, height)))
+                    .map(|maybe_deploy| {
+                        maybe_deploy.unwrap_or_else(|| {
+                            panic!(
+                                "deploy for block in era={} and height={} is expected to exist \
+                                in the storage",
+                                era_id, height
+                            )
+                        })
+                    })
                     .collect(),
             })
     }
@@ -299,7 +307,7 @@ impl BlockExecutor {
             .insert(deploy_hash, execution_result);
 
         let execution_effect = match ee_execution_result {
-            EngineExecutionResult::Success { effect, cost } => {
+            EngineExecutionResult::Success { effect, cost, .. } => {
                 debug!(?effect, %cost, "execution succeeded");
                 effect
             }
@@ -307,6 +315,7 @@ impl BlockExecutor {
                 error,
                 effect,
                 cost,
+                ..
             } => {
                 error!(?error, ?effect, %cost, "execution failure");
                 effect

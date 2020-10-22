@@ -44,7 +44,7 @@ macro_rules! on_fail_charge {
             }
         }
     };
-    ($fn:expr, $cost:expr) => {
+    ($fn:expr, $cost:expr, $transfers:expr) => {
         match $fn {
             Ok(res) => res,
             Err(e) => {
@@ -53,12 +53,13 @@ macro_rules! on_fail_charge {
                 return ExecutionResult::Failure {
                     error: exec_err.into(),
                     effect: Default::default(),
+                    transfers: $transfers,
                     cost: $cost,
                 };
             }
         }
     };
-    ($fn:expr, $cost:expr, $effect:expr) => {
+    ($fn:expr, $cost:expr, $effect:expr, $transfers:expr) => {
         match $fn {
             Ok(res) => res,
             Err(e) => {
@@ -67,6 +68,7 @@ macro_rules! on_fail_charge {
                 return ExecutionResult::Failure {
                     error: exec_err.into(),
                     effect: $effect,
+                    transfers: $transfers,
                     cost: $cost,
                 };
             }
@@ -132,7 +134,12 @@ impl Executor {
             let generator = AddressGenerator::new(&deploy_hash, phase);
             Rc::new(RefCell::new(generator))
         };
+        let target_address_generator = {
+            let generator = AddressGenerator::new(&deploy_hash, phase);
+            Rc::new(RefCell::new(generator))
+        };
         let gas_counter: Gas = Gas::default();
+        let transfers = Vec::default();
 
         // Snapshot of effects before execution, so in case of error
         // only nonce update can be returned.
@@ -153,10 +160,12 @@ impl Executor {
             gas_counter,
             hash_address_generator,
             uref_address_generator,
+            target_address_generator,
             protocol_version,
             correlation_id,
             phase,
             protocol_data,
+            transfers,
         );
 
         let mut runtime = Runtime::new(self.config, system_contract_cache, memory, module, context);
@@ -184,6 +193,7 @@ impl Executor {
                     Ok(_value) => {
                         return ExecutionResult::Success {
                             effect: runtime.context().effect(),
+                            transfers: runtime.context().transfers().to_owned(),
                             cost: runtime.context().gas_counter(),
                         };
                     }
@@ -191,6 +201,7 @@ impl Executor {
                         return ExecutionResult::Failure {
                             error: error.into(),
                             effect: effects_snapshot,
+                            transfers: runtime.context().transfers().to_owned(),
                             cost: runtime.context().gas_counter(),
                         };
                     }
@@ -206,6 +217,7 @@ impl Executor {
                     Ok(_value) => {
                         return ExecutionResult::Success {
                             effect: runtime.context().effect(),
+                            transfers: runtime.context().transfers().to_owned(),
                             cost: runtime.context().gas_counter(),
                         };
                     }
@@ -213,6 +225,7 @@ impl Executor {
                         return ExecutionResult::Failure {
                             error: error.into(),
                             effect: effects_snapshot,
+                            transfers: runtime.context().transfers().to_owned(),
                             cost: runtime.context().gas_counter(),
                         };
                     }
@@ -228,6 +241,7 @@ impl Executor {
                     Ok(_value) => {
                         return ExecutionResult::Success {
                             effect: runtime.context().effect(),
+                            transfers: runtime.context().transfers().to_owned(),
                             cost: runtime.context().gas_counter(),
                         }
                     }
@@ -235,6 +249,7 @@ impl Executor {
                         return ExecutionResult::Failure {
                             error: error.into(),
                             effect: effects_snapshot,
+                            transfers: runtime.context().transfers().to_owned(),
                             cost: runtime.context().gas_counter(),
                         }
                     }
@@ -245,11 +260,13 @@ impl Executor {
         on_fail_charge!(
             instance.invoke_export(entry_point_name, &[], &mut runtime),
             runtime.context().gas_counter(),
-            effects_snapshot
+            effects_snapshot,
+            runtime.context().transfers().to_owned()
         );
 
         ExecutionResult::Success {
             effect: runtime.context().effect(),
+            transfers: runtime.context().transfers().to_owned(),
             cost: runtime.context().gas_counter(),
         }
     }
@@ -324,11 +341,17 @@ impl Executor {
             let generator = AddressGenerator::new(&deploy_hash, phase);
             Rc::new(RefCell::new(generator))
         };
+        let transfer_address_generator = {
+            let generator = AddressGenerator::new(&deploy_hash, phase);
+            Rc::new(RefCell::new(generator))
+        };
         let gas_counter = Gas::default(); // maybe const?
 
         // Snapshot of effects before execution, so in case of error only nonce update
         // can be returned.
         let effect_snapshot = tracking_copy.borrow().effect();
+
+        let transfers = Vec::default();
 
         let (instance, mut runtime) = self
             .create_runtime(
@@ -345,6 +368,7 @@ impl Executor {
                 gas_limit,
                 hash_address_generator,
                 uref_address_generator,
+                transfer_address_generator,
                 protocol_version,
                 correlation_id,
                 tracking_copy,
@@ -355,6 +379,7 @@ impl Executor {
             .map_err(|e| {
                 ExecutionResult::Failure {
                     effect: effect_snapshot.clone(),
+                    transfers,
                     cost: gas_counter,
                     error: e.into(),
                 }
@@ -424,13 +449,20 @@ impl Executor {
             runtime_context.effect()
         };
 
+        let transfers = runtime_context.transfers().to_owned();
+
         let execution_result = match maybe_error {
             Some(error) => ExecutionResult::Failure {
                 error: error.into(),
                 effect,
+                transfers,
                 cost,
             },
-            None => ExecutionResult::Success { effect, cost },
+            None => ExecutionResult::Success {
+                effect,
+                transfers,
+                cost,
+            },
         };
 
         match maybe_ret {
@@ -453,6 +485,7 @@ impl Executor {
         gas_limit: Gas,
         hash_address_generator: Rc<RefCell<AddressGenerator>>,
         uref_address_generator: Rc<RefCell<AddressGenerator>>,
+        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -482,6 +515,7 @@ impl Executor {
             gas_limit,
             hash_address_generator,
             uref_address_generator,
+            transfer_address_generator,
             protocol_version,
             correlation_id,
             tracking_copy,
@@ -538,6 +572,7 @@ impl Executor {
         gas_limit: Gas,
         hash_address_generator: Rc<RefCell<AddressGenerator>>,
         uref_address_generator: Rc<RefCell<AddressGenerator>>,
+        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -556,6 +591,7 @@ impl Executor {
         };
 
         let gas_counter = Gas::default();
+        let transfers = Vec::default();
 
         let runtime_context = RuntimeContext::new(
             tracking_copy,
@@ -572,10 +608,12 @@ impl Executor {
             gas_counter,
             hash_address_generator,
             uref_address_generator,
+            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
             protocol_data,
+            transfers,
         );
 
         let (instance, memory) = instance_and_memory(module.clone(), protocol_version)?;
@@ -668,12 +706,14 @@ impl DirectSystemContractCall {
             Ok(value) => match value.into_t() {
                 Ok(ret) => ExecutionResult::Success {
                     effect: runtime.context().effect(),
+                    transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
                 }
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
                     error: Error::CLValue(error).into(),
                     effect: execution_effect,
+                    transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
                 }
                 .take_without_ret(),
@@ -681,6 +721,7 @@ impl DirectSystemContractCall {
             Err(error) => ExecutionResult::Failure {
                 error: error.into(),
                 effect: execution_effect,
+                transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             }
             .take_without_ret(),

@@ -72,6 +72,12 @@ impl std::ops::Mul for Gas {
     }
 }
 
+impl std::ops::AddAssign for Gas {
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 += rhs.0
+    }
+}
+
 impl Zero for Gas {
     fn zero() -> Self {
         Gas::new(U512::zero())
@@ -79,6 +85,13 @@ impl Zero for Gas {
 
     fn is_zero(&self) -> bool {
         self.0.is_zero()
+    }
+}
+
+impl From<u32> for Gas {
+    fn from(gas: u32) -> Self {
+        let gas_u512: U512 = gas.into();
+        Gas::new(gas_u512)
     }
 }
 

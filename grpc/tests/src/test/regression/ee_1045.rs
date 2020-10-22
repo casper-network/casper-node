@@ -1,11 +1,8 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
 use casper_engine_test_support::{
-    internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_INITIAL_ERA_ID,
-    },
-    DEFAULT_ACCOUNT_ADDR,
+    internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
@@ -20,27 +17,26 @@ const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 const ARG_AMOUNT: &str = "amount";
 const ARG_ENTRY_POINT: &str = "entry_point";
 
-const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
-const DEFAULT_AUCTION_DELAY: u64 = 3;
+const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
 const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([200; 32]);
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([201; 32]);
-const ACCOUNT_1_BALANCE: u64 = 10_000_000;
+const ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_1_BOND: u64 = 100_000;
 
 const ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([202; 32]);
 const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([203; 32]);
-const ACCOUNT_2_BALANCE: u64 = 25_000_000;
+const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
 const ACCOUNT_3_PK: PublicKey = PublicKey::Ed25519([150; 32]);
 const ACCOUNT_3_ADDR: AccountHash = AccountHash::new([151; 32]);
-const ACCOUNT_3_BALANCE: u64 = 25_000_000;
+const ACCOUNT_3_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_3_BOND: u64 = 200_000;
 
 const ACCOUNT_4_PK: PublicKey = PublicKey::Ed25519([170; 32]);
 const ACCOUNT_4_ADDR: AccountHash = AccountHash::new([171; 32]);
-const ACCOUNT_4_BALANCE: u64 = 25_000_000;
+const ACCOUNT_4_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_4_BOND: u64 = 200_000;
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);

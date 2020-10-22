@@ -158,9 +158,9 @@ impl TransferRuntimeArgsBuilder {
                             .borrow_mut()
                             .read_account(correlation_id, public_key)
                         {
-                            Ok(account) => {
-                                Ok(TransferTargetMode::PurseExists(account.main_purse()))
-                            }
+                            Ok(account) => Ok(TransferTargetMode::PurseExists(
+                                account.main_purse().with_access_rights(AccessRights::ADD),
+                            )),
                             Err(_) => Ok(TransferTargetMode::CreateAccount(public_key)),
                         }
                     }
@@ -180,9 +180,9 @@ impl TransferRuntimeArgsBuilder {
                             .borrow_mut()
                             .read_account(correlation_id, public_key)
                         {
-                            Ok(account) => {
-                                Ok(TransferTargetMode::PurseExists(account.main_purse()))
-                            }
+                            Ok(account) => Ok(TransferTargetMode::PurseExists(
+                                account.main_purse().with_access_rights(AccessRights::ADD),
+                            )),
                             Err(_) => Ok(TransferTargetMode::CreateAccount(public_key)),
                         }
                     }

@@ -1,7 +1,8 @@
 use lazy_static::lazy_static;
 
-use casper_engine_test_support::internal::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+use casper_engine_test_support::{
+    internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
 use casper_types::{
@@ -11,7 +12,7 @@ use casper_types::{
 const CONTRACT_EE_597_REGRESSION: &str = "ee_597_regression.wasm";
 
 const VALID_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([42; 32]);
-const VALID_BALANCE: u64 = 1_000_000_000;
+const VALID_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 lazy_static! {
     static ref VALID_ADDR: AccountHash = VALID_PUBLIC_KEY.into();

@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
@@ -8,6 +8,7 @@ use casper_engine_test_support::{
 use casper_types::{runtime_args, Phase, RuntimeArgs};
 
 const ARG_PHASE: &str = "phase";
+const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
 #[test]
@@ -24,7 +25,10 @@ fn should_run_get_phase_contract() {
             )
             .with_payment_code(
                 "get_phase_payment.wasm",
-                runtime_args! { ARG_PHASE => Phase::Payment },
+                runtime_args! {
+                    ARG_PHASE => Phase::Payment,
+                    ARG_AMOUNT => *DEFAULT_PAYMENT
+                },
             )
             .with_authorization_keys(&[default_account])
             .build();
