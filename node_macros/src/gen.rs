@@ -319,10 +319,10 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
 
             fn dispatch_event(
                 &mut self,
-                effect_builder: crate::reactor::EffectBuilder<Self::Event>,
+                effect_builder: crate::effect::EffectBuilder<Self::Event>,
                 rng: &mut dyn crate::types::CryptoRngCore,
                 event: Self::Event,
-            ) -> crate::reactor::Effects<Self::Event> {
+            ) -> crate::effect::Effects<Self::Event> {
                 match event {
                     #(#dispatches)*
                 }
@@ -330,11 +330,11 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
 
             fn new(
                 cfg: Self::Config,
-                registry: &crate::reactor::Registry,
+                registry: &prometheus::Registry,
                 event_queue: crate::reactor::EventQueueHandle<Self::Event>,
                 rng: &mut dyn crate::types::CryptoRngCore,
-            ) -> Result<(Self, crate::reactor::Effects<Self::Event>), Self::Error> {
-                let mut all_effects = crate::reactor::Effects::new();
+            ) -> Result<(Self, crate::effect::Effects<Self::Event>), Self::Error> {
+                let mut all_effects = crate::effect::Effects::new();
 
                 let effect_builder = crate::effect::EffectBuilder::new(event_queue);
 
