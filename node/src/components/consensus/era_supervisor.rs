@@ -61,13 +61,6 @@ pub use self::era::{Era, EraId};
 
 mod era;
 
-/// The unbonding period, in number of eras. After this many eras, a former validator is allowed to
-/// withdraw their stake, so their signature can't be trusted anymore.
-///
-/// A node keeps `2 * BONDED_ERAS` past eras around, because the oldest bonded era could still
-/// receive blocks that refer to `BONDED_ERAS` before that.
-//const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - 3;
-
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
     /// A map of active consensus protocols.
@@ -78,6 +71,11 @@ pub struct EraSupervisor<I> {
     current_era: EraId,
     chainspec: Chainspec,
     node_start_time: Timestamp,
+    /// The unbonding period, in number of eras. After this many eras, a former validator is
+    /// allowed to withdraw their stake, so their signature can't be trusted anymore.
+    ///
+    /// A node keeps `2 * BONDED_ERAS` past eras around, because the oldest bonded era could still
+    /// receive blocks that refer to `BONDED_ERAS` before that.
     bonded_eras: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
@@ -407,7 +405,8 @@ where
             ConsensusMessage::Protocol { era_id, payload } => {
                 // If the era is already unbonded, only accept new evidence, because still-bonded
                 // eras could depend on that.
-                let evidence_only = era_id.0 + self.era_supervisor.bonded_eras < self.era_supervisor.current_era.0;
+                let evidence_only =
+                    era_id.0 + self.era_supervisor.bonded_eras < self.era_supervisor.current_era.0;
                 self.delegate_to_era(era_id, move |consensus, rng| {
                     consensus.handle_message(sender, payload, evidence_only, rng)
                 })

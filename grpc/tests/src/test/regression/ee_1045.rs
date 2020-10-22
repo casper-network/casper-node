@@ -1,6 +1,12 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
-use casper_engine_test_support::{DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE, internal::DEFAULT_INITIAL_ERA_ID, internal::{DEFAULT_ACCOUNTS, DEFAULT_AUCTION_DELAY, ExecuteRequestBuilder, InMemoryWasmTestBuilder, utils}};
+use casper_engine_test_support::{
+    internal::{
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+        DEFAULT_AUCTION_DELAY, DEFAULT_INITIAL_ERA_ID,
+    },
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
+};
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::AccountHash,
