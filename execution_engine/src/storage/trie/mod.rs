@@ -1,14 +1,18 @@
 //! Core types for a Merkle Trie
 
+use std::convert::TryInto;
+
 use crate::shared::newtypes::Blake2bHash;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 #[cfg(test)]
 pub mod gens;
 
+pub mod merkle_proof;
 #[cfg(test)]
 mod tests;
 
+pub const USIZE_EXCEEDS_U8: &str = "usize exceeds u8";
 pub const RADIX: usize = 256;
 
 /// A parent is represented as a pair of a child index and a node or extension.
@@ -83,12 +87,22 @@ impl PointerBlock {
         Default::default()
     }
 
-    pub fn from_indexed_pointers(indexed_pointers: &[(usize, Pointer)]) -> Self {
+    pub fn from_indexed_pointers(indexed_pointers: &[(u8, Pointer)]) -> Self {
         let mut ret = PointerBlock::new();
         for (idx, ptr) in indexed_pointers.iter() {
-            ret[*idx] = Some(*ptr);
+            ret[*idx as usize] = Some(*ptr);
         }
         ret
+    }
+
+    pub fn to_indexed_pointers(&self) -> impl Iterator<Item = (u8, Pointer)> + '_ {
+        self.0
+            .iter()
+            .enumerate()
+            .filter_map(|(index, maybe_pointer)| {
+                maybe_pointer
+                    .map(|value| (index.try_into().expect(USIZE_EXCEEDS_U8), value.to_owned()))
+            })
     }
 }
 
@@ -223,7 +237,7 @@ impl<K, V> Trie<K, V> {
     }
 
     /// Constructs a [`Trie::Node`] from a given slice of indexed pointers.
-    pub fn node(indexed_pointers: &[(usize, Pointer)]) -> Self {
+    pub fn node(indexed_pointers: &[(u8, Pointer)]) -> Self {
         let pointer_block = PointerBlock::from_indexed_pointers(indexed_pointers);
         let pointer_block = Box::new(pointer_block);
         Trie::Node { pointer_block }
