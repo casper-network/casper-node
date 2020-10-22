@@ -28,6 +28,8 @@ validator_slots = 15
 auction_delay = 3
 # Initial Era Id
 initial_era_id = 0
+# Locked Funds Period
+locked_funds_period = 15
 
 [highway]
 # Beginning of era 0. By this time, a sufficient majority (> 50% + F/2 — see finality_threshold_percent below)

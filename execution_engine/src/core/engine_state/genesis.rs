@@ -228,6 +228,7 @@ pub struct ExecConfig {
     validator_slots: u32,
     auction_delay: u64,
     initial_era_id: EraId,
+    locked_funds_period: EraId,
 }
 
 impl ExecConfig {
@@ -242,6 +243,7 @@ impl ExecConfig {
         validator_slots: u32,
         auction_delay: u64,
         initial_era_id: EraId,
+        locked_funds_period: EraId,
     ) -> ExecConfig {
         ExecConfig {
             mint_installer_bytes,
@@ -253,6 +255,7 @@ impl ExecConfig {
             validator_slots,
             auction_delay,
             initial_era_id,
+            locked_funds_period,
         }
     }
 
@@ -301,6 +304,10 @@ impl ExecConfig {
     pub fn initial_era_id(&self) -> EraId {
         self.initial_era_id
     }
+
+    pub fn locked_funds_period(&self) -> EraId {
+        self.locked_funds_period
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -329,6 +336,8 @@ impl Distribution<ExecConfig> for Standard {
 
         let initial_era_id = 0;
 
+        let locked_funds_period: EraId = rng.gen::<u64>();
+
         ExecConfig {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
@@ -339,6 +348,7 @@ impl Distribution<ExecConfig> for Standard {
             validator_slots,
             auction_delay,
             initial_era_id,
+            locked_funds_period,
         }
     }
 }

@@ -24,7 +24,9 @@ use casper_execution_engine::{
     },
 };
 use casper_types::{
-    auction::{EraId, AUCTION_DELAY_KEY, INITIAL_ERA_ID_KEY, VALIDATOR_SLOTS_KEY},
+    auction::{
+        EraId, AUCTION_DELAY_KEY, INITIAL_ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY, VALIDATOR_SLOTS_KEY,
+    },
     ProtocolVersion,
 };
 #[cfg(feature = "use-system-contracts")]
@@ -854,6 +856,64 @@ fn should_upgrade_only_initial_era_id() {
 
     assert_eq!(
         new_era_id, after_era_id,
-        "should hae upgrade version auction delay"
+        "should have upgrade era id to expected value"
+    )
+}
+
+#[test]
+fn should_upgrade_only_locked_funds_period() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    let locked_funds_period_key = builder
+        .get_contract(builder.get_auction_contract_hash())
+        .expect("auction should exist")
+        .named_keys()[LOCKED_FUNDS_PERIOD_KEY];
+
+    let before_locked_funds_period: EraId = builder
+        .query(None, locked_funds_period_key, &[])
+        .expect("should have auction delay")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    let new_locked_funds_period = before_locked_funds_period + 1;
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_new_locked_funds_period(new_locked_funds_period)
+            .build()
+    };
+
+    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+
+    let upgrade_response = builder
+        .get_upgrade_response(0)
+        .expect("should have response");
+
+    assert!(upgrade_response.has_success(), "expected success");
+
+    let after_locked_funds_period: EraId = builder
+        .query(None, locked_funds_period_key, &[])
+        .expect("should have auction delay")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    assert_eq!(
+        new_locked_funds_period, after_locked_funds_period,
+        "Should have upgraded locked funds period"
     )
 }

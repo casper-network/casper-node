@@ -71,6 +71,17 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             )
         };
 
+        let new_locked_funds_period: Option<EraId> = if !upgrade_point.has_new_locked_funds_period()
+        {
+            None
+        } else {
+            Some(
+                upgrade_point
+                    .take_new_locked_funds_period()
+                    .get_new_locked_funds_period(),
+            )
+        };
+
         Ok(UpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
@@ -82,6 +93,7 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             new_validator_slots,
             new_auction_delay,
             new_initial_era_id,
+            new_locked_funds_period,
         ))
     }
 }

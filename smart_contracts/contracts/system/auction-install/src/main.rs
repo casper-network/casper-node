@@ -13,11 +13,11 @@ use casper_types::{
         Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraId, EraValidators,
         SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
         UnbondingPurses, ValidatorRewardMap, ValidatorWeights, ARG_AUCTION_DELAY,
-        ARG_GENESIS_VALIDATORS, ARG_INITIAL_ERA_ID, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_VALIDATOR_SLOTS, BIDS_KEY, BID_PURSES_KEY, DEFAULT_LOCKED_FUNDS_PERIOD, DELEGATORS_KEY,
-        DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE, ERA_ID_KEY, ERA_VALIDATORS_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP,
-        VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
+        ARG_GENESIS_VALIDATORS, ARG_INITIAL_ERA_ID, ARG_LOCKED_FUNDS_PERIOD,
+        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_VALIDATOR_SLOTS, BIDS_KEY, BID_PURSES_KEY,
+        DELEGATORS_KEY, DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE, ERA_ID_KEY,
+        ERA_VALIDATORS_KEY, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
@@ -36,6 +36,7 @@ pub extern "C" fn install() {
         runtime::get_named_arg(ARG_MINT_CONTRACT_PACKAGE_HASH);
 
     let validator_slots: u32 = runtime::get_named_arg(ARG_VALIDATOR_SLOTS);
+    let locked_funds_period: EraId = runtime::get_named_arg(ARG_LOCKED_FUNDS_PERIOD);
 
     let entry_points = auction::get_entry_points();
     let (contract_package_hash, access_uref) = storage::create_contract_package_at_hash();
@@ -58,8 +59,7 @@ pub extern "C" fn install() {
 
         for (validator_public_key, amount) in genesis_validators {
             let bonding_purse = create_purse(mint_package_hash, amount);
-            let founding_validator =
-                Bid::new_locked(bonding_purse, amount, DEFAULT_LOCKED_FUNDS_PERIOD);
+            let founding_validator = Bid::new_locked(bonding_purse, amount, locked_funds_period);
             validators.insert(validator_public_key, founding_validator);
             initial_validator_weights.insert(validator_public_key, amount);
             bid_purses.insert(validator_public_key, bonding_purse);
@@ -129,6 +129,11 @@ pub extern "C" fn install() {
         named_keys.insert(
             ARG_INITIAL_ERA_ID.into(),
             storage::new_uref(initial_era_id).into(),
+        );
+
+        named_keys.insert(
+            LOCKED_FUNDS_PERIOD_KEY.into(),
+            storage::new_uref(locked_funds_period).into(),
         );
 
         named_keys

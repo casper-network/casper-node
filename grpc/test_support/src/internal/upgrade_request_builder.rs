@@ -1,8 +1,8 @@
 use casper_engine_grpc_server::engine_server::{
     ipc::{
         ChainSpec_ActivationPoint, ChainSpec_NewAuctionDelay, ChainSpec_NewInitialEraId,
-        ChainSpec_NewValidatorSlots, ChainSpec_UpgradePoint, ChainSpec_WasmConfig, DeployCode,
-        UpgradeRequest,
+        ChainSpec_NewLockedFundsPeriod, ChainSpec_NewValidatorSlots, ChainSpec_UpgradePoint,
+        ChainSpec_WasmConfig, DeployCode, UpgradeRequest,
     },
     state,
 };
@@ -19,6 +19,7 @@ pub struct UpgradeRequestBuilder {
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_initial_era_id: Option<EraId>,
+    new_locked_funds_period: Option<EraId>,
 }
 
 impl UpgradeRequestBuilder {
@@ -66,6 +67,11 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    pub fn with_new_locked_funds_period(mut self, new_locked_funds_period: EraId) -> Self {
+        self.new_locked_funds_period = Some(new_locked_funds_period);
+        self
+    }
+
     pub fn with_activation_point(mut self, rank: u64) -> Self {
         self.activation_point = {
             let mut ret = ChainSpec_ActivationPoint::new();
@@ -108,6 +114,16 @@ impl UpgradeRequestBuilder {
             }
         }
 
+        match self.new_locked_funds_period {
+            None => {}
+            Some(new_locked_funds_period) => {
+                let mut chainspec_new_locked_funds_period = ChainSpec_NewLockedFundsPeriod::new();
+                chainspec_new_locked_funds_period
+                    .set_new_locked_funds_period(new_locked_funds_period);
+                upgrade_point.set_new_locked_funds_period(chainspec_new_locked_funds_period);
+            }
+        }
+
         upgrade_point.set_protocol_version(self.new_protocol_version);
         upgrade_point.set_upgrade_installer(self.upgrade_installer);
 
@@ -130,6 +146,7 @@ impl Default for UpgradeRequestBuilder {
             new_validator_slots: Default::default(),
             new_auction_delay: Default::default(),
             new_initial_era_id: Default::default(),
+            new_locked_funds_period: Default::default(),
         }
     }
 }

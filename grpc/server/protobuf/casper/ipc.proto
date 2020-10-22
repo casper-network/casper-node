@@ -290,6 +290,8 @@ message ChainSpec {
             uint64 auction_delay = 8;
             // The initial EraId
             uint64 initial_era_id = 9;
+            // the default_locked funds period. 
+            uint64 locked_funds_period = 10;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;
@@ -454,6 +456,8 @@ message ChainSpec {
         NewAuctionDelay new_auction_delay = 7;
         // Change the initial era id (optional)
         NewInitialEraId new_initial_era_id = 8;
+        // Change the locked funds period (optional)
+        NewLockedFundsPeriod new_locked_funds_period = 9;
     }
 
     message NewValidatorSlots {
@@ -466,6 +470,10 @@ message ChainSpec {
 
     message NewInitialEraId {
         uint64 new_initial_era_id = 1;
+    }
+
+    message NewLockedFundsPeriod {
+        uint64 new_locked_funds_period = 1;
     }
 
     message ActivationPoint {

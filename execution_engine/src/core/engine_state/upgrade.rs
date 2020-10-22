@@ -66,6 +66,7 @@ pub struct UpgradeConfig {
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_initial_era_id: Option<EraId>,
+    new_locked_funds_period: Option<EraId>,
 }
 
 impl UpgradeConfig {
@@ -81,6 +82,7 @@ impl UpgradeConfig {
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
         new_initial_era_id: Option<EraId>,
+        new_locked_funds_period: Option<EraId>,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -93,6 +95,7 @@ impl UpgradeConfig {
             new_validator_slots,
             new_auction_delay,
             new_initial_era_id,
+            new_locked_funds_period,
         }
     }
 
@@ -136,5 +139,9 @@ impl UpgradeConfig {
 
     pub fn new_initial_era_id(&self) -> Option<EraId> {
         self.new_initial_era_id
+    }
+
+    pub fn new_locked_funds_period(&self) -> Option<EraId> {
+        self.new_locked_funds_period
     }
 }

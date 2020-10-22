@@ -182,6 +182,7 @@ pub struct GenesisConfig {
     pub(crate) validator_slots: u32,
     pub(crate) auction_delay: u64,
     pub(crate) initial_era_id: EraId,
+    pub(crate) locked_funds_period: EraId,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -264,6 +265,7 @@ impl GenesisConfig {
         let validator_slots = rng.gen::<u32>();
         let auction_delay = rng.gen::<u64>();
         let initial_era_id = 0;
+        let locked_funds_period: EraId = rng.gen::<u64>();
         let protocol_version = Version::new(
             rng.gen_range(0, 10),
             rng.gen::<u8>() as u64,
@@ -284,6 +286,7 @@ impl GenesisConfig {
             validator_slots,
             auction_delay,
             initial_era_id,
+            locked_funds_period,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
@@ -401,6 +404,7 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.validator_slots,
             self.genesis.auction_delay,
             self.genesis.initial_era_id,
+            self.genesis.locked_funds_period,
         )
     }
 }

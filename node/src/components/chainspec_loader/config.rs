@@ -26,6 +26,7 @@ const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 const DEFAULT_AUCTION_DELAY: u64 = 3;
 const DEFAULT_INITIAL_ERA_ID: EraId = 0;
+const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 struct Genesis {
@@ -34,6 +35,7 @@ struct Genesis {
     validator_slots: u32,
     auction_delay: u64,
     initial_era_id: EraId,
+    locked_funds_period: EraId,
     protocol_version: Version,
     mint_installer_path: External<Vec<u8>>,
     pos_installer_path: External<Vec<u8>>,
@@ -50,6 +52,7 @@ impl Default for Genesis {
             validator_slots: DEFAULT_VALIDATOR_SLOTS,
             auction_delay: DEFAULT_AUCTION_DELAY,
             initial_era_id: DEFAULT_INITIAL_ERA_ID,
+            locked_funds_period: DEFAULT_LOCKED_FUNDS_PERIOD,
             protocol_version: Version::from((1, 0, 0)),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -130,6 +133,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             validator_slots: chainspec.genesis.validator_slots,
             auction_delay: chainspec.genesis.auction_delay,
             initial_era_id: chainspec.genesis.initial_era_id,
+            locked_funds_period: chainspec.genesis.locked_funds_period,
             protocol_version: chainspec.genesis.protocol_version.clone(),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -210,6 +214,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         validator_slots: chainspec.genesis.validator_slots,
         auction_delay: chainspec.genesis.auction_delay,
         initial_era_id: chainspec.genesis.initial_era_id,
+        locked_funds_period: chainspec.genesis.locked_funds_period,
         protocol_version: chainspec.genesis.protocol_version,
         mint_installer_bytes,
         pos_installer_bytes,
