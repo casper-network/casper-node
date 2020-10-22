@@ -2,9 +2,7 @@ use std::{fs, str};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-use casper_client::RpcCall;
 use casper_node::{crypto::asymmetric_key::PublicKey, rpcs::state::GetItem};
-use casper_types::Key;
 
 use crate::{command::ClientCommand, common};
 
@@ -44,39 +42,31 @@ mod key {
             .display_order(DisplayOrder::Key as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Key {
+    pub(super) fn get(matches: &ArgMatches) -> String {
         let value = matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
 
-        // Try to parse as a `Key` first.
-        if let Ok(value) = Key::from_formatted_str(value) {
-            return value;
+        // Try to read as a PublicKey PEM file first.
+        if let Ok(public_key) = PublicKey::from_file(value) {
+            return public_key.to_hex();
         }
 
-        // Try to parse from a hex-encoded `PublicKey`, a pem-encoded file then a hex-encoded file.
-        let public_key = if let Ok(public_key) = PublicKey::from_hex(value) {
-            public_key
-        } else if let Ok(public_key) = PublicKey::from_file(value) {
-            public_key
-        } else {
-            let contents = fs::read(value).unwrap_or_else(|_| {
-                panic!(
-                    "failed to parse '{}' as a public key (as a hex string, hex file or pem file), \
-                    account hash, contract address hash or URef",
-                    value
-                )
-            });
-            PublicKey::from_hex(contents).unwrap_or_else(|error| {
+        // Try to read as a hex-encoded PublicKey file next.
+        if let Ok(hex_public_key) = fs::read_to_string(value).map(|contents| {
+            PublicKey::from_hex(contents.as_bytes()).unwrap_or_else(|error| {
                 panic!(
                     "failed to parse '{}' as a hex-encoded public key file: {}",
                     value, error
                 )
-            })
-        };
+            });
+            contents
+        }) {
+            return hex_public_key;
+        }
 
-        // Return the public key as an account hash.
-        Key::Account(public_key.to_account_hash())
+        // Just return the value.
+        value.to_string()
     }
 }
 
@@ -99,11 +89,8 @@ mod path {
             .display_order(DisplayOrder::Path as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Vec<String> {
-        match matches.value_of(ARG_NAME) {
-            Some("") | None => return vec![],
-            Some(path) => path.split('/').map(ToString::to_string).collect(),
-        }
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
@@ -128,19 +115,22 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let rpc = RpcCall::new(
-            common::rpc_id::get(matches),
-            common::node_address::get(matches),
-            common::verbose::get(matches),
-        );
-
+        let maybe_rpc_id = common::rpc_id::get(matches);
+        let node_address = common::node_address::get(matches);
+        let verbose = common::verbose::get(matches);
         let state_root_hash = common::state_root_hash::get(matches);
         let key = key::get(matches);
         let path = path::get(matches);
 
-        let response = rpc
-            .get_item(state_root_hash, key, path)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
+        let response = casper_client::get_item(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            state_root_hash,
+            &key,
+            path,
+        )
+        .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")

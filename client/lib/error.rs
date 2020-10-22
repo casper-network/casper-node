@@ -1,10 +1,10 @@
-use std::path::PathBuf;
+use std::{num::ParseIntError, path::PathBuf};
 
 use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
 use casper_node::crypto::Error as CryptoError;
-use casper_types::bytesrepr::Error as ToBytesError;
+use casper_types::{bytesrepr::Error as ToBytesError, URefFromStrError};
 
 /// Crate-wide Result type wrapper.
 pub(crate) type Result<T> = std::result::Result<T, Error>;
@@ -12,6 +12,18 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 /// Error that can be returned by `casper-client`.
 #[derive(Error, Debug)]
 pub enum Error {
+    /// Failed to parse a `Key` from a formatted string.
+    #[error("failed to parse as a key")]
+    FailedToParseKey,
+
+    /// Failed to parse a `URef` from a formatted string.
+    #[error("failed to parse as a uref: {0:?}")]
+    FailedToParseURef(URefFromStrError),
+
+    /// Failed to parse an integer from a string.
+    #[error("failed to parse as an integer: {0:?}")]
+    FailedToParseInt(#[from] ParseIntError),
+
     /// Failed to get a response from the node.
     #[error("failed to get rpc response: {0}")]
     FailedToGetResponse(reqwest::Error),
@@ -23,6 +35,10 @@ pub enum Error {
     /// Failed to create new key file because it already exists.
     #[error("file already exists: {0:?}")]
     FileAlreadyExists(PathBuf),
+
+    /// Unsupported keygen algorithm.
+    #[error("unsupported keygen algorithm: {0}")]
+    UnsupportedAlgorithm(String),
 
     /// JSON-RPC error returned from the node.
     #[error("rpc response is error: {0}")]
@@ -57,8 +73,14 @@ pub enum Error {
     InvalidCLValue(String),
 }
 
+impl From<URefFromStrError> for Error {
+    fn from(error: URefFromStrError) -> Self {
+        Error::FailedToParseURef(error)
+    }
+}
+
 impl From<ToBytesError> for Error {
-    fn from(e: ToBytesError) -> Self {
-        Error::ToBytesError(e)
+    fn from(error: ToBytesError) -> Self {
+        Error::ToBytesError(error)
     }
 }

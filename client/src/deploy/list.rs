@@ -55,13 +55,14 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let rpc = common::rpc(matches);
-
+        let maybe_rpc_id = common::rpc_id::get(matches);
+        let node_address = common::node_address::get(matches);
+        let verbose = common::verbose::get(matches);
         let maybe_block_hash = common::block_hash::get(matches);
 
-        let response_value = rpc
-            .list_deploys(maybe_block_hash)
-            .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
+        let response_value =
+            casper_client::list_deploys(maybe_rpc_id, node_address, verbose, maybe_block_hash)
+                .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
         println!(
             "{}",
             serde_json::to_string_pretty(&response_value).expect("should encode to JSON")

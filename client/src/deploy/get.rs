@@ -2,7 +2,7 @@ use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-use casper_node::{crypto::hash::Digest, rpcs::info::GetDeploy, types::DeployHash};
+use casper_node::rpcs::info::GetDeploy;
 
 use crate::{command::ClientCommand, common};
 
@@ -30,13 +30,10 @@ mod deploy_hash {
             .display_order(DisplayOrder::DeployHash as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> DeployHash {
-        let hex_str = matches
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
-        let hash = Digest::from_hex(hex_str)
-            .unwrap_or_else(|error| panic!("cannot parse as a deploy hash: {}", error));
-        DeployHash::new(hash)
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
@@ -57,11 +54,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let rpc = common::rpc(matches);
-
+        let maybe_rpc_id = common::rpc_id::get(matches);
+        let node_address = common::node_address::get(matches);
+        let verbose = common::verbose::get(matches);
         let deploy_hash = deploy_hash::get(matches);
-        let response = rpc
-            .get_deploy(deploy_hash)
+
+        let response = casper_client::get_deploy(maybe_rpc_id, node_address, verbose, deploy_hash)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

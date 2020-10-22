@@ -75,4 +75,4 @@ pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use system_contract_type::SystemContractType;
 pub use transfer_result::{TransferResult, TransferredTo};
-pub use uref::{URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
+pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};

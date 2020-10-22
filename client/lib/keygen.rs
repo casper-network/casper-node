@@ -1,6 +1,6 @@
 //! Cryptographic key generation.
 
-use std::{fmt::Display, fs, path::Path, result::Result as StdResult, str::FromStr};
+use std::{fs, path::Path};
 
 use casper_node::crypto::asymmetric_key::{PublicKey, SecretKey};
 
@@ -18,65 +18,22 @@ pub const FILES: [&str; 3] = [PUBLIC_KEY_HEX, SECRET_KEY_PEM, PUBLIC_KEY_PEM];
 
 /// Name of Ed25519 algorithm.
 pub const ED25519: &str = "Ed25519";
-
 /// Name of secp256k1 algorithm.
 pub const SECP256K1: &str = "secp256k1";
 
-/// Algorithm parameter for `keygen` module.
-pub enum Algorithm {
-    /// Ed25519 encryption algorithm.
-    Ed25519,
-
-    /// secp256k1 encryption algorithm.
-    Secp256k1,
-}
-
-impl FromStr for Algorithm {
-    type Err = String;
-
-    fn from_str(strval: &str) -> StdResult<Self, Self::Err> {
-        if strval.eq_ignore_ascii_case(ED25519) {
-            Ok(Algorithm::Ed25519)
-        } else if strval.eq_ignore_ascii_case(SECP256K1) {
-            Ok(Algorithm::Secp256k1)
-        } else {
-            Err(format!("unsupported algorithm: {}", strval))
-        }
-    }
-}
-
-impl Display for Algorithm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Algorithm::Ed25519 => write!(f, "{}", ED25519),
-            Algorithm::Secp256k1 => write!(f, "{}", SECP256K1),
-        }
-    }
-}
-
-/// Writes related `PUBLIC_KEY_HEX`, `SECRET_KEY_PEM`, `PUBLIC_KEY_PEM` files to specified output
-/// directory.
-pub fn write_to_files(output_dir: &Path, secret_key: SecretKey) -> Result<()> {
-    let public_key = PublicKey::from(&secret_key);
-    write_file(PUBLIC_KEY_HEX, output_dir, public_key.to_hex())?;
-    let secret_key_path = output_dir.join(SECRET_KEY_PEM);
-    secret_key.to_file(&secret_key_path)?;
-    let public_key_path = output_dir.join(PUBLIC_KEY_PEM);
-    public_key.to_file(&public_key_path)?;
-    Ok(())
-}
-
-fn write_file(filename: &str, dir: &Path, value: String) -> Result<()> {
-    let path = dir.join(filename);
-    Ok(fs::write(&path, value)?)
-}
-
-/// Writes related `PUBLIC_KEY_HEX`, `SECRET_KEY_PEM`, `PUBLIC_KEY_PEM` files to specified output
-/// directory, generating a new secret key with the provided `algorithm`. Optionally `force`
-/// overwrite of those files or raise an `Error::FileAlreadyExists(path)` if they already exist.
-pub fn generate_files(output_dir: &Path, algorithm: Algorithm, force: bool) -> Result<()> {
+/// Generates a new asymmetric key pair using the specified algorithm, and writes them to files in
+/// the specified directory.
+///
+/// The secret key is written to "secret_key.pem", and the public key is written to "public_key.pem"
+/// and also in hex format to "public_key_hex".  For the hex format, the algorithm's tag is
+/// prepended, e.g. `01` for Ed25519, `02` for secp256k1.
+///
+/// If `force` is true, existing files will be overwritten.  If `force` is false and any of the
+/// files exist, `Error::FileAlreadyExists(path)` is returned and no files are written.
+pub fn generate_files(output_dir: &str, algorithm: &str, force: bool) -> Result<()> {
     let _ = fs::create_dir_all(output_dir)?;
-    let output_dir = output_dir.canonicalize()?;
+    let output_dir = Path::new(output_dir).canonicalize()?;
+
     if !force {
         for file in FILES.iter().map(|filename| output_dir.join(filename)) {
             if file.exists() {
@@ -84,9 +41,25 @@ pub fn generate_files(output_dir: &Path, algorithm: Algorithm, force: bool) -> R
             }
         }
     }
-    let secret_key = match algorithm {
-        Algorithm::Ed25519 => SecretKey::generate_ed25519(),
-        Algorithm::Secp256k1 => SecretKey::generate_secp256k1(),
+
+    let secret_key = if algorithm.eq_ignore_ascii_case(ED25519) {
+        SecretKey::generate_ed25519()
+    } else if algorithm.eq_ignore_ascii_case(SECP256K1) {
+        SecretKey::generate_secp256k1()
+    } else {
+        return Err(Error::UnsupportedAlgorithm(algorithm.to_string()));
     };
-    write_to_files(&output_dir, secret_key)
+
+    let public_key = PublicKey::from(&secret_key);
+
+    let public_key_hex_path = output_dir.join(PUBLIC_KEY_HEX);
+    fs::write(public_key_hex_path, public_key.to_hex())?;
+
+    let secret_key_path = output_dir.join(SECRET_KEY_PEM);
+    secret_key.to_file(&secret_key_path)?;
+
+    let public_key_path = output_dir.join(PUBLIC_KEY_PEM);
+    public_key.to_file(&public_key_path)?;
+
+    Ok(())
 }

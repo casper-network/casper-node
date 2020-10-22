@@ -31,13 +31,18 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetStateRootHash {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let rpc = common::rpc(matches);
-
+        let maybe_rpc_id = common::rpc_id::get(matches);
+        let node_address = common::node_address::get(matches);
+        let verbose = common::verbose::get(matches);
         let maybe_block_hash = common::block_hash::get(matches);
 
-        let response = rpc
-            .get_state_root_hash(maybe_block_hash)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
+        let response = casper_client::get_state_root_hash(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            maybe_block_hash,
+        )
+        .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")

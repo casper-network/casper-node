@@ -1,5 +1,6 @@
 use futures::executor;
 use jsonrpc_lite::{JsonRpc, Params};
+use rand::Rng;
 use reqwest::Client;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -12,7 +13,7 @@ use casper_node::{
         chain::{GetBlock, GetBlockParams, GetStateRootHash, GetStateRootHashParams},
         info::{GetDeploy, GetDeployParams},
         state::{GetBalance, GetBalanceParams, GetItem, GetItemParams},
-        RPC_API_PATH,
+        RpcWithOptionalParams, RpcWithParams, RPC_API_PATH,
     },
     types::{BlockHash, Deploy, DeployHash},
 };
@@ -52,27 +53,47 @@ impl RpcCall {
     /// `"http://127.0.0.1:7777"`.
     ///
     /// When `verbose` is `true`, the request will be printed to `stdout`.
-    pub fn new(rpc_id: u32, node_address: String, verbose: bool) -> Self {
-        Self {
+    pub fn new(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<Self> {
+        let rpc_id = if maybe_rpc_id.is_empty() {
+            rand::thread_rng().gen()
+        } else {
+            maybe_rpc_id.parse()?
+        };
+
+        Ok(Self {
             rpc_id,
-            node_address,
+            node_address: node_address.to_string(),
             verbose,
-        }
+        })
     }
 
-    /// Gets a `Deploy` from the node.
-    pub fn get_deploy(self, deploy_hash: DeployHash) -> Result<JsonRpc> {
-        let params = GetDeployParams { deploy_hash };
+    pub(crate) fn get_deploy(self, deploy_hash: &str) -> Result<JsonRpc> {
+        let hash = Digest::from_hex(deploy_hash)?;
+        let params = GetDeployParams {
+            deploy_hash: DeployHash::new(hash),
+        };
         GetDeploy::request_with_map_params(self, params)
     }
 
-    /// Queries the node for an item at `key`, given a `path` and a `state_root_hash`.
-    ///
-    /// - `state_root_hash` - Hash representing a pointer to the current state from which a value
-    ///   can be extracted. See `get_state_root_hash`.
-    /// - `key` - Key from which to get a value. See (Key)[casper_types::Key].
-    /// - `path` - Path components starting with the `key`.
-    pub fn get_item(self, state_root_hash: Digest, key: Key, path: Vec<String>) -> Result<JsonRpc> {
+    pub(crate) fn get_item(self, state_root_hash: &str, key: &str, path: &str) -> Result<JsonRpc> {
+        let state_root_hash = Digest::from_hex(state_root_hash)?;
+
+        let key = {
+            if let Ok(key) = Key::from_formatted_str(key) {
+                key
+            } else if let Ok(public_key) = PublicKey::from_hex(key) {
+                Key::Account(public_key.to_account_hash())
+            } else {
+                return Err(Error::FailedToParseKey);
+            }
+        };
+
+        let path = if path.is_empty() {
+            vec![]
+        } else {
+            path.split('/').map(ToString::to_string).collect()
+        };
+
         let params = GetItemParams {
             state_root_hash,
             key: key.to_formatted_string(),
@@ -81,27 +102,26 @@ impl RpcCall {
         GetItem::request_with_map_params(self, params)
     }
 
-    /// Queries the node for the most recent state root hash or as of a given block hash if
-    /// `maybe_block_hash` is provided.
-    pub fn get_state_root_hash(self, maybe_block_hash: Option<BlockHash>) -> Result<JsonRpc> {
-        match maybe_block_hash {
-            Some(block_hash) => {
-                let params = GetStateRootHashParams { block_hash };
-                GetStateRootHash::request_with_map_params(self, params)
-            }
-            None => GetStateRootHash::request(self),
+    pub(crate) fn get_state_root_hash(self, maybe_block_hash: &str) -> Result<JsonRpc> {
+        if maybe_block_hash.is_empty() {
+            GetStateRootHash::request(self)
+        } else {
+            let hash = Digest::from_hex(maybe_block_hash)?;
+            let params = GetStateRootHashParams {
+                block_hash: BlockHash::new(hash),
+            };
+            GetStateRootHash::request_with_map_params(self, params)
         }
     }
 
-    /// Gets the balance from a purse.
-    ///
-    /// - `state_root_hash` - Hash representing a pointer to the current state from which a balance
-    ///   can be extracted. See `get_state_root_hash`.
-    /// - `purse_uref` - The purse `URef` that can obtained with `get_item`.
-    pub fn get_balance(self, state_root_hash: Digest, purse_uref: URef) -> Result<JsonRpc> {
+    pub(crate) fn get_balance(self, state_root_hash: &str, purse_uref: &str) -> Result<JsonRpc> {
+        let state_root_hash = Digest::from_hex(state_root_hash)?;
+
+        let _ = URef::from_formatted_str(purse_uref)?;
+
         let params = GetBalanceParams {
             state_root_hash,
-            purse_uref: purse_uref.to_formatted_string(),
+            purse_uref: purse_uref.to_string(),
         };
         GetBalance::request_with_map_params(self, params)
     }
@@ -146,8 +166,7 @@ impl RpcCall {
         Transfer::request_with_map_params(self, params)
     }
 
-    /// Reads a previously-saved `Deploy` from file, and sends that to the node.
-    pub fn send_deploy_file(self, input_path: &str) -> Result<JsonRpc> {
+    pub(crate) fn send_deploy_file(self, input_path: &str) -> Result<JsonRpc> {
         let deploy = Deploy::read_deploy(input_path)?;
         let params = PutDeployParams { deploy };
         SendDeploy::request_with_map_params(self, params)
@@ -159,31 +178,27 @@ impl RpcCall {
         PutDeploy::request_with_map_params(self, params)
     }
 
-    /// List `Deploy`s included in the specified `Block`.
-    ///
-    /// If `maybe_block_hash` is `Some`, that specific block is used, otherwise the most
-    /// recently-added block is used.
-    pub fn list_deploys(self, maybe_block_hash: Option<BlockHash>) -> Result<JsonRpc> {
-        match maybe_block_hash {
-            Some(block_hash) => {
-                let params = GetBlockParams { block_hash };
-                ListDeploys::request_with_map_params(self, params)
-            }
-            None => ListDeploys::request(self),
+    pub(crate) fn list_deploys(self, maybe_block_hash: &str) -> Result<JsonRpc> {
+        if maybe_block_hash.is_empty() {
+            ListDeploys::request(self)
+        } else {
+            let hash = Digest::from_hex(maybe_block_hash)?;
+            let params = GetBlockParams {
+                block_hash: BlockHash::new(hash),
+            };
+            ListDeploys::request_with_map_params(self, params)
         }
     }
 
-    /// Gets a `Block` from the node.
-    ///
-    /// If `maybe_block_hash` is `Some`, that specific `Block` is retrieved, otherwise the most
-    /// recently-added `Block` is retrieved.
-    pub fn get_block(self, maybe_block_hash: Option<BlockHash>) -> Result<JsonRpc> {
-        match maybe_block_hash {
-            Some(block_hash) => {
-                let params = GetBlockParams { block_hash };
-                GetBlock::request_with_map_params(self, params)
-            }
-            None => GetBlock::request(self),
+    pub(crate) fn get_block(self, maybe_block_hash: &str) -> Result<JsonRpc> {
+        if maybe_block_hash.is_empty() {
+            GetBlock::request(self)
+        } else {
+            let hash = Digest::from_hex(maybe_block_hash)?;
+            let params = GetBlockParams {
+                block_hash: BlockHash::new(hash),
+            };
+            GetBlock::request_with_map_params(self, params)
         }
     }
 
@@ -262,6 +277,22 @@ pub(crate) trait RpcClient {
                 .await
         })
     }
+}
+
+impl RpcClient for GetBalance {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
+impl RpcClient for GetBlock {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
+impl RpcClient for GetStateRootHash {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
+impl RpcClient for GetItem {
+    const RPC_METHOD: &'static str = <Self as RpcWithParams>::METHOD;
 }
 
 pub(crate) trait IntoJsonMap: Serialize {
