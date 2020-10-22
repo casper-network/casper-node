@@ -128,7 +128,7 @@ impl reactor::Reactor for Reactor {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage = Storage::new(WithDir::new(storage_tempdir.path(), storage_config)).unwrap();
 
-        let deploy_acceptor = DeployAcceptor::new().expect("deploy acceptor is infallible");
+        let deploy_acceptor = DeployAcceptor::new();
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,

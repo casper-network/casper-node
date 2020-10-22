@@ -333,7 +333,7 @@ impl reactor::Reactor for Reactor {
 
         let block_by_height_fetcher = Fetcher::new(config.gossip);
 
-        let deploy_acceptor = DeployAcceptor::new().expect("deploy acceptor is infallible");
+        let deploy_acceptor = DeployAcceptor::new();
 
         let genesis_state_root_hash = chainspec_loader
             .genesis_state_root_hash()
