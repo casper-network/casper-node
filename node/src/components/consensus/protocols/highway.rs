@@ -1,3 +1,5 @@
+mod round_success_meter;
+
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap},
@@ -9,6 +11,8 @@ use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tracing::{info, trace};
+
+use self::round_success_meter::RoundSuccessMeter;
 
 use crate::{
     components::consensus::{
@@ -46,6 +50,8 @@ where
     /// The vertices that are scheduled to be processed at a later time.  The keys of this
     /// `BTreeMap` are timestamps when the corresponding vector of vertices will be added.
     vertices_to_be_added_later: BTreeMap<Timestamp, Vec<(I, PreValidatedVertex<C>)>>,
+    /// A tracker for whether we are keeping up with the current round exponent or not.
+    round_success_meter: RoundSuccessMeter<C>,
 }
 
 impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
@@ -55,12 +61,14 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         params: Params,
         ftt: Weight,
     ) -> Self {
+        let round_exp = params.init_round_exp();
         HighwayProtocol {
             vertex_deps: BTreeMap::new(),
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
             vertices_to_be_added_later: BTreeMap::new(),
+            round_success_meter: RoundSuccessMeter::new(round_exp, Timestamp::now()),
         }
     }
 
@@ -119,18 +127,9 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
     }
 
     fn detect_finality(&mut self) -> impl Iterator<Item = CpResult<I, C>> + '_ {
-        let finalized_blocks = self
-            .finality_detector
+        self.finality_detector
             .run(&self.highway)
             .expect("too many faulty validators")
-            .collect::<Vec<_>>();
-        let current_timestamp = Timestamp::now();
-        for block in &finalized_blocks {
-            self.highway
-                .handle_finalized_block(block.timestamp, current_timestamp);
-        }
-        finalized_blocks
-            .into_iter()
             .map(ConsensusProtocolResult::FinalizedBlock)
     }
 
@@ -249,6 +248,21 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         now: Timestamp,
     ) -> Vec<CpResult<I, C>> {
         let start_time = Timestamp::now();
+        // Check whether we should change the round exponent.
+        // It's important to do it before the vertex is added to the state - this way if the last
+        // round has finished, we now have all the vertices from that round in the state, and no
+        // newer ones.
+        if vv.inner().value().is_some() {
+            // unwraps are safe, as if value is `Some`, this is already a vote
+            self.round_success_meter.new_proposal(
+                vv.inner().vote_hash().unwrap(),
+                vv.inner().timestamp().unwrap(),
+            );
+        }
+        let new_round_exp = self
+            .round_success_meter
+            .calculate_new_exponent(self.highway.state());
+        self.highway.set_round_exp(new_round_exp);
         let av_effects = self.highway.add_valid_vertex(vv.clone(), rng, now);
         let elapsed = start_time.elapsed();
         trace!(%elapsed, "added valid vertex");

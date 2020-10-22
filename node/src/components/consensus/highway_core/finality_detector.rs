@@ -111,7 +111,12 @@ impl<C: Context> FinalityDetector<C> {
     /// Returns the number of levels of the highest summit with a quorum that a `target_lvl` summit
     /// would need for the desired FTT. If the returned number is `target_lvl` that means the
     /// `candidate` is finalized. If not, we need to retry with a lower `target_lvl`.
-    fn find_summit(&self, target_lvl: usize, candidate: &C::Hash, state: &State<C>) -> usize {
+    pub(crate) fn find_summit(
+        &self,
+        target_lvl: usize,
+        candidate: &C::Hash,
+        state: &State<C>,
+    ) -> usize {
         let total_w = state.total_weight();
         let quorum = self.quorum_for_lvl(target_lvl, total_w);
         let latest = state.panorama().iter().map(Observation::correct).collect();

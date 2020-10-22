@@ -166,14 +166,10 @@ impl<C: Context> Highway<C> {
         self.active_validator = None;
     }
 
-    /// Notifies the active validator of a new finalized block
-    pub(crate) fn handle_finalized_block(
-        &mut self,
-        block_timestamp: Timestamp,
-        finalization_timestamp: Timestamp,
-    ) {
-        if let Some(av) = self.active_validator.as_mut() {
-            av.handle_finalized_block(block_timestamp, finalization_timestamp);
+    /// Switches the active validator to a new round exponent.
+    pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
+        if let Some(ref mut av) = self.active_validator {
+            av.set_round_exp(new_round_exp);
         }
     }
 
@@ -365,7 +361,7 @@ impl<C: Context> Highway<C> {
             .map(|(_, v)| v.id())
     }
 
-    pub(super) fn state(&self) -> &State<C> {
+    pub(crate) fn state(&self) -> &State<C> {
         &self.state
     }
 
