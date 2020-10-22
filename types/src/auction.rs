@@ -348,6 +348,7 @@ pub trait Auction:
         let validator_slots = internal::get_validator_slots(self)?;
 
         let auction_delay = internal::get_auction_delay(self)?;
+        let snapshot_size = auction_delay as usize + 1;
 
         let mut era_id = internal::get_era_id(self)?;
 
@@ -450,7 +451,7 @@ pub trait Auction:
         let seigniorage_recipients_snapshot = seigniorage_recipients_snapshot
             .into_iter()
             .rev()
-            .take(SNAPSHOT_SIZE)
+            .take(snapshot_size)
             .collect();
         internal::set_seigniorage_recipients_snapshot(self, seigniorage_recipients_snapshot)?;
 
@@ -464,7 +465,7 @@ pub trait Auction:
         let era_validators = era_validators
             .into_iter()
             .rev()
-            .take(SNAPSHOT_SIZE)
+            .take(snapshot_size)
             .collect();
 
         internal::set_era_validators(self, era_validators)?;

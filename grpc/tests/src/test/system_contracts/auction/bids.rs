@@ -18,7 +18,7 @@ use casper_types::{
         UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
         ARG_PUBLIC_KEY, ARG_UNBOND_PURSE, ARG_VALIDATOR, BIDS_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
         DEFAULT_UNBONDING_DELAY, DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID,
-        METHOD_RUN_AUCTION, SNAPSHOT_SIZE, UNBONDING_PURSES_KEY,
+        METHOD_RUN_AUCTION, UNBONDING_PURSES_KEY,
     },
     runtime_args, PublicKey, RuntimeArgs, URef, U512,
 };
@@ -510,9 +510,10 @@ fn should_calculate_era_validators() {
     assert!(post_era_id > 0);
     let consensus_next_era_id: EraId = DEFAULT_AUCTION_DELAY + 1 + post_era_id;
 
+    let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
     assert_eq!(
         era_validators.len(),
-        SNAPSHOT_SIZE,
+        snapshot_size,
         "era_id={} {:?}",
         consensus_next_era_id,
         era_validators
@@ -648,7 +649,9 @@ fn should_get_first_seigniorage_recipients() {
     assert_eq!(seigniorage_recipients.len(), 2);
 
     let mut era_validators: EraValidators = builder.get_value(auction_hash, "era_validators");
-    assert_eq!(era_validators.len(), SNAPSHOT_SIZE, "{:?}", era_validators); // eraindex==1 - ran once
+    let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
+    
+    assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators); // eraindex==1 - ran once
 
     assert!(era_validators.contains_key(&(DEFAULT_AUCTION_DELAY as u64 + 1)));
 

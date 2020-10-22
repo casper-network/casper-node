@@ -4,12 +4,6 @@ use crate::account::AccountHash;
 /// System account hash.
 pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
-/// Number of eras before an auction actually defines the set of validators.
-//pub const AUCTION_DELAY: u64 = 3;
-
-/// Number of eras to keep track of in past.
-pub const SNAPSHOT_SIZE: usize = 4;
-
 /// Initial value of era id we start at genesis.
 pub const INITIAL_ERA_ID: EraId = 0;
 
