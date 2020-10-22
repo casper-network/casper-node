@@ -6,7 +6,7 @@ use casper_engine_test_support::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
@@ -31,7 +31,7 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
 lazy_static! {
-    static ref TRANSFER_1_AMOUNT: U512 = U512::from(250_000_000) + 1000;
+    static ref TRANSFER_1_AMOUNT: U512 = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000;
     static ref TRANSFER_2_AMOUNT: U512 = U512::from(750);
     static ref TRANSFER_2_AMOUNT_WITH_ADV: U512 = *DEFAULT_PAYMENT + *TRANSFER_2_AMOUNT;
     static ref TRANSFER_TOO_MUCH: U512 = U512::from(u64::max_value());

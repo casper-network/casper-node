@@ -1987,6 +1987,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b07f60793ff0a4d9cef0f18e63b5357e06209987153a64648c972c1e5aff336f"
 
 [[package]]
+name = "host-function-costs"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "host-function-metrics"
 version = "0.1.0"
 dependencies = [
@@ -2327,14 +2335,6 @@ name = "local-state"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
-]
-
-[[package]]
-name = "local-state-add"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
 ]
 
 [[package]]
@@ -4998,6 +4998,31 @@ dependencies = [
  "casper-contract",
  "casper-types",
  "transfer-purse-to-account",
+]
+
+[[package]]
+name = "transfer-purse-to-accounts"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "transfer-purse-to-accounts-stored"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+ "transfer-purse-to-accounts",
+]
+
+[[package]]
+name = "transfer-purse-to-accounts-subcall"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]

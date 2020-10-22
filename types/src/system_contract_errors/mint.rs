@@ -44,6 +44,9 @@ pub enum Error {
     /// Total supply not found.
     #[fail(display = "Total supply not found")]
     TotalSupplyNotFound = 9,
+    /// Failed to record transfer.
+    #[fail(display = "Failed to record transfer")]
+    RecordTransferFailure = 10,
 }
 
 impl From<PurseError> for Error {

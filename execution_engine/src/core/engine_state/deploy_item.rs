@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
-use casper_types::account::AccountHash;
+use casper_types::{account::AccountHash, DeployHash};
 
-use crate::core::{engine_state::executable_deploy_item::ExecutableDeployItem, DeployHash};
+use crate::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 
 type GasPrice = u64;
 

@@ -37,17 +37,3 @@ export function writeLocal(local: Uint8Array, value: CLValue): void {
         valueBytes.length
     );
 }
-
-/**
- * Adds `value` to the one currently under `key` in the context-local partition of global state.
- * @category Storage
- */
-export function addLocal(local: Uint8Array, value: CLValue): void {
-    const valueBytes = value.toBytes();
-    externals.add_local(
-        local.dataStart,
-        local.length,
-        valueBytes.dataStart,
-        valueBytes.length
-    );
-}

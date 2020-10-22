@@ -307,7 +307,7 @@ impl BlockExecutor {
             .insert(deploy_hash, execution_result);
 
         let execution_effect = match ee_execution_result {
-            EngineExecutionResult::Success { effect, cost } => {
+            EngineExecutionResult::Success { effect, cost, .. } => {
                 debug!(?effect, %cost, "execution succeeded");
                 effect
             }
@@ -315,6 +315,7 @@ impl BlockExecutor {
                 error,
                 effect,
                 cost,
+                ..
             } => {
                 error!(?error, ?effect, %cost, "execution failure");
                 effect

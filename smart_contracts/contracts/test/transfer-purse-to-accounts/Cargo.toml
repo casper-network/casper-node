@@ -1,12 +1,12 @@
 [package]
-name = "local-state-add"
+name = "transfer-purse-to-accounts"
 version = "0.1.0"
-authors = ["Bartłomiej Kamiński <bart@casperlabs.io>"]
+authors = ["Michał Papierski <michal@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "local_state_add"
-path = "src/main.rs"
+name = "transfer_purse_to_accounts"
+path = "src/bin/main.rs"
 bench = false
 doctest = false
 test = false

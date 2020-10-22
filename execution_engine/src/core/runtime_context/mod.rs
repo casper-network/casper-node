@@ -19,8 +19,8 @@ use casper_types::{
     bytesrepr,
     contracts::NamedKeys,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
-    EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef,
-    KEY_HASH_LENGTH,
+    DeployInfo, EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
+    Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
 };
 
 use crate::{
@@ -101,11 +101,13 @@ pub struct RuntimeContext<'a, R> {
     gas_counter: Gas,
     hash_address_generator: Rc<RefCell<AddressGenerator>>,
     uref_address_generator: Rc<RefCell<AddressGenerator>>,
+    transfer_address_generator: Rc<RefCell<AddressGenerator>>,
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
     phase: Phase,
     protocol_data: ProtocolData,
     entry_point_type: EntryPointType,
+    transfers: Vec<TransferAddr>,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -129,10 +131,12 @@ where
         gas_counter: Gas,
         hash_address_generator: Rc<RefCell<AddressGenerator>>,
         uref_address_generator: Rc<RefCell<AddressGenerator>>,
+        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         phase: Phase,
         protocol_data: ProtocolData,
+        transfers: Vec<TransferAddr>,
     ) -> Self {
         RuntimeContext {
             tracking_copy,
@@ -149,10 +153,12 @@ where
             gas_counter,
             hash_address_generator,
             uref_address_generator,
+            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
             protocol_data,
+            transfers,
         }
     }
 
@@ -230,6 +236,18 @@ where
                 self.named_keys.remove(name);
                 self.remove_key_from_contract(contract_hash, contract, name)
             }
+            transfer_addr @ Key::Transfer(_) => {
+                let _transfer: Transfer = self.read_gs_typed(&transfer_addr)?;
+                self.named_keys.remove(name);
+                // Users cannot remove transfers from global state
+                Ok(())
+            }
+            deploy_info_addr @ Key::DeployInfo(_) => {
+                let _deploy_info: DeployInfo = self.read_gs_typed(&deploy_info_addr)?;
+                self.named_keys.remove(name);
+                // Users cannot remove deploy infos from global state
+                Ok(())
+            }
         }
     }
 
@@ -267,6 +285,10 @@ where
 
     pub fn hash_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
         Rc::clone(&self.hash_address_generator)
+    }
+
+    pub fn transfer_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
+        Rc::clone(&self.transfer_address_generator)
     }
 
     pub fn state(&self) -> Rc<RefCell<TrackingCopy<R>>> {
@@ -327,6 +349,14 @@ where
     pub(crate) fn new_unit_uref(&mut self) -> Result<URef, Error> {
         let cl_unit = CLValue::from_components(CLType::Unit, Vec::new());
         self.new_uref(StoredValue::CLValue(cl_unit))
+    }
+
+    pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, Error> {
+        let transfer_addr = self
+            .transfer_address_generator
+            .borrow_mut()
+            .create_address();
+        Ok(transfer_addr)
     }
 
     /// Puts `key` to the map of named keys of current context.
@@ -449,6 +479,16 @@ where
         }
     }
 
+    pub fn write_transfer(&mut self, key: Key, value: Transfer) {
+        if let Key::Transfer(_) = key {
+            self.tracking_copy
+                .borrow_mut()
+                .write(key, StoredValue::Transfer(value));
+        } else {
+            panic!("Do not use this function for writing non-transfer keys")
+        }
+    }
+
     pub fn store_function(
         &mut self,
         contract: StoredValue,
@@ -486,6 +526,14 @@ where
 
     pub fn effect(&self) -> ExecutionEffect {
         self.tracking_copy.borrow_mut().effect()
+    }
+
+    pub fn transfers(&self) -> &Vec<TransferAddr> {
+        &self.transfers
+    }
+
+    pub fn transfers_mut(&mut self) -> &mut Vec<TransferAddr> {
+        &mut self.transfers
     }
 
     /// Validates whether keys used in the `value` are not forged.
@@ -541,6 +589,8 @@ where
                 .try_for_each(|key| self.validate_key(key)),
             // TODO: anything to validate here?
             StoredValue::ContractPackage(_) => Ok(()),
+            StoredValue::Transfer(_) => Ok(()),
+            StoredValue::DeployInfo(_) => Ok(()),
         }
     }
 
@@ -624,14 +674,18 @@ where
             Key::Account(_) => &self.base_key() == key,
             Key::Hash(_) => true,
             Key::URef(uref) => uref.is_readable(),
+            Key::Transfer(_) => true,
+            Key::DeployInfo(_) => true,
         }
     }
 
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::Account(_) | Key::Hash(_) => &self.base_key() == key,
+            Key::Account(_) | Key::Hash(_) => &self.base_key() == key, // ???
             Key::URef(uref) => uref.is_addable(),
+            Key::Transfer(_) => false,
+            Key::DeployInfo(_) => false,
         }
     }
 
@@ -640,6 +694,8 @@ where
         match key {
             Key::Account(_) | Key::Hash(_) => false,
             Key::URef(uref) => uref.is_writeable(),
+            Key::DeployInfo(_) => false,
+            Key::Transfer(_) => false,
         }
     }
 
