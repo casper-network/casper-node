@@ -26,6 +26,7 @@ unset node
 unset payment
 unset transfers
 unset user
+unset verbose
 
 for ARGUMENT in "$@"
 do
@@ -40,6 +41,7 @@ do
         payment) gas_payment=${VALUE} ;;
         transfers) transfers=${VALUE} ;;
         user) user=${VALUE} ;;
+        verbose) verbose=${VALUE} ;;
         *)
     esac
 done
@@ -53,6 +55,7 @@ node=${node:-1}
 transfers=${transfers:-100}
 transfer_interval=${transfer_interval:-0.01}
 user=${user:-1}
+verbose=${verbose:-""}
 
 #######################################
 # Main
@@ -71,7 +74,6 @@ log "dispatching $transfers wasmless transfers"
 log "... network=$net"
 log "... node=$node"
 log "... transfer amount=$amount"
-log "... transfer contract=$path_contract"
 log "... transfer interval=$transfer_interval (s)"
 log "... counter-party 1 public key=$cp1_public_key"
 log "... counter-party 2 public key=$cp2_public_key"
@@ -86,15 +88,28 @@ if [ $node = "all" ]; then
         for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
         do
             node_address=$(get_node_address $net $node_idx)
-            $path_net/bin/casper-client transfer \
-                --chain-name casper-net-$net \
-                --gas-price $gas_price \
-                --node-address $node_address \
-                --payment-amount $gas_payment \
-                --secret-key $cp1_secret_key \
-                --ttl "1day" \
-                --amount $amount \
-                --target-account $cp2_public_key > /dev/null 2>&1
+            if [ -n "$verbose" ]; then
+                $path_net/bin/casper-client transfer \
+                    --chain-name casper-net-$net \
+                    --gas-price $gas_price \
+                    --node-address $node_address \
+                    --payment-amount $gas_payment \
+                    --secret-key $cp1_secret_key \
+                    --ttl "1day" \
+                    --amount $amount \
+                    --target-account $cp2_public_key | \
+                    python3 -c "import sys, json; print('deploy dispatched -> ' + json.load(sys.stdin)['result']['deploy_hash'])"
+            else
+                $path_net/bin/casper-client transfer \
+                    --chain-name casper-net-$net \
+                    --gas-price $gas_price \
+                    --node-address $node_address \
+                    --payment-amount $gas_payment \
+                    --secret-key $cp1_secret_key \
+                    --ttl "1day" \
+                    --amount $amount \
+                    --target-account $cp2_public_key > /dev/null 2>&1
+            fi
             transferred=$((transferred + 1))
             if [[ $transferred -eq $transfers ]]; then
                 break
@@ -108,15 +123,28 @@ else
     node_address=$(get_node_address $net $node)
     for transfer_id in $(seq 1 $transfers)
     do
-        $path_net/bin/casper-client transfer \
-            --chain-name casper-net-$net \
-            --gas-price $gas_price \
-            --node-address $node_address \
-            --payment-amount $gas_payment \
-            --secret-key $cp1_secret_key \
-            --ttl "1day" \
-            --amount $amount \
-            --target-account $cp2_public_key > /dev/null 2>&1
+        if [ -n "$verbose" ]; then
+            $path_net/bin/casper-client transfer \
+                --chain-name casper-net-$net \
+                --gas-price $gas_price \
+                --node-address $node_address \
+                --payment-amount $gas_payment \
+                --secret-key $cp1_secret_key \
+                --ttl "1day" \
+                --amount $amount \
+                --target-account $cp2_public_key | \
+                python3 -c "import sys, json; print('deploy dispatched -> ' + json.load(sys.stdin)['result']['deploy_hash'])"
+        else
+            $path_net/bin/casper-client transfer \
+                --chain-name casper-net-$net \
+                --gas-price $gas_price \
+                --node-address $node_address \
+                --payment-amount $gas_payment \
+                --secret-key $cp1_secret_key \
+                --ttl "1day" \
+                --amount $amount \
+                --target-account $cp2_public_key > /dev/null 2>&1
+        fi
         sleep $transfer_interval
     done
 fi

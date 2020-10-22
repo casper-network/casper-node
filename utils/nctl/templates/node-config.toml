@@ -60,7 +60,7 @@ known_addresses = [{NETWORK_KNOWN_ADDRESSES}]
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 # Defaults to 30_000.
-gossip_interval = 30000
+gossip_interval = 1000
 
 # Enable systemd support. If enabled, the node will notify systemd once it has synced and its
 # listening socket for incoming connections is open.

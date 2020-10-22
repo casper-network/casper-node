@@ -41,12 +41,27 @@ alias nctl-stop='source $NCTL/sh/node/stop.sh'
 alias nctl-toggle='source $NCTL/sh/node/toggle.sh'
 alias nctl-up='source $NCTL/sh/node/start.sh'
 
-# State views.
-# alias nctl-view-account='source $NCTL/sh/views/view_account.sh'
-# alias nctl-view-deploy='source $NCTL/sh/views/view_deploy.sh'
+# Views: chain.
+alias nctl-view-chain-account='source $NCTL/sh/views/view_chain_account.sh'
+alias nctl-view-chain-account-balance='source $NCTL/sh/views/view_chain_account_balance.sh'
+alias nctl-view-chain-block='source $NCTL/sh/views/view_chain_block.sh'
+alias nctl-view-chain-deploy='source $NCTL/sh/views/view_chain_deploy.sh'
 
+# Views: node.
 alias nctl-view-node-log='source $NCTL/sh/views/view_node_log.sh'
-alias nctl-view-node-metrics='source $NCTL/sh/views/view_node_metrics.sh'
 alias nctl-view-node-peers='source $NCTL/sh/views/view_node_peers.sh'
 alias nctl-view-node-status='source $NCTL/sh/views/view_node_status.sh'
 alias nctl-view-node-storage='source $NCTL/sh/views/view_node_storage.sh'
+
+# Views: node metrcs.
+alias nctl-view-node-metrics='source $NCTL/sh/views/view_node_metrics.sh'
+alias nctl-view-node-metric-pending-deploy='source $NCTL/sh/views/view_node_metrics.sh metric=pending_deploy'
+alias nctl-view-node-metric-finalised-block-count='source $NCTL/sh/views/view_node_metrics.sh metric=amount_of_blocks'
+
+# Views: network.
+alias nctl-view-faucet-account-balance='source $NCTL/sh/views/view_net_faucet_account_balance.sh'
+alias nctl-view-faucet-account-key='source $NCTL/sh/views/view_net_faucet_account_key.sh'
+
+# Views: user.
+alias nctl-view-user-account-key='source $NCTL/sh/views/view_user_account_key.sh'
+alias nctl-view-user-secret-key-path='source $NCTL/sh/views/view_user_secret_key_path.sh'

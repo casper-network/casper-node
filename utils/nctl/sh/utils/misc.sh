@@ -33,12 +33,12 @@ function log ()
             do
                 declare tabs+='\t'
             done
-            echo $now" [INFO] [$$] NCTL :: "$tabs$1
+            echo $now" [INFO] [$$] CSPR :: "$tabs$1
         else
-            echo $now" [INFO] [$$] NCTL :: "$1
+            echo $now" [INFO] [$$] CSPR :: "$1
         fi
     else
-        echo $now" [INFO] [$$] NCTL :: "
+        echo $now" [INFO] [$$] CSPR :: "
     fi
 }
 
@@ -209,6 +209,7 @@ function exec_node_rest_get() {
 #######################################
 function exec_node_rpc() {
     node_api_ep=$(get_node_address $1 $2)/rpc
+    echo $4
     curl \
         -s \
         --location \
@@ -218,6 +219,6 @@ function exec_node_rpc() {
             "id": 1,
             "jsonrpc": "2.0",
             "method": "'$3'",
-            "params":['$4']
+            "params": {'$4'}
         }' | python3 -m json.tool    
 }
