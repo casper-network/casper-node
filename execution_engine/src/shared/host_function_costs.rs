@@ -66,10 +66,10 @@ const DEFAULT_TRANSFER_TO_ACCOUNT_COST: u32 = 24_000_000;
 const DEFAULT_UPDATE_ASSOCIATED_KEY_COST: u32 = 4_200_000;
 
 const DEFAULT_WRITE_COST: u32 = 14_000_000;
-const DEFAULT_WRITE_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
 const DEFAULT_WRITE_VALUE_SIZE_WEIGHT: u32 = 980;
 
 const DEFAULT_WRITE_LOCAL_COST: u32 = 9_500_000;
+const DEFAULT_WRITE_LOCAL_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
 const DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT: u32 = 520;
 
 /// Representation of a host function cost
@@ -240,7 +240,7 @@ impl Default for HostFunctionCosts {
                 DEFAULT_WRITE_LOCAL_COST,
                 [
                     NOT_USED,
-                    DEFAULT_WRITE_KEY_BYTES_SIZE_WEIGHT,
+                    DEFAULT_WRITE_LOCAL_KEY_BYTES_SIZE_WEIGHT,
                     NOT_USED,
                     DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT,
                 ],

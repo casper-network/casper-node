@@ -23,7 +23,7 @@ pub const DEFAULT_UNREACHABLE_COST: u32 = 270_000;
 pub const DEFAULT_NOP_COST: u32 = 200_000; // TODO: This value is not researched
 pub const DEFAULT_CURRENT_MEMORY_COST: u32 = 290_000;
 pub const DEFAULT_GROW_MEMORY_COST: u32 = 240_000_000;
-pub const DEFAULT_REGULAR_COST: u32 = 200_000;
+pub const DEFAULT_REGULAR_COST: u32 = 210_000;
 
 const NUM_FIELDS: usize = 17;
 pub const OPCODE_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
@@ -127,7 +127,7 @@ impl Default for OpcodeCosts {
             div: DEFAULT_DIV_COST,
             load: DEFAULT_LOAD_COST,
             store: DEFAULT_STORE_COST,
-            op_const: DEFAULT_OP_CONST_COST,
+            op_const: DEFAULT_CONST_COST,
             local: DEFAULT_LOCAL_COST,
             global: DEFAULT_GLOBAL_COST,
             control_flow: DEFAULT_CONTROL_FLOW_COST,
