@@ -35,4 +35,4 @@ net=${net:-1}
 
 declare path_key=$NCTL/assets/net-$net/faucet/public_key_hex
 
-log "net-$net :: faucet key: "$(cat $path_key)
+log "net-$net :: faucet balance: TODO"
