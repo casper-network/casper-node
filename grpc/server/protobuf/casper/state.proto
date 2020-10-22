@@ -305,7 +305,7 @@ message Key {
 		Address address = 1;
 		Hash hash = 2;
 		URef uref = 3;
-    TransferAddr transfer = 4;
+		TransferAddr transfer = 4;
 		DeployHash deploy_info = 5;
 	}
 
