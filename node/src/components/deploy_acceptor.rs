@@ -56,15 +56,15 @@ impl From<Chainspec> for DeployAcceptorConfig {
 /// It validates a new `Deploy` as far as possible, stores it if valid, then announces the newly-
 /// accepted `Deploy`.
 #[derive(Debug)]
-pub(crate) struct DeployAcceptor {
+pub struct DeployAcceptor {
     cached_deploy_configs: HashMap<Version, DeployAcceptorConfig>,
 }
 
 impl DeployAcceptor {
-    pub(crate) fn new() -> Self {
-        DeployAcceptor {
+    pub(crate) fn new() -> Result<Self, Infallible> {
+        Ok(DeployAcceptor {
             cached_deploy_configs: HashMap::new(),
-        }
+        })
     }
 
     /// Handles receiving a new `Deploy` from a peer or client.
