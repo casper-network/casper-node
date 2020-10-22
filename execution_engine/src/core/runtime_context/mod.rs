@@ -17,6 +17,7 @@ use casper_types::{
         UpdateKeyFailure, Weight,
     },
     bytesrepr,
+    bytesrepr::ToBytes,
     contracts::NamedKeys,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
     DeployInfo, EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
@@ -140,6 +141,53 @@ where
     ) -> Self {
         RuntimeContext {
             tracking_copy,
+            entry_point_type,
+            named_keys,
+            access_rights,
+            args: runtime_args,
+            account,
+            authorization_keys,
+            blocktime,
+            deploy_hash,
+            base_key,
+            gas_limit,
+            gas_counter,
+            hash_address_generator,
+            uref_address_generator,
+            transfer_address_generator,
+            protocol_version,
+            correlation_id,
+            phase,
+            protocol_data,
+            transfers,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn fork(
+        &self,
+        entry_point_type: EntryPointType,
+        named_keys: &'a mut NamedKeys,
+        access_rights: HashMap<Address, HashSet<AccessRights>>,
+        runtime_args: RuntimeArgs,
+        authorization_keys: BTreeSet<AccountHash>,
+        account: &'a Account,
+        base_key: Key,
+        blocktime: BlockTime,
+        deploy_hash: [u8; KEY_HASH_LENGTH],
+        gas_limit: Gas,
+        gas_counter: Gas,
+        hash_address_generator: Rc<RefCell<AddressGenerator>>,
+        uref_address_generator: Rc<RefCell<AddressGenerator>>,
+        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+        protocol_version: ProtocolVersion,
+        correlation_id: CorrelationId,
+        phase: Phase,
+        protocol_data: ProtocolData,
+        transfers: Vec<TransferAddr>,
+    ) -> Self {
+        RuntimeContext {
+            tracking_copy: Rc::clone(&self.tracking_copy),
             entry_point_type,
             named_keys,
             access_rights,
@@ -289,10 +337,6 @@ where
 
     pub fn transfer_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
         Rc::clone(&self.transfer_address_generator)
-    }
-
-    pub fn state(&self) -> Rc<RefCell<TrackingCopy<R>>> {
-        Rc::clone(&self.tracking_copy)
     }
 
     pub fn gas_limit(&self) -> Gas {
@@ -914,5 +958,39 @@ where
         let contract_package: ContractPackage = self.read_gs_typed(&Key::from(package_hash))?;
         self.validate_uref(&contract_package.access_key())?;
         Ok(contract_package)
+    }
+
+    /// Charge specified amount of gas
+    ///
+    /// Returns [`Error::GasLimit`] if gas limit exceeded and `()` if not.
+    /// Intuition about the return value sense is to answer the question 'are we
+    /// allowed to continue?'
+    pub(crate) fn charge_gas(&mut self, amount: Gas) -> Result<(), Error> {
+        let prev = self.gas_counter();
+        match prev.checked_add(amount) {
+            // gas charge overflow protection
+            None => return Err(Error::GasLimit),
+            Some(val) if val > self.gas_limit => return Err(Error::GasLimit),
+            Some(val) => self.set_gas_counter(val),
+        }
+        Ok(())
+    }
+
+    pub(crate) fn metered_write<K, V>(&mut self, key: K, stored_value: V) -> Result<(), Error>
+    where
+        K: Into<Key>,
+        V: ToBytes + Into<StoredValue>,
+    {
+        let bytes_count = stored_value.serialized_length();
+        let gas_cost = self
+            .protocol_data()
+            .wasm_config()
+            .storage_costs()
+            .calculate_gas_cost(bytes_count);
+        self.charge_gas(gas_cost)?;
+        self.tracking_copy
+            .borrow_mut()
+            .write(key.into(), stored_value.into());
+        Ok(())
     }
 }

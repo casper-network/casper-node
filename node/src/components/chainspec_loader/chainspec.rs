@@ -461,7 +461,7 @@ mod tests {
             *EXPECTED_GENESIS_HOST_FUNCTION_COSTS,
         );
     }
-    const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts { gas_per_byte: 101 };
+    const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts::new(101);
 
     const EXPECTED_GENESIS_COSTS: OpcodeCosts = OpcodeCosts {
         bit: 13,

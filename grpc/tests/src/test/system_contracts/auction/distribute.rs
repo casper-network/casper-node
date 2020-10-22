@@ -1200,7 +1200,7 @@ fn should_distribute_by_factor_uneven() {
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
     let total_payout = validator_1_balance + validator_2_balance + validator_3_balance;
-    let rounded_amount = U512::one();
+    let rounded_amount = U512::zero();
     assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
 }
 
@@ -1223,7 +1223,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
     const DELEGATOR_2_STAKE: u64 = 4_000_000;
     const DELEGATOR_3_STAKE: u64 = 1_000_000;
 
-    let remainder = U512::one();
+    let remainder = U512::zero();
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

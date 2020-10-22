@@ -92,7 +92,7 @@ pub type Hash = [u8; 32];
 pub use crate::internal::DEFAULT_ACCOUNT_ADDR;
 
 /// Default initial balance of a test account in motes.
-pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 50_000_000_000_000_000u64;
+pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 500_000_000_000_000_000u64;
 
 /// Minimal amount for a transfer that creates new accounts.
-pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 500_000_000_000_000u64;
+pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 5_000_000_000_000_000u64;
