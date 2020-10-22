@@ -22,7 +22,7 @@ fn delegate(delegator: PublicKey, validator: PublicKey, source_purse: URef, amou
         auction::ARG_SOURCE_PURSE => source_purse,
         auction::ARG_AMOUNT => amount,
     };
-    runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_DELEGATE, args);
+    runtime::call_contract::<U512>(contract_hash, auction::METHOD_DELEGATE, args);
 }
 
 // Delegate contract.

@@ -37,12 +37,13 @@ pub(super) async fn run<REv: ReactorEventT>(
     // RPC filters.
     let rpc_put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder);
     let rpc_get_block = rpcs::chain::GetBlock::create_filter(effect_builder);
-    let rpc_get_global_state_hash = rpcs::chain::GetGlobalStateHash::create_filter(effect_builder);
+    let rpc_get_state_root_hash = rpcs::chain::GetStateRootHash::create_filter(effect_builder);
     let rpc_get_item = rpcs::state::GetItem::create_filter(effect_builder);
     let rpc_get_balance = rpcs::state::GetBalance::create_filter(effect_builder);
     let rpc_get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder);
     let rpc_get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
     let rpc_get_status = rpcs::info::GetStatus::create_filter(effect_builder);
+    let rpc_get_auction_info = rpcs::state::GetAuctionInfo::create_filter(effect_builder);
 
     // Event stream channels and filter.
     let (broadcaster, mut new_subscriber_info_receiver, sse_filter) =
@@ -53,12 +54,13 @@ pub(super) async fn run<REv: ReactorEventT>(
             .or(rest_metrics)
             .or(rpc_put_deploy)
             .or(rpc_get_block)
-            .or(rpc_get_global_state_hash)
+            .or(rpc_get_state_root_hash)
             .or(rpc_get_item)
             .or(rpc_get_balance)
             .or(rpc_get_deploy)
             .or(rpc_get_peers)
             .or(rpc_get_status)
+            .or(rpc_get_auction_info)
             .or(sse_filter),
     );
 

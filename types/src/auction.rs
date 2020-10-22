@@ -79,7 +79,7 @@ pub trait Auction:
         source: URef,
         delegation_rate: DelegationRate,
         amount: U512,
-    ) -> Result<(URef, U512)> {
+    ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidCaller);
@@ -114,7 +114,7 @@ pub trait Auction:
         let new_amount = bid.staked_amount;
         internal::set_bids(self, validators)?;
 
-        Ok((bonding_purse, new_amount))
+        Ok(new_amount)
     }
 
     /// For a non-founder validator, implements essentially the same logic as add_bid, but reducing
@@ -177,7 +177,7 @@ pub trait Auction:
         source: URef,
         validator_public_key: PublicKey,
         amount: U512,
-    ) -> Result<(URef, U512)> {
+    ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidCaller);
@@ -189,7 +189,7 @@ pub trait Auction:
             return Err(Error::ValidatorNotFound);
         }
 
-        let (bonding_purse, _total_amount) =
+        let (_bonding_purse, _total_amount) =
             detail::bond(self, delegator_public_key, source, amount)?;
 
         let new_delegation_amount =
@@ -206,7 +206,7 @@ pub trait Auction:
             internal::set_delegator_reward_map(self, delegator_reward_map)?;
         }
 
-        Ok((bonding_purse, new_delegation_amount))
+        Ok(new_delegation_amount)
     }
 
     /// Removes an amount of motes (or the entry altogether, if the remaining amount is 0) from
@@ -457,7 +457,6 @@ pub trait Auction:
         assert!(previous_era_validators.is_none());
 
         internal::set_era_id(self, era_id)?;
-
         // Keep maximum of `AUCTION_DELAY + 1` elements
         let era_validators = era_validators
             .into_iter()

@@ -25,9 +25,9 @@ use casper_execution_engine::{
         upgrade::{UpgradeConfig, UpgradeResult},
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
-    storage::global_state::CommitResult,
+    storage::{global_state::CommitResult, protocol_data::ProtocolData},
 };
-use casper_types::{auction::ValidatorWeights, Key, URef};
+use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
 
 use super::Responder;
 use crate::{
@@ -372,8 +372,8 @@ pub enum ApiRequest<I> {
     },
     /// Query the global state at the given root hash.
     QueryGlobalState {
-        /// The global state hash.
-        global_state_hash: Digest,
+        /// The state root hash.
+        state_root_hash: Digest,
         /// Hex-encoded `casper_types::Key`.
         base_key: Key,
         /// The path components starting from the key as base.
@@ -382,9 +382,27 @@ pub enum ApiRequest<I> {
         responder: Responder<Result<QueryResult, engine_state::Error>>,
     },
     /// Query the global state at the given root hash.
-    GetBalance {
+    QueryEraValidators {
         /// The global state hash.
-        global_state_hash: Digest,
+        state_root_hash: Digest,
+        /// The era that auction state is requested from.
+        era_id: u64,
+        /// The protocol version.
+        protocol_version: ProtocolVersion,
+        /// Responder to call with the result.
+        responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
+    },
+    /// Query the contract runtime for protocol version data.
+    QueryProtocolData {
+        /// The protocol version.
+        protocol_version: ProtocolVersion,
+        /// Responder to call with the result.
+        responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
+    },
+    /// Query the global state at the given root hash.
+    GetBalance {
+        /// The state root hash.
+        state_root_hash: Digest,
         /// The purse URef.
         purse_uref: URef,
         /// Responder to call with the result.
@@ -425,24 +443,32 @@ impl<I> Display for ApiRequest<I> {
             ApiRequest::GetBlock {
                 maybe_hash: None, ..
             } => write!(formatter, "get latest block"),
+            ApiRequest::QueryProtocolData {
+                protocol_version, ..
+            } => write!(formatter, "protocol_version {}", protocol_version),
             ApiRequest::QueryGlobalState {
-                global_state_hash,
+                state_root_hash,
                 base_key,
                 path,
                 ..
             } => write!(
                 formatter,
                 "query {}, base_key: {}, path: {:?}",
-                global_state_hash, base_key, path
+                state_root_hash, base_key, path
             ),
+            ApiRequest::QueryEraValidators {
+                state_root_hash,
+                era_id,
+                ..
+            } => write!(formatter, "auction {}, era_id: {}", state_root_hash, era_id),
             ApiRequest::GetBalance {
-                global_state_hash,
+                state_root_hash,
                 purse_uref,
                 ..
             } => write!(
                 formatter,
                 "balance {}, purse_uref: {}",
-                global_state_hash, purse_uref
+                state_root_hash, purse_uref
             ),
             ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
             ApiRequest::GetPeers { .. } => write!(formatter, "get peers"),
@@ -456,6 +482,13 @@ impl<I> Display for ApiRequest<I> {
 #[derive(Debug)]
 #[must_use]
 pub enum ContractRuntimeRequest {
+    /// Get `ProtocolData` by `ProtocolVersion`.
+    GetProtocolData {
+        /// The protocol version.
+        protocol_version: ProtocolVersion,
+        /// Responder to call with the result.
+        responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
+    },
     /// Commit genesis chainspec.
     CommitGenesis {
         /// The chainspec.
@@ -472,8 +505,8 @@ pub enum ContractRuntimeRequest {
     },
     /// A request to commit existing execution transforms.
     Commit {
-        /// A valid pre state hash.
-        pre_state_hash: Digest,
+        /// A valid state root hash.
+        state_root_hash: Digest,
         /// Effects obtained through `ExecutionResult`
         effects: AdditiveMap<Key, Transform>,
         /// Responder to call with the commit result.
@@ -534,13 +567,13 @@ impl Display for ContractRuntimeRequest {
             ),
 
             ContractRuntimeRequest::Commit {
-                pre_state_hash,
+                state_root_hash,
                 effects,
                 ..
             } => write!(
                 formatter,
                 "commit request: {} {:?}",
-                pre_state_hash, effects
+                state_root_hash, effects
             ),
 
             ContractRuntimeRequest::Upgrade { upgrade_config, .. } => {
@@ -562,6 +595,10 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::Step { step_request, .. } => {
                 write!(formatter, "step: {:?}", step_request)
             }
+
+            ContractRuntimeRequest::GetProtocolData {
+                protocol_version, ..
+            } => write!(formatter, "protocol_version: {}", protocol_version),
         }
     }
 }

@@ -26,12 +26,8 @@ accounts_path = '/etc/casper/accounts.csv'
 validator_slots = 15
 
 [highway]
-# Tick unit is milliseconds.
-#
-# Timestamp for the genesis era.  At least one node has to be started when the genesis era is active in order to make
-# key blocks for the upcoming eras.  If the era is over by the time we start the nodes, they'll not be able to produce
-# blocks in it, and there won't be a new era build either.  That means when a completely new network is started, the
-# genesis era start time has to be adjusted to be active at the time.
+# Beginning of era 0. By this time, a sufficient majority (> 50% + F/2 — see finality_threshold_percent below)
+# of validator nodes must be up and running to start the blockchain.
 genesis_era_start_timestamp = '2020-09-18T18:45:00Z'
 # Era duration.
 era_duration = '30minutes'
@@ -47,7 +43,7 @@ voting_period_duration = '2days'
 # Integer between 1 and 99 representing the fault tolerance threshold as a percentage, used by the internal finalizer.
 # It is the percentage of validators that would need to equivocate to make two honest nodes see two conflicting
 # blocks as finalized: A higher value F makes it safer to rely on finalized blocks. It also makes it more difficult to
-# finalize blocks, however, and requires at least 50% + F/2 validators to be working correctly.
+# finalize blocks, however, and requires strictly more than 50% + F/2 validators to be working correctly.
 finality_threshold_percent = 10
 # Integer between 0 and 255. The power of two that is the number of milliseconds in the minimum round length, and
 # therefore the minimum delay between a block and its child. E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.

@@ -18,7 +18,7 @@ enum DisplayOrder {
     Verbose,
     NodeAddress,
     RpcId,
-    GlobalStateHash,
+    StateRootHash,
     Key,
     Path,
 }
@@ -129,8 +129,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
-            .arg(common::global_state_hash::arg(
-                DisplayOrder::GlobalStateHash as usize,
+            .arg(common::state_root_hash::arg(
+                DisplayOrder::StateRootHash as usize,
             ))
             .arg(key::arg())
             .arg(path::arg())
@@ -140,12 +140,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
         let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
         let rpc_id = common::rpc_id::get(matches);
-        let global_state_hash = common::global_state_hash::get(matches);
+        let state_root_hash = common::state_root_hash::get(matches);
         let key = key::get(matches);
         let path = path::get(matches);
 
         let params = GetItemParams {
-            global_state_hash,
+            state_root_hash,
             key,
             path,
         };

@@ -140,7 +140,7 @@ pub(super) mod show_arg_examples {
 }
 
 /// Handles providing the arg for and retrieval of the timestamp.
-pub(super) mod timestamp {
+mod timestamp {
     use super::*;
 
     const ARG_NAME: &str = "timestamp";
@@ -169,7 +169,7 @@ pub(super) mod timestamp {
 }
 
 /// Handles providing the arg for and retrieval of the time to live.
-pub(super) mod ttl {
+mod ttl {
     use super::*;
 
     const ARG_NAME: &str = "ttl";
@@ -202,7 +202,7 @@ pub(super) mod ttl {
 }
 
 /// Handles providing the arg for and retrieval of the gas price.
-pub(super) mod gas_price {
+mod gas_price {
     use super::*;
 
     const ARG_NAME: &str = "gas-price";
@@ -231,7 +231,7 @@ pub(super) mod gas_price {
 }
 
 /// Handles providing the arg for and retrieval of the deploy dependencies.
-pub(super) mod dependencies {
+mod dependencies {
     use super::*;
     use casper_node::types::DeployHash;
 
@@ -272,7 +272,7 @@ pub(super) mod dependencies {
 }
 
 /// Handles providing the arg for and retrieval of the chain name.
-pub(super) mod chain_name {
+mod chain_name {
     use super::*;
 
     const ARG_NAME: &str = "chain-name";
@@ -299,10 +299,10 @@ pub(super) mod chain_name {
 }
 
 /// Handles providing the arg for and retrieval of the session code bytes.
-pub(super) mod session {
+mod session_path {
     use super::*;
 
-    const ARG_NAME: &str = "session-path";
+    pub(super) const ARG_NAME: &str = "session-path";
     const ARG_SHORT: &str = "s";
     const ARG_VALUE_NAME: &str = common::ARG_PATH;
     const ARG_HELP: &str = "Path to the compiled Wasm session code";
@@ -311,23 +311,19 @@ pub(super) mod session {
         Arg::with_name(ARG_NAME)
             .short(ARG_SHORT)
             .long(ARG_NAME)
-            .required_unless(show_arg_examples::ARG_NAME)
+            .required(false)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::SessionCode as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Vec<u8> {
-        common::read_file(
-            matches
-                .value_of(ARG_NAME)
-                .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME)),
-        )
+    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Option<Vec<u8>> {
+        matches.value_of(ARG_NAME).map(common::read_file)
     }
 }
 
 /// Handles providing the arg for and retrieval of simple session and payment args.
-pub(super) mod arg_simple {
+mod arg_simple {
     use super::*;
 
     const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE'";
@@ -544,7 +540,7 @@ pub(super) mod arg_simple {
 
 /// Handles providing the arg for and retrieval of complex session and payment args.  These are read
 /// in from a file.
-pub(super) mod args_complex {
+mod args_complex {
     use super::*;
 
     #[derive(Debug, Deserialize)]
@@ -644,7 +640,7 @@ pub(super) mod args_complex {
 }
 
 /// Handles providing the arg for and retrieval of the payment code bytes.
-pub(super) mod payment {
+mod payment_path {
     use super::*;
 
     pub(in crate::deploy) const ARG_NAME: &str = "payment-path";
@@ -667,7 +663,7 @@ pub(super) mod payment {
 }
 
 /// Handles providing the arg for and retrieval of the payment-amount arg.
-pub(super) mod standard_payment {
+mod standard_payment {
     use super::*;
 
     const STANDARD_PAYMENT_ARG_NAME: &str = "amount";
@@ -712,17 +708,12 @@ fn args_from_simple_or_complex(
     }
 }
 
-pub(super) fn parse_session_module_args(matches: &ArgMatches<'_>) -> (Vec<u8>, RuntimeArgs) {
-    let module_bytes = session::get(matches);
+pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
     let session_args = args_from_simple_or_complex(
         arg_simple::session::get(matches),
         args_complex::session::get(matches),
     );
-    (module_bytes, session_args)
-}
 
-pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
-    let (module_bytes, session_args) = parse_session_module_args(matches);
     if let Some(name) = session_name::get(matches) {
         return ExecutableDeployItem::StoredContractByName {
             name,
@@ -730,6 +721,7 @@ pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
             entry_point: require_session_entry_point(matches),
         };
     }
+
     if let Some(hash) = session_hash::get(matches) {
         return ExecutableDeployItem::StoredContractByHash {
             hash,
@@ -737,6 +729,7 @@ pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
             entry_point: require_session_entry_point(matches),
         };
     }
+
     let version = session_version::get(matches);
     if let Some(name) = session_package_name::get(matches) {
         return ExecutableDeployItem::StoredVersionedContractByName {
@@ -746,6 +739,7 @@ pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
             entry_point: require_session_entry_point(matches),
         };
     }
+
     if let Some(hash) = session_package_hash::get(matches) {
         return ExecutableDeployItem::StoredVersionedContractByHash {
             hash,
@@ -754,14 +748,37 @@ pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
             entry_point: require_session_entry_point(matches),
         };
     }
-    ExecutableDeployItem::ModuleBytes {
-        module_bytes,
-        args: session_args.to_bytes().expect("should serialize"),
+
+    if let Some(module_bytes) = session_path::get(matches) {
+        return ExecutableDeployItem::ModuleBytes {
+            module_bytes,
+            args: session_args.to_bytes().expect("should serialize"),
+        };
     }
+
+    panic!(
+        "Expected at least one of --{}, --{}, --{}, --{} or --{}",
+        session_name::ARG_NAME,
+        session_hash::ARG_NAME,
+        session_package_name::ARG_NAME,
+        session_package_hash::ARG_NAME,
+        session_path::ARG_NAME,
+    );
 }
 
-pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
-    let (module_bytes, payment_args) = parse_payment_module_args(matches);
+fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
+    if let Some(payment_args) = standard_payment::get(matches) {
+        return ExecutableDeployItem::ModuleBytes {
+            module_bytes: vec![],
+            args: payment_args.to_bytes().expect("should serialize"),
+        };
+    }
+
+    let payment_args = args_from_simple_or_complex(
+        arg_simple::payment::get(matches),
+        args_complex::payment::get(matches),
+    );
+
     if let Some(name) = payment_name::get(matches) {
         return ExecutableDeployItem::StoredContractByName {
             name,
@@ -769,6 +786,7 @@ pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
             entry_point: require_payment_entry_point(matches),
         };
     }
+
     if let Some(hash) = payment_hash::get(matches) {
         return ExecutableDeployItem::StoredContractByHash {
             hash,
@@ -776,6 +794,7 @@ pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
             entry_point: require_payment_entry_point(matches),
         };
     }
+
     let version = payment_version::get(matches);
     if let Some(name) = payment_package_name::get(matches) {
         return ExecutableDeployItem::StoredVersionedContractByName {
@@ -785,6 +804,7 @@ pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
             entry_point: require_payment_entry_point(matches),
         };
     }
+
     if let Some(hash) = payment_package_hash::get(matches) {
         return ExecutableDeployItem::StoredVersionedContractByHash {
             hash,
@@ -793,10 +813,23 @@ pub(super) fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
             entry_point: require_payment_entry_point(matches),
         };
     }
-    ExecutableDeployItem::ModuleBytes {
-        module_bytes,
-        args: payment_args.to_bytes().expect("should serialize"),
+
+    if let Some(module_bytes) = payment_path::get(matches) {
+        return ExecutableDeployItem::ModuleBytes {
+            module_bytes,
+            args: payment_args.to_bytes().expect("should serialize"),
+        };
     }
+
+    panic!(
+        "Expected at least one of --{}, --{}, --{}, --{}, --{} or --{}",
+        standard_payment::ARG_NAME,
+        payment_name::ARG_NAME,
+        payment_hash::ARG_NAME,
+        payment_package_name::ARG_NAME,
+        payment_package_hash::ARG_NAME,
+        payment_path::ARG_NAME,
+    );
 }
 
 fn require_session_entry_point(matches: &ArgMatches) -> String {
@@ -807,20 +840,6 @@ fn require_session_entry_point(matches: &ArgMatches) -> String {
 fn require_payment_entry_point(matches: &ArgMatches) -> String {
     payment_entry_point::get(matches)
         .unwrap_or_else(|| panic!("{} must be present", payment_entry_point::ARG_NAME,))
-}
-
-pub(super) fn parse_payment_module_args(matches: &ArgMatches) -> (Vec<u8>, RuntimeArgs) {
-    if let Some(payment_args) = standard_payment::get(matches) {
-        return (vec![], payment_args);
-    }
-
-    // Get the payment code and args options.
-    let module_bytes = payment::get(matches).expect("should have payment-amount or payment-path");
-    let payment_args = args_from_simple_or_complex(
-        arg_simple::payment::get(matches),
-        args_complex::payment::get(matches),
-    );
-    (module_bytes, payment_args)
 }
 
 pub(super) fn apply_common_creation_options<'a, 'b>(
@@ -847,33 +866,17 @@ pub(super) fn apply_common_creation_options<'a, 'b>(
         .arg(ttl::arg())
         .arg(gas_price::arg())
         .arg(dependencies::arg())
-        .arg(chain_name::arg())
-        .arg(standard_payment::arg())
-        .arg(payment::arg())
-        .arg(arg_simple::payment::arg())
-        .arg(args_complex::payment::arg())
-        // Group the payment-arg args so only one style is used to ensure consistent ordering.
-        .group(
-            ArgGroup::with_name("payment-args")
-                .arg(arg_simple::payment::ARG_NAME)
-                .arg(args_complex::payment::ARG_NAME)
-                .required(false),
-        )
-        // Group payment-amount, payment-path and show-arg-examples so that we can require only
-        // one of these.
-        .group(
-            ArgGroup::with_name("required-payment-options")
-                .arg(standard_payment::ARG_NAME)
-                .arg(payment::ARG_NAME)
-                .arg(show_arg_examples::ARG_NAME)
-                .required(true),
-        );
+        .arg(chain_name::arg());
     subcommand
 }
 
 pub(super) fn apply_common_session_options<'a, 'b>(subcommand: App<'a, 'b>) -> App<'a, 'b> {
     subcommand
-        .arg(session::arg())
+        .arg(session_path::arg())
+        .arg(session_package_hash::arg())
+        .arg(session_package_name::arg())
+        .arg(session_hash::arg())
+        .arg(session_name::arg())
         .arg(arg_simple::session::arg())
         .arg(args_complex::session::arg())
         // Group the session-arg args so only one style is used to ensure consistent ordering.
@@ -883,24 +886,52 @@ pub(super) fn apply_common_session_options<'a, 'b>(subcommand: App<'a, 'b>) -> A
                 .arg(args_complex::session::ARG_NAME)
                 .required(false),
         )
-        .arg(session_package_hash::arg())
-        .arg(session_package_name::arg())
-        .arg(session_hash::arg())
-        .arg(session_name::arg())
         .arg(session_entry_point::arg())
         .arg(session_version::arg())
+        .group(
+            ArgGroup::with_name("session")
+                .arg(session_path::ARG_NAME)
+                .arg(session_package_hash::ARG_NAME)
+                .arg(session_package_name::ARG_NAME)
+                .arg(session_hash::ARG_NAME)
+                .arg(session_name::ARG_NAME)
+                .arg(show_arg_examples::ARG_NAME)
+                .required(true),
+        )
 }
 
 pub(crate) fn apply_common_payment_options(
     subcommand: App<'static, 'static>,
 ) -> App<'static, 'static> {
     subcommand
+        .arg(standard_payment::arg())
+        .arg(payment_path::arg())
         .arg(payment_package_hash::arg())
         .arg(payment_package_name::arg())
         .arg(payment_hash::arg())
         .arg(payment_name::arg())
+        .arg(arg_simple::payment::arg())
+        .arg(args_complex::payment::arg())
+        // Group the payment-arg args so only one style is used to ensure consistent ordering.
+        .group(
+            ArgGroup::with_name("payment-args")
+                .arg(arg_simple::payment::ARG_NAME)
+                .arg(args_complex::payment::ARG_NAME)
+                .required(false),
+        )
         .arg(payment_entry_point::arg())
         .arg(payment_version::arg())
+        .group(
+            ArgGroup::with_name("payment")
+                .arg(standard_payment::ARG_NAME)
+                .arg(payment_path::ARG_NAME)
+                .arg(payment_package_hash::ARG_NAME)
+                .arg(payment_package_name::ARG_NAME)
+                .arg(payment_hash::ARG_NAME)
+                .arg(payment_name::ARG_NAME)
+                .arg(show_arg_examples::ARG_NAME)
+                .required(true),
+        )
 }
 
 pub(super) fn show_arg_examples_and_exit_if_required(matches: &ArgMatches<'_>) {
@@ -1033,15 +1064,19 @@ pub(super) mod input {
 }
 
 fn get_contract_hash(name: &str, matches: &ArgMatches) -> Option<ContractHash> {
-    if let Some(v) = matches.value_of(name) {
-        if let Ok(Key::Hash(hash)) = Key::from_formatted_str(v) {
+    if let Some(value) = matches.value_of(name) {
+        if let Ok(digest) = Digest::from_hex(value) {
+            return Some(digest.to_array());
+        }
+        if let Ok(Key::Hash(hash)) = Key::from_formatted_str(value) {
             return Some(hash);
         }
+        panic!("Failed to parse {} as a contract hash", value);
     }
     None
 }
 
-pub(crate) mod session_hash {
+mod session_hash {
     use super::*;
 
     pub const ARG_NAME: &str = "session-hash";
@@ -1063,7 +1098,7 @@ pub(crate) mod session_hash {
     }
 }
 
-pub(crate) mod session_name {
+mod session_name {
     use super::*;
 
     pub const ARG_NAME: &str = "session-name";
@@ -1085,7 +1120,7 @@ pub(crate) mod session_name {
     }
 }
 
-pub(crate) mod session_package_hash {
+mod session_package_hash {
     use super::*;
 
     pub const ARG_NAME: &str = "session-package-hash";
@@ -1107,7 +1142,7 @@ pub(crate) mod session_package_hash {
     }
 }
 
-pub(crate) mod session_package_name {
+mod session_package_name {
     use super::*;
 
     pub const ARG_NAME: &str = "session-package-name";
@@ -1129,7 +1164,7 @@ pub(crate) mod session_package_name {
     }
 }
 
-pub(crate) mod session_entry_point {
+mod session_entry_point {
     use super::*;
 
     pub const ARG_NAME: &str = "session-entry-point";
@@ -1150,7 +1185,7 @@ pub(crate) mod session_entry_point {
     }
 }
 
-pub(crate) mod session_version {
+mod session_version {
     use super::*;
 
     pub const ARG_NAME: &str = "session-version";
@@ -1174,7 +1209,7 @@ pub(crate) mod session_version {
     }
 }
 
-pub(crate) mod payment_hash {
+mod payment_hash {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-hash";
@@ -1196,7 +1231,7 @@ pub(crate) mod payment_hash {
     }
 }
 
-pub(crate) mod payment_name {
+mod payment_name {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-name";
@@ -1219,7 +1254,7 @@ pub(crate) mod payment_name {
     }
 }
 
-pub(crate) mod payment_package_hash {
+mod payment_package_hash {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-package-hash";
@@ -1241,7 +1276,7 @@ pub(crate) mod payment_package_hash {
     }
 }
 
-pub(crate) mod payment_package_name {
+mod payment_package_name {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-package-name";
@@ -1263,7 +1298,7 @@ pub(crate) mod payment_package_name {
     }
 }
 
-pub(crate) mod payment_entry_point {
+mod payment_entry_point {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-entry-point";
@@ -1284,7 +1319,7 @@ pub(crate) mod payment_entry_point {
     }
 }
 
-pub(crate) mod payment_version {
+mod payment_version {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-version";
