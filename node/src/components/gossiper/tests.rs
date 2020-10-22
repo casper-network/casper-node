@@ -18,7 +18,7 @@ use crate::{
     components::{
         chainspec_loader::Chainspec,
         deploy_acceptor::{self, DeployAcceptor},
-        in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
+        in_memory_network::{self, InMemoryNetwork, NetworkController, NodeId},
         storage::{self, Storage, StorageType},
     },
     effect::announcements::{
@@ -40,6 +40,8 @@ use rand::Rng;
 #[derive(Debug, From)]
 #[must_use]
 enum Event {
+    #[from]
+    Network(in_memory_network::Event<NodeMessage>),
     #[from]
     Storage(storage::Event<Storage>),
     #[from]
@@ -73,6 +75,7 @@ impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Event::Network(event) => write!(formatter, "event: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
@@ -156,6 +159,10 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::Network(event) => reactor::wrap_effects(
+                Event::Network,
+                self.network.handle_event(effect_builder, rng, event),
+            ),
             Event::Storage(storage::Event::Request(StorageRequest::GetChainspec {
                 responder,
                 ..
@@ -177,8 +184,9 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event),
             ),
             Event::NetworkRequest(request) => reactor::wrap_effects(
-                Event::NetworkRequest,
-                self.network.handle_event(effect_builder, rng, request),
+                Event::Network,
+                self.network
+                    .handle_event(effect_builder, rng, request.into()),
             ),
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,

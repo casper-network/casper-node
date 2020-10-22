@@ -284,7 +284,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     convert::Infallible,
-    fmt::Display,
+    fmt::{self, Display},
     sync::{Arc, RwLock},
 };
 
@@ -303,11 +303,30 @@ use crate::{
     tls::KeyFingerprint,
     types::CryptoRngCore,
 };
+use fmt::Formatter;
 
 /// The node ID type used by the in-memory network.
 pub type NodeId = KeyFingerprint;
 
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
+
+/// Public type alias for convention; the in memory network needs to internal events and just
+/// responds to network requests.
+#[derive(Debug)]
+pub struct Event<P>(NetworkRequest<NodeId, P>);
+
+impl<P> From<NetworkRequest<NodeId, P>> for Event<P> {
+    fn from(req: NetworkRequest<NodeId, P>) -> Self {
+        Event(req)
+    }
+}
+
+impl<P: Display> Display for Event<P> {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
 
 thread_local! {
     /// The currently active network as a thread local.
@@ -496,14 +515,14 @@ impl<P, REv> Component<REv> for InMemoryNetwork<P>
 where
     P: Display + Clone,
 {
-    type Event = NetworkRequest<NodeId, P>;
+    type Event = Event<P>;
     type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         rng: &mut dyn CryptoRngCore,
-        event: Self::Event,
+        Event(event): Self::Event,
     ) -> Effects<Self::Event> {
         match event {
             NetworkRequest::SendMessage {
