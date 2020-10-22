@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+# create config.toml from config-example.toml
+/etc/casper/config_from_example.sh
+
+# run pull_genesis script to get latest files
+/etc/casper/pull_genesis.sh
