@@ -152,7 +152,7 @@ finished_entry_duration_secs = 3600
 # The timeout duration in seconds for a single gossip request, i.e. for a single gossip message
 # sent from this node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
-gossip_request_timeout_secs = 10
+gossip_request_timeout_secs = 2
 
 # The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.

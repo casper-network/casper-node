@@ -33,12 +33,12 @@ function log ()
             do
                 declare tabs+='\t'
             done
-            echo $now" [INFO] [$$] CSPR :: "$tabs$1
+            echo $now" [INFO] [$$] NCTL :: "$tabs$1
         else
-            echo $now" [INFO] [$$] CSPR :: "$1
+            echo $now" [INFO] [$$] NCTL :: "$1
         fi
     else
-        echo $now" [INFO] [$$] CSPR :: "
+        echo $now" [INFO] [$$] NCTL :: "
     fi
 }
 
