@@ -265,8 +265,8 @@ impl Parse for ComponentDefinition {
         let name: Ident = input.parse()?;
         let _: Token!(=) = input.parse()?;
 
-        let has_effects = if input.peek(Token!(@)) {
-            let _: Token!(@) = input.parse()?;
+        let has_effects = if input.peek(kw::has_effects) {
+            let _: kw::has_effects = input.parse()?;
             true
         } else {
             false
@@ -455,4 +455,5 @@ mod kw {
     syn::custom_keyword!(requests);
     syn::custom_keyword!(announcements);
     syn::custom_keyword!(infallible);
+    syn::custom_keyword!(has_effects);
 }
