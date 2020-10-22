@@ -76,6 +76,7 @@ check_python_has_toml
 
 # These are the subdirs of casper-node which contain packages for publishing.  They should remain ordered from
 # least-dependent to most.
+publish node_macros
 publish types
 publish execution_engine
 publish node
