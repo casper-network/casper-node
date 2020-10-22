@@ -198,6 +198,8 @@ pub(crate) struct ComponentDefinition {
     component_arguments: Vec<Expr>,
     /// Whether or not the component has actual effects when constructed.
     has_effects: bool,
+    /// Whether or not the component returns an component directly, instead of a Result.
+    is_infallible: bool,
 }
 
 impl ComponentDefinition {
@@ -240,6 +242,11 @@ impl ComponentDefinition {
     pub fn has_effects(&self) -> bool {
         self.has_effects
     }
+
+    /// Returns whether the component always returns a component directly instead of a `Result`.
+    pub fn is_infallible(&self) -> bool {
+        self.is_infallible
+    }
 }
 
 impl Debug for ComponentDefinition {
@@ -265,6 +272,13 @@ impl Parse for ComponentDefinition {
             false
         };
 
+        let is_infallible = if input.peek(kw::infallible) {
+            let _: kw::infallible = input.parse()?;
+            true
+        } else {
+            false
+        };
+
         let ty: Path = input.parse()?;
 
         // Parse arguments
@@ -277,6 +291,7 @@ impl Parse for ComponentDefinition {
             component_type: RustType::new(ty),
             component_arguments: args.into_iter().collect(),
             has_effects,
+            is_infallible,
         })
     }
 }
@@ -439,4 +454,5 @@ mod kw {
     syn::custom_keyword!(events);
     syn::custom_keyword!(requests);
     syn::custom_keyword!(announcements);
+    syn::custom_keyword!(infallible);
 }

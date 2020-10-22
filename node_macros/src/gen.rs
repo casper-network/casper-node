@@ -293,10 +293,16 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
 
         let constructor_args = cdef.component_arguments();
 
+        let suffix = if cdef.is_infallible() {
+            quote!()
+        } else {
+            quote!(.map_err(#error_ident::#variant_ident)?)
+        };
+
         if cdef.has_effects() {
             component_instantiations.push(quote!(
                 let (#field_ident, effects) = #component_type::new::<#event_ident>(#(#constructor_args),*)
-                    .map_err(#error_ident::#variant_ident)?;
+                    #suffix;
                 let wrapped_effects: crate::effect::Effects<#event_ident> = crate::reactor::wrap_effects(#event_ident::#variant_ident, effects);
 
                 all_effects.extend(wrapped_effects.into_iter());
@@ -304,7 +310,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
         } else {
             component_instantiations.push(quote!(
                 let #field_ident = #component_type::new(#(#constructor_args),*)
-                    .map_err(#error_ident::#variant_ident)?;
+                    #suffix;
             ));
         }
 
