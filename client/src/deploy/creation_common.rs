@@ -892,11 +892,10 @@ pub(super) mod input {
             .display_order(DisplayOrder::Input as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> String {
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
     }
 }
 

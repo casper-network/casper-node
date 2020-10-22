@@ -3,7 +3,6 @@ use std::str;
 use clap::{App, Arg, ArgMatches, SubCommand};
 
 use casper_node::rpcs::state::GetBalance;
-use casper_types::URef;
 
 use crate::{command::ClientCommand, common};
 
@@ -18,7 +17,6 @@ enum DisplayOrder {
 
 /// Handles providing the arg for and retrieval of the purse URef.
 mod purse_uref {
-
     use super::*;
 
     const ARG_NAME: &str = "purse-uref";
@@ -38,13 +36,10 @@ mod purse_uref {
             .display_order(DisplayOrder::PurseURef as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> URef {
-        let value = matches
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
-
-        URef::from_formatted_str(&value)
-            .unwrap_or_else(|error| panic!("can't parse {} as URef: {:?}", value, error))
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
@@ -68,14 +63,20 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let rpc = common::rpc(matches);
-
+        let maybe_rpc_id = common::rpc_id::get(matches);
+        let node_address = common::node_address::get(matches);
+        let verbose = common::verbose::get(matches);
         let state_root_hash = common::state_root_hash::get(&matches);
         let purse_uref = purse_uref::get(&matches);
 
-        let response = rpc
-            .get_balance(state_root_hash, purse_uref)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
+        let response = casper_client::get_balance(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            state_root_hash,
+            purse_uref,
+        )
+        .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")

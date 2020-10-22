@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process};
+use std::process;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 use lazy_static::lazy_static;
@@ -45,17 +45,16 @@ mod output_dir {
             .display_order(DisplayOrder::OutputDir as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> PathBuf {
-        matches.value_of(ARG_NAME).unwrap_or_else(|| ".").into()
+    pub(super) fn get(matches: &ArgMatches) -> String {
+        matches
+            .value_of(ARG_NAME)
+            .unwrap_or_else(|| ".")
+            .to_string()
     }
 }
 
 /// Handles providing the arg for and retrieval of the key algorithm.
 mod algorithm {
-    use std::str::FromStr;
-
-    use keygen::Algorithm;
-
     use super::*;
 
     const ARG_NAME: &str = "algorithm";
@@ -76,12 +75,10 @@ mod algorithm {
             .display_order(DisplayOrder::Algorithm as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Algorithm {
-        let value = matches
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
-
-        Algorithm::from_str(value).unwrap_or_else(|_| panic!("Invalid key algorithm"))
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
@@ -116,7 +113,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Keygen {
                 process::exit(1);
             }
             Err(error) => panic!("should write key files: {}", error),
-            Ok(_) => println!("Wrote files to {}", output_dir.display()),
+            Ok(_) => println!("Wrote files to {}", output_dir),
         }
     }
 }

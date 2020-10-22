@@ -1,13 +1,9 @@
 use std::{fs, path::PathBuf};
 
 use clap::{Arg, ArgMatches};
-use rand::Rng;
 
 use casper_client::RpcCall;
-use casper_node::{
-    crypto::{asymmetric_key::SecretKey, hash::Digest},
-    types::BlockHash,
-};
+use casper_node::crypto::asymmetric_key::SecretKey;
 
 pub const ARG_PATH: &str = "PATH";
 pub const ARG_HEX_STRING: &str = "HEX STRING";
@@ -56,11 +52,10 @@ pub mod node_address {
             .display_order(order)
     }
 
-    pub fn get(matches: &ArgMatches) -> String {
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
     }
 }
 
@@ -69,7 +64,9 @@ pub mod rpc_id {
     use super::*;
 
     const ARG_NAME: &str = "id";
-    const ARG_VALUE_NAME: &str = "STRING OR INTEGER";
+    // TODO: If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
+    //       update this to "STRING OR INTEGER".
+    const ARG_VALUE_NAME: &str = "INTEGER";
     const ARG_HELP: &str =
         "JSON-RPC identifier, applied to the request and returned in the response.  If not \
         provided, a random one will be assigned";
@@ -83,17 +80,8 @@ pub mod rpc_id {
             .display_order(order)
     }
 
-    // TODO: If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
-    //       update this to return a `jsonrpc_lite::Id`, and update the ARG_VALUE_NAME.
-    pub fn get(matches: &ArgMatches) -> u32 {
-        matches
-            .value_of(ARG_NAME)
-            .map(|id_str| {
-                id_str
-                    .parse()
-                    .unwrap_or_else(|error| panic!("should parse {} as u64: {}", id_str, error))
-            })
-            .unwrap_or_else(|| rand::thread_rng().gen())
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
@@ -175,12 +163,10 @@ pub mod state_root_hash {
             .display_order(order)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Digest {
-        let hex_str = matches
+    pub(crate) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
-        Digest::from_hex(hex_str)
-            .unwrap_or_else(|error| panic!("cannot parse as a hash of the state root: {}", error))
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
@@ -205,12 +191,8 @@ pub mod block_hash {
             .display_order(order)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Option<BlockHash> {
-        matches.value_of(ARG_NAME).map(|hex_str| {
-            let hash = Digest::from_hex(hex_str)
-                .unwrap_or_else(|error| panic!("cannot parse as a block hash: {}", error));
-            BlockHash::new(hash)
-        })
+    pub(crate) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
@@ -224,4 +206,5 @@ pub fn rpc(matches: &ArgMatches) -> RpcCall {
         node_address::get(matches),
         verbose::get(matches),
     )
+    .unwrap_or_else(|error| panic!("should create RPC: {}", error))
 }
