@@ -650,7 +650,7 @@ fn should_get_first_seigniorage_recipients() {
 
     let mut era_validators: EraValidators = builder.get_value(auction_hash, "era_validators");
     let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
-    
+
     assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators); // eraindex==1 - ran once
 
     assert!(era_validators.contains_key(&(DEFAULT_AUCTION_DELAY as u64 + 1)));
