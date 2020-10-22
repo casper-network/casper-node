@@ -7,16 +7,26 @@ use http::Response;
 use hyper::Body;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{debug, info};
 use warp_json_rpc::Builder;
 
-use casper_execution_engine::core::engine_state::{BalanceResult, QueryResult};
-use casper_types::{Key, URef, U512};
+use casper_execution_engine::{
+    core::engine_state::{BalanceResult, QueryResult},
+    shared::stored_value,
+    storage::protocol_data::ProtocolData,
+};
+use casper_types::{Key, ProtocolVersion, URef, U512};
 
 use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams, RpcWithParamsExt};
 use crate::{
-    components::api_server::CLIENT_API_VERSION, crypto::hash::Digest, effect::EffectBuilder,
-    reactor::QueueKind, types::json_compatibility::StoredValue,
+    components::api_server::CLIENT_API_VERSION,
+    crypto::hash::Digest,
+    effect::EffectBuilder,
+    reactor::QueueKind,
+    types::{
+        json_compatibility::{AuctionState, StoredValue},
+        Block,
+    },
 };
 
 /// Params for "state_get_item" RPC request.
@@ -208,6 +218,134 @@ impl RpcWithParamsExt for GetBalance {
                 balance_value,
             };
             Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+// auction info
+
+/// Params for "state_get_auction_info" RPC request.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct GetAuctionInfoParams {}
+
+/// Result for "state_get_auction_info" RPC response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetAuctionInfoResult {
+    /// The RPC API version.
+    pub api_version: Version,
+    /// The auction state.
+    pub auction_state: AuctionState,
+}
+
+/// "state_get_auction_info" RPC.
+pub struct GetAuctionInfo {}
+
+impl RpcWithParams for GetAuctionInfo {
+    const METHOD: &'static str = "state_get_auction_info";
+    type RequestParams = GetAuctionInfoParams;
+    type ResponseResult = GetAuctionInfoResult;
+}
+
+impl RpcWithParamsExt for GetAuctionInfo {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        _params: Self::RequestParams,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            let block: Block = {
+                let maybe_block = effect_builder
+                    .make_request(
+                        |responder| ApiRequest::GetBlock {
+                            maybe_hash: None,
+                            responder,
+                        },
+                        QueueKind::Api,
+                    )
+                    .await;
+
+                match maybe_block {
+                    None => {
+                        let error_msg =
+                            "get-auction-info failed to get last added block".to_string();
+                        info!("{}", error_msg);
+                        return Ok(response_builder.error(warp_json_rpc::Error::custom(
+                            ErrorCode::NoSuchBlock as i64,
+                            error_msg,
+                        ))?);
+                    }
+                    Some(block) => block,
+                }
+            };
+
+            let protocol_version = ProtocolVersion::V1_0_0;
+            let protocol_version_result = effect_builder
+                .make_request(
+                    |responder| ApiRequest::QueryProtocolData {
+                        protocol_version,
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            let protocol_data = {
+                if let Ok(Some(protocol_data)) = protocol_version_result {
+                    protocol_data
+                } else {
+                    Box::new(ProtocolData::default())
+                }
+            };
+
+            // auction contract key
+            let base_key = protocol_data.auction().into();
+            // bids named key in auction contract
+            let path = vec![casper_types::auction::BIDS_KEY.to_string()];
+            // the global state hash of the last block
+            let state_root_hash = *block.header().state_root_hash();
+            // the era of the last block
+            let era_id = block.header().era_id().0;
+
+            let query_result = effect_builder
+                .make_request(
+                    |responder| ApiRequest::QueryGlobalState {
+                        state_root_hash,
+                        base_key,
+                        path,
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            let bids = {
+                if let Ok(QueryResult::Success(stored_value::StoredValue::CLValue(cl_value))) =
+                    query_result
+                {
+                    cl_value.into_t().ok()
+                } else {
+                    None
+                }
+            };
+
+            let era_validators_result = effect_builder
+                .make_request(
+                    |responder| ApiRequest::QueryEraValidators {
+                        state_root_hash,
+                        era_id,
+                        protocol_version,
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            let validator_weights = era_validators_result.ok().flatten();
+
+            let auction_state = AuctionState::new(state_root_hash, era_id, bids, validator_weights);
+            debug!("responding to client with: {:?}", auction_state);
+            Ok(response_builder.success(auction_state)?)
         }
         .boxed()
     }

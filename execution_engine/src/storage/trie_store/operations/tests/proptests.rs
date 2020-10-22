@@ -46,6 +46,15 @@ fn lmdb_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
         &states_to_check,
         &pairs,
     )
+    .unwrap();
+
+    check_pairs_proofs::<_, _, _, _, error::Error>(
+        correlation_id,
+        &context.environment,
+        &context.store,
+        &states_to_check,
+        &pairs,
+    )
     .unwrap()
 }
 
@@ -67,6 +76,15 @@ fn in_memory_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
     states_to_check.extend(root_hashes);
 
     check_pairs::<_, _, _, _, in_memory::Error>(
+        correlation_id,
+        &context.environment,
+        &context.store,
+        &states_to_check,
+        &pairs,
+    )
+    .unwrap();
+
+    check_pairs_proofs::<_, _, _, _, in_memory::Error>(
         correlation_id,
         &context.environment,
         &context.store,
