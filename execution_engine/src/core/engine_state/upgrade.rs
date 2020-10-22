@@ -1,6 +1,6 @@
 use std::fmt;
 
-use casper_types::{bytesrepr, Key, ProtocolVersion};
+use casper_types::{auction::EraId, bytesrepr, Key, ProtocolVersion};
 
 use crate::{
     core::engine_state::execution_effect::ExecutionEffect,
@@ -65,6 +65,7 @@ pub struct UpgradeConfig {
     activation_point: Option<ActivationPoint>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
+    new_initial_era_id: Option<EraId>,
 }
 
 impl UpgradeConfig {
@@ -79,6 +80,7 @@ impl UpgradeConfig {
         activation_point: Option<ActivationPoint>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
+        new_initial_era_id: Option<EraId>,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -90,6 +92,7 @@ impl UpgradeConfig {
             activation_point,
             new_validator_slots,
             new_auction_delay,
+            new_initial_era_id,
         }
     }
 
@@ -129,5 +132,9 @@ impl UpgradeConfig {
 
     pub fn new_auction_delay(&self) -> Option<u64> {
         self.new_auction_delay
+    }
+
+    pub fn new_initial_era_id(&self) -> Option<EraId> {
+        self.new_initial_era_id
     }
 }

@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use casper_types::auction::EraId;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,7 @@ const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
 const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 const DEFAULT_AUCTION_DELAY: u64 = 3;
+const DEFAULT_INITIAL_ERA_ID: EraId = 0;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 struct Genesis {
@@ -31,6 +33,7 @@ struct Genesis {
     timestamp: Timestamp,
     validator_slots: u32,
     auction_delay: u64,
+    initial_era_id: EraId,
     protocol_version: Version,
     mint_installer_path: External<Vec<u8>>,
     pos_installer_path: External<Vec<u8>>,
@@ -46,6 +49,7 @@ impl Default for Genesis {
             timestamp: Timestamp::zero(),
             validator_slots: DEFAULT_VALIDATOR_SLOTS,
             auction_delay: DEFAULT_AUCTION_DELAY,
+            initial_era_id: DEFAULT_INITIAL_ERA_ID,
             protocol_version: Version::from((1, 0, 0)),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -125,6 +129,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             timestamp: chainspec.genesis.timestamp,
             validator_slots: chainspec.genesis.validator_slots,
             auction_delay: chainspec.genesis.auction_delay,
+            initial_era_id: chainspec.genesis.initial_era_id,
             protocol_version: chainspec.genesis.protocol_version.clone(),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -204,6 +209,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         timestamp: chainspec.genesis.timestamp,
         validator_slots: chainspec.genesis.validator_slots,
         auction_delay: chainspec.genesis.auction_delay,
+        initial_era_id: chainspec.genesis.initial_era_id,
         protocol_version: chainspec.genesis.protocol_version,
         mint_installer_bytes,
         pos_installer_bytes,

@@ -24,6 +24,10 @@ auction_installer_path = '/etc/casper/wasm/auction_install.wasm'
 accounts_path = '/etc/casper/accounts.csv'
 # Number of slots available in validator auction.
 validator_slots = 15
+# Amount of auction delay
+auction_delay = 3
+# Initial Era Id
+initial_era_id = 0
 
 [highway]
 # Tick unit is milliseconds.

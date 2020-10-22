@@ -18,7 +18,7 @@ use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
     shared::{motes::Motes, wasm_config::WasmConfig},
 };
-use casper_types::U512;
+use casper_types::{auction::EraId, U512};
 
 use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
@@ -181,6 +181,7 @@ pub struct GenesisConfig {
     pub(crate) timestamp: Timestamp,
     pub(crate) validator_slots: u32,
     pub(crate) auction_delay: u64,
+    pub(crate) initial_era_id: EraId,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -262,6 +263,7 @@ impl GenesisConfig {
         let timestamp = Timestamp::random(rng);
         let validator_slots = rng.gen::<u32>();
         let auction_delay = rng.gen::<u64>();
+        let initial_era_id = 0;
         let protocol_version = Version::new(
             rng.gen_range(0, 10),
             rng.gen::<u8>() as u64,
@@ -281,6 +283,7 @@ impl GenesisConfig {
             timestamp,
             validator_slots,
             auction_delay,
+            initial_era_id,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
@@ -397,6 +400,7 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.wasm_config,
             self.genesis.validator_slots,
             self.genesis.auction_delay,
+            self.genesis.initial_era_id,
         )
     }
 }

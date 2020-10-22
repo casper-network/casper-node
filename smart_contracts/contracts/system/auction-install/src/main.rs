@@ -10,13 +10,14 @@ use casper_contract::{
 };
 use casper_types::{
     auction::{
-        Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraValidators, SeigniorageRecipient,
-        SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorRewardMap,
-        ValidatorWeights, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS,
-        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_VALIDATOR_SLOTS, BIDS_KEY, BID_PURSES_KEY,
-        DEFAULT_LOCKED_FUNDS_PERIOD, DELEGATORS_KEY, DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE,
-        ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
+        Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraId, EraValidators,
+        SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
+        UnbondingPurses, ValidatorRewardMap, ValidatorWeights, ARG_AUCTION_DELAY,
+        ARG_GENESIS_VALIDATORS, ARG_INITIAL_ERA_ID, ARG_MINT_CONTRACT_PACKAGE_HASH,
+        ARG_VALIDATOR_SLOTS, BIDS_KEY, BID_PURSES_KEY, DEFAULT_LOCKED_FUNDS_PERIOD, DELEGATORS_KEY,
+        DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE, ERA_ID_KEY, ERA_VALIDATORS_KEY,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP,
+        VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
@@ -65,10 +66,11 @@ pub extern "C" fn install() {
         }
 
         let auction_delay: u64 = runtime::get_named_arg(ARG_AUCTION_DELAY);
-        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + auction_delay;
+        let initial_era_id: EraId = runtime::get_named_arg(ARG_INITIAL_ERA_ID);
+        let initial_snapshot_range = initial_era_id..=initial_era_id + auction_delay;
 
         // Starting era validators
-        named_keys.insert(ERA_ID_KEY.into(), storage::new_uref(INITIAL_ERA_ID).into());
+        named_keys.insert(ERA_ID_KEY.into(), storage::new_uref(initial_era_id).into());
 
         let mut era_validators = EraValidators::new();
         for era_index in initial_snapshot_range.clone() {
@@ -122,6 +124,11 @@ pub extern "C" fn install() {
         named_keys.insert(
             ARG_AUCTION_DELAY.into(),
             storage::new_uref(auction_delay).into(),
+        );
+
+        named_keys.insert(
+            ARG_INITIAL_ERA_ID.into(),
+            storage::new_uref(initial_era_id).into(),
         );
 
         named_keys

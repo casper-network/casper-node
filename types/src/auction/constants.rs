@@ -4,9 +4,6 @@ use crate::account::AccountHash;
 /// System account hash.
 pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
-/// Initial value of era id we start at genesis.
-pub const INITIAL_ERA_ID: EraId = 0;
-
 /// Default lock period for new bid entries represented in eras.
 pub const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
 
@@ -23,6 +20,9 @@ pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
 
 /// Amount of auction delay.
 pub const AUCTION_DELAY_KEY: &str = "auction_delay";
+
+/// The Initial Era Id
+pub const INITIAL_ERA_ID_KEY: &str = "initial_era_id";
 
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
@@ -62,6 +62,8 @@ pub const ARG_MINT_CONTRACT_PACKAGE_HASH: &str = "mint_contract_package_hash";
 pub const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
 /// Named constant of `auction_delay`
 pub const ARG_AUCTION_DELAY: &str = "auction_delay";
+/// Named constant for `initial_era_id`
+pub const ARG_INITIAL_ERA_ID: &str = "initial_era_id";
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
 /// Named constant for method `read_seigniorage_recipients`.

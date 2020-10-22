@@ -8,7 +8,9 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_types::{account::AccountHash, bytesrepr, Key, ProtocolVersion, PublicKey, U512};
+use casper_types::{
+    account::AccountHash, auction::EraId, bytesrepr, Key, ProtocolVersion, PublicKey, U512,
+};
 
 use super::SYSTEM_ACCOUNT_ADDR;
 use crate::{
@@ -225,6 +227,7 @@ pub struct ExecConfig {
     wasm_config: WasmConfig,
     validator_slots: u32,
     auction_delay: u64,
+    initial_era_id: EraId,
 }
 
 impl ExecConfig {
@@ -238,6 +241,7 @@ impl ExecConfig {
         wasm_config: WasmConfig,
         validator_slots: u32,
         auction_delay: u64,
+        initial_era_id: EraId,
     ) -> ExecConfig {
         ExecConfig {
             mint_installer_bytes,
@@ -248,6 +252,7 @@ impl ExecConfig {
             wasm_config,
             validator_slots,
             auction_delay,
+            initial_era_id,
         }
     }
 
@@ -292,6 +297,10 @@ impl ExecConfig {
     pub fn auction_delay(&self) -> u64 {
         self.auction_delay
     }
+
+    pub fn initial_era_id(&self) -> EraId {
+        self.initial_era_id
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -318,6 +327,8 @@ impl Distribution<ExecConfig> for Standard {
 
         let auction_delay = rng.gen();
 
+        let initial_era_id = 0;
+
         ExecConfig {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
@@ -327,6 +338,7 @@ impl Distribution<ExecConfig> for Standard {
             wasm_config,
             validator_slots,
             auction_delay,
+            initial_era_id,
         }
     }
 }

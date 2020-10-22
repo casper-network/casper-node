@@ -26,6 +26,8 @@ accounts_path = 'accounts.csv'
 validator_slots = 5
 # Auction delay. 
 auction_delay = 3
+# initial era
+initial_era_id = 0
 
 [highway]
 # Tick unit is milliseconds.

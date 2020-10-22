@@ -288,6 +288,8 @@ message ChainSpec {
             uint32 validator_slots = 7;
             // The amount of auction delay. 
             uint64 auction_delay = 8;
+            // The initial EraId
+            uint64 initial_era_id = 9;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;
@@ -450,6 +452,8 @@ message ChainSpec {
         NewValidatorSlots new_validator_slots = 6;
         // Change the amount of auction delay (optional)
         NewAuctionDelay new_auction_delay = 7;
+        // Change the initial era id (optional)
+        NewInitialEraId new_initial_era_id = 8;
     }
 
     message NewValidatorSlots {
@@ -458,6 +462,10 @@ message ChainSpec {
 
     message NewAuctionDelay {
         uint64 new_auction_delay = 1;
+    }
+
+    message NewInitialEraId {
+        uint64 new_initial_era_id = 1;
     }
 
     message ActivationPoint {

@@ -22,9 +22,9 @@ use casper_types::Key;
 
 use crate::internal::{
     AUCTION_INSTALL_CONTRACT, DEFAULT_AUCTION_DELAY, DEFAULT_CHAIN_NAME,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
-    STANDARD_PAYMENT_INSTALL_CONTRACT,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP, DEFAULT_INITIAL_ERA_ID,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT,
+    POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
 };
 
 lazy_static! {
@@ -131,6 +131,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
+    let initial_era_id = DEFAULT_INITIAL_ERA_ID;
     ExecConfig::new(
         mint_installer_bytes,
         proof_of_stake_installer_bytes,
@@ -140,6 +141,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
         wasm_config,
         validator_slots,
         auction_delay,
+        initial_era_id,
     )
 }
 

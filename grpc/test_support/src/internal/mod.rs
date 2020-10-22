@@ -17,7 +17,7 @@ use casper_execution_engine::{
     },
     shared::{motes::Motes, newtypes::Blake2bHash, wasm_config::WasmConfig},
 };
-use casper_types::{account::AccountHash, ProtocolVersion, PublicKey, U512};
+use casper_types::{account::AccountHash, auction::EraId, ProtocolVersion, PublicKey, U512};
 
 use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 pub use additive_map_diff::AdditiveMapDiff;
@@ -35,6 +35,7 @@ pub const STANDARD_PAYMENT_INSTALL_CONTRACT: &str = "standard_payment_install.wa
 pub const AUCTION_INSTALL_CONTRACT: &str = "auction_install.wasm";
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 pub const DEFAULT_AUCTION_DELAY: u64 = 3;
+pub const DEFAULT_INITIAL_ERA_ID: EraId = 0;
 
 pub const DEFAULT_CHAIN_NAME: &str = "gerald";
 pub const DEFAULT_GENESIS_TIMESTAMP: u64 = 0;
@@ -83,6 +84,7 @@ lazy_static! {
             *DEFAULT_WASM_CONFIG,
             DEFAULT_VALIDATOR_SLOTS,
             DEFAULT_AUCTION_DELAY,
+            DEFAULT_INITIAL_ERA_ID,
         )
     };
     pub static ref DEFAULT_GENESIS_CONFIG: GenesisConfig = {

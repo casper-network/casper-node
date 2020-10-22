@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use casper_execution_engine::core::engine_state::upgrade::UpgradeConfig;
-use casper_types::ProtocolVersion;
+use casper_types::{auction::EraId, ProtocolVersion};
 
 use crate::engine_server::{ipc::UpgradeRequest, mappings::MappingError};
 
@@ -61,6 +61,16 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             )
         };
 
+        let new_initial_era_id: Option<EraId> = if !upgrade_point.has_new_initial_era_id() {
+            None
+        } else {
+            Some(
+                upgrade_point
+                    .take_new_initial_era_id()
+                    .get_new_initial_era_id(),
+            )
+        };
+
         Ok(UpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
@@ -71,6 +81,7 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             activation_point,
             new_validator_slots,
             new_auction_delay,
+            new_initial_era_id,
         ))
     }
 }

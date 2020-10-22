@@ -31,8 +31,9 @@ use casper_types::{
     account::AccountHash,
     auction::{
         ValidatorWeights, ARG_AUCTION_DELAY, ARG_ERA_ID, ARG_GENESIS_VALIDATORS,
-        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
-        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        ARG_INITIAL_ERA_ID, ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS,
+        ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, INITIAL_ERA_ID_KEY,
+        VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
@@ -392,12 +393,14 @@ where
 
             let validator_slots = ee_config.validator_slots();
             let auction_delay = ee_config.auction_delay();
+            let initial_era_id = ee_config.initial_era_id();
             let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
             let args = runtime_args! {
                 ARG_MINT_CONTRACT_PACKAGE_HASH => mint_package_hash,
                 ARG_GENESIS_VALIDATORS => bonded_validators,
                 ARG_VALIDATOR_SLOTS => validator_slots,
                 ARG_AUCTION_DELAY => auction_delay,
+                ARG_INITIAL_ERA_ID => initial_era_id,
             };
             let authorization_keys = BTreeSet::new();
             let install_deploy_hash = genesis_config_hash.value();
@@ -751,6 +754,19 @@ where
                     .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
             );
             tracking_copy.borrow_mut().write(auction_delay_key, value);
+        }
+
+        if let Some(new_initial_era_id) = upgrade_config.new_initial_era_id() {
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.auction())?;
+
+            let initial_era_id_key = auction_contract.named_keys()[INITIAL_ERA_ID_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_initial_era_id)
+                    .map_err(|_| Error::Bytesrepr("new_initial_era_id".to_string()))?,
+            );
+            tracking_copy.borrow_mut().write(initial_era_id_key, value);
         }
 
         let effects = tracking_copy.borrow().effect();
