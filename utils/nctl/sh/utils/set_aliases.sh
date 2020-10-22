@@ -59,7 +59,7 @@ alias nctl-view-node-metric-pending-deploy='source $NCTL/sh/views/view_node_metr
 alias nctl-view-node-metric-finalised-block-count='source $NCTL/sh/views/view_node_metrics.sh metric=amount_of_blocks'
 
 # Views: network.
-alias nctl-view-faucet-account-balance='source $NCTL/sh/views/view_net_faucet_account_balance.sh'
+# alias nctl-view-faucet-account-balance='source $NCTL/sh/views/view_net_faucet_account_balance.sh'
 alias nctl-view-faucet-account-key='source $NCTL/sh/views/view_net_faucet_account_key.sh'
 
 # Views: user.
