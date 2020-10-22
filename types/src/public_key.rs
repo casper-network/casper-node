@@ -184,10 +184,19 @@ mod tests {
         let cl = CLValue::from_t(public_key).unwrap();
         bytesrepr::test_serialization_roundtrip(&cl);
     }
+
     #[test]
     fn serialization_roundtrip_cl_secp256k1() {
         let public_key = PublicKey::Secp256k1([42; 33].into());
         let cl = CLValue::from_t(public_key).unwrap();
         bytesrepr::test_serialization_roundtrip(&cl);
+    }
+
+    #[test]
+    fn json_roundtrip() {
+        let item = PublicKey::Secp256k1([42; 33].into());
+        let json_string = serde_json::to_string_pretty(&item).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(item, decoded);
     }
 }

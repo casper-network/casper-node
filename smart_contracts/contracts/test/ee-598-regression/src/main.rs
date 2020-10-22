@@ -20,7 +20,7 @@ fn add_bid(
         auction::ARG_DELEGATION_RATE => DelegationRate::from(42u8),
         auction::ARG_AMOUNT => bond_amount,
     };
-    runtime::call_contract::<(URef, U512)>(contract_hash, auction::METHOD_ADD_BID, runtime_args);
+    runtime::call_contract::<U512>(contract_hash, auction::METHOD_ADD_BID, runtime_args);
 }
 
 fn withdraw_bid(

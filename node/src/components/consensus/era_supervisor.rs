@@ -18,12 +18,10 @@ use blake2::{
     VarBlake2b,
 };
 use datasize::DataSize;
-use fmt::Display;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
 use prometheus::Registry;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::{
@@ -59,195 +57,16 @@ use crate::{
     utils::WithDir,
 };
 
+pub use self::era::{Era, EraId};
+
+mod era;
+
 /// The unbonding period, in number of eras. After this many eras, a former validator is allowed to
 /// withdraw their stake, so their signature can't be trusted anymore.
 ///
 /// A node keeps `2 * BONDED_ERAS` past eras around, because the oldest bonded era could still
 /// receive blocks that refer to `BONDED_ERAS` before that.
 const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - AUCTION_DELAY;
-
-#[derive(
-    DataSize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
-)]
-pub struct EraId(pub(crate) u64);
-
-impl EraId {
-    fn message(self, payload: Vec<u8>) -> ConsensusMessage {
-        ConsensusMessage::Protocol {
-            era_id: self,
-            payload,
-        }
-    }
-
-    pub(crate) fn successor(self) -> EraId {
-        EraId(self.0 + 1)
-    }
-
-    /// Returns an iterator over all eras that are still bonded in this one, including this one.
-    fn iter_bonded(&self) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(BONDED_ERAS)..=self.0).map(EraId)
-    }
-
-    /// Returns an iterator over all eras that are still bonded in this one, excluding this one.
-    fn iter_other_bonded(&self) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(BONDED_ERAS)..self.0).map(EraId)
-    }
-
-    /// Returns the current era minus `x`, or `None` if that would be less than `0`.
-    fn checked_sub(&self, x: u64) -> Option<EraId> {
-        self.0.checked_sub(x).map(EraId)
-    }
-}
-
-impl Display for EraId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "era {}", self.0)
-    }
-}
-
-/// A candidate block waiting for validation and dependencies.
-#[derive(DataSize)]
-pub struct PendingCandidate {
-    /// The candidate, to be passed into the consensus instance once dependencies are resolved.
-    candidate: CandidateBlock,
-    /// Whether the proto block has been validated yet.
-    validated: bool,
-    /// A list of IDs of accused validators for which we are still missing evidence.
-    missing_evidence: Vec<PublicKey>,
-}
-
-impl PendingCandidate {
-    fn new(candidate: CandidateBlock, missing_evidence: Vec<PublicKey>) -> Self {
-        PendingCandidate {
-            candidate,
-            validated: false,
-            missing_evidence,
-        }
-    }
-
-    fn is_complete(&self) -> bool {
-        self.validated && self.missing_evidence.is_empty()
-    }
-}
-
-pub struct Era<I> {
-    /// The consensus protocol instance.
-    consensus: Box<dyn ConsensusProtocol<I, CandidateBlock, PublicKey>>,
-    /// The height of this era's first block.
-    start_height: u64,
-    /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
-    /// has been validated; the vector contains the list of accused validators missing evidence.
-    candidates: Vec<PendingCandidate>,
-    /// Validators banned in this and the next BONDED_ERAS eras, because they were slashed in the
-    /// previous switch block.
-    newly_banned: Vec<PublicKey>,
-}
-
-impl<I> Era<I> {
-    fn new<C: 'static + ConsensusProtocol<I, CandidateBlock, PublicKey>>(
-        consensus: C,
-        start_height: u64,
-        newly_banned: Vec<PublicKey>,
-    ) -> Self {
-        Era {
-            consensus: Box::new(consensus),
-            start_height,
-            candidates: Vec::new(),
-            newly_banned,
-        }
-    }
-
-    /// Adds a new candidate block, together with the accusations for which we don't have evidence
-    /// yet.
-    fn add_candidate(&mut self, candidate: CandidateBlock, missing_evidence: Vec<PublicKey>) {
-        self.candidates
-            .push(PendingCandidate::new(candidate, missing_evidence));
-    }
-
-    /// Marks the dependencies of candidate blocks on evidence against validator `pub_key` as
-    /// resolved and returns all candidates that have no missing dependencies left.
-    fn resolve_evidence(&mut self, pub_key: &PublicKey) -> Vec<CandidateBlock> {
-        for pc in &mut self.candidates {
-            pc.missing_evidence.retain(|pk| pk != pub_key);
-        }
-        self.consensus.mark_faulty(pub_key);
-        self.remove_complete_candidates()
-    }
-
-    /// Marks the dependencies of candidate blocks on the validity of the specified proto block as
-    /// resolved and returns all candidates that have no missing dependencies left.
-    fn accept_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
-        for pc in &mut self.candidates {
-            if pc.candidate.proto_block() == proto_block {
-                pc.validated = true;
-            }
-        }
-        self.remove_complete_candidates()
-    }
-
-    /// Removes and returns any candidate blocks depending on the validity of the specified proto
-    /// block. If it is invalid, all those candidates are invalid.
-    fn reject_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
-        let (invalid, candidates): (Vec<_>, Vec<_>) = self
-            .candidates
-            .drain(..)
-            .partition(|pc| pc.candidate.proto_block() == proto_block);
-        self.candidates = candidates;
-        invalid.into_iter().map(|pc| pc.candidate).collect()
-    }
-
-    /// Removes and returns all candidate blocks with no missing dependencies.
-    fn remove_complete_candidates(&mut self) -> Vec<CandidateBlock> {
-        let (complete, candidates): (Vec<_>, Vec<_>) = self
-            .candidates
-            .drain(..)
-            .partition(PendingCandidate::is_complete);
-        self.candidates = candidates;
-        complete.into_iter().map(|pc| pc.candidate).collect()
-    }
-}
-
-impl<I> DataSize for Era<I>
-where
-    I: 'static,
-{
-    const IS_DYNAMIC: bool = true;
-
-    const STATIC_HEAP_SIZE: usize = 0;
-
-    #[inline]
-    fn estimate_heap_size(&self) -> usize {
-        // Destructure self, so we can't miss any fields.
-        let Era {
-            consensus,
-            start_height,
-            candidates,
-            newly_banned,
-        } = self;
-
-        // `DataSize` cannot be made object safe due its use of associated constants. We implement
-        // it manually here, downcasting the consensus protocol as a workaround.
-
-        let consensus_heap_size = {
-            let any_ref = consensus.as_any();
-
-            if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, HighwayContext>>() {
-                highway.estimate_heap_size()
-            } else {
-                warn!(
-                    "could not downcast consensus protocol to \
-                    HighwayProtocol<I, HighwayContext> to determine heap allocation size"
-                );
-                0
-            }
-        };
-
-        consensus_heap_size
-            + start_height.estimate_heap_size()
-            + candidates.estimate_heap_size()
-            + newly_banned.estimate_heap_size()
-    }
-}
 
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
@@ -404,7 +223,7 @@ where
         era_id: EraId,
         timestamp: Timestamp,
         validator_stakes: Vec<(PublicKey, Motes)>,
-        newly_banned: Vec<PublicKey>,
+        newly_slashed: Vec<PublicKey>,
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
@@ -437,11 +256,14 @@ where
         let mut validators: Validators<PublicKey> =
             validator_stakes.into_iter().map(scale_stake).collect();
 
-        for pub_key in era_id
+        let slashed = era_id
             .iter_other_bonded()
-            .flat_map(|e_id| &self.active_eras[&e_id].newly_banned)
-            .chain(&newly_banned)
-        {
+            .flat_map(|e_id| &self.active_eras[&e_id].newly_slashed)
+            .chain(&newly_slashed)
+            .cloned()
+            .collect();
+
+        for pub_key in &slashed {
             validators.ban(pub_key);
         }
 
@@ -497,7 +319,7 @@ where
             Vec::new()
         };
 
-        let era = Era::new(highway, start_height, newly_banned);
+        let era = Era::new(highway, start_height, newly_slashed, slashed);
         let _ = self.active_eras.insert(era_id, era);
 
         // Remove the era that has become obsolete now. We keep 2 * BONDED_ERAS past eras because
@@ -606,15 +428,19 @@ where
         proto_block: ProtoBlock,
         block_context: BlockContext,
     ) -> Effects<Event<I>> {
+        if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+            warn!(era = era_id.0, "new proto block in outdated era");
+            return Effects::new();
+        }
         let mut effects = self
             .effect_builder
             .announce_proposed_proto_block(proto_block.clone())
             .ignore();
-        // TODO: Only include _new_ accusations.
         let accusations = era_id
             .iter_bonded()
             .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
             .unique()
+            .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
             .cloned()
             .collect();
         let candidate_block = CandidateBlock::new(proto_block, accusations);
@@ -702,7 +528,7 @@ where
             .current_era_mut()
             .consensus
             .deactivate_validator();
-        let newly_banned = block_header
+        let newly_slashed = block_header
             .era_end()
             .expect("switch block must have era_end")
             .equivocators
@@ -715,7 +541,7 @@ where
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
             validator_stakes,
-            newly_banned,
+            newly_slashed,
             seed,
             block_header.timestamp(),
             block_header.height() + 1,
@@ -735,6 +561,10 @@ where
         era_id: EraId,
         proto_block: ProtoBlock,
     ) -> Effects<Event<I>> {
+        self.era_supervisor
+            .metrics
+            .time_of_last_proposed_block
+            .set(Timestamp::now().millis() as f64 / 1000.00);
         let mut effects = Effects::new();
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
             era.accept_proto_block(&proto_block)

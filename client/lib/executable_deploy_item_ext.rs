@@ -22,7 +22,7 @@ pub trait ExecutableDeployItemExt {
     /// Creates an `ExecutableDeployItem::StoredVersionedContractByHash`.
     fn new_stored_versioned_contract_by_hash(
         hash: ContractPackageHash,
-        version: u32,
+        version: Option<u32>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem>;
@@ -30,7 +30,7 @@ pub trait ExecutableDeployItemExt {
     /// Creates an `ExecutableDeployItem::StoredVersionedContractByName`.
     fn new_stored_versioned_contract_by_name(
         name: String,
-        version: u32,
+        version: Option<u32>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem>;
@@ -66,13 +66,13 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
 
     fn new_stored_versioned_contract_by_name(
         name: String,
-        version: u32,
+        version: Option<u32>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem> {
         Ok(ExecutableDeployItem::StoredVersionedContractByName {
             name,
-            version: Some(version), // defaults to highest enabled version
+            version, // defaults to highest enabled version
             entry_point,
             args: args.to_bytes()?,
         })
@@ -80,13 +80,13 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
 
     fn new_stored_versioned_contract_by_hash(
         hash: ContractPackageHash,
-        version: u32,
+        version: Option<u32>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem> {
         Ok(ExecutableDeployItem::StoredVersionedContractByHash {
             hash,
-            version: Some(version), // defaults to highest enabled version
+            version, // defaults to highest enabled version
             entry_point,
             args: args.to_bytes()?,
         })

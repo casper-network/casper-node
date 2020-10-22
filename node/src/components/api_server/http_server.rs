@@ -43,6 +43,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     let rpc_get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder);
     let rpc_get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
     let rpc_get_status = rpcs::info::GetStatus::create_filter(effect_builder);
+    let rpc_get_auction_info = rpcs::state::GetAuctionInfo::create_filter(effect_builder);
 
     // Event stream channels and filter.
     let (broadcaster, mut new_subscriber_info_receiver, sse_filter) =
@@ -59,6 +60,7 @@ pub(super) async fn run<REv: ReactorEventT>(
             .or(rpc_get_deploy)
             .or(rpc_get_peers)
             .or(rpc_get_status)
+            .or(rpc_get_auction_info)
             .or(sse_filter),
     );
 

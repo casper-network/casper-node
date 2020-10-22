@@ -27,12 +27,15 @@ use futures::join;
 use lazy_static::lazy_static;
 use semver::Version;
 use tokio::sync::mpsc::{self, UnboundedSender};
-use tracing::info;
 
-use casper_execution_engine::core::engine_state::{
-    self, BalanceRequest, BalanceResult, QueryRequest, QueryResult,
+use casper_execution_engine::{
+    core::engine_state::{
+        self, BalanceRequest, BalanceResult, GetEraValidatorsError, GetEraValidatorsRequest,
+        QueryRequest, QueryResult,
+    },
+    storage::protocol_data::ProtocolData,
 };
-use casper_types::{Key, URef};
+use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
 
 use super::Component;
 use crate::{
@@ -49,6 +52,7 @@ use crate::{
     small_network::NodeId,
     types::{CryptoRngCore, StatusFeed},
 };
+
 pub use config::Config;
 pub(crate) use event::Event;
 pub use sse_server::SseData;
@@ -107,6 +111,20 @@ impl ApiServer {
 }
 
 impl ApiServer {
+    fn handle_protocol_data<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        protocol_version: ProtocolVersion,
+        responder: Responder<Result<Option<Box<ProtocolData>>, engine_state::Error>>,
+    ) -> Effects<Event> {
+        effect_builder
+            .get_protocol_data(protocol_version)
+            .event(move |result| Event::QueryProtocolDataResult {
+                result,
+                main_responder: responder,
+            })
+    }
+
     fn handle_query<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -122,6 +140,24 @@ impl ApiServer {
                 result,
                 main_responder: responder,
             })
+    }
+
+    fn handle_era_validators<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        state_root_hash: Digest,
+        era_id: u64,
+        protocol_version: ProtocolVersion,
+        responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
+    ) -> Effects<Event> {
+        let request =
+            GetEraValidatorsRequest::new(state_root_hash.into(), era_id, protocol_version);
+        effect_builder.get_validators(request).event(move |result| {
+            Event::QueryEraValidatorsResult {
+                result,
+                main_responder: responder,
+            }
+        })
     }
 
     fn handle_get_balance<REv: ReactorEventT>(
@@ -194,12 +230,28 @@ where
                     result: Box::new(result),
                     main_responder: responder,
                 }),
+            Event::ApiRequest(ApiRequest::QueryProtocolData {
+                protocol_version,
+                responder,
+            }) => self.handle_protocol_data(effect_builder, protocol_version, responder),
             Event::ApiRequest(ApiRequest::QueryGlobalState {
                 state_root_hash,
                 base_key,
                 path,
                 responder,
             }) => self.handle_query(effect_builder, state_root_hash, base_key, path, responder),
+            Event::ApiRequest(ApiRequest::QueryEraValidators {
+                state_root_hash,
+                era_id,
+                protocol_version,
+                responder,
+            }) => self.handle_era_validators(
+                effect_builder,
+                state_root_hash,
+                era_id,
+                protocol_version,
+                responder,
+            ),
             Event::ApiRequest(ApiRequest::GetBalance {
                 state_root_hash,
                 purse_uref,
@@ -225,7 +277,6 @@ where
                     effect_builder.get_chainspec_info()
                 );
                 let status_feed = StatusFeed::new(last_added_block, peers, chainspec_info);
-                info!("GetStatus --status_feed: {:?}", status_feed);
                 responder.respond(status_feed).await;
             }
             .ignore(),
@@ -240,7 +291,15 @@ where
                 result,
                 main_responder,
             } => main_responder.respond(*result).ignore(),
+            Event::QueryProtocolDataResult {
+                result,
+                main_responder,
+            } => main_responder.respond(result).ignore(),
             Event::QueryGlobalStateResult {
+                result,
+                main_responder,
+            } => main_responder.respond(result).ignore(),
+            Event::QueryEraValidatorsResult {
                 result,
                 main_responder,
             } => main_responder.respond(result).ignore(),
