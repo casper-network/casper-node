@@ -77,11 +77,10 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
-        let next_round_exp = state.params().init_round_exp();
         let mut av = ActiveValidator {
             vidx,
             secret,
-            next_round_exp,
+            next_round_exp: state.params().init_round_exp(),
             next_timer: Timestamp::zero(),
             next_proposal: None,
         };
