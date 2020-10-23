@@ -33,6 +33,10 @@ net=${net:-1}
 # Main
 #######################################
 
+# Set daemon handler.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    source $NCTL/sh/daemon/supervisord/node_status.sh $net
+    daemon_mgr=$NCTL/sh/daemon/supervisord/node_status.sh
 fi
+
+# Invoke daemon handler.
+source $daemon_mgr $net

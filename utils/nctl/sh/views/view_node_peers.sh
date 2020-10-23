@@ -20,8 +20,14 @@ source $NCTL/sh/utils/misc.sh
 #######################################
 function _view_peers() {
     node_address=$(get_node_address $1 $2)
-    log "network #$1 :: node #$2 :: $node_address :: status:"
-    exec_node_rpc $1 $2 "info_get_peers"
+    log "network #$1 :: node #$2 :: $node_address :: peers:"
+    curl -s --header 'Content-Type: application/json' \
+        --request POST $(get_node_address_rpc $1 $2) \
+        --data-raw '{
+            "id": 1,
+            "jsonrpc": "2.0",
+            "method": "info_get_peers"
+        }' | jq '.result.peers'
 }
 
 #######################################
