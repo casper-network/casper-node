@@ -260,24 +260,26 @@ where
         let our_id = self.public_signing_key;
         let era_rounds_len = params.min_round_len() * params.end_height();
         let min_end_time = start_time + self.highway_config().era_duration.max(era_rounds_len);
-        let mut should_activate = false;
-        if self.node_start_time >= start_time {
+        let should_activate = if self.node_start_time >= start_time {
             info!(
                 era = era_id.0,
                 %self.node_start_time, "not voting; node was not started before the era began",
             );
+            false
         } else if min_end_time < timestamp {
             info!(
                 era = era_id.0,
                 %min_end_time,
                 "not voting; era started too long ago",
             );
+            false
         } else if !validators.iter().any(|v| *v.id() == our_id) {
             info!(era = era_id.0, %our_id, "not voting; not a validator");
+            false
         } else {
             info!(era = era_id.0, "start voting");
-            should_activate = true;
-        }
+            true
+        };
 
         let mut highway = HighwayProtocol::<I, HighwayContext>::new(
             instance_id(&self.chainspec, state_root_hash, start_height),
