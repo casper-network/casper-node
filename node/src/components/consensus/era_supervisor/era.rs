@@ -135,6 +135,20 @@ impl<I> Era<I> {
         self.remove_complete_candidates()
     }
 
+    /// Marks the proto block as valid or invalid, and returns all candidates whose validity is now
+    /// fully determined.
+    pub(crate) fn resolve_validity(
+        &mut self,
+        proto_block: &ProtoBlock,
+        valid: bool,
+    ) -> Vec<CandidateBlock> {
+        if valid {
+            self.accept_proto_block(proto_block)
+        } else {
+            self.reject_proto_block(proto_block)
+        }
+    }
+
     /// Marks the dependencies of candidate blocks on the validity of the specified proto block as
     /// resolved and returns all candidates that have no missing dependencies left.
     pub(crate) fn accept_proto_block(&mut self, proto_block: &ProtoBlock) -> Vec<CandidateBlock> {
