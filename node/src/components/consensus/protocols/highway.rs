@@ -62,13 +62,14 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         ftt: Weight,
     ) -> Self {
         let round_exp = params.init_round_exp();
+        let start_timestamp = params.start_timestamp();
         HighwayProtocol {
             vertex_deps: BTreeMap::new(),
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
             vertices_to_be_added_later: BTreeMap::new(),
-            round_success_meter: RoundSuccessMeter::new(round_exp, round_exp, Timestamp::now()),
+            round_success_meter: RoundSuccessMeter::new(round_exp, round_exp, start_timestamp),
         }
     }
 

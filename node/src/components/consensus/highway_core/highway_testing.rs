@@ -875,6 +875,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     TEST_REDUCED_BLOCK_REWARD,
                     TEST_MIN_ROUND_EXP,
                     TEST_END_HEIGHT,
+                    Timestamp::now(),
                     Timestamp::zero(), // Length depends only on block number.
                 );
                 let mut highway = Highway::new(instance_id, validators.clone(), params);

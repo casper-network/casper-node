@@ -456,6 +456,7 @@ where
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
             self.highway_config().minimum_round_exponent,
             self.highway_config().minimum_era_height,
+            start_time,
             start_time + self.highway_config().era_duration,
         );
 
