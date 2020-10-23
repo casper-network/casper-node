@@ -8,7 +8,7 @@ use core::{
 };
 
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
 use datasize::DataSize;
@@ -256,8 +256,8 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
     let mut result = [0; BLAKE2B_DIGEST_LENGTH];
     let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
 
-    hasher.input(data);
-    hasher.variable_result(|slice| {
+    hasher.update(data);
+    hasher.finalize_variable(|slice| {
         result.copy_from_slice(slice);
     });
     result

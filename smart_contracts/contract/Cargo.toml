@@ -17,7 +17,7 @@ thiserror = "1.0.18"
 wee_alloc = "0.4.5"
 
 [dev-dependencies]
-version-sync = "0.8"
+version-sync = "0.9"
 
 [features]
 default = []

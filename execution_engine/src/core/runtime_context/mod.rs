@@ -7,7 +7,7 @@ use std::{
 };
 
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
 
@@ -328,9 +328,9 @@ where
         let pre_hash_bytes = self.hash_address_generator.borrow_mut().create_address();
 
         let mut hasher = VarBlake2b::new(KEY_HASH_LENGTH).unwrap();
-        hasher.input(&pre_hash_bytes);
+        hasher.update(&pre_hash_bytes);
         let mut hash_bytes = [0; KEY_HASH_LENGTH];
-        hasher.variable_result(|hash| hash_bytes.clone_from_slice(hash));
+        hasher.finalize_variable(|hash| hash_bytes.clone_from_slice(hash));
         Ok(hash_bytes)
     }
 

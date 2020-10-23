@@ -14,7 +14,7 @@ use std::{
 
 use anyhow::Error;
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
 use datasize::DataSize;
@@ -160,9 +160,9 @@ where
         let mut result = [0; hash::Digest::LENGTH];
         let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
 
-        hasher.input(&self.chainspec.genesis.name);
-        hasher.input(self.chainspec.genesis.timestamp.millis().to_le_bytes());
-        hasher.input(state_root_hash);
+        hasher.update(&self.chainspec.genesis.name);
+        hasher.update(self.chainspec.genesis.timestamp.millis().to_le_bytes());
+        hasher.update(state_root_hash);
 
         for upgrade_point in self
             .chainspec
@@ -170,16 +170,16 @@ where
             .iter()
             .take_while(|up| up.activation_point.rank <= block_height)
         {
-            hasher.input(upgrade_point.activation_point.rank.to_le_bytes());
+            hasher.update(upgrade_point.activation_point.rank.to_le_bytes());
             if let Some(bytes) = upgrade_point.upgrade_installer_bytes.as_ref() {
-                hasher.input(bytes);
+                hasher.update(bytes);
             }
             if let Some(bytes) = upgrade_point.upgrade_installer_args.as_ref() {
-                hasher.input(bytes);
+                hasher.update(bytes);
             }
         }
 
-        hasher.variable_result(|slice| {
+        hasher.finalize_variable(|slice| {
             result.copy_from_slice(slice);
         });
         result.into()
@@ -206,10 +206,10 @@ where
         let mut result = [0; hash::Digest::LENGTH];
         let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
 
-        hasher.input(booking_block_hash);
-        hasher.input(key_block_seed);
+        hasher.update(booking_block_hash);
+        hasher.update(key_block_seed);
 
-        hasher.variable_result(|slice| {
+        hasher.finalize_variable(|slice| {
             result.copy_from_slice(slice);
         });
 
