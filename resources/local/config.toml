@@ -159,7 +159,7 @@ gossip_request_timeout_secs = 10
 
 # The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.
-get_remainder_timeout_secs = 60
+get_remainder_timeout_secs = 5
 
 
 # ========================================================
