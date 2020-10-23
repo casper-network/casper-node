@@ -56,6 +56,7 @@ else
 fi
 
 if [ -z "$docker_image" ]; then
+  echo "Defaulting build image to ${default_image}."
   docker_image=${default_image}
 fi
 
@@ -64,4 +65,4 @@ fi
 # Getting user and group to chown/chgrp target folder from root at end.
 # Cannot use the --user trick as cached .cargo in image is owned by root.
 command="cd /casper-node; make ${make_command}; chown -R -f $(id -u):$(id -g) ./target ./target_as;"
-docker run --rm -it --volume $(pwd):/casper-node casperlabs/${docker_image}:latest /bin/bash -c "${command}"
+docker run --rm --volume $(pwd):/casper-node casperlabs/${docker_image}:latest /bin/bash -c "${command}"
