@@ -165,8 +165,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
 }
 
 mod merkle_proofs {
-    use jsonrpc_lite::JsonRpc;
+    use std::convert::TryFrom;
 
+    use jsonrpc_lite::JsonRpc;
     use thiserror::Error;
 
     use casper_execution_engine::{
@@ -175,7 +176,6 @@ mod merkle_proofs {
     };
     use casper_node::{crypto::hash::Digest, types::json_compatibility};
     use casper_types::{bytesrepr, Key};
-    use std::convert::TryFrom;
 
     const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";
     const GET_ITEM_RESULT_MERKLE_PROOF: &str = "merkle_proof";
