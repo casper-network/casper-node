@@ -8,10 +8,13 @@ After=network-online.target
 
 [Service]
 Type=simple
+ExecStartPre=/etc/casper/pull_genesis.sh
 ExecStart=/usr/bin/casper-node validator /etc/casper/config.toml
 Environment=RUST_LOG=info
 StandardOutput=file:/var/log/casper-node.log
 Restart=no
+User=casper
+Group=casper
 
 [Install]
 WantedBy=multi-user.target

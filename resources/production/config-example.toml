@@ -87,7 +87,7 @@ bind_port = 7777
 #
 # If unset, defaults to:
 #   /root/.local/share/casper-node
-# path = 'node-storage'
+path = '/var/lib/casper/casper-node'
 
 # Optional maximum size of the database to use for the block store.
 #

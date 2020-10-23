@@ -24,4 +24,7 @@ else
   echo "Creating $outfile from $config_example."
 fi
 
+chown casper $outfile
+chgrp casper $outfile
+
 sed 's/<IP ADDRESS>/$external_ip/' $config_example > $outfile
