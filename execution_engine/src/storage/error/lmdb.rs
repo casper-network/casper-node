@@ -17,14 +17,6 @@ pub enum Error {
 
     #[error("Another thread panicked while holding a lock")]
     Poison,
-
-    #[error(
-        "`hole_index` with value {hole_index:?} must be less than RADIX (proof step {proof_step_index:?})"
-    )]
-    HoleIndexOutOfRange {
-        hole_index: u8,
-        proof_step_index: u8,
-    },
 }
 
 impl wasmi::HostError for Error {}
@@ -46,13 +38,6 @@ impl From<in_memory::Error> for Error {
         match error {
             in_memory::Error::BytesRepr(error) => Error::BytesRepr(error),
             in_memory::Error::Poison => Error::Poison,
-            in_memory::Error::HoleIndexOutOfRange {
-                hole_index,
-                proof_step_index,
-            } => Error::HoleIndexOutOfRange {
-                hole_index,
-                proof_step_index,
-            },
         }
     }
 }
