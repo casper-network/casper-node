@@ -120,6 +120,7 @@ assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
     ["../resources/maintainer_scripts/pull_genesis.sh", "/etc/casper/pull_genesis.sh", "755"],
     ["../resources/maintainer_scripts/config_from_example.sh", "/etc/casper/config_from_example.sh", "755"],
+    ["../resources/maintainer_scripts/systemd_pre_start.sh", "/etc/casper/systemd_pre_start.sh", "755"],
     ["../target/wasm32-unknown-unknown/release/mint_install.wasm", "/etc/casper/wasm/mint_install.wasm", "644"],
     ["../target/wasm32-unknown-unknown/release/pos_install.wasm", "/etc/casper/wasm/pos_install.wasm", "644"],
     ["../target/wasm32-unknown-unknown/release/standard_payment_install.wasm", "/etc/casper/wasm/standard_payment_install.wasm", "644"],
