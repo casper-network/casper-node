@@ -14,8 +14,8 @@ use crate::{
 fn make_payment_error_effects(
     max_payment_cost: Motes,
     account_main_purse_balance: Motes,
-    account_main_purse: Key,
-    rewards_purse: Key,
+    account_main_purse_balance_key: Key,
+    proposer_main_purse_balance_key: Key,
 ) -> ExecutionEffect {
     let mut ops = AdditiveMap::new();
     let mut transforms = AdditiveMap::new();
@@ -25,18 +25,18 @@ fn make_payment_error_effects(
     let new_balance_clvalue = CLValue::from_t(new_balance.value()).unwrap();
     let new_balance_value = StoredValue::CLValue(new_balance_clvalue);
 
-    let account_main_purse_normalize = account_main_purse.normalize();
-    let rewards_purse_normalize = rewards_purse.normalize();
+    let account_main_purse_balance_normalize = account_main_purse_balance_key.normalize();
+    let proposer_main_purse_balance_normalize = proposer_main_purse_balance_key.normalize();
 
-    ops.insert(account_main_purse_normalize, Op::Write);
+    ops.insert(account_main_purse_balance_normalize, Op::Write);
     transforms.insert(
-        account_main_purse_normalize,
+        account_main_purse_balance_normalize,
         Transform::Write(new_balance_value),
     );
 
-    ops.insert(rewards_purse_normalize, Op::Add);
+    ops.insert(proposer_main_purse_balance_normalize, Op::Add);
     transforms.insert(
-        rewards_purse_normalize,
+        proposer_main_purse_balance_normalize,
         Transform::AddUInt512(max_payment_cost.value()),
     );
 
@@ -253,14 +253,14 @@ impl ExecutionResult {
         error: error::Error,
         max_payment_cost: Motes,
         account_main_purse_balance: Motes,
-        account_main_purse: Key,
-        rewards_purse: Key,
+        account_main_purse_balance_key: Key,
+        proposer_main_purse_balance_key: Key,
     ) -> ExecutionResult {
         let effect = make_payment_error_effects(
             max_payment_cost,
             account_main_purse_balance,
-            account_main_purse,
-            rewards_purse,
+            account_main_purse_balance_key,
+            proposer_main_purse_balance_key,
         );
         let cost = Gas::from_motes(max_payment_cost, CONV_RATE).unwrap_or_default();
         let transfers = Vec::default();

@@ -20,7 +20,6 @@ const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
 const EXPECTED_KNOWN_KEYS_LEN: usize = 2;
 
 const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
-const POS_REWARDS_PURSE: &str = "pos_rewards_purse";
 
 const ARG_MINT_PACKAGE_HASH: &str = "mint_contract_package_hash";
 
@@ -93,15 +92,6 @@ fn should_run_pos_install_contract() {
 
     let payment_purse_balance = builder.get_purse_balance(payment_purse);
     assert_eq!(payment_purse_balance, U512::zero());
-
-    // rewards purse has correct balance
-    let rewards_purse = get_purse(named_keys, POS_REWARDS_PURSE).expect(
-        "should find rewards purse in
-    named_keys",
-    );
-
-    let rewards_purse_balance = builder.get_purse_balance(rewards_purse);
-    assert_eq!(rewards_purse_balance, U512::zero());
 }
 
 fn get_purse(named_keys: &NamedKeys, name: &str) -> Option<URef> {

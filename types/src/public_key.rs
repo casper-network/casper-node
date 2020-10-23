@@ -10,7 +10,8 @@ use crate::{
 };
 
 const PUBLIC_KEY_VARIANT_LENGTH: usize = 1;
-const ED25519_PUBLIC_KEY_LENGTH: usize = 32;
+/// Length of a ED25519 PublicKey.
+pub const ED25519_PUBLIC_KEY_LENGTH: usize = 32;
 const ED25519_VARIANT_ID: u8 = 1;
 const SECP256K1_PUBLIC_KEY_LENGTH: usize = 33;
 const SECP256K1_VARIANT_ID: u8 = 2;
