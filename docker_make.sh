@@ -56,7 +56,7 @@ if [ -z "$docker_image" ]; then
   docker_image=${default_image}
 fi
 
-#docker pull casperlabs/${docker_image}:latest
+docker pull casperlabs/${docker_image}:latest
 
 # Getting user and group to chown/chgrp target folder from root at end.
 # Cannot use the --user trick as cached .cargo in image is owned by root.
