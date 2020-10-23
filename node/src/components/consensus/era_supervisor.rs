@@ -556,10 +556,12 @@ where
         effects
     }
 
-    pub(super) fn handle_accept_proto_block(
+    pub(super) fn resolve_validity(
         &mut self,
         era_id: EraId,
+        _sender: I, // TODO: Disconnect from sender if invalid.
         proto_block: ProtoBlock,
+        valid: bool,
     ) -> Effects<Event<I>> {
         self.era_supervisor
             .metrics
@@ -567,39 +569,21 @@ where
             .set(Timestamp::now().millis() as f64 / 1000.00);
         let mut effects = Effects::new();
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-            era.accept_proto_block(&proto_block)
+            era.resolve_validity(&proto_block, valid)
         } else {
             return effects;
         };
         for candidate_block in candidate_blocks {
             effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
-                consensus.resolve_validity(&candidate_block, true, rng)
+                consensus.resolve_validity(&candidate_block, valid, rng)
             }));
         }
-        effects.extend(
-            self.effect_builder
-                .announce_proposed_proto_block(proto_block)
-                .ignore(),
-        );
-        effects
-    }
-
-    pub(super) fn handle_invalid_proto_block(
-        &mut self,
-        era_id: EraId,
-        _sender: I,
-        proto_block: ProtoBlock,
-    ) -> Effects<Event<I>> {
-        let mut effects = Effects::new();
-        let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-            era.reject_proto_block(&proto_block)
-        } else {
-            return effects;
-        };
-        for candidate_block in candidate_blocks {
-            effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
-                consensus.resolve_validity(&candidate_block, false, rng)
-            }));
+        if valid {
+            effects.extend(
+                self.effect_builder
+                    .announce_proposed_proto_block(proto_block)
+                    .ignore(),
+            );
         }
         effects
     }
@@ -725,19 +709,11 @@ where
                 effects.extend(
                     self.effect_builder
                         .validate_block(sender.clone(), proto_block)
-                        .event(move |(is_valid, proto_block)| {
-                            if is_valid {
-                                Event::AcceptProtoBlock {
-                                    era_id,
-                                    proto_block,
-                                }
-                            } else {
-                                Event::InvalidProtoBlock {
-                                    era_id,
-                                    sender,
-                                    proto_block,
-                                }
-                            }
+                        .event(move |(valid, proto_block)| Event::ResolveValidity {
+                            era_id,
+                            sender,
+                            proto_block,
+                            valid,
                         }),
                 );
                 effects
