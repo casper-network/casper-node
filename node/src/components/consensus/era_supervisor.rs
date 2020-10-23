@@ -260,9 +260,24 @@ where
         let our_id = self.public_signing_key;
         let era_rounds_len = params.min_round_len() * params.end_height();
         let min_end_time = start_time + self.highway_config().era_duration.max(era_rounds_len);
-        let should_activate = self.node_start_time < start_time
-            && min_end_time >= timestamp
-            && validators.iter().any(|v| *v.id() == our_id);
+        let mut should_activate = false;
+        if self.node_start_time >= start_time {
+            info!(
+                era = era_id.0,
+                %self.node_start_time, "not voting; node was not started before the era began",
+            );
+        } else if min_end_time < timestamp {
+            info!(
+                era = era_id.0,
+                %min_end_time,
+                "not voting; era started too long ago",
+            );
+        } else if !validators.iter().any(|v| *v.id() == our_id) {
+            info!(era = era_id.0, %our_id, "not voting; not a validator");
+        } else {
+            info!(era = era_id.0, "start voting");
+            should_activate = true;
+        }
 
         let mut highway = HighwayProtocol::<I, HighwayContext>::new(
             instance_id(&self.chainspec, state_root_hash, start_height),
@@ -272,24 +287,9 @@ where
         );
 
         let results = if should_activate {
-            info!(era = era_id.0, "start voting");
             let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
             highway.activate_validator(our_id, secret, timestamp.max(start_time))
         } else {
-            info!(era = era_id.0, "not voting");
-            if self.node_start_time >= start_time {
-                info!(
-                    "node was started at time {}, which is not earlier than the era start {}",
-                    self.node_start_time, start_time
-                );
-            } else if min_end_time < timestamp {
-                info!(
-                    "era started too long ago ({}; earliest end {}), current timestamp {}",
-                    start_time, min_end_time, timestamp
-                );
-            } else {
-                info!(%our_id, "not a validator");
-            }
             Vec::new()
         };
 
@@ -299,6 +299,7 @@ where
         // Remove the era that has become obsolete now. We keep 2 * BONDED_ERAS past eras because
         // the oldest bonded era could still receive blocks that refer to BONDED_ERAS before that.
         if let Some(obsolete_era_id) = era_id.checked_sub(2 * BONDED_ERAS + 1) {
+            trace!(era = obsolete_era_id.0, "removing obsolete era");
             self.active_eras.remove(&obsolete_era_id);
         }
 
