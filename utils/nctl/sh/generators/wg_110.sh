@@ -46,8 +46,8 @@ done
 
 # Set defaults.
 amount=${amount:-1000000}
-gas_payment=${gas_payment:-200000}
-gas_price=${gas_price:-10}
+gas_payment=${payment:-200000}
+gas_price=${gas:-10}
 net=${net:-1}
 node=${node:-1}
 transfers=${transfers:-100}

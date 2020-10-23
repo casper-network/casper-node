@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 #
-# Stops up a node within a network.
+# Renders a network faucet account key.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
-#   Node ordinal identifier.
 
 # Import utils.
 source $NCTL/sh/utils/misc.sh
@@ -16,7 +15,6 @@ source $NCTL/sh/utils/misc.sh
 
 # Unset to avoid parameter collisions.
 unset net
-unset node
 
 for ARGUMENT in "$@"
 do
@@ -24,28 +22,16 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
 net=${net:-1}
-node=${node:-"all"}
 
 #######################################
 # Main
 #######################################
 
-# Set daemon handler.
-if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    daemon_mgr=$NCTL/sh/daemon/supervisord/node_stop.sh
-fi
-
-# Stop node(s).
-log "network #$net: stopping node(s) ... please wait"
-source $daemon_mgr $net $node
-
-# Display status.
-sleep 1.0
-source $NCTL/sh/node/status.sh $net
+declare path_key=$NCTL/assets/net-$net/faucet/public_key_hex
+log "net-$net :: faucet key: "$(cat $path_key)
