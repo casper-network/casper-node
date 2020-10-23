@@ -72,6 +72,9 @@ const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - AUCTION_DELAY;
 pub struct EraSupervisor<I> {
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
+    ///
+    /// This map always contains exactly `2 * BONDED_ERAS + 1` entries, with the last one being the
+    /// current one.
     active_eras: HashMap<EraId, Era<I>>,
     pub(super) secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
@@ -338,6 +341,11 @@ where
             .expect("current era does not exist")
     }
 
+    /// Returns `true` if the specified era is active and bonded.
+    fn is_bonded(&self, era_id: EraId) -> bool {
+        era_id.0 + BONDED_ERAS >= self.current_era.0 && era_id <= self.current_era
+    }
+
     /// Inspect the active eras.
     #[cfg(test)]
     pub(crate) fn active_eras(&self) -> &HashMap<EraId, Era<I>> {
@@ -400,13 +408,13 @@ where
             ConsensusMessage::Protocol { era_id, payload } => {
                 // If the era is already unbonded, only accept new evidence, because still-bonded
                 // eras could depend on that.
-                let evidence_only = era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0;
+                let evidence_only = !self.era_supervisor.is_bonded(era_id);
                 self.delegate_to_era(era_id, move |consensus, rng| {
                     consensus.handle_message(sender, payload, evidence_only, rng)
                 })
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
-                if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+                if !self.era_supervisor.is_bonded(era_id) {
                     trace!(era = era_id.0, "not handling message; era too old");
                     return Effects::new();
                 }
@@ -428,7 +436,7 @@ where
         proto_block: ProtoBlock,
         block_context: BlockContext,
     ) -> Effects<Event<I>> {
-        if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+        if !self.era_supervisor.is_bonded(era_id) {
             warn!(era = era_id.0, "new proto block in outdated era");
             return Effects::new();
         }
@@ -608,6 +616,11 @@ where
         &self.era_supervisor.active_eras[&era_id]
     }
 
+    /// Returns the era with the specified ID mutably. Panics if it does not exist.
+    fn era_mut(&mut self, era_id: EraId) -> &mut Era<I> {
+        self.era_supervisor.active_eras.get_mut(&era_id).unwrap()
+    }
+
     fn handle_consensus_result(
         &mut self,
         era_id: EraId,
@@ -679,6 +692,9 @@ where
                 effects
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => {
+                if !self.era_supervisor.is_bonded(era_id) {
+                    return Effects::new();
+                }
                 let proto_block = candidate_block.proto_block().clone();
                 let missing_evidence: Vec<PublicKey> = candidate_block
                     .accusations()
@@ -695,11 +711,8 @@ where
                             .ignore(),
                     );
                 }
-                if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-                    era.add_candidate(candidate_block, missing_evidence);
-                } else {
-                    return effects;
-                }
+                self.era_mut(era_id)
+                    .add_candidate(candidate_block, missing_evidence);
                 effects.extend(
                     self.effect_builder
                         .validate_block(sender.clone(), proto_block)
