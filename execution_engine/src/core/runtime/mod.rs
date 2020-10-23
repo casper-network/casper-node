@@ -2566,7 +2566,8 @@ where
     fn create_contract_package_at_hash(&mut self) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
         let (contract_package, access_key) = self.create_contract_value()?;
-        self.context.metered_write(addr, contract_package)?;
+        self.context
+            .metered_write_gs_unsafe(addr, contract_package)?;
         Ok((addr, access_key.addr()))
     }
 
@@ -2635,7 +2636,7 @@ where
 
         // Write updated package to the global state
         self.context
-            .metered_write(contract_package_hash, contract_package)?;
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         Ok(Ok(()))
     }
@@ -2689,10 +2690,11 @@ where
         let insert_contract_result = contract_package.insert_contract_version(major, contract_hash);
 
         self.context
-            .metered_write(contract_wasm_hash, contract_wasm)?;
-        self.context.metered_write(contract_hash, contract)?;
+            .metered_write_gs_unsafe(contract_wasm_hash, contract_wasm)?;
         self.context
-            .metered_write(contract_package_hash, contract_package)?;
+            .metered_write_gs_unsafe(contract_hash, contract)?;
+        self.context
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         // return contract key to caller
         {
@@ -2745,7 +2747,7 @@ where
         }
 
         self.context
-            .metered_write(contract_package_key, contract_package)?;
+            .metered_write_gs_unsafe(contract_package_key, contract_package)?;
 
         Ok(Ok(()))
     }
@@ -2779,7 +2781,7 @@ where
         let key = self.key_from_mem(key_ptr, key_size)?;
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
         self.context
-            .write_gs(key, StoredValue::CLValue(cl_value))
+            .metered_write_gs(key, cl_value)
             .map_err(Into::into)
     }
 
@@ -2836,7 +2838,7 @@ where
         let key = self.key_from_mem(key_ptr, key_size)?;
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
         self.context
-            .add_gs(key, StoredValue::CLValue(cl_value))
+            .metered_add_gs(key, cl_value)
             .map_err(Into::into)
     }
 
@@ -3501,7 +3503,7 @@ where
         }
 
         // Write updated package to the global state
-        self.context.metered_write(package_key, package)?;
+        self.context.metered_write_gs_unsafe(package_key, package)?;
         Ok(Ok(()))
     }
 
@@ -3565,7 +3567,7 @@ where
 
         // Write updated package to the global state
         self.context
-            .metered_write(contract_package_hash, contract_package)?;
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         Ok(Ok(()))
     }
@@ -3608,7 +3610,7 @@ where
         }
         // Write updated package to the global state
         self.context
-            .metered_write(contract_package_hash, contract_package)?;
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         Ok(Ok(()))
     }

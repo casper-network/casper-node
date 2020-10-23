@@ -240,8 +240,7 @@ where
         if contract.remove_named_key(name).is_none() {
             return Ok(());
         }
-        let contract_value = StoredValue::Contract(contract);
-        self.tracking_copy.borrow_mut().write(key, contract_value);
+        self.metered_write_gs_unsafe(key, contract)?;
         Ok(())
     }
 
@@ -259,9 +258,7 @@ where
                 };
                 self.named_keys.remove(name);
                 let account_value = self.account_to_validated_value(account)?;
-                self.tracking_copy
-                    .borrow_mut()
-                    .write(account_hash, account_value);
+                self.metered_write_gs_unsafe(account_hash, account_value)?;
                 Ok(())
             }
             contract_uref @ Key::URef(_) => {
@@ -385,7 +382,7 @@ where
         };
         let key = Key::URef(uref);
         self.insert_uref(uref);
-        self.write_gs(key, value)?;
+        self.metered_write_gs(key, value)?;
         Ok(uref)
     }
 
@@ -409,7 +406,7 @@ where
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
         self.validate_value(&named_key_value)?;
-        self.add_unsafe(self.base_key(), named_key_value)?;
+        self.metered_add_gs_unsafe(self.base_key(), named_key_value)?;
         self.insert_key(name, key);
         Ok(())
     }
@@ -446,9 +443,7 @@ where
             });
         }
         let hash: [u8; KEY_HASH_LENGTH] = key_bytes.try_into().unwrap();
-        self.tracking_copy
-            .borrow_mut()
-            .write(hash.into(), StoredValue::CLValue(cl_value));
+        self.metered_write_gs_unsafe(hash, cl_value)?;
         Ok(())
     }
 
@@ -492,11 +487,15 @@ where
         })
     }
 
-    pub fn write_gs(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
+    pub fn metered_write_gs<T>(&mut self, key: Key, value: T) -> Result<(), Error>
+    where
+        T: Into<StoredValue>,
+    {
+        let stored_value = value.into();
         self.validate_writeable(&key)?;
         self.validate_key(&key)?;
-        self.validate_value(&value)?;
-        self.tracking_copy.borrow_mut().write(key, value);
+        self.validate_value(&stored_value)?;
+        self.metered_write_gs_unsafe(key, stored_value)?;
         Ok(())
     }
 
@@ -516,7 +515,7 @@ where
         if let Key::Account(_) = key {
             self.validate_key(&key)?;
             let account_value = self.account_to_validated_value(account)?;
-            self.tracking_copy.borrow_mut().write(key, account_value);
+            self.metered_write_gs_unsafe(key, account_value)?;
             Ok(())
         } else {
             panic!("Do not use this function for writing non-account keys")
@@ -547,8 +546,7 @@ where
     ) -> Result<[u8; KEY_HASH_LENGTH], Error> {
         let new_hash = self.new_hash_address()?;
         self.validate_value(&contract)?;
-        let hash_key = Key::Hash(new_hash);
-        self.tracking_copy.borrow_mut().write(hash_key, contract);
+        self.metered_write_gs_unsafe(new_hash, contract)?;
         Ok(new_hash)
     }
 
@@ -748,14 +746,23 @@ where
     /// values can't be added, either because they're not a Monoid or if the
     /// value stored under `key` has different type, then `TypeMismatch`
     /// errors is returned.
-    pub fn add_gs(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
+    pub(crate) fn metered_add_gs<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
+    where
+        K: Into<Key>,
+        V: ToBytes + Into<StoredValue>,
+    {
+        let key = key.into();
+        let value = value.into();
         self.validate_addable(&key)?;
         self.validate_key(&key)?;
         self.validate_value(&value)?;
-        self.add_unsafe(key, value)
+        self.metered_add_gs_unsafe(key, value)
     }
 
-    fn add_unsafe(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
+    fn metered_add_gs_unsafe(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
+        let value_bytes_count = value.serialized_length();
+        self.charge_storage_gas(value_bytes_count)?;
+
         match self
             .tracking_copy
             .borrow_mut()
@@ -804,7 +811,7 @@ where
 
         let account_value = self.account_to_validated_value(account)?;
 
-        self.tracking_copy.borrow_mut().write(key, account_value);
+        self.metered_write_gs_unsafe(key, account_value)?;
 
         Ok(())
     }
@@ -838,7 +845,7 @@ where
 
         let account_value = self.account_to_validated_value(account)?;
 
-        self.tracking_copy.borrow_mut().write(key, account_value);
+        self.metered_write_gs_unsafe(key, account_value)?;
 
         Ok(())
     }
@@ -876,7 +883,7 @@ where
 
         let account_value = self.account_to_validated_value(account)?;
 
-        self.tracking_copy.borrow_mut().write(key, account_value);
+        self.metered_write_gs_unsafe(key, account_value)?;
 
         Ok(())
     }
@@ -914,7 +921,7 @@ where
 
         let account_value = self.account_to_validated_value(account)?;
 
-        self.tracking_copy.borrow_mut().write(key, account_value);
+        self.metered_write_gs_unsafe(key, account_value)?;
 
         Ok(())
     }
@@ -970,27 +977,42 @@ where
         match prev.checked_add(amount) {
             // gas charge overflow protection
             None => return Err(Error::GasLimit),
-            Some(val) if val > self.gas_limit => return Err(Error::GasLimit),
+            Some(val) if val > self.gas_limit => {
+                eprintln!(
+                    "amount={} gas limit {}/{} phase {:?}",
+                    amount, self.gas_counter, self.gas_limit, self.phase
+                );
+                return Err(Error::GasLimit);
+            }
             Some(val) => self.set_gas_counter(val),
         }
         Ok(())
     }
 
-    pub(crate) fn metered_write<K, V>(&mut self, key: K, stored_value: V) -> Result<(), Error>
+    /// Charges gas for specified amount of bytes used.
+    fn charge_storage_gas(&mut self, bytes_count: usize) -> Result<(), Error> {
+        let storage_costs = self.protocol_data().wasm_config().storage_costs();
+
+        let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
+
+        self.charge_gas(gas_cost)
+    }
+
+    /// Writes data to global state with a measurement
+    pub(crate) fn metered_write_gs_unsafe<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
     where
         K: Into<Key>,
         V: ToBytes + Into<StoredValue>,
     {
+        let stored_value = value.into();
+
+        // Charge for amount as measured by serialized length
         let bytes_count = stored_value.serialized_length();
-        let gas_cost = self
-            .protocol_data()
-            .wasm_config()
-            .storage_costs()
-            .calculate_gas_cost(bytes_count);
-        self.charge_gas(gas_cost)?;
+        self.charge_storage_gas(bytes_count)?;
+
         self.tracking_copy
             .borrow_mut()
-            .write(key.into(), stored_value.into());
+            .write(key.into(), stored_value);
         Ok(())
     }
 }
