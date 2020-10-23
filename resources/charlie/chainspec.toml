@@ -28,7 +28,7 @@ validator_slots = 15
 auction_delay = 3
 # Initial Era Id
 initial_era_id = 0
-# Locked Funds Period
+# Default lock period for new bid entries represented in eras.
 locked_funds_period = 15
 
 [highway]
