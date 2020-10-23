@@ -563,10 +563,7 @@ where
         proto_block: ProtoBlock,
         valid: bool,
     ) -> Effects<Event<I>> {
-        self.era_supervisor
-            .metrics
-            .time_of_last_proposed_block
-            .set(Timestamp::now().millis() as f64 / 1000.00);
+        self.era_supervisor.metrics.proposed_block();
         let mut effects = Effects::new();
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
             era.resolve_validity(&proto_block, valid)
@@ -669,12 +666,9 @@ where
                     self.era(era_id).start_height + height,
                     proposer,
                 );
-                let time_since_proto_block = finalized_block.timestamp().elapsed().millis();
                 self.era_supervisor
                     .metrics
-                    .finalization_time
-                    .set(time_since_proto_block as f64);
-                self.era_supervisor.metrics.finalized_block_count.inc();
+                    .finalized_block(&finalized_block);
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
