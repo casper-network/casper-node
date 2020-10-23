@@ -1,6 +1,6 @@
 use std::fmt::{self, Debug};
 
-use tracing::{error, warn};
+use tracing::{error, trace, warn};
 
 use super::{
     evidence::Evidence,
@@ -242,9 +242,9 @@ impl<C: Context> ActiveValidator<C> {
         }
         let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
         if vote.timestamp != r_id {
-            warn!(
+            trace!(
                 %vote.timestamp, %r_id,
-                "received proposal from unexpected round",
+                "not confirming proposal: wrong round",
             );
             return false;
         }

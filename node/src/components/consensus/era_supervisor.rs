@@ -72,6 +72,9 @@ const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - AUCTION_DELAY;
 pub struct EraSupervisor<I> {
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
+    ///
+    /// This map always contains exactly `2 * BONDED_ERAS + 1` entries, with the last one being the
+    /// current one.
     active_eras: HashMap<EraId, Era<I>>,
     pub(super) secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
@@ -154,35 +157,6 @@ where
 
     fn highway_config(&self) -> HighwayConfig {
         self.chainspec.genesis.highway_config
-    }
-
-    fn instance_id(&self, state_root_hash: hash::Digest, block_height: u64) -> hash::Digest {
-        let mut result = [0; hash::Digest::LENGTH];
-        let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
-
-        hasher.update(&self.chainspec.genesis.name);
-        hasher.update(self.chainspec.genesis.timestamp.millis().to_le_bytes());
-        hasher.update(state_root_hash);
-
-        for upgrade_point in self
-            .chainspec
-            .upgrades
-            .iter()
-            .take_while(|up| up.activation_point.rank <= block_height)
-        {
-            hasher.update(upgrade_point.activation_point.rank.to_le_bytes());
-            if let Some(bytes) = upgrade_point.upgrade_installer_bytes.as_ref() {
-                hasher.update(bytes);
-            }
-            if let Some(bytes) = upgrade_point.upgrade_installer_args.as_ref() {
-                hasher.update(bytes);
-            }
-        }
-
-        hasher.finalize_variable(|slice| {
-            result.copy_from_slice(slice);
-        });
-        result.into()
     }
 
     fn booking_block_height(&self, era_id: EraId) -> u64 {
@@ -286,36 +260,38 @@ where
         let our_id = self.public_signing_key;
         let era_rounds_len = params.min_round_len() * params.end_height();
         let min_end_time = start_time + self.highway_config().era_duration.max(era_rounds_len);
-        let should_activate = self.node_start_time < start_time
-            && min_end_time >= timestamp
-            && validators.iter().any(|v| *v.id() == our_id);
+        let should_activate = if self.node_start_time >= start_time {
+            info!(
+                era = era_id.0,
+                %self.node_start_time, "not voting; node was not started before the era began",
+            );
+            false
+        } else if min_end_time < timestamp {
+            info!(
+                era = era_id.0,
+                %min_end_time,
+                "not voting; era started too long ago",
+            );
+            false
+        } else if !validators.iter().any(|v| *v.id() == our_id) {
+            info!(era = era_id.0, %our_id, "not voting; not a validator");
+            false
+        } else {
+            info!(era = era_id.0, "start voting");
+            true
+        };
 
         let mut highway = HighwayProtocol::<I, HighwayContext>::new(
-            self.instance_id(state_root_hash, start_height),
+            instance_id(&self.chainspec, state_root_hash, start_height),
             validators,
             params,
             ftt,
         );
 
         let results = if should_activate {
-            info!(era = era_id.0, "start voting");
             let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
             highway.activate_validator(our_id, secret, timestamp.max(start_time))
         } else {
-            info!(era = era_id.0, "not voting");
-            if self.node_start_time >= start_time {
-                info!(
-                    "node was started at time {}, which is not earlier than the era start {}",
-                    self.node_start_time, start_time
-                );
-            } else if min_end_time < timestamp {
-                info!(
-                    "era started too long ago ({}; earliest end {}), current timestamp {}",
-                    start_time, min_end_time, timestamp
-                );
-            } else {
-                info!(%our_id, "not a validator");
-            }
             Vec::new()
         };
 
@@ -325,6 +301,7 @@ where
         // Remove the era that has become obsolete now. We keep 2 * BONDED_ERAS past eras because
         // the oldest bonded era could still receive blocks that refer to BONDED_ERAS before that.
         if let Some(obsolete_era_id) = era_id.checked_sub(2 * BONDED_ERAS + 1) {
+            trace!(era = obsolete_era_id.0, "removing obsolete era");
             self.active_eras.remove(&obsolete_era_id);
         }
 
@@ -336,6 +313,11 @@ where
         self.active_eras
             .get_mut(&self.current_era)
             .expect("current era does not exist")
+    }
+
+    /// Returns `true` if the specified era is active and bonded.
+    fn is_bonded(&self, era_id: EraId) -> bool {
+        era_id.0 + BONDED_ERAS >= self.current_era.0 && era_id <= self.current_era
     }
 
     /// Inspect the active eras.
@@ -400,13 +382,13 @@ where
             ConsensusMessage::Protocol { era_id, payload } => {
                 // If the era is already unbonded, only accept new evidence, because still-bonded
                 // eras could depend on that.
-                let evidence_only = era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0;
+                let evidence_only = !self.era_supervisor.is_bonded(era_id);
                 self.delegate_to_era(era_id, move |consensus, rng| {
                     consensus.handle_message(sender, payload, evidence_only, rng)
                 })
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => {
-                if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+                if !self.era_supervisor.is_bonded(era_id) {
                     trace!(era = era_id.0, "not handling message; era too old");
                     return Effects::new();
                 }
@@ -428,7 +410,7 @@ where
         proto_block: ProtoBlock,
         block_context: BlockContext,
     ) -> Effects<Event<I>> {
-        if era_id.0 + BONDED_ERAS < self.era_supervisor.current_era.0 {
+        if !self.era_supervisor.is_bonded(era_id) {
             warn!(era = era_id.0, "new proto block in outdated era");
             return Effects::new();
         }
@@ -556,50 +538,31 @@ where
         effects
     }
 
-    pub(super) fn handle_accept_proto_block(
+    pub(super) fn resolve_validity(
         &mut self,
         era_id: EraId,
+        _sender: I, // TODO: Disconnect from sender if invalid.
         proto_block: ProtoBlock,
+        valid: bool,
     ) -> Effects<Event<I>> {
-        self.era_supervisor
-            .metrics
-            .time_of_last_proposed_block
-            .set(Timestamp::now().millis() as f64 / 1000.00);
+        self.era_supervisor.metrics.proposed_block();
         let mut effects = Effects::new();
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-            era.accept_proto_block(&proto_block)
+            era.resolve_validity(&proto_block, valid)
         } else {
             return effects;
         };
         for candidate_block in candidate_blocks {
             effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
-                consensus.resolve_validity(&candidate_block, true, rng)
+                consensus.resolve_validity(&candidate_block, valid, rng)
             }));
         }
-        effects.extend(
-            self.effect_builder
-                .announce_proposed_proto_block(proto_block)
-                .ignore(),
-        );
-        effects
-    }
-
-    pub(super) fn handle_invalid_proto_block(
-        &mut self,
-        era_id: EraId,
-        _sender: I,
-        proto_block: ProtoBlock,
-    ) -> Effects<Event<I>> {
-        let mut effects = Effects::new();
-        let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-            era.reject_proto_block(&proto_block)
-        } else {
-            return effects;
-        };
-        for candidate_block in candidate_blocks {
-            effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
-                consensus.resolve_validity(&candidate_block, false, rng)
-            }));
+        if valid {
+            effects.extend(
+                self.effect_builder
+                    .announce_proposed_proto_block(proto_block)
+                    .ignore(),
+            );
         }
         effects
     }
@@ -625,6 +588,11 @@ where
     /// Returns the era with the specified ID. Panics if it does not exist.
     fn era(&self, era_id: EraId) -> &Era<I> {
         &self.era_supervisor.active_eras[&era_id]
+    }
+
+    /// Returns the era with the specified ID mutably. Panics if it does not exist.
+    fn era_mut(&mut self, era_id: EraId) -> &mut Era<I> {
+        self.era_supervisor.active_eras.get_mut(&era_id).unwrap()
     }
 
     fn handle_consensus_result(
@@ -685,12 +653,9 @@ where
                     self.era(era_id).start_height + height,
                     proposer,
                 );
-                let time_since_proto_block = finalized_block.timestamp().elapsed().millis();
                 self.era_supervisor
                     .metrics
-                    .finalization_time
-                    .set(time_since_proto_block as f64);
-                self.era_supervisor.metrics.finalized_block_count.inc();
+                    .finalized_block(&finalized_block);
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
@@ -701,6 +666,9 @@ where
                 effects
             }
             ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => {
+                if !self.era_supervisor.is_bonded(era_id) {
+                    return Effects::new();
+                }
                 let proto_block = candidate_block.proto_block().clone();
                 let missing_evidence: Vec<PublicKey> = candidate_block
                     .accusations()
@@ -717,27 +685,16 @@ where
                             .ignore(),
                     );
                 }
-                if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
-                    era.add_candidate(candidate_block, missing_evidence);
-                } else {
-                    return effects;
-                }
+                self.era_mut(era_id)
+                    .add_candidate(candidate_block, missing_evidence);
                 effects.extend(
                     self.effect_builder
                         .validate_block(sender.clone(), proto_block)
-                        .event(move |(is_valid, proto_block)| {
-                            if is_valid {
-                                Event::AcceptProtoBlock {
-                                    era_id,
-                                    proto_block,
-                                }
-                            } else {
-                                Event::InvalidProtoBlock {
-                                    era_id,
-                                    sender,
-                                    proto_block,
-                                }
-                            }
+                        .event(move |(valid, proto_block)| Event::ResolveValidity {
+                            era_id,
+                            sender,
+                            proto_block,
+                            valid,
                         }),
                 );
                 effects
@@ -769,4 +726,37 @@ where
                 .collect(),
         }
     }
+}
+
+/// Computes the instance ID for an era, given the state root hash, block height and chainspec.
+fn instance_id(
+    chainspec: &Chainspec,
+    state_root_hash: hash::Digest,
+    block_height: u64,
+) -> hash::Digest {
+    let mut result = [0; hash::Digest::LENGTH];
+    let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
+
+    hasher.update(&chainspec.genesis.name);
+    hasher.update(chainspec.genesis.timestamp.millis().to_le_bytes());
+    hasher.update(state_root_hash);
+
+    for upgrade_point in chainspec
+        .upgrades
+        .iter()
+        .take_while(|up| up.activation_point.rank <= block_height)
+    {
+        hasher.update(upgrade_point.activation_point.rank.to_le_bytes());
+        if let Some(bytes) = upgrade_point.upgrade_installer_bytes.as_ref() {
+            hasher.update(bytes);
+        }
+        if let Some(bytes) = upgrade_point.upgrade_installer_args.as_ref() {
+            hasher.update(bytes);
+        }
+    }
+
+    hasher.finalize_variable(|slice| {
+        result.copy_from_slice(slice);
+    });
+    result.into()
 }
