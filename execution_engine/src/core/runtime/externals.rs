@@ -54,7 +54,7 @@ where
                 // args(0) = pointer to key in Wasm memory
                 // args(1) = size of key in Wasm memory
                 // args(2) = pointer to output size (output param)
-                let (key_ptr, key_size, output_size_ptr): (_, u32, _) = Args::parse(args)?;
+                let (key_ptr, key_size, output_size_ptr) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.read_value_local,
                     [key_ptr, key_size, output_size_ptr],
@@ -85,7 +85,7 @@ where
                 // args(1) = size of key
                 // args(2) = pointer to value
                 // args(3) = size of value
-                let (key_ptr, key_size, value_ptr, value_size): (_, _, _, u32) = Args::parse(args)?;
+                let (key_ptr, key_size, value_ptr, value_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.write,
                     [key_ptr, key_size, value_ptr, value_size],
@@ -100,8 +100,7 @@ where
                 // args(1) = size of key
                 // args(2) = pointer to value
                 // args(3) = size of value
-                let (key_bytes_ptr, key_bytes_size, value_ptr, value_size): (_, u32, _, u32) =
-                    Args::parse(args)?;
+                let (key_bytes_ptr, key_bytes_size, value_ptr, value_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.write_local,
                     [key_bytes_ptr, key_bytes_size, value_ptr, value_size],
@@ -130,7 +129,7 @@ where
                 // args(0) = pointer to uref destination in Wasm memory
                 // args(1) = pointer to initial value
                 // args(2) = size of initial value
-                let (uref_ptr, value_ptr, value_size): (_, _, u32) = Args::parse(args)?;
+                let (uref_ptr, value_ptr, value_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.new_uref,
                     [uref_ptr, value_ptr, value_size],
@@ -143,7 +142,7 @@ where
             FunctionIndex::RetFuncIndex => {
                 // args(0) = pointer to value
                 // args(1) = size of value
-                let (value_ptr, value_size): (_, u32) = Args::parse(args)?;
+                let (value_ptr, value_size) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.ret, [value_ptr, value_size])?;
                 scoped_instrumenter.add_property("value_size", value_size);
                 Err(self.ret(value_ptr, value_size as usize, &mut scoped_instrumenter))
@@ -155,13 +154,8 @@ where
                 // args(2) = pointer to output buffer for serialized key
                 // args(3) = size of output buffer
                 // args(4) = pointer to bytes written
-                let (name_ptr, name_size, output_ptr, output_size, bytes_written): (
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                ) = Args::parse(args)?;
+                let (name_ptr, name_size, output_ptr, output_size, bytes_written) =
+                    Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.get_key,
                     [name_ptr, name_size, output_ptr, output_size, bytes_written],
@@ -180,7 +174,7 @@ where
             FunctionIndex::HasKeyFuncIndex => {
                 // args(0) = pointer to key name in Wasm memory
                 // args(1) = size of key name
-                let (name_ptr, name_size): (_, u32) = Args::parse(args)?;
+                let (name_ptr, name_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.has_key,
                     [name_ptr, name_size],
@@ -195,7 +189,7 @@ where
                 // args(1) = size of key name
                 // args(2) = pointer to key in Wasm memory
                 // args(3) = size of key
-                let (name_ptr, name_size, key_ptr, key_size): (_, u32, _, _) = Args::parse(args)?;
+                let (name_ptr, name_size, key_ptr, key_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.put_key,
                     [name_ptr, name_size, key_ptr, key_size],
@@ -208,7 +202,7 @@ where
             FunctionIndex::RemoveKeyFuncIndex => {
                 // args(0) = pointer to key name in Wasm memory
                 // args(1) = size of key name
-                let (name_ptr, name_size): (_, u32) = Args::parse(args)?;
+                let (name_ptr, name_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.remove_key,
                     [name_ptr, name_size],
@@ -266,8 +260,7 @@ where
                 // args(0) = pointer to array of bytes of an account hash
                 // args(1) = size of an account hash
                 // args(2) = weight of the key
-                let (account_hash_ptr, account_hash_size, weight_value): (u32, u32, u8) =
-                    Args::parse(args)?;
+                let (account_hash_ptr, account_hash_size, weight_value) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.add_associated_key,
                     [account_hash_ptr, account_hash_size, weight_value as Cost],
@@ -283,7 +276,7 @@ where
             FunctionIndex::RemoveAssociatedKeyFuncIndex => {
                 // args(0) = pointer to array of bytes of an account hash
                 // args(1) = size of an account hash
-                let (account_hash_ptr, account_hash_size): (_, u32) = Args::parse(args)?;
+                let (account_hash_ptr, account_hash_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.remove_associated_key,
                     [account_hash_ptr, account_hash_size],
@@ -297,8 +290,7 @@ where
                 // args(0) = pointer to array of bytes of an account hash
                 // args(1) = size of an account hash
                 // args(2) = weight of the key
-                let (account_hash_ptr, account_hash_size, weight_value): (u32, u32, u8) =
-                    Args::parse(args)?;
+                let (account_hash_ptr, account_hash_size, weight_value) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.update_associated_key,
                     [account_hash_ptr, account_hash_size, weight_value as Cost],
@@ -314,7 +306,7 @@ where
             FunctionIndex::SetActionThresholdFuncIndex => {
                 // args(0) = action type
                 // args(1) = new threshold
-                let (action_type_value, threshold_value): (u32, u8) = Args::parse(args)?;
+                let (action_type_value, threshold_value) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.set_action_threshold,
                     [action_type_value, threshold_value as Cost],
@@ -326,7 +318,7 @@ where
             FunctionIndex::CreatePurseIndex => {
                 // args(0) = pointer to array for return value
                 // args(1) = length of array for return value
-                let (dest_ptr, dest_size): (u32, u32) = Args::parse(args)?;
+                let (dest_ptr, dest_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.create_purse,
                     [dest_ptr, dest_size],
@@ -345,8 +337,7 @@ where
                 // args(1) = length of array of bytes of an account hash
                 // args(2) = pointer to array of bytes of an amount
                 // args(3) = length of array of bytes of an amount
-                let (key_ptr, key_size, amount_ptr, amount_size): (u32, u32, u32, u32) =
-                    Args::parse(args)?;
+                let (key_ptr, key_size, amount_ptr, amount_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.transfer_to_account,
                     [key_ptr, key_size, amount_ptr, amount_size],
@@ -370,14 +361,8 @@ where
                 // args(3) = length of array of bytes in Wasm memory of an account hash
                 // args(4) = pointer to array of bytes in Wasm memory of an amount
                 // args(5) = length of array of bytes in Wasm memory of an amount
-                let (source_ptr, source_size, key_ptr, key_size, amount_ptr, amount_size): (
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                ) = Args::parse(args)?;
+                let (source_ptr, source_size, key_ptr, key_size, amount_ptr, amount_size) =
+                    Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.transfer_from_purse_to_account,
                     [
@@ -441,7 +426,7 @@ where
                 // args(0) = pointer to purse input
                 // args(1) = length of purse
                 // args(2) = pointer to output size (output)
-                let (ptr, ptr_size, output_size_ptr): (_, u32, _) = Args::parse(args)?;
+                let (ptr, ptr_size, output_size_ptr) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.get_balance,
                     [ptr, ptr_size, output_size_ptr],
@@ -481,7 +466,7 @@ where
 
             FunctionIndex::ReadHostBufferIndex => {
                 // args(0) = pointer to Wasm memory where to write size.
-                let (dest_ptr, dest_size, bytes_written_ptr): (_, u32, _) = Args::parse(args)?;
+                let (dest_ptr, dest_size, bytes_written_ptr) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.read_host_buffer,
                     [dest_ptr, dest_size, bytes_written_ptr],
@@ -523,7 +508,7 @@ where
                     existing_urefs_ptr,
                     existing_urefs_size,
                     output_size_ptr,
-                ): (_, _, _, u32, _, _, u32, _) = Args::parse(args)?;
+                ) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.create_contract_user_group,
                     [
@@ -578,7 +563,7 @@ where
                     output_ptr,
                     output_size,
                     bytes_written_ptr,
-                ): (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32) = Args::parse(args)?;
+                ) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.add_contract_version,
                     [
@@ -655,7 +640,7 @@ where
                     args_ptr,
                     args_size,
                     result_size_ptr,
-                ): (_, _, _, u32, _, u32, _) = Args::parse(args)?;
+                ) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.call_contract,
                     [
@@ -711,7 +696,7 @@ where
                     args_ptr,
                     args_size,
                     result_size_ptr,
-                ): (_, _, _, _, _, u32, _, u32, _) = Args::parse(args)?;
+                ) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.call_versioned_contract,
                     [
@@ -754,7 +739,7 @@ where
 
             #[cfg(feature = "test-support")]
             FunctionIndex::PrintIndex => {
-                let (text_ptr, text_size): (_, u32) = Args::parse(args)?;
+                let (text_ptr, text_size) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.print, [text_ptr, text_size])?;
                 scoped_instrumenter.add_property("text_size", text_size);
                 self.print(text_ptr, text_size)?;
@@ -765,7 +750,7 @@ where
                 // args(0) = pointer to name of host runtime arg to load
                 // args(1) = size of name of the host runtime arg
                 // args(2) = pointer to a argument size (output)
-                let (name_ptr, name_size, size_ptr): (u32, u32, u32) = Args::parse(args)?;
+                let (name_ptr, name_size, size_ptr) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.get_named_arg_size,
                     [name_ptr, name_size, size_ptr],
@@ -780,8 +765,7 @@ where
                 // args(1) = size of serialized argument name
                 // args(2) = pointer to output pointer where host will write argument bytes
                 // args(3) = size of available data under output pointer
-                let (name_ptr, name_size, dest_ptr, dest_size): (u32, u32, u32, u32) =
-                    Args::parse(args)?;
+                let (name_ptr, name_size, dest_ptr, dest_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.get_named_arg,
                     [name_ptr, name_size, dest_ptr, dest_size],
@@ -798,8 +782,7 @@ where
                 // args(1) = size of package key in wasm memory
                 // args(2) = pointer to serialized group label
                 // args(3) = size of serialized group label
-                let (package_key_ptr, package_key_size, label_ptr, label_size): (_, _, _, u32) =
-                    Args::parse(args)?;
+                let (package_key_ptr, package_key_size, label_ptr, label_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.remove_contract_user_group,
                     [package_key_ptr, package_key_size, label_ptr, label_size],
@@ -818,13 +801,8 @@ where
                 // args(2) = pointer to label name
                 // args(3) = label size bytes
                 // args(4) = output of size value of host bytes data
-                let (package_ptr, package_size, label_ptr, label_size, value_size_ptr): (
-                    _,
-                    _,
-                    _,
-                    u32,
-                    _,
-                ) = Args::parse(args)?;
+                let (package_ptr, package_size, label_ptr, label_size, value_size_ptr) =
+                    Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.provision_contract_user_group_uref,
                     [
@@ -853,14 +831,8 @@ where
                 // args(3) = label size bytes
                 // args(4) = pointer to urefs
                 // args(5) = size of urefs pointer
-                let (package_ptr, package_size, label_ptr, label_size, urefs_ptr, urefs_size): (
-                    _,
-                    _,
-                    _,
-                    u32,
-                    _,
-                    u32,
-                ) = Args::parse(args)?;
+                let (package_ptr, package_size, label_ptr, label_size, urefs_ptr, urefs_size) =
+                    Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.remove_contract_user_group_urefs,
                     [
@@ -886,7 +858,7 @@ where
             }
 
             FunctionIndex::Blake2b => {
-                let (in_ptr, in_size, out_ptr, out_size): (u32, u32, u32, u32) = Args::parse(args)?;
+                let (in_ptr, in_size, out_ptr, out_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.blake2b,
                     [in_ptr, in_size, out_ptr, out_size],
@@ -906,6 +878,8 @@ where
             }
 
             FunctionIndex::RecordTransfer => {
+                // RecordTransfer is a special cased internal host function only callable by the
+                // mint contract and for accounting purposes it isn't represented in protocol data.
                 let (source_ptr, source_size, target_ptr, target_size, amount_ptr, amount_size): (
                     u32,
                     u32,

@@ -8,7 +8,7 @@ use std::{
 };
 
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
 use datasize::DataSize;
@@ -534,9 +534,9 @@ impl Block {
         let mut accumulated_seed = [0; Digest::LENGTH];
 
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
-        hasher.input(parent_seed);
-        hasher.input([finalized_block.proto_block.random_bit as u8]);
-        hasher.variable_result(|slice| {
+        hasher.update(parent_seed);
+        hasher.update([finalized_block.proto_block.random_bit as u8]);
+        hasher.finalize_variable(|slice| {
             accumulated_seed.copy_from_slice(slice);
         });
 
