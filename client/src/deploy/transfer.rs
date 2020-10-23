@@ -1,7 +1,5 @@
+use casper_client::DeployStrParams;
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
-
-use casper_node::crypto::asymmetric_key::PublicKey;
-use casper_types::{URef, U512};
 
 use super::creation_common::{self, DisplayOrder};
 use crate::{command::ClientCommand, common};
@@ -25,13 +23,10 @@ pub(super) mod amount {
             .display_order(DisplayOrder::TransferAmount as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> U512 {
-        let value = matches
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
-        U512::from_dec_str(value).unwrap_or_else(|error| {
-            panic!("can't parse --{} {} as U512: {}", ARG_NAME, value, error)
-        })
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
@@ -54,12 +49,8 @@ mod source_purse {
             .display_order(DisplayOrder::TransferSourcePurse as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Option<URef> {
-        matches.value_of(ARG_NAME).map(|value| {
-            URef::from_formatted_str(value).unwrap_or_else(|error| {
-                panic!("can't parse --{} {} as URef: {:?}", ARG_NAME, value, error)
-            })
-        })
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
@@ -86,15 +77,8 @@ pub(super) mod target_account {
             .display_order(DisplayOrder::TransferTargetAccount as usize)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Option<PublicKey> {
-        matches.value_of(ARG_NAME).map(|value| {
-            PublicKey::from_hex(value).unwrap_or_else(|error| {
-                panic!(
-                    "can't parse --{} {} as PublicKey: {:?}",
-                    ARG_NAME, value, error
-                )
-            })
-        })
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
@@ -117,12 +101,8 @@ pub(super) mod target_purse {
             .display_order(DisplayOrder::TransferTargetPurse as usize)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Option<URef> {
-        matches.value_of(ARG_NAME).map(|value| {
-            URef::from_formatted_str(value).unwrap_or_else(|error| {
-                panic!("can't parse --{} {} as URef: {:?}", ARG_NAME, value, error)
-            })
-        })
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
@@ -157,18 +137,40 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
     fn run(matches: &ArgMatches<'_>) {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
-        let rpc = common::rpc(matches);
-
         let amount = amount::get(matches);
         let source_purse = source_purse::get(matches);
-        let deploy_params = creation_common::parse_deploy_params(matches);
-        let payment = creation_common::parse_payment_info(matches);
+        let target_purse = target_purse::get(matches);
+        let target_account = target_account::get(matches);
 
-        let target = creation_common::get_transfer_target(matches);
+        let maybe_rpc_id = common::rpc_id::get(matches);
+        let node_address = common::node_address::get(matches);
+        let verbose = common::verbose::get(matches);
 
-        let response = rpc
-            .transfer(amount, source_purse, target, deploy_params, payment)
-            .unwrap_or_else(|error| panic!("response error: {}", error));
+        let secret_key = common::secret_key::get(matches);
+        let timestamp = creation_common::timestamp::get(matches);
+        let ttl = creation_common::ttl::get(matches);
+        let gas_price = creation_common::gas_price::get(matches);
+        let dependencies = creation_common::dependencies::get(matches);
+        let chain_name = creation_common::chain_name::get(matches);
+
+        let response = casper_client::transfer(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            amount,
+            source_purse,
+            target_purse,
+            target_account,
+            DeployStrParams {
+                secret_key,
+                timestamp,
+                ttl,
+                dependencies: &dependencies,
+                gas_price,
+                chain_name,
+            },
+        )
+        .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")
