@@ -20,6 +20,9 @@ function help {
   echo "                       Image will default to ${default_image} if not given"
   echo
   echo "Ex: '$package all' will execute 'make all' on ${default_image}."
+  echo
+  echo "Note: The results will be in your ./target or ./target-as directory and"
+  echo "      might not be compatible with your local system"
   exit 0
 }
 
@@ -56,9 +59,9 @@ if [ -z "$docker_image" ]; then
   docker_image=${default_image}
 fi
 
-docker pull casperlabs/${docker_image}:latest
+#docker pull casperlabs/${docker_image}:latest
 
 # Getting user and group to chown/chgrp target folder from root at end.
 # Cannot use the --user trick as cached .cargo in image is owned by root.
-command="cd /casper-node; make ${make_command}; chown -R -f $(id -u):$(id -g) ./target ./target-as;"
+command="cd /casper-node; make ${make_command}; chown -R -f $(id -u):$(id -g) ./target ./target_as;"
 docker run --rm -it --volume $(pwd):/casper-node casperlabs/${docker_image}:latest /bin/bash -c "${command}"
