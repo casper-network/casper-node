@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-
-set -ex
+set -e
 
 # This script will generate a config file appropriate to installation machine.
 
@@ -27,5 +26,3 @@ else
 fi
 
 sed "s/<IP ADDRESS>/${external_ip}/" $config_example > $outfile
-
-echo "sed exit $?"

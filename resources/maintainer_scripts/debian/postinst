@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -ex
+set -e
 
 # Default Variables
 # ---
@@ -24,19 +24,15 @@ CONFIG_SCRIPT="${DEFAULT_CONFIG_DIRECTORY}/config_from_example.sh"
 # create config.toml from config-example.toml
 if [[ -f ${CONFIG_SCRIPT} ]]; then
   $CONFIG_SCRIPT
-  echo "config exit $?"
 else
   echo "${CONFIG_SCRIPT} not found."
   exit 1
 fi
 
-echo "IN BETWEEN $?"
-
 # run pull_genesis script to get latest files
 PULL_GENESIS_SCRIPT="${DEFAULT_CONFIG_DIRECTORY}/pull_genesis.sh"
 # create config.toml or config.toml.new from config-example.toml
 if [[ -f ${PULL_GENESIS_SCRIPT} ]]; then
-  echo "IN IF"
   $PULL_GENESIS_SCRIPT
 else
   echo "${PULL_GENESIS_SCRIPT} not found."

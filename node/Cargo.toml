@@ -119,7 +119,7 @@ revision = "0"
 assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
     ["../resources/maintainer_scripts/logrotate.d/casper-node", "/etc/logrotate.d/casper-node", "644"],
-    ["../resources/maintainer_scripts/rsyslog.d/40-casper-node.conf", "/etc/logrotate.d/40-casper-node.conf", "644"],
+    ["../resources/maintainer_scripts/rsyslog.d/40-casper-node.conf", "/etc/rsyslog.d/40-casper-node.conf", "644"],
     ["../resources/maintainer_scripts/pull_genesis.sh", "/etc/casper/pull_genesis.sh", "755"],
     ["../resources/maintainer_scripts/delete_local_db.sh", "/etc/casper/delete_local_db.sh", "755"],
     ["../resources/maintainer_scripts/config_from_example.sh", "/etc/casper/config_from_example.sh", "755"],

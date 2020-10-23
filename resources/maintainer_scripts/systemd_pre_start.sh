@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -e
 
 exit_code=0
 
