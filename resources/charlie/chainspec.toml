@@ -111,7 +111,7 @@ gas_per_byte = 630_000_000
 
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
 [wasm_config.host_function_costs]
-add = { cost = 5_800_000 ,arguments = [0, 0, 0, 0] }
+add = { cost = 5_800_000, arguments = [0, 0, 0, 0] }
 add_associated_key = { cost = 9_000_000, arguments = [0, 0, 0] }
 add_contract_version = { cost = 200_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
 blake2b = { cost = 200_000, arguments = [0, 0, 0, 0] }
