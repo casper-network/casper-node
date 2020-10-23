@@ -34,7 +34,7 @@ pub enum Error {
     #[error("Forged reference: {}", _0)]
     ForgedReference(URef),
     #[error("URef not found: {}", _0)]
-    URefNotFound(String),
+    URefNotFound(URef),
     #[error("Function not found: {}", _0)]
     FunctionNotFound(String),
     #[error("{}", _0)]
@@ -86,6 +86,8 @@ pub enum Error {
     WasmPreprocessing(wasm_prep::PreprocessingError),
     #[error("Unexpected Key length. Expected length {expected} but actual length is {actual}")]
     InvalidKeyLength { expected: usize, actual: usize },
+    #[error("Key is not a URef: {}", _0)]
+    KeyIsNotAURef(Key),
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

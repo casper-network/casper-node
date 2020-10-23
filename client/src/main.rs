@@ -6,6 +6,7 @@ mod deploy;
 mod generate_completion;
 mod get_state_hash;
 mod keygen;
+mod merkle_proofs;
 mod query_state;
 mod rpc;
 

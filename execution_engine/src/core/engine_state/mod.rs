@@ -1042,13 +1042,22 @@ where
         state_hash: Blake2bHash,
         purse_uref: URef,
     ) -> Result<BalanceResult, Error> {
-        let mut tracking_copy = match self.tracking_copy(state_hash)? {
+        let tracking_copy = match self.tracking_copy(state_hash)? {
             Some(tracking_copy) => tracking_copy,
             None => return Ok(BalanceResult::RootNotFound),
         };
-        let balance_key = tracking_copy.get_purse_balance_key(correlation_id, purse_uref.into())?;
-        let balance = tracking_copy.get_purse_balance(correlation_id, balance_key)?;
-        Ok(BalanceResult::Success(balance.value()))
+        let (purse_balance_key, main_purse_proof) =
+            tracking_copy.get_purse_balance_key_with_proof(correlation_id, purse_uref.into())?;
+        let (balance, balance_proof) =
+            tracking_copy.get_purse_balance_with_proof(correlation_id, purse_balance_key)?;
+        let main_purse_proof = Box::new(main_purse_proof);
+        let balance_proof = Box::new(balance_proof);
+        let motes = balance.value();
+        Ok(BalanceResult::Success {
+            motes,
+            main_purse_proof,
+            balance_proof,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -6,14 +6,14 @@ mod tests;
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    convert::From,
+    convert::{From, TryInto},
     iter,
 };
 
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
-use casper_types::{bytesrepr, CLType, CLValueError, Key};
+use casper_types::{bytesrepr, CLType, CLValue, CLValueError, Key, U512};
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -480,6 +480,21 @@ pub enum ValidationError {
 
     #[error("Serialization error: {0}")]
     BytesRepr(bytesrepr::Error),
+
+    #[error("Key is not a URef")]
+    KeyIsNotAUref(Key),
+
+    #[error("Failed to convert stored value to key")]
+    ValueToCLValueConversion,
+
+    #[error("{0}")]
+    CLValueError(CLValueError),
+}
+
+impl From<CLValueError> for ValidationError {
+    fn from(err: CLValueError) -> Self {
+        ValidationError::CLValueError(err)
+    }
 }
 
 impl From<bytesrepr::Error> for ValidationError {
@@ -488,13 +503,12 @@ impl From<bytesrepr::Error> for ValidationError {
     }
 }
 
-#[allow(unused)]
 pub fn validate_query_proof(
     hash: &Blake2bHash,
     proofs: &[TrieMerkleProof<Key, StoredValue>],
-    key: &Key,
+    expected_first_key: &Key,
     path: &[String],
-    value: &StoredValue,
+    expected_value: &StoredValue,
 ) -> Result<(), ValidationError> {
     if proofs.len() != path.len() + 1 {
         return Err(ValidationError::PathLengthDifferentThanProofLessOne);
@@ -505,7 +519,7 @@ pub fn validate_query_proof(
     // length check above means we are safe to unwrap here
     let first_proof = proofs_iter.next().unwrap();
 
-    if first_proof.key() != &key.normalize() {
+    if first_proof.key() != &expected_first_key.normalize() {
         return Err(ValidationError::UnexpectedKey);
     }
 
@@ -538,7 +552,58 @@ pub fn validate_query_proof(
         proof_value = proof.value();
     }
 
-    if proof_value != value {
+    if proof_value != expected_value {
+        return Err(ValidationError::UnexpectedValue);
+    }
+
+    Ok(())
+}
+
+#[allow(unused)]
+pub fn validate_balance_proof(
+    hash: &Blake2bHash,
+    main_purse_proof: &TrieMerkleProof<Key, StoredValue>,
+    balance_proof: &TrieMerkleProof<Key, StoredValue>,
+    expected_purse_key: Key,
+    expected_motes: &U512,
+) -> Result<(), ValidationError> {
+    let expected_balance_key = expected_purse_key
+        .uref_to_hash()
+        .ok_or_else(|| ValidationError::KeyIsNotAUref(expected_purse_key.to_owned()))?;
+
+    if main_purse_proof.key() != &expected_balance_key {
+        return Err(ValidationError::UnexpectedKey);
+    }
+
+    if hash != &main_purse_proof.compute_state_hash()? {
+        return Err(ValidationError::InvalidProofHash);
+    }
+
+    let main_purse_proof_stored_value = main_purse_proof.value().to_owned();
+
+    let purse_balance_clvalue: CLValue = main_purse_proof_stored_value
+        .try_into()
+        .map_err(|_| ValidationError::ValueToCLValueConversion)?;
+
+    let purse_balance_key: Key = purse_balance_clvalue.into_t()?;
+
+    if balance_proof.key() != &purse_balance_key.normalize() {
+        return Err(ValidationError::UnexpectedKey);
+    }
+
+    if hash != &balance_proof.compute_state_hash()? {
+        return Err(ValidationError::InvalidProofHash);
+    }
+
+    let balance_proof_stored_value = balance_proof.value().to_owned();
+
+    let balance_proof_clvalue: CLValue = balance_proof_stored_value
+        .try_into()
+        .map_err(|_| ValidationError::ValueToCLValueConversion)?;
+
+    let balance_motes: U512 = balance_proof_clvalue.into_t()?;
+
+    if expected_motes != &balance_motes {
         return Err(ValidationError::UnexpectedValue);
     }
 

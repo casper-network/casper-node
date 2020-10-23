@@ -223,6 +223,13 @@ impl Key {
             Key::DeployInfo(addr) => addr,
         }
     }
+
+    /// Casts a [`Key::URef`] to a [`Key::Hash`]
+    pub fn uref_to_hash(&self) -> Option<Key> {
+        let uref = self.as_uref()?;
+        let addr = uref.addr();
+        Some(Key::Hash(addr))
+    }
 }
 
 impl Display for Key {
