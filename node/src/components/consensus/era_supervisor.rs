@@ -159,35 +159,6 @@ where
         self.chainspec.genesis.highway_config
     }
 
-    fn instance_id(&self, state_root_hash: hash::Digest, block_height: u64) -> hash::Digest {
-        let mut result = [0; hash::Digest::LENGTH];
-        let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
-
-        hasher.update(&self.chainspec.genesis.name);
-        hasher.update(self.chainspec.genesis.timestamp.millis().to_le_bytes());
-        hasher.update(state_root_hash);
-
-        for upgrade_point in self
-            .chainspec
-            .upgrades
-            .iter()
-            .take_while(|up| up.activation_point.rank <= block_height)
-        {
-            hasher.update(upgrade_point.activation_point.rank.to_le_bytes());
-            if let Some(bytes) = upgrade_point.upgrade_installer_bytes.as_ref() {
-                hasher.update(bytes);
-            }
-            if let Some(bytes) = upgrade_point.upgrade_installer_args.as_ref() {
-                hasher.update(bytes);
-            }
-        }
-
-        hasher.finalize_variable(|slice| {
-            result.copy_from_slice(slice);
-        });
-        result.into()
-    }
-
     fn booking_block_height(&self, era_id: EraId) -> u64 {
         // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
         // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1
@@ -294,7 +265,7 @@ where
             && validators.iter().any(|v| *v.id() == our_id);
 
         let mut highway = HighwayProtocol::<I, HighwayContext>::new(
-            self.instance_id(state_root_hash, start_height),
+            instance_id(&self.chainspec, state_root_hash, start_height),
             validators,
             params,
             ftt,
@@ -752,4 +723,37 @@ where
                 .collect(),
         }
     }
+}
+
+/// Computes the instance ID for an era, given the state root hash, block height and chainspec.
+fn instance_id(
+    chainspec: &Chainspec,
+    state_root_hash: hash::Digest,
+    block_height: u64,
+) -> hash::Digest {
+    let mut result = [0; hash::Digest::LENGTH];
+    let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
+
+    hasher.update(&chainspec.genesis.name);
+    hasher.update(chainspec.genesis.timestamp.millis().to_le_bytes());
+    hasher.update(state_root_hash);
+
+    for upgrade_point in chainspec
+        .upgrades
+        .iter()
+        .take_while(|up| up.activation_point.rank <= block_height)
+    {
+        hasher.update(upgrade_point.activation_point.rank.to_le_bytes());
+        if let Some(bytes) = upgrade_point.upgrade_installer_bytes.as_ref() {
+            hasher.update(bytes);
+        }
+        if let Some(bytes) = upgrade_point.upgrade_installer_args.as_ref() {
+            hasher.update(bytes);
+        }
+    }
+
+    hasher.finalize_variable(|slice| {
+        result.copy_from_slice(slice);
+    });
+    result.into()
 }
