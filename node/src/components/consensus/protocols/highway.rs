@@ -68,7 +68,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
             vertices_to_be_added_later: BTreeMap::new(),
-            round_success_meter: RoundSuccessMeter::new(round_exp, Timestamp::now()),
+            round_success_meter: RoundSuccessMeter::new(round_exp, round_exp, Timestamp::now()),
         }
     }
 

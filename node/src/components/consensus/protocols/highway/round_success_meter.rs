@@ -1,4 +1,4 @@
-use std::{cmp::max, collections::VecDeque};
+use std::{cmp::max, collections::VecDeque, mem};
 
 use datasize::DataSize;
 
@@ -25,12 +25,13 @@ where
     rounds: VecDeque<bool>,
     current_round_id: u64,
     proposals: Vec<C::Hash>,
+    min_round_exp: u8,
     current_round_exp: u8,
     current_round_length: u64,
 }
 
 impl<C: Context> RoundSuccessMeter<C> {
-    pub fn new(round_exp: u8, timestamp: Timestamp) -> Self {
+    pub fn new(round_exp: u8, min_round_exp: u8, timestamp: Timestamp) -> Self {
         let current_round_length = 1u64 << round_exp;
         let current_round_index = timestamp.millis() / current_round_length;
         let current_round_id = current_round_index * current_round_length;
@@ -38,6 +39,7 @@ impl<C: Context> RoundSuccessMeter<C> {
             rounds: VecDeque::with_capacity(NUM_ROUNDS_TO_CONSIDER),
             current_round_id,
             proposals: Vec::new(),
+            min_round_exp,
             current_round_exp: round_exp,
             current_round_length,
         }
@@ -56,7 +58,7 @@ impl<C: Context> RoundSuccessMeter<C> {
         let total_w = state.total_weight();
 
         let finality_detector =
-            FinalityDetector::<C>::new(max(total_w * THRESHOLD / 100, Weight(1)));
+            FinalityDetector::<C>::new(max(total_w / 100 * THRESHOLD, Weight(1)));
 
         // check for the existence of a level-1 summit
         finality_detector.find_summit(1, proposal_h, state) == 1
@@ -91,10 +93,9 @@ impl<C: Context> RoundSuccessMeter<C> {
         let current_round_index = self.current_round_id / self.current_round_length;
         let new_round_index = now.millis() / self.current_round_length;
 
-        if self
-            .proposals
-            .iter()
-            .any(|proposal| self.check_proposals_success(state, proposal))
+        if mem::replace(&mut self.proposals, Vec::new())
+            .into_iter()
+            .any(|proposal| self.check_proposals_success(state, &proposal))
         {
             self.rounds.push_front(true);
         } else {
@@ -134,7 +135,9 @@ impl<C: Context> RoundSuccessMeter<C> {
         let current_round_index = self.current_round_id / self.current_round_length;
         if self.count_failures() > MAX_FAILED_ROUNDS {
             self.current_round_exp + 1
-        } else if current_round_index % ACCELERATION_PARAMETER == 0 {
+        } else if current_round_index % ACCELERATION_PARAMETER == 0
+            && self.current_round_exp > self.min_round_exp
+        {
             self.current_round_exp - 1
         } else {
             self.current_round_exp
