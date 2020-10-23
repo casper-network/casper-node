@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -ex
+
 # This script will generate a config file appropriate to installation machine.
 
 path=/etc/casper/
@@ -26,6 +28,4 @@ fi
 
 sed "s/<IP ADDRESS>/${external_ip}/" $config_example > $outfile
 
-chown casper $outfile
-chgrp casper $outfile
-
+echo "sed exit $?"

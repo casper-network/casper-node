@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -ex
 
 # Default Variables
 # ---
@@ -16,20 +16,28 @@ else
     adduser --no-create-home --group --system ${DEFAULT_USERNAME}
 fi
 
-CONFIG_SCRIPT="/etc/casper/config_from_example.sh"
+# Take ownership of directories and files installed
+chown -R ${DEFAULT_USERNAME}:${DEFAULT_USERNAME} ${DEFAULT_DATA_DIRECTORY}
+chown -R ${DEFAULT_USERNAME}:${DEFAULT_USERNAME} ${DEFAULT_CONFIG_DIRECTORY}
+
+CONFIG_SCRIPT="${DEFAULT_CONFIG_DIRECTORY}/config_from_example.sh"
 # create config.toml from config-example.toml
 if [[ -f ${CONFIG_SCRIPT} ]]; then
-  exec $CONFIG_SCRIPT
+  $CONFIG_SCRIPT
+  echo "config exit $?"
 else
   echo "${CONFIG_SCRIPT} not found."
   exit 1
 fi
 
+echo "IN BETWEEN $?"
+
 # run pull_genesis script to get latest files
-PULL_GENESIS_SCRIPT="/etc/casper/pull_genesis.sh"
-# create config.toml from config-example.toml
+PULL_GENESIS_SCRIPT="${DEFAULT_CONFIG_DIRECTORY}/pull_genesis.sh"
+# create config.toml or config.toml.new from config-example.toml
 if [[ -f ${PULL_GENESIS_SCRIPT} ]]; then
-  exec PULL_GENESIS_SCRIPT
+  echo "IN IF"
+  $PULL_GENESIS_SCRIPT
 else
   echo "${PULL_GENESIS_SCRIPT} not found."
   exit 1

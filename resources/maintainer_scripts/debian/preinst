@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -ex
+
 # Default Variables
 # ---
 DEFAULT_USERNAME="casper"

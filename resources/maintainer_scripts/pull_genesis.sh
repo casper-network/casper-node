@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 
+set -ex
+
+cd /etc/casper
+
 # This will pull latest genesis files down into current directory.
 # The expectation is this is installed in and run in /etc/casper with sudo
 
 branch_name="release-1.4.0"
 
-base_path="https://raw.githubusercontent.com/CasperLabs/casper-node/$branch_name/resources/production/"
+base_path="https://raw.githubusercontent.com/CasperLabs/casper-node/$branch_name/resources/production"
 accounts_csv_path="$base_path/accounts.csv"
 chainspec_toml_path="$base_path/chainspec.toml"
 validation_path="$base_path/validation.md5"
