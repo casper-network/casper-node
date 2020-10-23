@@ -19,7 +19,7 @@ fi
 CONFIG_SCRIPT="/etc/casper/config_from_example.sh"
 # create config.toml from config-example.toml
 if [[ -f ${CONFIG_SCRIPT} ]]; then
-  exec su -u casper $CONFIG_SCRIPT
+  exec $CONFIG_SCRIPT
 else
   echo "${CONFIG_SCRIPT} not found."
   exit 1
