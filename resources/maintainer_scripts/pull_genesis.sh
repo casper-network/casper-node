@@ -6,12 +6,12 @@ cd /etc/casper
 # This will pull latest genesis files down into current directory.
 # The expectation is this is installed in and run in /etc/casper with sudo
 
-branch_name="master"
+BRANCH_NAME="master"
 
-base_path="https://raw.githubusercontent.com/CasperLabs/casper-node/$branch_name/resources/production"
-accounts_csv_path="$base_path/accounts.csv"
-chainspec_toml_path="$base_path/chainspec.toml"
-validation_path="$base_path/validation.md5"
+BASE_PATH="https://raw.githubusercontent.com/CasperLabs/casper-node/${BRANCH_NAME}/resources/production"
+ACCOUNTS_CSV_PATH="${BASE_PATH}/accounts.csv"
+CHAINSPEC_TOML_PATH="${BASE_PATH}/chainspec.toml"
+VALIDATION_PATH="${BASE_PATH}/validation.md5"
 
 files=("accounts.csv" "chainspec.toml" "validation.md5")
 for file in "${files[@]}"; do
@@ -21,8 +21,8 @@ for file in "${files[@]}"; do
   fi
 done
 
-wget --no-verbose $accounts_csv_path
-wget --no-verbose $chainspec_toml_path
-wget --no-verbose $validation_path
+wget --no-verbose $ACCOUNTS_CSV_PATH
+wget --no-verbose $CHAINSPEC_TOML_PATH
+wget --no-verbose $VALIDATION_PATH
 
 md5sum -c ./validation.md5

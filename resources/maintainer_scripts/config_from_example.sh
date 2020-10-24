@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 set -e
 
-# This script will generate a config file appropriate to installation machine.
+# This script will generate a CONFIG file appropriate to installation machine.
 
-path=/etc/casper/
+PATH=/etc/casper/
 
-external_ip=$(dig TXT +short o-o.myaddr.l.google.com @ns1.google.com | tr -d '"')
-echo "Using External IP: $external_ip"
+EXTERNAL_IP=$(dig TXT +short o-o.myaddr.l.google.com @ns1.google.com | tr -d '"')
+echo "Using External IP: $EXTERNAL_IP"
 
-config=$path"config.toml"
-config_example=$path"config-example.toml"
-config_new=$path"config.toml.new"
+CONFIG=$PATH"CONFIG.toml"
+CONFIG_EXAMPLE=$PATH"CONFIG-example.toml"
+CONFIG_NEW=$PATH"CONFIG.toml.new"
 
-outfile=$config
+OUTFILE=$CONFIG
 
-if [[ -f $outfile ]]; then
-  outfile=$config_new
-  if [[ -f $outfile ]]; then
-    rm $outfile
+if [[ -f $OUTFILE ]]; then
+  OUTFILE=$CONFIG_NEW
+  if [[ -f $OUTFILE ]]; then
+    rm $OUTFILE
   fi
-  echo "Previous $config exists, creating as $outfile from $config_example."
-  echo "Replace $config with $outfile to use the automatically generated configuration."
+  echo "Previous $CONFIG exists, creating as $OUTFILE from $CONFIG_EXAMPLE."
+  echo "Replace $CONFIG with $OUTFILE to use the automatically generated CONFIGuration."
 else
-  echo "Creating $outfile from $config_example."
+  echo "Creating $OUTFILE from $CONFIG_EXAMPLE."
 fi
 
-sed "s/<IP ADDRESS>/${external_ip}/" $config_example > $outfile
+sed "s/<IP ADDRESS>/${EXTERNAL_IP}/" $CONFIG_EXAMPLE > $OUTFILE
