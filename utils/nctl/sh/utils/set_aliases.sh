@@ -60,10 +60,15 @@ alias nctl-view-node-metric-pending-deploy='source $NCTL/sh/views/view_node_metr
 alias nctl-view-node-metric-finalised-block-count='source $NCTL/sh/views/view_node_metrics.sh metric=amount_of_blocks'
 
 # Views: network.
-alias nctl-view-faucet-account-balance='source $NCTL/sh/views/view_net_faucet_account_balance.sh'
-alias nctl-view-faucet-account-key='source $NCTL/sh/views/view_net_faucet_account_key.sh'
+alias nctl-view-faucet-account-balance='source $NCTL/sh/views/view_faucet_account_balance.sh'
+alias nctl-view-faucet-account-key='source $NCTL/sh/views/view_faucet_account_key.sh'
 
 # Views: user.
 alias nctl-view-user-account-balance='source $NCTL/sh/views/view_user_account_balance.sh'
 alias nctl-view-user-account-key='source $NCTL/sh/views/view_user_account_key.sh'
 alias nctl-view-user-secret-key-path='source $NCTL/sh/views/view_user_secret_key_path.sh'
+
+# Views: validator.
+alias nctl-view-validator-account-balance='source $NCTL/sh/views/view_validator_account_balance.sh'
+alias nctl-view-validator-account-key='source $NCTL/sh/views/view_validator_account_key.sh'
+alias nctl-view-validator-secret-key-path='source $NCTL/sh/views/view_validator_secret_key_path.sh'
