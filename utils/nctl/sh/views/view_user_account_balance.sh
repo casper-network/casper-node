@@ -46,12 +46,8 @@ purse_uref=$(
     | jq '.Account.main_purse' \
     | sed -e 's/^"//' -e 's/"$//'
     ) 
-balance=$(
-    $NCTL/assets/net-$net/bin/casper-client get-balance \
-        --node-address $(get_node_address $net $node) \
-        --state-root-hash $state_root_hash \
-        --purse-uref $purse_uref \
-        | jq '.result.balance_value' \
-        | sed -e 's/^"//' -e 's/"$//'
-    )
-log "user balance = "$balance
+
+source $NCTL/sh/views/view_chain_account_balance.sh net=$net node=$node \
+    root-hash=$state_root_hash \
+    purse-uref=$purse_uref \
+    typeof="user-"$user

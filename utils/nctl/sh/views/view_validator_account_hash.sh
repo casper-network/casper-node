@@ -1,35 +1,26 @@
 #!/usr/bin/env bash
 #
-# Renders a network faucet account key.
+# Renders a validator's account hash.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
+#   User ordinal identifier.
 
 # Import utils.
 source $NCTL/sh/utils/misc.sh
 
 #######################################
-# Displays to stdout a validator's account balance.
+# Displays to stdout a validator's account hash.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifer.
-#   Node ordinal identifer.
+#   User ordinal identifer.
 #######################################
-function _view_validator_account_balance() {
-    state_root_hash=$(source $NCTL/sh/views/view_chain_state_root_hash.sh)
+function _view_validator_account_hash() {
     account_key=$(cat $NCTL/assets/net-$1/nodes/node-$2/keys/public_key_hex)
-    purse_uref=$(
-        source $NCTL/sh/views/view_chain_account.sh net=$1 root-hash=$state_root_hash account-key=$account_key \
-        | jq '.Account.main_purse' \
-        | sed -e 's/^"//' -e 's/"$//'
-        ) 
-
-    source $NCTL/sh/views/view_chain_account_balance.sh net=$1 node=$2 \
-        root-hash=$state_root_hash \
-        purse-uref=$purse_uref \
-        typeof="validator-"$2
+    log "account hash :: net-$1:validator-$2 -> "$(get_hash $account_key)
 }
 
 #######################################
@@ -63,8 +54,8 @@ if [ $node = "all" ]; then
     source $NCTL/assets/net-$net/vars
     for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        _view_validator_account_balance $net $node_idx
+        _view_validator_account_hash $net $node_idx
     done
 else
-    _view_validator_account_balance $net $node
+    _view_validator_account_hash $net $node
 fi
