@@ -11,7 +11,7 @@ const TRIE_MERKLE_PROOF_STEP_NODE_ID: u8 = 0;
 const TRIE_MERKLE_PROOF_STEP_EXTENSION_ID: u8 = 1;
 
 /// A component of a proof that an entry exists in the Merkle trie.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrieMerkleProofStep {
     /// Corresponds to [`Trie::Node`]
     Node {
@@ -99,7 +99,7 @@ impl FromBytes for TrieMerkleProofStep {
 
 /// A proof that a node with a specified `key` and `value` is present in the Merkle trie.
 /// Given a state hash `x`, one can validate a proof `p` by checking `x == p.compute_state_hash()`.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrieMerkleProof<K, V> {
     key: K,
     value: V,
@@ -116,16 +116,31 @@ impl<K, V> TrieMerkleProof<K, V> {
         }
     }
 
+    /// Getter for the key in [`TrieMerkleProof`]
+    pub fn key(&self) -> &K {
+        &self.key
+    }
+
     /// Getter for the value in [`TrieMerkleProof`]
     pub fn value(&self) -> &V {
         &self.value
+    }
+
+    /// Getter for the proof steps in [`TrieMerkleProof`]
+    pub fn proof_steps(&self) -> &VecDeque<TrieMerkleProofStep> {
+        &self.proof_steps
+    }
+
+    /// Transforms a [`TrieMerkleProof`] into the value it contains
+    pub fn into_value(self) -> V {
+        self.value
     }
 }
 
 impl<K, V> TrieMerkleProof<K, V>
 where
-    K: ToBytes + Copy,
-    V: ToBytes + Copy,
+    K: ToBytes + Copy + Clone,
+    V: ToBytes + Clone,
 {
     /// Recomputes a state root hash from a [`TrieMerkleProof`].
     /// This is done in the following steps:
@@ -141,7 +156,7 @@ where
     /// The steps in this function reflect `operations::rehash`.
     pub fn compute_state_hash(&self) -> Result<Blake2bHash, bytesrepr::Error> {
         let mut hash = {
-            let leaf_bytes = Trie::leaf(self.key, self.value).to_bytes()?;
+            let leaf_bytes = Trie::leaf(self.key, self.value.to_owned()).to_bytes()?;
             Blake2bHash::new(&leaf_bytes)
         };
 

@@ -15,10 +15,10 @@ use crate::storage::{
     protocol_data_store::lmdb::LmdbProtocolDataStore,
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-    trie::{operations::create_hashed_empty_trie, Trie},
+    trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
     trie_store::{
         lmdb::LmdbTrieStore,
-        operations::{read, ReadResult},
+        operations::{read, read_with_proof, ReadResult},
     },
 };
 
@@ -85,6 +85,33 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
     ) -> Result<Option<StoredValue>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
+            correlation_id,
+            &txn,
+            self.store.deref(),
+            &self.root_hash,
+            key,
+        )? {
+            ReadResult::Found(value) => Some(value),
+            ReadResult::NotFound => None,
+            ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
+        };
+        txn.commit()?;
+        Ok(ret)
+    }
+
+    fn read_with_proof(
+        &self,
+        correlation_id: CorrelationId,
+        key: &Key,
+    ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let ret = match read_with_proof::<
+            Key,
+            StoredValue,
+            lmdb::RoTransaction,
+            LmdbTrieStore,
+            Self::Error,
+        >(
             correlation_id,
             &txn,
             self.store.deref(),

@@ -7,6 +7,8 @@ pub mod runtime;
 pub mod runtime_context;
 pub(crate) mod tracking_copy;
 
+pub use tracking_copy::{validate_query_proof, ValidationError};
+
 pub const ADDRESS_LENGTH: usize = 32;
 
 pub type Address = [u8; ADDRESS_LENGTH];
