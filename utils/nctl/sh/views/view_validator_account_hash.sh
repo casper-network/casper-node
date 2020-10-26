@@ -20,7 +20,7 @@ source $NCTL/sh/utils/misc.sh
 #######################################
 function _view_validator_account_hash() {
     account_key=$(cat $NCTL/assets/net-$1/nodes/node-$2/keys/public_key_hex)
-    log "account hash :: net-$1:validator-$2 -> "$(get_hash $account_key)
+    log "account hash :: net-$1:validator-$2 -> "$(get_account_hash $account_key)
 }
 
 #######################################

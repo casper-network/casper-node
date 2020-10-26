@@ -20,7 +20,7 @@ source $NCTL/sh/utils/misc.sh
 #######################################
 function _view_user_account_hash() {
     account_key=$(cat $NCTL/assets/net-$1/users/user-$2/public_key_hex)
-    log "account hash :: net-$1:user-$2 -> "$(get_hash $account_key)
+    log "account hash :: net-$1:user-$2 -> "$(get_account_hash $account_key)
 }
 
 #######################################

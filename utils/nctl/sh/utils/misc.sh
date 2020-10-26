@@ -93,6 +93,23 @@ function resetd () {
 # ###############################################################
 
 #######################################
+# Returns an on-chain account hash.
+# Arguments:
+#   Data to be hashed.
+#######################################
+function get_account_hash() {
+    account_pbk=${1:2}
+    instruction='
+        import hashlib;
+        as_bytes=bytes("ed25519", "utf-8") + bytearray(1) + bytes.fromhex("'$account_pbk'"); 
+        h=hashlib.blake2b(digest_size=32); 
+        h.update(as_bytes); 
+        print(h.digest().hex());
+        '
+    python3 <<< $instruction
+}
+
+#######################################
 # Returns node address.
 # Arguments:
 #   Network ordinal identifier.

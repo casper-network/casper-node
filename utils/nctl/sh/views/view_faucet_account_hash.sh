@@ -34,4 +34,4 @@ net=${net:-1}
 #######################################
 
 account_key=$(cat $NCTL/assets/net-$net/faucet/public_key_hex)
-log "net-$net :: faucet account hash: "$(get_hash $account_key)
+log "net-$net :: faucet account hash: "$(get_account_hash $account_key)
