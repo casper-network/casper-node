@@ -66,7 +66,7 @@ pub struct EraSupervisor<I> {
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
     ///
-    /// This map always contains exactly `2 * BONDED_ERAS + 1` entries, with the last one being the
+    /// This map always contains exactly `2 * bonded_eras + 1` entries, with the last one being the
     /// current one.
     active_eras: HashMap<EraId, Era<I>>,
     pub(super) secret_signing_key: Rc<SecretKey>,
@@ -77,8 +77,8 @@ pub struct EraSupervisor<I> {
     /// The unbonding period, in number of eras. After this many eras, a former validator is
     /// allowed to withdraw their stake, so their signature can't be trusted anymore.
     ///
-    /// A node keeps `2 * BONDED_ERAS` past eras around, because the oldest bonded era could still
-    /// receive blocks that refer to `BONDED_ERAS` before that.
+    /// A node keeps `2 * bonded_eras` past eras around, because the oldest bonded era could still
+    /// receive blocks that refer to `bonded_eras` before that.
     bonded_eras: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
@@ -303,8 +303,8 @@ where
         let era = Era::new(highway, start_height, newly_slashed, slashed);
         let _ = self.active_eras.insert(era_id, era);
 
-        // Remove the era that has become obsolete now. We keep 2 * BONDED_ERAS past eras because
-        // the oldest bonded era could still receive blocks that refer to BONDED_ERAS before that.
+        // Remove the era that has become obsolete now. We keep 2 * bonded_eras past eras because
+        // the oldest bonded era could still receive blocks that refer to bonded_eras before that.
         if let Some(obsolete_era_id) = era_id.checked_sub(2 * self.bonded_eras + 1) {
             trace!(era = obsolete_era_id.0, "removing obsolete era");
             self.active_eras.remove(&obsolete_era_id);
