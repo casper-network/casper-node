@@ -213,6 +213,45 @@ pub mod block_hash {
     }
 }
 
+pub mod block_parameter {
+    use casper_node::rpcs::chain::BlockParameters;
+
+    use super::*;
+
+    const ARG_NAME: &str = "block-parameter";
+    const ARG_SHORT: &str = "b";
+    const ARG_VALUE_NAME: &str = "HEX_STRING OR INTEGER";
+    const ARG_HELP: &str =
+        "Hex-encoded block hash.  If not given, the last block added to the chain as known at the \
+        given node will be used";
+
+    pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .short(ARG_SHORT)
+            .required(false)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(order)
+    }
+
+    pub(crate) fn get(matches: &ArgMatches) -> Option<BlockParameters> {
+        if matches.value_of(ARG_VALUE_NAME) == Some("HEX_STRING") {
+            matches.value_of(ARG_NAME).map(|hex_str|{
+                let hash = Digest::from_hex(hex_str)
+                .unwrap_or_else(|error| panic!("cannot parse as a block hash: {}", error));
+                BlockParameters::Hash(BlockHash::new(hash))
+            })
+        } else {
+            matches.value_of(ARG_NAME).map(|height_str| {
+                let height = height_str.parse().unwrap_or_else(|error| panic!("should parse as u64: {}", error));
+                BlockParameters::Height(height)
+            })
+        }
+    }
+}
+
+
 pub fn read_file(path: &str) -> Vec<u8> {
     fs::read(path).unwrap_or_else(|error| panic!("should read {}: {}", path, error))
 }
