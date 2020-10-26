@@ -37,6 +37,8 @@ use casper_execution_engine::{
 };
 use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
 
+use self::rpcs::chain::BlockParameters;
+
 use super::Component;
 use crate::{
     components::storage::Storage,
@@ -211,7 +213,7 @@ where
                 effects
             }
             Event::ApiRequest(ApiRequest::GetBlock {
-                maybe_hash: Some(hash),
+                maybe_parameter: Some(BlockParameters::Hash(hash)),
                 responder,
             }) => effect_builder
                 .get_block_from_storage(hash)
@@ -221,7 +223,17 @@ where
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::GetBlock {
-                maybe_hash: None,
+                maybe_parameter: Some(BlockParameters::Height(height)),
+                responder
+            }) => effect_builder
+                .get_block_at_height(height)
+                .event(move |result| Event::GetBlockResult {
+                    maybe_hash: None,
+                    result: Box::new(result),
+                    main_responder: responder
+                }),
+            Event::ApiRequest(ApiRequest::GetBlock {
+                maybe_parameter: None,
                 responder,
             }) => effect_builder
                 .get_highest_block()

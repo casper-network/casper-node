@@ -2,10 +2,7 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_node::rpcs::{
-    chain::{GetStateRootHash, GetStateRootHashParams},
-    RpcWithOptionalParams,
-};
+use casper_node::rpcs::{RpcWithOptionalParams, chain::{BlockParameters, GetStateRootHash, GetStateRootHashParams}};
 
 use crate::{command::ClientCommand, common, RpcClient};
 
@@ -45,7 +42,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetStateRootHash {
 
         let response = match maybe_block_hash {
             Some(block_hash) => {
-                let params = GetStateRootHashParams { block_hash };
+                let block_parameter = BlockParameters::Hash(block_hash);
+                let params = GetStateRootHashParams { block_parameter };
                 Self::request_with_map_params(verbose, &node_address, rpc_id, params)
             }
             None => Self::request(verbose, &node_address, rpc_id),

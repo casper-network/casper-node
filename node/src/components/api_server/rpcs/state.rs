@@ -258,7 +258,7 @@ impl RpcWithParamsExt for GetAuctionInfo {
                 let maybe_block = effect_builder
                     .make_request(
                         |responder| ApiRequest::GetBlock {
-                            maybe_hash: None,
+                            maybe_parameter: None,
                             responder,
                         },
                         QueueKind::Api,

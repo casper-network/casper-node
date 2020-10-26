@@ -4,13 +4,7 @@ use clap::{App, ArgMatches, SubCommand};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_node::{
-    rpcs::{
-        chain::{GetBlock, GetBlockParams, GetBlockResult},
-        RpcWithOptionalParams,
-    },
-    types::DeployHash,
-};
+use casper_node::{rpcs::{RpcWithOptionalParams, chain::{BlockParameters, GetBlock, GetBlockParams, GetBlockResult}}, types::DeployHash};
 
 use crate::{command::ClientCommand, common, RpcClient};
 
@@ -72,7 +66,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
 
         let response = match maybe_block_hash {
             Some(block_hash) => {
-                let params = GetBlockParams { block_hash };
+                let block_parameter = BlockParameters::Hash(block_hash);
+                let params = GetBlockParams { block_parameter };
                 Self::request_with_map_params(verbose, &node_address, rpc_id, params)
             }
             None => Self::request(verbose, &node_address, rpc_id),
