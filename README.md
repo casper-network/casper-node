@@ -181,3 +181,7 @@ RUST_LOG=casper_node::components::small=trace,casper_node::comp=info,warn
 ## Running a client
 
 See [the client README](client/README.md).
+
+## Running a local network
+
+See [the nctl utility README](utils/nctl/README.md).

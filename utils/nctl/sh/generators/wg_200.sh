@@ -87,8 +87,9 @@ deploy_hash=$(
         --session-arg "amount:u512='$amount'" \
         --session-arg "delegation_rate:u64='$delegation_rate'" \
         --session-path $path_contract \
-        --ttl "1day" | \
-        python3 -c "import sys, json; print(json.load(sys.stdin)['deploy_hash'])"
+        --ttl "1day" \
+        | jq '.result.deploy_hash' \
+        | sed -e 's/^"//' -e 's/"$//'
     )
 
 # Display deploy hash.

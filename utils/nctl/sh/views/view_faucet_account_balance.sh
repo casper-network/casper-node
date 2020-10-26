@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Renders a network faucet account key.
+# Renders a network faucet account balance.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
@@ -40,15 +40,11 @@ state_root_hash=$(source $NCTL/sh/views/view_chain_state_root_hash.sh)
 account_key=$(cat $NCTL/assets/net-$net/faucet/public_key_hex)
 purse_uref=$(
     source $NCTL/sh/views/view_chain_account.sh net=$net root-hash=$state_root_hash account-key=$account_key \
-    | jq '.Account.main_purse' \
-    | sed -e 's/^"//' -e 's/"$//'
-    ) 
-balance=$(
-    $NCTL/assets/net-$net/bin/casper-client get-balance \
-        --node-address $(get_node_address $net $node) \
-        --state-root-hash $state_root_hash \
-        --purse-uref $purse_uref \
-        | jq '.result.balance_value' \
+        | jq '.Account.main_purse' \
         | sed -e 's/^"//' -e 's/"$//'
-    )
-log "faucet balance = "$balance
+) 
+
+source $NCTL/sh/views/view_chain_account_balance.sh net=$net node=$node \
+    root-hash=$state_root_hash \
+    purse-uref=$purse_uref \
+    typeof="faucet"
