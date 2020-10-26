@@ -20,7 +20,7 @@ use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use crate::{
     components::consensus::{
@@ -339,6 +339,7 @@ impl<C: Context> State<C> {
     /// children of the previously selected block (or from all blocks at height 0), until a block
     /// is reached that has no children with any votes.
     pub(crate) fn fork_choice<'a>(&'a self, pan: &Panorama<C>) -> Option<&'a C::Hash> {
+        let start_time = Timestamp::now();
         // Collect all correct votes in a `Tallies` map, sorted by height.
         let to_entry = |(obs, w): (&Observation<C>, &Weight)| {
             let bhash = &self.vote(obs.correct()?).block;
@@ -352,6 +353,8 @@ impl<C: Context> State<C> {
             tallies = tallies.filter_descendants(height, bhash, self);
             // If there are no blocks left, `bhash` itself is the fork choice. Otherwise repeat.
             if tallies.is_empty() {
+                let elapsed = start_time.elapsed();
+                trace!(%elapsed,"Time taken for fork-choice to run");
                 return Some(bhash);
             }
         }
