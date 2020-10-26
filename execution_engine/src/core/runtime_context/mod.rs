@@ -749,7 +749,7 @@ where
     pub(crate) fn metered_add_gs<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
     where
         K: Into<Key>,
-        V: ToBytes + Into<StoredValue>,
+        V: Into<StoredValue>,
     {
         let key = key.into();
         let value = value.into();
@@ -996,7 +996,7 @@ where
     pub(crate) fn metered_write_gs_unsafe<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
     where
         K: Into<Key>,
-        V: ToBytes + Into<StoredValue>,
+        V: Into<StoredValue>,
     {
         let stored_value = value.into();
 
