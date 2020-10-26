@@ -10,13 +10,13 @@ mod tests;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
+use casper_types::auction::EraId;
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
-use casper_types::auction::EraId;
 use tracing::{debug, error, warn};
 
-use deploy_buffer::{DeployBufferState, ProtoBlockCollection};
+use block_proposer::BlockProposerState;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -24,12 +24,12 @@ use crate::{
     components::{
         api_server::{self, ApiServer},
         block_executor::{self, BlockExecutor},
+        block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
-        deploy_buffer::{self, DeployBuffer},
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
@@ -45,8 +45,8 @@ use crate::{
             NetworkAnnouncement,
         },
         requests::{
-            ApiRequest, BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest,
-            ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
+            ApiRequest, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
@@ -68,9 +68,9 @@ pub enum Event {
     /// Network event.
     #[from]
     Network(small_network::Event<Message>),
-    /// Deploy buffer event.
+    /// Block proposer event.
     #[from]
-    DeployBuffer(deploy_buffer::Event),
+    BlockProposer(block_proposer::Event),
     #[from]
     /// Storage event.
     Storage(storage::Event<Storage>),
@@ -118,9 +118,9 @@ pub enum Event {
     /// Deploy fetcher request.
     #[from]
     DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
-    /// Deploy buffer request.
+    /// Block proposer request.
     #[from]
-    DeployBufferRequest(DeployBufferRequest),
+    BlockProposerRequest(BlockProposerRequest),
     /// Block executor request.
     #[from]
     BlockExecutorRequest(BlockExecutorRequest),
@@ -213,7 +213,7 @@ impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Network(event) => write!(f, "network: {}", event),
-            Event::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
+            Event::BlockProposer(event) => write!(f, "block proposer: {}", event),
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::ApiServer(event) => write!(f, "api server: {}", event),
             Event::ChainspecLoader(event) => write!(f, "chainspec loader: {}", event),
@@ -230,7 +230,7 @@ impl Display for Event {
             Event::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             Event::ChainspecLoaderRequest(req) => write!(f, "chainspec loader request: {}", req),
             Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
-            Event::DeployBufferRequest(req) => write!(f, "deploy buffer request: {}", req),
+            Event::BlockProposerRequest(req) => write!(f, "block proposer request: {}", req),
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
             Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
@@ -263,7 +263,7 @@ pub struct ValidatorInitConfig {
     pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) linear_chain: Vec<Block>,
-    pub(super) deploy_buffer_state: DeployBufferState,
+    pub(super) block_proposer_state: BlockProposerState,
 }
 
 /// Validator node reactor.
@@ -281,7 +281,7 @@ pub struct Reactor {
     deploy_acceptor: DeployAcceptor,
     deploy_fetcher: Fetcher<Deploy>,
     deploy_gossiper: Gossiper<Deploy, Event>,
-    deploy_buffer: DeployBuffer,
+    block_proposer: BlockProposer,
     block_executor: BlockExecutor,
     proto_block_validator: BlockValidator<ProtoBlock, NodeId>,
     linear_chain: LinearChain<NodeId>,
@@ -293,6 +293,8 @@ pub struct Reactor {
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
 
+    // Keep track of last era to determine when the era advances. This is used to trigger
+    // periodic serialization to support restarts.
     last_era_id: EraId,
 }
 
@@ -328,7 +330,7 @@ impl reactor::Reactor for Reactor {
             consensus,
             init_consensus_effects,
             linear_chain,
-            deploy_buffer_state,
+            block_proposer_state,
         } = config;
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
@@ -352,9 +354,9 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
-        let (deploy_buffer, deploy_buffer_effects) =
-            DeployBuffer::new(registry.clone(), effect_builder, deploy_buffer_state)?;
-        let mut effects = reactor::wrap_effects(Event::DeployBuffer, deploy_buffer_effects);
+        let (block_proposer, block_proposer_effects) =
+            BlockProposer::new(registry.clone(), effect_builder, block_proposer_state)?;
+        let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         // Post state hash is expected to be present.
         let genesis_state_root_hash = chainspec_loader
             .genesis_state_root_hash()
@@ -383,12 +385,13 @@ impl reactor::Reactor for Reactor {
                 deploy_acceptor,
                 deploy_fetcher,
                 deploy_gossiper,
-                deploy_buffer,
+                block_proposer,
                 block_executor,
                 proto_block_validator,
                 linear_chain,
                 memory_metrics,
                 event_queue_metrics,
+                last_era_id: 0,
             },
             effects,
         ))
@@ -405,9 +408,9 @@ impl reactor::Reactor for Reactor {
                 Event::Network,
                 self.net.handle_event(effect_builder, rng, event),
             ),
-            Event::DeployBuffer(event) => reactor::wrap_effects(
-                Event::DeployBuffer,
-                self.deploy_buffer.handle_event(effect_builder, rng, event),
+            Event::BlockProposer(event) => reactor::wrap_effects(
+                Event::BlockProposer,
+                self.block_proposer.handle_event(effect_builder, rng, event),
             ),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
@@ -478,8 +481,8 @@ impl reactor::Reactor for Reactor {
             Event::DeployFetcherRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployFetcher(req.into()))
             }
-            Event::DeployBufferRequest(req) => {
-                self.dispatch_event(effect_builder, rng, Event::DeployBuffer(req.into()))
+            Event::BlockProposerRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::BlockProposer(req.into()))
             }
             Event::BlockExecutorRequest(req) => self.dispatch_event(
                 effect_builder,
@@ -615,12 +618,12 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
-                let event = deploy_buffer::Event::Buffer {
+                let event = block_proposer::Event::Buffer {
                     hash: *deploy.id(),
                     header: Box::new(deploy.header().clone()),
                 };
                 let mut effects =
-                    self.dispatch_event(effect_builder, rng, Event::DeployBuffer(event));
+                    self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));
 
                 let event = gossiper::Event::ItemReceived {
                     item_id: *deploy.id(),
@@ -649,17 +652,17 @@ impl reactor::Reactor for Reactor {
                 source: _,
             }) => Effects::new(),
             Event::ConsensusAnnouncement(consensus_announcement) => {
-                let mut reactor_event_dispatch = |dbe: deploy_buffer::Event| {
-                    self.dispatch_event(effect_builder, rng, Event::DeployBuffer(dbe))
+                let mut reactor_event_dispatch = |dbe: block_proposer::Event| {
+                    self.dispatch_event(effect_builder, rng, Event::BlockProposer(dbe))
                 };
 
                 match consensus_announcement {
                     ConsensusAnnouncement::Proposed(block) => {
-                        reactor_event_dispatch(deploy_buffer::Event::ProposedProtoBlock(block))
+                        reactor_event_dispatch(block_proposer::Event::ProposedProtoBlock(block))
                     }
                     ConsensusAnnouncement::Finalized(block) => {
                         let mut effects = reactor_event_dispatch(
-                            deploy_buffer::Event::FinalizedProtoBlock(block.proto_block().clone()),
+                            block_proposer::Event::FinalizedProtoBlock(block.proto_block().clone()),
                         );
                         let reactor_event =
                             Event::ApiServer(api_server::Event::BlockFinalized(block));
@@ -667,7 +670,7 @@ impl reactor::Reactor for Reactor {
                         effects
                     }
                     ConsensusAnnouncement::Orphaned(block) => {
-                        reactor_event_dispatch(deploy_buffer::Event::OrphanedProtoBlock(block))
+                        reactor_event_dispatch(block_proposer::Event::OrphanedProtoBlock(block))
                     }
                     ConsensusAnnouncement::Handled(_) => {
                         debug!("Ignoring `Handled` announcement in `validator` reactor.");
@@ -679,12 +682,28 @@ impl reactor::Reactor for Reactor {
                 block,
                 execution_results,
             }) => {
+                let mut effects = Effects::new();
+                
+                {
+                    // If we've advance in era, save the BlockProposer state.
+                    let last_era_id = self.last_era_id;
+                    let new_era_id = block.header().era_id().0;
+                    if last_era_id < new_era_id {
+                        let block_proposer_state = self.block_proposer.get_state().clone();
+                        let reactor_event = Event::Storage(storage::Event::SaveBlockProposerState {
+                            state: block_proposer_state
+                        });
+                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                        self.last_era_id = new_era_id;
+                    }
+                }
+
                 let block_hash = *block.hash();
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
                     block: Box::new(block),
                     execution_results: execution_results.clone(),
                 });
-                let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
 
                 for (deploy_hash, execution_result) in execution_results {
                     let reactor_event = Event::ApiServer(api_server::Event::DeployProcessed {
@@ -693,13 +712,6 @@ impl reactor::Reactor for Reactor {
                         execution_result,
                     });
                     effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
-                }
-
-                let last_era_id = self.last_era_id;
-                self.last_era_id = block.header().era_id().0;
-
-                if last_era_id < self.last_era_id {
-                    let deploy_buffer_serialized = self.deploy_buffer.serialize_state();
                 }
 
                 effects

@@ -9,7 +9,7 @@ pub(crate) mod chainspec_loader;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
-pub(crate) mod deploy_buffer;
+pub(crate) mod block_proposer;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
 pub(crate) mod linear_chain;

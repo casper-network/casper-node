@@ -116,7 +116,7 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
+    ContractRuntimeRequest, BlockProposerRequest, FetcherRequest, MetricsRequest,
     NetworkInfoRequest, NetworkRequest, StorageRequest,
 };
 
@@ -793,11 +793,11 @@ impl<REv> EffectBuilder<REv> {
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
-        REv: From<DeployBufferRequest>,
+        REv: From<BlockProposerRequest>,
     {
         let deploys = self
             .make_request(
-                |responder| DeployBufferRequest::ListForInclusion {
+                |responder| BlockProposerRequest::ListForInclusion {
                     current_instant: block_context.timestamp(),
                     past_blocks: Default::default(), // TODO
                     responder,

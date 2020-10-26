@@ -316,10 +316,10 @@ impl<S: StorageType> Display for StorageRequest<S> {
     }
 }
 
-/// A `DeployBuffer` request.
+/// A `BlockProposer` request.
 #[derive(Debug)]
 #[must_use]
-pub enum DeployBufferRequest {
+pub enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
     ListForInclusion {
         /// The instant for which the deploy is requested.
@@ -331,10 +331,10 @@ pub enum DeployBufferRequest {
     },
 }
 
-impl Display for DeployBufferRequest {
+impl Display for BlockProposerRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployBufferRequest::ListForInclusion {
+            BlockProposerRequest::ListForInclusion {
                 current_instant,
                 past_blocks,
                 responder: _,

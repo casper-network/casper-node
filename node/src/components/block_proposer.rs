@@ -1,6 +1,6 @@
-//! Deploy buffer.
+//! Block proposer.
 //!
-//! The deploy buffer stores deploy hashes in memory, tracking their suitability for inclusion into
+//! The block proposer stores deploy hashes in memory, tracking their suitability for inclusion into
 //! a new block. Upon request, it returns a list of candidates that can be included.
 
 use std::{
@@ -19,19 +19,19 @@ use tracing::{error, info, trace};
 use crate::{
     components::{chainspec_loader::DeployConfig, storage::Storage, Component},
     effect::{
-        requests::{DeployBufferRequest, StorageRequest},
+        requests::{BlockProposerRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{CryptoRngCore, DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
 };
 
-const DEPLOY_BUFFER_PRUNE_INTERVAL: Duration = Duration::from_secs(10);
+const PRUNE_INTERVAL: Duration = Duration::from_secs(10);
 
-/// An event for when using the deploy buffer as a component.
+/// An event for when using the block proposer as a component.
 #[derive(Debug, From)]
 pub enum Event {
     #[from]
-    Request(DeployBufferRequest),
+    Request(BlockProposerRequest),
     /// A new deploy should be buffered.
     Buffer {
         hash: DeployHash,
@@ -45,7 +45,7 @@ pub enum Event {
     FinalizedProtoBlock(ProtoBlock),
     /// A proto block has been orphaned. Its deploys should be re-proposed.
     OrphanedProtoBlock(ProtoBlock),
-    /// The result of the `DeployBuffer` getting the chainspec from the storage component.
+    /// The result of the `BlockProposer` getting the chainspec from the storage component.
     GetChainspecResult {
         maybe_deploy_config: Box<Option<DeployConfig>>,
         chainspec_version: Version,
@@ -98,7 +98,7 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Default, Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct DeployBufferState {
+pub(crate) struct BlockProposerState {
     pending: DeployCollection,
     proposed: ProtoBlockCollection,
     finalized: ProtoBlockCollection,
@@ -108,12 +108,13 @@ pub(crate) struct DeployBufferState {
     chainspecs: HashMap<Version, DeployConfig>,
 }
 
-impl DeployBufferState {
+impl BlockProposerState {
     /// For a fresh node with no existing state
     pub(crate) fn with_finalized_blocks(
         finalized: ProtoBlockCollection,
         current_instant: Timestamp,
     ) -> Self {
+        let mut finalized = finalized;
         let _ = prune::prune_blocks(&mut finalized, current_instant);
         Self {
             finalized,
@@ -124,11 +125,12 @@ impl DeployBufferState {
     // When deserialized, we will update the instance with finalized blocks from the linear chain
     pub(crate) fn update_finalized_blocks(&mut self, finalized: ProtoBlockCollection, current_instant: Timestamp) {
         self.prune(current_instant);
+        let mut finalized = finalized;
         let _ = prune::prune_blocks(&mut finalized, current_instant);
         self.finalized.extend(finalized);
     }
 
-    /// Prunes expired deploy information from the DeployBufferState, returns the total deploys pruned
+    /// Prunes expired deploy information from the BlockProposerState, returns the total deploys pruned
     pub(crate) fn prune(&mut self, current_instant: Timestamp) -> usize {
         let pending = prune::prune_deploys(&mut self.pending, current_instant);
         let proposed = prune::prune_blocks(&mut self.proposed, current_instant);
@@ -163,42 +165,42 @@ mod prune {
 }
 
 
-/// Deploy buffer.
+/// Block proposer.
 #[derive(DataSize, Debug, Clone)]
-pub(crate) struct DeployBuffer {
-    state: DeployBufferState,
+pub(crate) struct BlockProposer {
+    state: BlockProposerState,
     #[data_size(skip)]
-    metrics: DeployBufferMetrics,
+    metrics: BlockProposerMetrics,
 }
 
-impl DeployBuffer {
-    /// Creates a new, empty deploy buffer instance.
+impl BlockProposer {
+    /// Creates a new, block proposer instance with the provided internal state.
     pub(crate) fn new<REv>(
         registry: Registry,
         effect_builder: EffectBuilder<REv>,
-        state: DeployBufferState,
+        state: BlockProposerState,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
         REv: ReactorEventT,
     {
         let effects = effect_builder
-            .set_timeout(DEPLOY_BUFFER_PRUNE_INTERVAL)
+            .set_timeout(PRUNE_INTERVAL)
             .event(|_| Event::BufferPrune);
 
-        let metrics = DeployBufferMetrics::new(registry)?;
-        let this = DeployBuffer {
+        let metrics = BlockProposerMetrics::new(registry)?;
+        let this = BlockProposer {
             metrics,
             state,
         };
         Ok((this, effects))
     }
 
-    /// Get the serializable state from this `DeployBuffer` instance.
-    pub(crate) fn get_state(&self) -> &DeployBufferState {
+    /// Get the serializable state from this `BlockProposer` instance.
+    pub(crate) fn get_state(&self) -> &BlockProposerState {
         &self.state
     }
 
-    /// Adds a deploy to the deploy buffer.
+    /// Adds a deploy to the block proposer.
     ///
     /// Returns `false` if the deploy has been rejected.
     fn add_deploy(&mut self, current_instant: Timestamp, hash: DeployHash, header: DeployHeader) {
@@ -331,7 +333,7 @@ impl DeployBuffer {
         ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
     }
 
-    /// Notifies the deploy buffer of a new block that has been proposed, so that the block's
+    /// Notifies the block proposer of a new block that has been proposed, so that the block's
     /// deploys are not returned again by `remaining_deploys`.
     fn added_block<I>(&mut self, block: ProtoBlockHash, deploys: I)
     where
@@ -354,7 +356,7 @@ impl DeployBuffer {
         self.state.proposed.insert(block, deploy_map);
     }
 
-    /// Notifies the deploy buffer that a block has been finalized.
+    /// Notifies the block proposer that a block has been finalized.
     fn finalized_block(&mut self, block: ProtoBlockHash) {
         if let Some(deploys) = self.state.proposed.remove(&block) {
             self.state
@@ -367,7 +369,7 @@ impl DeployBuffer {
         }
     }
 
-    /// Notifies the deploy buffer that a block has been orphaned.
+    /// Notifies the block proposer that a block has been orphaned.
     fn orphaned_block(&mut self, block: ProtoBlockHash) {
         if let Some(deploys) = self.state.proposed.remove(&block) {
             self.state.pending.extend(deploys);
@@ -377,13 +379,13 @@ impl DeployBuffer {
         }
     }
 
-    /// Prunes expired deploy information from the DeployBuffer, returns the total deploys pruned
+    /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned
     fn prune(&mut self, current_instant: Timestamp) -> usize {
         self.state.prune(current_instant)
     }
 }
 
-impl<REv> Component<REv> for DeployBuffer
+impl<REv> Component<REv> for BlockProposer
 where
     REv: ReactorEventT,
 {
@@ -403,10 +405,10 @@ where
                 let pruned = self.prune(Timestamp::now());
                 log::debug!("Pruned {} deploys from buffer", pruned);
                 return effect_builder
-                    .set_timeout(DEPLOY_BUFFER_PRUNE_INTERVAL)
+                    .set_timeout(PRUNE_INTERVAL)
                     .event(|_| Event::BufferPrune);
             }
-            Event::Request(DeployBufferRequest::ListForInclusion {
+            Event::Request(BlockProposerRequest::ListForInclusion {
                 current_instant,
                 past_blocks,
                 responder,
@@ -441,25 +443,25 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct DeployBufferMetrics {
+pub struct BlockProposerMetrics {
     /// Amount of pending deploys
     pending_deploys: IntGauge,
     /// registry Component.
     registry: Registry,
 }
 
-impl DeployBufferMetrics {
+impl BlockProposerMetrics {
     pub fn new(registry: Registry) -> Result<Self, prometheus::Error> {
         let pending_deploys = IntGauge::new("pending_deploy", "amount of pending deploys")?;
         registry.register(Box::new(pending_deploys.clone()))?;
-        Ok(DeployBufferMetrics {
+        Ok(BlockProposerMetrics {
             pending_deploys,
             registry,
         })
     }
 }
 
-impl Drop for DeployBufferMetrics {
+impl Drop for BlockProposerMetrics {
     fn drop(&mut self) {
         self.registry
             .unregister(Box::new(self.pending_deploys.clone()))
@@ -516,13 +518,13 @@ mod tests {
         (*deploy.id(), deploy.take_header())
     }
 
-    fn create_test_buffer() -> (DeployBuffer, Effects<Event>) {
+    fn create_test_buffer() -> (BlockProposer, Effects<Event>) {
         let registry = Registry::new();
         let scheduler = utils::leak(Scheduler::<Event>::new(QueueKind::weights()));
         let event_queue = EventQueueHandle::new(&scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
-        DeployBuffer::new(registry, effect_builder, DeployBufferState::default())
-            .expect("Failure to create a new Deploy Buffer")
+        BlockProposer::new(registry, effect_builder, BlockProposerState::default())
+            .expect("Failure to create a new Block Proposer")
     }
 
     impl From<StorageRequest<Storage>> for Event {

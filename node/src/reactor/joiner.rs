@@ -35,7 +35,7 @@ use crate::{
         },
         requests::{
             BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
-            DeployBufferRequest, FetcherRequest, LinearChainRequest, NetworkRequest,
+            BlockProposerRequest, FetcherRequest, LinearChainRequest, NetworkRequest,
             StorageRequest,
         },
         EffectBuilder, Effects,
@@ -129,9 +129,9 @@ pub enum Event {
     #[from]
     BlockExecutorRequest(BlockExecutorRequest),
 
-    /// Deploy buffer request.
+    /// Block proposer request.
     #[from]
-    DeployBufferRequest(DeployBufferRequest),
+    BlockProposerRequest(BlockProposerRequest),
 
     /// Proto block validator request.
     #[from]
@@ -225,7 +225,7 @@ impl Display for Event {
             Event::BlockExecutorRequest(request) => {
                 write!(f, "block executor request: {}", request)
             }
-            Event::DeployBufferRequest(req) => write!(f, "deploy buffer request: {}", req),
+            Event::BlockProposerRequest(req) => write!(f, "block proposer request: {}", req),
             Event::ContractRuntime(event) => write!(f, "contract runtime event: {}", event),
             Event::LinearChain(event) => write!(f, "linear chain event: {}", event),
             Event::BlockExecutorAnnouncement(announcement) => {
@@ -603,10 +603,10 @@ impl reactor::Reactor for Reactor {
                     Effects::new()
                 }
             },
-            Event::DeployBufferRequest(request) => {
+            Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.
-                error!("Ignoring deploy buffer request {}", request);
+                error!("Ignoring block proposer request {}", request);
                 Effects::new()
             }
             Event::ProtoBlockValidatorRequest(request) => {
@@ -649,7 +649,8 @@ impl Reactor {
     /// socket.
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
         let linear_chain = self.linear_chain.linear_chain();
-        let finalized_deploys = self.storage.get_finalized_deploys(linear_chain).await;
+        let latest_block = linear_chain.last().cloned();
+        let block_proposer_state = self.storage.get_block_proposer_state(latest_block).await;
         
         let (net, config) = (
             self.net,
@@ -661,7 +662,7 @@ impl Reactor {
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
                 linear_chain: linear_chain.clone(),
-                deploy_buffer_state,
+                block_proposer_state,
             },
         );
         net.finalize().await;
