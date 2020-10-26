@@ -72,6 +72,10 @@ impl<C: Context> FinalityDetector<C> {
                 None
             };
 
+            trace!(
+                %block.height,
+                "Depth of the last finalized block"
+            );
             Some(FinalizedBlock {
                 value: block.value.clone(),
                 timestamp: vote.timestamp,
