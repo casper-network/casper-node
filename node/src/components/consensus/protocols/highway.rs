@@ -77,9 +77,12 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         &mut self,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
+        params: Params,
         timestamp: Timestamp,
     ) -> Vec<CpResult<I, C>> {
-        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
+        let av_effects = self
+            .highway
+            .activate_validator(our_id, secret, params, timestamp);
         self.process_av_effects(av_effects)
     }
 
@@ -253,7 +256,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         // It's important to do it before the vertex is added to the state - this way if the last
         // round has finished, we now have all the vertices from that round in the state, and no
         // newer ones.
-        if vv.inner().value().is_some() {
+        if vv.is_proposal() {
             // unwraps are safe, as if value is `Some`, this is already a vote
             self.round_success_meter.new_proposal(
                 vv.inner().vote_hash().unwrap(),

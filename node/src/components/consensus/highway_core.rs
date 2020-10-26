@@ -42,4 +42,4 @@ mod evidence;
 mod highway_testing;
 mod state;
 
-pub(crate) use state::{State, Weight};
+pub(crate) use state::{round_id, State, Weight};

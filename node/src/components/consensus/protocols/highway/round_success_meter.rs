@@ -4,15 +4,25 @@ use datasize::DataSize;
 
 use crate::{
     components::consensus::{
-        highway_core::{finality_detector::FinalityDetector, State, Weight},
+        highway_core::{finality_detector::FinalityDetector, round_id, State, Weight},
         traits::Context,
     },
     types::Timestamp,
 };
 
+// The number of most recent rounds we will be keeping track of.
 const NUM_ROUNDS_TO_CONSIDER: usize = 40;
+// The maximum number of failures allowed among NUM_ROUNDS_TO_CONSIDER latest rounds, with which we
+// won't increase our round length. Exceeding this threshold will mean that we should slow down.
 const MAX_FAILED_ROUNDS: usize = 10;
-const ACCELERATION_PARAMETER: u64 = 1000;
+// We will try to accelerate (decrease our round exponent) every `ACCELERATION_PARAMETER` rounds if
+// we have few enough failures.
+const ACCELERATION_PARAMETER: u64 = 40;
+// The maximum number of failures with which we will attempt to accelerate (decrease the round
+// exponent).
+const MAX_FAILURES_FOR_ACCELERATION: usize = 3;
+// The FTT, as a percentage, which we will use for looking for a summit in order to determine a
+// proposal's finality.
 const THRESHOLD: u64 = 1;
 
 #[derive(DataSize, Debug)]
@@ -27,30 +37,24 @@ where
     proposals: Vec<C::Hash>,
     min_round_exp: u8,
     current_round_exp: u8,
-    current_round_length: u64,
 }
 
 impl<C: Context> RoundSuccessMeter<C> {
     pub fn new(round_exp: u8, min_round_exp: u8, timestamp: Timestamp) -> Self {
-        let current_round_length = 1u64 << round_exp;
-        let current_round_index = timestamp.millis() / current_round_length;
-        let current_round_id = current_round_index * current_round_length;
+        let current_round_id = round_id(timestamp, round_exp).millis();
         Self {
             rounds: VecDeque::with_capacity(NUM_ROUNDS_TO_CONSIDER),
             current_round_id,
             proposals: Vec::new(),
             min_round_exp,
             current_round_exp: round_exp,
-            current_round_length,
         }
     }
 
     fn change_exponent(&mut self, new_exp: u8, timestamp: Timestamp) {
         self.rounds = VecDeque::with_capacity(NUM_ROUNDS_TO_CONSIDER);
         self.current_round_exp = new_exp;
-        self.current_round_length = 1u64 << new_exp;
-        let round_index = timestamp.millis() / self.current_round_length;
-        self.current_round_id = round_index * self.current_round_length;
+        self.current_round_id = round_id(timestamp, new_exp).millis();
         self.proposals = Vec::new();
     }
 
@@ -68,9 +72,7 @@ impl<C: Context> RoundSuccessMeter<C> {
     /// be successful.
     pub fn new_proposal(&mut self, proposal_h: C::Hash, timestamp: Timestamp) {
         // only add proposals from within the current round
-        if timestamp.millis() >= self.current_round_id
-            && timestamp.millis() - self.current_round_id < self.current_round_length
-        {
+        if round_id(timestamp, self.current_round_exp).millis() == self.current_round_id {
             self.proposals.push(proposal_h);
         }
     }
@@ -86,14 +88,14 @@ impl<C: Context> RoundSuccessMeter<C> {
     pub fn calculate_new_exponent(&mut self, state: &State<C>) -> u8 {
         let now = Timestamp::now();
         // if the round hasn't finished, just return whatever we have now
-        if now.millis().saturating_sub(self.current_round_id) < self.current_round_length {
+        if round_id(now, self.current_round_exp).millis() <= self.current_round_id {
             return self.new_exponent();
         }
 
-        let current_round_index = self.current_round_id / self.current_round_length;
-        let new_round_index = now.millis() / self.current_round_length;
+        let current_round_index = self.current_round_id >> self.current_round_exp;
+        let new_round_index = now.millis() >> self.current_round_exp;
 
-        if mem::replace(&mut self.proposals, Vec::new())
+        if mem::take(&mut self.proposals)
             .into_iter()
             .any(|proposal| self.check_proposals_success(state, &proposal))
         {
@@ -108,7 +110,7 @@ impl<C: Context> RoundSuccessMeter<C> {
             self.rounds.push_front(false);
         }
 
-        self.current_round_id = new_round_index * self.current_round_length;
+        self.current_round_id = new_round_index << self.current_round_exp;
 
         self.clean_old_rounds();
 
@@ -132,11 +134,14 @@ impl<C: Context> RoundSuccessMeter<C> {
     }
 
     fn new_exponent(&self) -> u8 {
-        let current_round_index = self.current_round_id / self.current_round_length;
+        let current_round_index = self.current_round_id >> self.current_round_exp;
         if self.count_failures() > MAX_FAILED_ROUNDS {
             self.current_round_exp + 1
         } else if current_round_index % ACCELERATION_PARAMETER == 0
             && self.current_round_exp > self.min_round_exp
+            // we will only accelerate if we collected data about enough rounds
+            && self.rounds.len() == NUM_ROUNDS_TO_CONSIDER
+            && self.count_failures() < MAX_FAILURES_FOR_ACCELERATION
         {
             self.current_round_exp - 1
         } else {

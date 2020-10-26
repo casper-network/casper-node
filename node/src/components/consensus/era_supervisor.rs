@@ -479,7 +479,7 @@ where
         let results = if should_activate {
             info!(era = era_id.0, "start voting");
             let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
-            highway.activate_validator(our_id, secret, timestamp.max(start_time))
+            highway.activate_validator(our_id, secret, params, timestamp)
         } else {
             info!(era = era_id.0, "not voting");
             if self.node_start_time >= start_time {

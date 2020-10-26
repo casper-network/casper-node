@@ -82,6 +82,10 @@ impl<C: Context> ValidVertex<C> {
     pub(crate) fn inner(&self) -> &Vertex<C> {
         &self.0
     }
+
+    pub(crate) fn is_proposal(&self) -> bool {
+        self.0.value().is_some()
+    }
 }
 
 /// A result indicating whether and how a requested dependency is satisfied.
@@ -146,7 +150,8 @@ impl<C: Context> Highway<C> {
         &mut self,
         id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        start_time: Timestamp,
+        params: Params,
+        current_time: Timestamp,
     ) -> Vec<Effect<C>> {
         assert!(
             self.active_validator.is_none(),
@@ -156,6 +161,7 @@ impl<C: Context> Highway<C> {
             .validators
             .get_index(&id)
             .expect("missing own validator ID");
+        let start_time = current_time.max(params.start_timestamp());
         let (av, effects) = ActiveValidator::new(idx, secret, start_time, &self.state);
         self.active_validator = Some(av);
         effects

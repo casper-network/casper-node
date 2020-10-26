@@ -74,7 +74,7 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
-        timestamp: Timestamp,
+        start_time: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
         let mut av = ActiveValidator {
@@ -84,7 +84,7 @@ impl<C: Context> ActiveValidator<C> {
             next_timer: Timestamp::zero(),
             next_proposal: None,
         };
-        let effects = av.schedule_timer(timestamp, state);
+        let effects = av.schedule_timer(start_time, state);
         (av, effects)
     }
 

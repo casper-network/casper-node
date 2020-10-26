@@ -1,7 +1,7 @@
 use super::{TimeDiff, Timestamp};
 
 /// Protocol parameters for Highway.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct Params {
     seed: u64,
     block_reward: u64,
