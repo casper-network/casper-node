@@ -11,6 +11,7 @@ enum DisplayOrder {
     Verbose,
     NodeAddress,
     RpcId,
+    ParameterType,
     BlockParameter,
 }
 
@@ -31,6 +32,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
+            .arg(common::block_parameter_type::arg(DisplayOrder::ParameterType as usize))
             .arg(common::block_parameter::arg(DisplayOrder::BlockParameter as usize))
             
     }
@@ -39,8 +41,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
         let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
         let rpc_id = common::rpc_id::get(matches);
-        let maybe_block_parameter = common::block_parameter::get(matches);
-
+        let parameter_type = common::block_parameter_type::get(matches);
+        let maybe_block_parameter = if !parameter_type {
+            common::block_parameter::get_hash(matches)
+        } else {
+            common::block_parameter::get_height(matches)
+        };
         let response = match maybe_block_parameter {
             Some(block_parameter) => {
                 let params = GetBlockParams { block_parameter };
