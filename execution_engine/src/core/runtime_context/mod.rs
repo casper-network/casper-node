@@ -761,7 +761,7 @@ where
 
     fn metered_add_gs_unsafe(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
         let value_bytes_count = value.serialized_length();
-        self.charge_storage_gas(value_bytes_count)?;
+        self.charge_gas_storage(value_bytes_count)?;
 
         match self
             .tracking_copy
@@ -977,20 +977,14 @@ where
         match prev.checked_add(amount) {
             // gas charge overflow protection
             None => return Err(Error::GasLimit),
-            Some(val) if val > self.gas_limit => {
-                eprintln!(
-                    "amount={} gas limit {}/{} phase {:?}",
-                    amount, self.gas_counter, self.gas_limit, self.phase
-                );
-                return Err(Error::GasLimit);
-            }
+            Some(val) if val > self.gas_limit => return Err(Error::GasLimit),
             Some(val) => self.set_gas_counter(val),
         }
         Ok(())
     }
 
     /// Charges gas for specified amount of bytes used.
-    fn charge_storage_gas(&mut self, bytes_count: usize) -> Result<(), Error> {
+    fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
         let storage_costs = self.protocol_data().wasm_config().storage_costs();
 
         let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
@@ -1008,7 +1002,7 @@ where
 
         // Charge for amount as measured by serialized length
         let bytes_count = stored_value.serialized_length();
-        self.charge_storage_gas(bytes_count)?;
+        self.charge_gas_storage(bytes_count)?;
 
         self.tracking_copy
             .borrow_mut()
