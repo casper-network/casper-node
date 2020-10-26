@@ -2,7 +2,7 @@
 
 get_help() {
   echo -e "Usage: $0 --repo-name <NAME> --package-name <PACKAGE_NAME> [--package-version <VERSION>]\n"
-  echo -e "Example: $0 --repo-name debian --package-name casper-node\n"
+  echo -e "Example: $0 --repo-name debian --package-name [casper-node|casper-client]\n"
   echo "Note: If --package-version is not set DRONE_TAG will be used."
 }
 
@@ -137,7 +137,8 @@ fi
 
 
 if [ -d "$UPLOAD_DIR" ]; then
-  cd $UPLOAD_DIR
+  DEB_FILE="${BINTRAY_PACKAGE_NAME}_${PACKAGE_VERSION}-${DRONE_BUILD_NUMBER}_amd64.deb"
+  DEB_FILE_PATH="$UPLOAD_DIR/$DEB_FILE"
 else
   echo "[ERROR] Not such dir: $UPLOAD_DIR"
   exit 1
@@ -146,13 +147,18 @@ fi
 # allow overwrite version for test repo
 if [ "$BINTRAY_REPO_NAME" == "casper-debian-tests" ]; then
   echo "[INFO] Setting override=1 for the test repo: $BINTRAY_REPO_NAME"
-  export BINTRAY_UPLOAD_URL="$API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/{}?override=1"
+  export BINTRAY_UPLOAD_URL="$API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/$DEB_FILE?override=1"
 else
-  export BINTRAY_UPLOAD_URL="$API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/{}"
+  export BINTRAY_UPLOAD_URL="$API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/$DEB_FILE"
 fi
 
-echo "Uploading file to bintray:${PACKAGE_VERSION} ..."
-echo -e "\nDEBIAN" && find . -maxdepth 1 -type f -iregex ".*casper-node.*\\.deb" -printf "%f\n" | xargs -I {} sh -c "echo Attempting to upload [{}] && curl -T {} -u$BINTRAY_USER:$BINTRAY_API_KEY $BINTRAY_UPLOAD_URL && echo"
+echo "Uploading file ${DEB_FILE_PATH} to bintray:${PACKAGE_VERSION} ..."
+if [ -f "$DEB_FILE_PATH" ]; then
+  curl -T $DEB_FILE_PATH -u$BINTRAY_USER:$BINTRAY_API_KEY $BINTRAY_UPLOAD_URL
+else
+  echo "[ERROR] Unable to find $DEB_FILE_PATH in $(pwd)"
+  exit 1
+fi
 
 sleep 5 && echo -e "\nPublishing CL Packages on bintray..."
 curl -s -X POST -u$BINTRAY_USER:$BINTRAY_API_KEY $API_URL/content/$BINTRAY_REPO_URL/${PACKAGE_VERSION}/publish
@@ -175,14 +181,14 @@ DEB_FILE_NAME=$(cat $TEMP_DEB_FILE | jq -r 'nth(1; .[] | select (.version == "'$
 
 DEB_ASC_FILE_NAME=$(cat $TEMP_DEB_FILE |  jq -r 'nth(0; .[] | select (.version == "'${PACKAGE_VERSION}'") ) | .path' )
 
-if [[ "$DEB_FILE_NAME" =~ casper-node.*.deb$ ]]; then
+if [[ "$DEB_FILE_NAME" =~ $BINTRAY_PACKAGE_NAME.*.deb$ ]]; then
   echo "Found $DEB_FILE_NAME on bintray";
 else
   echo "[ERRROR] Unable to find uploaded packages on bintray - missing $DEB_FILE_NAME"
   exit 1
 fi
 
-if [[ "$DEB_ASC_FILE_NAME" =~ casper-node.*.deb.asc$ ]]; then
+if [[ "$DEB_ASC_FILE_NAME" =~ $BINTRAY_PACKAGE_NAME.*.deb.asc$ ]]; then
   echo "Found $DEB_ASC_FILE_NAME on bintray";
 else
   echo "[ERRROR] Unable to find uploaded packages on bintray - missing $DEB_ASC_FILE_NAME"

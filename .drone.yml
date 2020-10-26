@@ -113,12 +113,41 @@ steps:
   depends_on:
   - cargo-test
 
+- name: build-wasm-package
+  <<: *buildenv
+  commands:
+    - "./build_wasm_package.sh"
+  depends_on:
+    - build-deb
+
+- name: push-wasm-package-to-s3-test
+  image: plugins/s3
+  settings:
+    bucket: casperlabs-cicd-artifacts
+    region: us-east-2
+    access_key:
+      from_secret: s3_artifacts_aws_access_key_id
+    secret_key:
+      from_secret: s3_artifacts_aws_secret_access_key
+    source: /drone/src/s3_artifacts/**/*
+    target: /wasm_contracts
+    strip_prefix: /drone/src/s3_artifacts/
+  when:
+    branch:
+    - master
+    - "release-*"
+    event:
+    - push  
+  depends_on:
+    - build-deb
+
 # we want to publish to the test repo, only when code is pushed to master or release-* branch. 
 # bors should make sure, that it has passed on staging or trying branches
 - name: publish-test-bintray
   <<: *buildenv
   commands:
   - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
+  - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -222,6 +251,7 @@ steps:
   <<: *buildenv
   commands:
   - "./upload.sh --repo-name debian --package-name casper-node"
+  - "./upload.sh --repo-name debian --package-name casper-client"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
