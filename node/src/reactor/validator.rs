@@ -13,9 +13,10 @@ use std::fmt::{self, Debug, Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
+use casper_types::auction::EraId;
 use tracing::{debug, error, warn};
 
-use deploy_buffer::ProtoBlockCollection;
+use deploy_buffer::{DeployBufferState, ProtoBlockCollection};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -262,7 +263,7 @@ pub struct ValidatorInitConfig {
     pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) linear_chain: Vec<Block>,
-    pub(super) finalized_deploys: ProtoBlockCollection,
+    pub(super) deploy_buffer_state: DeployBufferState,
 }
 
 /// Validator node reactor.
@@ -291,6 +292,8 @@ pub struct Reactor {
 
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
+
+    last_era_id: EraId,
 }
 
 #[cfg(test)]
@@ -325,7 +328,7 @@ impl reactor::Reactor for Reactor {
             consensus,
             init_consensus_effects,
             linear_chain,
-            finalized_deploys,
+            deploy_buffer_state,
         } = config;
 
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
@@ -350,7 +353,7 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
         let (deploy_buffer, deploy_buffer_effects) =
-            DeployBuffer::new(registry.clone(), effect_builder, finalized_deploys)?;
+            DeployBuffer::new(registry.clone(), effect_builder, deploy_buffer_state)?;
         let mut effects = reactor::wrap_effects(Event::DeployBuffer, deploy_buffer_effects);
         // Post state hash is expected to be present.
         let genesis_state_root_hash = chainspec_loader
@@ -691,6 +694,14 @@ impl reactor::Reactor for Reactor {
                     });
                     effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 }
+
+                let last_era_id = self.last_era_id;
+                self.last_era_id = block.header().era_id().0;
+
+                if last_era_id < self.last_era_id {
+                    let deploy_buffer_serialized = self.deploy_buffer.serialize_state();
+                }
+
                 effects
             }
             Event::DeployGossiperAnnouncement(_ann) => {

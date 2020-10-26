@@ -650,6 +650,7 @@ impl Reactor {
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
         let linear_chain = self.linear_chain.linear_chain();
         let finalized_deploys = self.storage.get_finalized_deploys(linear_chain).await;
+        
         let (net, config) = (
             self.net,
             ValidatorInitConfig {
@@ -660,7 +661,7 @@ impl Reactor {
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
                 linear_chain: linear_chain.clone(),
-                finalized_deploys,
+                deploy_buffer_state,
             },
         );
         net.finalize().await;

@@ -27,22 +27,13 @@ use smallvec::{smallvec, SmallVec};
 use tokio::task;
 use tracing::{debug, error, warn};
 
-use crate::{
-    components::{
-        chainspec_loader::Chainspec, deploy_buffer::ProtoBlockCollection, small_network::NodeId,
+use crate::{components::{
+        chainspec_loader::Chainspec, small_network::NodeId,
         Component,
-    },
-    crypto::asymmetric_key::Signature,
-    effect::{
+    }, crypto::asymmetric_key::Signature, effect::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
-    },
-    protocol::Message,
-    types::{
-        json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, Item, ProtoBlockHash,
-    },
-    utils::WithDir,
-};
+    }, protocol::Message, types::{Block, CryptoRngCore, Deploy, Item, ProtoBlockHash, Timestamp, json_compatibility::ExecutionResult}, utils::WithDir};
 use block_height_store::BlockHeightStore;
 use chainspec_store::ChainspecStore;
 pub use config::Config;
@@ -56,6 +47,8 @@ use lmdb_block_height_store::LmdbBlockHeightStore;
 use lmdb_chainspec_store::LmdbChainspecStore;
 use lmdb_store::LmdbStore;
 use store::{DeployStore, Multiple, Store};
+
+use super::deploy_buffer::DeployBufferState;
 
 pub(crate) type Storage = LmdbStorage<Block, Deploy>;
 
@@ -145,13 +138,18 @@ impl<B: Value> Default for DeployMetadata<B> {
 impl LmdbStorage<Block, Deploy> {
     /// This method is intended to only be used by the joiner when transitioning to the validator
     /// state.
-    pub(crate) async fn get_finalized_deploys(
+    pub(crate) async fn get_deploy_buffer_state(
         &self,
-        linear_chain: &[Block],
-    ) -> ProtoBlockCollection {
+        block: &[Block],
+    ) -> DeployBufferState {
+
+        // TODO
+        // - load DeployBufferstate from storage
+
+        let now = Timestamp::now();
         let mut finalized = HashMap::new();
         let deploy_store = self.deploy_store();
-        for block in linear_chain.iter() {
+        for block in block.iter() {
             let deploy_store = deploy_store.clone();
             let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
             let block_hash =
@@ -168,7 +166,8 @@ impl LmdbStorage<Block, Deploy> {
                 .collect::<HashMap<_, _>>();
             finalized.insert(block_hash, deploys);
         }
-        finalized
+
+        DeployBufferState::with_finalized_blocks(finalized, Timestamp::now())
     }
 }
 

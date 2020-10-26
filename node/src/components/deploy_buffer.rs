@@ -13,6 +13,7 @@ use datasize::DataSize;
 use derive_more::From;
 use prometheus::{self, IntGauge, Registry};
 use semver::Version;
+use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace};
 
 use crate::{
@@ -96,9 +97,8 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
-/// Deploy buffer.
-#[derive(DataSize, Debug, Clone)]
-pub(crate) struct DeployBuffer {
+#[derive(DataSize, Default, Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct DeployBufferState {
     pending: DeployCollection,
     proposed: ProtoBlockCollection,
     finalized: ProtoBlockCollection,
@@ -106,6 +106,67 @@ pub(crate) struct DeployBuffer {
     // config.
     #[data_size(skip)]
     chainspecs: HashMap<Version, DeployConfig>,
+}
+
+impl DeployBufferState {
+    /// For a fresh node with no existing state
+    pub(crate) fn with_finalized_blocks(
+        finalized: ProtoBlockCollection,
+        current_instant: Timestamp,
+    ) -> Self {
+        let _ = prune::prune_blocks(&mut finalized, current_instant);
+        Self {
+            finalized,
+            ..Default::default()
+        }
+    }
+
+    // When deserialized, we will update the instance with finalized blocks from the linear chain
+    pub(crate) fn update_finalized_blocks(&mut self, finalized: ProtoBlockCollection, current_instant: Timestamp) {
+        self.prune(current_instant);
+        let _ = prune::prune_blocks(&mut finalized, current_instant);
+        self.finalized.extend(finalized);
+    }
+
+    /// Prunes expired deploy information from the DeployBufferState, returns the total deploys pruned
+    pub(crate) fn prune(&mut self, current_instant: Timestamp) -> usize {
+        let pending = prune::prune_deploys(&mut self.pending, current_instant);
+        let proposed = prune::prune_blocks(&mut self.proposed, current_instant);
+        let finalized = prune::prune_blocks(&mut self.finalized, current_instant);
+        pending + proposed + finalized
+    }
+}
+
+mod prune {
+    use super::*;
+        /// Prunes expired deploy information from an individual DeployCollection, returns the total
+        /// deploys pruned
+        pub(super) fn prune_deploys(deploys: &mut DeployCollection, current_instant: Timestamp) -> usize {
+            let initial_len = deploys.len();
+            deploys.retain(|_hash, header| !header.expired(current_instant));
+            initial_len - deploys.len()
+        }
+        /// Prunes expired deploy information from each ProtoBlockCollection, returns the total
+        /// deploys pruned
+        pub(super) fn prune_blocks(blocks: &mut ProtoBlockCollection, current_instant: Timestamp) -> usize {
+            let mut pruned = 0;
+            let mut remove = Vec::new();
+            for (block_hash, deploys) in blocks.iter_mut() {
+                pruned += prune_deploys(deploys, current_instant);
+                if deploys.is_empty() {
+                    remove.push(*block_hash);
+                }
+            }
+            blocks.retain(|k, _v| !remove.contains(&k));
+            pruned
+        }
+}
+
+
+/// Deploy buffer.
+#[derive(DataSize, Debug, Clone)]
+pub(crate) struct DeployBuffer {
+    state: DeployBufferState,
     #[data_size(skip)]
     metrics: DeployBufferMetrics,
 }
@@ -115,7 +176,7 @@ impl DeployBuffer {
     pub(crate) fn new<REv>(
         registry: Registry,
         effect_builder: EffectBuilder<REv>,
-        finalized: ProtoBlockCollection,
+        state: DeployBufferState,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
         REv: ReactorEventT,
@@ -124,18 +185,17 @@ impl DeployBuffer {
             .set_timeout(DEPLOY_BUFFER_PRUNE_INTERVAL)
             .event(|_| Event::BufferPrune);
 
-        let pending = DeployCollection::default();
-        let proposed = ProtoBlockCollection::default();
-        let chainspecs: HashMap<Version, DeployConfig> = HashMap::new();
         let metrics = DeployBufferMetrics::new(registry)?;
         let this = DeployBuffer {
-            pending,
-            proposed,
-            finalized,
-            chainspecs,
             metrics,
+            state,
         };
         Ok((this, effects))
+    }
+
+    /// Get the serializable state from this `DeployBuffer` instance.
+    pub(crate) fn get_state(&self) -> &DeployBufferState {
+        &self.state
     }
 
     /// Adds a deploy to the deploy buffer.
@@ -148,11 +208,12 @@ impl DeployBuffer {
         }
         // only add the deploy if it isn't contained in a finalized block
         if !self
+            .state
             .finalized
             .values()
             .any(|block| block.contains_key(&hash))
         {
-            self.pending.insert(hash, header);
+            self.state.pending.insert(hash, header);
             info!("added deploy {} to the buffer", hash);
         } else {
             info!("deploy {} rejected from the buffer", hash);
@@ -172,7 +233,7 @@ impl DeployBuffer {
     {
         // TODO - should the current protocol version be passed in here?
         let chainspec_version = Version::from((1, 0, 0));
-        let cached_chainspec = self.chainspecs.get(&chainspec_version).cloned();
+        let cached_chainspec = self.state.chainspecs.get(&chainspec_version).cloned();
         match cached_chainspec {
             Some(chainspec) => {
                 effect_builder
@@ -229,14 +290,15 @@ impl DeployBuffer {
     ) -> HashSet<DeployHash> {
         let past_deploys = past_blocks
             .iter()
-            .filter_map(|block_hash| self.proposed.get(block_hash))
-            .chain(self.finalized.values())
+            .filter_map(|block_hash| self.state.proposed.get(block_hash))
+            .chain(self.state.finalized.values())
             .flat_map(|deploys| deploys.keys())
             .collect::<HashSet<_>>();
 
         // deploys_to_return = all deploys in pending that aren't in finalized blocks or
         // proposed blocks from the set `past_blocks`
-        self.pending
+        self.state
+            .pending
             .iter()
             .filter(|&(hash, deploy)| {
                 self.is_deploy_valid(deploy, current_instant, &deploy_config, &past_deploys)
@@ -280,22 +342,25 @@ impl DeployBuffer {
         let deploy_map: HashMap<_, _> = deploys
             .into_iter()
             .filter_map(|deploy_hash| {
-                self.pending
+                self.state
+                    .pending
                     .get(&deploy_hash)
                     .map(|deploy| (deploy_hash, deploy.clone()))
             })
             .collect();
-        self.pending
+        self.state
+            .pending
             .retain(|deploy_hash, _| !deploy_map.contains_key(deploy_hash));
-        self.proposed.insert(block, deploy_map);
+        self.state.proposed.insert(block, deploy_map);
     }
 
     /// Notifies the deploy buffer that a block has been finalized.
     fn finalized_block(&mut self, block: ProtoBlockHash) {
-        if let Some(deploys) = self.proposed.remove(&block) {
-            self.pending
+        if let Some(deploys) = self.state.proposed.remove(&block) {
+            self.state
+                .pending
                 .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
-            self.finalized.insert(block, deploys);
+            self.state.finalized.insert(block, deploys);
         } else if !block.is_empty() {
             // TODO: Events are not guaranteed to be handled in order, so this could happen!
             error!("finalized block that hasn't been proposed!");
@@ -304,8 +369,8 @@ impl DeployBuffer {
 
     /// Notifies the deploy buffer that a block has been orphaned.
     fn orphaned_block(&mut self, block: ProtoBlockHash) {
-        if let Some(deploys) = self.proposed.remove(&block) {
-            self.pending.extend(deploys);
+        if let Some(deploys) = self.state.proposed.remove(&block) {
+            self.state.pending.extend(deploys);
         } else {
             // TODO: Events are not guaranteed to be handled in order, so this could happen!
             error!("orphaned block that hasn't been proposed!");
@@ -314,31 +379,7 @@ impl DeployBuffer {
 
     /// Prunes expired deploy information from the DeployBuffer, returns the total deploys pruned
     fn prune(&mut self, current_instant: Timestamp) -> usize {
-        /// Prunes expired deploy information from an individual DeployCollection, returns the total
-        /// deploys pruned
-        fn prune_deploys(deploys: &mut DeployCollection, current_instant: Timestamp) -> usize {
-            let initial_len = deploys.len();
-            deploys.retain(|_hash, header| !header.expired(current_instant));
-            initial_len - deploys.len()
-        }
-        /// Prunes expired deploy information from each ProtoBlockCollection, returns the total
-        /// deploys pruned
-        fn prune_blocks(blocks: &mut ProtoBlockCollection, current_instant: Timestamp) -> usize {
-            let mut pruned = 0;
-            let mut remove = Vec::new();
-            for (block_hash, deploys) in blocks.iter_mut() {
-                pruned += prune_deploys(deploys, current_instant);
-                if deploys.is_empty() {
-                    remove.push(*block_hash);
-                }
-            }
-            blocks.retain(|k, _v| !remove.contains(&k));
-            pruned
-        }
-        let collected = prune_deploys(&mut self.pending, current_instant);
-        let proposed = prune_blocks(&mut self.proposed, current_instant);
-        let finalized = prune_blocks(&mut self.finalized, current_instant);
-        collected + proposed + finalized
+        self.state.prune(current_instant)
     }
 }
 
@@ -354,7 +395,9 @@ where
         _rng: &mut dyn CryptoRngCore,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        self.metrics.pending_deploys.set(self.pending.len() as i64);
+        self.metrics
+            .pending_deploys
+            .set(self.state.pending.len() as i64);
         match event {
             Event::BufferPrune => {
                 let pruned = self.prune(Timestamp::now());
@@ -386,7 +429,9 @@ where
             } => {
                 let deploy_config = maybe_deploy_config.expect("should return chainspec");
                 // Update chainspec cache.
-                self.chainspecs.insert(chainspec_version, deploy_config);
+                self.state
+                    .chainspecs
+                    .insert(chainspec_version, deploy_config);
                 let deploys = self.remaining_deploys(deploy_config, current_instant, past_blocks);
                 return responder.respond(deploys).ignore();
             }
@@ -476,7 +521,7 @@ mod tests {
         let scheduler = utils::leak(Scheduler::<Event>::new(QueueKind::weights()));
         let event_queue = EventQueueHandle::new(&scheduler);
         let effect_builder = EffectBuilder::new(event_queue);
-        DeployBuffer::new(registry, effect_builder, HashMap::new())
+        DeployBuffer::new(registry, effect_builder, DeployBufferState::default())
             .expect("Failure to create a new Deploy Buffer")
     }
 
@@ -620,27 +665,27 @@ mod tests {
         // proposed => finalized
         buffer.finalized_block(block_hash1);
 
-        assert_eq!(buffer.pending.len(), 2);
-        assert_eq!(buffer.proposed.get(&block_hash2).unwrap().len(), 1);
-        assert_eq!(buffer.finalized.get(&block_hash1).unwrap().len(), 1);
+        assert_eq!(buffer.state.pending.len(), 2);
+        assert_eq!(buffer.state.proposed.get(&block_hash2).unwrap().len(), 1);
+        assert_eq!(buffer.state.finalized.get(&block_hash1).unwrap().len(), 1);
 
         // test for retained values
         let pruned = buffer.prune(test_time);
         assert_eq!(pruned, 0);
 
-        assert_eq!(buffer.pending.len(), 2);
-        assert_eq!(buffer.proposed.len(), 1);
-        assert_eq!(buffer.proposed.get(&block_hash2).unwrap().len(), 1);
-        assert_eq!(buffer.finalized.len(), 1);
-        assert_eq!(buffer.finalized.get(&block_hash1).unwrap().len(), 1);
+        assert_eq!(buffer.state.pending.len(), 2);
+        assert_eq!(buffer.state.proposed.len(), 1);
+        assert_eq!(buffer.state.proposed.get(&block_hash2).unwrap().len(), 1);
+        assert_eq!(buffer.state.finalized.len(), 1);
+        assert_eq!(buffer.state.finalized.get(&block_hash1).unwrap().len(), 1);
 
         // now move the clock to make some things expire
         let pruned = buffer.prune(expired_time);
         assert_eq!(pruned, 3);
 
-        assert_eq!(buffer.pending.len(), 1); // deploy4 is still valid
-        assert_eq!(buffer.proposed.len(), 0);
-        assert_eq!(buffer.finalized.len(), 0);
+        assert_eq!(buffer.state.pending.len(), 1); // deploy4 is still valid
+        assert_eq!(buffer.state.proposed.len(), 0);
+        assert_eq!(buffer.state.finalized.len(), 0);
     }
 
     #[test]
