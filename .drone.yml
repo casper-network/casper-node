@@ -113,14 +113,6 @@ steps:
   depends_on:
   - cargo-test
 
-- name: debug-step
-  <<: *buildenv
-  commands:
-    - "ls -al /drone/src/target/debian"
-    - "ls -alR /drone/src/target"
-  depends_on:
-    - build-deb
-
 # we want to publish to the test repo, only when code is pushed to master or release-* branch. 
 # bors should make sure, that it has passed on staging or trying branches
 - name: publish-test-bintray
