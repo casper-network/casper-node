@@ -12,10 +12,9 @@ use warp_json_rpc::Builder;
 
 use casper_execution_engine::{
     core::engine_state::{BalanceResult, QueryResult},
-    shared::stored_value,
     storage::protocol_data::ProtocolData,
 };
-use casper_types::{Key, ProtocolVersion, URef, U512};
+use casper_types::{bytesrepr::ToBytes, Key, ProtocolVersion, URef, U512};
 
 use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams, RpcWithParamsExt};
 use crate::{
@@ -47,6 +46,8 @@ pub struct GetItemResult {
     pub api_version: Version,
     /// The stored value.
     pub stored_value: StoredValue,
+    /// The merkle proof.
+    pub merkle_proof: String,
 }
 
 /// "state_get_item" RPC.
@@ -92,9 +93,10 @@ impl RpcWithParamsExt for GetItem {
                 )
                 .await;
 
-            // Extract the EE `StoredValue` from the result.
-            let ee_stored_value = match query_result {
-                Ok(QueryResult::Success(stored_value)) => stored_value,
+            // Extract the EE `(StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>)` from the
+            // result.
+            let (value, proof) = match query_result {
+                Ok(QueryResult::Success { value, proofs }) => (value, proofs),
                 Ok(query_result) => {
                     let error_msg = format!("state query failed: {:?}", query_result);
                     info!("{}", error_msg);
@@ -104,7 +106,7 @@ impl RpcWithParamsExt for GetItem {
                     ))?);
                 }
                 Err(error) => {
-                    let error_msg = format!("state query failed to execute: {}", error);
+                    let error_msg = format!("state query failed to execute: {:?}", error);
                     info!("{}", error_msg);
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::QueryFailedToExecute as i64,
@@ -113,20 +115,29 @@ impl RpcWithParamsExt for GetItem {
                 }
             };
 
-            // Return the result.
-            match StoredValue::try_from(&ee_stored_value) {
-                Ok(stored_value) => {
-                    let result = Self::ResponseResult {
-                        api_version: CLIENT_API_VERSION.clone(),
-                        stored_value,
-                    };
-                    Ok(response_builder.success(result)?)
-                }
+            let value_compat = match StoredValue::try_from(&*value) {
+                Ok(value_compat) => value_compat,
                 Err(error) => {
                     info!("failed to encode stored value: {}", error);
                     return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
                 }
-            }
+            };
+
+            let proof_bytes = match proof.to_bytes() {
+                Ok(proof_bytes) => proof_bytes,
+                Err(error) => {
+                    info!("failed to encode stored value: {}", error);
+                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
+                }
+            };
+
+            let result = Self::ResponseResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                stored_value: value_compat,
+                merkle_proof: hex::encode(proof_bytes),
+            };
+
+            Ok(response_builder.success(result)?)
         }
         .boxed()
     }
@@ -319,14 +330,12 @@ impl RpcWithParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let bids = {
-                if let Ok(QueryResult::Success(stored_value::StoredValue::CLValue(cl_value))) =
-                    query_result
-                {
-                    cl_value.into_t().ok()
-                } else {
-                    None
-                }
+            let bids = if let Ok(QueryResult::Success { value, .. }) = query_result {
+                value
+                    .as_cl_value()
+                    .and_then(|cl_value| cl_value.to_owned().into_t().ok())
+            } else {
+                None
             };
 
             let era_validators_result = effect_builder

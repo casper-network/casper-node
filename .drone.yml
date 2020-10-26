@@ -119,6 +119,7 @@ steps:
   <<: *buildenv
   commands:
   - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
+  - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -222,6 +223,7 @@ steps:
   <<: *buildenv
   commands:
   - "./upload.sh --repo-name debian --package-name casper-node"
+  - "./upload.sh --repo-name debian --package-name casper-client"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token

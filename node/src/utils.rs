@@ -13,6 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use datasize::DataSize;
 use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 use thiserror::Error;
@@ -138,7 +139,7 @@ pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
 /// With-directory context.
 ///
 /// Associates a type with a "working directory".
-#[derive(Clone, Debug)]
+#[derive(Clone, DataSize, Debug)]
 pub struct WithDir<T> {
     dir: PathBuf,
     value: T,
@@ -153,11 +154,24 @@ impl<T> WithDir<T> {
         }
     }
 
+    /// Returns a reference to the inner path.
+    pub(crate) fn dir(&self) -> &Path {
+        self.dir.as_ref()
+    }
+
     /// Deconstructs a with-directory context.
     pub(crate) fn into_parts(self) -> (PathBuf, T) {
         (self.dir, self.value)
     }
 
+    pub(crate) fn map_ref<U, F: FnOnce(&T) -> U>(&self, f: F) -> WithDir<U> {
+        WithDir {
+            dir: self.dir.clone(),
+            value: f(&self.value),
+        }
+    }
+
+    /// Get a reference to the inner value.
     pub(crate) fn value(&self) -> &T {
         &self.value
     }

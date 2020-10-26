@@ -7,6 +7,8 @@ use thiserror::Error;
 use casper_node::crypto::Error as CryptoError;
 use casper_types::{bytesrepr::Error as ToBytesError, UIntParseError, URefFromStrError};
 
+use crate::merkle_proofs::ValidateResponseError;
+
 /// Crate-wide Result type wrapper.
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
@@ -63,7 +65,7 @@ pub enum Error {
 
     /// Invalid response returned from the node.
     #[error("invalid response: {0:?}")]
-    InvalidResponse(JsonRpc),
+    InvalidRpcResponse(JsonRpc),
 
     /// Failed to send the request to the node.
     #[error("Failed sending {0:?}")]
@@ -88,6 +90,10 @@ pub enum Error {
     /// Invalid argument.
     #[error("Invalid argument {0}")]
     InvalidArgument(String),
+
+    /// Failed to validate response.
+    #[error("Invalid response {0}")]
+    InvalidResponse(#[from] ValidateResponseError),
 }
 
 impl From<URefFromStrError> for Error {

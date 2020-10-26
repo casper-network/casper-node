@@ -22,6 +22,7 @@ use casper_types::{bytesrepr::ToBytes, Key, RuntimeArgs, URef, U512};
 use crate::{
     deploy::{DeployExt, DeployParams, ListDeploys, SendDeploy, Transfer},
     error::{Error, Result},
+    merkle_proofs,
 };
 
 /// Target for a given transfer.
@@ -97,9 +98,11 @@ impl RpcCall {
         let params = GetItemParams {
             state_root_hash,
             key: key.to_formatted_string(),
-            path,
+            path: path.clone(),
         };
-        GetItem::request_with_map_params(self, params)
+        let response = GetItem::request_with_map_params(self, params)?;
+        merkle_proofs::validate_response(&response, &state_root_hash, &key, &path)?;
+        Ok(response)
     }
 
     pub(crate) fn get_state_root_hash(self, maybe_block_hash: &str) -> Result<JsonRpc> {
@@ -250,7 +253,7 @@ impl RpcCall {
         if self.verbose {
             println!("Invalid response returned");
         }
-        Err(Error::InvalidResponse(rpc_response))
+        Err(Error::InvalidRpcResponse(rpc_response))
     }
 }
 

@@ -29,7 +29,11 @@ where
     _phantom: PhantomData<(V, M)>,
 }
 
-impl<V: Value, M: Default + Send + Sync> LmdbStore<V, M> {
+impl<V, M> LmdbStore<V, M>
+where
+    V: Value,
+    M: Default + Send + Sync,
+{
     pub(crate) fn new<P: AsRef<Path>>(db_path: P, max_size: usize) -> Result<Self> {
         let env = Environment::new()
             .set_flags(EnvironmentFlags::NO_SUB_DIR)

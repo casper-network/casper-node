@@ -42,6 +42,7 @@ mod tests;
 
 use std::{
     collections::{HashMap, HashSet},
+    convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
@@ -697,6 +698,7 @@ where
     P: Serialize + DeserializeOwned + Clone + Debug + Display + Send + 'static,
 {
     type Event = Event<P>;
+    type ConstructionError = Infallible;
 
     #[allow(clippy::cognitive_complexity)]
     fn handle_event(

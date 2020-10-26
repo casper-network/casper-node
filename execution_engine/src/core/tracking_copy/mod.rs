@@ -11,6 +11,7 @@ use std::{
 };
 
 use linked_hash_map::LinkedHashMap;
+use thiserror::Error;
 
 use casper_types::{bytesrepr, CLType, CLValueError, Key};
 
@@ -20,17 +21,20 @@ use crate::{
     core::engine_state::{execution_effect::ExecutionEffect, op::Op},
     shared::{
         additive_map::AdditiveMap,
-        newtypes::CorrelationId,
+        newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
         transform::{self, Transform},
         TypeMismatch,
     },
-    storage::global_state::StateReader,
+    storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
 #[derive(Debug)]
 pub enum TrackingCopyQueryResult {
-    Success(StoredValue),
+    Success {
+        value: StoredValue,
+        proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
+    },
     ValueNotFound(String),
     CircularReference(String),
 }
@@ -345,20 +349,34 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     ) -> Result<TrackingCopyQueryResult, R::Error> {
         let mut query = Query::new(base_key, path);
 
+        let mut proofs = Vec::new();
+
         loop {
             if !query.visited_keys.insert(query.current_key) {
                 return Ok(query.into_circular_ref_result());
             }
-            let stored_value = match self.reader.read(correlation_id, &query.current_key)? {
+            let stored_value = match self
+                .reader
+                .read_with_proof(correlation_id, &query.current_key)?
+            {
                 None => {
                     return Ok(query.into_not_found_result("Failed to find base key"));
                 }
                 Some(stored_value) => stored_value,
             };
 
+            let value = stored_value.value().to_owned();
+
+            proofs.push(stored_value);
+
             if query.unvisited_names.is_empty() {
-                return Ok(TrackingCopyQueryResult::Success(stored_value));
+                return Ok(TrackingCopyQueryResult::Success { value, proofs });
             }
+
+            let stored_value: &StoredValue = proofs
+                .last()
+                .map(|r| r.value())
+                .expect("but we just pushed");
 
             match stored_value {
                 StoredValue::Account(account) => {
@@ -371,7 +389,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     }
                 }
                 StoredValue::CLValue(cl_value) if cl_value.cl_type() == &CLType::Key => {
-                    if let Ok(key) = cl_value.into_t::<Key>() {
+                    if let Ok(key) = cl_value.to_owned().into_t::<Key>() {
                         query.current_key = key.normalize();
                     } else {
                         return Ok(query.into_not_found_result("Failed to parse CLValue as Key"));
@@ -433,4 +451,96 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
             Ok(None)
         }
     }
+
+    fn read_with_proof(
+        &self,
+        correlation_id: CorrelationId,
+        key: &Key,
+    ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
+        self.reader.read_with_proof(correlation_id, key)
+    }
+}
+
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum ValidationError {
+    #[error("The path should not have a different length than the proof less one.")]
+    PathLengthDifferentThanProofLessOne,
+
+    #[error("The provided key does not match the key in the proof.")]
+    UnexpectedKey,
+
+    #[error("The provided value does not match the value in the proof.")]
+    UnexpectedValue,
+
+    #[error("The proof hash is invalid.")]
+    InvalidProofHash,
+
+    #[error("The path went cold.")]
+    PathCold,
+
+    #[error("Serialization error: {0}")]
+    BytesRepr(bytesrepr::Error),
+}
+
+impl From<bytesrepr::Error> for ValidationError {
+    fn from(error: bytesrepr::Error) -> Self {
+        Self::BytesRepr(error)
+    }
+}
+
+#[allow(unused)]
+pub fn validate_query_proof(
+    hash: &Blake2bHash,
+    proofs: &[TrieMerkleProof<Key, StoredValue>],
+    key: &Key,
+    path: &[String],
+    value: &StoredValue,
+) -> Result<(), ValidationError> {
+    if proofs.len() != path.len() + 1 {
+        return Err(ValidationError::PathLengthDifferentThanProofLessOne);
+    }
+
+    let mut proofs_iter = proofs.iter();
+
+    // length check above means we are safe to unwrap here
+    let first_proof = proofs_iter.next().unwrap();
+
+    if first_proof.key() != &key.normalize() {
+        return Err(ValidationError::UnexpectedKey);
+    }
+
+    if hash != &first_proof.compute_state_hash()? {
+        return Err(ValidationError::InvalidProofHash);
+    }
+
+    let mut proof_value = first_proof.value();
+
+    for (proof, path_component) in proofs_iter.zip(path.iter()) {
+        let named_keys = match proof_value {
+            StoredValue::Account(account) => account.named_keys(),
+            StoredValue::Contract(contract) => contract.named_keys(),
+            _ => return Err(ValidationError::PathCold),
+        };
+
+        let key = match named_keys.get(path_component) {
+            Some(key) => key,
+            None => return Err(ValidationError::PathCold),
+        };
+
+        if proof.key() != &key.normalize() {
+            return Err(ValidationError::UnexpectedKey);
+        }
+
+        if hash != &proof.compute_state_hash()? {
+            return Err(ValidationError::InvalidProofHash);
+        }
+
+        proof_value = proof.value();
+    }
+
+    if proof_value != value {
+        return Err(ValidationError::UnexpectedValue);
+    }
+
+    Ok(())
 }
