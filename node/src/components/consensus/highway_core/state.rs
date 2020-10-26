@@ -122,6 +122,8 @@ pub(crate) struct State<C: Context> {
     faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
+    /// Clock to track state function. 
+    clock: Clock,
 }
 
 impl<C: Context> State<C> {
@@ -152,6 +154,7 @@ impl<C: Context> State<C> {
             );
             panorama[*idx] = Observation::Faulty;
         }
+        let clock = Clock::new();
         State {
             params,
             weights,
@@ -160,6 +163,7 @@ impl<C: Context> State<C> {
             blocks: HashMap::new(),
             faults,
             panorama,
+            clock,
         }
     }
 
@@ -340,8 +344,7 @@ impl<C: Context> State<C> {
     /// children of the previously selected block (or from all blocks at height 0), until a block
     /// is reached that has no children with any votes.
     pub(crate) fn fork_choice<'a>(&'a self, pan: &Panorama<C>) -> Option<&'a C::Hash> {
-        let clock = Clock::new();
-        let start = clock.start();
+        let start = self.clock.start();
         // Collect all correct votes in a `Tallies` map, sorted by height.
         let to_entry = |(obs, w): (&Observation<C>, &Weight)| {
             let bhash = &self.vote(obs.correct()?).block;
@@ -355,8 +358,8 @@ impl<C: Context> State<C> {
             tallies = tallies.filter_descendants(height, bhash, self);
             // If there are no blocks left, `bhash` itself is the fork choice. Otherwise repeat.
             if tallies.is_empty() {
-                let end = clock.end();
-                let delta = clock.delta(start, end).as_nanos();
+                let end = self.clock.end();
+                let delta = self.clock.delta(start, end).as_nanos();
                 trace!(%delta,"Time taken for fork-choice to run");
                 return Some(bhash);
             }
