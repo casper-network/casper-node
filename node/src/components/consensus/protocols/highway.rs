@@ -256,16 +256,25 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         // It's important to do it before the vertex is added to the state - this way if the last
         // round has finished, we now have all the vertices from that round in the state, and no
         // newer ones.
+        let new_round_exp = self
+            .round_success_meter
+            .calculate_new_exponent(self.highway.state());
+        // If the vertex contains a proposal, register it in the success meter.
+        // It's important to do this _after_ the calculation above - otherwise we might try to
+        // register the proposal before the meter is aware that a new round has started, and it
+        // will reject the proposal.
         if vv.is_proposal() {
             // unwraps are safe, as if value is `Some`, this is already a vote
+            trace!(
+                "PROPOSAL now = {}, timestamp = {}",
+                Timestamp::now().millis(),
+                vv.inner().timestamp().unwrap().millis()
+            );
             self.round_success_meter.new_proposal(
                 vv.inner().vote_hash().unwrap(),
                 vv.inner().timestamp().unwrap(),
             );
         }
-        let new_round_exp = self
-            .round_success_meter
-            .calculate_new_exponent(self.highway.state());
         self.highway.set_round_exp(new_round_exp);
         let av_effects = self.highway.add_valid_vertex(vv.clone(), rng, now);
         let elapsed = start_time.elapsed();

@@ -1,6 +1,7 @@
 use std::{cmp::max, collections::VecDeque, mem};
 
 use datasize::DataSize;
+use tracing::trace;
 
 use crate::{
     components::consensus::{
@@ -73,7 +74,20 @@ impl<C: Context> RoundSuccessMeter<C> {
     pub fn new_proposal(&mut self, proposal_h: C::Hash, timestamp: Timestamp) {
         // only add proposals from within the current round
         if round_id(timestamp, self.current_round_exp).millis() == self.current_round_id {
+            trace!(
+                "Adding proposal for round {} at timestamp {}",
+                self.current_round_id,
+                timestamp.millis()
+            );
             self.proposals.push(proposal_h);
+        } else {
+            trace!(
+                "Trying to add proposal for a different round! round id = {}, \
+                proposal timestamp = {}, round exp = {}",
+                self.current_round_id,
+                timestamp.millis(),
+                self.current_round_exp
+            );
         }
     }
 
@@ -92,6 +106,7 @@ impl<C: Context> RoundSuccessMeter<C> {
             return self.new_exponent();
         }
 
+        trace!("Calculating exponent at round {}", self.current_round_id);
         let current_round_index = self.current_round_id >> self.current_round_exp;
         let new_round_index = now.millis() >> self.current_round_exp;
 
@@ -99,14 +114,17 @@ impl<C: Context> RoundSuccessMeter<C> {
             .into_iter()
             .any(|proposal| self.check_proposals_success(state, &proposal))
         {
+            trace!("Round succeeded.");
             self.rounds.push_front(true);
         } else {
+            trace!("Round failed.");
             self.rounds.push_front(false);
         }
 
         // if we're just switching rounds and more than a single round has passed, all the
         // rounds since the last registered round have failed
         for _ in 0..(new_round_index - current_round_index - 1) {
+            trace!("Round failed.");
             self.rounds.push_front(false);
         }
 
@@ -114,7 +132,16 @@ impl<C: Context> RoundSuccessMeter<C> {
 
         self.clean_old_rounds();
 
+        trace!(
+            %self.current_round_exp,
+            "{} failures among the last {} rounds.",
+            self.count_failures(),
+            self.rounds.len()
+        );
+
         let new_exp = self.new_exponent();
+
+        trace!("New exponent: {}", new_exp);
 
         if new_exp != self.current_round_exp {
             self.change_exponent(new_exp, now);
@@ -135,13 +162,14 @@ impl<C: Context> RoundSuccessMeter<C> {
 
     fn new_exponent(&self) -> u8 {
         let current_round_index = self.current_round_id >> self.current_round_exp;
-        if self.count_failures() > MAX_FAILED_ROUNDS {
+        let num_failures = self.count_failures();
+        if num_failures > MAX_FAILED_ROUNDS {
             self.current_round_exp + 1
         } else if current_round_index % ACCELERATION_PARAMETER == 0
             && self.current_round_exp > self.min_round_exp
             // we will only accelerate if we collected data about enough rounds
             && self.rounds.len() == NUM_ROUNDS_TO_CONSIDER
-            && self.count_failures() < MAX_FAILURES_FOR_ACCELERATION
+            && num_failures < MAX_FAILURES_FOR_ACCELERATION
         {
             self.current_round_exp - 1
         } else {
