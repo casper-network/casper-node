@@ -71,7 +71,7 @@ impl<C: Context> FinalityDetector<C> {
             } else {
                 None
             };
-
+            trace!(%block.height,"Height of the last finalized block");
             Some(FinalizedBlock {
                 value: block.value.clone(),
                 timestamp: vote.timestamp,
