@@ -15,9 +15,11 @@ fn on_fail_charge_test_helper<T>(
     success_cost: Gas,
     error_cost: Gas,
 ) -> ExecutionResult {
-    let _result = on_fail_charge!(f(), error_cost);
+    let transfers = Vec::default();
+    let _result = on_fail_charge!(f(), error_cost, transfers);
     ExecutionResult::Success {
         effect: Default::default(),
+        transfers,
         cost: success_cost,
     }
 }
@@ -45,18 +47,25 @@ fn on_fail_charge_err_laziness_test() {
 fn on_fail_charge_with_action() {
     let f = || {
         let input: Result<(), Error> = Err(Error::GasLimit);
-        on_fail_charge!(input, Gas::new(U512::from(456)), {
-            let mut effect = ExecutionEffect::default();
+        let transfers = Vec::default();
+        on_fail_charge!(
+            input,
+            Gas::new(U512::from(456)),
+            {
+                let mut effect = ExecutionEffect::default();
 
-            effect.ops.insert(Key::Hash([42u8; 32]), Op::Read);
-            effect
-                .transforms
-                .insert(Key::Hash([42u8; 32]), Transform::Identity);
+                effect.ops.insert(Key::Hash([42u8; 32]), Op::Read);
+                effect
+                    .transforms
+                    .insert(Key::Hash([42u8; 32]), Transform::Identity);
 
-            effect
-        });
+                effect
+            },
+            transfers
+        );
         ExecutionResult::Success {
             effect: Default::default(),
+            transfers: Vec::default(),
             cost: Gas::default(),
         }
     };

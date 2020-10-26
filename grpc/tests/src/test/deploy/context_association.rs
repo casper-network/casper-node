@@ -1,7 +1,7 @@
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_KEY,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 use casper_types::{
     runtime_args,
     system_contract_type::{AUCTION, MINT, PROOF_OF_STAKE},
-    RuntimeArgs, U512,
+    RuntimeArgs,
 };
 
 const SYSTEM_CONTRACT_HASHES_WASM: &str = "system_contract_hashes.wasm";
@@ -18,7 +18,7 @@ const ARG_AMOUNT: &str = "amount";
 #[ignore]
 #[test]
 fn should_put_system_contract_hashes_to_account_context() {
-    let payment_purse_amount = U512::from(10_000_000);
+    let payment_purse_amount = *DEFAULT_PAYMENT;
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let request = {

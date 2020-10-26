@@ -2,7 +2,7 @@ use std::process::Output;
 
 use assert_cmd::Command;
 use lazy_static::lazy_static;
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 const FAILURE_EXIT_CODE: i32 = 101;
 const SUCCESS_EXIT_CODE: i32 = 0;
@@ -12,7 +12,7 @@ const TURBO: &str = "turbo";
 lazy_static! {
     static ref WORKSPACE_PATH_ARG: String =
         format!("--workspace-path={}/../../", env!("CARGO_MANIFEST_DIR"));
-    static ref TEST_DIR: TempDir = TempDir::new("cargo_casper").unwrap();
+    static ref TEST_DIR: TempDir = tempfile::tempdir().unwrap();
 }
 
 #[test]

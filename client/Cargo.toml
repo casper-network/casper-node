@@ -19,6 +19,7 @@ name = "casper-client"
 path = "src/main.rs"
 
 [dependencies]
+base64 = "0.13.0"
 casper-execution-engine = { version = "0.7.0", path = "../execution_engine" }
 casper-node = { version = "1.5.0", path = "../node" }
 casper-types = { version = "0.6.0", path = "../types", features = ["std"] }

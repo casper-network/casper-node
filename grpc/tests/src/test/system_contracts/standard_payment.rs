@@ -3,18 +3,18 @@ use assert_matches::assert_matches;
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_ACCOUNT_KEY, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{genesis::POS_REWARDS_PURSE, Error, CONV_RATE, MAX_PAYMENT},
+        engine_state::{Error, CONV_RATE, MAX_PAYMENT},
         execution,
     },
     shared::{motes::Motes, transform::Transform},
 };
-use casper_types::{account::AccountHash, runtime_args, ApiError, Key, RuntimeArgs, URef, U512};
+use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
@@ -30,9 +30,9 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
 
     let exec_request = ExecuteRequestBuilder::standard(
-       *DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         TRANSFER_PURSE_TO_ACCOUNT_WASM,
-        runtime_args! { "target" =>account_1_account_hash, "amount" => U512::from(MAX_PAYMENT - 1) },
+        runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => *MAX_PAYMENT - U512::one() },
     )
     .build();
 
@@ -82,27 +82,32 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
 fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
 
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     let exec_request = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(1)})
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { "target" =>account_1_account_hash, "amount" => U512::from(1) },
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(1) },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(1)})
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.exec(exec_request).commit();
 
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
-        .commit();
+    let proposer_reward_modified_balance = builder.get_proposer_purse_balance();
+
+    let paid_transaction_fee = proposer_reward_modified_balance - proposer_reward_starting_balance;
 
     let modified_balance = builder.get_purse_balance(
         builder
@@ -110,25 +115,24 @@ fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
             .expect("should have account")
             .main_purse(),
     );
-    let reward_balance = get_pos_rewards_purse_balance(&builder);
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let expected_reward_balance: U512 = U512::from(MAX_PAYMENT);
+    let penalty_payment_amount: U512 = *MAX_PAYMENT;
 
     assert_eq!(
         modified_balance,
-        initial_balance - expected_reward_balance,
+        initial_balance - penalty_payment_amount,
         "modified balance is incorrect"
     );
 
     assert_eq!(
-        reward_balance, expected_reward_balance,
-        "reward balance is incorrect"
+        paid_transaction_fee, penalty_payment_amount,
+        "transaction fee is incorrect"
     );
 
     assert_eq!(
         initial_balance,
-        (modified_balance + reward_balance),
+        (modified_balance + paid_transaction_fee),
         "no net resources should be gained or lost post-distribution"
     );
 
@@ -138,12 +142,12 @@ fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
 
     let execution_result = utils::get_success_result(response);
     let error_message = format!(
-        "{}",
+        "{:?}",
         execution_result.as_error().expect("should have error")
     );
 
     assert_eq!(
-        error_message, "Insufficient payment",
+        error_message, "InsufficientPayment",
         "expected insufficient payment"
     );
 }
@@ -173,14 +177,15 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
-        .commit()
-        .finish();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder.exec(exec_request).commit().finish();
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let expected_reward_balance: U512 = U512::from(MAX_PAYMENT);
+    let expected_reward_balance = *MAX_PAYMENT;
 
     let modified_balance = builder.get_purse_balance(
         builder
@@ -188,7 +193,6 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
             .expect("should have account")
             .main_purse(),
     );
-    let reward_balance = get_pos_rewards_purse_balance(&builder);
 
     assert_eq!(
         modified_balance,
@@ -197,13 +201,13 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
     );
 
     assert_eq!(
-        reward_balance, expected_reward_balance,
-        "reward balance is incorrect"
+        transaction_fee, expected_reward_balance,
+        "transaction fee is incorrect"
     );
 
     assert_eq!(
         initial_balance,
-        (modified_balance + reward_balance),
+        (modified_balance + transaction_fee),
         "no net resources should be gained or lost post-distribution"
     );
 
@@ -213,12 +217,12 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
 
     let execution_result = utils::get_success_result(response);
     let error_message = format!(
-        "{}",
+        "{:?}",
         execution_result.as_error().expect("should have error")
     );
 
     assert_eq!(
-        error_message, "Insufficient payment",
+        error_message, "InsufficientPayment",
         "expected insufficient payment"
     );
 }
@@ -246,14 +250,15 @@ fn should_forward_payment_execution_runtime_error() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
-        .commit()
-        .finish();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder.exec(exec_request).commit().finish();
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let expected_reward_balance: U512 = U512::from(MAX_PAYMENT);
+    let expected_reward_balance = *MAX_PAYMENT;
 
     let modified_balance = builder.get_purse_balance(
         builder
@@ -261,7 +266,6 @@ fn should_forward_payment_execution_runtime_error() {
             .expect("should have account")
             .main_purse(),
     );
-    let reward_balance = get_pos_rewards_purse_balance(&builder);
 
     assert_eq!(
         modified_balance,
@@ -270,13 +274,13 @@ fn should_forward_payment_execution_runtime_error() {
     );
 
     assert_eq!(
-        reward_balance, expected_reward_balance,
-        "reward balance is incorrect"
+        transaction_fee, expected_reward_balance,
+        "transaction fee is incorrect"
     );
 
     assert_eq!(
         initial_balance,
-        (modified_balance + reward_balance),
+        (modified_balance + transaction_fee),
         "no net resources should be gained or lost post-distribution"
     );
 
@@ -315,14 +319,15 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
-        .commit()
-        .finish();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder.exec(exec_request).commit().finish();
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let expected_reward_balance: U512 = U512::from(MAX_PAYMENT);
+    let expected_reward_balance = *MAX_PAYMENT;
 
     let modified_balance = builder.get_purse_balance(
         builder
@@ -330,7 +335,6 @@ fn should_forward_payment_execution_gas_limit_error() {
             .expect("should have account")
             .main_purse(),
     );
-    let reward_balance = get_pos_rewards_purse_balance(&builder);
 
     assert_eq!(
         modified_balance,
@@ -339,13 +343,13 @@ fn should_forward_payment_execution_gas_limit_error() {
     );
 
     assert_eq!(
-        reward_balance, expected_reward_balance,
-        "reward balance is incorrect"
+        transaction_fee, expected_reward_balance,
+        "transaction fee is incorrect"
     );
 
     assert_eq!(
         initial_balance,
-        (modified_balance + reward_balance),
+        (modified_balance + transaction_fee),
         "no net resources should be gained or lost post-distribution"
     );
 
@@ -362,17 +366,17 @@ fn should_forward_payment_execution_gas_limit_error() {
 #[test]
 fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)})
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_session_code(
                 ENDLESS_LOOP_WASM,
-                runtime_args! { "target" => account_1_account_hash, "amount" => U512::from(transferred_amount) },
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
@@ -401,15 +405,13 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
 #[ignore]
 #[test]
 fn should_correctly_charge_when_session_code_runs_out_of_gas() {
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
-            .with_empty_payment_bytes(
-                runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)},
-            )
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_session_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
@@ -460,17 +462,17 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
 #[test]
 fn should_correctly_charge_when_session_code_fails() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)})
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_session_code(
                 REVERT_WASM,
-                runtime_args! { "target" => account_1_account_hash, "amount" => U512::from(transferred_amount) },
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
@@ -517,7 +519,7 @@ fn should_correctly_charge_when_session_code_fails() {
 #[test]
 fn should_correctly_charge_when_session_code_succeeds() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
     let exec_request = {
@@ -526,9 +528,9 @@ fn should_correctly_charge_when_session_code_succeeds() {
             .with_deploy_hash([1; 32])
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { "target" => account_1_account_hash, "amount" => U512::from(transferred_amount) },
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)})
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
@@ -576,27 +578,11 @@ fn should_correctly_charge_when_session_code_succeeds() {
     )
 }
 
-fn get_pos_purse_by_name(builder: &InMemoryWasmTestBuilder, purse_name: &str) -> Option<URef> {
-    let pos_contract = builder.get_pos_contract();
-
-    pos_contract
-        .named_keys()
-        .get(purse_name)
-        .and_then(Key::as_uref)
-        .cloned()
-}
-
-fn get_pos_rewards_purse_balance(builder: &InMemoryWasmTestBuilder) -> U512 {
-    let purse =
-        get_pos_purse_by_name(builder, POS_REWARDS_PURSE).expect("should find PoS payment purse");
-    builder.get_purse_balance(purse)
-}
-
 #[ignore]
 #[test]
 fn should_finalize_to_rewards_purse() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
     let exec_request = {
@@ -604,9 +590,9 @@ fn should_finalize_to_rewards_purse() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { "target" => account_1_account_hash, "amount" => U512::from(transferred_amount) },
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)})
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([1; 32])
             .build();
@@ -618,21 +604,24 @@ fn should_finalize_to_rewards_purse() {
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let rewards_purse_balance = get_pos_rewards_purse_balance(&builder);
-    assert!(rewards_purse_balance.is_zero());
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
     builder.exec(exec_request).expect_success().commit();
 
-    let rewards_purse_balance = get_pos_rewards_purse_balance(&builder);
-    assert!(!rewards_purse_balance.is_zero());
+    let modified_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    assert!(
+        modified_reward_starting_balance > proposer_reward_starting_balance,
+        "proposer's balance should be higher after exec"
+    );
 }
 
 #[ignore]
 #[test]
 fn independent_standard_payments_should_not_write_the_same_keys() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount = 10_000_000;
-    let transfer_amount = 10_000_000;
+    let payment_purse_amount = *DEFAULT_PAYMENT;
+    let transfer_amount = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
@@ -641,9 +630,9 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { "target" => account_1_account_hash, "amount" => U512::from(transfer_amount) },
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transfer_amount) },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)})
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([1; 32])
             .build();
@@ -662,9 +651,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
-            .with_empty_payment_bytes(
-                runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)},
-            )
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
             .build();
@@ -676,9 +663,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         let deploy = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
-            .with_empty_payment_bytes(
-                runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount)},
-            )
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_authorization_keys(&[account_1_account_hash])
             .with_deploy_hash([1; 32])
             .build();

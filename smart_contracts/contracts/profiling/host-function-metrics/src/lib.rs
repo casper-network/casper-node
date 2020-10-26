@@ -117,8 +117,7 @@ fn large_function() {
         runtime::revert(Error::ReadLocal);
     }
 
-    storage::write_local(key_name.clone(), VALUE_FOR_ADDITION_1);
-    storage::add_local(key_name, VALUE_FOR_ADDITION_2);
+    storage::write_local(key_name, VALUE_FOR_ADDITION_1);
 
     let keys_to_return = truncate_named_keys(named_keys, &mut rng);
     runtime::ret(CLValue::from_t(keys_to_return).unwrap_or_revert());

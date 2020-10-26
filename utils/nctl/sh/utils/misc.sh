@@ -103,12 +103,12 @@ function get_node_address {
 }
 
 #######################################
-# Returns node api address.
+# Returns node rpc address.
 # Arguments:
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_api {
+function get_node_address_rpc {
     echo $(get_node_address $1 $2)/rpc
 }
 
@@ -208,16 +208,15 @@ function exec_node_rest_get() {
 #   RPC method parameters.
 #######################################
 function exec_node_rpc() {
-    node_api_ep=$(get_node_address $1 $2)/rpc
     curl \
         -s \
         --location \
-        --request POST $node_api_ep \
+        --request POST $(get_node_address_rpc $1 $2) \
         --header 'Content-Type: application/json' \
         --data-raw '{
             "id": 1,
             "jsonrpc": "2.0",
             "method": "'$3'",
-            "params":['$4']
-        }' | python3 -m json.tool    
+            "params": {'$4'}
+        }' | jq $5 
 }

@@ -31,10 +31,10 @@ use casper_node::types::Deploy;
 use casper_types::{UIntParseError, U512};
 
 use deploy::{DeployExt, DeployParams};
-use parsing::none_if_empty;
-use rpc::{RpcCall, TransferTarget};
 use error::Result;
 use executable_deploy_item_ext::ExecutableDeployItemExt;
+use parsing::none_if_empty;
+use rpc::{RpcCall, TransferTarget};
 
 /// Gets a `Deploy` from the node.
 ///

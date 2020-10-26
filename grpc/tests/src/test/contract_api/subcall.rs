@@ -1,13 +1,9 @@
 use num_traits::cast::AsPrimitive;
 
 use casper_engine_test_support::{
-    internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
-    },
+    internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::core::engine_state::CONV_RATE;
 use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, U512};
 
 const ARG_TARGET: &str = "target_contract";
@@ -88,10 +84,9 @@ fn should_add_all_gas_for_subcall() {
     const ADD_GAS_VIA_SUBCALL: &str = "add-gas-via-subcall";
 
     // Use 90% of the standard test contract's balance
-    let gas_to_add: U512 = *DEFAULT_PAYMENT / CONV_RATE * 9 / 10;
+    let gas_to_add: U512 = U512::from(u32::max_value());
 
-    assert!(gas_to_add <= U512::from(i32::max_value()));
-    let gas_to_add_as_arg: i32 = gas_to_add.as_();
+    let gas_to_add_as_arg: u32 = gas_to_add.as_();
 
     let add_zero_gas_from_session_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -160,14 +155,12 @@ fn should_add_all_gas_for_subcall() {
     let add_zero_gas_via_subcall_cost = builder.exec_costs(2)[0];
     let add_some_gas_via_subcall_cost = builder.exec_costs(3)[0];
 
-    assert!(add_zero_gas_from_session_cost.value() < gas_to_add);
     assert!(add_some_gas_from_session_cost.value() > gas_to_add);
     assert_eq!(
         add_some_gas_from_session_cost.value(),
         gas_to_add + add_zero_gas_from_session_cost.value()
     );
 
-    assert!(add_zero_gas_via_subcall_cost.value() < gas_to_add);
     assert!(add_some_gas_via_subcall_cost.value() > gas_to_add);
     assert_eq!(
         add_some_gas_via_subcall_cost.value(),

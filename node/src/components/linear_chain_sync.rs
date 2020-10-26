@@ -265,6 +265,9 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         I: Send + Copy + 'static,
         REv: ReactorEventT<I>,
     {
+        let height = block_header.height();
+        let hash = block_header.hash();
+        trace!(%hash, %height, "Downloaded linear chain block.");
         // Reset peers before creating new requests.
         self.reset_peers(rng);
         let block_height = block_header.height();
@@ -456,7 +459,6 @@ where
                             Event::GetBlockHeightResult(block_height, BlockByHeightResult::Absent),
                         );
                     }
-                    trace!(%block_height, "Downloaded linear chain block.");
                     self.block_downloaded(rng, effect_builder, block.header())
                 }
             },
@@ -473,11 +475,7 @@ where
                     // If we do, it's a bug.
                     assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
                     trace!(%block_hash, "Linear block found in the local storage.");
-                    // If we found block in our local storage when syncing trusted hash
-                    // it means we have all of its parents as well (if not then that's a bug that
-                    // will pop up elsewhere). We can start downloading deploys
-                    // starting from the child of _this_ block.
-                    self.fetch_next_block_deploys(effect_builder)
+                    self.block_downloaded(rng, effect_builder, block.header())
                 }
                 Some(FetchResult::FromPeer(block, peer)) => {
                     if *block.hash() != block_hash {
@@ -497,7 +495,6 @@ where
                             Event::GetBlockHashResult(block_hash, None),
                         );
                     }
-                    trace!(%block_hash, "Downloaded linear chain block.");
                     self.block_downloaded(rng, effect_builder, block.header())
                 }
             },

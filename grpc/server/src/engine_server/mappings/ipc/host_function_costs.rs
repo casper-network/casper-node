@@ -1,137 +1,67 @@
-use datasize::DataSize;
 use std::convert::{TryFrom, TryInto};
 
 use crate::engine_server::{
     ipc,
     mappings::{MappingError, ParsingError},
 };
-use casper_execution_engine::shared::host_function_costs::{HostFunction, HostFunctionCosts};
+use casper_execution_engine::shared::host_function_costs::{Cost, HostFunction, HostFunctionCosts};
 
-impl From<u32> for ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument {
-    fn from(weight: u32) -> Self {
+impl From<Cost> for ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument {
+    fn from(weight: Cost) -> Self {
         let mut arg = ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument::new();
         arg.set_weight(weight);
         arg
     }
 }
 
-impl From<Option<u32>> for ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument {
-    fn from(weight: Option<u32>) -> Self {
-        let mut arg = ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument::new();
-        arg.set_weight(weight.unwrap_or(0));
-        arg
-    }
-}
-
-impl From<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument> for u32 {
+impl From<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument> for Cost {
     fn from(arg: ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument) -> Self {
         arg.weight
     }
 }
 
-impl From<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument> for Option<u32> {
-    fn from(arg: ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument) -> Self {
-        if arg.weight > 0 {
-            Some(arg.weight)
-        } else {
-            // Zero is considered a None case logically
-            None
-        }
-    }
-}
-
-impl From<HostFunction<()>> for ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction {
-    fn from(host_function_cost: HostFunction<()>) -> Self {
+impl<T> From<HostFunction<T>> for ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction
+where
+    T: AsRef<[Cost]>,
+{
+    fn from(host_function_cost: HostFunction<T>) -> Self {
         let mut pb_host_function_costs = Self::new();
-        pb_host_function_costs.set_cost(host_function_cost.cost);
+        pb_host_function_costs.set_cost(host_function_cost.cost());
+
+        let pb_arguments: Vec<_> = host_function_cost
+            .arguments()
+            .iter()
+            .copied()
+            .map(Into::into)
+            .collect();
+        pb_host_function_costs.set_arguments(pb_arguments.into());
 
         pb_host_function_costs
     }
 }
 
-impl TryFrom<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction> for HostFunction<()> {
+impl<T> TryFrom<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction> for HostFunction<T>
+where
+    for<'a> T: TryFrom<&'a [Cost]>,
+{
     type Error = MappingError;
     fn try_from(
-        pb_host_function: ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction,
+        mut pb_host_function: ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction,
     ) -> Result<Self, Self::Error> {
-        let host_function = HostFunction::fixed(pb_host_function.cost);
-        Ok(host_function)
+        let arg_costs: Vec<Cost> = pb_host_function
+            .take_arguments()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+
+        let args: T = arg_costs
+            .as_slice()
+            .try_into()
+            .map_err(|_| ParsingError::from("Invalid arguments"))?;
+
+        Ok(HostFunction::new(pb_host_function.cost, args))
     }
 }
-
-impl From<HostFunction<(u32,)>> for ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction {
-    fn from(host_function_cost: HostFunction<(u32,)>) -> Self {
-        let mut pb_host_function_costs = Self::new();
-        pb_host_function_costs.set_cost(host_function_cost.cost);
-        pb_host_function_costs
-            .mut_arguments()
-            .push(host_function_cost.arguments.0.into());
-
-        pb_host_function_costs
-    }
-}
-
-impl TryFrom<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction> for HostFunction<(u32,)> {
-    type Error = ParsingError;
-    fn try_from(
-        pb_host_function: ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction,
-    ) -> Result<Self, Self::Error> {
-        if pb_host_function.get_arguments().len() != 1 {
-            return Err("Invalid length".to_string().into());
-        }
-
-        let host_function = HostFunction::new(
-            pb_host_function.cost,
-            (pb_host_function.arguments[0].weight,),
-        );
-        Ok(host_function)
-    }
-}
-
-macro_rules! host_function_impl {
-    ($($n:tt $name:ident);+) => {
-        impl<$($name),*> TryFrom<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction> for HostFunction<($($name),*)>
-        where $($name: Default + DataSize + From<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument>),*
-        {
-            type Error = ParsingError;
-            fn try_from(
-                mut pb_host_function: ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction,
-            ) -> Result<Self, Self::Error> {
-                let values = [$($n,)+];
-
-                let args: Vec<_> = pb_host_function.take_arguments().into_iter().collect();
-                if args.len() != values.last().copied().unwrap() + 1{
-                    return Err(format!("Expected {} arguments but received {}", values.last().unwrap(), args.len()).into());
-                }
-
-                let t = ($(args.get($n).cloned().unwrap().into(),)+);
-                Ok(Self::new(pb_host_function.cost, t))
-            }
-        }
-
-        impl<$($name),*> From<HostFunction<($($name),*)>> for ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction
-        where $($name: Default + DataSize + Into<ipc::ChainSpec_WasmConfig_HostFunctionCosts_HostFunction_Argument>),*
-        {
-            fn from(host_function_cost: HostFunction<($($name),*)>) -> Self {
-                let mut pb_host_function_costs = Self::new();
-                pb_host_function_costs.set_cost(host_function_cost.cost);
-                $(pb_host_function_costs.mut_arguments().push(host_function_cost.arguments.$n.into());)+
-                pb_host_function_costs
-            }
-        }
-    };
-}
-
-host_function_impl!(0 T0; 1 T1);
-host_function_impl!(0 T0; 1 T1; 2 T2);
-host_function_impl!(0 T0; 1 T1; 2 T2; 3 T3);
-host_function_impl!(0 T0; 1 T1; 2 T2; 3 T3; 4 T4);
-host_function_impl!(0 T0; 1 T1; 2 T2; 3 T3; 4 T4; 5 T5);
-host_function_impl!(0 T0; 1 T1; 2 T2; 3 T3; 4 T4; 5 T5; 6 T6);
-host_function_impl!(0 T0; 1 T1; 2 T2; 3 T3; 4 T4; 5 T5; 6 T6; 7 T7);
-host_function_impl!(0 T0; 1 T1; 2 T2; 3 T3; 4 T4; 5 T5; 6 T6; 7 T7; 8 T8);
-host_function_impl!(0 T0; 1 T1; 2 T2; 3 T3; 4 T4; 5 T5; 6 T6; 7 T7; 8 T8; 9 T9);
-host_function_impl!(0 T0; 1 T1; 2 T2; 3 T3; 4 T4; 5 T5; 6 T6; 7 T7; 8 T8; 9 T9; 10 T10);
 
 impl From<HostFunctionCosts> for ipc::ChainSpec_WasmConfig_HostFunctionCosts {
     fn from(host_function_costs: HostFunctionCosts) -> Self {
@@ -142,7 +72,6 @@ impl From<HostFunctionCosts> for ipc::ChainSpec_WasmConfig_HostFunctionCosts {
         pb_host_function_costs.set_write(host_function_costs.write.into());
         pb_host_function_costs.set_write_local(host_function_costs.write_local.into());
         pb_host_function_costs.set_add(host_function_costs.add.into());
-        pb_host_function_costs.set_add_local(host_function_costs.add_local.into());
         pb_host_function_costs.set_new_uref(host_function_costs.new_uref.into());
         pb_host_function_costs.set_load_named_keys(host_function_costs.load_named_keys.into());
         pb_host_function_costs.set_ret(host_function_costs.ret.into());
@@ -203,6 +132,7 @@ impl From<HostFunctionCosts> for ipc::ChainSpec_WasmConfig_HostFunctionCosts {
             host_function_costs.remove_contract_user_group_urefs.into(),
         );
         pb_host_function_costs.set_print(host_function_costs.print.into());
+        pb_host_function_costs.set_blake2b(host_function_costs.blake2b.into());
         pb_host_function_costs
     }
 }
@@ -219,7 +149,6 @@ impl TryFrom<ipc::ChainSpec_WasmConfig_HostFunctionCosts> for HostFunctionCosts 
             write: pb_host_function_costs.take_write().try_into()?,
             write_local: pb_host_function_costs.take_write_local().try_into()?,
             add: pb_host_function_costs.take_add().try_into()?,
-            add_local: pb_host_function_costs.take_add_local().try_into()?,
             new_uref: pb_host_function_costs.take_new_uref().try_into()?,
             load_named_keys: pb_host_function_costs.take_load_named_keys().try_into()?,
             ret: pb_host_function_costs.take_ret().try_into()?,
@@ -290,6 +219,7 @@ impl TryFrom<ipc::ChainSpec_WasmConfig_HostFunctionCosts> for HostFunctionCosts 
                 .take_remove_contract_user_group_urefs()
                 .try_into()?,
             print: pb_host_function_costs.take_print().try_into()?,
+            blake2b: pb_host_function_costs.take_blake2b().try_into()?,
         })
     }
 }

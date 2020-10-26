@@ -76,7 +76,7 @@ impl ExecutionResult {
 impl From<&EngineExecutionResult> for ExecutionResult {
     fn from(ee_execution_result: &EngineExecutionResult) -> Self {
         match ee_execution_result {
-            EngineExecutionResult::Success { effect, cost } => ExecutionResult {
+            EngineExecutionResult::Success { effect, cost, .. } => ExecutionResult {
                 effect: effect.into(),
                 cost: cost.value(),
                 error_message: None,
@@ -85,6 +85,7 @@ impl From<&EngineExecutionResult> for ExecutionResult {
                 error,
                 effect,
                 cost,
+                ..
             } => ExecutionResult {
                 effect: effect.into(),
                 cost: cost.value(),
@@ -147,6 +148,8 @@ enum Transform {
     WriteContractWasm,
     WriteContract,
     WriteContractPackage,
+    WriteDeployInfo,
+    WriteTransfer,
     AddInt32(i32),
     AddUInt64(u64),
     AddUInt128(U128),
@@ -205,6 +208,8 @@ impl From<&EngineTransform> for Transform {
             EngineTransform::Write(StoredValue::ContractPackage(_)) => {
                 Transform::WriteContractPackage
             }
+            EngineTransform::Write(StoredValue::Transfer(_)) => Transform::WriteTransfer,
+            EngineTransform::Write(StoredValue::DeployInfo(_)) => Transform::WriteDeployInfo,
             EngineTransform::AddInt32(value) => Transform::AddInt32(*value),
             EngineTransform::AddUInt64(value) => Transform::AddUInt64(*value),
             EngineTransform::AddUInt128(value) => Transform::AddUInt128(*value),

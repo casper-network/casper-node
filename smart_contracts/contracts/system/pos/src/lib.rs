@@ -8,6 +8,7 @@ use casper_contract::{
 };
 use casper_types::{
     account::AccountHash,
+    mint::ARG_TARGET,
     proof_of_stake::{
         MintProvider, ProofOfStake, RuntimeProvider, ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE,
     },
@@ -99,7 +100,8 @@ pub fn finalize_payment() {
 
     let amount_spent: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let account: AccountHash = runtime::get_named_arg(ARG_ACCOUNT);
+    let target: URef = runtime::get_named_arg(ARG_TARGET);
     pos_contract
-        .finalize_payment(amount_spent, account)
+        .finalize_payment(amount_spent, account, target)
         .unwrap_or_revert();
 }

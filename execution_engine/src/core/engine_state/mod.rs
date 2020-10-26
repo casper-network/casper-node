@@ -23,6 +23,7 @@ use std::{
     rc::Rc,
 };
 
+use lazy_static::lazy_static;
 use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
@@ -35,11 +36,11 @@ use casper_types::{
     },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
-    runtime_args,
-    system_contract_errors::mint,
+    mint, proof_of_stake, runtime_args,
+    system_contract_errors::mint::Error as MintError,
     AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractVersionKey, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef,
-    U512,
+    ContractVersionKey, DeployInfo, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
+    RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -51,7 +52,7 @@ pub use self::{
     executable_deploy_item::ExecutableDeployItem,
     execute_request::ExecuteRequest,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
+    genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE},
     query::{QueryRequest, QueryResult},
     system_contract_cache::SystemContractCache,
     transfer::{TransferRuntimeArgsBuilder, TransferTargetMode},
@@ -59,7 +60,10 @@ pub use self::{
 };
 use crate::{
     core::{
-        engine_state::step::{StepRequest, StepResult},
+        engine_state::{
+            execution_result::ExecutionResultBuilder,
+            step::{StepRequest, StepResult},
+        },
         execution::{
             self, AddressGenerator, AddressGeneratorBuilder, DirectSystemContractCall, Executor,
         },
@@ -84,13 +88,15 @@ use crate::{
 
 // TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
 // TBD gas * CONV_RATE = motes
-pub const MAX_PAYMENT: u64 = 10_000_000;
 pub const CONV_RATE: u64 = 10;
+
+lazy_static! {
+    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000_000u64 * CONV_RATE);
+}
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 const GENESIS_INITIAL_BLOCKTIME: u64 = 0;
-const ARG_AMOUNT: &str = "amount";
 
 #[derive(Debug)]
 pub struct EngineState<S> {
@@ -217,6 +223,10 @@ where
             let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
+        let transfer_address_generator = {
+            let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
+            Rc::new(RefCell::new(generator))
+        };
 
         // Spec #6: Compute initially bonded validators as the contents of accounts_path
         // filtered to non-zero staked amounts.
@@ -239,6 +249,7 @@ where
             let install_deploy_hash = genesis_config_hash.value();
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
+            let transfer_address_generator = Rc::clone(&transfer_address_generator);
             let tracking_copy = Rc::clone(&tracking_copy);
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
             let protocol_data = ProtocolData::default();
@@ -254,6 +265,7 @@ where
                 gas_limit,
                 hash_address_generator,
                 uref_address_generator,
+                transfer_address_generator,
                 protocol_version,
                 correlation_id,
                 tracking_copy,
@@ -272,6 +284,7 @@ where
             let tracking_copy = Rc::clone(&tracking_copy);
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
+            let transfer_address_generator = Rc::clone(&transfer_address_generator);
             let install_deploy_hash = genesis_config_hash.value();
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
@@ -299,6 +312,7 @@ where
                 gas_limit,
                 hash_address_generator,
                 uref_address_generator,
+                transfer_address_generator,
                 protocol_version,
                 correlation_id,
                 tracking_copy,
@@ -337,6 +351,7 @@ where
             let install_deploy_hash = genesis_config_hash.value();
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
+            let transfer_address_generator = Rc::clone(&transfer_address_generator);
             let tracking_copy = Rc::clone(&tracking_copy);
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
@@ -351,6 +366,7 @@ where
                 gas_limit,
                 hash_address_generator,
                 uref_address_generator,
+                transfer_address_generator,
                 protocol_version,
                 correlation_id,
                 tracking_copy,
@@ -400,6 +416,7 @@ where
             let install_deploy_hash = genesis_config_hash.value();
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
+            let transfer_address_generator = Rc::clone(&uref_address_generator);
             let tracking_copy = Rc::clone(&tracking_copy);
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
@@ -414,6 +431,7 @@ where
                 gas_limit,
                 hash_address_generator,
                 uref_address_generator,
+                transfer_address_generator,
                 protocol_version,
                 correlation_id,
                 tracking_copy,
@@ -481,7 +499,7 @@ where
             for (account, named_keys) in accounts.into_iter() {
                 let module = module.clone();
                 let args = runtime_args! {
-                    ARG_AMOUNT => account.balance().value(),
+                    mint::ARG_AMOUNT => account.balance().value(),
                 };
                 let tracking_copy_exec = Rc::clone(&tracking_copy);
                 let tracking_copy_write = Rc::clone(&tracking_copy);
@@ -499,9 +517,10 @@ where
                         .build();
                     Rc::new(RefCell::new(generator))
                 };
+                let transfer_address_generator = Rc::clone(&transfer_address_generator);
                 let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
-                let mint_result: Result<URef, mint::Error> = {
+                let mint_result: Result<URef, MintError> = {
                     // ...call the Mint's "mint" endpoint to create purse with tokens...
                     let (_instance, mut runtime) = executor.create_runtime(
                         module,
@@ -517,6 +536,7 @@ where
                         gas_limit,
                         hash_address_generator,
                         uref_address_generator,
+                        transfer_address_generator,
                         protocol_version,
                         correlation_id,
                         tracking_copy_exec,
@@ -532,7 +552,7 @@ where
                             "mint".to_string(),
                             args,
                         )?
-                        .into_t::<Result<URef, mint::Error>>()
+                        .into_t::<Result<URef, MintError>>()
                         .expect("should convert")
                 };
 
@@ -688,6 +708,10 @@ where
                     let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
                     Rc::new(RefCell::new(generator))
                 };
+                let transfer_address_generator = {
+                    let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
+                    Rc::new(RefCell::new(generator))
+                };
                 let tracking_copy = Rc::clone(&tracking_copy);
                 let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
@@ -704,6 +728,7 @@ where
                     gas_limit,
                     hash_address_generator,
                     uref_address_generator,
+                    transfer_address_generator,
                     new_protocol_version,
                     correlation_id,
                     Rc::clone(&tracking_copy),
@@ -818,6 +843,7 @@ where
                         exec_request.parent_state_hash,
                         BlockTime::new(exec_request.block_time),
                         deploy_item,
+                        exec_request.proposer,
                     ),
                 },
             };
@@ -1159,6 +1185,7 @@ where
                 return Ok(ExecutionResult::Failure {
                     error,
                     effect: Default::default(),
+                    transfers: Vec::default(),
                     cost: Gas::default(),
                 });
             }
@@ -1171,12 +1198,13 @@ where
                     return Ok(ExecutionResult::Failure {
                         error,
                         effect: Default::default(),
+                        transfers: Vec::default(),
                         cost: Gas::default(),
                     });
                 }
             };
 
-        let (_, execution_result): (Option<Result<(), u8>>, ExecutionResult) = executor
+        let (_, mut session_result): (Option<Result<(), u8>>, ExecutionResult) = executor
             .exec_system_contract(
                 DirectSystemContractCall::Transfer,
                 mint_module,
@@ -1191,11 +1219,44 @@ where
                 gas_limit,
                 protocol_version,
                 correlation_id,
-                tracking_copy,
+                Rc::clone(&tracking_copy),
                 Phase::Session,
                 protocol_data,
                 SystemContractCache::clone(&self.system_contract_cache),
             );
+
+        let payment_result = ExecutionResult::default();
+        let payment_result_cost = payment_result.cost();
+
+        // Create + persist deploy info.
+        {
+            let transfers = session_result.transfers();
+            let cost = payment_result_cost.value() + session_result.cost().value();
+            let deploy_info = DeployInfo::new(
+                deploy_item.deploy_hash,
+                &transfers,
+                account.account_hash(),
+                account.main_purse(),
+                cost,
+            );
+            tracking_copy.borrow_mut().write(
+                Key::DeployInfo(deploy_item.deploy_hash),
+                StoredValue::DeployInfo(deploy_info),
+            );
+        }
+
+        if session_result.is_success() {
+            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect());
+        }
+
+        let mut execution_result_builder = ExecutionResultBuilder::new();
+        execution_result_builder.set_payment_execution_result(payment_result);
+        execution_result_builder.set_session_execution_result(session_result);
+        execution_result_builder.set_finalize_execution_result(ExecutionResult::default());
+
+        let execution_result = execution_result_builder
+            .build(tracking_copy.borrow().reader(), correlation_id)
+            .expect("ExecutionResultBuilder not initialized properly");
 
         Ok(execution_result)
     }
@@ -1210,6 +1271,7 @@ where
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
         deploy_item: DeployItem,
+        proposer: casper_types::PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
         // spec: https://casperlabs.atlassian.net/wiki/spaces/EN/pages/123404576/Payment+code+execution+specification
 
@@ -1241,7 +1303,7 @@ where
 
         // Get addr bytes from `address` (which is actually a Key)
         // validation_spec_3: account validity
-        let account_public_key = match base_key.into_account() {
+        let account_hash = match base_key.into_account() {
             Some(account_addr) => account_addr,
             None => {
                 return Ok(ExecutionResult::precondition_failure(
@@ -1256,7 +1318,7 @@ where
         // validation_spec_3: account validity
         let account = match self.get_authorized_account(
             correlation_id,
-            account_public_key,
+            account_hash,
             &authorization_keys,
             Rc::clone(&tracking_copy),
         ) {
@@ -1376,7 +1438,7 @@ where
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
         };
 
-        let max_payment_cost: Motes = Motes::new(U512::from(MAX_PAYMENT));
+        let max_payment_cost: Motes = Motes::new(*MAX_PAYMENT);
 
         // Enforce minimum main purse balance validation
         // validation_spec_5: account main purse minimum balance
@@ -1532,6 +1594,10 @@ where
                     let generator = AddressGenerator::new(&deploy_hash, phase);
                     Rc::new(RefCell::new(generator))
                 };
+                let transfer_address_generator = {
+                    let generator = AddressGenerator::new(&deploy_hash, phase);
+                    Rc::new(RefCell::new(generator))
+                };
 
                 let mut runtime = match executor.create_runtime(
                     payment_module,
@@ -1547,6 +1613,7 @@ where
                     pay_gas_limit,
                     hash_address_generator,
                     uref_address_generator,
+                    transfer_address_generator,
                     protocol_version,
                     correlation_id,
                     Rc::clone(&tracking_copy),
@@ -1565,11 +1632,13 @@ where
                 match runtime.call_host_standard_payment() {
                     Ok(()) => ExecutionResult::Success {
                         effect: runtime.context().effect(),
+                        transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     },
                     Err(error) => ExecutionResult::Failure {
                         error: error.into(),
                         effect: effects_snapshot,
+                        transfers: runtime.context().transfers().to_owned(),
                         cost: runtime.context().gas_counter(),
                     },
                 }
@@ -1611,23 +1680,29 @@ where
             }
         };
 
+        // the proposer of the block this deploy is in receives the gas from this deploy execution
+        let proposer_purse = {
+            let proposer_account: Account = match tracking_copy
+                .borrow_mut()
+                .get_account(correlation_id, proposer.into())
+            {
+                Ok(account) => account,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            };
+            proposer_account.main_purse()
+        };
+
         if let Some(forced_transfer) = payment_result.check_forced_transfer(payment_purse_balance) {
             // Get rewards purse balance key
             // payment_code_spec_6: system contract validity
-            let rewards_purse_balance_key: Key = {
+            let proposer_main_purse_balance_key = {
                 // Get reward purse Key from proof of stake contract
                 // payment_code_spec_6: system contract validity
-                let rewards_purse_key: Key =
-                    match proof_of_stake_contract.named_keys().get(POS_REWARDS_PURSE) {
-                        Some(key) => *key,
-                        None => {
-                            return Ok(ExecutionResult::precondition_failure(Error::Deploy));
-                        }
-                    };
-
                 match tracking_copy
                     .borrow_mut()
-                    .get_purse_balance_key(correlation_id, rewards_purse_key)
+                    .get_purse_balance_key(correlation_id, proposer_purse.into())
                 {
                     Ok(key) => key,
                     Err(error) => {
@@ -1645,7 +1720,7 @@ where
                 max_payment_cost,
                 account_main_purse_balance,
                 account_main_purse_balance_key,
-                rewards_purse_balance_key,
+                proposer_main_purse_balance_key,
             ));
         }
 
@@ -1698,7 +1773,7 @@ where
                 return Ok(ExecutionResult::precondition_failure(exec_err.into()));
             }
         };
-        let session_result = {
+        let mut session_result = {
             // payment_code_spec_3_b_i: if (balance of PoS pay purse) >= (gas spent during
             // payment code execution) * conv_rate, yes session
             // session_code_spec_1: gas limit = ((balance of PoS payment purse) / conv_rate)
@@ -1730,11 +1805,29 @@ where
         };
         debug!("Session result: {:?}", session_result);
 
+        // Create + persist deploy info.
+        {
+            let transfers = session_result.transfers();
+            let cost = payment_result_cost.value() + session_result.cost().value();
+            let deploy_info = DeployInfo::new(
+                deploy_hash,
+                &transfers,
+                account.account_hash(),
+                account.main_purse(),
+                cost,
+            );
+            session_tracking_copy.borrow_mut().write(
+                Key::DeployInfo(deploy_hash),
+                StoredValue::DeployInfo(deploy_info),
+            );
+        }
+
         let post_session_rc = if session_result.is_failure() {
             // If session code fails we do not include its effects,
             // so we start again from the post-payment state.
             Rc::new(RefCell::new(post_payment_tracking_copy.fork()))
         } else {
+            session_result = session_result.with_effect(session_tracking_copy.borrow().effect());
             session_tracking_copy
         };
 
@@ -1743,7 +1836,7 @@ where
         execution_result_builder.set_session_execution_result(session_result);
 
         // payment_code_spec_5: run finalize process
-        let (_, finalize_result): (Option<()>, ExecutionResult) = {
+        let finalize_result: ExecutionResult = {
             let post_session_tc = post_session_rc.borrow();
             let finalization_tc = Rc::new(RefCell::new(post_session_tc.fork()));
 
@@ -1752,11 +1845,10 @@ where
                 let finalize_cost_motes: Motes =
                     Motes::from_gas(execution_result_builder.total_cost(), CONV_RATE)
                         .expect("motes overflow");
-                const ARG_AMOUNT: &str = "amount";
-                const ARG_ACCOUNT_KEY: &str = "account";
                 runtime_args! {
-                    ARG_AMOUNT => finalize_cost_motes.value(),
-                    ARG_ACCOUNT_KEY => account_public_key,
+                    proof_of_stake::ARG_AMOUNT => finalize_cost_motes.value(),
+                    proof_of_stake::ARG_ACCOUNT => account_hash,
+                    proof_of_stake::ARG_TARGET => proposer_purse
                 }
             };
 
@@ -1775,25 +1867,28 @@ where
             let gas_limit = Gas::new(U512::from(std::u64::MAX));
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
-            executor.exec_system_contract(
-                DirectSystemContractCall::FinalizePayment,
-                proof_of_stake_module,
-                proof_of_stake_args,
-                &mut proof_of_stake_keys,
-                Default::default(),
-                Key::from(protocol_data.proof_of_stake()),
-                &system_account,
-                authorization_keys,
-                blocktime,
-                deploy_hash,
-                gas_limit,
-                protocol_version,
-                correlation_id,
-                finalization_tc,
-                Phase::FinalizePayment,
-                protocol_data,
-                system_contract_cache,
-            )
+            let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
+                .exec_system_contract(
+                    DirectSystemContractCall::FinalizePayment,
+                    proof_of_stake_module,
+                    proof_of_stake_args,
+                    &mut proof_of_stake_keys,
+                    Default::default(),
+                    Key::from(protocol_data.proof_of_stake()),
+                    &system_account,
+                    authorization_keys,
+                    blocktime,
+                    deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    correlation_id,
+                    finalization_tc,
+                    Phase::FinalizePayment,
+                    protocol_data,
+                    system_contract_cache,
+                );
+
+            finalize_result
         };
 
         execution_result_builder.set_finalize_execution_result(finalize_result);

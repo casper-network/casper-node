@@ -24,6 +24,16 @@ impl From<Key> for state::Key {
             Key::URef(uref) => {
                 pb_key.set_uref(uref.into());
             }
+            Key::DeployInfo(deploy_hash) => {
+                let mut pb_deploy_hash = state::DeployHash::new();
+                pb_deploy_hash.set_deploy_hash(deploy_hash.to_vec());
+                pb_key.set_deploy_info(pb_deploy_hash)
+            }
+            Key::Transfer(transfer_addr) => {
+                let mut pb_transfer_addr = state::TransferAddr::new();
+                pb_transfer_addr.set_transfer_addr(transfer_addr.to_vec());
+                pb_key.set_transfer(pb_transfer_addr)
+            }
         }
         pb_key
     }
@@ -49,6 +59,18 @@ impl TryFrom<state::Key> for Key {
             Key_oneof_value::uref(pb_uref) => {
                 let uref = pb_uref.try_into()?;
                 Key::URef(uref)
+            }
+            Key_oneof_value::transfer(pb_transfer_addr) => {
+                let transfer_addr = mappings::vec_to_array(
+                    pb_transfer_addr.transfer_addr,
+                    "Protobuf Key::Transfer",
+                )?;
+                Key::Transfer(transfer_addr)
+            }
+            Key_oneof_value::deploy_info(pb_deploy_hash) => {
+                let deploy_hash =
+                    mappings::vec_to_array(pb_deploy_hash.deploy_hash, "Protobuf Key::DeployInfo")?;
+                Key::DeployInfo(deploy_hash)
             }
         };
         Ok(key)

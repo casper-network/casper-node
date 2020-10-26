@@ -65,16 +65,12 @@ pub enum Event<I> {
     },
     #[from]
     ConsensusRequest(requests::ConsensusRequest),
-    /// The proto-block has been validated and can now be added to the protocol state
-    AcceptProtoBlock {
-        era_id: EraId,
-        proto_block: ProtoBlock,
-    },
-    /// The proto-block turned out to be invalid, we might want to accuse/punish/... the sender
-    InvalidProtoBlock {
+    /// The proto-block has been validated
+    ResolveValidity {
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
+        valid: bool,
     },
     /// Event raised when a new era should be created: once we get the set of validators, the
     /// booking block hash and the seed from the key block
@@ -127,22 +123,18 @@ impl<I: Debug> Display for Event<I> {
                 "A request for consensus component hash been receieved: {:?}",
                 request
             ),
-            Event::AcceptProtoBlock {
-                era_id,
-                proto_block,
-            } => write!(
-                f,
-                "A proto-block has been validated for era {:?}: {:?}",
-                era_id, proto_block
-            ),
-            Event::InvalidProtoBlock {
+            Event::ResolveValidity {
                 era_id,
                 sender,
                 proto_block,
+                valid,
             } => write!(
                 f,
-                "A proto-block received from {:?} turned out to be invalid for era {:?}: {:?}",
-                sender, era_id, proto_block
+                "Proto-block received from {:?} for {} is {}: {:?}",
+                sender,
+                era_id,
+                if *valid { "valid" } else { "invalid" },
+                proto_block
             ),
             Event::CreateNewEra {
                 booking_block_hash,
@@ -213,15 +205,12 @@ where
                 block_header,
                 responder,
             )) => handling_es.handle_linear_chain_block(*block_header, responder),
-            Event::AcceptProtoBlock {
-                era_id,
-                proto_block,
-            } => handling_es.handle_accept_proto_block(era_id, proto_block),
-            Event::InvalidProtoBlock {
+            Event::ResolveValidity {
                 era_id,
                 sender,
                 proto_block,
-            } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
+                valid,
+            } => handling_es.resolve_validity(era_id, sender, proto_block, valid),
             Event::CreateNewEra {
                 block_header,
                 booking_block_hash,

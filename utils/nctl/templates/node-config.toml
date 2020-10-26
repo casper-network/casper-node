@@ -60,7 +60,7 @@ known_addresses = [{NETWORK_KNOWN_ADDRESSES}]
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 # Defaults to 30_000.
-gossip_interval = 30000
+gossip_interval = 1000
 
 # Enable systemd support. If enabled, the node will notify systemd once it has synced and its
 # listening socket for incoming connections is open.
@@ -152,11 +152,11 @@ finished_entry_duration_secs = 3600
 # The timeout duration in seconds for a single gossip request, i.e. for a single gossip message
 # sent from this node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
-gossip_request_timeout_secs = 10
+gossip_request_timeout_secs = 2
 
 # The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.
-get_remainder_timeout_secs = 60
+get_remainder_timeout_secs = 5
 
 
 # ========================================================

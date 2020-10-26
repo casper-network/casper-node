@@ -10,8 +10,8 @@ use std::{
     string::ToString,
 };
 
-use casper_execution_engine::core::{engine_state, DEPLOY_HASH_LENGTH};
-use casper_types::{account::ACCOUNT_HASH_LENGTH, bytesrepr, KEY_HASH_LENGTH};
+use casper_execution_engine::core::engine_state;
+use casper_types::{account::ACCOUNT_HASH_LENGTH, bytesrepr, DEPLOY_HASH_LENGTH, KEY_HASH_LENGTH};
 
 pub use transforms::TransformMap;
 

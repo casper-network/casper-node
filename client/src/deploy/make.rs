@@ -87,7 +87,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
                 payment_args_complex,
                 payment_version,
                 payment_entry_point,
-            }
+            },
         )
         .unwrap_or_else(|err| panic!("unable to make deploy {:?}", err));
     }

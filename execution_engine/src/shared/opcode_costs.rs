@@ -7,25 +7,23 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
-// TODO: These numbers are chosen to be arbitrarily small. As for now the researched opcode costs
-// are way too big to be practical with current settings.
-pub const DEFAULT_BIT_COST: u32 = 1;
-pub const DEFAULT_ADD_COST: u32 = 1;
-pub const DEFAULT_MUL_COST: u32 = 4;
-pub const DEFAULT_DIV_COST: u32 = 16;
-pub const DEFAULT_LOAD_COST: u32 = 2;
-pub const DEFAULT_STORE_COST: u32 = 2;
-pub const DEFAULT_OP_CONST_COST: u32 = 2;
-pub const DEFAULT_LOCAL_COST: u32 = 2;
-pub const DEFAULT_GLOBAL_COST: u32 = 2;
-pub const DEFAULT_CONTROL_FLOW_COST: u32 = 2;
-pub const DEFAULT_INTEGER_COMPARSION_COST: u32 = 2;
-pub const DEFAULT_CONVERSION_COST: u32 = 2;
-pub const DEFAULT_UNREACHABLE_COST: u32 = 2;
-pub const DEFAULT_NOP_COST: u32 = 0;
-pub const DEFAULT_CURRENT_MEMORY_COST: u32 = 2;
-pub const DEFAULT_GROW_MEMORY_COST: u32 = 8192;
-pub const DEFAULT_REGULAR_COST: u32 = 2;
+pub const DEFAULT_BIT_COST: u32 = 300_000;
+pub const DEFAULT_ADD_COST: u32 = 210_000;
+pub const DEFAULT_MUL_COST: u32 = 240_000;
+pub const DEFAULT_DIV_COST: u32 = 320_000;
+pub const DEFAULT_LOAD_COST: u32 = 2_500_000;
+pub const DEFAULT_STORE_COST: u32 = 4_700_000;
+pub const DEFAULT_CONST_COST: u32 = 110_000;
+pub const DEFAULT_LOCAL_COST: u32 = 390_000;
+pub const DEFAULT_GLOBAL_COST: u32 = 390_000;
+pub const DEFAULT_CONTROL_FLOW_COST: u32 = 440_000;
+pub const DEFAULT_INTEGER_COMPARSION_COST: u32 = 250_000;
+pub const DEFAULT_CONVERSION_COST: u32 = 420_000;
+pub const DEFAULT_UNREACHABLE_COST: u32 = 270_000;
+pub const DEFAULT_NOP_COST: u32 = 200_000; // TODO: This value is not researched
+pub const DEFAULT_CURRENT_MEMORY_COST: u32 = 290_000;
+pub const DEFAULT_GROW_MEMORY_COST: u32 = 240_000_000;
+pub const DEFAULT_REGULAR_COST: u32 = 210_000;
 
 const NUM_FIELDS: usize = 17;
 pub const OPCODE_COSTS_SERIALIZED_LENGTH: usize = NUM_FIELDS * U32_SERIALIZED_LENGTH;
@@ -129,7 +127,7 @@ impl Default for OpcodeCosts {
             div: DEFAULT_DIV_COST,
             load: DEFAULT_LOAD_COST,
             store: DEFAULT_STORE_COST,
-            op_const: DEFAULT_OP_CONST_COST,
+            op_const: DEFAULT_CONST_COST,
             local: DEFAULT_LOCAL_COST,
             global: DEFAULT_GLOBAL_COST,
             control_flow: DEFAULT_CONTROL_FLOW_COST,

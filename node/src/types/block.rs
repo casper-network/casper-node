@@ -8,7 +8,7 @@ use std::{
 };
 
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
 use datasize::DataSize;
@@ -269,6 +269,10 @@ impl FinalizedBlock {
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
         self.era_id() == EraId(0) && self.height() == 0
+    }
+
+    pub(crate) fn proposer(&self) -> PublicKey {
+        self.proposer
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -534,9 +538,9 @@ impl Block {
         let mut accumulated_seed = [0; Digest::LENGTH];
 
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
-        hasher.input(parent_seed);
-        hasher.input([finalized_block.proto_block.random_bit as u8]);
-        hasher.variable_result(|slice| {
+        hasher.update(parent_seed);
+        hasher.update([finalized_block.proto_block.random_bit as u8]);
+        hasher.finalize_variable(|slice| {
             accumulated_seed.copy_from_slice(slice);
         });
 

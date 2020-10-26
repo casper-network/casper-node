@@ -33,6 +33,7 @@ mod cl_type;
 mod cl_value;
 mod contract_wasm;
 pub mod contracts;
+mod deploy_info;
 #[cfg(any(feature = "gens", test))]
 pub mod gens;
 mod key;
@@ -46,6 +47,7 @@ mod semver;
 pub mod standard_payment;
 pub mod system_contract_errors;
 pub mod system_contract_type;
+mod transfer;
 mod transfer_result;
 mod uint;
 mod uref;
@@ -63,16 +65,24 @@ pub use contracts::{
 };
 //pub use contract_ref::ContractRef;
 pub use contract_wasm::ContractWasm;
+pub use deploy_info::DeployInfo;
 #[doc(inline)]
 pub use key::{
-    ContractHash, ContractPackageHash, ContractWasmHash, HashAddr, Key, BLAKE2B_DIGEST_LENGTH,
-    KEY_HASH_LENGTH,
+    ContractHash, ContractPackageHash, ContractWasmHash, HashAddr, Key, TransferAddr,
+    BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
-pub use public_key::{PublicKey, Secp256k1Bytes};
+pub use public_key::{PublicKey, Secp256k1Bytes, ED25519_PUBLIC_KEY_LENGTH};
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use system_contract_type::SystemContractType;
+pub use transfer::Transfer;
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
+
+/// The length of a deploy hash.
+pub const DEPLOY_HASH_LENGTH: usize = 32;
+
+/// A deploy hash.
+pub type DeployHash = [u8; DEPLOY_HASH_LENGTH];
