@@ -1,10 +1,11 @@
 use std::{num::ParseIntError, path::PathBuf};
 
+use humantime::{DurationError, TimestampError};
 use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
 use casper_node::crypto::Error as CryptoError;
-use casper_types::{bytesrepr::Error as ToBytesError, URefFromStrError};
+use casper_types::{bytesrepr::Error as ToBytesError, UIntParseError, URefFromStrError};
 
 /// Crate-wide Result type wrapper.
 pub(crate) type Result<T> = std::result::Result<T, Error>;
@@ -23,6 +24,18 @@ pub enum Error {
     /// Failed to parse an integer from a string.
     #[error("failed to parse as an integer: {0:?}")]
     FailedToParseInt(#[from] ParseIntError),
+
+    /// Failed to parse a `TimeDiff` from a formatted string.
+    #[error("failed to parse as a time diff: {0:?}")]
+    FailedToParseTimeDiff(DurationError),
+
+    /// Failed to parse a `Timestamp` from a formatted string.
+    #[error("failed to parse as a timestamp: {0:?}")]
+    FailedToParseTimestamp(TimestampError),
+
+    /// Failed to parse uint error.
+    #[error("failed to parse uint {0:?}")]
+    FailedToParseUint(UIntParseError),
 
     /// Failed to get a response from the node.
     #[error("failed to get rpc response: {0}")]
@@ -71,6 +84,10 @@ pub enum Error {
     /// InvalidCLValue error.
     #[error("Invalid CLValue error {0}")]
     InvalidCLValue(String),
+
+    /// Invalid argument.
+    #[error("Invalid argument {0}")]
+    InvalidArgument(String),
 }
 
 impl From<URefFromStrError> for Error {

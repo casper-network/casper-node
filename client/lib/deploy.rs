@@ -104,7 +104,7 @@ pub struct DeployParams {
 }
 
 /// An extension trait that adds some client-specific functionality to `Deploy`.
-pub trait DeployExt {
+pub(super) trait DeployExt {
     /// Constructs a `Deploy`.
     fn with_payment_and_session(
         params: DeployParams,

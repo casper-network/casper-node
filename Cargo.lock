@@ -427,6 +427,7 @@ dependencies = [
  "clap",
  "futures 0.3.6",
  "hex",
+ "humantime 2.0.1",
  "jsonrpc-lite",
  "lazy_static",
  "rand 0.7.3",

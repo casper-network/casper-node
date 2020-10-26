@@ -1,9 +1,4 @@
-use std::{fs, path::PathBuf};
-
 use clap::{Arg, ArgMatches};
-
-use casper_client::RpcCall;
-use casper_node::crypto::asymmetric_key::SecretKey;
 
 pub const ARG_PATH: &str = "PATH";
 pub const ARG_HEX_STRING: &str = "HEX STRING";
@@ -104,13 +99,10 @@ pub mod secret_key {
             .display_order(order)
     }
 
-    pub fn get(matches: &ArgMatches) -> SecretKey {
-        let path = PathBuf::from(
-            matches
-                .value_of(ARG_NAME)
-                .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME)),
-        );
-        SecretKey::from_file(path).expect("should parse secret key pem file")
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
+            .value_of(ARG_NAME)
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
@@ -194,17 +186,4 @@ pub mod block_hash {
     pub(crate) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches.value_of(ARG_NAME).unwrap_or_default()
     }
-}
-
-pub fn read_file(path: &str) -> Vec<u8> {
-    fs::read(path).unwrap_or_else(|error| panic!("should read {}: {}", path, error))
-}
-
-pub fn rpc(matches: &ArgMatches) -> RpcCall {
-    RpcCall::new(
-        rpc_id::get(matches),
-        node_address::get(matches),
-        verbose::get(matches),
-    )
-    .unwrap_or_else(|error| panic!("should create RPC: {}", error))
 }

@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// Target for a given transfer.
-pub enum TransferTarget {
+pub(crate) enum TransferTarget {
     /// Transfer to another purse within an account.
     OwnPurse(URef),
     /// Transfer to another account.
@@ -34,7 +34,7 @@ pub enum TransferTarget {
 
 /// Struct representing a single JSON-RPC call to the casper node.
 #[derive(Debug, Default)]
-pub struct RpcCall {
+pub(crate) struct RpcCall {
     // TODO - If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
     //        change `rpc_id` to a `jsonrpc_lite::Id`.
     rpc_id: u32,
@@ -126,12 +126,6 @@ impl RpcCall {
         GetBalance::request_with_map_params(self, params)
     }
 
-    /// Transfers an amount between purses.
-    ///
-    /// - `amount` - Specifies the amount to be transferred.
-    /// - `source_purse` - Source purse in the sender's account that this amount will be drawn from,
-    ///   if it is `None`, it will default to the account's main purse.
-    /// - `target` - Target for this transfer - see (TransferTarget)[TransferTarget].
     pub fn transfer(
         self,
         amount: U512,
