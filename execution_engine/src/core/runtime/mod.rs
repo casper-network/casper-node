@@ -1881,8 +1881,10 @@ where
                     Self::get_named_argument(&runtime_args, proof_of_stake::ARG_AMOUNT)?;
                 let account: AccountHash =
                     Self::get_named_argument(&runtime_args, proof_of_stake::ARG_ACCOUNT)?;
+                let target: URef =
+                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_TARGET)?;
                 runtime
-                    .finalize_payment(amount_spent, account)
+                    .finalize_payment(amount_spent, account, target)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }

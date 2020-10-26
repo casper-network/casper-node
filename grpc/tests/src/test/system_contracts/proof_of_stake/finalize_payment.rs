@@ -8,10 +8,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR,
 };
 use casper_execution_engine::{
-    core::engine_state::{
-        genesis::{POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
-        CONV_RATE,
-    },
+    core::engine_state::{genesis::POS_PAYMENT_PURSE, CONV_RATE},
     shared::{account::Account, motes::Motes},
 };
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
@@ -101,8 +98,8 @@ fn finalize_payment_should_refund_to_specified_purse() {
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    let rewards_pre_balance = builder.get_proposer_purse_balance();
     let payment_pre_balance = get_pos_payment_purse_balance(&builder);
-    let rewards_pre_balance = get_pos_rewards_purse_balance(&builder);
     let refund_pre_balance =
         get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
             .unwrap_or_else(U512::zero);
@@ -143,7 +140,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
     };
 
     let payment_post_balance = get_pos_payment_purse_balance(&builder);
-    let rewards_post_balance = get_pos_rewards_purse_balance(&builder);
+    let rewards_post_balance = builder.get_proposer_purse_balance();
     let refund_post_balance =
         get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
             .expect("should have refund balance");
@@ -176,12 +173,6 @@ fn finalize_payment_should_refund_to_specified_purse() {
 fn get_pos_payment_purse_balance(builder: &InMemoryWasmTestBuilder) -> U512 {
     let purse =
         get_pos_purse_by_name(builder, POS_PAYMENT_PURSE).expect("should find PoS payment purse");
-    builder.get_purse_balance(purse)
-}
-
-fn get_pos_rewards_purse_balance(builder: &InMemoryWasmTestBuilder) -> U512 {
-    let purse =
-        get_pos_purse_by_name(builder, POS_REWARDS_PURSE).expect("should find PoS rewards purse");
     builder.get_purse_balance(purse)
 }
 
