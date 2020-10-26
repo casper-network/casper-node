@@ -42,6 +42,10 @@ libssl-dev
 
 pkg-config
 
+gcc
+
+g++
+
 ### Setup
 
 Before building a node, prepare your Rust build environment, and build the required system smart contracts:
