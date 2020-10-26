@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Renders a network faucet account key.
+# Renders a validators's account balance.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
