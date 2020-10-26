@@ -20,7 +20,7 @@ mod rest_server;
 pub mod rpcs;
 mod sse_server;
 
-use std::fmt::Debug;
+use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
 use futures::join;
@@ -197,6 +197,7 @@ where
         + Send,
 {
     type Event = Event;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
