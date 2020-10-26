@@ -122,7 +122,7 @@ pub(crate) struct State<C: Context> {
     faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
-    /// Clock to track state function. 
+    /// Clock to track state function.
     clock: Clock,
 }
 

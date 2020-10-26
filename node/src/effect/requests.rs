@@ -30,16 +30,23 @@ use casper_execution_engine::{
 use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
 
 use super::Responder;
-use crate::{rpcs::chain::BlockParameters, Chainspec, components::{
+use crate::{
+    components::{
         chainspec_loader::ChainspecInfo,
         fetcher::FetchResult,
         storage::{
             DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
         },
-    }, crypto::{asymmetric_key::Signature, hash::Digest}, types::{
+    },
+    crypto::{asymmetric_key::Signature, hash::Digest},
+    rpcs::chain::BlockParameters,
+    types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
         Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
-    }, utils::DisplayIter};
+    },
+    utils::DisplayIter,
+    Chainspec,
+};
 
 type DeployAndMetadata<S> = (
     <S as StorageType>::Deploy,
@@ -435,7 +442,8 @@ impl<I> Display for ApiRequest<I> {
                 ..
             } => write!(formatter, "get {}", hash),
             ApiRequest::GetBlock {
-                maybe_parameter: None, ..
+                maybe_parameter: None,
+                ..
             } => write!(formatter, "get latest block"),
             ApiRequest::QueryProtocolData {
                 protocol_version, ..

@@ -2,7 +2,10 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_node::rpcs::{RpcWithOptionalParams, chain::{GetBlock, GetBlockParams}};
+use casper_node::rpcs::{
+    chain::{GetBlock, GetBlockParams},
+    RpcWithOptionalParams,
+};
 
 use crate::{command::ClientCommand, common, RpcClient};
 
@@ -32,9 +35,12 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
-            .arg(common::block_parameter_type::arg(DisplayOrder::ParameterType as usize))
-            .arg(common::block_parameter::arg(DisplayOrder::BlockParameter as usize))
-            
+            .arg(common::block_parameter_type::arg(
+                DisplayOrder::ParameterType as usize,
+            ))
+            .arg(common::block_parameter::arg(
+                DisplayOrder::BlockParameter as usize,
+            ))
     }
 
     fn run(matches: &ArgMatches<'_>) {

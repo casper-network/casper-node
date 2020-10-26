@@ -2,7 +2,10 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_node::rpcs::{RpcWithOptionalParams, chain::{BlockParameters, GetStateRootHash, GetStateRootHashParams}};
+use casper_node::rpcs::{
+    chain::{BlockParameters, GetStateRootHash, GetStateRootHashParams},
+    RpcWithOptionalParams,
+};
 
 use crate::{command::ClientCommand, common, RpcClient};
 

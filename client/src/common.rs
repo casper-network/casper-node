@@ -218,7 +218,7 @@ pub mod block_parameter_type {
 
     const ARG_NAME: &str = "parameter-type";
     const ARG_NAME_SHORT: &str = "t";
-    const ARG_HELP: &str ="Flag toggle to query by either hash or height";
+    const ARG_HELP: &str = "Flag toggle to query by either hash or height";
 
     pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -231,7 +231,6 @@ pub mod block_parameter_type {
     pub(crate) fn get(matches: &ArgMatches) -> bool {
         matches.is_present(ARG_NAME)
     }
-    
 }
 
 pub mod block_parameter {
@@ -257,27 +256,22 @@ pub mod block_parameter {
     }
 
     pub(crate) fn get_hash(matches: &ArgMatches) -> Option<BlockParameters> {
-       matches.value_of(ARG_NAME).map(|hex_str| {
-           let hash = Digest::from_hex(hex_str)
-            .unwrap_or_else(|error| {
-               panic!("cannot parse as a block hash: {}", error) 
-            });
+        matches.value_of(ARG_NAME).map(|hex_str| {
+            let hash = Digest::from_hex(hex_str)
+                .unwrap_or_else(|error| panic!("cannot parse as a block hash: {}", error));
             BlockParameters::Hash(BlockHash::new(hash))
-       })
+        })
     }
 
-    pub(crate)  fn get_height(matches: &ArgMatches) -> Option<BlockParameters> {
-        matches.value_of(ARG_NAME)
-            .map(|height_str| {
-                let height = height_str.parse()
-                    .unwrap_or_else(|error| panic!(
-                        "cannot parse as u64 {}", error )
-                );
-                BlockParameters::Height(height)
-            })
+    pub(crate) fn get_height(matches: &ArgMatches) -> Option<BlockParameters> {
+        matches.value_of(ARG_NAME).map(|height_str| {
+            let height = height_str
+                .parse()
+                .unwrap_or_else(|error| panic!("cannot parse as u64 {}", error));
+            BlockParameters::Height(height)
+        })
     }
 }
-
 
 pub fn read_file(path: &str) -> Vec<u8> {
     fs::read(path).unwrap_or_else(|error| panic!("should read {}: {}", path, error))

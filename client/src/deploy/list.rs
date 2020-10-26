@@ -4,7 +4,13 @@ use clap::{App, ArgMatches, SubCommand};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use casper_node::{rpcs::{RpcWithOptionalParams, chain::{BlockParameters, GetBlock, GetBlockParams, GetBlockResult}}, types::DeployHash};
+use casper_node::{
+    rpcs::{
+        chain::{BlockParameters, GetBlock, GetBlockParams, GetBlockResult},
+        RpcWithOptionalParams,
+    },
+    types::DeployHash,
+};
 
 use crate::{command::ClientCommand, common, RpcClient};
 

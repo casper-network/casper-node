@@ -224,13 +224,13 @@ where
                 }),
             Event::ApiRequest(ApiRequest::GetBlock {
                 maybe_parameter: Some(BlockParameters::Height(height)),
-                responder
+                responder,
             }) => effect_builder
                 .get_block_at_height(height)
                 .event(move |result| Event::GetBlockResult {
                     maybe_hash: None,
                     result: Box::new(result),
-                    main_responder: responder
+                    main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::GetBlock {
                 maybe_parameter: None,

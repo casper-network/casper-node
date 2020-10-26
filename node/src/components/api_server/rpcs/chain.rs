@@ -1,6 +1,9 @@
 //! RPCs related to the block chain.
 
-use std::{fmt::{self, Display}, str};
+use std::{
+    fmt::{self, Display},
+    str,
+};
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -24,12 +27,11 @@ use crate::{
 /// Enum for Params
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum BlockParameters {
-    /// Get a block by its hash. 
+    /// Get a block by its hash.
     Hash(BlockHash),
     /// Get a block by its height.
     Height(u64),
 }
-
 
 /// Params for "chain_get_block" RPC request.
 #[derive(Serialize, Deserialize, Debug)]
@@ -161,8 +163,8 @@ async fn get_block<REv: ReactorEventT>(
 impl Display for BlockParameters {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            BlockParameters::Hash(hash)=> write!(formatter, "{}", hash),
-            BlockParameters::Height(height)=> write!(formatter, "{}", height)
+            BlockParameters::Hash(hash) => write!(formatter, "{}", hash),
+            BlockParameters::Height(height) => write!(formatter, "{}", height),
         }
     }
 }
