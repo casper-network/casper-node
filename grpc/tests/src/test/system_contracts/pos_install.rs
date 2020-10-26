@@ -16,8 +16,7 @@ const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
 
-// one named_key for each validator and three for the purses
-const EXPECTED_KNOWN_KEYS_LEN: usize = 2;
+const EXPECTED_KNOWN_KEYS_LEN: usize = 1;
 
 const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
 

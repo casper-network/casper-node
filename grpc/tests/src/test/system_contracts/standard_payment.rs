@@ -14,17 +14,15 @@ use casper_execution_engine::{
     },
     shared::{motes::Motes, transform::Transform},
 };
-use casper_types::{account::AccountHash, runtime_args, ApiError, PublicKey, RuntimeArgs, U512};
+use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
-const PROPOSER_ACCOUNT_ADDR: AccountHash = AccountHash::new([99u8; 32]);
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 const TRANSFER_PURSE_TO_ACCOUNT_WASM: &str = "transfer_purse_to_account.wasm";
 const REVERT_WASM: &str = "revert.wasm";
 const ENDLESS_LOOP_WASM: &str = "endless_loop.wasm";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
-const PROPOSER_STARTING_BALANCE: u64 = 100_000_000_000;
 
 #[ignore]
 #[test]
@@ -32,7 +30,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
 
     let exec_request = ExecuteRequestBuilder::standard(
-       *DEFAULT_ACCOUNT_ADDR,
+        *DEFAULT_ACCOUNT_ADDR,
         TRANSFER_PURSE_TO_ACCOUNT_WASM,
         runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => *MAX_PAYMENT - U512::one() },
     )
@@ -82,64 +80,34 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
 #[ignore]
 #[test]
 fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
-    let proposer_account_hash = PROPOSER_ACCOUNT_ADDR;
-    let proposer_public_key = PublicKey::Ed25519(proposer_account_hash.value());
-    let transfer_args = runtime_args! { ARG_TARGET => proposer_account_hash, ARG_AMOUNT => U512::from(PROPOSER_STARTING_BALANCE) };
+    let account_1_account_hash = ACCOUNT_1_ADDR;
 
-    // create & fund proposer
-    let create_proposer_request = {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    let exec_request = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(1)})
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { ARG_TARGET =>account_1_account_hash, ARG_AMOUNT => U512::from(1) },
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(1) },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(1)})
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let account_1_account_hash = ACCOUNT_1_ADDR;
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(create_proposer_request)
-        .commit();
-
-    // let proposer_account = builder
-    //     .get_account(proposer_account_hash)
-    //     .expect("proposer account should exist");
-    //let proposer_reward_starting_balance =
-    // builder.get_purse_balance(proposer_account.main_purse());
-
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_deploy_hash([1; 32])
-            .with_transfer_args(
-                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(1) },
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(1)})
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .build();
-
-        ExecuteRequestBuilder::new()
-            .with_proposer(proposer_public_key)
-            .push_deploy(deploy)
-            .build()
-    };
-
     builder.exec(exec_request).commit();
 
-    //let proposer_reward_modified_balance =
-    // builder.get_purse_balance(proposer_account.main_purse());
+    let proposer_reward_modified_balance = builder.get_proposer_purse_balance();
 
-    //let paid_reward = proposer_reward_modified_balance - proposer_reward_starting_balance;
+    let paid_transaction_fee = proposer_reward_modified_balance - proposer_reward_starting_balance;
 
     let modified_balance = builder.get_purse_balance(
         builder
@@ -149,24 +117,24 @@ fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
     );
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let expected_reward_balance = *MAX_PAYMENT;
+    let penalty_payment_amount: U512 = *MAX_PAYMENT;
 
     assert_eq!(
         modified_balance,
-        initial_balance - expected_reward_balance,
+        initial_balance - penalty_payment_amount,
         "modified balance is incorrect"
     );
-    //
-    // assert_eq!(
-    //     reward_balance, expected_reward_balance,
-    //     "reward balance is incorrect"
-    // );
 
-    // assert_eq!(
-    //     initial_balance,
-    //     (modified_balance + reward_balance),
-    //     "no net resources should be gained or lost post-distribution"
-    // );
+    assert_eq!(
+        paid_transaction_fee, penalty_payment_amount,
+        "transaction fee is incorrect"
+    );
+
+    assert_eq!(
+        initial_balance,
+        (modified_balance + paid_transaction_fee),
+        "no net resources should be gained or lost post-distribution"
+    );
 
     let response = builder
         .get_exec_response(0)
@@ -174,12 +142,12 @@ fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
 
     let execution_result = utils::get_success_result(response);
     let error_message = format!(
-        "{}",
+        "{:?}",
         execution_result.as_error().expect("should have error")
     );
 
     assert_eq!(
-        error_message, "Insufficient payment",
+        error_message, "InsufficientPayment",
         "expected insufficient payment"
     );
 }
@@ -209,12 +177,13 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
-        .commit()
-        .finish();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder.exec(exec_request).commit().finish();
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
     let expected_reward_balance = *MAX_PAYMENT;
 
@@ -225,24 +194,22 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
             .main_purse(),
     );
 
-    //let reward_balance = get_pos_rewards_purse_balance(&builder);
-
     assert_eq!(
         modified_balance,
         initial_balance - expected_reward_balance,
         "modified balance is incorrect"
     );
 
-    // assert_eq!(
-    //     reward_balance, expected_reward_balance,
-    //     "reward balance is incorrect"
-    // );
-    //
-    // assert_eq!(
-    //     initial_balance,
-    //     (modified_balance + reward_balance),
-    //     "no net resources should be gained or lost post-distribution"
-    // );
+    assert_eq!(
+        transaction_fee, expected_reward_balance,
+        "transaction fee is incorrect"
+    );
+
+    assert_eq!(
+        initial_balance,
+        (modified_balance + transaction_fee),
+        "no net resources should be gained or lost post-distribution"
+    );
 
     let response = builder
         .get_exec_response(0)
@@ -250,12 +217,12 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
 
     let execution_result = utils::get_success_result(response);
     let error_message = format!(
-        "{}",
+        "{:?}",
         execution_result.as_error().expect("should have error")
     );
 
     assert_eq!(
-        error_message, "Insufficient payment",
+        error_message, "InsufficientPayment",
         "expected insufficient payment"
     );
 }
@@ -283,12 +250,13 @@ fn should_forward_payment_execution_runtime_error() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
-        .commit()
-        .finish();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder.exec(exec_request).commit().finish();
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
     let expected_reward_balance = *MAX_PAYMENT;
 
@@ -299,24 +267,22 @@ fn should_forward_payment_execution_runtime_error() {
             .main_purse(),
     );
 
-    // let reward_balance = get_pos_rewards_purse_balance(&builder);
-
     assert_eq!(
         modified_balance,
         initial_balance - expected_reward_balance,
         "modified balance is incorrect"
     );
 
-    // assert_eq!(
-    //     reward_balance, expected_reward_balance,
-    //     "reward balance is incorrect"
-    // );
-    //
-    // assert_eq!(
-    //     initial_balance,
-    //     (modified_balance + reward_balance),
-    //     "no net resources should be gained or lost post-distribution"
-    // );
+    assert_eq!(
+        transaction_fee, expected_reward_balance,
+        "transaction fee is incorrect"
+    );
+
+    assert_eq!(
+        initial_balance,
+        (modified_balance + transaction_fee),
+        "no net resources should be gained or lost post-distribution"
+    );
 
     let response = builder
         .get_exec_response(0)
@@ -353,12 +319,13 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
-        .commit()
-        .finish();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder.exec(exec_request).commit().finish();
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
     let expected_reward_balance = *MAX_PAYMENT;
 
@@ -369,24 +336,22 @@ fn should_forward_payment_execution_gas_limit_error() {
             .main_purse(),
     );
 
-    // let reward_balance = get_pos_rewards_purse_balance(&builder);
-
     assert_eq!(
         modified_balance,
         initial_balance - expected_reward_balance,
         "modified balance is incorrect"
     );
 
-    // assert_eq!(
-    //     reward_balance, expected_reward_balance,
-    //     "reward balance is incorrect"
-    // );
-    //
-    // assert_eq!(
-    //     initial_balance,
-    //     (modified_balance + reward_balance),
-    //     "no net resources should be gained or lost post-distribution"
-    // );
+    assert_eq!(
+        transaction_fee, expected_reward_balance,
+        "transaction fee is incorrect"
+    );
+
+    assert_eq!(
+        initial_balance,
+        (modified_balance + transaction_fee),
+        "no net resources should be gained or lost post-distribution"
+    );
 
     let response = builder
         .get_exec_response(0)
@@ -639,13 +604,16 @@ fn should_finalize_to_rewards_purse() {
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    // let rewards_purse_balance = get_pos_rewards_purse_balance(&builder);
-    // assert!(rewards_purse_balance.is_zero());
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
     builder.exec(exec_request).expect_success().commit();
 
-    // let rewards_purse_balance = get_pos_rewards_purse_balance(&builder);
-    // assert!(!rewards_purse_balance.is_zero());
+    let modified_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    assert!(
+        modified_reward_starting_balance > proposer_reward_starting_balance,
+        "proposer's balance should be higher after exec"
+    );
 }
 
 #[ignore]

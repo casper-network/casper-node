@@ -131,7 +131,7 @@ mod internal {
         let refund_purse = get_refund_purse(provider)?;
         provider.remove_key(REFUND_PURSE_KEY); //unset refund purse after reading it
 
-        // pay validators
+        // pay target validator
         provider
             .transfer_purse_to_purse(payment_purse, target, amount_spent)
             .map_err(|_| Error::FailedTransferToRewardsPurse)?;

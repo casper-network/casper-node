@@ -11,7 +11,7 @@ use casper_types::{
 };
 
 use crate::internal::{
-    DeployItemBuilder, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT,
+    DeployItemBuilder, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -143,7 +143,7 @@ impl Default for ExecuteRequestBuilder {
         let mut execute_request: ExecuteRequest = Default::default();
         execute_request.block_time = DEFAULT_BLOCK_TIME;
         execute_request.protocol_version = ProtocolVersion::V1_0_0;
-        execute_request.proposer = *DEFAULT_ACCOUNT_PUBLIC_KEY;
+        execute_request.proposer = *DEFAULT_PROPOSER_PUBLIC_KEY;
         ExecuteRequestBuilder { execute_request }
     }
 }

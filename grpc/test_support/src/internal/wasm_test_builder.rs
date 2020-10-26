@@ -56,7 +56,7 @@ use casper_types::{
     TransferAddr, URef, U512,
 };
 
-use crate::internal::{utils, DEFAULT_PROTOCOL_VERSION};
+use crate::internal::{utils, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION};
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
@@ -662,6 +662,13 @@ where
             .and_then(|v| CLValue::try_from(v).map_err(|error| format!("{:?}", error)))
             .and_then(|cl_value| cl_value.into_t().map_err(|error| format!("{:?}", error)))
             .expect("should parse balance into a U512")
+    }
+
+    pub fn get_proposer_purse_balance(&self) -> U512 {
+        let proposer_account = self
+            .get_account(*DEFAULT_PROPOSER_ADDR)
+            .expect("proposer account should exist");
+        self.get_purse_balance(proposer_account.main_purse())
     }
 
     pub fn get_account(&self, account_hash: AccountHash) -> Option<Account> {

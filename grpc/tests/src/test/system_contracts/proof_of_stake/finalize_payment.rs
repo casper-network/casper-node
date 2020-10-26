@@ -98,8 +98,9 @@ fn finalize_payment_should_refund_to_specified_purse() {
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    let rewards_pre_balance = builder.get_proposer_purse_balance();
     let payment_pre_balance = get_pos_payment_purse_balance(&builder);
-    let _refund_pre_balance =
+    let refund_pre_balance =
         get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
             .unwrap_or_else(U512::zero);
 
@@ -127,7 +128,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
     };
     builder.exec(exec_request).expect_success().commit();
 
-    let _spent_amount: U512 = {
+    let spent_amount: U512 = {
         let response = builder
             .get_exec_response(0)
             .expect("there should be a response");
@@ -139,20 +140,23 @@ fn finalize_payment_should_refund_to_specified_purse() {
     };
 
     let payment_post_balance = get_pos_payment_purse_balance(&builder);
+    let rewards_post_balance = builder.get_proposer_purse_balance();
+    let refund_post_balance =
+        get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
+            .expect("should have refund balance");
+    let expected_amount = rewards_pre_balance + spent_amount;
+    assert_eq!(
+        expected_amount, rewards_post_balance,
+        "validators should get paid; expected: {}, actual: {}",
+        expected_amount, rewards_post_balance
+    );
 
-    // TODO: how to test this now with reward purse gone?
-    // assert_eq!(
-    //     spent_amount, rewards_post_balance,
-    //     "validators should get paid; expected: {}, actual: {}",
-    //     spent_amount, rewards_post_balance
-    // );
-
-    // // user gets refund
-    // assert_eq!(
-    //     refund_pre_balance + payment_amount - spent_amount,
-    //     refund_post_balance,
-    //     "user should get refund"
-    // );
+    // user gets refund
+    assert_eq!(
+        refund_pre_balance + payment_amount - spent_amount,
+        refund_post_balance,
+        "user should get refund"
+    );
 
     assert!(
         get_pos_refund_purse(&builder).is_none(),
