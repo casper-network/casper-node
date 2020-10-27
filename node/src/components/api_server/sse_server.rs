@@ -14,8 +14,12 @@ use warp::{
 };
 
 use super::CLIENT_API_VERSION;
-use crate::types::{
-    json_compatibility::ExecutionResult, BlockHash, BlockHeader, DeployHash, FinalizedBlock,
+use crate::{
+    crypto::asymmetric_key::PublicKey,
+    types::{
+        json_compatibility::ExecutionResult, BlockHash, BlockHeader, DeployHash, FinalizedBlock,
+        TimeDiff, Timestamp,
+    },
 };
 
 /// The URL path.
@@ -53,6 +57,10 @@ pub enum SseData {
     /// The given deploy has been executed, committed and forms part of the given block.
     DeployProcessed {
         deploy_hash: DeployHash,
+        account: PublicKey,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+        dependencies: Vec<DeployHash>,
         block_hash: BlockHash,
         execution_result: ExecutionResult,
     },
