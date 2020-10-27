@@ -22,8 +22,10 @@ const ACCELERATION_PARAMETER: u64 = 40;
 // The maximum number of failures with which we will attempt to accelerate (decrease the round
 // exponent).
 const MAX_FAILURES_FOR_ACCELERATION: usize = 3;
-// The FTT, as a percentage, which we will use for looking for a summit in order to determine a
-// proposal's finality.
+// The FTT, as a percentage (i.e. `THRESHOLD = 1` means 1% of the validators' total weight), which
+// we will use for looking for a summit in order to determine a proposal's finality.
+// The required quorum in a summit we will look for to check if a round was successful is
+// determined by this FTT.
 const THRESHOLD: u64 = 1;
 
 #[derive(DataSize, Debug)]
@@ -75,18 +77,17 @@ impl<C: Context> RoundSuccessMeter<C> {
         // only add proposals from within the current round
         if round_id(timestamp, self.current_round_exp).millis() == self.current_round_id {
             trace!(
-                "Adding proposal for round {} at timestamp {}",
-                self.current_round_id,
-                timestamp.millis()
+                %self.current_round_id,
+                timestamp = timestamp.millis(),
+                "adding a proposal"
             );
             self.proposals.push(proposal_h);
         } else {
             trace!(
-                "Trying to add proposal for a different round! round id = {}, \
-                proposal timestamp = {}, round exp = {}",
-                self.current_round_id,
-                timestamp.millis(),
-                self.current_round_exp
+                %self.current_round_id,
+                timestamp = timestamp.millis(),
+                %self.current_round_exp,
+                "trying to add proposal for a different round!"
             );
         }
     }
@@ -106,7 +107,7 @@ impl<C: Context> RoundSuccessMeter<C> {
             return self.new_exponent();
         }
 
-        trace!("Calculating exponent at round {}", self.current_round_id);
+        trace!(%self.current_round_id, "calculating exponent");
         let current_round_index = self.current_round_id >> self.current_round_exp;
         let new_round_index = now.millis() >> self.current_round_exp;
 
@@ -114,17 +115,17 @@ impl<C: Context> RoundSuccessMeter<C> {
             .into_iter()
             .any(|proposal| self.check_proposals_success(state, &proposal))
         {
-            trace!("Round succeeded.");
+            trace!("round succeeded");
             self.rounds.push_front(true);
         } else {
-            trace!("Round failed.");
+            trace!("round failed");
             self.rounds.push_front(false);
         }
 
         // if we're just switching rounds and more than a single round has passed, all the
         // rounds since the last registered round have failed
         for _ in 0..(new_round_index - current_round_index - 1) {
-            trace!("Round failed.");
+            trace!("round failed");
             self.rounds.push_front(false);
         }
 
@@ -141,7 +142,7 @@ impl<C: Context> RoundSuccessMeter<C> {
 
         let new_exp = self.new_exponent();
 
-        trace!("New exponent: {}", new_exp);
+        trace!(%new_exp, "new exponent calculated");
 
         if new_exp != self.current_round_exp {
             self.change_exponent(new_exp, now);
