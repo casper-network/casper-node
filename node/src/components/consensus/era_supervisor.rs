@@ -652,6 +652,7 @@ where
                         .iter()
                         .cloned()
                         .chain(equivocators)
+                        .filter(|pub_key| !self.era(era_id).slashed.contains(&pub_key))
                         .sorted()
                         .dedup()
                         .collect(),
