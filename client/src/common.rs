@@ -215,7 +215,7 @@ pub mod block_identifier {
             } else {
                 let height = hex_str
                     .parse()
-                    .unwrap_or_else(|error| panic!("could not parse u64: {}", error));
+                    .unwrap_or_else(|error| panic!("cannot parse as a u64: {}", error));
                 BlockIdentifier::Height(height)
             }
         })
