@@ -643,19 +643,13 @@ where
                 equivocators,
                 proposer,
             }) => {
+                self.era_mut(era_id).add_accusations(&equivocators);
+                self.era_mut(era_id).add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets slashed.
                 let era_end = rewards.map(|rewards| EraEnd {
                     rewards,
-                    equivocators: value
-                        .accusations()
-                        .iter()
-                        .cloned()
-                        .chain(equivocators)
-                        .filter(|pub_key| !self.era(era_id).slashed.contains(&pub_key))
-                        .sorted()
-                        .dedup()
-                        .collect(),
+                    equivocators: self.era(era_id).accusations(),
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.proto_block().clone(),

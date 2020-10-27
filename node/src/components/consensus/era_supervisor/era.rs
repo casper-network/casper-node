@@ -4,6 +4,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
@@ -90,13 +91,15 @@ pub struct Era<I> {
     pub(crate) start_height: u64,
     /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
     /// has been validated; the vector contains the list of accused validators missing evidence.
-    pub(crate) candidates: Vec<PendingCandidate>,
+    candidates: Vec<PendingCandidate>,
     /// Validators banned in this and the next BONDED_ERAS eras, because they were slashed in the
     /// previous switch block.
     pub(crate) newly_slashed: Vec<PublicKey>,
     /// Validators that have been slashed in any of the recent BONDED_ERAS switch blocks. This
     /// includes `newly_slashed`.
     pub(crate) slashed: HashSet<PublicKey>,
+    /// Accusations collected in this era so far.
+    accusations: HashSet<PublicKey>,
 }
 
 impl<I> Era<I> {
@@ -112,6 +115,7 @@ impl<I> Era<I> {
             candidates: Vec::new(),
             newly_slashed,
             slashed,
+            accusations: HashSet::new(),
         }
     }
 
@@ -172,6 +176,20 @@ impl<I> Era<I> {
         invalid.into_iter().map(|pc| pc.candidate).collect()
     }
 
+    /// Adds new accusations from a finalized block.
+    pub(crate) fn add_accusations(&mut self, accusations: &[PublicKey]) {
+        for pub_key in accusations {
+            if !self.slashed.contains(pub_key) {
+                self.accusations.insert(*pub_key);
+            }
+        }
+    }
+
+    /// Returns all accusations from finalized blocks so far.
+    pub(crate) fn accusations(&self) -> Vec<PublicKey> {
+        self.accusations.iter().cloned().sorted().collect()
+    }
+
     /// Removes and returns all candidate blocks with no missing dependencies.
     fn remove_complete_candidates(&mut self) -> Vec<CandidateBlock> {
         let (complete, candidates): (Vec<_>, Vec<_>) = self
@@ -200,6 +218,7 @@ where
             candidates,
             newly_slashed,
             slashed,
+            accusations,
         } = self;
 
         // `DataSize` cannot be made object safe due its use of associated constants. We implement
@@ -224,5 +243,6 @@ where
             + candidates.estimate_heap_size()
             + newly_slashed.estimate_heap_size()
             + slashed.estimate_heap_size()
+            + accusations.estimate_heap_size()
     }
 }
