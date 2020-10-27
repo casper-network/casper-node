@@ -8,8 +8,7 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{
-    auction::{
+use casper_types::{auction::AUCTION_DELAY_KEY, CLValue, ContractPackageHash, PublicKey, RuntimeArgs, U512, URef, auction::{
         Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraId, EraValidators,
         SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
         UnbondingPurses, ValidatorRewardMap, ValidatorWeights, ARG_AUCTION_DELAY,
@@ -18,12 +17,7 @@ use casper_types::{
         DELEGATOR_REWARD_PURSE, ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID,
         LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
         VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
-    },
-    contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
-    runtime_args,
-    system_contract_errors::mint,
-    CLValue, ContractPackageHash, PublicKey, RuntimeArgs, URef, U512,
-};
+    }, contracts::{NamedKeys, CONTRACT_INITIAL_VERSION}, runtime_args, system_contract_errors::mint};
 
 const HASH_KEY_NAME: &str = "auction_hash";
 const ACCESS_KEY_NAME: &str = "auction_access";
@@ -121,7 +115,7 @@ pub extern "C" fn install() {
             storage::new_uref(validator_slots).into(),
         );
         named_keys.insert(
-            ARG_AUCTION_DELAY.into(),
+            AUCTION_DELAY_KEY.into(),
             storage::new_uref(auction_delay).into(),
         );
 

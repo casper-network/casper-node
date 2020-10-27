@@ -94,9 +94,6 @@ pub enum Error {
     /// Invalid number of validator slots.
     #[fail(display = "Invalid number of validator slots")]
     InvalidValidatorSlotsValue = 24,
-    /// Invalid auction delay
-    #[fail(display = "Invalid auction delay amount")]
-    InvalidAuctionDelayValue = 25,
 }
 
 impl CLTyped for Error {
