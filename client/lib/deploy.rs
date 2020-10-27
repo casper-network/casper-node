@@ -24,10 +24,10 @@ use crate::{error::Result, rpc::RpcClient};
 pub(crate) struct SendDeploy;
 
 /// Transfer allows transferring an amount between accounts.
-pub struct Transfer {}
+pub(crate) struct Transfer {}
 
 /// ListDeploys gets a list of the deploys within a block.
-pub struct ListDeploys {}
+pub(crate) struct ListDeploys {}
 
 impl RpcClient for PutDeploy {
     const RPC_METHOD: &'static str = Self::METHOD;

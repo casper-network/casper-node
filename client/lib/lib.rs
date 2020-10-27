@@ -178,7 +178,7 @@ pub fn get_block(
     RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_block(maybe_block_hash)
 }
 
-/// Puts a deploy on a node.
+/// Puts a `Deploy` on a node.
 ///
 /// * `maybe_rpc_id` is used for RPC-ID as required by the JSON-RPC specification, and is returned
 ///   by the node in the corresponding response.  It must be either able to be parsed as a `u32` or
@@ -283,7 +283,7 @@ pub fn transfer(
     )
 }
 
-/// Signs a deploy file.
+/// Signs a `Deploy` file.
 ///
 /// * `input_path` specifies the path to the deploy file.
 /// * `secret_key` specifies the key with which to sign the deploy.
@@ -337,8 +337,8 @@ impl<'a> TryInto<DeployParams> for DeployStrParams<'a> {
 /// Container for payment related arguments.
 #[derive(Default)]
 pub struct PaymentStrParams<'a> {
-    /// Payment amount - all other `payment_*` arguments are ignored and the
-    ///   standard payment contract is used if this is set.
+    /// Payment amount - all other `payment_*` arguments are ignored and the standard payment
+    /// contract is used if this is set.
     pub payment_amount: &'a str,
     /// Hash of this payment.
     pub payment_hash: &'a str,

@@ -31,6 +31,7 @@ pub(super) fn none_if_empty(value: &'_ str) -> Option<&'_ str> {
     }
     Some(value)
 }
+
 /// Handles providing the arg for and retrieval of the timestamp.
 mod timestamp {
     use super::*;

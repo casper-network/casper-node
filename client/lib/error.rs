@@ -35,8 +35,8 @@ pub enum Error {
     #[error("failed to parse as a timestamp: {0:?}")]
     FailedToParseTimestamp(TimestampError),
 
-    /// Failed to parse uint error.
-    #[error("failed to parse uint {0:?}")]
+    /// Failed to parse a `U128`, `U256` or `U512` from a string.
+    #[error("failed to parse as U128, U256, or U512: {0:?}")]
     FailedToParseUint(UIntParseError),
 
     /// Failed to get a response from the node.
@@ -83,7 +83,7 @@ pub enum Error {
     #[error("crypto error {0}")]
     CryptoError(#[from] CryptoError),
 
-    /// InvalidCLValue error.
+    /// Invalid `CLValue`.
     #[error("Invalid CLValue error {0}")]
     InvalidCLValue(String),
 
