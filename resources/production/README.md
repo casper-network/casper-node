@@ -4,24 +4,19 @@ The purpose of this document is to guide configuring a system with the new Rust 
 
 ## Software Install
 
-The package can be installed with `sudo apt install casper-node_0.1.x-r_amd64.deb`.  Depending on system you
-might need to use `sudo dpkg -i casper-node_0.1.x-r_amd64.deb`.
+The package can be installed with `sudo apt install casper-node_x.x.x-x_amd64.deb`.  Depending on system you
+might need to use `sudo dpkg -i casper-node_x.x.x-x_amd64.deb`.
 
-Where `x` is last minor version of software and `r` is the package revision. We can push revisions
-with no code changes for updates to genesis files or use curl from github files.
-
-This package will install both `casper-node` and `casper-client` executables in `/usr/bin`.
-(These will be separating in two packages the future.)
+This package will install the `casper-node` executable in `/usr/bin`.
 
 Configuration files and other needed files are installed in `/etc/casper/`. An example config file is given
-as `/etc/casper/config-example.toml`. This needs to be updated to `config.toml`. You can do a direct copy and 
-modify values as needed. We did not distribute `config.toml` so it isn't overwritten when a deb package is 
-installed to upgrade.
+as `/etc/casper/config-example.toml`. This is automatically modified for your system in `config.toml`. If 
+`config.toml` exists from a previous install, the file we be created as `config.toml.new`. 
 
-In the section of the config named `[network]`, change the `<IP ADDRESS>` in `public_address` to your server's external IP.
+The `accounts.csv` and `chainspec.toml` files will be downloaded into `/etc/casper` with the deb package install. 
+If genesis files need to be pulled down again, run `sudo -u casper /etc/casper/pull_genesis.sh`. 
 
-The `accounts.csv` and `chainspec.toml` files will be installed in `/etc/casper` with the deb package install. 
-This should allow easy configuration for each network run as they are updated with a new deb package revision.
+A `casper` user and `casper` group is created during install and used to run the software. 
 
 ## External Ports
 
@@ -49,56 +44,6 @@ Show status of our system:
 ```
 ● casper-node.service - Casper Node
      Loaded: loaded (/lib/systemd/system/casper-node.service; disabled; vendor preset: enabled)
-     Active: inactive (dead)
-       Docs: https://docs.casperlabs.io
-
-Sep 10 09:08:23 joe-ubuntu systemd[1]: Condition check resulted in Casper Node being skipped.
-```
-
-Notice we are not starting because a check condition is not met. This is a result of the `/etc/casper/config.toml`
-file being required, but not created yet.
-
-Once created, we can start the service again:
-
-`sudo systemctl start casper-node`
-`systemctl status casper-node`
-
-```
-Sep 10 09:58:52 joe-ubuntu systemd[1]: Starting Casper Node...
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.210 INFO  [casper_node::cli cli.rs:134] node starting up; version=0.1.0
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.210 WARN  [casper_node::reactor reactor.rs:206] large event size, consider >
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.219 INFO  [casper_node::components::storage::lmdb_store lmdb_store.rs:26] o>
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.220 INFO  [casper_node::components::storage::lmdb_store lmdb_store.rs:26] o>
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.220 INFO  [casper_node::components::storage::lmdb_chainspec_store lmdb_chai>
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.228 INFO  [casper_node::reactor reactor.rs:223] reactor main loop is ready
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.411 INFO  [casper_node::components::chainspec_loader chainspec_loader.rs:14>
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.411 INFO  [casper_node::cli cli.rs:150] finished initialization
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.411 WARN  [casper_node::reactor reactor.rs:206] large event size, consider >
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.416 INFO  [casper_node::components::small_network small_network.rs:170] 8f5>
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.416 INFO  [casper_node::reactor reactor.rs:223] reactor main loop is ready
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.416 INFO  [casper_node::cli cli.rs:162] finished joining
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.416 INFO  [casper_node::components::small_network small_network.rs:662] 8f5>
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.416 WARN  [casper_node::reactor reactor.rs:206] large event size, consider >
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.419 INFO  [casper_node::components::small_network small_network.rs:170] 18e>
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]: Sep 10 09:58:52.419 INFO  [casper_node::components::api_server api_server.rs:169] started H>
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]:    0: casper_node::panic_hook
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]:    1: std::panicking::rust_panic_with_hook
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]:              at rustc/0cd7ff7ddfb75a38dca81ad3e76b1e984129e939/src/libstd/panicking.rs:530
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]:    2: rust_begin_unwind
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]:              at rustc/0cd7ff7ddfb75a38dca81ad3e76b1e984129e939/src/libstd/panicking.rs:437
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]:    3: core::panicking::panic_fmt
-Sep 10 09:58:52 joe-ubuntu casper-node[731667]:              at rustc/0cd7ff7ddfb75a38dca81ad3e76b1e984129e939/src/libcore/panicking.rs:85
-```
-
-Good start with systemd and valid config.toml file. This is throwing a panic as we do not have this node as 
-part of the genesis group of nodes in config files. Once all keys are in accounts.csv and pushed back out this 
-should start correctly.
-
-An example of logs of a system started correctly:
-
-```
-● casper-node.service - Casper Node
-     Loaded: loaded (/lib/systemd/system/casper-node.service; disabled; vendor preset: enabled)
      Active: active (running) since Thu 2020-09-10 10:37:14 EDT; 2s ago
        Docs: https://docs.casperlabs.io
    Main PID: 826251 (casper-node)
@@ -121,22 +66,16 @@ Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.205 INFO  [caspe
 
 ### Reading logs
 
-The `journalctl` command is used to read logs from a systemd service. You specify the unit name and usually flags
-to jump to the end (-x) or follow (-f).
+Logs were requested to be removed from journald. They now are created in `/var/log/casper/casper-node.log`.
+To generate log files, `40-casper-node.conf` is installed in `/etc/rsyslog.d`. Log rotation is setup with
+`casper-node` in `/etc/logrotate.d`.  If you wish to change log location from `var/log/casper` you need
+to change both of these files.
 
-This will show logs at the end of the logs:
-
-`journalctl -u casper-node -x`
-
-This will follow logs as they occur until stopped with Ctrl+C:
-
-`journalctl -u casper-node -f`
+Logs can be viewed with `tail /var/log/casper-node.log`. 
 
 ### Starting and stopping services
 
-The service will start after installing a new .deb package, assuming `/etc/casper/config.toml` is in place.
-
-To start manually:
+To start service:
 
 `sudo systemctl start casper-node`
 
@@ -147,7 +86,10 @@ To stop:
 ## Local Storage
 
 Unless specified in different location in `config.toml` the data for the node will
-be located in `/root/.local/share/casper-node` for a linux system.
+be located in `/var/lib/casper/casper-node`.  
+
+If you need to delete the db for a new run,
+you can use the script in `/etc/casper` with `sudo /etc/casper/delete_local_db.sh`.
 
 ## Resetting and upgrading for new run
 
@@ -156,17 +98,18 @@ Prior to a new upgrade and run, we need to clean up our local state.
 ```
 sudo systemctl stop casper-node
 sudo apt remove casper-node
-sudo rm -rf /root/.local/share/casper-node
+sudo /etc/casper/delete_local_db.sh
 ```
 
 Pull down new .deb package, install and run.
 
 ```
-sudo apt install casper-node_0.1.x-r_amd64.deb`
+sudo apt install casper-node_x.x.x-x_amd64.deb`
 ```
  
 Look at `/etc/casper/CHANGE_LOG.md` for any changes that require action from
-validators. We might need to update `config.toml` to support different fields, for example.
+validators. We might need to update `/etc/casper/config.toml` to changes in the new
+`/etc/casper/config-example.toml`.
 
 ## Bugs
 
