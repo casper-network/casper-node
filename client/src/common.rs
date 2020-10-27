@@ -183,7 +183,7 @@ pub mod state_root_hash {
     }
 }
 
-/// Handles providing the arg for and retrieval of the block hash.
+/// Handles providing the arg for and retrieval of the block hash or block height.
 pub mod block_identifier {
     use casper_node::rpcs::chain::BlockIdentifier;
 
