@@ -186,12 +186,12 @@ pub fn get_block(
 /// * `node_address` identifies the network address of the target node's HTTP server, e.g.
 ///   `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the request will be printed to `stdout`.
-/// * `deploy` - Deploy arguments container struct holding options for this deploy. See
-///   `DeployStrParams`.
-/// * `session` - Session arguments container struct holding options for this deploy. See
-///   `SessionStrParams`.
-/// * `payment` - Payment arguments container struct holding options for this deploy. See
-///   `PaymentStrParams`.
+/// * `deploy` contains deploy-related options for this deploy. See `DeployStrParams` for more
+///   details.
+/// * `session` contains session-related options for this deploy. See `SessionStrParams` for more
+///   details.
+/// * `payment` contains payment-related options for this deploy. See `PaymentStrParams` for more
+///   details.
 pub fn put_deploy(
     maybe_rpc_id: &str,
     node_address: &str,
@@ -215,14 +215,13 @@ pub fn put_deploy(
 ///   empty.  If empty, a random ID will be assigned.
 /// * `node_address` identifies the network address of the target node's HTTP server, e.g.
 ///   `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the request will be printed to `stdout`.
-/// * `deploy` - Deploy arguments container struct holding options for this deploy. See
-///   `DeployStrParams`.
-/// * `session` - Session arguments container struct holding options for this deploy. See
-///   `SessionStrParams`.
-/// * `payment` - Payment arguments container struct holding options for this deploy. See
-///   `PaymentStrParams`.
-#[allow(clippy::too_many_arguments)]
+/// * `maybe_output_path` specifies the output file, or if left empty, will log it to `stdout`.
+/// * `deploy` contains deploy-related options for this deploy. See `DeployStrParams` for more
+///   details.
+/// * `session` contains session-related options for this deploy. See `SessionStrParams` for more
+///   details.
+/// * `payment` contains payment-related options for this deploy. See `PaymentStrParams` for more
+///   details.
 pub fn make_deploy(
     maybe_output_path: &str,
     deploy: DeployStrParams<'_>,
@@ -245,15 +244,17 @@ pub fn make_deploy(
 /// * `node_address` identifies the network address of the target node's HTTP server, e.g.
 ///   `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the request will be printed to `stdout`.
-/// * `amount` - Specifies the amount to be transferred.
-/// * `maybe_source_purse` - Source purse in the sender's account that this amount will be drawn
-///   from, if it is `""`, it will default to the account's main purse.
-/// * `maybe_target_purse` - Target purse in the sender's account that this amount will be
-///   transferred to.
-/// it is incompatible with `maybe_target_account`.
-/// * `maybe_target_account` - Target account that this amount will be transferred to.
-/// it is incompatible with `maybe_target_purse`.
-/// * `deploy` - Deploy arguments container struct holding options for this deploy.
+/// * `amount` specifies the amount to be transferred.
+/// * `maybe_source_purse` is the source purse in the sender's account that this amount will be
+///   drawn from, if it is `""`, it will default to the account's main purse.
+/// * `maybe_target_purse` is the target purse in the sender's account that this amount will be
+///   transferred to. It is incompatible with `maybe_target_account`.
+/// * `maybe_target_account` is the target account that this amount will be transferred to. It is
+///   incompatible with `maybe_target_purse`.
+/// * `deploy` contains deploy-related options for this deploy. See `DeployStrParams` for more
+///   details.
+/// * `payment` contains payment-related options for this deploy. See `PaymentStrParams` for more
+///   details.
 #[allow(clippy::too_many_arguments)]
 pub fn transfer(
     maybe_rpc_id: &str,
@@ -264,22 +265,21 @@ pub fn transfer(
     maybe_target_purse: &str,
     maybe_target_account: &str,
     deploy: DeployStrParams<'_>,
+    payment: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
     let target = parsing::get_transfer_target(maybe_target_account, maybe_target_purse)?;
 
-    // transfer always invoke the standard payment
-    let payment = parsing::parse_standard_payment_info(amount)?;
     let amount = U512::from_dec_str(amount)
         .map_err(|err| Error::FailedToParseUint(UIntParseError::FromDecStr(err)))?;
 
-    let source_purse = parsing::purse::parse(maybe_source_purse).ok();
+    let source_purse = parsing::purse(maybe_source_purse).ok();
 
     RpcCall::new(maybe_rpc_id, node_address, verbose)?.transfer(
         amount,
         source_purse,
         target,
         deploy.try_into()?,
-        payment,
+        payment.try_into()?,
     )
 }
 
@@ -287,27 +287,31 @@ pub fn transfer(
 ///
 /// * `input_path` specifies the path to the deploy file.
 /// * `secret_key` specifies the key with which to sign the deploy.
-/// * `maybe_output` specifies the output file, or if left empty, will log it to `stdout`.
-pub fn sign_deploy_file(input: &str, secret_key: &str, maybe_output: &str) -> Result<()> {
-    let input_path = parsing::input::get(input);
-    let secret_key = parsing::secret_key::parse(secret_key)?;
-    let maybe_output = parsing::output::get(maybe_output);
+/// * `maybe_output_path` specifies the output file, or if left empty, will log it to `stdout`.
+pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &str) -> Result<()> {
+    let secret_key = parsing::secret_key(secret_key)?;
+    let maybe_output = parsing::output(maybe_output_path);
     Deploy::sign_deploy_file(&input_path, secret_key, maybe_output)
 }
 
 /// Container for `Deploy` construction options.
 pub struct DeployStrParams<'a> {
-    /// Formatted string of `SecretKey`.
+    /// Path to secret key file
     pub secret_key: &'a str,
-    /// Formatted string of `Timestamp`.
+    /// Timestamp as the number of milliseconds since the Unix epoch. If not provided, the current
+    /// time will be used
     pub timestamp: &'a str,
-    /// Formatted string of `ttl`.
+    /// Time that the deploy will remain valid for. A deploy can only be included in a block
+    /// between `timestamp` and `timestamp + ttl`. Input examples: '1hr 12min', '30min 50sec',
+    /// '1day'. For all options, see https://docs.rs/humantime/latest/humantime/fn.parse_duration.html [default: 1hour]
     pub ttl: &'a str,
-    /// List of formatted `DeployHash` strings.
+    /// A hex-encoded deploy hash of a deploy which must be executed before this deploy
     pub dependencies: &'a [&'a str],
-    /// Gas price (uint) as a string.
+    /// Conversion rate between the cost of Wasm opcodes and the motes sent by the payment code
+    /// [default: 10]
     pub gas_price: &'a str,
-    /// Chain name.
+    /// Name of the chain, to avoid the deploy from being accidentally or maliciously included in a
+    /// different chain
     pub chain_name: &'a str,
 }
 
@@ -337,28 +341,16 @@ impl<'a> TryInto<DeployParams> for DeployStrParams<'a> {
 /// Container for payment related arguments.
 #[derive(Default)]
 pub struct PaymentStrParams<'a> {
-    /// Payment amount - all other `payment_*` arguments are ignored and the standard payment
-    /// contract is used if this is set.
-    pub payment_amount: &'a str,
-    /// Hash of this payment.
-    pub payment_hash: &'a str,
-    /// Name for payment.
-    pub payment_name: &'a str,
-    /// Hash of payment package to be used.
-    pub payment_package_hash: &'a str,
-    /// Name to be used for payment package.
-    pub payment_package_name: &'a str,
-    /// Path to file containing payment code bytes.
-    pub payment_path: &'a str,
-    ///Inline args of the form `NAME:TYPE=VALUE`. Incompatible with
-    ///   `payment_args_complex`.
-    pub payment_args_simple: &'a [&'a str],
-    ///Complex args in file form. Incompatible with `payment_args_simple`.
-    pub payment_args_complex: &'a str,
-    /// Version of this payment.
-    pub payment_version: &'a str,
-    /// Entry point for payment.
-    pub payment_entry_point: &'a str,
+    payment_amount: &'a str,
+    payment_hash: &'a str,
+    payment_name: &'a str,
+    payment_package_hash: &'a str,
+    payment_package_name: &'a str,
+    payment_path: &'a str,
+    payment_args_simple: Vec<&'a str>,
+    payment_args_complex: &'a str,
+    payment_version: &'a str,
+    payment_entry_point: &'a str,
 }
 
 impl<'a> TryInto<ExecutableDeployItem> for PaymentStrParams<'a> {
@@ -385,7 +377,7 @@ impl<'a> TryInto<ExecutableDeployItem> for PaymentStrParams<'a> {
             payment_package_hash,
             payment_package_name,
             payment_path,
-            payment_args_simple,
+            &payment_args_simple,
             payment_args_complex,
             payment_version,
             payment_entry_point,
@@ -394,7 +386,9 @@ impl<'a> TryInto<ExecutableDeployItem> for PaymentStrParams<'a> {
 }
 
 impl<'a> PaymentStrParams<'a> {
-    /// Construct PaymentParams from a file.
+    /// Construct PaymentStrParams from a file.
+    ///
+    /// * `payment_path` is the path to the compiled Wasm payment code.
     pub fn with_path(payment_path: &'a str) -> Self {
         Self {
             payment_path,
@@ -402,7 +396,10 @@ impl<'a> PaymentStrParams<'a> {
         }
     }
 
-    /// Construct PaymentParams using an amount.
+    /// Construct a PaymentStrParams
+    ///
+    /// `payment_amount` uses the standard-payment system contract rather than custom payment Wasm. The value is the
+    /// 'amount' arg of the standard-payment contract.
     pub fn with_amount(payment_amount: &'a str) -> Self {
         Self {
             payment_amount,
@@ -410,11 +407,25 @@ impl<'a> PaymentStrParams<'a> {
         }
     }
 
-    /// Construct PaymentParams with a name.
+    /// Construct PaymentStrParams with a name.
+    ///
+    /// * `payment_name` is the name of the stored contract (associated with the executing account)
+    /// to be called as the payment.
+    /// * `payment_entry_point` is the name of the method that will be used when calling the payment
+    ///   contract.
+    /// * `payment_args_simple` is payment contract arguments, of the form `<NAME:TYPE='VALUE'>...`
+    /// For simple CLTypes, a named and typed arg which is passed to the Wasm code. To see an
+    /// example for each type, run 'casper-client --show-arg-examples'. This arg can be
+    /// repeated to pass multiple named, typed args, but can only be used for the following
+    /// types: `bool, i32, i64, u8, u32, u64, u128, u256, u512, unit, string, key, account_hash,
+    /// uref, public_key`.
+    /// * `payment_args_complex` is the path to file containing named and typed args for passing to
+    /// the Wasm code.
+    /// Note that only one of `payment_args_simple` and `payment_args_complex` should be used.
     pub fn with_name(
         payment_name: &'a str,
         payment_entry_point: &'a str,
-        payment_args_simple: &'a [&'a str],
+        payment_args_simple: Vec<&'a str>,
         payment_args_complex: &'a str,
     ) -> Self {
         Self {
@@ -426,11 +437,17 @@ impl<'a> PaymentStrParams<'a> {
         }
     }
 
-    /// Construct PaymentParams with a hash.
+    /// Construct PaymentStrParams with a hex-encoded hash.
+    ///
+    /// * `payment_hash` is the hex-encoded hash of the stored contract to be called as the
+    /// payment.
+    /// * `payment_entry_point` is the name of the method that will be used when calling the payment
+    ///   contract.
+    /// * See `Self::with_name` for a description of `payment_args_simple` and `payment_args_complex`.
     pub fn with_hash(
         payment_hash: &'a str,
         payment_entry_point: &'a str,
-        payment_args_simple: &'a [&'a str],
+        payment_args_simple: Vec<&'a str>,
         payment_args_complex: &'a str,
     ) -> Self {
         Self {
@@ -442,12 +459,19 @@ impl<'a> PaymentStrParams<'a> {
         }
     }
 
-    /// Construct PaymentParams with a package name.
+    /// Construct PaymentStrParams with a package name.
+    ///
+    /// * `payment_package_name` is the name of the stored package to be called as the payment.
+    /// * `payment_version` is the version of the called payment contract. Latest will be used by
+    ///   default.
+    /// * `payment_entry_point` is the name of the method that will be used when calling the payment
+    ///   contract.
+    /// * See `Self::with_name` for a description of `payment_args_simple` and `payment_args_complex`.
     pub fn with_package_name(
         payment_package_name: &'a str,
         payment_version: &'a str,
         payment_entry_point: &'a str,
-        payment_args_simple: &'a [&'a str],
+        payment_args_simple: Vec<&'a str>,
         payment_args_complex: &'a str,
     ) -> Self {
         Self {
@@ -460,12 +484,19 @@ impl<'a> PaymentStrParams<'a> {
         }
     }
 
-    /// Construct PaymentParams with a package hash.
+    /// Construct PaymentStrParams with a package hash.
+    ///
+    /// * `payment_package_hash` is the hex-encoded hash of the stored package to be called as the payment.
+    /// * `payment_version` is the version of the called payment contract. Latest will be used by
+    ///   default.
+    /// * `payment_entry_point` is the name of the method that will be used when calling the payment
+    ///   contract.
+    /// * See `Self::with_name` for a description of `payment_args_simple` and `payment_args_complex`.
     pub fn with_package_hash(
         payment_package_hash: &'a str,
         payment_version: &'a str,
         payment_entry_point: &'a str,
-        payment_args_simple: &'a [&'a str],
+        payment_args_simple: Vec<&'a str>,
         payment_args_complex: &'a str,
     ) -> Self {
         Self {
@@ -501,7 +532,7 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
             session_package_hash,
             session_package_name,
             session_path,
-            session_args_simple,
+            &session_args_simple,
             session_args_complex,
             session_version,
             session_entry_point,
@@ -512,29 +543,21 @@ impl<'a> TryInto<ExecutableDeployItem> for SessionStrParams<'a> {
 /// Container for session related arguments.
 #[derive(Default)]
 pub struct SessionStrParams<'a> {
-    /// Hash for this session.
-    pub session_hash: &'a str,
-    /// Name for this session.
-    pub session_name: &'a str,
-    /// Package hash for this session.
-    pub session_package_hash: &'a str,
-    /// Package Name for this session.
-    pub session_package_name: &'a str,
-    /// Path to file containing session code bytes.
-    pub session_path: &'a str,
-    /// Inline args of the form `NAME:TYPE=VALUE`. Incompatible with
-    ///   `session_args_complex`.
-    pub session_args_simple: &'a [&'a str],
-    /// Complex args in file form. Incompatible with `session_args_simple`.
-    pub session_args_complex: &'a str,
-    /// Version for this session.
-    pub session_version: &'a str,
-    /// Entry point for this session.
-    pub session_entry_point: &'a str,
+    session_hash: &'a str,
+    session_name: &'a str,
+    session_package_hash: &'a str,
+    session_package_name: &'a str,
+    session_path: &'a str,
+    session_args_simple: Vec<&'a str>,
+    session_args_complex: &'a str,
+    session_version: &'a str,
+    session_entry_point: &'a str,
 }
 
 impl<'a> SessionStrParams<'a> {
-    /// Construct a SessionParams from a file.
+    /// Construct a SessionStrParams from a file.
+    ///
+    /// * `session_path` is the path to the compiled Wasm session code.
     pub fn with_path(session_path: &'a str) -> Self {
         Self {
             session_path,
@@ -542,11 +565,25 @@ impl<'a> SessionStrParams<'a> {
         }
     }
 
-    /// Construct SessionParams with a name.
+    /// Construct `SessionStrParams` with a name.
+    ///
+    /// * `session_name` is the name of the stored contract (associated with the executing account)
+    /// to be called as the session.
+    /// * `session_entry_point` is the name of the method that will be used when calling the session
+    ///   contract.
+    /// * `session_args_simple` is session contract arguments, of the form `<NAME:TYPE='VALUE'>...`
+    /// For simple CLTypes, a named and typed arg which is passed to the Wasm code. To see an
+    /// example for each type, run 'casper-client --show-arg-examples'. This arg can be
+    /// repeated to pass multiple named, typed args, but can only be used for the following
+    /// types: `bool, i32, i64, u8, u32, u64, u128, u256, u512, unit, string, key, account_hash,
+    /// uref, public_key`.
+    /// * `session_args_complex` is the path to file containing named and typed args for passing to
+    /// the Wasm code.
+    /// Note that only one of `session_args_simple` and `session_args_complex` should be used.
     pub fn with_name(
         session_name: &'a str,
         session_entry_point: &'a str,
-        session_args_simple: &'a [&'a str],
+        session_args_simple: Vec<&'a str>,
         session_args_complex: &'a str,
     ) -> Self {
         Self {
@@ -558,11 +595,17 @@ impl<'a> SessionStrParams<'a> {
         }
     }
 
-    /// Construct SessionParams with a hash.
+    /// Construct `SessionStrParams` with a hex-encoded hash.
+    ///
+    /// * `session_hash` is the hex-encoded hash of the stored contract to be called as the
+    /// session.
+    /// * `session_entry_point` is the name of the method that will be used when calling the session
+    ///   contract.
+    /// * See `Self::with_name` for a description of `session_args_simple` and `session_args_complex`.
     pub fn with_hash(
         session_hash: &'a str,
         session_entry_point: &'a str,
-        session_args_simple: &'a [&'a str],
+        session_args_simple: Vec<&'a str>,
         session_args_complex: &'a str,
     ) -> Self {
         Self {
@@ -574,12 +617,19 @@ impl<'a> SessionStrParams<'a> {
         }
     }
 
-    /// Construct SessionParams with a package name.
+    /// Construct `SessionStrParams` with a package name.
+    ///
+    /// * `session_package_name` is the name of the stored package to be called as the session.
+    /// * `session_version` is the version of the called session contract. Latest will be used by
+    ///   default.
+    /// * `session_entry_point` is the name of the method that will be used when calling the session
+    ///   contract.
+    /// * See `Self::with_name` for a description of `session_args_simple` and `session_args_complex`.
     pub fn with_package_name(
         session_package_name: &'a str,
         session_version: &'a str,
         session_entry_point: &'a str,
-        session_args_simple: &'a [&'a str],
+        session_args_simple: Vec<&'a str>,
         session_args_complex: &'a str,
     ) -> Self {
         Self {
@@ -592,12 +642,19 @@ impl<'a> SessionStrParams<'a> {
         }
     }
 
-    /// Construct SessionParams with a package hash.
+    /// Construct SessionStrParams with a package hash.
+    ///
+    /// * `session_package_hash` is the hex-encoded hash of the stored package to be called as the session.
+    /// * `session_version` is the version of the called session contract. Latest will be used by
+    ///   default.
+    /// * `session_entry_point` is the name of the method that will be used when calling the session
+    ///   contract.
+    /// * See `Self::with_name` for a description of `session_args_simple` and `session_args_complex`.
     pub fn with_package_hash(
         session_package_hash: &'a str,
         session_version: &'a str,
         session_entry_point: &'a str,
-        session_args_simple: &'a [&'a str],
+        session_args_simple: Vec<&'a str>,
         session_args_complex: &'a str,
     ) -> Self {
         Self {

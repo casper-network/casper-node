@@ -1,5 +1,6 @@
-use casper_client::DeployStrParams;
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
+
+use casper_client::{DeployStrParams};
 
 use super::creation_common::{self, DisplayOrder};
 use crate::{command::ClientCommand, common};
@@ -153,6 +154,8 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
         let dependencies = creation_common::dependencies::get(matches);
         let chain_name = creation_common::chain_name::get(matches);
 
+        let payment_str_params = creation_common::payment_str_params(matches);
+
         let response = casper_client::transfer(
             maybe_rpc_id,
             node_address,
@@ -169,6 +172,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
                 gas_price,
                 chain_name,
             },
+            payment_str_params,
         )
         .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
         println!(

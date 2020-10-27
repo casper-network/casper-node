@@ -11,7 +11,7 @@ use casper_node::{
         asymmetric_key::{PublicKey as NodePublicKey, SecretKey},
         hash::Digest,
     },
-    types::{TimeDiff, Timestamp},
+    types::{TimeDiff, Timestamp, DeployHash},
 };
 use casper_types::{
     bytesrepr, CLType, CLValue, ContractHash, Key, NamedArg, RuntimeArgs, UIntParseError, URef,
@@ -32,62 +32,25 @@ pub(super) fn none_if_empty(value: &'_ str) -> Option<&'_ str> {
     Some(value)
 }
 
-/// Handles providing the arg for and retrieval of the timestamp.
-mod timestamp {
-    use super::*;
-
-    pub(crate) fn parse(value: &str) -> Result<Timestamp> {
-        Timestamp::from_str(value).map_err(Error::FailedToParseTimestamp)
-    }
+fn timestamp(value: &str) -> Result<Timestamp> {
+    Timestamp::from_str(value).map_err(Error::FailedToParseTimestamp)
 }
 
-/// Handles providing the arg for and retrieval of the time to live.
-mod ttl {
-    use super::*;
-
-    pub(crate) fn parse(value: &str) -> Result<TimeDiff> {
-        TimeDiff::from_str(value).map_err(Error::FailedToParseTimeDiff)
-    }
+fn ttl(value: &str) -> Result<TimeDiff> {
+    TimeDiff::from_str(value).map_err(Error::FailedToParseTimeDiff)
 }
 
-/// Handles providing the arg for and retrieval of the gas price.
-mod gas_price {
-    use super::*;
-
-    pub(crate) fn parse(value: &str) -> Result<u64> {
-        Ok(value.parse::<u64>()?)
-    }
+fn gas_price(value: &str) -> Result<u64> {
+    Ok(value.parse::<u64>()?)
 }
 
-/// Handles providing the arg for and retrieval of the deploy dependencies.
-mod dependencies {
-    use super::*;
-    use casper_node::types::DeployHash;
-
-    pub(crate) fn parse(values: &[&str]) -> Result<Vec<DeployHash>> {
-        let mut hashes = Vec::with_capacity(values.len());
-        for value in values {
-            let digest = Digest::from_hex(value)?;
-            hashes.push(DeployHash::new(digest))
-        }
-        Ok(hashes)
+fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
+    let mut hashes = Vec::with_capacity(values.len());
+    for value in values {
+        let digest = Digest::from_hex(value)?;
+        hashes.push(DeployHash::new(digest))
     }
-}
-
-/// Handles providing the arg for and retrieval of the chain name.
-mod chain_name {
-    pub(crate) fn parse(value: &str) -> String {
-        value.to_string()
-    }
-}
-
-/// Handles providing the arg for and retrieval of the session code bytes.
-mod session_path {
-    use super::*;
-
-    pub(crate) fn parse(value: &str) -> Result<Vec<u8>> {
-        Ok(fs::read(value)?)
-    }
+    Ok(hashes)
 }
 
 /// Handles providing the arg for and retrieval of simple session and payment args.
@@ -229,38 +192,18 @@ mod args_complex {
     }
 }
 
-/// Handles providing the arg for and retrieval of the payment code bytes.
-mod payment_path {
-    use super::*;
-
-    pub fn parse(path: &str) -> Result<Vec<u8>> {
-        Ok(fs::read(path)?)
-    }
+const STANDARD_PAYMENT_ARG_NAME: &str = "amount";
+fn standard_payment(value: &str) -> Result<RuntimeArgs> {
+    let arg = U512::from_dec_str(value)
+        .map_err(|err| Error::FailedToParseUint(UIntParseError::FromDecStr(err)))?;
+    let mut runtime_args = RuntimeArgs::new();
+    runtime_args.insert(STANDARD_PAYMENT_ARG_NAME, arg);
+    Ok(runtime_args)
 }
 
-/// Handles providing the arg for and retrieval of the payment-amount arg.
-mod standard_payment {
-
-    use super::*;
-
-    const STANDARD_PAYMENT_ARG_NAME: &str = "amount";
-
-    pub fn parse(value: &str) -> Result<RuntimeArgs> {
-        let arg = U512::from_dec_str(value)
-            .map_err(|err| Error::FailedToParseUint(UIntParseError::FromDecStr(err)))?;
-        let mut runtime_args = RuntimeArgs::new();
-        runtime_args.insert(STANDARD_PAYMENT_ARG_NAME, arg);
-        Ok(runtime_args)
-    }
-}
-
-pub(super) mod secret_key {
-    use super::*;
-
-    pub fn parse(value: &str) -> Result<SecretKey> {
-        let path = PathBuf::from(value);
-        SecretKey::from_file(path).map_err(Error::CryptoError)
-    }
+pub(crate) fn secret_key(value: &str) -> Result<SecretKey> {
+    let path = PathBuf::from(value);
+    SecretKey::from_file(path).map_err(Error::CryptoError)
 }
 
 fn args_from_simple_or_complex(
@@ -283,12 +226,12 @@ pub(super) fn parse_deploy_params(
     dependencies: &[&str],
     chain_name: &str,
 ) -> Result<DeployParams> {
-    let secret_key = secret_key::parse(secret_key)?;
-    let timestamp = timestamp::parse(timestamp)?;
-    let ttl = ttl::parse(ttl)?;
-    let gas_price = gas_price::parse(gas_price)?;
-    let dependencies = dependencies::parse(dependencies)?;
-    let chain_name = chain_name::parse(chain_name);
+    let secret_key = self::secret_key(secret_key)?;
+    let timestamp = self::timestamp(timestamp)?;
+    let ttl = self::ttl(ttl)?;
+    let gas_price = self::gas_price(gas_price)?;
+    let dependencies = self::dependencies(dependencies)?;
+    let chain_name = chain_name.to_string();
 
     Ok(DeployParams {
         timestamp,
@@ -304,67 +247,60 @@ pub(super) fn parse_deploy_params(
 pub(super) fn parse_session_info(
     session_hash: &str,
     session_name: &str,
-    package_hash: &str,
-    package_name: &str,
+    session_package_hash: &str,
+    session_package_name: &str,
     session_path: &str,
     session_args: &[&str],
     session_args_complex: &str,
-    version: &str,
-    entry_point: &str,
+    session_version: &str,
+    session_entry_point: &str,
 ) -> Result<ExecutableDeployItem> {
     let session_args = args_from_simple_or_complex(
         arg_simple::session::parse(session_args),
         args_complex::session::parse(session_args_complex).ok(),
     );
 
-    if let Some(session_name) = session_name::parse(session_name) {
+    if let Some(session_name) = name(session_name) {
         return ExecutableDeployItem::new_stored_contract_by_name(
             session_name,
-            session_entry_point::get(entry_point)
-                .ok_or_else(|| Error::InvalidArgument(entry_point.to_string()))?,
+            entry_point(session_entry_point)
+                .ok_or_else(|| Error::InvalidArgument(session_entry_point.to_string()))?,
             session_args,
         );
     }
 
-    if let Ok(session_hash) = session_hash::parse(session_hash) {
+    if let Ok(session_hash) = hash(session_hash) {
         return ExecutableDeployItem::new_stored_contract_by_hash(
             session_hash,
-            session_entry_point::get(entry_point)
-                .ok_or_else(|| Error::InvalidArgument(entry_point.to_string()))?,
+            entry_point(session_entry_point)
+                .ok_or_else(|| Error::InvalidArgument(session_entry_point.to_string()))?,
             session_args,
         );
     }
 
-    let version = session_version::parse(version).ok();
-    if let Some(package_name) = session_package_name::get(package_name) {
+    let version = version(session_version).ok();
+    if let Some(package_name) = name(session_package_name) {
         return ExecutableDeployItem::new_stored_versioned_contract_by_name(
             package_name,
             version,
-            session_entry_point::get(entry_point)
-                .ok_or_else(|| Error::InvalidArgument(entry_point.to_string()))?,
+            entry_point(session_entry_point)
+                .ok_or_else(|| Error::InvalidArgument(session_entry_point.to_string()))?,
             session_args,
         );
     }
 
-    if let Ok(package_hash) = session_package_hash::parse(package_hash) {
+    if let Ok(package_hash) = hash(session_package_hash) {
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
             package_hash,
             version,
-            session_entry_point::get(entry_point)
-                .ok_or_else(|| Error::InvalidArgument(entry_point.to_string()))?,
+            entry_point(session_entry_point)
+                .ok_or_else(|| Error::InvalidArgument(session_entry_point.to_string()))?,
             session_args,
         );
     }
 
-    let module_bytes = session_path::parse(session_path)?;
+    let module_bytes = fs::read(session_path)?;
     ExecutableDeployItem::new_module_bytes(module_bytes, session_args)
-}
-
-pub(super) fn parse_standard_payment_info(
-    standard_payment_amount: &str,
-) -> Result<ExecutableDeployItem> {
-    let payment_args = standard_payment::parse(standard_payment_amount)?;
-    ExecutableDeployItem::new_module_bytes(vec![], payment_args)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -372,15 +308,15 @@ pub(super) fn parse_payment_info(
     standard_payment_amount: &str,
     payment_hash: &str,
     payment_name: &str,
-    package_hash: &str,
-    package_name: &str,
+    payment_package_hash: &str,
+    payment_package_name: &str,
     payment_path: &str,
     payment_args: &[&str],
     payment_args_complex: &str,
     payment_version: &str,
-    entry_point: &str,
+    payment_entry_point: &str,
 ) -> Result<ExecutableDeployItem> {
-    if let Ok(payment_args) = standard_payment::parse(standard_payment_amount) {
+    if let Ok(payment_args) = standard_payment(standard_payment_amount) {
         return ExecutableDeployItem::new_module_bytes(vec![], payment_args);
     }
 
@@ -389,46 +325,46 @@ pub(super) fn parse_payment_info(
         args_complex::payment::parse(payment_args_complex).ok(),
     );
 
-    if let Some(payment_name) = payment_name::get(payment_name) {
+    if let Some(payment_name) = name(payment_name) {
         return ExecutableDeployItem::new_stored_contract_by_name(
             payment_name,
-            payment_entry_point::get(entry_point)
-                .ok_or_else(|| Error::InvalidArgument(entry_point.to_string()))?,
+            entry_point(payment_entry_point)
+                .ok_or_else(|| Error::InvalidArgument(payment_entry_point.to_string()))?,
             payment_args,
         );
     }
 
-    if let Ok(payment_hash) = payment_hash::parse(payment_hash) {
+    if let Ok(payment_hash) = hash(payment_hash) {
         return ExecutableDeployItem::new_stored_contract_by_hash(
             payment_hash,
-            payment_entry_point::get(entry_point)
-                .ok_or_else(|| Error::InvalidArgument(entry_point.to_string()))?,
+            entry_point(payment_entry_point)
+                .ok_or_else(|| Error::InvalidArgument(payment_entry_point.to_string()))?,
             payment_args,
         );
     }
 
-    let version = payment_version::parse(payment_version).ok();
-    if let Some(package_name) = payment_package_name::get(package_name) {
+    let version = version(payment_version).ok();
+    if let Some(package_name) = name(payment_package_name) {
         return ExecutableDeployItem::new_stored_versioned_contract_by_name(
             package_name,
             version,
-            payment_entry_point::get(entry_point)
-                .ok_or_else(|| Error::InvalidArgument(entry_point.to_string()))?,
+            entry_point(payment_entry_point)
+                .ok_or_else(|| Error::InvalidArgument(payment_entry_point.to_string()))?,
             payment_args,
         );
     }
 
-    if let Ok(package_hash) = payment_package_hash::parse(package_hash) {
+    if let Ok(package_hash) = hash(payment_package_hash) {
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
             package_hash,
             version,
-            payment_entry_point::get(entry_point)
-                .ok_or_else(|| Error::InvalidArgument(entry_point.to_string()))?,
+            entry_point(payment_entry_point)
+                .ok_or_else(|| Error::InvalidArgument(payment_entry_point.to_string()))?,
             payment_args,
         );
     }
 
-    let module_bytes = payment_path::parse(payment_path)?;
+    let module_bytes = fs::read(payment_path)?;
     ExecutableDeployItem::new_module_bytes(module_bytes, payment_args)
 }
 
@@ -436,8 +372,8 @@ pub(crate) fn get_transfer_target(
     target_account: &str,
     target_purse: &str,
 ) -> Result<TransferTarget> {
-    let account = target_account::parse(target_account).ok();
-    let purse = purse::parse(target_purse).ok();
+    let account = account(target_account).ok();
+    let purse = purse(target_purse).ok();
     let target = match (purse, account) {
         (Some(purse), _) => TransferTarget::OwnPurse(purse),
         (None, Some(account)) => TransferTarget::Account(account),
@@ -451,18 +387,8 @@ pub(crate) fn get_transfer_target(
     Ok(target)
 }
 
-pub(super) mod output {
-    use super::*;
-
-    pub fn get(value: &str) -> Option<&str> {
-        none_if_empty(value)
-    }
-}
-
-pub(super) mod input {
-    pub fn get(value: &str) -> &str {
-        value
-    }
+pub(crate) fn output(value: &str) -> Option<&str> {
+    none_if_empty(value)
 }
 
 fn parse_contract_hash(value: &str) -> Result<ContractHash> {
@@ -475,115 +401,27 @@ fn parse_contract_hash(value: &str) -> Result<ContractHash> {
     Err(Error::FailedToParseKey)
 }
 
-mod session_hash {
-    use super::*;
 
-    pub fn parse(value: &str) -> Result<ContractHash> {
-        parse_contract_hash(value)
-    }
+fn hash(value: &str) -> Result<ContractHash> {
+    parse_contract_hash(value)
 }
 
-mod session_name {
-    use super::*;
-
-    pub fn parse(value: &str) -> Option<String> {
-        none_if_empty(value).map(str::to_string)
-    }
+fn name(value: &str) -> Option<String> {
+    none_if_empty(value).map(str::to_string)
 }
 
-mod session_package_hash {
-    use super::*;
-    pub fn parse(value: &str) -> Result<ContractHash> {
-        parse_contract_hash(value)
-    }
+fn entry_point(value: &str) -> Option<String> {
+    none_if_empty(value).map(str::to_string)
 }
 
-mod session_package_name {
-    use super::*;
-
-    pub fn get(value: &str) -> Option<String> {
-        none_if_empty(value).map(str::to_string)
-    }
+fn version(value: &str) -> Result<u32> {
+    Ok(value.parse::<u32>()?)
 }
 
-mod session_entry_point {
-    use super::*;
-
-    pub fn get(value: &str) -> Option<String> {
-        none_if_empty(value).map(str::to_string)
-    }
+fn account(value: &str) -> Result<NodePublicKey> {
+    Ok(NodePublicKey::from_hex(value)?)
 }
 
-mod session_version {
-    use super::*;
-
-    pub fn parse(value: &str) -> Result<u32> {
-        Ok(value.parse::<u32>()?)
-    }
-}
-
-mod payment_hash {
-    use super::*;
-
-    pub fn parse(value: &str) -> Result<ContractHash> {
-        parse_contract_hash(value)
-    }
-}
-
-mod payment_name {
-    use super::*;
-
-    pub fn get(value: &str) -> Option<String> {
-        none_if_empty(value).map(str::to_string)
-    }
-}
-
-mod payment_package_hash {
-    use super::*;
-
-    pub fn parse(value: &str) -> Result<ContractHash> {
-        parse_contract_hash(value)
-    }
-}
-
-mod payment_package_name {
-    use super::*;
-
-    pub fn get(value: &str) -> Option<String> {
-        none_if_empty(value).map(str::to_string)
-    }
-}
-
-mod payment_entry_point {
-    use super::*;
-
-    pub fn get(value: &str) -> Option<String> {
-        none_if_empty(value).map(str::to_string)
-    }
-}
-
-mod payment_version {
-    use super::*;
-
-    pub fn parse(value: &str) -> Result<u32> {
-        Ok(value.parse::<u32>()?)
-    }
-}
-
-mod target_account {
-
-    use super::*;
-
-    pub(crate) fn parse(value: &str) -> Result<NodePublicKey> {
-        Ok(NodePublicKey::from_hex(value)?)
-    }
-}
-
-pub(super) mod purse {
-
-    use super::*;
-
-    pub(crate) fn parse(value: &str) -> Result<URef> {
-        Ok(URef::from_formatted_str(value)?)
-    }
+pub(crate) fn purse(value: &str) -> Result<URef> {
+    Ok(URef::from_formatted_str(value)?)
 }

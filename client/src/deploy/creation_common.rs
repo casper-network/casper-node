@@ -6,7 +6,7 @@ use std::{convert::TryFrom, process};
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
 
-use casper_client::cl_type;
+use casper_client::{PaymentStrParams, SessionStrParams, cl_type};
 use casper_node::crypto::asymmetric_key::PublicKey as NodePublicKey;
 use casper_types::{account::AccountHash, AccessRights, Key, URef};
 
@@ -121,6 +121,99 @@ pub(super) mod show_arg_examples {
 
         true
     }
+}
+
+pub(super) fn session_str_params<'a>(matches: &'a ArgMatches) -> SessionStrParams<'a> {
+    if let Some(session_path) = session_path::get(matches) {
+        return SessionStrParams::with_path(session_path);
+    }
+    let session_entry_point = session_entry_point::get(matches);
+    let session_args_simple = arg_simple::session::get(matches);
+    let session_args_complex = args_complex::session::get(matches);
+    if let Some(session_hash) = session_hash::get(matches) {
+        return SessionStrParams::with_hash(
+            session_hash,
+            session_entry_point,
+            session_args_simple,
+            session_args_complex,
+        );
+    }
+    if let Some(session_name) = session_name::get(matches) {
+        return SessionStrParams::with_name(
+            session_name,
+            session_entry_point,
+            session_args_simple,
+            session_args_complex,
+        );
+    }
+    let session_version = session_version::get(matches);
+    if let Some(session_package_hash) = session_package_hash::get(matches) {
+        return SessionStrParams::with_package_hash(
+            session_package_hash,
+            session_version,
+            session_entry_point,
+            session_args_simple,
+            session_args_complex,
+        );
+    }
+    if let Some(session_package_name) = session_package_name::get(matches) {
+        return SessionStrParams::with_package_name(
+            session_package_name,
+            session_version,
+            session_entry_point,
+            session_args_simple,
+            session_args_complex,
+        );
+    }
+    unreachable!("clap arg groups and parsing should prevent this")
+}
+
+pub(super) fn payment_str_params<'a>(matches: &'a ArgMatches) -> PaymentStrParams<'a> {
+    if let Some(payment_amount) = standard_payment_amount::get(matches) {
+        return PaymentStrParams::with_amount(payment_amount);
+    }
+    if let Some(payment_path) = payment_path::get(matches) {
+        return PaymentStrParams::with_path(payment_path);
+    }
+    let payment_entry_point = payment_entry_point::get(matches);
+    let payment_args_simple = arg_simple::payment::get(matches);
+    let payment_args_complex = args_complex::payment::get(matches);
+    if let Some(payment_hash) = payment_hash::get(matches) {
+        return PaymentStrParams::with_hash(
+            payment_hash,
+            payment_entry_point,
+            payment_args_simple,
+            payment_args_complex,
+        );
+    }
+    if let Some(payment_name) = payment_name::get(matches) {
+        return PaymentStrParams::with_name(
+            payment_name,
+            payment_entry_point,
+            payment_args_simple,
+            payment_args_complex,
+        );
+    }
+    let payment_version = payment_version::get(matches);
+    if let Some(payment_package_hash) = payment_package_hash::get(matches) {
+        return PaymentStrParams::with_package_hash(
+            payment_package_hash,
+            payment_version,
+            payment_entry_point,
+            payment_args_simple,
+            payment_args_complex,
+        );
+    }
+    if let Some(payment_package_name) = payment_package_name::get(matches) {
+        return PaymentStrParams::with_package_name(
+            payment_package_name,
+            payment_version,
+            payment_entry_point,
+            payment_args_simple,
+            payment_args_complex,
+        );
+    }
+    unreachable!("clap arg groups and parsing should prevent this")
 }
 
 /// Handles providing the arg for and retrieval of the timestamp.
@@ -275,8 +368,8 @@ pub(super) mod session_path {
             .display_order(DisplayOrder::SessionCode as usize)
     }
 
-    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -415,8 +508,8 @@ pub(super) mod payment_path {
             .display_order(DisplayOrder::PaymentCode as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -442,8 +535,8 @@ pub(super) mod standard_payment_amount {
             .display_order(DisplayOrder::StandardPayment as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -564,8 +657,8 @@ pub(super) mod output {
             .display_order(DisplayOrder::Output as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -611,8 +704,8 @@ pub(super) mod session_hash {
             .display_order(DisplayOrder::SessionHash as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -633,8 +726,8 @@ pub(super) mod session_name {
             .display_order(DisplayOrder::SessionName as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -655,8 +748,8 @@ pub(super) mod session_package_hash {
             .display_order(DisplayOrder::SessionPackageHash as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -677,8 +770,8 @@ pub(super) mod session_package_name {
             .display_order(DisplayOrder::SessionPackageName as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -741,8 +834,8 @@ pub(super) mod payment_hash {
             .display_order(DisplayOrder::PaymentHash as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -764,8 +857,8 @@ pub(super) mod payment_name {
             .display_order(DisplayOrder::PaymentName as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -786,8 +879,8 @@ pub(super) mod payment_package_hash {
             .display_order(DisplayOrder::PaymentPackageHash as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -808,8 +901,8 @@ pub(super) mod payment_package_name {
             .display_order(DisplayOrder::PaymentPackageName as usize)
     }
 
-    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
-        matches.value_of(ARG_NAME).unwrap_or_default()
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
