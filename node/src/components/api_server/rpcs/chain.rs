@@ -22,7 +22,7 @@ use crate::{
 };
 
 /// Identifier for possible ways to retrieve a block.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum BlockIdentifier {
     /// Identify and retrieve the block with its hash.
     Hash(BlockHash),
@@ -35,7 +35,7 @@ pub enum BlockIdentifier {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetBlockParams {
     /// The block hash.
-    pub block_hash: BlockHash,
+    pub block_identifier: BlockIdentifier,
 }
 
 /// Result for "chain_get_block" RPC response.
@@ -64,8 +64,8 @@ impl RpcWithOptionalParamsExt for GetBlock {
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the block.
-            let maybe_block_hash = maybe_params.map(|params| params.block_hash);
-            let maybe_block = match get_block(maybe_block_hash, effect_builder).await {
+            let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+            let maybe_block = match get_block(maybe_block_id, effect_builder).await {
                 Ok(maybe_block) => maybe_block,
                 Err(error) => return Ok(response_builder.error(error)?),
             };
@@ -85,7 +85,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetStateRootHashParams {
     /// The block hash.
-    pub block_hash: BlockHash,
+    pub block_identifier: BlockIdentifier,
 }
 
 /// Result for "chain_get_state_root_hash" RPC response.
@@ -114,8 +114,8 @@ impl RpcWithOptionalParamsExt for GetStateRootHash {
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             // Get the block.
-            let maybe_block_hash = maybe_params.map(|params| params.block_hash);
-            let maybe_block = match get_block(maybe_block_hash, effect_builder).await {
+            let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+            let maybe_block = match get_block(maybe_block_id, effect_builder).await {
                 Ok(maybe_block) => maybe_block,
                 Err(error) => return Ok(response_builder.error(error)?),
             };
@@ -132,23 +132,23 @@ impl RpcWithOptionalParamsExt for GetStateRootHash {
 }
 
 async fn get_block<REv: ReactorEventT>(
-    maybe_hash: Option<BlockHash>,
+    maybe_id: Option<BlockIdentifier>,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Option<Block>, warp_json_rpc::Error> {
     // Get the block from storage or the latest from the linear chain.
-    let getting_from_storage = maybe_hash.is_some();
+    let getting_specific_block = maybe_id.is_some();
     let maybe_block = effect_builder
         .make_request(
             |responder| ApiRequest::GetBlock {
-                maybe_hash,
+                maybe_id,
                 responder,
             },
             QueueKind::Api,
         )
         .await;
 
-    if maybe_block.is_none() && getting_from_storage {
-        info!("failed to get {} from storage", maybe_hash.unwrap());
+    if maybe_block.is_none() && getting_specific_block{
+        info!("failed to get {:?} from storage", maybe_id.unwrap());
         return Err(warp_json_rpc::Error::custom(
             ErrorCode::NoSuchBlock as i64,
             "block not known",

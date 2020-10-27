@@ -30,22 +30,16 @@ use casper_execution_engine::{
 use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
 
 use super::Responder;
-use crate::{
-    components::{
+use crate::{rpcs::chain::BlockIdentifier, Chainspec, components::{
         chainspec_loader::ChainspecInfo,
         fetcher::FetchResult,
         storage::{
             DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
         },
-    },
-    crypto::{asymmetric_key::Signature, hash::Digest},
-    types::{
+    }, crypto::{asymmetric_key::Signature, hash::Digest}, types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
         Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
-    },
-    utils::DisplayIter,
-    Chainspec,
-};
+    }, utils::DisplayIter};
 
 type DeployAndMetadata<S> = (
     <S as StorageType>::Deploy,
@@ -366,7 +360,7 @@ pub enum ApiRequest<I> {
     /// `maybe_hash` is `None`, return the latest block.
     GetBlock {
         /// The hash of the block to be retrieved.
-        maybe_hash: Option<BlockHash>,
+        maybe_id: Option<BlockIdentifier>,
         /// Responder to call with the result.
         responder: Responder<Option<LinearBlock>>,
     },
@@ -437,11 +431,15 @@ impl<I> Display for ApiRequest<I> {
         match self {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
             ApiRequest::GetBlock {
-                maybe_hash: Some(hash),
+                maybe_id: Some(BlockIdentifier::Hash(hash)),
                 ..
             } => write!(formatter, "get {}", hash),
             ApiRequest::GetBlock {
-                maybe_hash: None, ..
+                maybe_id: Some(BlockIdentifier::Height(height)),
+                ..
+            } => write!(formatter, "get {}", height),
+            ApiRequest::GetBlock {
+                maybe_id: None, ..
             } => write!(formatter, "get latest block"),
             ApiRequest::QueryProtocolData {
                 protocol_version, ..

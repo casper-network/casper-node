@@ -184,14 +184,16 @@ pub mod state_root_hash {
 }
 
 /// Handles providing the arg for and retrieval of the block hash.
-pub mod block_hash {
+pub mod block_identifier {
+    use casper_node::rpcs::chain::BlockIdentifier;
+
     use super::*;
 
-    const ARG_NAME: &str = "block-hash";
+    const ARG_NAME: &str = "block-identifier";
     const ARG_SHORT: &str = "b";
     const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
     const ARG_HELP: &str =
-        "Hex-encoded block hash.  If not given, the last block added to the chain as known at the \
+        "Hex-encoded block hash or the height of the block.  If not given, the last block added to the chain as known at the \
         given node will be used";
 
     pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
@@ -204,11 +206,17 @@ pub mod block_hash {
             .display_order(order)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Option<BlockHash> {
+    pub(crate) fn get(matches: &ArgMatches) -> Option<BlockIdentifier> {
         matches.value_of(ARG_NAME).map(|hex_str| {
-            let hash = Digest::from_hex(hex_str)
+            if hex_str.len() == 64 {
+                let hash = Digest::from_hex(hex_str)
                 .unwrap_or_else(|error| panic!("cannot parse as a block hash: {}", error));
-            BlockHash::new(hash)
+                BlockIdentifier::Hash(BlockHash::new(hash))
+            } else {
+                let height = hex_str.parse().unwrap_or_else(|error| panic!("could not parse u64: {}", error));
+                BlockIdentifier::Height(height)
+            }
+            
         })
     }
 }
