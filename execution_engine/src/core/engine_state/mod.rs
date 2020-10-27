@@ -1055,7 +1055,7 @@ where
         let motes = balance.value();
         Ok(BalanceResult::Success {
             motes,
-            main_purse_proof,
+            purse_proof: main_purse_proof,
             balance_proof,
         })
     }

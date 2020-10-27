@@ -208,7 +208,7 @@ impl RpcWithParamsExt for GetBalance {
             let (balance_value, main_purse_proof, balance_proof) = match balance_result {
                 Ok(BalanceResult::Success {
                     motes,
-                    main_purse_proof,
+                    purse_proof: main_purse_proof,
                     balance_proof,
                 }) => (motes, main_purse_proof, balance_proof),
                 Ok(balance_result) => {
