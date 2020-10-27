@@ -9,7 +9,7 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use inflector::cases::pascalcase::to_pascal_case;
 use syn::{
     braced, bracketed,
@@ -171,6 +171,22 @@ impl Parse for ReactorDefinition {
             .parse_terminated::<AnnouncementDefinition, Token!(;)>(AnnouncementDefinition::parse)?
             .into_iter()
             .collect();
+
+        // We can now perform some rudimentary checks.
+
+        // Ensure that the `events` section does not point to non-existing components.
+        let events_keys: IndexSet<_> = events.keys().collect();
+        let component_keys: IndexSet<_> = components.keys().collect();
+
+        for missing in events_keys.difference(&component_keys) {
+            return Err(syn::Error::new_spanned(
+                missing,
+                format!(
+                    "An event entry points to a non-existing component: {}",
+                    missing
+                ),
+            ));
+        }
 
         Ok(ReactorDefinition {
             reactor_type_ident,
