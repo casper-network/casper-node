@@ -21,6 +21,16 @@ use crate::{
     types::{Block, BlockHash},
 };
 
+/// Identifier for possible ways to retrieve a block.
+#[derive(Serialize, Deserialize, Debug)]
+pub enum BlockIdentifier {
+    /// Identify and retrieve the block with its hash.
+    Hash(BlockHash),
+    /// Idenityf and retireve the block with its height. 
+    Height(u64)
+}
+
+
 /// Params for "chain_get_block" RPC request.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetBlockParams {
