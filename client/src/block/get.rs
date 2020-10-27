@@ -14,7 +14,7 @@ enum DisplayOrder {
     Verbose,
     NodeAddress,
     RpcId,
-    BlockHash,
+    BlockIdentifier,
 }
 
 impl RpcClient for GetBlock {
@@ -34,18 +34,20 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
-            .arg(common::block_hash::arg(DisplayOrder::BlockHash as usize))
+            .arg(common::block_identifier::arg(
+                DisplayOrder::BlockIdentifier as usize,
+            ))
     }
 
     fn run(matches: &ArgMatches<'_>) {
         let verbose = common::verbose::get(matches);
         let node_address = common::node_address::get(matches);
         let rpc_id = common::rpc_id::get(matches);
-        let maybe_block_hash = common::block_hash::get(matches);
+        let maybe_block_id = common::block_identifier::get(matches);
 
-        let response = match maybe_block_hash {
-            Some(block_hash) => {
-                let params = GetBlockParams { block_hash };
+        let response = match maybe_block_id {
+            Some(block_identifier) => {
+                let params = GetBlockParams { block_identifier };
                 Self::request_with_map_params(verbose, &node_address, rpc_id, params)
             }
             None => Self::request(verbose, &node_address, rpc_id),
