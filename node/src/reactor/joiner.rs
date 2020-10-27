@@ -578,6 +578,10 @@ impl reactor::Reactor for Reactor {
                 block,
                 execution_results,
             }) => {
+                let execution_results = execution_results
+                    .into_iter()
+                    .map(|(hash, (_header, results))| (hash, results))
+                    .collect();
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
                     block: Box::new(block),
                     execution_results,

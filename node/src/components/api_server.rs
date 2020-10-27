@@ -333,10 +333,15 @@ where
             }),
             Event::DeployProcessed {
                 deploy_hash,
+                deploy_header,
                 block_hash,
                 execution_result,
             } => self.broadcast(SseData::DeployProcessed {
                 deploy_hash,
+                account: *deploy_header.account(),
+                timestamp: deploy_header.timestamp(),
+                ttl: deploy_header.ttl(),
+                dependencies: deploy_header.dependencies().clone(),
                 block_hash,
                 execution_result,
             }),

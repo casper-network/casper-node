@@ -679,13 +679,17 @@ impl reactor::Reactor for Reactor {
                 let block_hash = *block.hash();
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
                     block: Box::new(block),
-                    execution_results: execution_results.clone(),
+                    execution_results: execution_results
+                        .iter()
+                        .map(|(hash, (_header, results))| (*hash, results.clone()))
+                        .collect(),
                 });
                 let mut effects = self.dispatch_event(effect_builder, rng, reactor_event);
 
-                for (deploy_hash, execution_result) in execution_results {
+                for (deploy_hash, (deploy_header, execution_result)) in execution_results {
                     let reactor_event = Event::ApiServer(api_server::Event::DeployProcessed {
                         deploy_hash,
+                        deploy_header: Box::new(deploy_header),
                         block_hash,
                         execution_result,
                     });
