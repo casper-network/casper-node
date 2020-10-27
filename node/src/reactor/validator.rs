@@ -342,7 +342,7 @@ impl reactor::Reactor for Reactor {
 
         let api_server = ApiServer::new(config.http_server, effect_builder);
         let deploy_acceptor = DeployAcceptor::new();
-        let deploy_fetcher = Fetcher::new(config.gossip);
+        let deploy_fetcher = Fetcher::new(config.fetcher);
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config.gossip,
