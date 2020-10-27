@@ -20,7 +20,9 @@ use crate::{
     components::{
         chainspec_loader::Chainspec,
         consensus::{
-            consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
+            consensus_protocol::{
+                BlockContext, ConsensusProtocol, ConsensusProtocolResult as CpResult,
+            },
             highway_core::{
                 active_validator::Effect as AvEffect,
                 finality_detector::FinalityDetector,
@@ -147,11 +149,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 self.calculate_round_exponent(&vv);
                 self.process_new_vertex(vv.into())
             }
-            AvEffect::ScheduleTimer(timestamp) => {
-                vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
-            }
+            AvEffect::ScheduleTimer(timestamp) => vec![CpResult::ScheduleTimer(timestamp)],
             AvEffect::RequestNewBlock(block_context) => {
-                vec![ConsensusProtocolResult::CreateNewBlock { block_context }]
+                vec![CpResult::CreateNewBlock { block_context }]
             }
             AvEffect::WeEquivocated(evidence) => {
                 panic!("this validator equivocated: {:?}", evidence);
@@ -168,10 +168,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 .id(ev.perpetrator())
                 .expect("validator not found")
                 .clone();
-            results.push(ConsensusProtocolResult::NewEvidence(v_id));
+            results.push(CpResult::NewEvidence(v_id));
         }
         let msg = HighwayMessage::NewVertex(v);
-        results.push(ConsensusProtocolResult::CreatedGossipMessage(
+        results.push(CpResult::CreatedGossipMessage(
             bincode::serialize(&msg).expect("should serialize message"),
         ));
         results.extend(self.detect_finality());
@@ -182,7 +182,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.finality_detector
             .run(&self.highway)
             .expect("too many faulty validators")
-            .map(ConsensusProtocolResult::FinalizedBlock)
+            .map(CpResult::FinalizedBlock)
     }
 
     /// Store a (pre-validated) vertex which will be added later.  This creates a timer to be sent
@@ -197,7 +197,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .entry(future_timestamp)
             .or_insert_with(Vec::new)
             .push((sender, pvv));
-        vec![ConsensusProtocolResult::ScheduleTimer(future_timestamp)]
+        vec![CpResult::ScheduleTimer(future_timestamp)]
     }
 
     /// Call `Self::add_vertices` on any vertices in `vertices_to_be_added_later` which are
@@ -252,7 +252,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                         .or_default()
                         .push((sender.clone(), pvv));
                     let msg = HighwayMessage::RequestDependency(dep);
-                    results.push(ConsensusProtocolResult::CreatedTargetedMessage(
+                    results.push(CpResult::CreatedTargetedMessage(
                         bincode::serialize(&msg).expect("should serialize message"),
                         sender,
                     ));
@@ -268,7 +268,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                                     .entry(value.clone())
                                     .or_default()
                                     .push(vv);
-                                results.push(ConsensusProtocolResult::ValidateConsensusValue(
+                                results.push(CpResult::ValidateConsensusValue(
                                     sender, value, timestamp,
                                 ));
                             } else {
@@ -333,7 +333,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let av_effects = self.highway.add_valid_vertex(vv.clone(), rng, now);
         let mut results = self.process_av_effects(av_effects);
         let msg = HighwayMessage::NewVertex(vv.into());
-        results.push(ConsensusProtocolResult::CreatedGossipMessage(
+        results.push(CpResult::CreatedGossipMessage(
             bincode::serialize(&msg).expect("should serialize message"),
         ));
         results
@@ -369,8 +369,6 @@ enum HighwayMessage<C: Context> {
     RequestDependency(Dependency<C>),
 }
 
-type CpResult<I, C> = ConsensusProtocolResult<I, C>;
-
 impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
 where
     I: NodeIdT,
@@ -384,11 +382,7 @@ where
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<CpResult<I, C>> {
         match bincode::deserialize(msg.as_slice()) {
-            Err(err) => vec![ConsensusProtocolResult::InvalidIncomingMessage(
-                msg,
-                sender,
-                err.into(),
-            )],
+            Err(err) => vec![CpResult::InvalidIncomingMessage(msg, sender, err.into())],
             Ok(HighwayMessage::NewVertex(v))
                 if self.highway.has_vertex(&v) || (evidence_only && !v.is_evidence()) =>
             {
@@ -399,11 +393,7 @@ where
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
                         // TODO: Disconnect from senders.
-                        return vec![ConsensusProtocolResult::InvalidIncomingMessage(
-                            msg,
-                            sender,
-                            err.into(),
-                        )];
+                        return vec![CpResult::InvalidIncomingMessage(msg, sender, err.into())];
                     }
                 };
                 match pvv.timestamp() {
@@ -418,18 +408,13 @@ where
                     info!(?dep, ?sender, "requested dependency doesn't exist");
                     vec![]
                 }
-                GetDepOutcome::Evidence(vid) => {
-                    vec![ConsensusProtocolResult::SendEvidence(sender, vid)]
-                }
+                GetDepOutcome::Evidence(vid) => vec![CpResult::SendEvidence(sender, vid)],
                 GetDepOutcome::Vertex(vv) => {
                     let msg = HighwayMessage::NewVertex(vv.into());
                     let serialized_msg =
                         bincode::serialize(&msg).expect("should serialize message");
                     // TODO: Should this be done via a gossip service?
-                    vec![ConsensusProtocolResult::CreatedTargetedMessage(
-                        serialized_msg,
-                        sender,
-                    )]
+                    vec![CpResult::CreatedTargetedMessage(serialized_msg, sender)]
                 }
             },
         }
@@ -518,10 +503,7 @@ where
                         let msg = HighwayMessage::NewVertex(vv.into());
                         let serialized_msg =
                             bincode::serialize(&msg).expect("should serialize message");
-                        Some(ConsensusProtocolResult::CreatedTargetedMessage(
-                            serialized_msg,
-                            sender,
-                        ))
+                        Some(CpResult::CreatedTargetedMessage(serialized_msg, sender))
                     }
                 },
             )
