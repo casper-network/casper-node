@@ -134,6 +134,20 @@ pub(super) mod show_arg_examples {
             .unwrap()
             .to_hex()
         );
+        println!("\nOptional values of each of these types can also be specified.");
+        println!(
+            r#"Prefix the type with "opt_" and use the term "null" without quotes to specify a None value:"#
+        );
+        println!("name_01:opt_bool='true'       # Some(true)");
+        println!("name_02:opt_bool='false'      # Some(false)");
+        println!("name_03:opt_bool=null         # None");
+        println!("name_04:opt_i32='-1'          # Some(-1)");
+        println!("name_05:opt_i32=null          # None");
+        println!("name_06:opt_unit=''           # Some(())");
+        println!("name_07:opt_unit=null         # None");
+        println!("name_08:opt_string='a value'  # Some(\"a value\".to_string())");
+        println!("name_09:opt_string='null'     # Some(\"null\".to_string())");
+        println!("name_10:opt_string=null       # None");
 
         true
     }
@@ -326,7 +340,7 @@ mod session_path {
 mod arg_simple {
     use super::*;
 
-    const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE'";
+    const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE' OR NAME:TYPE=null";
 
     lazy_static! {
         static ref SUPPORTED_TYPES: Vec<(&'static str, CLType)> = vec![
@@ -345,6 +359,27 @@ mod arg_simple {
             ("account_hash", AccountHash::cl_type()),
             ("uref", CLType::URef),
             ("public_key", CLType::PublicKey),
+            ("opt_bool", CLType::Option(Box::new(CLType::Bool))),
+            ("opt_i32", CLType::Option(Box::new(CLType::I32))),
+            ("opt_i64", CLType::Option(Box::new(CLType::I64))),
+            ("opt_u8", CLType::Option(Box::new(CLType::U8))),
+            ("opt_u32", CLType::Option(Box::new(CLType::U32))),
+            ("opt_u64", CLType::Option(Box::new(CLType::U64))),
+            ("opt_u128", CLType::Option(Box::new(CLType::U128))),
+            ("opt_u256", CLType::Option(Box::new(CLType::U256))),
+            ("opt_u512", CLType::Option(Box::new(CLType::U512))),
+            ("opt_unit", CLType::Option(Box::new(CLType::Unit))),
+            ("opt_string", CLType::Option(Box::new(CLType::String))),
+            ("opt_key", CLType::Option(Box::new(CLType::Key))),
+            (
+                "opt_account_hash",
+                CLType::Option(Box::new(AccountHash::cl_type()))
+            ),
+            ("opt_uref", CLType::Option(Box::new(CLType::URef))),
+            (
+                "opt_public_key",
+                CLType::Option(Box::new(CLType::PublicKey))
+            ),
         ];
         static ref SUPPORTED_LIST: String = {
             let mut msg = String::new();
@@ -411,8 +446,9 @@ mod arg_simple {
         let args = matches.values_of(name)?;
         let mut runtime_args = RuntimeArgs::new();
         for arg in args {
-            let parts = split_arg(arg);
-            parts_to_cl_value(parts, &mut runtime_args);
+            let (name, cl_type, value) = split_arg(arg);
+            let cl_value = parts_to_cl_value(cl_type, value);
+            runtime_args.insert_cl_value(name, cl_value);
         }
         Some(runtime_args)
     }
@@ -439,102 +475,201 @@ mod arg_simple {
             t if t == SUPPORTED_TYPES[12].0 => SUPPORTED_TYPES[12].1.clone(),
             t if t == SUPPORTED_TYPES[13].0 => SUPPORTED_TYPES[13].1.clone(),
             t if t == SUPPORTED_TYPES[14].0 => SUPPORTED_TYPES[14].1.clone(),
+            t if t == SUPPORTED_TYPES[15].0 => SUPPORTED_TYPES[15].1.clone(),
+            t if t == SUPPORTED_TYPES[16].0 => SUPPORTED_TYPES[16].1.clone(),
+            t if t == SUPPORTED_TYPES[17].0 => SUPPORTED_TYPES[17].1.clone(),
+            t if t == SUPPORTED_TYPES[18].0 => SUPPORTED_TYPES[18].1.clone(),
+            t if t == SUPPORTED_TYPES[19].0 => SUPPORTED_TYPES[19].1.clone(),
+            t if t == SUPPORTED_TYPES[20].0 => SUPPORTED_TYPES[20].1.clone(),
+            t if t == SUPPORTED_TYPES[21].0 => SUPPORTED_TYPES[21].1.clone(),
+            t if t == SUPPORTED_TYPES[22].0 => SUPPORTED_TYPES[22].1.clone(),
+            t if t == SUPPORTED_TYPES[23].0 => SUPPORTED_TYPES[23].1.clone(),
+            t if t == SUPPORTED_TYPES[24].0 => SUPPORTED_TYPES[24].1.clone(),
+            t if t == SUPPORTED_TYPES[25].0 => SUPPORTED_TYPES[25].1.clone(),
+            t if t == SUPPORTED_TYPES[26].0 => SUPPORTED_TYPES[26].1.clone(),
+            t if t == SUPPORTED_TYPES[27].0 => SUPPORTED_TYPES[27].1.clone(),
+            t if t == SUPPORTED_TYPES[28].0 => SUPPORTED_TYPES[28].1.clone(),
+            t if t == SUPPORTED_TYPES[29].0 => SUPPORTED_TYPES[29].1.clone(),
             _ => panic!(
                 "unknown variant {}, expected one of {}",
                 parts[1], *SUPPORTED_LIST
             ),
         };
-        (parts[0], cl_type, parts[2].trim_matches('\''))
+        (parts[0], cl_type, parts[2])
     }
 
-    /// Insert a value built from a single arg which has been split into its constituent parts.
-    fn parts_to_cl_value(parts: (&str, CLType, &str), runtime_args: &mut RuntimeArgs) {
-        let (name, cl_type, value) = parts;
-        let cl_value = match cl_type {
-            CLType::Bool => match value.to_lowercase().as_str() {
-                "true" | "t" => CLValue::from_t(true).unwrap(),
-                "false" | "f" => CLValue::from_t(false).unwrap(),
-                invalid => panic!(
-                    "can't parse {} as a bool.  Should be 'true' or 'false'",
-                    invalid
-                ),
-            },
+    #[derive(PartialEq, Eq)]
+    enum OptionalStatus {
+        Some,
+        None,
+        NotOptional,
+    }
+
+    /// Parses to a given CLValue taking into account whether the arg represents an optional type or
+    /// not.
+    fn parse_to_cl_value<T, F>(optional_status: OptionalStatus, parse: F) -> CLValue
+    where
+        T: CLTyped + ToBytes,
+        F: FnOnce() -> T,
+    {
+        match optional_status {
+            OptionalStatus::Some => CLValue::from_t(Some(parse())),
+            OptionalStatus::None => CLValue::from_t::<Option<T>>(None),
+            OptionalStatus::NotOptional => CLValue::from_t(parse()),
+        }
+        .unwrap()
+    }
+
+    /// Returns a value built from a single arg which has been split into its constituent parts.
+    fn parts_to_cl_value(cl_type: CLType, value: &str) -> CLValue {
+        let (cl_type_to_parse, optional_status, trimmed_value) = match cl_type {
+            CLType::Option(inner_type) => {
+                if value == "null" {
+                    (*inner_type, OptionalStatus::None, "")
+                } else {
+                    (*inner_type, OptionalStatus::Some, value.trim_matches('\''))
+                }
+            }
+            _ => (
+                cl_type,
+                OptionalStatus::NotOptional,
+                value.trim_matches('\''),
+            ),
+        };
+
+        if value == trimmed_value {
+            panic!(
+                "value in simple arg should be surrounded by single quotes unless it's a null \
+                   optional value"
+            );
+        }
+
+        match cl_type_to_parse {
+            CLType::Bool => {
+                let parse = || match trimmed_value.to_lowercase().as_str() {
+                    "true" | "t" => true,
+                    "false" | "f" => false,
+                    invalid => panic!(
+                        "can't parse {} as a bool.  Should be 'true' or 'false'",
+                        invalid
+                    ),
+                };
+                parse_to_cl_value(optional_status, parse)
+            }
             CLType::I32 => {
-                let x = i32::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as i32: {}", value, error));
-                CLValue::from_t(x).unwrap()
+                let parse = || {
+                    i32::from_str(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as i32: {}", trimmed_value, error)
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             CLType::I64 => {
-                let x = i64::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as i64: {}", value, error));
-                CLValue::from_t(x).unwrap()
+                let parse = || {
+                    i64::from_str(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as i64: {}", trimmed_value, error)
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             CLType::U8 => {
-                let x = u8::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as u8: {}", value, error));
-                CLValue::from_t(x).unwrap()
+                let parse = || {
+                    u8::from_str(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as u8: {}", trimmed_value, error)
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             CLType::U32 => {
-                let x = u32::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as u32: {}", value, error));
-                CLValue::from_t(x).unwrap()
+                let parse = || {
+                    u32::from_str(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as u32: {}", trimmed_value, error)
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             CLType::U64 => {
-                let x = u64::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as u64: {}", value, error));
-                CLValue::from_t(x).unwrap()
+                let parse = || {
+                    u64::from_str(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as u64: {}", trimmed_value, error)
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             CLType::U128 => {
-                let x = U128::from_dec_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as U128: {}", value, error));
-                CLValue::from_t(x).unwrap()
+                let parse = || {
+                    U128::from_dec_str(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as U128: {}", trimmed_value, error)
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             CLType::U256 => {
-                let x = U256::from_dec_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as U256: {}", value, error));
-                CLValue::from_t(x).unwrap()
+                let parse = || {
+                    U256::from_dec_str(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as U256: {}", trimmed_value, error)
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             CLType::U512 => {
-                let x = U512::from_dec_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as U512: {}", value, error));
-                CLValue::from_t(x).unwrap()
+                let parse = || {
+                    U512::from_dec_str(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as U512: {}", trimmed_value, error)
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             CLType::Unit => {
-                if !value.is_empty() {
-                    panic!("can't parse {} as unit.  Should be ''", value)
-                }
-                CLValue::from_t(()).unwrap()
+                let parse = || {
+                    if !trimmed_value.is_empty() {
+                        panic!("can't parse {} as unit.  Should be ''", trimmed_value)
+                    }
+                };
+                parse_to_cl_value(optional_status, parse)
             }
-            CLType::String => CLValue::from_t(value).unwrap(),
+            CLType::String => {
+                let parse = || trimmed_value.to_string();
+                parse_to_cl_value(optional_status, parse)
+            }
             CLType::Key => {
-                let key = Key::from_formatted_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as Key: {:?}", value, error));
-                CLValue::from_t(key).unwrap()
+                let parse = || {
+                    Key::from_formatted_str(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as Key: {:?}", trimmed_value, error)
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             CLType::FixedList(ty, 32) => match *ty {
                 CLType::U8 => {
-                    let account_hash =
-                        AccountHash::from_formatted_str(value).unwrap_or_else(|error| {
-                            panic!("can't parse {} as AccountHash: {:?}", value, error)
-                        });
-                    CLValue::from_t(account_hash).unwrap()
+                    let parse = || {
+                        AccountHash::from_formatted_str(trimmed_value).unwrap_or_else(|error| {
+                            panic!("can't parse {} as AccountHash: {:?}", trimmed_value, error)
+                        })
+                    };
+                    parse_to_cl_value(optional_status, parse)
                 }
                 _ => unreachable!(),
             },
             CLType::URef => {
-                let uref = URef::from_formatted_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as URef: {:?}", value, error));
-                CLValue::from_t(uref).unwrap()
+                let parse = || {
+                    URef::from_formatted_str(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as URef: {:?}", trimmed_value, error)
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             CLType::PublicKey => {
-                let pub_key = NodePublicKey::from_hex(value).unwrap_or_else(|error| {
-                    panic!("can't parse {} as PublicKey: {:?}", value, error)
-                });
-                CLValue::from_t(PublicKey::from(pub_key)).unwrap()
+                let parse = || {
+                    let pub_key = NodePublicKey::from_hex(trimmed_value).unwrap_or_else(|error| {
+                        panic!("can't parse {} as PublicKey: {:?}", trimmed_value, error)
+                    });
+                    PublicKey::from(pub_key)
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             _ => unreachable!(),
-        };
-        runtime_args.insert_cl_value(name, cl_value);
+        }
     }
 }
 
@@ -1340,5 +1475,190 @@ mod payment_version {
             .value_of(ARG_NAME)
             .map(|s| s.parse::<u32>().ok())
             .flatten()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_simple_args_test<T: CLTyped + ToBytes>(cli_string: &str, expected: T) {
+        let matches = App::new("app")
+            .arg(arg_simple::payment::arg())
+            .arg(arg_simple::session::arg())
+            .get_matches_from(vec![
+                "app",
+                &format!("--{}", arg_simple::payment::ARG_NAME),
+                cli_string,
+                &format!("--{}", arg_simple::session::ARG_NAME),
+                cli_string,
+            ]);
+
+        let expected = Some(RuntimeArgs::from(vec![NamedArg::new(
+            "x".to_string(),
+            CLValue::from_t(expected).unwrap(),
+        )]));
+
+        assert_eq!(arg_simple::payment::get(&matches), expected);
+        assert_eq!(arg_simple::session::get(&matches), expected);
+    }
+
+    #[test]
+    fn should_parse_bool_via_args_simple() {
+        valid_simple_args_test("x:bool='f'", false);
+        valid_simple_args_test("x:bool='false'", false);
+        valid_simple_args_test("x:bool='t'", true);
+        valid_simple_args_test("x:bool='true'", true);
+        valid_simple_args_test("x:opt_bool='f'", Some(false));
+        valid_simple_args_test("x:opt_bool='t'", Some(true));
+        valid_simple_args_test::<Option<bool>>("x:opt_bool=null", None);
+    }
+
+    #[test]
+    fn should_parse_i32_via_args_simple() {
+        valid_simple_args_test("x:i32='2147483647'", i32::max_value());
+        valid_simple_args_test("x:i32='0'", 0_i32);
+        valid_simple_args_test("x:i32='-2147483648'", i32::min_value());
+        valid_simple_args_test("x:opt_i32='-1'", Some(-1_i32));
+        valid_simple_args_test::<Option<i32>>("x:opt_i32=null", None);
+    }
+
+    #[test]
+    fn should_parse_i64_via_args_simple() {
+        valid_simple_args_test("x:i64='9223372036854775807'", i64::max_value());
+        valid_simple_args_test("x:i64='0'", 0_i64);
+        valid_simple_args_test("x:i64='-9223372036854775808'", i64::min_value());
+        valid_simple_args_test("x:opt_i64='-1'", Some(-1_i64));
+        valid_simple_args_test::<Option<i64>>("x:opt_i64=null", None);
+    }
+
+    #[test]
+    fn should_parse_u8_via_args_simple() {
+        valid_simple_args_test("x:u8='0'", 0_u8);
+        valid_simple_args_test("x:u8='255'", u8::max_value());
+        valid_simple_args_test("x:opt_u8='1'", Some(1_u8));
+        valid_simple_args_test::<Option<u8>>("x:opt_u8=null", None);
+    }
+
+    #[test]
+    fn should_parse_u32_via_args_simple() {
+        valid_simple_args_test("x:u32='0'", 0_u32);
+        valid_simple_args_test("x:u32='4294967295'", u32::max_value());
+        valid_simple_args_test("x:opt_u32='1'", Some(1_u32));
+        valid_simple_args_test::<Option<u32>>("x:opt_u32=null", None);
+    }
+
+    #[test]
+    fn should_parse_u64_via_args_simple() {
+        valid_simple_args_test("x:u64='0'", 0_u64);
+        valid_simple_args_test("x:u64='18446744073709551615'", u64::max_value());
+        valid_simple_args_test("x:opt_u64='1'", Some(1_u64));
+        valid_simple_args_test::<Option<u64>>("x:opt_u64=null", None);
+    }
+
+    #[test]
+    fn should_parse_u128_via_args_simple() {
+        valid_simple_args_test("x:u128='0'", U128::zero());
+        valid_simple_args_test(
+            "x:u128='340282366920938463463374607431768211455'",
+            U128::max_value(),
+        );
+        valid_simple_args_test("x:opt_u128='1'", Some(U128::from(1)));
+        valid_simple_args_test::<Option<U128>>("x:opt_u128=null", None);
+    }
+
+    #[test]
+    fn should_parse_u256_via_args_simple() {
+        valid_simple_args_test("x:u256='0'", U256::zero());
+        valid_simple_args_test(
+            "x:u256='115792089237316195423570985008687907853269984665640564039457584007913129639935'",
+            U256::max_value(),
+        );
+        valid_simple_args_test("x:opt_u256='1'", Some(U256::from(1)));
+        valid_simple_args_test::<Option<U256>>("x:opt_u256=null", None);
+    }
+
+    #[test]
+    fn should_parse_u512_via_args_simple() {
+        valid_simple_args_test("x:u512='0'", U512::zero());
+        valid_simple_args_test(
+            "x:u512='134078079299425970995740249982058461274793658205923933777235614437217640300735\
+            46976801874298166903427690031858186486050853753882811946569946433649006084095'",
+            U512::max_value(),
+        );
+        valid_simple_args_test("x:opt_u512='1'", Some(U512::from(1)));
+        valid_simple_args_test::<Option<U512>>("x:opt_u512=null", None);
+    }
+
+    #[test]
+    fn should_parse_unit_via_args_simple() {
+        valid_simple_args_test("x:unit=''", ());
+        valid_simple_args_test("x:opt_unit=''", Some(()));
+        valid_simple_args_test::<Option<()>>("x:opt_unit=null", None);
+    }
+
+    #[test]
+    fn should_parse_string_via_args_simple() {
+        let value = String::from("test string");
+        valid_simple_args_test(&format!("x:string='{}'", value), value.clone());
+        valid_simple_args_test(&format!("x:opt_string='{}'", value), Some(value));
+        valid_simple_args_test::<Option<String>>("x:opt_string=null", None);
+    }
+
+    #[test]
+    fn should_parse_key_via_args_simple() {
+        let bytes = (1..33).collect::<Vec<_>>();
+        let array = <[u8; 32]>::try_from(bytes.as_ref()).unwrap();
+
+        let key_account = Key::Account(AccountHash::new(array));
+        let key_hash = Key::Hash(array);
+        let key_uref = Key::URef(URef::new(array, AccessRights::NONE));
+
+        for key in &[key_account, key_hash, key_uref] {
+            valid_simple_args_test(&format!("x:key='{}'", key.to_formatted_string()), *key);
+            valid_simple_args_test(
+                &format!("x:opt_key='{}'", key.to_formatted_string()),
+                Some(*key),
+            );
+            valid_simple_args_test::<Option<Key>>("x:opt_key=null", None);
+        }
+    }
+
+    #[test]
+    fn should_parse_account_hash_via_args_simple() {
+        let bytes = (1..33).collect::<Vec<_>>();
+        let array = <[u8; 32]>::try_from(bytes.as_ref()).unwrap();
+        let value = AccountHash::new(array);
+        valid_simple_args_test(
+            &format!("x:account_hash='{}'", value.to_formatted_string()),
+            value,
+        );
+        valid_simple_args_test(
+            &format!("x:opt_account_hash='{}'", value.to_formatted_string()),
+            Some(value),
+        );
+        valid_simple_args_test::<Option<AccountHash>>("x:opt_account_hash=null", None);
+    }
+
+    #[test]
+    fn should_parse_uref_via_args_simple() {
+        let bytes = (1..33).collect::<Vec<_>>();
+        let array = <[u8; 32]>::try_from(bytes.as_ref()).unwrap();
+        let value = URef::new(array, AccessRights::READ_ADD_WRITE);
+        valid_simple_args_test(&format!("x:uref='{}'", value.to_formatted_string()), value);
+        valid_simple_args_test(
+            &format!("x:opt_uref='{}'", value.to_formatted_string()),
+            Some(value),
+        );
+        valid_simple_args_test::<Option<URef>>("x:opt_uref=null", None);
+    }
+
+    #[test]
+    fn should_parse_public_key_via_args_simple() {
+        let hex_value = "0119bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1";
+        let value = PublicKey::from(NodePublicKey::from_hex(hex_value).unwrap());
+        valid_simple_args_test(&format!("x:public_key='{}'", hex_value), value);
+        valid_simple_args_test(&format!("x:opt_public_key='{}'", hex_value), Some(value));
+        valid_simple_args_test::<Option<PublicKey>>("x:opt_public_key=null", None);
     }
 }
