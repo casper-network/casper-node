@@ -17,7 +17,7 @@ use crate::{
     effect::{requests::ApiRequest, Responder},
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-        FinalizedBlock,
+        DeployHeader, FinalizedBlock,
     },
 };
 
@@ -66,6 +66,7 @@ pub enum Event {
     },
     DeployProcessed {
         deploy_hash: DeployHash,
+        deploy_header: Box<DeployHeader>,
         block_hash: BlockHash,
         execution_result: ExecutionResult,
     },

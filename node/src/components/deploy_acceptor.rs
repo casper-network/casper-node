@@ -1,7 +1,7 @@
 mod event;
 // mod tests;
 
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, convert::Infallible, fmt::Debug};
 
 use semver::Version;
 use tracing::{debug, error, warn};
@@ -150,6 +150,7 @@ impl DeployAcceptor {
 
 impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     type Event = Event;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

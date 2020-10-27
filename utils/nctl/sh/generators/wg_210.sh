@@ -86,8 +86,9 @@ deploy_hash=$(
         --session-arg "amount:u512='$amount'" \
         --session-arg "validator:public_key='$validator_public_key'" \
         --session-path $path_contract \
-        --ttl "1day" | \
-        python3 -c "import sys, json; print(json.load(sys.stdin)['deploy_hash'])"
+        --ttl "1day" \
+        | jq '.result.deploy_hash' \
+        | sed -e 's/^"//' -e 's/"$//'        
     )
 
 # Display deploy hash.

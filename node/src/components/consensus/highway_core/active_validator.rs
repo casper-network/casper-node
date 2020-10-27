@@ -74,7 +74,7 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
-        timestamp: Timestamp,
+        start_time: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
         let mut av = ActiveValidator {
@@ -84,8 +84,13 @@ impl<C: Context> ActiveValidator<C> {
             next_timer: Timestamp::zero(),
             next_proposal: None,
         };
-        let effects = av.schedule_timer(timestamp, state);
+        let effects = av.schedule_timer(start_time, state);
         (av, effects)
+    }
+
+    /// Sets the next round exponent to the new value.
+    pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
+        self.next_round_exp = new_round_exp;
     }
 
     /// Returns actions a validator needs to take at the specified `timestamp`, with the given

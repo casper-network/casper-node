@@ -20,7 +20,7 @@ mod rest_server;
 pub mod rpcs;
 mod sse_server;
 
-use std::fmt::Debug;
+use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
 use futures::join;
@@ -197,6 +197,7 @@ where
         + Send,
 {
     type Event = Event;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -332,10 +333,15 @@ where
             }),
             Event::DeployProcessed {
                 deploy_hash,
+                deploy_header,
                 block_hash,
                 execution_result,
             } => self.broadcast(SseData::DeployProcessed {
                 deploy_hash,
+                account: *deploy_header.account(),
+                timestamp: deploy_header.timestamp(),
+                ttl: deploy_header.ttl(),
+                dependencies: deploy_header.dependencies().clone(),
                 block_hash,
                 execution_result,
             }),

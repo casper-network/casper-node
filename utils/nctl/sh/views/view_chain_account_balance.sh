@@ -21,6 +21,7 @@ unset net
 unset node
 unset purse_uref
 unset state_root_hash
+unset typeof
 
 for ARGUMENT in "$@"
 do
@@ -31,6 +32,7 @@ do
         node) node=${VALUE} ;;
         purse-uref) purse_uref=${VALUE} ;;
         root-hash) state_root_hash=${VALUE} ;;
+        typeof) typeof=${VALUE} ;;
         *)
     esac
 done
@@ -38,6 +40,7 @@ done
 # Set defaults.
 net=${net:-1}
 node=${node:-1}
+typeof=${typeof:-"account"}
 
 #######################################
 # Main
@@ -51,4 +54,4 @@ balance=$(
         | jq '.result.balance_value' \
         | sed -e 's/^"//' -e 's/"$//'
     )
-log "account balance = "$balance
+log $typeof" balance = "$balance

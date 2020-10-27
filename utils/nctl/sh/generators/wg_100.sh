@@ -67,6 +67,7 @@ path_net=$NCTL/assets/net-$net
 # Set counter-parties.
 cp1_secret_key=$path_net/faucet/secret_key.pem
 cp1_public_key=`cat $path_net/faucet/public_key_hex`
+cp1_account_hash=$(get_hash $cp1_public_key)
 cp2_public_key=`cat $path_net/users/user-$user/public_key_hex`
 cp2_account_hash=$(get_hash $cp2_public_key)
 
@@ -77,6 +78,7 @@ log "... transfer amount=$amount"
 log "... transfer interval=$transfer_interval (s)"
 log "... counter-party 1 public key=$cp1_public_key"
 log "... counter-party 2 public key=$cp2_public_key"
+log "... counter-party 1 account hash=$cp1_account_hash"
 log "... counter-party 2 account hash=$cp2_account_hash"
 
 # Dispatch transfers to each node in round-robin fashion.

@@ -303,11 +303,14 @@ impl reactor::Reactor for Reactor {
             contract_runtime,
         } = initializer;
 
+        // TODO: Remove wrapper around Reactor::Config instead.
+        let (_, config) = config.into_parts();
+
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone(), false)?;
 
-        let linear_chain_fetcher = Fetcher::new(config.gossip);
+        let linear_chain_fetcher = Fetcher::new(config.fetcher);
         let effects = reactor::wrap_effects(Event::Network, net_effects);
 
         let address_gossiper =
@@ -326,9 +329,9 @@ impl reactor::Reactor for Reactor {
 
         let block_validator = BlockValidator::new();
 
-        let deploy_fetcher = Fetcher::new(config.gossip);
+        let deploy_fetcher = Fetcher::new(config.fetcher);
 
-        let block_by_height_fetcher = Fetcher::new(config.gossip);
+        let block_by_height_fetcher = Fetcher::new(config.fetcher);
 
         let deploy_acceptor = DeployAcceptor::new();
 
@@ -575,6 +578,10 @@ impl reactor::Reactor for Reactor {
                 block,
                 execution_results,
             }) => {
+                let execution_results = execution_results
+                    .into_iter()
+                    .map(|(hash, (_header, results))| (hash, results))
+                    .collect();
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
                     block: Box::new(block),
                     execution_results,

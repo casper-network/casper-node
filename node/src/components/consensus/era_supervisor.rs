@@ -252,6 +252,7 @@ where
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
             self.highway_config().minimum_round_exponent,
             self.highway_config().minimum_era_height,
+            start_time,
             start_time + self.highway_config().era_duration,
         );
 
@@ -290,7 +291,7 @@ where
 
         let results = if should_activate {
             let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
-            highway.activate_validator(our_id, secret, timestamp.max(start_time))
+            highway.activate_validator(our_id, secret, params, timestamp)
         } else {
             Vec::new()
         };
@@ -639,11 +640,22 @@ where
                 timestamp,
                 height,
                 rewards,
+                equivocators,
                 proposer,
             }) => {
+                // If this is the era's last block, it contains rewards. Everyone who is accused in
+                // the block or seen as equivocating via the consensus protocol gets slashed.
                 let era_end = rewards.map(|rewards| EraEnd {
-                    equivocators: value.accusations().clone(),
                     rewards,
+                    equivocators: value
+                        .accusations()
+                        .iter()
+                        .cloned()
+                        .chain(equivocators)
+                        .filter(|pub_key| !self.era(era_id).slashed.contains(&pub_key))
+                        .sorted()
+                        .dedup()
+                        .collect(),
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.proto_block().clone(),
