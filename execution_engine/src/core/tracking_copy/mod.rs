@@ -482,7 +482,7 @@ pub enum ValidationError {
     BytesRepr(bytesrepr::Error),
 
     #[error("Key is not a URef")]
-    KeyIsNotAUref(Key),
+    KeyIsNotAURef(Key),
 
     #[error("Failed to convert stored value to key")]
     ValueToCLValueConversion,
@@ -569,7 +569,7 @@ pub fn validate_balance_proof(
 ) -> Result<(), ValidationError> {
     let expected_balance_key = expected_purse_key
         .uref_to_hash()
-        .ok_or_else(|| ValidationError::KeyIsNotAUref(expected_purse_key.to_owned()))?;
+        .ok_or_else(|| ValidationError::KeyIsNotAURef(expected_purse_key.to_owned()))?;
 
     if main_purse_proof.key() != &expected_balance_key {
         return Err(ValidationError::UnexpectedKey);

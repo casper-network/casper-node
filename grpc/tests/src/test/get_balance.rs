@@ -86,7 +86,7 @@ fn get_balance_should_work() {
             bogus_key.to_owned(),
             &alice_balance,
         ),
-        Err(ValidationError::KeyIsNotAUref(bogus_key))
+        Err(ValidationError::KeyIsNotAURef(bogus_key))
     );
 
     let bogus_uref: Key = Key::URef(URef::new([3u8; 32], AccessRights::READ_ADD_WRITE));
