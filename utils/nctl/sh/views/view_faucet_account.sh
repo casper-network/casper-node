@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# Renders account balance to stdout.
+# Renders account information to stdout.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #   Chain root state hash.
-#   Account purse uref.
+#   Account key.
 
 # Import utils.
 source $NCTL/sh/utils/misc.sh
@@ -17,22 +17,20 @@ source $NCTL/sh/utils/misc.sh
 #######################################
 
 # Unset to avoid parameter collisions.
+unset account_key
 unset net
 unset node
-unset purse_uref
 unset state_root_hash
-unset typeof
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
+        account-key) account_key=${VALUE} ;;
+        root-hash) state_root_hash=${VALUE} ;;
         net) net=${VALUE} ;;
         node) node=${VALUE} ;;
-        purse-uref) purse_uref=${VALUE} ;;
-        root-hash) state_root_hash=${VALUE} ;;
-        typeof) typeof=${VALUE} ;;
         *)
     esac
 done
@@ -40,18 +38,11 @@ done
 # Set defaults.
 net=${net:-1}
 node=${node:-1}
-typeof=${typeof:-"account"}
 
 #######################################
 # Main
 #######################################
 
-balance=$(
-    $NCTL/assets/net-$net/bin/casper-client get-balance \
-        --node-address $(get_node_address $net $node) \
-        --state-root-hash $state_root_hash \
-        --purse-uref $purse_uref \
-        | jq '.result.balance_value' \
-        | sed -e 's/^"//' -e 's/"$//'
-    )
-log $typeof" balance = "$balance
+source $NCTL/sh/views/view_chain_account.sh net=$net node=$node \
+    root-hash=$(source $NCTL/sh/views/view_chain_state_root_hash.sh) \
+    account-key=$(cat $NCTL/assets/net-$net/faucet/public_key_hex)
