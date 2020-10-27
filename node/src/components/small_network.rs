@@ -436,11 +436,14 @@ where
             .peer_addr()
             .expect("should have peer address");
 
-        assert!(
-            self.pending.remove(&peer_address),
-            "should always add outgoing connect attempts to pendings: {:?}",
-            self
-        );
+        if !self.pending.remove(&peer_address) {
+            info!(
+                %peer_address,
+                "{}: this peer's incoming connection has dropped, so don't establish an outgoing",
+                self.our_id
+            );
+            return Effects::new();
+        }
 
         // If we have connected to ourself, allow the connection to drop.
         if peer_id == self.our_id {
