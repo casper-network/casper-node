@@ -252,6 +252,7 @@ where
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
             self.highway_config().minimum_round_exponent,
             self.highway_config().minimum_era_height,
+            start_time,
             start_time + self.highway_config().era_duration,
         );
 
@@ -290,7 +291,7 @@ where
 
         let results = if should_activate {
             let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
-            highway.activate_validator(our_id, secret, timestamp.max(start_time))
+            highway.activate_validator(our_id, secret, params, timestamp)
         } else {
             Vec::new()
         };

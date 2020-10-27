@@ -1,3 +1,5 @@
+mod round_success_meter;
+
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap},
@@ -9,6 +11,8 @@ use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tracing::{info, trace};
+
+use self::round_success_meter::RoundSuccessMeter;
 
 use crate::{
     components::consensus::{
@@ -46,6 +50,8 @@ where
     /// The vertices that are scheduled to be processed at a later time.  The keys of this
     /// `BTreeMap` are timestamps when the corresponding vector of vertices will be added.
     vertices_to_be_added_later: BTreeMap<Timestamp, Vec<(I, PreValidatedVertex<C>)>>,
+    /// A tracker for whether we are keeping up with the current round exponent or not.
+    round_success_meter: RoundSuccessMeter<C>,
 }
 
 impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
@@ -55,12 +61,15 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         params: Params,
         ftt: Weight,
     ) -> Self {
+        let round_exp = params.init_round_exp();
+        let start_timestamp = params.start_timestamp();
         HighwayProtocol {
             vertex_deps: BTreeMap::new(),
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
             vertices_to_be_added_later: BTreeMap::new(),
+            round_success_meter: RoundSuccessMeter::new(round_exp, round_exp, start_timestamp),
         }
     }
 
@@ -68,9 +77,12 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         &mut self,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
+        params: Params,
         timestamp: Timestamp,
     ) -> Vec<CpResult<I, C>> {
-        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
+        let av_effects = self
+            .highway
+            .activate_validator(our_id, secret, params, timestamp);
         self.process_av_effects(av_effects)
     }
 
@@ -86,7 +98,10 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
 
     fn process_av_effect(&mut self, effect: AvEffect<C>) -> Vec<CpResult<I, C>> {
         match effect {
-            AvEffect::NewVertex(vv) => self.process_new_vertex(vv.into()),
+            AvEffect::NewVertex(vv) => {
+                self.calculate_round_exponent(&vv);
+                self.process_new_vertex(vv.into())
+            }
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
             }
@@ -233,6 +248,29 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         results
     }
 
+    fn calculate_round_exponent(&mut self, vv: &ValidVertex<C>) {
+        let new_round_exp = self
+            .round_success_meter
+            .calculate_new_exponent(self.highway.state());
+        // If the vertex contains a proposal, register it in the success meter.
+        // It's important to do this _after_ the calculation above - otherwise we might try to
+        // register the proposal before the meter is aware that a new round has started, and it
+        // will reject the proposal.
+        if vv.is_proposal() {
+            // unwraps are safe, as if value is `Some`, this is already a vote
+            trace!(
+                now = Timestamp::now().millis(),
+                timestamp = vv.inner().timestamp().unwrap().millis(),
+                "adding proposal to protocol state",
+            );
+            self.round_success_meter.new_proposal(
+                vv.inner().vote_hash().unwrap(),
+                vv.inner().timestamp().unwrap(),
+            );
+        }
+        self.highway.set_round_exp(new_round_exp);
+    }
+
     fn add_valid_vertex(
         &mut self,
         vv: ValidVertex<C>,
@@ -240,6 +278,11 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         now: Timestamp,
     ) -> Vec<CpResult<I, C>> {
         let start_time = Timestamp::now();
+        // Check whether we should change the round exponent.
+        // It's important to do it before the vertex is added to the state - this way if the last
+        // round has finished, we now have all the vertices from that round in the state, and no
+        // newer ones.
+        self.calculate_round_exponent(&vv);
         let av_effects = self.highway.add_valid_vertex(vv.clone(), rng, now);
         let elapsed = start_time.elapsed();
         trace!(%elapsed, "added valid vertex");
