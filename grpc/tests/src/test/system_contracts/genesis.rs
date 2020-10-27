@@ -3,9 +3,8 @@ use lazy_static::lazy_static;
 use casper_engine_test_support::{
     internal::{
         utils, InMemoryWasmTestBuilder, AUCTION_INSTALL_CONTRACT, DEFAULT_AUCTION_DELAY,
-        DEFAULT_INITIAL_ERA_ID, DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_VALIDATOR_SLOTS,
-        DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
-        STANDARD_PAYMENT_INSTALL_CONTRACT,
+        DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+        MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
     },
     AccountHash,
 };
@@ -70,7 +69,6 @@ fn should_run_genesis() {
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
-    let initial_era_id = DEFAULT_INITIAL_ERA_ID;
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
 
     let exec_config = ExecConfig::new(
@@ -82,7 +80,6 @@ fn should_run_genesis() {
         wasm_config,
         validator_slots,
         auction_delay,
-        initial_era_id,
         locked_funds_period,
     );
     let run_genesis_request =
@@ -142,7 +139,6 @@ fn should_track_total_token_supply_in_mint() {
     let protocol_version = ProtocolVersion::V1_0_0;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
-    let initial_era_id = DEFAULT_INITIAL_ERA_ID;
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
 
     let ee_config = ExecConfig::new(
@@ -154,7 +150,6 @@ fn should_track_total_token_supply_in_mint() {
         wasm_config,
         validator_slots,
         auction_delay,
-        initial_era_id,
         locked_funds_period,
     );
     let run_genesis_request =
@@ -202,7 +197,6 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
         let wasm_config = *DEFAULT_WASM_CONFIG;
         let validator_slots = DEFAULT_VALIDATOR_SLOTS;
         let auction_delay = DEFAULT_AUCTION_DELAY;
-        let initial_era_id = DEFAULT_INITIAL_ERA_ID;
         let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
 
         let exec_config = ExecConfig::new(
@@ -214,7 +208,6 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
             wasm_config,
             validator_slots,
             auction_delay,
-            initial_era_id,
             locked_funds_period,
         );
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
@@ -240,7 +233,6 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
         let wasm_config = *DEFAULT_WASM_CONFIG;
         let validator_slots = DEFAULT_VALIDATOR_SLOTS;
         let auction_delay = DEFAULT_AUCTION_DELAY;
-        let initial_era_id = DEFAULT_INITIAL_ERA_ID;
         let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
 
         let exec_config = ExecConfig::new(
@@ -252,7 +244,6 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
             wasm_config,
             validator_slots,
             auction_delay,
-            initial_era_id,
             locked_funds_period,
         );
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)

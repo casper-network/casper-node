@@ -61,16 +61,6 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             )
         };
 
-        let new_initial_era_id: Option<EraId> = if !upgrade_point.has_new_initial_era_id() {
-            None
-        } else {
-            Some(
-                upgrade_point
-                    .take_new_initial_era_id()
-                    .get_new_initial_era_id(),
-            )
-        };
-
         let new_locked_funds_period: Option<EraId> = if !upgrade_point.has_new_locked_funds_period()
         {
             None
@@ -92,7 +82,6 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             activation_point,
             new_validator_slots,
             new_auction_delay,
-            new_initial_era_id,
             new_locked_funds_period,
         ))
     }

@@ -227,7 +227,6 @@ pub struct ExecConfig {
     wasm_config: WasmConfig,
     validator_slots: u32,
     auction_delay: u64,
-    initial_era_id: EraId,
     locked_funds_period: EraId,
 }
 
@@ -242,7 +241,6 @@ impl ExecConfig {
         wasm_config: WasmConfig,
         validator_slots: u32,
         auction_delay: u64,
-        initial_era_id: EraId,
         locked_funds_period: EraId,
     ) -> ExecConfig {
         ExecConfig {
@@ -254,7 +252,6 @@ impl ExecConfig {
             wasm_config,
             validator_slots,
             auction_delay,
-            initial_era_id,
             locked_funds_period,
         }
     }
@@ -301,10 +298,6 @@ impl ExecConfig {
         self.auction_delay
     }
 
-    pub fn initial_era_id(&self) -> EraId {
-        self.initial_era_id
-    }
-
     pub fn locked_funds_period(&self) -> EraId {
         self.locked_funds_period
     }
@@ -334,9 +327,7 @@ impl Distribution<ExecConfig> for Standard {
 
         let auction_delay = rng.gen();
 
-        let initial_era_id = 0;
-
-        let locked_funds_period: EraId = rng.gen::<u64>();
+        let locked_funds_period: EraId = rng.gen();
 
         ExecConfig {
             mint_installer_bytes,
@@ -347,7 +338,6 @@ impl Distribution<ExecConfig> for Standard {
             wasm_config,
             validator_slots,
             auction_delay,
-            initial_era_id,
             locked_funds_period,
         }
     }

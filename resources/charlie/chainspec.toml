@@ -26,8 +26,6 @@ accounts_path = '/etc/casper/accounts.csv'
 validator_slots = 15
 # Amount of auction delay
 auction_delay = 3
-# Initial Era Id
-initial_era_id = 0
 # The delay for the payout of funds, in eras. If a withdraw request is included in a block in era N
 # (other than the last one), they are paid out in the last block of era N + locked_funds_period.
 locked_funds_period = 15

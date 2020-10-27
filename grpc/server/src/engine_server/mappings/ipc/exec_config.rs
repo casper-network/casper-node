@@ -22,7 +22,6 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
         let auction_installer_bytes = pb_exec_config.take_auction_installer();
         let validator_slots = pb_exec_config.get_validator_slots();
         let auction_delay = pb_exec_config.get_auction_delay();
-        let initial_era_id = pb_exec_config.get_initial_era_id();
         let locked_funds_period = pb_exec_config.get_locked_funds_period();
         Ok(ExecConfig::new(
             mint_initializer_bytes,
@@ -33,7 +32,6 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
             wasm_config,
             validator_slots,
             auction_delay,
-            initial_era_id,
             locked_funds_period,
         ))
     }
@@ -60,7 +58,6 @@ impl From<ExecConfig> for ipc::ChainSpec_GenesisConfig_ExecConfig {
         pb_exec_config.set_wasm_config(exec_config.wasm_config().clone().into());
         pb_exec_config.set_validator_slots(exec_config.validator_slots());
         pb_exec_config.set_auction_delay(exec_config.auction_delay());
-        pb_exec_config.set_initial_era_id(exec_config.initial_era_id());
         pb_exec_config.set_locked_funds_period(exec_config.locked_funds_period());
         pb_exec_config
     }

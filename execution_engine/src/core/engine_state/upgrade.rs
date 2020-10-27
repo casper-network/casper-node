@@ -65,7 +65,6 @@ pub struct UpgradeConfig {
     activation_point: Option<ActivationPoint>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
-    new_initial_era_id: Option<EraId>,
     new_locked_funds_period: Option<EraId>,
 }
 
@@ -81,7 +80,6 @@ impl UpgradeConfig {
         activation_point: Option<ActivationPoint>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
-        new_initial_era_id: Option<EraId>,
         new_locked_funds_period: Option<EraId>,
     ) -> Self {
         UpgradeConfig {
@@ -94,7 +92,6 @@ impl UpgradeConfig {
             activation_point,
             new_validator_slots,
             new_auction_delay,
-            new_initial_era_id,
             new_locked_funds_period,
         }
     }
@@ -135,10 +132,6 @@ impl UpgradeConfig {
 
     pub fn new_auction_delay(&self) -> Option<u64> {
         self.new_auction_delay
-    }
-
-    pub fn new_initial_era_id(&self) -> Option<EraId> {
-        self.new_initial_era_id
     }
 
     pub fn new_locked_funds_period(&self) -> Option<EraId> {

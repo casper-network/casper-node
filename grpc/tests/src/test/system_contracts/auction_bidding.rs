@@ -1,8 +1,7 @@
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_INITIAL_ERA_ID, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -11,7 +10,7 @@ use casper_types::{
     account::AccountHash,
     auction::{
         BidPurses, DelegationRate, UnbondingPurses, ARG_UNBOND_PURSE, ARG_VALIDATOR_PUBLIC_KEYS,
-        BID_PURSES_KEY, DEFAULT_UNBONDING_DELAY, METHOD_RUN_AUCTION, METHOD_SLASH,
+        BID_PURSES_KEY, DEFAULT_UNBONDING_DELAY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
         UNBONDING_PURSES_KEY,
     },
     runtime_args,
@@ -147,7 +146,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     assert_eq!(
         unbond_list[0].era_of_withdrawal as usize,
-        DEFAULT_INITIAL_ERA_ID as usize + DEFAULT_UNBONDING_DELAY as usize
+        INITIAL_ERA_ID as usize + DEFAULT_UNBONDING_DELAY as usize
     );
 
     let unbond_era_1 = unbond_list[0].era_of_withdrawal;
@@ -492,7 +491,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     assert_eq!(
         unbond_list[0].era_of_withdrawal as usize,
-        DEFAULT_INITIAL_ERA_ID as usize + 1 + DEFAULT_UNBONDING_DELAY as usize
+        INITIAL_ERA_ID as usize + 1 + DEFAULT_UNBONDING_DELAY as usize
     );
 
     let unbond_era_1 = unbond_list[0].era_of_withdrawal;

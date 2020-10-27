@@ -35,7 +35,6 @@ pub const STANDARD_PAYMENT_INSTALL_CONTRACT: &str = "standard_payment_install.wa
 pub const AUCTION_INSTALL_CONTRACT: &str = "auction_install.wasm";
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 pub const DEFAULT_AUCTION_DELAY: u64 = 3;
-pub const DEFAULT_INITIAL_ERA_ID: EraId = 0;
 pub const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
 
 pub const DEFAULT_CHAIN_NAME: &str = "gerald";
@@ -86,7 +85,6 @@ lazy_static! {
             *DEFAULT_WASM_CONFIG,
             DEFAULT_VALIDATOR_SLOTS,
             DEFAULT_AUCTION_DELAY,
-            DEFAULT_INITIAL_ERA_ID,
             DEFAULT_LOCKED_FUNDS_PERIOD
         )
     };

@@ -1,8 +1,8 @@
 use casper_engine_grpc_server::engine_server::{
     ipc::{
-        ChainSpec_ActivationPoint, ChainSpec_NewAuctionDelay, ChainSpec_NewInitialEraId,
-        ChainSpec_NewLockedFundsPeriod, ChainSpec_NewValidatorSlots, ChainSpec_UpgradePoint,
-        ChainSpec_WasmConfig, DeployCode, UpgradeRequest,
+        ChainSpec_ActivationPoint, ChainSpec_NewAuctionDelay, ChainSpec_NewLockedFundsPeriod,
+        ChainSpec_NewValidatorSlots, ChainSpec_UpgradePoint, ChainSpec_WasmConfig, DeployCode,
+        UpgradeRequest,
     },
     state,
 };
@@ -18,7 +18,6 @@ pub struct UpgradeRequestBuilder {
     activation_point: ChainSpec_ActivationPoint,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
-    new_initial_era_id: Option<EraId>,
     new_locked_funds_period: Option<EraId>,
 }
 
@@ -62,11 +61,6 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    pub fn with_new_initial_era_id(mut self, new_initial_era_id: EraId) -> Self {
-        self.new_initial_era_id = Some(new_initial_era_id);
-        self
-    }
-
     pub fn with_new_locked_funds_period(mut self, new_locked_funds_period: EraId) -> Self {
         self.new_locked_funds_period = Some(new_locked_funds_period);
         self
@@ -105,15 +99,6 @@ impl UpgradeRequestBuilder {
             }
         }
 
-        match self.new_initial_era_id {
-            None => {}
-            Some(new_initial_era_id) => {
-                let mut chainspec_new_initial_era_id = ChainSpec_NewInitialEraId::new();
-                chainspec_new_initial_era_id.set_new_initial_era_id(new_initial_era_id);
-                upgrade_point.set_new_initial_era_id(chainspec_new_initial_era_id);
-            }
-        }
-
         match self.new_locked_funds_period {
             None => {}
             Some(new_locked_funds_period) => {
@@ -145,7 +130,6 @@ impl Default for UpgradeRequestBuilder {
             activation_point: Default::default(),
             new_validator_slots: Default::default(),
             new_auction_delay: Default::default(),
-            new_initial_era_id: Default::default(),
             new_locked_funds_period: Default::default(),
         }
     }

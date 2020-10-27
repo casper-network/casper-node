@@ -5,8 +5,7 @@ use lazy_static::lazy_static;
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_AUCTION_DELAY, DEFAULT_INITIAL_ERA_ID, DEFAULT_LOCKED_FUNDS_PERIOD,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_AUCTION_DELAY, DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -18,7 +17,8 @@ use casper_types::{
         Bids, DelegationRate, Delegators, EraId, EraValidators, SeigniorageRecipients,
         UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
         ARG_PUBLIC_KEY, ARG_UNBOND_PURSE, ARG_VALIDATOR, BIDS_KEY, DEFAULT_UNBONDING_DELAY,
-        DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, METHOD_RUN_AUCTION, UNBONDING_PURSES_KEY,
+        DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION,
+        UNBONDING_PURSES_KEY,
     },
     runtime_args, PublicKey, RuntimeArgs, URef, U512,
 };
@@ -215,7 +215,7 @@ fn should_run_add_bid() {
 
     assert_eq!(
         unbond_list[0].era_of_withdrawal,
-        DEFAULT_INITIAL_ERA_ID + DEFAULT_UNBONDING_DELAY,
+        INITIAL_ERA_ID + DEFAULT_UNBONDING_DELAY,
     );
 }
 
@@ -447,7 +447,7 @@ fn should_calculate_era_validators() {
 
     // Verify first era validators
     let first_validator_weights: ValidatorWeights = builder
-        .get_era_validators(DEFAULT_INITIAL_ERA_ID)
+        .get_era_validators(INITIAL_ERA_ID)
         .expect("should have first era validator weights");
     assert_eq!(
         first_validator_weights
@@ -990,7 +990,7 @@ fn should_use_era_validators_endpoint_for_first_era() {
     builder.run_genesis(&run_genesis_request);
 
     let validator_weights = builder
-        .get_era_validators(DEFAULT_INITIAL_ERA_ID)
+        .get_era_validators(INITIAL_ERA_ID)
         .expect("should have validator weights for era 0");
 
     assert_eq!(validator_weights.len(), 1);
@@ -1047,15 +1047,15 @@ fn should_calculate_era_validators_multiple_new_bids() {
     builder.run_genesis(&run_genesis_request);
 
     let genesis_validator_weights = builder
-        .get_era_validators(DEFAULT_INITIAL_ERA_ID)
+        .get_era_validators(INITIAL_ERA_ID)
         .expect("should have genesis validators for initial era");
 
     // new_era is the first era in the future where new era validator weights will be calculated
-    let new_era = DEFAULT_INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
+    let new_era = INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
     assert!(builder.get_era_validators(new_era).is_none());
     assert_eq!(
         builder.get_era_validators(new_era - 1).unwrap(),
-        builder.get_era_validators(DEFAULT_INITIAL_ERA_ID).unwrap()
+        builder.get_era_validators(INITIAL_ERA_ID).unwrap()
     );
 
     assert_eq!(
