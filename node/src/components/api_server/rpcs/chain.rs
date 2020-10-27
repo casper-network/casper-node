@@ -26,7 +26,7 @@ use crate::{
 pub enum BlockIdentifier {
     /// Identify and retrieve the block with its hash.
     Hash(BlockHash),
-    /// Idenityf and retireve the block with its height.
+    /// Identify and retrieve the block with its height.
     Height(u64),
 }
 
