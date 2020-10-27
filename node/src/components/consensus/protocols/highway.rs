@@ -8,7 +8,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use tracing::{info};
+use tracing::info;
 
 use crate::{
     components::consensus::{
