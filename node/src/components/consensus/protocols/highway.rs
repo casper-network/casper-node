@@ -10,7 +10,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, trace};
 
 use self::round_success_meter::RoundSuccessMeter;
 
