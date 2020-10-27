@@ -669,8 +669,8 @@ version = "0.1.0"
 dependencies = [
  "Inflector",
  "indexmap",
- "proc-macro2 1.0.24",
- "syn 1.0.44",
+ "proc-macro2",
+ "syn",
 ]
 
 [[package]]

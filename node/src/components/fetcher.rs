@@ -1,3 +1,4 @@
+mod config;
 mod event;
 mod tests;
 
@@ -17,9 +18,9 @@ use crate::{
     small_network::NodeId,
     types::{Block, BlockByHeight, BlockHash, CryptoRngCore, Deploy, DeployHash, Item},
     utils::Source,
-    GossipConfig,
 };
 
+pub use config::Config;
 pub use event::{Event, FetchResult};
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
@@ -168,9 +169,9 @@ where
 }
 
 impl<T: Item> Fetcher<T> {
-    pub(crate) fn new(config: GossipConfig) -> Self {
+    pub(crate) fn new(config: Config) -> Self {
         Fetcher {
-            get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
+            get_from_peer_timeout: Duration::from_secs(config.get_from_peer_timeout()),
             responders: HashMap::new(),
         }
     }

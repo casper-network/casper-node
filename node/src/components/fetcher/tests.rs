@@ -31,6 +31,7 @@ use crate::{
     },
     types::{Deploy, DeployHash, Tag},
     utils::{Loadable, WithDir},
+    FetcherConfig,
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -108,7 +109,7 @@ impl Drop for Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = GossipConfig;
+    type Config = Config;
     type Error = Error;
 
     fn new(
@@ -504,7 +505,7 @@ async fn should_timeout_fetch_from_peer() {
         .await;
 
     // Advance time.
-    let secs_to_advance = GossipConfig::default().get_remainder_timeout_secs();
+    let secs_to_advance = FetcherConfig::default().get_from_peer_timeout();
     time::pause();
     time::advance(Duration::from_secs(secs_to_advance + 10)).await;
     time::resume();
