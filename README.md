@@ -38,6 +38,14 @@ cmake 3.1.4 or greater
 
 [Rust](https://www.rust-lang.org/tools/install)
 
+libssl-dev
+
+pkg-config
+
+gcc
+
+g++
+
 ### Setup
 
 Before building a node, prepare your Rust build environment, and build the required system smart contracts:
