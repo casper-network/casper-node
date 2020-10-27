@@ -26,7 +26,7 @@ use casper_execution_engine::{
         engine_state::{
             era_validators::GetEraValidatorsRequest, execute_request::ExecuteRequest,
             execution_result::ExecutionResult, run_genesis_request::RunGenesisRequest,
-            EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
+            BalanceResult, EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -682,6 +682,21 @@ where
             .and_then(|v| CLValue::try_from(v).map_err(|error| format!("{:?}", error)))
             .and_then(|cl_value| cl_value.into_t().map_err(|error| format!("{:?}", error)))
             .expect("should parse balance into a U512")
+    }
+
+    pub fn get_purse_balance_result(&self, purse: URef) -> BalanceResult {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash_slice: &Vec<u8> = self
+            .post_state_hash
+            .as_ref()
+            .expect("should have post_state_hash");
+        let state_root_hash: Blake2bHash = state_root_hash_slice
+            .as_slice()
+            .try_into()
+            .expect("should convert");
+        self.engine_state
+            .get_purse_balance(correlation_id, state_root_hash, purse)
+            .expect("should get purse balance")
     }
 
     pub fn get_proposer_purse_balance(&self) -> U512 {

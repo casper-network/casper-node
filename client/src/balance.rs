@@ -6,8 +6,9 @@ use casper_node::rpcs::{
     state::{GetBalance, GetBalanceParams},
     RpcWithParams,
 };
+use casper_types::Key;
 
-use crate::{command::ClientCommand, common, rpc::RpcClient};
+use crate::{command::ClientCommand, common, merkle_proofs, rpc::RpcClient};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -89,10 +90,17 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
         let node_address = common::node_address::get(matches);
         let rpc_id = common::rpc_id::get(matches);
         let args = balance_args::get(matches);
+        let key = Key::from_formatted_str(&args.purse_uref).expect("key should convert to key");
+        let state_root_hash = args.state_root_hash.to_owned();
         let response = Self::request_with_map_params(verbose, &node_address, rpc_id, args);
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&response).expect("should encode to JSON")
-        );
+        match merkle_proofs::validate_get_balance_response(&response, &state_root_hash, &key) {
+            Ok(_) => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&response).expect("should encode to JSON")
+                );
+            }
+            Err(error) => panic!("{:?}", error),
+        }
     }
 }
