@@ -190,12 +190,8 @@ impl Parse for ReactorDefinition {
 
         Ok(ReactorDefinition {
             reactor_type_ident,
-            config_type: RustType::try_from(config.ty.as_ref().clone()).map_err(|err| {
-                syn::parse::Error::new(
-                    Span::call_site(), // FIXME: Can we get a better span here?
-                    err,
-                )
-            })?,
+            config_type: RustType::try_from(config.ty.as_ref().clone())
+                .map_err(|err| syn::parse::Error::new_spanned(config.ty, err))?,
             components,
             events,
             requests,
