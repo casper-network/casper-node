@@ -57,6 +57,8 @@ pub(crate) struct FinalizedBlock<C: ConsensusValueT, VID> {
     pub(crate) height: u64,
     /// If this is a terminal block, i.e. the last one to be finalized, this includes rewards.
     pub(crate) rewards: Option<BTreeMap<VID, u64>>,
+    /// The validators known to be faulty as seen by this block.
+    pub(crate) equivocators: Vec<VID>,
     /// Proposer of this value
     pub(crate) proposer: VID,
 }
