@@ -1,7 +1,7 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_GET_FROM_PEER_TIMEOUT_SECS: u64 = 10;
+const DEFAULT_GET_FROM_PEER_TIMEOUT_SECS: u64 = 3;
 
 /// Configuration options for fetching.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
