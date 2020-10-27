@@ -750,9 +750,9 @@ fn instance_id(
     for upgrade_point in chainspec
         .upgrades
         .iter()
-        .take_while(|up| up.activation_point.rank <= block_height)
+        .take_while(|up| up.activation_point.height <= block_height)
     {
-        hasher.update(upgrade_point.activation_point.rank.to_le_bytes());
+        hasher.update(upgrade_point.activation_point.height.to_le_bytes());
         if let Some(bytes) = upgrade_point.upgrade_installer_bytes.as_ref() {
             hasher.update(bytes);
         }
