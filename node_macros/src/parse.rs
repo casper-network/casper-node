@@ -21,7 +21,7 @@ use syn::{
 };
 
 use crate::{rust_type::RustType, util::to_ident};
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 
 #[derive(Debug)]
 pub(crate) struct ReactorDefinition {
@@ -157,7 +157,7 @@ impl Parse for ReactorDefinition {
         let _: Token!(:) = content.parse()?;
         braced!(requests_content in content);
 
-        let requests = requests_content
+        let requests: Vec<_> = requests_content
             .parse_terminated::<RequestDefinition, Token!(;)>(RequestDefinition::parse)?
             .into_iter()
             .collect();
@@ -167,25 +167,60 @@ impl Parse for ReactorDefinition {
         let _: kw::announcements = content.parse()?;
         let _: Token!(:) = content.parse()?;
         braced!(announcements_content in content);
-        let announcements = announcements_content
+        let announcements: Vec<_> = announcements_content
             .parse_terminated::<AnnouncementDefinition, Token!(;)>(AnnouncementDefinition::parse)?
             .into_iter()
             .collect();
 
-        // We can now perform some rudimentary checks.
+        // We can now perform some rudimentary checks. Component keys are converted to strings, so
+        // rid them of their span information.
+        let component_keys: IndexSet<_> =
+            components.keys().map(|ident| ident.to_string()).collect();
 
         // Ensure that the `events` section does not point to non-existing components.
         let events_keys: IndexSet<_> = events.keys().collect();
-        let component_keys: IndexSet<_> = components.keys().collect();
 
-        for missing in events_keys.difference(&component_keys) {
-            return Err(syn::Error::new_spanned(
-                missing,
-                format!(
-                    "An event entry points to a non-existing component: {}",
-                    missing
-                ),
-            ));
+        // We cannot use the `difference` function, because equal idents compare different based on
+        // their span.
+        for key in &events_keys {
+            if !component_keys.contains(&key.to_string()) {
+                return Err(syn::Error::new_spanned(
+                    key,
+                    format!("An event entry points to a non-existing component: {}", key),
+                ));
+            }
+        }
+
+        // Ensure that requests are not routed to non-existing events.
+        let request_target_keys: IndexSet<_> = requests
+            .iter()
+            .filter_map(|req| req.target.as_dest())
+            .collect();
+
+        for key in &request_target_keys {
+            if !component_keys.contains(&key.to_string()) {
+                return Err(syn::Error::new_spanned(
+                    key,
+                    format!("An request route to a non-existing component: {}", key),
+                ));
+            }
+        }
+
+        // Ensure that requests are not routed to non-existing events.
+        let announce_target_keys: IndexSet<_> = announcements
+            .iter()
+            .map(|ann| ann.targets.iter())
+            .flatten()
+            .filter_map(Target::as_dest)
+            .collect();
+
+        for key in &announce_target_keys {
+            if !component_keys.contains(&key.to_string()) {
+                return Err(syn::Error::new_spanned(
+                    key,
+                    format!("An announcement route to a non-existing component: {}", key),
+                ));
+            }
         }
 
         Ok(ReactorDefinition {
@@ -436,6 +471,16 @@ pub(crate) enum Target {
     Discard,
     /// Forward to destination.
     Dest(Ident),
+}
+
+impl Target {
+    /// Returns a reference to the destination identifier if the target is a destination, or `None`.
+    fn as_dest(&self) -> Option<&Ident> {
+        match self {
+            Target::Discard => None,
+            Target::Dest(ident) => Some(ident),
+        }
+    }
 }
 
 impl Debug for Target {
