@@ -98,7 +98,10 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
 
     fn process_av_effect(&mut self, effect: AvEffect<C>) -> Vec<CpResult<I, C>> {
         match effect {
-            AvEffect::NewVertex(vv) => self.process_new_vertex(vv.into()),
+            AvEffect::NewVertex(vv) => {
+                self.calculate_round_exponent(&vv);
+                self.process_new_vertex(vv.into())
+            }
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ConsensusProtocolResult::ScheduleTimer(timestamp)]
             }
