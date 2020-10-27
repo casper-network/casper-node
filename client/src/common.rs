@@ -207,13 +207,13 @@ pub mod block_identifier {
     }
 
     pub(crate) fn get(matches: &ArgMatches) -> Option<BlockIdentifier> {
-        matches.value_of(ARG_NAME).map(|hex_str| {
-            if hex_str.len() == 64 {
-                let hash = Digest::from_hex(hex_str)
+        matches.value_of(ARG_NAME).map(|value| {
+            if value.len() == (Digest::LENGTH * 2) {
+                let hash = Digest::from_hex(value)
                     .unwrap_or_else(|error| panic!("cannot parse as a block hash: {}", error));
                 BlockIdentifier::Hash(BlockHash::new(hash))
             } else {
-                let height = hex_str
+                let height = value
                     .parse()
                     .unwrap_or_else(|error| panic!("cannot parse as a u64: {}", error));
                 BlockIdentifier::Height(height)
