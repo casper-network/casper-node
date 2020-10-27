@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 const DEFAULT_GET_FROM_PEER_TIMEOUT_SECS: u64 = 10;
 
-/// Configuration options for gossiping.
+/// Configuration options for fetching.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct Config {
     get_from_peer_timeout: u64,
