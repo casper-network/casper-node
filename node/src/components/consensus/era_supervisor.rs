@@ -640,11 +640,22 @@ where
                 timestamp,
                 height,
                 rewards,
+                equivocators,
                 proposer,
             }) => {
+                // If this is the era's last block, it contains rewards. Everyone who is accused in
+                // the block or seen as equivocating via the consensus protocol gets slashed.
                 let era_end = rewards.map(|rewards| EraEnd {
-                    equivocators: value.accusations().clone(),
                     rewards,
+                    equivocators: value
+                        .accusations()
+                        .iter()
+                        .cloned()
+                        .chain(equivocators)
+                        .filter(|pub_key| !self.era(era_id).slashed.contains(&pub_key))
+                        .sorted()
+                        .dedup()
+                        .collect(),
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.proto_block().clone(),

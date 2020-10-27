@@ -478,6 +478,7 @@ where
             timestamp: _,
             height,
             rewards,
+            equivocators: _,
             proposer: _,
         } in finalized_values
         {
