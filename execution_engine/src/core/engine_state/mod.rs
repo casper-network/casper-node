@@ -1046,16 +1046,16 @@ where
             Some(tracking_copy) => tracking_copy,
             None => return Ok(BalanceResult::RootNotFound),
         };
-        let (purse_balance_key, main_purse_proof) =
+        let (purse_balance_key, purse_proof) =
             tracking_copy.get_purse_balance_key_with_proof(correlation_id, purse_uref.into())?;
         let (balance, balance_proof) =
             tracking_copy.get_purse_balance_with_proof(correlation_id, purse_balance_key)?;
-        let main_purse_proof = Box::new(main_purse_proof);
+        let purse_proof = Box::new(purse_proof);
         let balance_proof = Box::new(balance_proof);
         let motes = balance.value();
         Ok(BalanceResult::Success {
             motes,
-            purse_proof: main_purse_proof,
+            purse_proof,
             balance_proof,
         })
     }

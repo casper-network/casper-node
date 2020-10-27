@@ -117,7 +117,7 @@ pub fn validate_get_balance_response(
         .as_object()
         .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
 
-    let (main_purse_proof, balance_proof): (
+    let (purse_proof, balance_proof): (
         TrieMerkleProof<Key, StoredValue>,
         TrieMerkleProof<Key, StoredValue>,
     ) = {
@@ -145,7 +145,7 @@ pub fn validate_get_balance_response(
 
     core::validate_balance_proof(
         &state_root_hash.to_owned().into(),
-        &main_purse_proof,
+        &purse_proof,
         &balance_proof,
         *key,
         &balance,

@@ -562,7 +562,7 @@ pub fn validate_query_proof(
 #[allow(unused)]
 pub fn validate_balance_proof(
     hash: &Blake2bHash,
-    main_purse_proof: &TrieMerkleProof<Key, StoredValue>,
+    purse_proof: &TrieMerkleProof<Key, StoredValue>,
     balance_proof: &TrieMerkleProof<Key, StoredValue>,
     expected_purse_key: Key,
     expected_motes: &U512,
@@ -571,17 +571,17 @@ pub fn validate_balance_proof(
         .uref_to_hash()
         .ok_or_else(|| ValidationError::KeyIsNotAURef(expected_purse_key.to_owned()))?;
 
-    if main_purse_proof.key() != &expected_balance_key {
+    if purse_proof.key() != &expected_balance_key {
         return Err(ValidationError::UnexpectedKey);
     }
 
-    if hash != &main_purse_proof.compute_state_hash()? {
+    if hash != &purse_proof.compute_state_hash()? {
         return Err(ValidationError::InvalidProofHash);
     }
 
-    let main_purse_proof_stored_value = main_purse_proof.value().to_owned();
+    let purse_proof_stored_value = purse_proof.value().to_owned();
 
-    let purse_balance_clvalue: CLValue = main_purse_proof_stored_value
+    let purse_balance_clvalue: CLValue = purse_proof_stored_value
         .try_into()
         .map_err(|_| ValidationError::ValueToCLValueConversion)?;
 

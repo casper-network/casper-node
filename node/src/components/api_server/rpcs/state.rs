@@ -205,12 +205,12 @@ impl RpcWithParamsExt for GetBalance {
                 )
                 .await;
 
-            let (balance_value, main_purse_proof, balance_proof) = match balance_result {
+            let (balance_value, purse_proof, balance_proof) = match balance_result {
                 Ok(BalanceResult::Success {
                     motes,
-                    purse_proof: main_purse_proof,
+                    purse_proof,
                     balance_proof,
-                }) => (motes, main_purse_proof, balance_proof),
+                }) => (motes, purse_proof, balance_proof),
                 Ok(balance_result) => {
                     let error_msg = format!("get-balance failed: {:?}", balance_result);
                     info!("{}", error_msg);
@@ -229,7 +229,7 @@ impl RpcWithParamsExt for GetBalance {
                 }
             };
 
-            let proof_bytes = match (*main_purse_proof, *balance_proof).to_bytes() {
+            let proof_bytes = match (*purse_proof, *balance_proof).to_bytes() {
                 Ok(proof_bytes) => proof_bytes,
                 Err(error) => {
                     info!("failed to encode stored value: {}", error);

@@ -31,10 +31,10 @@ impl BalanceResult {
     )> {
         match self {
             BalanceResult::Success {
-                purse_proof: main_purse_proof,
+                purse_proof,
                 balance_proof,
                 ..
-            } => Some((*main_purse_proof, *balance_proof)),
+            } => Some((*purse_proof, *balance_proof)),
             _ => None,
         }
     }

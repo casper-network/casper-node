@@ -65,12 +65,11 @@ fn get_balance_should_work() {
         Blake2bHash::try_from(post_state_hash.as_slice()).expect("should convert")
     };
 
-    let (main_purse_proof, balance_proof) =
-        alice_balance_result.proofs().expect("should have proofs");
+    let (purse_proof, balance_proof) = alice_balance_result.proofs().expect("should have proofs");
 
     assert!(core::validate_balance_proof(
         &state_root_hash,
-        &main_purse_proof,
+        &purse_proof,
         &balance_proof,
         alice_main_purse.into(),
         &alice_balance,
@@ -81,7 +80,7 @@ fn get_balance_should_work() {
     assert_eq!(
         core::validate_balance_proof(
             &state_root_hash,
-            &main_purse_proof,
+            &purse_proof,
             &balance_proof,
             bogus_key.to_owned(),
             &alice_balance,
@@ -93,7 +92,7 @@ fn get_balance_should_work() {
     assert_eq!(
         core::validate_balance_proof(
             &state_root_hash,
-            &main_purse_proof,
+            &purse_proof,
             &balance_proof,
             bogus_uref,
             &alice_balance,
@@ -105,7 +104,7 @@ fn get_balance_should_work() {
     assert_eq!(
         core::validate_balance_proof(
             &bogus_hash,
-            &main_purse_proof,
+            &purse_proof,
             &balance_proof,
             alice_main_purse.into(),
             &alice_balance,
@@ -116,8 +115,8 @@ fn get_balance_should_work() {
     assert_eq!(
         core::validate_balance_proof(
             &state_root_hash,
-            &main_purse_proof,
-            &main_purse_proof,
+            &purse_proof,
+            &purse_proof,
             alice_main_purse.into(),
             &alice_balance,
         ),
@@ -128,7 +127,7 @@ fn get_balance_should_work() {
     assert_eq!(
         core::validate_balance_proof(
             &state_root_hash,
-            &main_purse_proof,
+            &purse_proof,
             &balance_proof,
             alice_main_purse.into(),
             &bogus_motes,
@@ -163,14 +162,14 @@ fn get_balance_should_work() {
         Blake2bHash::try_from(post_state_hash.as_slice()).expect("should convert")
     };
 
-    let (_main_purse_proof_new, balance_proof_new) = alice_balance_result_new
+    let (_purse_proof_new, balance_proof_new) = alice_balance_result_new
         .proofs()
         .expect("should have proofs");
 
     assert_eq!(
         core::validate_balance_proof(
             &state_root_hash,
-            &main_purse_proof,
+            &purse_proof,
             &balance_proof_new,
             alice_main_purse.into(),
             &alice_balance,
