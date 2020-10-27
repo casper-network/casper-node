@@ -69,7 +69,7 @@ impl TryFrom<Type> for RustType {
     fn try_from(value: Type) -> core::result::Result<Self, Self::Error> {
         match value {
             Type::Path(type_path) => Ok(RustType(type_path.path)),
-            broken => Err(format!("cannot convert {:?} input to RustType", broken)),
+            _broken => Err("cannot convert input to RustType".to_string()),
         }
     }
 }
