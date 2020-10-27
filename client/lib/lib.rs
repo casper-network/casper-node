@@ -396,7 +396,7 @@ impl<'a> PaymentStrParams<'a> {
         }
     }
 
-    /// Construct a PaymentStrParams
+    /// Construct a PaymentStrParams from an amount.
     ///
     /// `payment_amount` uses the standard-payment system contract rather than custom payment Wasm. The value is the
     /// 'amount' arg of the standard-payment contract.
