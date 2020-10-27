@@ -1663,7 +1663,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let validator_1_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance =
-        (expected_total_reward * validator_1_portion + U512::one()).to_integer();
+        (expected_total_reward * validator_1_portion + U512::zero()).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let validator_2_balance =
@@ -1688,7 +1688,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let delegator_1_validator_2_balance =
         withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_2, DELEGATOR_1);
     let expected_delegator_1_validator_2_balance =
-        (expected_total_reward * delegator_1_validator_2_portion).to_integer();
+        (expected_total_reward * delegator_1_validator_2_portion - U512::one()).to_integer();
     assert_eq!(
         delegator_1_validator_2_balance,
         expected_delegator_1_validator_2_balance
@@ -1697,7 +1697,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let delegator_1_validator_3_balance =
         withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_3, DELEGATOR_1);
     let expected_delegator_1_validator_3_balance =
-        (expected_total_reward * delegator_1_validator_3_portion).to_integer();
+        (expected_total_reward * delegator_1_validator_3_portion - U512::one()).to_integer();
     assert_eq!(
         delegator_1_validator_3_balance,
         expected_delegator_1_validator_3_balance

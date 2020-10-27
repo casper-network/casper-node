@@ -41,6 +41,14 @@ const WRITE_FUNCTION_SMALL_NAME: &str = "write_function_small";
 const WRITE_FUNCTION_LARGE_NAME: &str = "write_function_large";
 const ADD_FUNCTION_SMALL_NAME: &str = "add_function_small";
 const ADD_FUNCTION_LARGE_NAME: &str = "add_function_large";
+const NEW_UREF_FUNCTION: &str = "new_uref_function";
+const PUT_KEY_FUNCTION: &str = "put_key_function";
+const REMOVE_KEY_FUNCTION: &str = "remove_key_function";
+const CREATE_CONTRACT_PACKAGE_AT_HASH_FUNCTION: &str = "create_contract_package_at_hash_function";
+const CREATE_CONTRACT_USER_GROUP_FUNCTION_FUNCTION: &str = "create_contract_user_group_function";
+const PROVISION_UREFS_FUNCTION: &str = "provision_urefs_function";
+const REMOVE_CONTRACT_USER_GROUP_FUNCTION: &str = "remove_contract_user_group_function";
+const NEW_UREF_SUBCALL_FUNCTION: &str = "new_uref_subcall";
 
 const WRITE_SMALL_VALUE: &[u8] = b"1";
 const WRITE_LARGE_VALUE: &[u8] = b"1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111";
@@ -235,6 +243,8 @@ fn should_measure_gas_cost_for_storage_usage_write() {
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
+
+    assert!(!builder.last_exec_gas_cost().value().is_zero());
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -660,4 +670,320 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
         "difference between large and small cost at least the expected write amount {}",
         expected_large_cost,
     );
+}
+
+#[ignore]
+#[test]
+fn should_verify_new_uref_is_charging_for_storage() {
+    let mut builder = initialize_isolated_storage_costs();
+
+    let install_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORAGE_COSTS_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(install_exec_request).expect_success().commit();
+
+    let account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let contract_hash: ContractHash = account
+        .named_keys()
+        .get(CONTRACT_KEY_NAME)
+        .expect("contract hash")
+        .into_hash()
+        .expect("should be hash");
+
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        NEW_UREF_FUNCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    assert!(balance_after < balance_before);
+}
+
+#[ignore]
+#[test]
+fn should_verify_put_key_is_charging_for_storage() {
+    let mut builder = initialize_isolated_storage_costs();
+
+    let install_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORAGE_COSTS_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(install_exec_request).expect_success().commit();
+
+    let account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let contract_hash: ContractHash = account
+        .named_keys()
+        .get(CONTRACT_KEY_NAME)
+        .expect("contract hash")
+        .into_hash()
+        .expect("should be hash");
+
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        PUT_KEY_FUNCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    assert!(balance_after < balance_before);
+}
+
+#[ignore]
+#[test]
+fn should_verify_remove_key_is_charging_for_storage() {
+    let mut builder = initialize_isolated_storage_costs();
+
+    let install_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORAGE_COSTS_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(install_exec_request).expect_success().commit();
+
+    let account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let contract_hash: ContractHash = account
+        .named_keys()
+        .get(CONTRACT_KEY_NAME)
+        .expect("contract hash")
+        .into_hash()
+        .expect("should be hash");
+
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        REMOVE_KEY_FUNCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    assert!(balance_after < balance_before);
+}
+
+#[ignore]
+#[test]
+fn should_verify_create_contract_at_hash_is_charging_for_storage() {
+    let mut builder = initialize_isolated_storage_costs();
+
+    let install_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORAGE_COSTS_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(install_exec_request).expect_success().commit();
+
+    let account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let contract_hash: ContractHash = account
+        .named_keys()
+        .get(CONTRACT_KEY_NAME)
+        .expect("contract hash")
+        .into_hash()
+        .expect("should be hash");
+
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        CREATE_CONTRACT_PACKAGE_AT_HASH_FUNCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    assert!(balance_after < balance_before);
+}
+
+#[ignore]
+#[test]
+fn should_verify_create_contract_user_group_is_charging_for_storage() {
+    let mut builder = initialize_isolated_storage_costs();
+
+    let install_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORAGE_COSTS_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(install_exec_request).expect_success().commit();
+
+    let account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let contract_hash: ContractHash = account
+        .named_keys()
+        .get(CONTRACT_KEY_NAME)
+        .expect("contract hash")
+        .into_hash()
+        .expect("should be hash");
+
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        CREATE_CONTRACT_USER_GROUP_FUNCTION_FUNCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    assert!(balance_after < balance_before);
+
+    let balance_before = balance_after;
+
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        PROVISION_UREFS_FUNCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    assert!(balance_after < balance_before);
+
+    let balance_before = balance_after;
+
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        REMOVE_CONTRACT_USER_GROUP_FUNCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    assert!(balance_after < balance_before);
+}
+
+#[ignore]
+#[test]
+fn should_verify_subcall_new_uref_is_charging_for_storage() {
+    let mut builder = initialize_isolated_storage_costs();
+
+    let install_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        STORAGE_COSTS_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(install_exec_request).expect_success().commit();
+
+    let account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let contract_hash: ContractHash = account
+        .named_keys()
+        .get(CONTRACT_KEY_NAME)
+        .expect("contract hash")
+        .into_hash()
+        .expect("should be hash");
+
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        CREATE_CONTRACT_USER_GROUP_FUNCTION_FUNCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    assert!(balance_after < balance_before);
+
+    let balance_before = balance_after;
+
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        PROVISION_UREFS_FUNCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    assert!(balance_after < balance_before);
+
+    let balance_before = balance_after;
+
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        NEW_UREF_SUBCALL_FUNCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    assert!(balance_after < balance_before);
 }
