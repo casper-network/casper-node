@@ -8,16 +8,22 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{auction::AUCTION_DELAY_KEY, CLValue, ContractPackageHash, PublicKey, RuntimeArgs, U512, URef, auction::{
+use casper_types::{
+    auction::{
         Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraId, EraValidators,
         SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
         UnbondingPurses, ValidatorRewardMap, ValidatorWeights, ARG_AUCTION_DELAY,
         ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_VALIDATOR_SLOTS, BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY, DELEGATOR_REWARD_MAP,
-        DELEGATOR_REWARD_PURSE, ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID,
-        LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
-        VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
-    }, contracts::{NamedKeys, CONTRACT_INITIAL_VERSION}, runtime_args, system_contract_errors::mint};
+        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY,
+        DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE, ERA_ID_KEY, ERA_VALIDATORS_KEY,
+        INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
+    },
+    contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
+    runtime_args,
+    system_contract_errors::mint,
+    CLValue, ContractPackageHash, PublicKey, RuntimeArgs, URef, U512,
+};
 
 const HASH_KEY_NAME: &str = "auction_hash";
 const ACCESS_KEY_NAME: &str = "auction_access";
