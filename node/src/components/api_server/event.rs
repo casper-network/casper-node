@@ -12,10 +12,15 @@ use casper_execution_engine::{
 };
 use casper_types::auction::ValidatorWeights;
 
-use crate::{rpcs::chain::BlockIdentifier, components::{small_network::NodeId, storage::DeployMetadata}, effect::{requests::ApiRequest, Responder}, types::{
+use crate::{
+    components::{small_network::NodeId, storage::DeployMetadata},
+    effect::{requests::ApiRequest, Responder},
+    rpcs::chain::BlockIdentifier,
+    types::{
         json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
         FinalizedBlock,
-    }};
+    },
+};
 
 #[derive(Debug, From)]
 pub enum Event {

@@ -34,7 +34,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
-            .arg(common::block_identifier::arg(DisplayOrder::BlockIdentifier as usize))
+            .arg(common::block_identifier::arg(
+                DisplayOrder::BlockIdentifier as usize,
+            ))
     }
 
     fn run(matches: &ArgMatches<'_>) {

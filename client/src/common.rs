@@ -210,13 +210,14 @@ pub mod block_identifier {
         matches.value_of(ARG_NAME).map(|hex_str| {
             if hex_str.len() == 64 {
                 let hash = Digest::from_hex(hex_str)
-                .unwrap_or_else(|error| panic!("cannot parse as a block hash: {}", error));
+                    .unwrap_or_else(|error| panic!("cannot parse as a block hash: {}", error));
                 BlockIdentifier::Hash(BlockHash::new(hash))
             } else {
-                let height = hex_str.parse().unwrap_or_else(|error| panic!("could not parse u64: {}", error));
+                let height = hex_str
+                    .parse()
+                    .unwrap_or_else(|error| panic!("could not parse u64: {}", error));
                 BlockIdentifier::Height(height)
             }
-            
         })
     }
 }

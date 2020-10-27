@@ -26,10 +26,9 @@ use crate::{
 pub enum BlockIdentifier {
     /// Identify and retrieve the block with its hash.
     Hash(BlockHash),
-    /// Idenityf and retireve the block with its height. 
-    Height(u64)
+    /// Idenityf and retireve the block with its height.
+    Height(u64),
 }
-
 
 /// Params for "chain_get_block" RPC request.
 #[derive(Serialize, Deserialize, Debug)]
@@ -147,7 +146,7 @@ async fn get_block<REv: ReactorEventT>(
         )
         .await;
 
-    if maybe_block.is_none() && getting_specific_block{
+    if maybe_block.is_none() && getting_specific_block {
         info!("failed to get {:?} from storage", maybe_id.unwrap());
         return Err(warp_json_rpc::Error::custom(
             ErrorCode::NoSuchBlock as i64,
