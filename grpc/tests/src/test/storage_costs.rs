@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 
-#[cfg(not(feature = "use-system-contracts"))]
+#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
 use casper_engine_test_support::internal::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     internal::{
@@ -19,7 +19,7 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
     },
 };
-#[cfg(not(feature = "use-system-contracts"))]
+#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
 use casper_types::{
     auction::{self, DelegationRate},
     runtime_args,
@@ -31,9 +31,9 @@ use num_rational::Ratio;
 
 const DEFAULT_ACTIVATION_POINT: ActivationPoint = 0;
 const STORAGE_COSTS_NAME: &str = "storage_costs.wasm";
-#[cfg(not(feature = "use-system-contracts"))]
+#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
-#[cfg(not(feature = "use-system-contracts"))]
+#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 const CONTRACT_KEY_NAME: &str = "contract";
 
@@ -127,27 +127,25 @@ lazy_static! {
         StorageCosts::default(),
         *NEW_HOST_FUNCTION_COSTS,
     );
+    static ref NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+        DEFAULT_PROTOCOL_VERSION.value().major,
+        DEFAULT_PROTOCOL_VERSION.value().minor,
+        DEFAULT_PROTOCOL_VERSION.value().patch + 1,
+    );
 }
 
 fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
     // This test runs a contract that's after every call extends the same key with
     // more data
     let mut builder = InMemoryWasmTestBuilder::default();
-
     //
     // Isolate storage costs without host function costs, and without opcode costs
     //
-    let new_protocol_version = ProtocolVersion::from_parts(
-        DEFAULT_PROTOCOL_VERSION.value().major,
-        DEFAULT_PROTOCOL_VERSION.value().minor,
-        DEFAULT_PROTOCOL_VERSION.value().patch + 1,
-    );
-
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let mut upgrade_request = UpgradeRequestBuilder::new()
         .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-        .with_new_protocol_version(new_protocol_version)
+        .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .with_new_wasm_config(*STORAGE_COSTS_ONLY)
         .build();
@@ -157,7 +155,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
     builder
 }
 
-#[cfg(not(feature = "use-system-contracts"))]
+#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
 #[ignore]
 #[test]
 fn should_verify_isolate_host_side_payment_code_is_free() {
@@ -168,6 +166,7 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
         DO_NOTHING_WASM,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     let account = builder
@@ -181,7 +180,7 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
     assert_eq!(builder.last_exec_gas_cost().value(), U512::zero());
 }
 
-#[cfg(not(feature = "use-system-contracts"))]
+#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
 #[ignore]
 #[test]
 fn should_verify_isolated_auction_storage_is_free() {
@@ -195,6 +194,7 @@ fn should_verify_isolated_auction_storage_is_free() {
         SYSTEM_CONTRACT_HASHES_NAME,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
     builder.exec(exec_request).expect_success().commit();
 
@@ -218,6 +218,7 @@ fn should_verify_isolated_auction_storage_is_free() {
             auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -240,6 +241,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -270,6 +272,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
             WRITE_FUNCTION_SMALL_NAME,
             RuntimeArgs::default(),
         )
+        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
         builder_a
@@ -310,6 +313,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
             WRITE_FUNCTION_LARGE_NAME,
             RuntimeArgs::default(),
         )
+        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
         builder_b
@@ -459,6 +463,7 @@ fn should_measure_gas_cost_for_storage_usage_add() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -489,6 +494,7 @@ fn should_measure_gas_cost_for_storage_usage_add() {
             ADD_FUNCTION_SMALL_NAME,
             RuntimeArgs::default(),
         )
+        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
         builder_a
@@ -529,6 +535,7 @@ fn should_measure_gas_cost_for_storage_usage_add() {
             ADD_FUNCTION_LARGE_NAME,
             RuntimeArgs::default(),
         )
+        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
         builder_b
@@ -682,6 +689,7 @@ fn should_verify_new_uref_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -705,6 +713,7 @@ fn should_verify_new_uref_is_charging_for_storage() {
         NEW_UREF_FUNCTION,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -724,6 +733,7 @@ fn should_verify_put_key_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -747,6 +757,7 @@ fn should_verify_put_key_is_charging_for_storage() {
         PUT_KEY_FUNCTION,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -766,6 +777,7 @@ fn should_verify_remove_key_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -789,6 +801,7 @@ fn should_verify_remove_key_is_charging_for_storage() {
         REMOVE_KEY_FUNCTION,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -808,6 +821,7 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -831,6 +845,7 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
         CREATE_CONTRACT_PACKAGE_AT_HASH_FUNCTION,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -850,6 +865,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -873,6 +889,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         CREATE_CONTRACT_USER_GROUP_FUNCTION_FUNCTION,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -889,6 +906,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         PROVISION_UREFS_FUNCTION,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -905,6 +923,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         REMOVE_CONTRACT_USER_GROUP_FUNCTION,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -924,6 +943,7 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
+    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
