@@ -1,18 +1,11 @@
 use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
-use semver::Version;
-use serde::{Deserialize, Serialize};
 
-use casper_node::{
-    rpcs::{
-        chain::{GetBlock, GetBlockParams, GetBlockResult},
-        RpcWithOptionalParams,
-    },
-    types::DeployHash,
-};
+use casper_client::ListDeploysResult;
+use casper_node::rpcs::chain::GetBlockResult;
 
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
@@ -22,31 +15,7 @@ enum DisplayOrder {
     BlockHash,
 }
 
-pub struct ListDeploys {}
-
-impl RpcClient for ListDeploys {
-    const RPC_METHOD: &'static str = GetBlock::METHOD;
-}
-
-/// Result for "chain_get_block" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ListDeploysResult {
-    /// The RPC API version.
-    pub api_version: Version,
-    /// The deploy hashes of the block, if found.
-    pub deploy_hashes: Option<Vec<DeployHash>>,
-}
-
-impl From<GetBlockResult> for ListDeploysResult {
-    fn from(get_block_result: GetBlockResult) -> Self {
-        ListDeploysResult {
-            api_version: get_block_result.api_version,
-            deploy_hashes: get_block_result
-                .block
-                .map(|block| block.deploy_hashes().clone()),
-        }
-    }
-}
+pub struct ListDeploys;
 
 impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
     const NAME: &'static str = "list-deploys";
@@ -67,28 +36,21 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let verbose = common::verbose::get(matches);
+        let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+        let verbose = common::verbose::get(matches);
         let maybe_block_id = common::block_identifier::get(matches);
 
-        let response = match maybe_block_id {
-            Some(block_identifier) => {
-                let params = GetBlockParams { block_identifier };
-                Self::request_with_map_params(verbose, &node_address, rpc_id, params)
-            }
-            None => Self::request(verbose, &node_address, rpc_id),
-        };
-
-        let get_block_result: GetBlockResult = serde_json::from_value(
-            response
-                .get_result()
-                .expect("should already be validated as a successful response")
-                .clone(),
-        )
-        .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
-
-        let result = ListDeploysResult::from(get_block_result);
-        println!("{}", serde_json::to_string(&result).unwrap());
+        let response_value =
+            casper_client::get_block(maybe_rpc_id, node_address, verbose, maybe_block_id)
+                .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
+        let response_value = response_value.get_result().cloned().unwrap();
+        let get_block_result =
+            serde_json::from_value::<GetBlockResult>(response_value).expect("should parse");
+        let list_deploys_result: ListDeploysResult = get_block_result.into();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&list_deploys_result).expect("should encode to JSON")
+        );
     }
 }

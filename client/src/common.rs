@@ -1,12 +1,4 @@
-use std::{fs, path::PathBuf};
-
 use clap::{Arg, ArgMatches};
-use rand::Rng;
-
-use casper_node::{
-    crypto::{asymmetric_key::SecretKey, hash::Digest},
-    types::BlockHash,
-};
 
 pub const ARG_PATH: &str = "PATH";
 pub const ARG_HEX_STRING: &str = "HEX STRING";
@@ -55,11 +47,10 @@ pub mod node_address {
             .display_order(order)
     }
 
-    pub fn get(matches: &ArgMatches) -> String {
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
     }
 }
 
@@ -68,7 +59,9 @@ pub mod rpc_id {
     use super::*;
 
     const ARG_NAME: &str = "id";
-    const ARG_VALUE_NAME: &str = "STRING OR INTEGER";
+    // TODO: If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
+    //       update this to "STRING OR INTEGER".
+    const ARG_VALUE_NAME: &str = "INTEGER";
     const ARG_HELP: &str =
         "JSON-RPC identifier, applied to the request and returned in the response.  If not \
         provided, a random one will be assigned";
@@ -82,17 +75,8 @@ pub mod rpc_id {
             .display_order(order)
     }
 
-    // TODO: If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
-    //       update this to return a `jsonrpc_lite::Id`, and update the ARG_VALUE_NAME.
-    pub fn get(matches: &ArgMatches) -> u32 {
-        matches
-            .value_of(ARG_NAME)
-            .map(|id_str| {
-                id_str
-                    .parse()
-                    .unwrap_or_else(|error| panic!("should parse {} as u64: {}", id_str, error))
-            })
-            .unwrap_or_else(|| rand::thread_rng().gen())
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
@@ -115,13 +99,10 @@ pub mod secret_key {
             .display_order(order)
     }
 
-    pub fn get(matches: &ArgMatches) -> SecretKey {
-        let path = PathBuf::from(
-            matches
-                .value_of(ARG_NAME)
-                .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME)),
-        );
-        SecretKey::from_file(path).expect("should parse secret key pem file")
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
+            .value_of(ARG_NAME)
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
@@ -174,19 +155,15 @@ pub mod state_root_hash {
             .display_order(order)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Digest {
-        let hex_str = matches
+    pub(crate) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
-        Digest::from_hex(hex_str)
-            .unwrap_or_else(|error| panic!("cannot parse as a hash of the state root: {}", error))
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
 /// Handles providing the arg for and retrieval of the block hash or block height.
 pub mod block_identifier {
-    use casper_node::rpcs::chain::BlockIdentifier;
-
     use super::*;
 
     const ARG_NAME: &str = "block-identifier";
@@ -206,22 +183,7 @@ pub mod block_identifier {
             .display_order(order)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Option<BlockIdentifier> {
-        matches.value_of(ARG_NAME).map(|value| {
-            if value.len() == (Digest::LENGTH * 2) {
-                let hash = Digest::from_hex(value)
-                    .unwrap_or_else(|error| panic!("cannot parse as a block hash: {}", error));
-                BlockIdentifier::Hash(BlockHash::new(hash))
-            } else {
-                let height = value
-                    .parse()
-                    .unwrap_or_else(|error| panic!("cannot parse as a u64: {}", error));
-                BlockIdentifier::Height(height)
-            }
-        })
+    pub(crate) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
-}
-
-pub fn read_file(path: &str) -> Vec<u8> {
-    fs::read(path).unwrap_or_else(|error| panic!("should read {}: {}", path, error))
 }

@@ -2,12 +2,9 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_node::rpcs::{
-    chain::{GetBlock, GetBlockParams},
-    RpcWithOptionalParams,
-};
+use casper_node::rpcs::chain::GetBlock;
 
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
@@ -15,10 +12,6 @@ enum DisplayOrder {
     NodeAddress,
     RpcId,
     BlockIdentifier,
-}
-
-impl RpcClient for GetBlock {
-    const RPC_METHOD: &'static str = Self::METHOD;
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
@@ -40,18 +33,14 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let verbose = common::verbose::get(matches);
+        let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+        let verbose = common::verbose::get(matches);
         let maybe_block_id = common::block_identifier::get(matches);
 
-        let response = match maybe_block_id {
-            Some(block_identifier) => {
-                let params = GetBlockParams { block_identifier };
-                Self::request_with_map_params(verbose, &node_address, rpc_id, params)
-            }
-            None => Self::request(verbose, &node_address, rpc_id),
-        };
+        let response =
+            casper_client::get_block(maybe_rpc_id, node_address, verbose, maybe_block_id)
+                .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")
