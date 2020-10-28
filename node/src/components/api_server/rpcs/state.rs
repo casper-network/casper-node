@@ -159,6 +159,8 @@ pub struct GetBalanceResult {
     pub api_version: Version,
     /// The balance value.
     pub balance_value: U512,
+    /// The merkle proof.
+    pub merkle_proof: String,
 }
 
 /// "state_get_balance" RPC.
@@ -203,8 +205,12 @@ impl RpcWithParamsExt for GetBalance {
                 )
                 .await;
 
-            let balance_value = match balance_result {
-                Ok(BalanceResult::Success(value)) => value,
+            let (balance_value, purse_proof, balance_proof) = match balance_result {
+                Ok(BalanceResult::Success {
+                    motes,
+                    purse_proof,
+                    balance_proof,
+                }) => (motes, purse_proof, balance_proof),
                 Ok(balance_result) => {
                     let error_msg = format!("get-balance failed: {:?}", balance_result);
                     info!("{}", error_msg);
@@ -223,10 +229,21 @@ impl RpcWithParamsExt for GetBalance {
                 }
             };
 
+            let proof_bytes = match (*purse_proof, *balance_proof).to_bytes() {
+                Ok(proof_bytes) => proof_bytes,
+                Err(error) => {
+                    info!("failed to encode stored value: {}", error);
+                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
+                }
+            };
+
+            let merkle_proof = hex::encode(proof_bytes);
+
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 balance_value,
+                merkle_proof,
             };
             Ok(response_builder.success(result)?)
         }
@@ -269,7 +286,7 @@ impl RpcWithParamsExt for GetAuctionInfo {
                 let maybe_block = effect_builder
                     .make_request(
                         |responder| ApiRequest::GetBlock {
-                            maybe_hash: None,
+                            maybe_id: None,
                             responder,
                         },
                         QueueKind::Api,

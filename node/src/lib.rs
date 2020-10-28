@@ -45,6 +45,7 @@ pub use components::{
     chainspec_loader::{Chainspec, Error as ChainspecError},
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
+    fetcher::Config as FetcherConfig,
     gossiper::{Config as GossipConfig, Error as GossipError},
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
     storage::{Config as StorageConfig, Error as StorageError},

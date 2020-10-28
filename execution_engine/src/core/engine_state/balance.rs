@@ -1,11 +1,43 @@
-use casper_types::{URef, U512};
+use casper_types::{Key, URef, U512};
 
-use crate::shared::newtypes::Blake2bHash;
+use crate::{
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::trie::merkle_proof::TrieMerkleProof,
+};
 
 #[derive(Debug)]
 pub enum BalanceResult {
     RootNotFound,
-    Success(U512),
+    Success {
+        motes: U512,
+        purse_proof: Box<TrieMerkleProof<Key, StoredValue>>,
+        balance_proof: Box<TrieMerkleProof<Key, StoredValue>>,
+    },
+}
+
+impl BalanceResult {
+    pub fn motes(&self) -> Option<&U512> {
+        match self {
+            BalanceResult::Success { motes, .. } => Some(motes),
+            _ => None,
+        }
+    }
+
+    pub fn proofs(
+        self,
+    ) -> Option<(
+        TrieMerkleProof<Key, StoredValue>,
+        TrieMerkleProof<Key, StoredValue>,
+    )> {
+        match self {
+            BalanceResult::Success {
+                purse_proof,
+                balance_proof,
+                ..
+            } => Some((*purse_proof, *balance_proof)),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -51,17 +51,19 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
-            .arg(common::block_hash::arg(DisplayOrder::BlockHash as usize))
+            .arg(common::block_identifier::arg(
+                DisplayOrder::BlockHash as usize,
+            ))
     }
 
     fn run(matches: &ArgMatches<'_>) {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
         let verbose = common::verbose::get(matches);
-        let maybe_block_hash = common::block_hash::get(matches);
+        let maybe_block_id = common::block_identifier::get(matches);
 
         let response_value =
-            casper_client::list_deploys(maybe_rpc_id, node_address, verbose, maybe_block_hash)
+            casper_client::list_deploys(maybe_rpc_id, node_address, verbose, maybe_block_id)
                 .unwrap_or_else(|error| panic!("should parse as a GetBlockResult: {}", error));
         println!(
             "{}",

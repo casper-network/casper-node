@@ -36,7 +36,7 @@ use crate::{
     small_network::NodeId,
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, CryptoRngCore, Deploy, DeployHash,
-        FinalizedBlock,
+        DeployHeader, FinalizedBlock,
     },
 };
 pub(crate) use event::Event;
@@ -212,6 +212,7 @@ impl BlockExecutor {
             }
         };
         let deploy_hash = *next_deploy.id();
+        let deploy_header = next_deploy.header().clone();
         let deploy_item = DeployItem::from(next_deploy);
 
         let execute_request = ExecuteRequest::new(
@@ -227,6 +228,7 @@ impl BlockExecutor {
             .event(move |result| Event::DeployExecutionResult {
                 state,
                 deploy_hash,
+                deploy_header,
                 result,
             })
     }
@@ -297,6 +299,7 @@ impl BlockExecutor {
         effect_builder: EffectBuilder<REv>,
         mut state: Box<State>,
         deploy_hash: DeployHash,
+        deploy_header: DeployHeader,
         execution_results: ExecutionResults,
     ) -> Effects<Event> {
         let ee_execution_result = execution_results
@@ -306,7 +309,7 @@ impl BlockExecutor {
         let execution_result = ExecutionResult::from(&ee_execution_result);
         let _ = state
             .execution_results
-            .insert(deploy_hash, execution_result);
+            .insert(deploy_hash, (deploy_header, execution_result));
 
         let execution_effect = match ee_execution_result {
             EngineExecutionResult::Success { effect, cost, .. } => {
@@ -431,12 +434,19 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
             Event::DeployExecutionResult {
                 state,
                 deploy_hash,
+                deploy_header,
                 result,
             } => {
                 trace!(?state, %deploy_hash, ?result, "deploy execution result");
                 // As for now a given state is expected to exist.
                 let execution_results = result.unwrap();
-                self.commit_execution_effects(effect_builder, state, deploy_hash, execution_results)
+                self.commit_execution_effects(
+                    effect_builder,
+                    state,
+                    deploy_hash,
+                    deploy_header,
+                    execution_results,
+                )
             }
 
             Event::CommitExecutionEffects {

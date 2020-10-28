@@ -119,6 +119,12 @@ features = ["vendored-openssl"]
 revision = "0"
 assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
+    ["../resources/maintainer_scripts/logrotate.d/casper-node", "/etc/logrotate.d/casper-node", "644"],
+    ["../resources/maintainer_scripts/rsyslog.d/40-casper-node.conf", "/etc/rsyslog.d/40-casper-node.conf", "644"],
+    ["../resources/maintainer_scripts/pull_genesis.sh", "/etc/casper/pull_genesis.sh", "755"],
+    ["../resources/maintainer_scripts/delete_local_db.sh", "/etc/casper/delete_local_db.sh", "755"],
+    ["../resources/maintainer_scripts/config_from_example.sh", "/etc/casper/config_from_example.sh", "755"],
+    ["../resources/maintainer_scripts/systemd_pre_start.sh", "/etc/casper/systemd_pre_start.sh", "755"],
     ["../target/wasm32-unknown-unknown/release/mint_install.wasm", "/etc/casper/wasm/mint_install.wasm", "644"],
     ["../target/wasm32-unknown-unknown/release/pos_install.wasm", "/etc/casper/wasm/pos_install.wasm", "644"],
     ["../target/wasm32-unknown-unknown/release/standard_payment_install.wasm", "/etc/casper/wasm/standard_payment_install.wasm", "644"],
@@ -128,6 +134,7 @@ assets = [
     ["../resources/production/config-example.toml", "/etc/casper/config-example.toml", "644"],
     ["../resources/production/validator_keys/README.md", "/etc/casper/validator_keys/README.md", "644"]
 ]
+maintainer-scripts = "../resources/maintainer_scripts/debian"
 extended-description = """
 Package for Casper Node and Client.
 
@@ -136,7 +143,7 @@ For information on using package, see https://github.com/CasperLabs/casper-node
 
 [package.metadata.deb.systemd-units]
 unit-scripts = "../resources/maintainer_scripts/casper_node"
-restart-after-upgrade = true
+restart-after-upgrade = false
 
 [package.metadata.docs.rs]
 features = ["no-unstable-features"]

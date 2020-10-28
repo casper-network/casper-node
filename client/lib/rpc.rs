@@ -10,7 +10,9 @@ use casper_node::{
     crypto::{asymmetric_key::PublicKey, hash::Digest},
     rpcs::{
         account::{PutDeploy, PutDeployParams},
-        chain::{GetBlock, GetBlockParams, GetStateRootHash, GetStateRootHashParams},
+        chain::{
+            BlockIdentifier, GetBlock, GetBlockParams, GetStateRootHash, GetStateRootHashParams,
+        },
         info::{GetDeploy, GetDeployParams},
         state::{GetBalance, GetBalanceParams, GetItem, GetItemParams},
         RpcWithOptionalParams, RpcWithParams, RPC_API_PATH,
@@ -54,7 +56,7 @@ impl RpcCall {
     /// `"http://127.0.0.1:7777"`.
     ///
     /// When `verbose` is `true`, the request will be printed to `stdout`.
-    pub fn new(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<Self> {
+    pub(crate) fn new(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<Self> {
         let rpc_id = if maybe_rpc_id.is_empty() {
             rand::thread_rng().gen()
         } else {
@@ -101,35 +103,35 @@ impl RpcCall {
             path: path.clone(),
         };
         let response = GetItem::request_with_map_params(self, params)?;
-        merkle_proofs::validate_response(&response, &state_root_hash, &key, &path)?;
+        merkle_proofs::validate_query_response(&response, &state_root_hash, &key, &path)?;
         Ok(response)
     }
 
-    pub(crate) fn get_state_root_hash(self, maybe_block_hash: &str) -> Result<JsonRpc> {
-        if maybe_block_hash.is_empty() {
-            GetStateRootHash::request(self)
-        } else {
-            let hash = Digest::from_hex(maybe_block_hash)?;
-            let params = GetStateRootHashParams {
-                block_hash: BlockHash::new(hash),
-            };
-            GetStateRootHash::request_with_map_params(self, params)
+    pub(crate) fn get_state_root_hash(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
+        match Self::block_identifier(maybe_block_identifier)? {
+            Some(block_identifier) => {
+                let params = GetStateRootHashParams { block_identifier };
+                GetStateRootHash::request_with_map_params(self, params)
+            }
+            None => GetStateRootHash::request(self),
         }
     }
 
     pub(crate) fn get_balance(self, state_root_hash: &str, purse_uref: &str) -> Result<JsonRpc> {
         let state_root_hash = Digest::from_hex(state_root_hash)?;
-
-        let _ = URef::from_formatted_str(purse_uref)?;
+        let uref = URef::from_formatted_str(purse_uref)?;
+        let key = Key::from(uref);
 
         let params = GetBalanceParams {
             state_root_hash,
             purse_uref: purse_uref.to_string(),
         };
-        GetBalance::request_with_map_params(self, params)
+        let response = GetBalance::request_with_map_params(self, params)?;
+        merkle_proofs::validate_get_balance_response(&response, &state_root_hash, &key)?;
+        Ok(response)
     }
 
-    pub fn transfer(
+    pub(crate) fn transfer(
         self,
         amount: U512,
         source_purse: Option<URef>,
@@ -170,32 +172,42 @@ impl RpcCall {
     }
 
     /// Puts a `Deploy` to the node.
-    pub fn put_deploy(self, deploy: Deploy) -> Result<JsonRpc> {
+    pub(crate) fn put_deploy(self, deploy: Deploy) -> Result<JsonRpc> {
         let params = PutDeployParams { deploy };
         PutDeploy::request_with_map_params(self, params)
     }
 
-    pub(crate) fn list_deploys(self, maybe_block_hash: &str) -> Result<JsonRpc> {
-        if maybe_block_hash.is_empty() {
-            ListDeploys::request(self)
-        } else {
-            let hash = Digest::from_hex(maybe_block_hash)?;
-            let params = GetBlockParams {
-                block_hash: BlockHash::new(hash),
-            };
-            ListDeploys::request_with_map_params(self, params)
+    pub(crate) fn list_deploys(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
+        match Self::block_identifier(maybe_block_identifier)? {
+            Some(block_identifier) => {
+                let params = GetBlockParams { block_identifier };
+                ListDeploys::request_with_map_params(self, params)
+            }
+            None => ListDeploys::request(self),
         }
     }
 
-    pub(crate) fn get_block(self, maybe_block_hash: &str) -> Result<JsonRpc> {
-        if maybe_block_hash.is_empty() {
-            GetBlock::request(self)
+    pub(crate) fn get_block(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
+        match Self::block_identifier(maybe_block_identifier)? {
+            Some(block_identifier) => {
+                let params = GetBlockParams { block_identifier };
+                GetBlock::request_with_map_params(self, params)
+            }
+            None => GetBlock::request(self),
+        }
+    }
+
+    fn block_identifier(maybe_block_identifier: &str) -> Result<Option<BlockIdentifier>> {
+        if maybe_block_identifier.is_empty() {
+            return Ok(None);
+        }
+
+        if maybe_block_identifier.len() == (Digest::LENGTH * 2) {
+            let hash = Digest::from_hex(maybe_block_identifier)?;
+            Ok(Some(BlockIdentifier::Hash(BlockHash::new(hash))))
         } else {
-            let hash = Digest::from_hex(maybe_block_hash)?;
-            let params = GetBlockParams {
-                block_hash: BlockHash::new(hash),
-            };
-            GetBlock::request_with_map_params(self, params)
+            let height = maybe_block_identifier.parse()?;
+            Ok(Some(BlockIdentifier::Height(height)))
         }
     }
 

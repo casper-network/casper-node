@@ -90,15 +90,15 @@ pub fn get_item(
 /// * `node_address` identifies the network address of the target node's HTTP server, e.g.
 ///   `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the request will be printed to `stdout`.
-/// * `maybe_block_hash` must be a hex-encoded, 32-byte hash digest or empty.  If empty, the latest
-///   block will be used.
+/// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the block
+///   height or empty.  If empty, the latest block will be used.
 pub fn get_state_root_hash(
     maybe_rpc_id: &str,
     node_address: &str,
     verbose: bool,
-    maybe_block_hash: &str,
+    maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_state_root_hash(maybe_block_hash)
+    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_state_root_hash(maybe_block_id)
 }
 
 /// Gets the balance from a purse.
@@ -148,15 +148,15 @@ pub fn send_deploy_file(
 /// * `node_address` identifies the network address of the target node's HTTP server, e.g.
 ///   `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the request will be printed to `stdout`.
-/// * `maybe_block_hash` must be a hex-encoded, 32-byte hash digest or empty.  If empty, the latest
-///   block will be used.
+/// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the block
+///   height or empty.  If empty, the latest block will be used.
 pub fn list_deploys(
     maybe_rpc_id: &str,
     node_address: &str,
     verbose: bool,
-    maybe_block_hash: &str,
+    maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.list_deploys(maybe_block_hash)
+    RpcCall::new(maybe_rpc_id, node_address, verbose)?.list_deploys(maybe_block_id)
 }
 
 /// Gets a `Block` from the node.
@@ -167,15 +167,15 @@ pub fn list_deploys(
 /// * `node_address` identifies the network address of the target node's HTTP server, e.g.
 ///   `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the request will be printed to `stdout`.
-/// * `maybe_block_hash` must be a hex-encoded, 32-byte hash digest or empty.  If empty, the latest
-///   block will be retrieved.
+/// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the block
+///   height or empty.  If empty, the latest block will be retrieved.
 pub fn get_block(
     maybe_rpc_id: &str,
     node_address: &str,
     verbose: bool,
-    maybe_block_hash: &str,
+    maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_block(maybe_block_hash)
+    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_block(maybe_block_id)
 }
 
 /// Puts a `Deploy` on a node.
@@ -398,8 +398,8 @@ impl<'a> PaymentStrParams<'a> {
 
     /// Construct a PaymentStrParams from an amount.
     ///
-    /// `payment_amount` uses the standard-payment system contract rather than custom payment Wasm. The value is the
-    /// 'amount' arg of the standard-payment contract.
+    /// `payment_amount` uses the standard-payment system contract rather than custom payment Wasm.
+    /// The value is the 'amount' arg of the standard-payment contract.
     pub fn with_amount(payment_amount: &'a str) -> Self {
         Self {
             payment_amount,
@@ -443,7 +443,8 @@ impl<'a> PaymentStrParams<'a> {
     /// payment.
     /// * `payment_entry_point` is the name of the method that will be used when calling the payment
     ///   contract.
-    /// * See `Self::with_name` for a description of `payment_args_simple` and `payment_args_complex`.
+    /// * See `Self::with_name` for a description of `payment_args_simple` and
+    ///   `payment_args_complex`.
     pub fn with_hash(
         payment_hash: &'a str,
         payment_entry_point: &'a str,
@@ -466,7 +467,8 @@ impl<'a> PaymentStrParams<'a> {
     ///   default.
     /// * `payment_entry_point` is the name of the method that will be used when calling the payment
     ///   contract.
-    /// * See `Self::with_name` for a description of `payment_args_simple` and `payment_args_complex`.
+    /// * See `Self::with_name` for a description of `payment_args_simple` and
+    ///   `payment_args_complex`.
     pub fn with_package_name(
         payment_package_name: &'a str,
         payment_version: &'a str,
@@ -486,12 +488,14 @@ impl<'a> PaymentStrParams<'a> {
 
     /// Construct PaymentStrParams with a package hash.
     ///
-    /// * `payment_package_hash` is the hex-encoded hash of the stored package to be called as the payment.
+    /// * `payment_package_hash` is the hex-encoded hash of the stored package to be called as the
+    ///   payment.
     /// * `payment_version` is the version of the called payment contract. Latest will be used by
     ///   default.
     /// * `payment_entry_point` is the name of the method that will be used when calling the payment
     ///   contract.
-    /// * See `Self::with_name` for a description of `payment_args_simple` and `payment_args_complex`.
+    /// * See `Self::with_name` for a description of `payment_args_simple` and
+    ///   `payment_args_complex`.
     pub fn with_package_hash(
         payment_package_hash: &'a str,
         payment_version: &'a str,
@@ -601,7 +605,8 @@ impl<'a> SessionStrParams<'a> {
     /// session.
     /// * `session_entry_point` is the name of the method that will be used when calling the session
     ///   contract.
-    /// * See `Self::with_name` for a description of `session_args_simple` and `session_args_complex`.
+    /// * See `Self::with_name` for a description of `session_args_simple` and
+    ///   `session_args_complex`.
     pub fn with_hash(
         session_hash: &'a str,
         session_entry_point: &'a str,
@@ -624,7 +629,8 @@ impl<'a> SessionStrParams<'a> {
     ///   default.
     /// * `session_entry_point` is the name of the method that will be used when calling the session
     ///   contract.
-    /// * See `Self::with_name` for a description of `session_args_simple` and `session_args_complex`.
+    /// * See `Self::with_name` for a description of `session_args_simple` and
+    ///   `session_args_complex`.
     pub fn with_package_name(
         session_package_name: &'a str,
         session_version: &'a str,
@@ -644,12 +650,14 @@ impl<'a> SessionStrParams<'a> {
 
     /// Construct SessionStrParams with a package hash.
     ///
-    /// * `session_package_hash` is the hex-encoded hash of the stored package to be called as the session.
+    /// * `session_package_hash` is the hex-encoded hash of the stored package to be called as the
+    ///   session.
     /// * `session_version` is the version of the called session contract. Latest will be used by
     ///   default.
     /// * `session_entry_point` is the name of the method that will be used when calling the session
     ///   contract.
-    /// * See `Self::with_name` for a description of `session_args_simple` and `session_args_complex`.
+    /// * See `Self::with_name` for a description of `session_args_simple` and
+    ///   `session_args_complex`.
     pub fn with_package_hash(
         session_package_hash: &'a str,
         session_version: &'a str,

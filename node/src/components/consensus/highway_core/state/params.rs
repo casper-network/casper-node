@@ -1,7 +1,7 @@
 use super::{TimeDiff, Timestamp};
 
 /// Protocol parameters for Highway.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct Params {
     seed: u64,
     block_reward: u64,
@@ -9,6 +9,7 @@ pub(crate) struct Params {
     min_round_exp: u8,
     init_round_exp: u8,
     end_height: u64,
+    start_timestamp: Timestamp,
     end_timestamp: Timestamp,
 }
 
@@ -35,6 +36,7 @@ impl Params {
         reduced_block_reward: u64,
         min_round_exp: u8,
         end_height: u64,
+        start_timestamp: Timestamp,
         end_timestamp: Timestamp,
     ) -> Params {
         assert!(
@@ -48,6 +50,7 @@ impl Params {
             min_round_exp,
             init_round_exp: min_round_exp, // TODO: The median seen by previous era's switch block?
             end_height,
+            start_timestamp,
             end_timestamp,
         }
     }
@@ -87,6 +90,11 @@ impl Params {
     /// Returns the minimum height of the last block.
     pub(crate) fn end_height(&self) -> u64 {
         self.end_height
+    }
+
+    /// Returns the start timestamp of the era.
+    pub(crate) fn start_timestamp(&self) -> Timestamp {
+        self.start_timestamp
     }
 
     /// Returns the minimum timestamp of the last block.
