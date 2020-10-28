@@ -21,8 +21,8 @@ mod rpc;
 
 pub mod cl_type;
 pub mod keygen;
-pub use error::Error;
 pub use deploy::ListDeploysResult;
+pub use error::Error;
 
 use std::convert::TryInto;
 
@@ -384,19 +384,15 @@ impl<'a> PaymentStrParams<'a> {
     /// Construct PaymentStrParams from a file.
     ///
     /// * `payment_path` is the path to the compiled Wasm payment code.
-    /// * `payment_entry_point` is the name of the method that will be used when calling the payment
-    ///   contract.
     /// * See `Self::with_name` for a description of `payment_args_simple` and
     ///   `payment_args_complex`.
     pub fn with_path(
         payment_path: &'a str,
-        payment_entry_point: &'a str,
         payment_args_simple: Vec<&'a str>,
         payment_args_complex: &'a str,
     ) -> Self {
         Self {
             payment_path,
-            payment_entry_point,
             payment_args_simple,
             payment_args_complex,
             ..Default::default()
@@ -569,19 +565,15 @@ impl<'a> SessionStrParams<'a> {
     /// Construct a SessionStrParams from a file.
     ///
     /// * `session_path` is the path to the compiled Wasm session code.
-    /// * `session_entry_point` is the name of the method that will be used when calling the session
-    ///   contract.
     /// * See `Self::with_name` for a description of `session_args_simple` and
     ///   `session_args_complex`.
     pub fn with_path(
         session_path: &'a str,
-        session_entry_point: &'a str,
         session_args_simple: Vec<&'a str>,
         session_args_complex: &'a str,
     ) -> Self {
         Self {
             session_path,
-            session_entry_point,
             session_args_simple,
             session_args_complex,
             ..Default::default()
