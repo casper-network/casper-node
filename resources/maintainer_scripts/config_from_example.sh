@@ -8,9 +8,9 @@ PATH=/etc/casper/
 EXTERNAL_IP=$(dig TXT +short o-o.myaddr.l.google.com @ns1.google.com | tr -d '"')
 echo "Using External IP: $EXTERNAL_IP"
 
-CONFIG=$PATH"CONFIG.toml"
-CONFIG_EXAMPLE=$PATH"CONFIG-example.toml"
-CONFIG_NEW=$PATH"CONFIG.toml.new"
+CONFIG=$PATH"config.toml"
+CONFIG_EXAMPLE=$PATH"config-example.toml"
+CONFIG_NEW=$PATH"config.toml.new"
 
 OUTFILE=$CONFIG
 
