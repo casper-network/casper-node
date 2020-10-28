@@ -450,15 +450,15 @@ impl PublicKey {
 
     /// Constructs a new secp256k1 variant from a byte slice.
     pub fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self> {
-        Ok(PublicKey::Secp256k1(
-            k256::PublicKey::from_bytes(bytes.as_ref()).ok_or_else(|| {
-                Error::AsymmetricKey(format!(
-                    "failed to construct secp256k1 public key.  Expected {} bytes, got {} bytes.",
-                    Self::SECP256K1_LENGTH,
-                    bytes.as_ref().len()
-                ))
-            })?,
-        ))
+        let mut public_key = k256::PublicKey::from_bytes(bytes.as_ref()).ok_or_else(|| {
+            Error::AsymmetricKey(format!(
+                "failed to construct secp256k1 public key.  Expected {} bytes, got {} bytes.",
+                Self::SECP256K1_LENGTH,
+                bytes.as_ref().len()
+            ))
+        })?;
+        public_key.compress();
+        Ok(PublicKey::Secp256k1(public_key))
     }
 
     /// Creates an `AccountHash` from a given `PublicKey` instance.
@@ -1873,5 +1873,39 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
 
         assert!(verify(&message[1..], &ed25519_signature, &ed25519_public_key).is_err());
         assert!(verify(&message[1..], &secp256k1_signature, &secp256k1_public_key).is_err());
+    }
+
+    #[test]
+    fn should_construct_secp256k1_from_uncompressed_bytes() {
+        let mut rng = TestRng::new();
+
+        // Construct a secp256k1 secret key and use that to construct an uncompressed public key.
+        let secp256k1_secret_key = {
+            let mut bytes = [0u8; SecretKey::SECP256K1_LENGTH];
+            rng.fill_bytes(&mut bytes[..]);
+            k256::SecretKey::from_bytes(bytes.as_ref()).unwrap()
+        };
+        let uncompressed_public_key =
+            k256::PublicKey::from_secret_key(&secp256k1_secret_key, false).unwrap();
+
+        // Construct a CL secret key and public key from that (which will be a compressed key).
+        let secret_key = SecretKey::Secp256k1(secp256k1_secret_key);
+        let public_key = PublicKey::from(&secret_key);
+        assert_eq!(public_key.as_ref().len(), PublicKey::SECP256K1_LENGTH);
+        assert_ne!(
+            uncompressed_public_key.as_bytes().len(),
+            PublicKey::SECP256K1_LENGTH
+        );
+
+        // Construct a CL public key from the uncompressed one's bytes and ensure it's compressed.
+        let from_uncompressed_bytes =
+            PublicKey::secp256k1_from_bytes(uncompressed_public_key.as_bytes()).unwrap();
+        assert_eq!(public_key, from_uncompressed_bytes);
+
+        // Construct a CL public key from the uncompressed one's hex representation and ensure it's
+        // compressed.
+        let uncompressed_hex = format!("02{}", hex::encode(uncompressed_public_key.as_bytes()));
+        let from_uncompressed_hex = PublicKey::from_hex(uncompressed_hex).unwrap();
+        assert_eq!(public_key, from_uncompressed_hex);
     }
 }
