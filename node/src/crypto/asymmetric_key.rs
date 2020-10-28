@@ -1732,8 +1732,7 @@ Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         fn known_public_key_to_pem() {
             // Example values taken from Python client.
             const KNOWN_KEY_HEX: &str =
-                "04408e9526316fd1f8def480dd45b2cc72ffd732771c9ceb5d92ffa4051e6ee08484024b9cd9315640\
-                75f4623f684c1f5fc7dfafbd077124e84cb6ee3a906a3453";
+                "03408e9526316fd1f8def480dd45b2cc72ffd732771c9ceb5d92ffa4051e6ee084";
             const KNOWN_KEY_PEM: &str = r#"-----BEGIN PUBLIC KEY-----
 MFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAEQI6VJjFv0fje9IDdRbLMcv/XMnccnOtd
 kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
