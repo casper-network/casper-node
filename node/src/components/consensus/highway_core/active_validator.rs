@@ -267,7 +267,7 @@ impl<C: Context> ActiveValidator<C> {
         } else {
             panorama = vote.panorama.clone();
         }
-        panorama[vote.creator] = Observation::Correct(vhash.clone());
+        panorama[vote.creator] = Observation::Correct(*vhash);
         for faulty_v in state.faulty_validators() {
             panorama[faulty_v] = Observation::Faulty;
         }

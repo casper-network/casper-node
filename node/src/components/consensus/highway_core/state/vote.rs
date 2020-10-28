@@ -60,10 +60,10 @@ impl<C: Context> Vote<C> {
         };
         let mut skip_idx = Vec::new();
         if let Some(hash) = wvote.panorama.get(wvote.creator).correct() {
-            skip_idx.push(hash.clone());
+            skip_idx.push(*hash);
             for i in 0..wvote.seq_number.trailing_zeros() as usize {
                 let old_vote = state.vote(&skip_idx[i]);
-                skip_idx.push(old_vote.skip_idx[i].clone());
+                skip_idx.push(old_vote.skip_idx[i]);
             }
         }
         let vote = Vote {

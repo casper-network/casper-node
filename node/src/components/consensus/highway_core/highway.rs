@@ -273,7 +273,7 @@ impl<C: Context> Highway<C> {
     /// case, `get_dependency` will never return `None`, unless the peer is faulty.
     pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> GetDepOutcome<C> {
         match dependency {
-            Dependency::Vote(hash) => match self.state.wire_vote(hash, self.instance_id.clone()) {
+            Dependency::Vote(hash) => match self.state.wire_vote(hash, self.instance_id) {
                 None => GetDepOutcome::None,
                 Some(vote) => GetDepOutcome::Vertex(ValidVertex(Vertex::Vote(vote))),
             },
@@ -295,7 +295,7 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let instance_id = self.instance_id.clone();
+        let instance_id = self.instance_id;
 
         // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
         //
@@ -324,7 +324,7 @@ impl<C: Context> Highway<C> {
         block_context: BlockContext,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let instance_id = self.instance_id.clone();
+        let instance_id = self.instance_id;
 
         // We just use the block context's timestamp, which is
         // hopefully not much older than `Timestamp::now()`
@@ -377,7 +377,7 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let instance_id = self.instance_id.clone();
+        let instance_id = self.instance_id;
         self.map_active_validator(
             |av, state, rng| av.on_new_vote(vhash, timestamp, state, instance_id, rng),
             timestamp,

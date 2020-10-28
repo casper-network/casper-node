@@ -82,7 +82,7 @@ impl<C: Context> Observation<C> {
         match self {
             Observation::Faulty if !state.is_faulty(idx) => Some(Dependency::Evidence(idx)),
             Observation::Correct(hash) if !state.has_vote(hash) => {
-                Some(Dependency::Vote(hash.clone()))
+                Some(Dependency::Vote(*hash))
             }
             _ => None,
         }
@@ -147,7 +147,7 @@ impl<C: Context> Panorama<C> {
             Observation::Correct(vhash) => state
                 .swimlane(vhash)
                 .find(|(_, vote)| vote.timestamp <= timestamp)
-                .map(|(vh, _)| vh.clone())
+                .map(|(vh, _)| *vh)
                 .map_or(Observation::None, Observation::Correct),
             obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
         };

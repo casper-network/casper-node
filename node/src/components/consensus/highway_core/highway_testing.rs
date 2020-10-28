@@ -947,7 +947,7 @@ pub(crate) struct TestSecret(pub(crate) u64);
 
 // Newtype wrapper for test signature.
 // Added so that we can use custom Debug impl.
-#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Hash, PartialOrd, Ord, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct SignatureWrapper(u64);
 
 impl Debug for SignatureWrapper {
@@ -958,7 +958,7 @@ impl Debug for SignatureWrapper {
 
 // Newtype wrapper for test hash.
 // Added so that we can use custom Debug impl.
-#[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct HashWrapper(u64);
 
 impl Debug for HashWrapper {

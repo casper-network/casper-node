@@ -23,11 +23,13 @@ impl<T> ConsensusValueT for T where T: Eq + Clone + Debug + Hash + Serialize + D
 
 /// A hash, as an identifier for a block or vote.
 pub(crate) trait HashT:
-    Eq + Ord + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
+    Eq + Ord + Copy + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
 {
 }
-impl<H> HashT for H where H: Eq + Ord + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
-{}
+impl<H> HashT for H where
+    H: Eq + Ord + Copy + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
+{
+}
 
 /// A validator's secret signing key.
 pub(crate) trait ValidatorSecret {
@@ -49,7 +51,7 @@ pub(crate) trait Context: Clone + Debug + Eq + Ord + Hash {
     /// A validator's secret signing key.
     type ValidatorSecret: ValidatorSecret<Hash = Self::Hash, Signature = Self::Signature>;
     /// A signature type.
-    type Signature: Clone + Debug + Eq + Hash + Serialize + DeserializeOwned;
+    type Signature: Copy + Clone + Debug + Eq + Hash + Serialize + DeserializeOwned;
     /// Unique identifiers for votes.
     type Hash: HashT;
     /// The ID of a consensus protocol instance.
