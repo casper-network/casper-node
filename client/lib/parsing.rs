@@ -393,19 +393,17 @@ pub(crate) fn get_transfer_target(
     target_account: &str,
     target_purse: &str,
 ) -> Result<TransferTarget> {
-    let account = account(target_account).ok();
-    let purse = purse(target_purse).ok();
-    let target = match (purse, account) {
-        (Some(purse), _) => TransferTarget::OwnPurse(purse),
-        (None, Some(account)) => TransferTarget::Account(account),
-        _ => {
-            return Err(Error::InvalidArgument(format!(
-                "Invalid arguments to get_transfer_target {} {}",
-                target_purse, target_account
-            )))
-        }
-    };
-    Ok(target)
+    if target_account.is_empty() {
+        let purse = purse(target_purse)?;
+        return Ok(TransferTarget::OwnPurse(purse));
+    } else if target_purse.is_empty() {
+        let account = account(target_account)?;
+        return Ok(TransferTarget::Account(account));
+    } else {
+        return Err(Error::InvalidArgument(format!(
+            "Invalid arguments to get_transfer_target - must provide either a target account or purse."
+        )))
+    }
 }
 
 pub(crate) fn output(value: &str) -> Option<&str> {
