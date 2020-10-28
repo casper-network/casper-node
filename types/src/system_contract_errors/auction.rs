@@ -201,7 +201,7 @@ impl From<PurseLookupError> for Error {
 mod tests {
     use std::convert::TryFrom;
 
-    use super::{Error, MAX_ERROR_VALUE};
+    use super::{Error, TryFromU8ForError, MAX_ERROR_VALUE};
 
     #[test]
     fn error_round_trips() {
@@ -212,8 +212,10 @@ mod tests {
                     "value of variant {} ({}) exceeds MAX_ERROR_VALUE ({})",
                     error, i, MAX_ERROR_VALUE
                 ),
-                Err(_) if i > MAX_ERROR_VALUE => (),
-                Err(_) => panic!("missing conversion from u8 to error value: {}", i),
+                Err(TryFromU8ForError(())) if i > MAX_ERROR_VALUE => (),
+                Err(TryFromU8ForError(())) => {
+                    panic!("missing conversion from u8 to error value: {}", i)
+                }
             }
         }
     }
