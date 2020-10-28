@@ -65,40 +65,43 @@ pub enum Error {
     /// made.
     #[fail(display = "Validator's funds are locked")]
     ValidatorFundsLocked = 15,
-    /// Called when caller is not a system account.
-    #[fail(display = "Not a system account")]
+    /// Raised when caller is not the system account.
+    #[fail(display = "Function must be called by system account")]
     InvalidCaller = 16,
+    /// Raised when function is supplied a public key that does match the caller's.
+    #[fail(display = "Supplied public key does not match caller's public key")]
+    InvalidPublicKey = 17,
     /// Validator is not not bonded.
     #[fail(display = "Validator's bond not found")]
-    BondNotFound = 17,
+    BondNotFound = 18,
     /// Unable to create purse.
     #[fail(display = "Unable to create purse")]
-    CreatePurseFailed = 18,
+    CreatePurseFailed = 19,
     /// Attempted to unbond an amount which was too large.
     #[fail(display = "Unbond is too large")]
-    UnbondTooLarge = 19,
+    UnbondTooLarge = 20,
     /// Attempted to bond with a stake which was too small.
     #[fail(display = "Bond is too small")]
-    BondTooSmall = 20,
+    BondTooSmall = 21,
     /// Raised when rewards are to be distributed to delegators, but the validator has no
     /// delegations.
     #[fail(display = "Validators has not received any delegations")]
-    MissingDelegations = 21,
+    MissingDelegations = 22,
     /// The validators returned by the consensus component should match
     /// current era validators when distributing rewards.
     #[fail(display = "Mismatched era validator sets to distribute rewards")]
-    MismatchedEraValidators = 22,
+    MismatchedEraValidators = 23,
     /// Failed to mint reward tokens.
     #[fail(display = "Failed to mint rewards")]
-    MintReward = 23,
+    MintReward = 24,
     /// Invalid number of validator slots.
     #[fail(display = "Invalid number of validator slots")]
-    InvalidValidatorSlotsValue = 24,
+    InvalidValidatorSlotsValue = 25,
 }
 
 /// Used for testing; this should be set to the maximum value of the [`Error`] enum.
 #[cfg(test)]
-const MAX_ERROR_VALUE: u8 = 24;
+const MAX_ERROR_VALUE: u8 = 25;
 
 impl CLTyped for Error {
     fn cl_type() -> CLType {
@@ -134,6 +137,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
             d if d == Error::ValidatorFundsLocked as u8 => Ok(Error::ValidatorFundsLocked),
             d if d == Error::InvalidCaller as u8 => Ok(Error::InvalidCaller),
+            d if d == Error::InvalidPublicKey as u8 => Ok(Error::InvalidPublicKey),
             d if d == Error::BondNotFound as u8 => Ok(Error::BondNotFound),
             d if d == Error::CreatePurseFailed as u8 => Ok(Error::CreatePurseFailed),
             d if d == Error::UnbondTooLarge as u8 => Ok(Error::UnbondTooLarge),
