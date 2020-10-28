@@ -103,19 +103,6 @@ pub fn supported_cl_type_list() -> String {
     msg
 }
 
-/*
-fn get(matches: &ArgMatches, name: &str) -> Option<RuntimeArgs> {
-    let args = matches.values_of(name)?;
-    let mut runtime_args = RuntimeArgs::new();
-    for arg in args {
-        let (name, cl_type, value) = split_arg(arg);
-        let cl_value = parts_to_cl_value(cl_type, value);
-        runtime_args.insert_cl_value(name, cl_value);
-    }
-    Some(runtime_args)
-}
-*/
-
 #[derive(Debug, PartialEq, Eq)]
 enum OptionalStatus {
     Some,
