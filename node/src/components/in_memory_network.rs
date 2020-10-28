@@ -308,7 +308,8 @@ use fmt::Formatter;
 /// The node ID type used by the in-memory network.
 pub type NodeId = KeyFingerprint;
 
-type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
+/// A network.
+pub type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
 
 /// Public type alias for convention; the in memory network needs to internal events and just
 /// responds to network requests.
@@ -458,7 +459,8 @@ impl<P> InMemoryNetwork<P>
 where
     P: 'static + Send,
 {
-    fn new<REv>(event_queue: EventQueueHandle<REv>, node_id: NodeId, nodes: Network<P>) -> Self
+    /// Creates a new in-memory network node.
+    pub fn new<REv>(event_queue: EventQueueHandle<REv>, node_id: NodeId, nodes: Network<P>) -> Self
     where
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {

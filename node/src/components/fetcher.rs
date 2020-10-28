@@ -159,7 +159,7 @@ pub trait ItemFetcher<T: Item + 'static> {
 
 /// The component which fetches an item from local storage or asks a peer if it's not in storage.
 #[derive(DataSize, Debug)]
-pub(crate) struct Fetcher<T>
+pub struct Fetcher<T>
 where
     T: Item + 'static,
 {

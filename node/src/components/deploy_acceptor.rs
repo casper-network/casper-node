@@ -56,7 +56,7 @@ impl From<Chainspec> for DeployAcceptorConfig {
 /// It validates a new `Deploy` as far as possible, stores it if valid, then announces the newly-
 /// accepted `Deploy`.
 #[derive(Debug)]
-pub(crate) struct DeployAcceptor {
+pub struct DeployAcceptor {
     cached_deploy_configs: HashMap<Version, DeployAcceptorConfig>,
 }
 

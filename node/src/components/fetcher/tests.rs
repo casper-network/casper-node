@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use casper_node_macros::reactor;
 use derive_more::From;
 use futures::FutureExt;
 use prometheus::Registry;
@@ -108,6 +109,45 @@ impl Drop for Reactor {
         NetworkController::<Message>::remove_node(&self.network.node_id())
     }
 }
+
+pub struct FetcherTestConfig {
+    gossiper_config: GossipConfig,
+    storage_config: storage::Config,
+    temp_dir: TempDir,
+    node_id: NodeId,
+    network: in_memory_network::Network<Message>,
+}
+
+reactor!(FetcherTestReactor {
+    type Config = FetcherTestConfig;
+
+    components: {
+        // TODO: In-memory network needs to invert creation, based on passed in node.
+        network = infallible InMemoryNetwork::<Message>(event_queue, cfg.node_id, cfg.network);
+        storage = Storage(WithDir::new(cfg.temp_dir.path(), cfg.storage_config));
+        deploy_acceptor = infallible DeployAcceptor();
+        deploy_fetcher = infallible Fetcher::<Deploy>(cfg.gossiper_config);
+    }
+
+    events: {
+        network = Event<Message>;
+        storage = Event<Storage>;
+        deploy_fetcher = Event<Deploy>;
+    }
+
+    requests: {
+        // This tests contains no linear chain requests, so we panic if we receive any.
+        LinearChainRequest<NodeId> -> !;
+        NetworkRequest<NodeId, Message> -> network;
+        StorageRequest<Storage> -> storage;
+    }
+
+    announcements: {
+        // TODO: Route announcements for deploy acceptor and networking.
+        DeployAcceptorAnnouncement<NodeId> -> [];
+        NetworkAnnouncement<NodeId, Message> -> [];
+    }
+});
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
