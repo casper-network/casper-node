@@ -1,5 +1,6 @@
 #![cfg(test)]
 use std::{
+    cell::RefCell,
     fmt::{self, Debug, Display, Formatter},
     sync::{Arc, Mutex},
 };
@@ -114,16 +115,18 @@ pub struct FetcherTestConfig {
     gossiper_config: GossipConfig,
     storage_config: storage::Config,
     temp_dir: TempDir,
-    node_id: NodeId,
-    network: in_memory_network::Network<Message>,
+    network_controller: RefCell<in_memory_network::NetworkController<Message>>,
 }
 
 reactor!(FetcherTestReactor {
     type Config = FetcherTestConfig;
 
     components: {
-        // TODO: In-memory network needs to invert creation, based on passed in node.
-        network = infallible InMemoryNetwork::<Message>(event_queue, cfg.node_id, cfg.network);
+        network = infallible InMemoryNetwork::<Message>(
+            event_queue,
+            rng,
+            &mut cfg.network_controller.borrow_mut()
+        );
         storage = Storage(WithDir::new(cfg.temp_dir.path(), cfg.storage_config));
         deploy_acceptor = infallible DeployAcceptor();
         deploy_fetcher = infallible Fetcher::<Deploy>(cfg.gossiper_config);

@@ -309,7 +309,7 @@ use fmt::Formatter;
 pub type NodeId = KeyFingerprint;
 
 /// A network.
-pub type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
+type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
 
 /// Public type alias for convention; the in memory network needs to internal events and just
 /// responds to network requests.
@@ -441,7 +441,7 @@ where
     where
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
-        InMemoryNetwork::new(event_queue, rng.gen(), self.nodes.clone())
+        InMemoryNetwork::new_with_data(event_queue, rng.gen(), self.nodes.clone())
     }
 }
 
@@ -460,7 +460,25 @@ where
     P: 'static + Send,
 {
     /// Creates a new in-memory network node.
-    pub fn new<REv>(event_queue: EventQueueHandle<REv>, node_id: NodeId, nodes: Network<P>) -> Self
+    ///
+    /// This function is an alias of `NetworkController::create_node_local`.
+    pub fn new<REv>(
+        event_queue: EventQueueHandle<REv>,
+        rng: &mut dyn CryptoRngCore,
+        controller: &mut NetworkController<P>,
+    ) -> Self
+    where
+        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+    {
+        controller.create_node_local(event_queue, rng)
+    }
+
+    /// Creates a new in-memory network node.
+    fn new_with_data<REv>(
+        event_queue: EventQueueHandle<REv>,
+        node_id: NodeId,
+        nodes: Network<P>,
+    ) -> Self
     where
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
