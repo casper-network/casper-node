@@ -139,7 +139,6 @@ pub(super) mod show_arg_examples {
 
 pub(super) fn session_str_params<'a>(matches: &'a ArgMatches) -> SessionStrParams<'a> {
     let session_args_simple = arg_simple::session::get(matches);
-    println!("session_args_simple {:?}", session_args_simple);
     let session_args_complex = args_complex::session::get(matches);
     if let Some(session_path) = session_path::get(matches) {
         return SessionStrParams::with_path(
@@ -430,10 +429,7 @@ pub(super) mod arg_simple {
             matches
                 .values_of(ARG_NAME)
                 .iter()
-                .map(|i| {
-                    println!("{:?}", i);
-                    i.clone().map(|v| v)
-                })
+                .map(|i| i.clone().map(|v| v))
                 .flatten()
                 .collect()
         }
