@@ -214,14 +214,28 @@ where
             !sum_stakes.value().is_zero(),
             "cannot start era with total weight 0"
         );
+
+        let init_round_exp = self
+            .active_eras
+            .get(&last_era_id)
+            .and_then(|era| {
+                era.consensus
+                    .as_any()
+                    .downcast_ref::<HighwayProtocol<I, HighwayContext>>()
+            })
+            .and_then(|highway_proto| highway_proto.median_round_exp())
+            .unwrap_or(self.highway_config().minimum_round_exponent);
+
         info!(
             ?validator_stakes,
             %start_time,
             %timestamp,
             %start_height,
             era = era_id.0,
+            %init_round_exp,
             "starting era",
         );
+
         // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
         // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
         let scaling_factor = (sum_stakes.value() + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
@@ -245,17 +259,6 @@ where
         let total_weight = u128::from(validators.total_weight());
         let ftt_percent = u128::from(self.highway_config().finality_threshold_percent);
         let ftt = ((total_weight * ftt_percent / 100) as u64).into();
-
-        let init_round_exp = self
-            .active_eras
-            .get(&last_era_id)
-            .and_then(|era| {
-                era.consensus
-                    .as_any()
-                    .downcast_ref::<HighwayProtocol<I, HighwayContext>>()
-            })
-            .and_then(|highway_proto| highway_proto.median_round_exp())
-            .unwrap_or(self.highway_config().minimum_round_exponent);
 
         // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
