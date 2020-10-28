@@ -20,7 +20,7 @@ if [[ -f $OUTFILE ]]; then
     rm $OUTFILE
   fi
   echo "Previous $CONFIG exists, creating as $OUTFILE from $CONFIG_EXAMPLE."
-  echo "Replace $CONFIG with $OUTFILE to use the automatically generated CONFIGuration."
+  echo "Replace $CONFIG with $OUTFILE to use the automatically generated configuration."
 else
   echo "Creating $OUTFILE from $CONFIG_EXAMPLE."
 fi
