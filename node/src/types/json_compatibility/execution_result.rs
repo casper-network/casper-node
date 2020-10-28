@@ -18,11 +18,8 @@ use casper_execution_engine::{
     },
     shared::{stored_value::StoredValue, transform::Transform as EngineTransform},
 };
-#[cfg(test)]
-use casper_types::{bytesrepr, CLType};
-use casper_types::{U128, U256, U512};
+use casper_types::{CLValue, U128, U256, U512};
 
-use super::CLValue;
 #[cfg(test)]
 use crate::testing::TestRng;
 
@@ -143,6 +140,7 @@ impl From<&Op> for Operation {
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
 enum Transform {
     Identity,
+    #[data_size(skip)]
     WriteCLValue(CLValue),
     WriteAccount,
     WriteContractWasm,
@@ -165,14 +163,7 @@ impl Transform {
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0, 13) {
             0 => Transform::Identity,
-            1 => {
-                let tag = vec![rng.gen_range::<u8, _, _>(0, 13)];
-                let cl_type: CLType = bytesrepr::deserialize(tag).unwrap();
-                Transform::WriteCLValue(CLValue {
-                    cl_type,
-                    bytes: rng.gen::<u64>().to_string(),
-                })
-            }
+            1 => Transform::WriteCLValue(CLValue::from_t(true).unwrap()),
             2 => Transform::WriteAccount,
             3 => Transform::WriteContractWasm,
             4 => Transform::WriteContract,
@@ -200,7 +191,7 @@ impl From<&EngineTransform> for Transform {
         match transform {
             EngineTransform::Identity => Transform::Identity,
             EngineTransform::Write(StoredValue::CLValue(cl_value)) => {
-                Transform::WriteCLValue(CLValue::from(cl_value))
+                Transform::WriteCLValue(cl_value.clone())
             }
             EngineTransform::Write(StoredValue::Account(_)) => Transform::WriteAccount,
             EngineTransform::Write(StoredValue::ContractWasm(_)) => Transform::WriteContractWasm,
