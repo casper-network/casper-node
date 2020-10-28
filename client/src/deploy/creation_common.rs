@@ -118,6 +118,20 @@ pub(super) mod show_arg_examples {
             .unwrap()
             .to_hex()
         );
+        println!("\nOptional values of each of these types can also be specified.");
+        println!(
+            r#"Prefix the type with "opt_" and use the term "null" without quotes to specify a None value:"#
+        );
+        println!("name_01:opt_bool='true'       # Some(true)");
+        println!("name_02:opt_bool='false'      # Some(false)");
+        println!("name_03:opt_bool=null         # None");
+        println!("name_04:opt_i32='-1'          # Some(-1)");
+        println!("name_05:opt_i32=null          # None");
+        println!("name_06:opt_unit=''           # Some(())");
+        println!("name_07:opt_unit=null         # None");
+        println!("name_08:opt_string='a value'  # Some(\"a value\".to_string())");
+        println!("name_09:opt_string='null'     # Some(\"null\".to_string())");
+        println!("name_10:opt_string=null       # None");
 
         true
     }
@@ -221,10 +235,10 @@ pub(super) mod timestamp {
     use super::*;
 
     const ARG_NAME: &str = "timestamp";
-    const ARG_VALUE_NAME: &str = "MILLISECONDS";
+    const ARG_VALUE_NAME: &str = "TIMESTAMP";
     const ARG_HELP: &str =
-        "Timestamp as the number of milliseconds since the Unix epoch. If not provided, the \
-        current time will be used";
+        "RFC3339-like formatted timestamp. e.g. `2018-02-16T00:31:37Z`. If not provided, the current time will be used. \
+        See https://docs.rs/humantime/latest/humantime/fn.parse_rfc3339_weak.html for more information.";
 
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -377,7 +391,7 @@ pub(super) mod session_path {
 pub(super) mod arg_simple {
     use super::*;
 
-    const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE'";
+    const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE' OR NAME:TYPE=null";
 
     lazy_static! {
         static ref ARG_HELP: String = format!(

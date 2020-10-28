@@ -18,7 +18,10 @@ use casper_node::{
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
 
-use crate::{error::Result, rpc::RpcClient};
+use crate::{
+    error::{Error, Result},
+    rpc::RpcClient,
+};
 
 /// SendDeploy allows sending a deploy to the node.
 pub(crate) struct SendDeploy;
@@ -165,13 +168,27 @@ impl DeployExt for Deploy {
     }
 
     fn write_deploy(&self, maybe_path: Option<&str>) -> Result<()> {
-        let mut out = output_or_stdout(&maybe_path)?;
+        let mut out = output_or_stdout(&maybe_path).map_err(|error| Error::IoError {
+            context: format!("unable to get file or stdout, provided '{:?}'", maybe_path),
+            error,
+        })?;
         let content = serde_json::to_string_pretty(self)?;
-        Ok(out.write_all(content.as_bytes())?)
+        Ok(out
+            .write_all(content.as_bytes())
+            .map_err(|error| Error::IoError {
+                context: format!(
+                    "unable to write deploy file to '{}'",
+                    maybe_path.unwrap_or("stdout")
+                ),
+                error,
+            })?)
     }
 
     fn read_deploy(input_path: &str) -> Result<Deploy> {
-        let reader = BufReader::new(File::open(&input_path)?);
+        let reader = BufReader::new(File::open(&input_path).map_err(|error| Error::IoError {
+            context: format!("unable to read deploy file at '{}'", input_path),
+            error,
+        })?);
         Ok(serde_json::from_reader(reader)?)
     }
 

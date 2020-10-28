@@ -71,9 +71,15 @@ pub enum Error {
     #[error("Failed sending {0:?}")]
     FailedSending(JsonRpc),
 
-    /// Wrapper for `std::io::Error`.
-    #[error("io::Error {0}")]
-    IoError(#[from] std::io::Error),
+    /// Context-adding wrapper for `std::io::Error`.
+    #[error("io::Error Context: {context} - IoError: {error}")]
+    IoError {
+        /// Contextual description of where this error occurred including relevant paths,
+        /// filenames, etc.
+        context: String,
+        /// std::io::Error raised during the operation in question.
+        error: std::io::Error,
+    },
 
     /// Failed to serialize to bytes.
     #[error("error in to_bytes {0}")]

@@ -4,7 +4,8 @@ use std::{result::Result as StdResult, str::FromStr};
 
 use casper_node::crypto::asymmetric_key::PublicKey as NodePublicKey;
 use casper_types::{
-    account::AccountHash, CLType, CLTyped, CLValue, Key, PublicKey, URef, U128, U256, U512,
+    account::AccountHash, bytesrepr::ToBytes, CLType, CLTyped, CLValue, Key, PublicKey, URef, U128,
+    U256, U512,
 };
 
 use crate::error::{Error, Result};
@@ -28,6 +29,21 @@ pub fn parse(strval: &str) -> StdResult<CLType, ()> {
         t if t == supported_types[12].0 => supported_types[12].1.clone(),
         t if t == supported_types[13].0 => supported_types[13].1.clone(),
         t if t == supported_types[14].0 => supported_types[14].1.clone(),
+        t if t == supported_types[15].0 => supported_types[15].1.clone(),
+        t if t == supported_types[16].0 => supported_types[16].1.clone(),
+        t if t == supported_types[17].0 => supported_types[17].1.clone(),
+        t if t == supported_types[18].0 => supported_types[18].1.clone(),
+        t if t == supported_types[19].0 => supported_types[19].1.clone(),
+        t if t == supported_types[20].0 => supported_types[20].1.clone(),
+        t if t == supported_types[21].0 => supported_types[21].1.clone(),
+        t if t == supported_types[22].0 => supported_types[22].1.clone(),
+        t if t == supported_types[23].0 => supported_types[23].1.clone(),
+        t if t == supported_types[24].0 => supported_types[24].1.clone(),
+        t if t == supported_types[25].0 => supported_types[25].1.clone(),
+        t if t == supported_types[26].0 => supported_types[26].1.clone(),
+        t if t == supported_types[27].0 => supported_types[27].1.clone(),
+        t if t == supported_types[28].0 => supported_types[28].1.clone(),
+        t if t == supported_types[29].0 => supported_types[29].1.clone(),
         _ => return Err(()),
     };
     Ok(cl_type)
@@ -50,6 +66,27 @@ pub(crate) fn supported_cl_types() -> Vec<(&'static str, CLType)> {
         ("account_hash", AccountHash::cl_type()),
         ("uref", CLType::URef),
         ("public_key", CLType::PublicKey),
+        ("opt_bool", CLType::Option(Box::new(CLType::Bool))),
+        ("opt_i32", CLType::Option(Box::new(CLType::I32))),
+        ("opt_i64", CLType::Option(Box::new(CLType::I64))),
+        ("opt_u8", CLType::Option(Box::new(CLType::U8))),
+        ("opt_u32", CLType::Option(Box::new(CLType::U32))),
+        ("opt_u64", CLType::Option(Box::new(CLType::U64))),
+        ("opt_u128", CLType::Option(Box::new(CLType::U128))),
+        ("opt_u256", CLType::Option(Box::new(CLType::U256))),
+        ("opt_u512", CLType::Option(Box::new(CLType::U512))),
+        ("opt_unit", CLType::Option(Box::new(CLType::Unit))),
+        ("opt_string", CLType::Option(Box::new(CLType::String))),
+        ("opt_key", CLType::Option(Box::new(CLType::Key))),
+        (
+            "opt_account_hash",
+            CLType::Option(Box::new(AccountHash::cl_type())),
+        ),
+        ("opt_uref", CLType::Option(Box::new(CLType::URef))),
+        (
+            "opt_public_key",
+            CLType::Option(Box::new(CLType::PublicKey)),
+        ),
     ]
 }
 
@@ -66,108 +103,229 @@ pub fn supported_cl_type_list() -> String {
     msg
 }
 
-/// Parse a `CLValue` given a `CLType` and a `value`,
-pub fn parse_value(cl_type: CLType, value: &str) -> Result<CLValue> {
-    let cl_value = match cl_type {
-        CLType::Bool => match value.to_lowercase().as_str() {
-            "true" | "t" => CLValue::from_t(true).expect("should be true"),
-            "false" | "f" => CLValue::from_t(false).expect("should be true"),
-            invalid => {
-                return Err(Error::InvalidCLValue(format!(
+/*
+fn get(matches: &ArgMatches, name: &str) -> Option<RuntimeArgs> {
+    let args = matches.values_of(name)?;
+    let mut runtime_args = RuntimeArgs::new();
+    for arg in args {
+        let (name, cl_type, value) = split_arg(arg);
+        let cl_value = parts_to_cl_value(cl_type, value);
+        runtime_args.insert_cl_value(name, cl_value);
+    }
+    Some(runtime_args)
+}
+*/
+
+#[derive(Debug, PartialEq, Eq)]
+enum OptionalStatus {
+    Some,
+    None,
+    NotOptional,
+}
+
+/// Parses to a given CLValue taking into account whether the arg represents an optional type or
+/// not.
+fn parse_to_cl_value<T, F>(optional_status: OptionalStatus, parse: F) -> Result<CLValue>
+where
+    T: CLTyped + ToBytes,
+    F: FnOnce() -> Result<T>,
+{
+    match optional_status {
+        OptionalStatus::Some => CLValue::from_t(Some(parse()?)),
+        OptionalStatus::None => CLValue::from_t::<Option<T>>(None),
+        OptionalStatus::NotOptional => CLValue::from_t(parse()?),
+    }
+    .map_err(|error| {
+        Error::InvalidCLValue(format!(
+            "unable to parse cl value {:?} with optional_status {:?}",
+            error, optional_status
+        ))
+    })
+}
+
+/// Returns a value built from a single arg which has been split into its constituent parts.
+pub fn parts_to_cl_value(cl_type: CLType, value: &str) -> Result<CLValue> {
+    let (cl_type_to_parse, optional_status, trimmed_value) = match cl_type {
+        CLType::Option(inner_type) => {
+            if value == "null" {
+                (*inner_type, OptionalStatus::None, "")
+            } else {
+                (*inner_type, OptionalStatus::Some, value.trim_matches('\''))
+            }
+        }
+        _ => (
+            cl_type,
+            OptionalStatus::NotOptional,
+            value.trim_matches('\''),
+        ),
+    };
+
+    if value == trimmed_value {
+        return Err(Error::InvalidCLValue(format!(
+            "value in simple arg should be surrounded by single quotes unless it's a null \
+                   optional value (value passed: {})",
+            value
+        )));
+    }
+
+    match cl_type_to_parse {
+        CLType::Bool => {
+            let parse = || match trimmed_value.to_lowercase().as_str() {
+                "true" | "t" => Ok(true),
+                "false" | "f" => Ok(false),
+                invalid => Err(Error::InvalidCLValue(format!(
                     "can't parse {} as a bool.  Should be 'true' or 'false'",
                     invalid
-                )))
-            }
-        },
+                ))),
+            };
+            parse_to_cl_value(optional_status, parse)
+        }
         CLType::I32 => {
-            let x = i32::from_str(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as i32: {}", value, error))
-            })?;
-            CLValue::from_t(x).unwrap()
+            let parse = || {
+                i32::from_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!("can't parse {} as i32: {}", value, error))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         CLType::I64 => {
-            let x = i64::from_str(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as i64: {}", value, error))
-            })?;
-            CLValue::from_t(x).unwrap()
+            let parse = || {
+                i64::from_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!(
+                        "can't parse {} as i64: {}",
+                        trimmed_value, error
+                    ))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         CLType::U8 => {
-            let x = u8::from_str(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as u8: {}", value, error))
-            })?;
-            CLValue::from_t(x).unwrap()
+            let parse = || {
+                u8::from_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!("can't parse {} as u8: {}", trimmed_value, error))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         CLType::U32 => {
-            let x = u32::from_str(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as u32: {}", value, error))
-            })?;
-            CLValue::from_t(x).unwrap()
+            let parse = || {
+                u32::from_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!(
+                        "can't parse {} as u32: {}",
+                        trimmed_value, error
+                    ))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         CLType::U64 => {
-            let x = u64::from_str(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as u64: {}", value, error))
-            })?;
-            CLValue::from_t(x).unwrap()
+            let parse = || {
+                u64::from_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!(
+                        "can't parse {} as u64: {}",
+                        trimmed_value, error
+                    ))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         CLType::U128 => {
-            let x = U128::from_dec_str(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as U128: {}", value, error))
-            })?;
-            CLValue::from_t(x).unwrap()
+            let parse = || {
+                U128::from_dec_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!(
+                        "can't parse {} as U128: {}",
+                        trimmed_value, error
+                    ))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         CLType::U256 => {
-            let x = U256::from_dec_str(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as U256: {}", value, error))
-            })?;
-            CLValue::from_t(x).unwrap()
+            let parse = || {
+                U256::from_dec_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!(
+                        "can't parse {} as U256: {}",
+                        trimmed_value, error
+                    ))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         CLType::U512 => {
-            let x = U512::from_dec_str(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as U512: {}", value, error))
-            })?;
-            CLValue::from_t(x).unwrap()
+            let parse = || {
+                U512::from_dec_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!(
+                        "can't parse {} as U512: {}",
+                        trimmed_value, error
+                    ))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         CLType::Unit => {
-            if !value.is_empty() {
-                return Err(Error::InvalidCLValue(format!(
-                    "can't parse {} as unit.  Should be ''",
-                    value
-                )));
-            }
-            CLValue::from_t(()).unwrap()
+            let parse = || {
+                if !trimmed_value.is_empty() {
+                    return Err(Error::InvalidCLValue(format!(
+                        "can't parse {} as unit.  Should be ''",
+                        trimmed_value
+                    )));
+                }
+                Ok(())
+            };
+            parse_to_cl_value(optional_status, parse)
         }
-        CLType::String => CLValue::from_t(value).unwrap(),
+        CLType::String => {
+            let parse = || Ok(trimmed_value.to_string());
+            parse_to_cl_value(optional_status, parse)
+        }
         CLType::Key => {
-            let key = Key::from_formatted_str(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as Key: {:?}", value, error))
-            })?;
-            CLValue::from_t(key).unwrap()
+            let parse = || {
+                Key::from_formatted_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!(
+                        "can't parse {} as Key: {:?}",
+                        trimmed_value, error
+                    ))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         CLType::FixedList(ty, 32) => match *ty {
             CLType::U8 => {
-                let account_hash = AccountHash::from_formatted_str(value).map_err(|error| {
-                    Error::InvalidCLValue(format!(
-                        "can't parse {} as AccountHash: {:?}",
-                        value, error
-                    ))
-                })?;
-                CLValue::from_t(account_hash).unwrap()
+                let parse = || {
+                    AccountHash::from_formatted_str(trimmed_value).map_err(|error| {
+                        Error::InvalidCLValue(format!(
+                            "can't parse {} as AccountHash: {:?}",
+                            trimmed_value, error
+                        ))
+                    })
+                };
+                parse_to_cl_value(optional_status, parse)
             }
             _ => unreachable!(),
         },
         CLType::URef => {
-            let uref = URef::from_formatted_str(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as URef: {:?}", value, error))
-            })?;
-            CLValue::from_t(uref).unwrap()
+            let parse = || {
+                URef::from_formatted_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!(
+                        "can't parse {} as URef: {:?}",
+                        trimmed_value, error
+                    ))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         CLType::PublicKey => {
-            let pub_key = NodePublicKey::from_hex(value).map_err(|error| {
-                Error::InvalidCLValue(format!("can't parse {} as PublicKey: {:?}", value, error))
-            })?;
-            CLValue::from_t(PublicKey::from(pub_key)).unwrap()
+            let parse = || {
+                let pub_key = NodePublicKey::from_hex(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!(
+                        "can't parse {} as PublicKey: {:?}",
+                        trimmed_value, error
+                    ))
+                })?;
+                Ok(PublicKey::from(pub_key))
+            };
+            parse_to_cl_value(optional_status, parse)
         }
         _ => unreachable!(),
-    };
-    Ok(cl_value)
+    }
 }

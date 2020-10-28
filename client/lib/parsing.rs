@@ -1,7 +1,7 @@
 //! This module contains structs and helpers which are used by multiple subcommands related to
 //! creating deploys.
 
-use std::{convert::TryInto, fs, path::PathBuf, str::FromStr};
+use std::{convert::TryInto, fs, io, path::PathBuf, str::FromStr};
 
 use serde::{self, Deserialize};
 
@@ -33,6 +33,9 @@ pub(super) fn none_if_empty(value: &'_ str) -> Option<&'_ str> {
 }
 
 fn timestamp(value: &str) -> Result<Timestamp> {
+    if value.is_empty() {
+        return Ok(Timestamp::now());
+    }
     Timestamp::from_str(value).map_err(Error::FailedToParseTimestamp)
 }
 
@@ -62,58 +65,64 @@ mod arg_simple {
     pub(crate) mod session {
         use super::*;
 
-        pub fn parse(values: &[&str]) -> Option<RuntimeArgs> {
-            if values.is_empty() {
+        pub fn parse(values: &[&str]) -> Result<Option<RuntimeArgs>> {
+            Ok(if values.is_empty() {
                 None
             } else {
-                Some(get(values))
-            }
+                Some(get(values)?)
+            })
         }
     }
 
     pub(crate) mod payment {
         use super::*;
 
-        pub fn parse(values: &[&str]) -> Option<RuntimeArgs> {
-            if values.is_empty() {
+        pub fn parse(values: &[&str]) -> Result<Option<RuntimeArgs>> {
+            Ok(if values.is_empty() {
                 None
             } else {
-                Some(get(values))
-            }
+                Some(get(values)?)
+            })
         }
     }
 
-    fn get(values: &[&str]) -> RuntimeArgs {
+    fn get(values: &[&str]) -> Result<RuntimeArgs> {
         let mut runtime_args = RuntimeArgs::new();
         for arg in values {
-            let parts = split_arg(arg);
-            parts_to_cl_value(parts, &mut runtime_args);
+            let parts = split_arg(arg)?;
+            parts_to_cl_value(parts, &mut runtime_args)?;
         }
-        runtime_args
+        Ok(runtime_args)
     }
 
     /// Splits a single arg of the form `NAME:TYPE='VALUE'` into its constituent parts.
-    fn split_arg(arg: &str) -> (&str, CLType, &str) {
+    fn split_arg(arg: &str) -> Result<(&str, CLType, &str)> {
         let parts: Vec<_> = arg.splitn(3, &[':', '='][..]).collect();
         if parts.len() != 3 {
-            panic!("arg {} should be formatted as {}", arg, ARG_VALUE_NAME);
+            return Err(Error::InvalidCLValue(format!(
+                "arg {} should be formatted as {}",
+                arg, ARG_VALUE_NAME
+            )));
         }
-        let cl_type = cl_type::parse(&parts[1]).unwrap_or_else(|_| {
-            panic!(
+        let cl_type = cl_type::parse(&parts[1]).map_err(|_| {
+            Error::InvalidCLValue(format!(
                 "unknown variant {}, expected one of {}",
                 parts[1],
                 cl_type::supported_cl_type_list()
-            )
-        });
-        (parts[0], cl_type, parts[2].trim_matches('\''))
+            ))
+        })?;
+        Ok((parts[0], cl_type, parts[2]))
     }
 
     /// Insert a value built from a single arg which has been split into its constituent parts.
-    fn parts_to_cl_value(parts: (&str, CLType, &str), runtime_args: &mut RuntimeArgs) {
+    fn parts_to_cl_value(
+        parts: (&str, CLType, &str),
+        runtime_args: &mut RuntimeArgs,
+    ) -> Result<()> {
         let (name, cl_type, value) = parts;
-        let cl_value = cl_type::parse_value(cl_type, value)
-            .unwrap_or_else(|error| panic!("error parsing cl_value {}", error));
+        let cl_value = cl_type::parts_to_cl_value(cl_type, value)?;
         runtime_args.insert_cl_value(name, cl_value);
+        Ok(())
     }
 }
 
@@ -164,7 +173,10 @@ mod args_complex {
             if path.is_empty() {
                 return Err(Error::InvalidArgument(path.to_string()));
             }
-            get(path)
+            get(path).map_err(|error| Error::IoError {
+                context: format!("error reading session file at '{}'", path),
+                error,
+            })
         }
     }
 
@@ -175,11 +187,14 @@ mod args_complex {
             if path.is_empty() {
                 return Err(Error::InvalidArgument(path.to_string()));
             }
-            get(path)
+            get(path).map_err(|error| Error::IoError {
+                context: format!("error reading payment file at '{}'", path),
+                error,
+            })
         }
     }
 
-    fn get(path: &str) -> Result<RuntimeArgs> {
+    fn get(path: &str) -> io::Result<RuntimeArgs> {
         let bytes = fs::read(path)?;
         // Received structured args in JSON format.
         let args: Vec<DeployArg> = serde_json::from_slice(&bytes)?;
@@ -256,7 +271,7 @@ pub(super) fn parse_session_info(
     session_entry_point: &str,
 ) -> Result<ExecutableDeployItem> {
     let session_args = args_from_simple_or_complex(
-        arg_simple::session::parse(session_args),
+        arg_simple::session::parse(session_args)?,
         args_complex::session::parse(session_args_complex).ok(),
     );
 
@@ -299,7 +314,10 @@ pub(super) fn parse_session_info(
         );
     }
 
-    let module_bytes = fs::read(session_path)?;
+    let module_bytes = fs::read(session_path).map_err(|error| Error::IoError {
+        context: format!("unable to read session file at '{}'", session_path),
+        error,
+    })?;
     ExecutableDeployItem::new_module_bytes(module_bytes, session_args)
 }
 
@@ -321,7 +339,7 @@ pub(super) fn parse_payment_info(
     }
 
     let payment_args = args_from_simple_or_complex(
-        arg_simple::payment::parse(payment_args),
+        arg_simple::payment::parse(payment_args)?,
         args_complex::payment::parse(payment_args_complex).ok(),
     );
 
@@ -364,7 +382,10 @@ pub(super) fn parse_payment_info(
         );
     }
 
-    let module_bytes = fs::read(payment_path)?;
+    let module_bytes = fs::read(payment_path).map_err(|error| Error::IoError {
+        context: format!("unable to read payment file at '{}'", payment_path),
+        error,
+    })?;
     ExecutableDeployItem::new_module_bytes(module_bytes, payment_args)
 }
 
@@ -423,4 +444,192 @@ fn account(value: &str) -> Result<NodePublicKey> {
 
 pub(crate) fn purse(value: &str) -> Result<URef> {
     Ok(URef::from_formatted_str(value)?)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    use std::convert::TryFrom;
+
+    use casper_types::{
+        account::AccountHash, bytesrepr::ToBytes, AccessRights, CLTyped, CLValue, NamedArg,
+        PublicKey, RuntimeArgs, U128, U256, U512,
+    };
+
+    fn valid_simple_args_test<T: CLTyped + ToBytes>(cli_string: &str, expected: T) {
+        let expected = Some(RuntimeArgs::from(vec![NamedArg::new(
+            "x".to_string(),
+            CLValue::from_t(expected).unwrap(),
+        )]));
+
+        assert_eq!(
+            arg_simple::payment::parse(&[cli_string]).expect("should parse"),
+            expected
+        );
+        assert_eq!(
+            arg_simple::session::parse(&[cli_string]).expect("should parse"),
+            expected
+        );
+    }
+
+    #[test]
+    fn should_parse_bool_via_args_simple() {
+        valid_simple_args_test("x:bool='f'", false);
+        valid_simple_args_test("x:bool='false'", false);
+        valid_simple_args_test("x:bool='t'", true);
+        valid_simple_args_test("x:bool='true'", true);
+        valid_simple_args_test("x:opt_bool='f'", Some(false));
+        valid_simple_args_test("x:opt_bool='t'", Some(true));
+        valid_simple_args_test::<Option<bool>>("x:opt_bool=null", None);
+    }
+
+    #[test]
+    fn should_parse_i32_via_args_simple() {
+        valid_simple_args_test("x:i32='2147483647'", i32::max_value());
+        valid_simple_args_test("x:i32='0'", 0_i32);
+        valid_simple_args_test("x:i32='-2147483648'", i32::min_value());
+        valid_simple_args_test("x:opt_i32='-1'", Some(-1_i32));
+        valid_simple_args_test::<Option<i32>>("x:opt_i32=null", None);
+    }
+
+    #[test]
+    fn should_parse_i64_via_args_simple() {
+        valid_simple_args_test("x:i64='9223372036854775807'", i64::max_value());
+        valid_simple_args_test("x:i64='0'", 0_i64);
+        valid_simple_args_test("x:i64='-9223372036854775808'", i64::min_value());
+        valid_simple_args_test("x:opt_i64='-1'", Some(-1_i64));
+        valid_simple_args_test::<Option<i64>>("x:opt_i64=null", None);
+    }
+
+    #[test]
+    fn should_parse_u8_via_args_simple() {
+        valid_simple_args_test("x:u8='0'", 0_u8);
+        valid_simple_args_test("x:u8='255'", u8::max_value());
+        valid_simple_args_test("x:opt_u8='1'", Some(1_u8));
+        valid_simple_args_test::<Option<u8>>("x:opt_u8=null", None);
+    }
+
+    #[test]
+    fn should_parse_u32_via_args_simple() {
+        valid_simple_args_test("x:u32='0'", 0_u32);
+        valid_simple_args_test("x:u32='4294967295'", u32::max_value());
+        valid_simple_args_test("x:opt_u32='1'", Some(1_u32));
+        valid_simple_args_test::<Option<u32>>("x:opt_u32=null", None);
+    }
+
+    #[test]
+    fn should_parse_u64_via_args_simple() {
+        valid_simple_args_test("x:u64='0'", 0_u64);
+        valid_simple_args_test("x:u64='18446744073709551615'", u64::max_value());
+        valid_simple_args_test("x:opt_u64='1'", Some(1_u64));
+        valid_simple_args_test::<Option<u64>>("x:opt_u64=null", None);
+    }
+
+    #[test]
+    fn should_parse_u128_via_args_simple() {
+        valid_simple_args_test("x:u128='0'", U128::zero());
+        valid_simple_args_test(
+            "x:u128='340282366920938463463374607431768211455'",
+            U128::max_value(),
+        );
+        valid_simple_args_test("x:opt_u128='1'", Some(U128::from(1)));
+        valid_simple_args_test::<Option<U128>>("x:opt_u128=null", None);
+    }
+
+    #[test]
+    fn should_parse_u256_via_args_simple() {
+        valid_simple_args_test("x:u256='0'", U256::zero());
+        valid_simple_args_test(
+            "x:u256='115792089237316195423570985008687907853269984665640564039457584007913129639935'",
+            U256::max_value(),
+        );
+        valid_simple_args_test("x:opt_u256='1'", Some(U256::from(1)));
+        valid_simple_args_test::<Option<U256>>("x:opt_u256=null", None);
+    }
+
+    #[test]
+    fn should_parse_u512_via_args_simple() {
+        valid_simple_args_test("x:u512='0'", U512::zero());
+        valid_simple_args_test(
+            "x:u512='134078079299425970995740249982058461274793658205923933777235614437217640300735\
+            46976801874298166903427690031858186486050853753882811946569946433649006084095'",
+            U512::max_value(),
+        );
+        valid_simple_args_test("x:opt_u512='1'", Some(U512::from(1)));
+        valid_simple_args_test::<Option<U512>>("x:opt_u512=null", None);
+    }
+
+    #[test]
+    fn should_parse_unit_via_args_simple() {
+        valid_simple_args_test("x:unit=''", ());
+        valid_simple_args_test("x:opt_unit=''", Some(()));
+        valid_simple_args_test::<Option<()>>("x:opt_unit=null", None);
+    }
+
+    #[test]
+    fn should_parse_string_via_args_simple() {
+        let value = String::from("test string");
+        valid_simple_args_test(&format!("x:string='{}'", value), value.clone());
+        valid_simple_args_test(&format!("x:opt_string='{}'", value), Some(value));
+        valid_simple_args_test::<Option<String>>("x:opt_string=null", None);
+    }
+
+    #[test]
+    fn should_parse_key_via_args_simple() {
+        let bytes = (1..33).collect::<Vec<_>>();
+        let array = <[u8; 32]>::try_from(bytes.as_ref()).unwrap();
+
+        let key_account = Key::Account(AccountHash::new(array));
+        let key_hash = Key::Hash(array);
+        let key_uref = Key::URef(URef::new(array, AccessRights::NONE));
+
+        for key in &[key_account, key_hash, key_uref] {
+            valid_simple_args_test(&format!("x:key='{}'", key.to_formatted_string()), *key);
+            valid_simple_args_test(
+                &format!("x:opt_key='{}'", key.to_formatted_string()),
+                Some(*key),
+            );
+            valid_simple_args_test::<Option<Key>>("x:opt_key=null", None);
+        }
+    }
+
+    #[test]
+    fn should_parse_account_hash_via_args_simple() {
+        let bytes = (1..33).collect::<Vec<_>>();
+        let array = <[u8; 32]>::try_from(bytes.as_ref()).unwrap();
+        let value = AccountHash::new(array);
+        valid_simple_args_test(
+            &format!("x:account_hash='{}'", value.to_formatted_string()),
+            value,
+        );
+        valid_simple_args_test(
+            &format!("x:opt_account_hash='{}'", value.to_formatted_string()),
+            Some(value),
+        );
+        valid_simple_args_test::<Option<AccountHash>>("x:opt_account_hash=null", None);
+    }
+
+    #[test]
+    fn should_parse_uref_via_args_simple() {
+        let bytes = (1..33).collect::<Vec<_>>();
+        let array = <[u8; 32]>::try_from(bytes.as_ref()).unwrap();
+        let value = URef::new(array, AccessRights::READ_ADD_WRITE);
+        valid_simple_args_test(&format!("x:uref='{}'", value.to_formatted_string()), value);
+        valid_simple_args_test(
+            &format!("x:opt_uref='{}'", value.to_formatted_string()),
+            Some(value),
+        );
+        valid_simple_args_test::<Option<URef>>("x:opt_uref=null", None);
+    }
+
+    #[test]
+    fn should_parse_public_key_via_args_simple() {
+        let hex_value = "0119bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1";
+        let value = PublicKey::from(NodePublicKey::from_hex(hex_value).unwrap());
+        valid_simple_args_test(&format!("x:public_key='{}'", hex_value), value);
+        valid_simple_args_test(&format!("x:opt_public_key='{}'", hex_value), Some(value));
+        valid_simple_args_test::<Option<PublicKey>>("x:opt_public_key=null", None);
+    }
 }

@@ -311,8 +311,8 @@ pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &
 pub struct DeployStrParams<'a> {
     /// Path to secret key file
     pub secret_key: &'a str,
-    /// Timestamp as the number of milliseconds since the Unix epoch. If not provided, the current
-    /// time will be used
+    /// RFC3339-like formatted timestamp. e.g. `2018-02-16T00:31:37Z`. If not provided, the current
+    /// time will be used. See https://docs.rs/humantime/latest/humantime/fn.parse_rfc3339_weak.html for more information.
     pub timestamp: &'a str,
     /// Time that the deploy will remain valid for. A deploy can only be included in a block
     /// between `timestamp` and `timestamp + ttl`. Input examples: '1hr 12min', '30min 50sec',

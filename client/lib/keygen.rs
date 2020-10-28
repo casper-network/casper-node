@@ -31,8 +31,16 @@ pub const SECP256K1: &str = "secp256k1";
 /// If `force` is true, existing files will be overwritten.  If `force` is false and any of the
 /// files exist, `Error::FileAlreadyExists(path)` is returned and no files are written.
 pub fn generate_files(output_dir: &str, algorithm: &str, force: bool) -> Result<()> {
-    let _ = fs::create_dir_all(output_dir)?;
-    let output_dir = Path::new(output_dir).canonicalize()?;
+    let _ = fs::create_dir_all(output_dir).map_err(|error| Error::IoError {
+        context: format!("unable to create directory at '{}'", output_dir),
+        error,
+    })?;
+    let output_dir = Path::new(output_dir)
+        .canonicalize()
+        .map_err(|error| Error::IoError {
+            context: format!("unable get canonical path at '{}'", output_dir),
+            error,
+        })?;
 
     if !force {
         for file in FILES.iter().map(|filename| output_dir.join(filename)) {
@@ -53,7 +61,13 @@ pub fn generate_files(output_dir: &str, algorithm: &str, force: bool) -> Result<
     let public_key = PublicKey::from(&secret_key);
 
     let public_key_hex_path = output_dir.join(PUBLIC_KEY_HEX);
-    fs::write(public_key_hex_path, public_key.to_hex())?;
+    fs::write(public_key_hex_path, public_key.to_hex()).map_err(|error| Error::IoError {
+        context: format!(
+            "unable to write public key hex file at {:?}",
+            output_dir.join(PUBLIC_KEY_HEX)
+        ),
+        error,
+    })?;
 
     let secret_key_path = output_dir.join(SECRET_KEY_PEM);
     secret_key.to_file(&secret_key_path)?;

@@ -38,7 +38,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
         let session_str_params = creation_common::session_str_params(matches);
         let payment_str_params = creation_common::payment_str_params(matches);
 
-        casper_client::put_deploy(
+        let response = casper_client::put_deploy(
             maybe_rpc_id,
             node_address,
             verbose,
@@ -54,5 +54,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
             payment_str_params,
         )
         .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).expect("should encode to JSON")
+        );
     }
 }
