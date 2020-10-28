@@ -309,7 +309,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
 
     /// Returns the median round exponent of all the validators that haven't been observed to be
     /// malicious, as seen by the current panorama.
-    /// Returns none if there are no correct validators in the panorama.
+    /// Returns `None` if there are no correct validators in the panorama.
     pub(crate) fn median_round_exp(&self) -> Option<u8> {
         self.highway.state().median_round_exp()
     }

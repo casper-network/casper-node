@@ -206,7 +206,6 @@ where
         if self.active_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
         }
-        let last_era_id = self.current_era;
         self.current_era = era_id;
 
         let sum_stakes: Motes = validator_stakes.iter().map(|(_, stake)| *stake).sum();
@@ -215,9 +214,9 @@ where
             "cannot start era with total weight 0"
         );
 
-        let init_round_exp = self
-            .active_eras
-            .get(&last_era_id)
+        let init_round_exp = era_id
+            .checked_sub(1)
+            .and_then(|last_era_id| self.active_eras.get(&last_era_id))
             .and_then(|era| {
                 era.consensus
                     .as_any()
