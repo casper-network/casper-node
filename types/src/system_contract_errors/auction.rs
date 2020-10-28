@@ -96,6 +96,10 @@ pub enum Error {
     InvalidValidatorSlotsValue = 24,
 }
 
+/// Used for testing; this should be set to the maximum value of the [`Error`] enum.
+#[cfg(test)]
+const MAX_ERROR_VALUE: u8 = 24;
+
 impl CLTyped for Error {
     fn cl_type() -> CLType {
         CLType::U8
@@ -186,6 +190,28 @@ impl From<PurseLookupError> for Error {
         match error {
             PurseLookupError::KeyNotFound => Error::MissingKey,
             PurseLookupError::KeyUnexpectedType => Error::InvalidKeyVariant,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::TryFrom;
+
+    use super::{Error, MAX_ERROR_VALUE};
+
+    #[test]
+    fn error_round_trips() {
+        for i in 0..=u8::max_value() {
+            match Error::try_from(i) {
+                Ok(error) if i <= MAX_ERROR_VALUE => assert_eq!(error as u8, i),
+                Ok(error) => panic!(
+                    "value of variant {} ({}) exceeds MAX_ERROR_VALUE ({})",
+                    error, i, MAX_ERROR_VALUE
+                ),
+                Err(_) if i > MAX_ERROR_VALUE => (),
+                Err(_) => panic!("missing conversion from u8 to error value: {}", i),
+            }
         }
     }
 }
