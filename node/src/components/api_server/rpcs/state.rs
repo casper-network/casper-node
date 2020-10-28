@@ -22,6 +22,7 @@ use crate::{
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
+    rpcs::{RpcWithoutParams, RpcWithoutParamsExt},
     types::{
         json_compatibility::{AuctionState, StoredValue},
         Block,
@@ -236,10 +237,6 @@ impl RpcWithParamsExt for GetBalance {
 
 // auction info
 
-/// Params for "state_get_auction_info" RPC request.
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct GetAuctionInfoParams {}
-
 /// Result for "state_get_auction_info" RPC response.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetAuctionInfoResult {
@@ -252,17 +249,15 @@ pub struct GetAuctionInfoResult {
 /// "state_get_auction_info" RPC.
 pub struct GetAuctionInfo {}
 
-impl RpcWithParams for GetAuctionInfo {
+impl RpcWithoutParams for GetAuctionInfo {
     const METHOD: &'static str = "state_get_auction_info";
-    type RequestParams = GetAuctionInfoParams;
     type ResponseResult = GetAuctionInfoResult;
 }
 
-impl RpcWithParamsExt for GetAuctionInfo {
+impl RpcWithoutParamsExt for GetAuctionInfo {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        _params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let block: Block = {
