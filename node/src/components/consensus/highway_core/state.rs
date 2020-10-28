@@ -14,13 +14,7 @@ pub(crate) use weight::Weight;
 pub(super) use panorama::{Observation, Panorama};
 pub(super) use vote::Vote;
 
-use std::{
-    borrow::Borrow,
-    cmp::Ordering,
-    collections::{BTreeMap, HashMap},
-    convert::identity,
-    iter,
-};
+use std::{borrow::Borrow, cmp::Ordering, collections::HashMap, convert::identity, iter};
 
 use itertools::Itertools;
 use rand::{Rng, SeedableRng};
@@ -38,6 +32,7 @@ use crate::{
         traits::Context,
     },
     types::{TimeDiff, Timestamp},
+    utils::weighted_median,
 };
 use block::Block;
 use tallies::Tallies;
@@ -553,23 +548,11 @@ impl<C: Context> State<C> {
     /// malicious, as seen by the current panorama.
     /// Returns `None` if there are no correct validators in the panorama.
     pub(crate) fn median_round_exp(&self) -> Option<u8> {
-        let (round_exp_counts, total_exps) = self.panorama.iter_correct(self).fold(
-            (BTreeMap::<u8, usize>::new(), 0),
-            |(mut counts, total), vote| {
-                *counts.entry(vote.round_exp).or_insert(0) += 1;
-                (counts, total + 1)
-            },
-        );
-        let mut counted = 0;
-        let mut result = None;
-        for (exp, count) in round_exp_counts {
-            result = Some(exp);
-            counted += count;
-            if counted >= total_exps / 2 {
-                break;
-            }
-        }
-        result
+        weighted_median(
+            self.panorama
+                .iter_correct(self)
+                .map(|vote| (vote.round_exp, self.weight(vote.creator))),
+        )
     }
 }
 
