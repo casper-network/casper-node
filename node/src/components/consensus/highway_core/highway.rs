@@ -20,6 +20,8 @@ use crate::{
     types::{CryptoRngCore, Timestamp},
 };
 
+use super::endorsement::{Endorsement, EndorsementError, Endorsements};
+
 /// An error due to an invalid vertex.
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VertexError {
@@ -27,6 +29,8 @@ pub(crate) enum VertexError {
     Vote(#[from] VoteError),
     #[error("The vertex contains invalid evidence.")]
     Evidence(#[from] EvidenceError),
+    #[error("The endorsements contains invalid entry.")]
+    Endorsement(#[from] EndorsementError),
 }
 
 /// A vertex that has passed initial validation.
@@ -196,6 +200,13 @@ impl<C: Context> Highway<C> {
     pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
         match pvv.inner() {
             Vertex::Evidence(_) => None,
+            Vertex::Endorsements(endorsements) => {
+                if self.state.has_vote(endorsements.vote()) {
+                    None
+                } else {
+                    Some(Dependency::Vote(*endorsements.vote()))
+                }
+            }
             Vertex::Vote(vote) => vote.wire_vote.panorama.missing_dependency(&self.state),
         }
     }
@@ -231,6 +242,10 @@ impl<C: Context> Highway<C> {
                     self.state.add_evidence(evidence);
                     vec![]
                 }
+                Vertex::Endorsements(endorsement) => {
+                    self.state.add_endorsements(endorsement);
+                    vec![]
+                }
             }
         } else {
             vec![]
@@ -242,6 +257,12 @@ impl<C: Context> Highway<C> {
         match vertex {
             Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
             Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
+            Vertex::Endorsements(endorsement) => {
+                // TODO: Maybe return `false` since we will add only missing endorsements anyway.
+                // Might be better in terms of performance.
+                self.state
+                    .has_all_endorsements(endorsement.vote(), endorsement.validator_ids())
+            }
         }
     }
 
@@ -264,6 +285,7 @@ impl<C: Context> Highway<C> {
         match dependency {
             Dependency::Vote(hash) => self.state.has_vote(hash),
             Dependency::Evidence(idx) => self.state.is_faulty(*idx),
+            Dependency::Endorsement(hash) => self.state.is_endorsed(hash),
         }
     }
 
@@ -285,6 +307,12 @@ impl<C: Context> Highway<C> {
                 Some(Fault::Indirect) => {
                     let vid = self.validators.id(*idx).expect("missing validator").clone();
                     GetDepOutcome::Evidence(vid)
+                }
+            },
+            Dependency::Endorsement(hash) => match self.state.opt_endorsements(hash) {
+                None => GetDepOutcome::None,
+                Some(e) => {
+                    GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(Endorsements::new(e))))
                 }
             },
         }
@@ -436,6 +464,17 @@ impl<C: Context> Highway<C> {
                     .ok_or(EvidenceError::UnknownPerpetrator)?;
                 Ok(evidence.validate(v_id, &self.instance_id)?)
             }
+            Vertex::Endorsements(endorsements) => {
+                let vote = *endorsements.vote();
+                for (v_id, signature) in endorsements.endorsers.iter() {
+                    let validator = self.validators.id(*v_id).ok_or(EndorsementError::Creator)?;
+                    let endorsement: Endorsement<C> = Endorsement::new(vote, *v_id, *signature);
+                    if !C::verify_signature(&endorsement.hash(), validator, &signature) {
+                        return Err(EndorsementError::Signature.into());
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -445,6 +484,11 @@ impl<C: Context> Highway<C> {
         match vertex {
             Vertex::Vote(vote) => Ok(self.state.validate_vote(vote)?),
             Vertex::Evidence(_evidence) => Ok(()),
+            Vertex::Endorsements(_endorsements) => {
+                // TODO: Validate against LNC.
+                // We can validate against LNC only after having downloaded all dependencies.
+                Ok(())
+            }
         }
     }
 

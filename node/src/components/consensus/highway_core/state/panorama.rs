@@ -81,9 +81,7 @@ impl<C: Context> Observation<C> {
     fn missing_dep(&self, state: &State<C>, idx: ValidatorIndex) -> Option<Dependency<C>> {
         match self {
             Observation::Faulty if !state.is_faulty(idx) => Some(Dependency::Evidence(idx)),
-            Observation::Correct(hash) if !state.has_vote(hash) => {
-                Some(Dependency::Vote(*hash))
-            }
+            Observation::Correct(hash) if !state.has_vote(hash) => Some(Dependency::Vote(*hash)),
             _ => None,
         }
     }

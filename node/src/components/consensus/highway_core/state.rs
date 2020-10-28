@@ -36,6 +36,8 @@ use crate::{
 use block::Block;
 use tallies::Tallies;
 
+use super::endorsement::{Endorsement, Endorsements};
+
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
     #[error("The vote is a ballot but doesn't cite any block.")]
@@ -121,6 +123,8 @@ pub(crate) struct State<C: Context> {
     faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
+    /// All current endorsements, by hash.
+    endorsement: HashMap<C::Hash, Vec<Endorsement<C>>>,
 }
 
 impl<C: Context> State<C> {
@@ -159,6 +163,7 @@ impl<C: Context> State<C> {
             blocks: HashMap::new(),
             faults,
             panorama,
+            endorsement: HashMap::new(),
         }
     }
 
@@ -211,9 +216,45 @@ impl<C: Context> State<C> {
         self.opt_fault(idx).and_then(Fault::evidence)
     }
 
+    /// Returns endorsements for `vote`, if any.
+    pub(crate) fn opt_endorsements(&self, vote: &C::Hash) -> Option<Vec<Endorsement<C>>> {
+        self.endorsement.get(vote).cloned()
+    }
+
     /// Returns whether evidence against validator nr. `idx` is known.
     pub(crate) fn has_evidence(&self, idx: ValidatorIndex) -> bool {
         self.opt_evidence(idx).is_some()
+    }
+
+    /// Returns whether we have all endorsements for `vote`.
+    pub(crate) fn has_all_endorsements<'a, I: IntoIterator<Item = &'a ValidatorIndex>>(
+        &self,
+        vote: &C::Hash,
+        v_ids: I,
+    ) -> bool {
+        self.endorsement
+            .get(vote)
+            .map(|v| {
+                v_ids
+                    .into_iter()
+                    .all(|v_id| v.get(v_id.0 as usize).is_some())
+            })
+            .unwrap_or_else(|| false)
+    }
+
+    /// Returns whether we have seen enough endorsements for the vote.
+    pub(crate) fn is_endorsed(&self, hash: &C::Hash) -> bool {
+        if let Some(endorsements) = self.endorsement.get(hash) {
+            // Stake required to consider vote being endorsed.
+            let threshold = self.total_weight() / 3 * 2;
+            let endorsed = endorsements.iter().fold(Weight(0), |acc, e| {
+                let v_id = e.validator_idx();
+                acc + self.weight(v_id)
+            });
+            endorsed >= threshold
+        } else {
+            false
+        }
     }
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
@@ -290,7 +331,7 @@ impl<C: Context> State<C> {
         let (vote, opt_value) = Vote::new(swvote, fork_choice.as_ref(), self);
         if let Some(value) = opt_value {
             let block = Block::new(fork_choice, value, self);
-            self.blocks.insert(hash.clone(), block);
+            self.blocks.insert(hash, block);
         }
         self.votes.insert(hash, vote);
     }
@@ -307,6 +348,22 @@ impl<C: Context> State<C> {
         info!(?evidence, "marking validator #{} as faulty", idx.0);
         self.faults.insert(idx, Fault::Direct(evidence));
         self.panorama[idx] = Observation::Faulty;
+    }
+
+    pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
+        let vote = *endorsements.vote();
+        let validator_count = self.validator_count();
+        info!("Received endorsements of {:?}", vote);
+        let entry = self
+            .endorsement
+            .entry(vote)
+            .or_insert_with(|| Vec::with_capacity(validator_count));
+        for (vid, signature) in endorsements.endorsers {
+            if !entry.iter().any(|e| e.validator_idx() == vid) {
+                let endorsement = Endorsement::new(vote, vid, signature);
+                entry.push(endorsement)
+            }
+        }
     }
 
     pub(crate) fn wire_vote(
@@ -483,7 +540,7 @@ impl<C: Context> State<C> {
                 // predecessor of wvote must be a predecessor of hash0. So we already have a
                 // conflicting vote with the same sequence number:
                 let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
-                let wvote0 = self.wire_vote(prev0, wvote.instance_id.clone()).unwrap();
+                let wvote0 = self.wire_vote(prev0, wvote.instance_id).unwrap();
                 self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
                 Observation::Faulty
             }

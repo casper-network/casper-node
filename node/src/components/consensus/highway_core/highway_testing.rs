@@ -13,6 +13,7 @@ use tracing::{trace, warn};
 
 use super::{
     active_validator::Effect,
+    endorsement::Endorsements,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FttExceeded},
     highway::{
@@ -127,6 +128,17 @@ impl Ord for HighwayMessage {
                     .cmp(&ev2_a.hash())
                     .then_with(|| ev1_b.hash().cmp(&ev2_b.hash())),
                 (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
+                (
+                    Vertex::Endorsements(Endorsements {
+                        vote: l_hash,
+                        endorsers: l_vid,
+                    }),
+                    Vertex::Endorsements(Endorsements {
+                        vote: r_hash,
+                        endorsers: r_vid,
+                    }),
+                ) => l_hash.cmp(r_hash).then_with(|| l_vid.cmp(r_vid)),
+                (Vertex::Endorsements(_), _) => std::cmp::Ordering::Less,
             },
             (HighwayMessage::RequestBlock(bc1), HighwayMessage::RequestBlock(bc2)) => bc1.cmp(&bc2),
             (HighwayMessage::WeEquivocated(ev1), HighwayMessage::WeEquivocated(ev2)) => {
