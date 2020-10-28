@@ -402,7 +402,7 @@ pub(crate) fn get_transfer_target(
     } else {
         return Err(Error::InvalidArgument(format!(
             "Invalid arguments to get_transfer_target - must provide either a target account or purse."
-        )))
+        )));
     }
 }
 
