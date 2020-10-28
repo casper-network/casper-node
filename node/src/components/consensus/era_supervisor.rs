@@ -206,6 +206,7 @@ where
         if self.active_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
         }
+        let last_era_id = self.current_era;
         self.current_era = era_id;
 
         let sum_stakes: Motes = validator_stakes.iter().map(|(_, stake)| *stake).sum();
@@ -245,12 +246,24 @@ where
         let ftt_percent = u128::from(self.highway_config().finality_threshold_percent);
         let ftt = ((total_weight * ftt_percent / 100) as u64).into();
 
+        let init_round_exp = self
+            .active_eras
+            .get(&last_era_id)
+            .and_then(|era| {
+                era.consensus
+                    .as_any()
+                    .downcast_ref::<HighwayProtocol<I, HighwayContext>>()
+            })
+            .and_then(|highway_proto| highway_proto.median_round_exp())
+            .unwrap_or(self.highway_config().minimum_round_exponent);
+
         // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
             seed,
             BLOCK_REWARD,
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
             self.highway_config().minimum_round_exponent,
+            init_round_exp,
             self.highway_config().minimum_era_height,
             start_time,
             start_time + self.highway_config().era_duration,

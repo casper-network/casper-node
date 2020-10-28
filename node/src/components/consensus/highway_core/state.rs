@@ -543,6 +543,19 @@ impl<C: Context> State<C> {
             Some(current)
         })
     }
+
+    /// Returns the median round exponent of all the validators that haven't been observed to be
+    /// malicious, as seen by the current panorama.
+    /// Returns none if there are no correct validators in the panorama.
+    pub(crate) fn median_round_exp(&self) -> Option<u8> {
+        let mut round_exponents: Vec<u8> = self
+            .panorama
+            .iter_correct(self)
+            .map(|vote| vote.round_exp)
+            .collect();
+        round_exponents.sort();
+        round_exponents.get(round_exponents.len() / 2).cloned()
+    }
 }
 
 /// Returns the round length, given the round exponent.
