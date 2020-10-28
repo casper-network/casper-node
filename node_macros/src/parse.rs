@@ -469,6 +469,8 @@ impl Parse for AnnouncementDefinition {
 pub(crate) enum Target {
     /// Discard whatever is being routed.
     Discard,
+    /// When anything is routed to this target, panic.
+    Panic,
     /// Forward to destination.
     Dest(Ident),
 }
@@ -477,7 +479,7 @@ impl Target {
     /// Returns a reference to the destination identifier if the target is a destination, or `None`.
     fn as_dest(&self) -> Option<&Ident> {
         match self {
-            Target::Discard => None,
+            Target::Discard | Target::Panic => None,
             Target::Dest(ident) => Some(ident),
         }
     }
@@ -486,7 +488,8 @@ impl Target {
 impl Debug for Target {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Target::Discard => write!(f, "!"),
+            Target::Discard => write!(f, "#"),
+            Target::Panic => write!(f, "!"),
             Target::Dest(id) => write!(f, "{}", id.to_string()),
         }
     }
@@ -496,6 +499,9 @@ impl Parse for Target {
     fn parse(input: ParseStream) -> Result<Self> {
         if input.peek(Token!(!)) {
             let _: Token!(!) = input.parse()?;
+            Ok(Target::Panic)
+        } else if input.peek(Token!(#)) {
+            let _: Token!(#) = input.parse()?;
             Ok(Target::Discard)
         } else {
             input.parse().map(Target::Dest)

@@ -101,7 +101,7 @@ The third section defines how requests are routed:
         StorageRequest -> component_a;
         NetworkRequest -> component_b;
         ThirdRequest -> component_a;
-        AnotherRequest -> !;
+        AnotherRequest -> #;
     }
 ```
 
@@ -110,7 +110,9 @@ In the example,
 * `StorageRequest`s are routed to `component_a`,
 * `NetworkRequest`s are routed to `component_b`,
 * `ThirdRequest`s are routed to `component_a` (note that multiple requests can be routed to a single component instance), and
-* `AnotherRequest` is discarded entirely.
+* `AnotherRequest` is discarded quietly.
+
+Instead of `#`, a request can be routed to `!`, which will panic once it receives a request.
 
 Routing a request `ExampleRequest` to an `example_target` means that
 
@@ -131,4 +133,4 @@ Announcements are routed almost exactly like requests
     }
 ```
 
-with the key difference being that instead of a single target, an announcement is routed to zero or more instead.
+with the key difference being that instead of a single target, an announcement is routed to zero or more instead. `!` and `#` can be used as targets the same way they are used with requests as well.

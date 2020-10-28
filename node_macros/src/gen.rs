@@ -220,6 +220,14 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                     },
                 ));
             }
+            Target::Panic => {
+                dispatches.push(quote!(
+                    #event_ident::#request_variant_ident(request) => {
+                        // Request is discarded.
+                        panic!("received request that was expressively marked panic: {:?}", request)
+                    },
+                ));
+            }
             Target::Dest(ref dest) => {
                 let dest_component_type = def.component(dest).full_component_type();
                 let dest_variant_ident = def.component(dest).variant_ident();
@@ -249,8 +257,13 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
         for target in announcement.targets() {
             match target {
                 Target::Discard => {
-                    // Don't do anything. TODO: Remove `Target` type and just store an ident in
-                    // intermediate representation.
+                    // Don't do anything.
+                }
+                Target::Panic => {
+                    announcement_dispatches.push(quote!(panic!(
+                        "announcement received that was expressively declard as panic: {:?}",
+                        announcement
+                    )));
                 }
                 Target::Dest(ref dest) => {
                     let dest_component_type = def.component(dest).full_component_type();
