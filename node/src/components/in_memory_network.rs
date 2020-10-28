@@ -462,15 +462,11 @@ where
     /// Creates a new in-memory network node.
     ///
     /// This function is an alias of `NetworkController::create_node_local`.
-    pub fn new<REv>(
-        event_queue: EventQueueHandle<REv>,
-        rng: &mut dyn CryptoRngCore,
-        controller: &mut NetworkController<P>,
-    ) -> Self
+    pub fn new<REv>(event_queue: EventQueueHandle<REv>, rng: &mut dyn CryptoRngCore) -> Self
     where
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
-        controller.create_node_local(event_queue, rng)
+        NetworkController::create_node(event_queue, rng)
     }
 
     /// Creates a new in-memory network node.
