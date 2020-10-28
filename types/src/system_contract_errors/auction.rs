@@ -141,6 +141,9 @@ impl TryFrom<u8> for Error {
             d if d == Error::MissingDelegations as u8 => Ok(Error::MissingDelegations),
             d if d == Error::MismatchedEraValidators as u8 => Ok(Error::MismatchedEraValidators),
             d if d == Error::MintReward as u8 => Ok(Error::MintReward),
+            d if d == Error::InvalidValidatorSlotsValue as u8 => {
+                Ok(Error::InvalidValidatorSlotsValue)
+            }
             _ => Err(TryFromU8ForError(())),
         }
     }
