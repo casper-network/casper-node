@@ -1,6 +1,6 @@
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_client::{DeployStrParams};
+use casper_client::DeployStrParams;
 
 use super::creation_common;
 use crate::{command::ClientCommand, common};

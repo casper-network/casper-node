@@ -14,8 +14,8 @@ use casper_node::{
             BlockIdentifier, GetBlock, GetBlockParams, GetStateRootHash, GetStateRootHashParams,
         },
         info::{GetDeploy, GetDeployParams},
-        state::{GetBalance, GetBalanceParams, GetItem, GetItemParams},
-        RpcWithOptionalParams, RpcWithParams, RPC_API_PATH,
+        state::{GetAuctionInfo, GetBalance, GetBalanceParams, GetItem, GetItemParams},
+        RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
     },
     types::{BlockHash, Deploy, DeployHash},
 };
@@ -131,6 +131,10 @@ impl RpcCall {
         Ok(response)
     }
 
+    pub(crate) fn get_auction_info(self) -> Result<JsonRpc> {
+        GetAuctionInfo::request(self)
+    }
+
     pub(crate) fn transfer(
         self,
         amount: U512,
@@ -171,7 +175,6 @@ impl RpcCall {
         SendDeploy::request_with_map_params(self, params)
     }
 
-    /// Puts a `Deploy` to the node.
     pub(crate) fn put_deploy(self, deploy: Deploy) -> Result<JsonRpc> {
         let params = PutDeployParams { deploy };
         PutDeploy::request_with_map_params(self, params)
@@ -302,6 +305,10 @@ impl RpcClient for GetStateRootHash {
 
 impl RpcClient for GetItem {
     const RPC_METHOD: &'static str = <Self as RpcWithParams>::METHOD;
+}
+
+impl RpcClient for GetAuctionInfo {
+    const RPC_METHOD: &'static str = Self::METHOD;
 }
 
 pub(crate) trait IntoJsonMap: Serialize {

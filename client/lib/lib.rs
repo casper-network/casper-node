@@ -122,6 +122,19 @@ pub fn get_balance(
     RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_balance(state_root_hash, purse_uref)
 }
 
+/// Gets the bids and validators as of the most recently added block.
+///
+/// * `maybe_rpc_id` is used for RPC-ID as required by the JSON-RPC specification, and is returned
+///   by the node in the corresponding response.  It must be either able to be parsed as a `u32` or
+///   empty.  If empty, a random ID will be assigned.
+/// * `node_address` identifies the network address of the target node's HTTP server, e.g.
+///   `"http://127.0.0.1:7777"`.
+/// * When `verbose` is `true`, the request will be printed to `stdout`.
+/// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
+pub fn get_auction_info(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_auction_info()
+}
+
 /// Reads a previously-saved `Deploy` from file, and sends that to the node.
 ///
 /// * `maybe_rpc_id` is used for RPC-ID as required by the JSON-RPC specification, and is returned

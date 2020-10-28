@@ -6,7 +6,7 @@ use std::{convert::TryFrom, process};
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
 
-use casper_client::{PaymentStrParams, SessionStrParams, cl_type};
+use casper_client::{cl_type, PaymentStrParams, SessionStrParams};
 use casper_node::crypto::asymmetric_key::PublicKey as NodePublicKey;
 use casper_types::{account::AccountHash, AccessRights, Key, URef};
 

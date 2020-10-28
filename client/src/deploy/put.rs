@@ -1,6 +1,6 @@
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_client::{DeployStrParams};
+use casper_client::DeployStrParams;
 use casper_node::rpcs::account::PutDeploy;
 
 use super::creation_common::{self, DisplayOrder};
@@ -51,7 +51,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
                 chain_name,
             },
             session_str_params,
-            payment_str_params
+            payment_str_params,
         )
         .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
     }

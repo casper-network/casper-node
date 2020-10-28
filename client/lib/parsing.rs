@@ -11,7 +11,7 @@ use casper_node::{
         asymmetric_key::{PublicKey as NodePublicKey, SecretKey},
         hash::Digest,
     },
-    types::{TimeDiff, Timestamp, DeployHash},
+    types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
     bytesrepr, CLType, CLValue, ContractHash, Key, NamedArg, RuntimeArgs, UIntParseError, URef,
@@ -400,7 +400,6 @@ fn parse_contract_hash(value: &str) -> Result<ContractHash> {
     }
     Err(Error::FailedToParseKey)
 }
-
 
 fn hash(value: &str) -> Result<ContractHash> {
     parse_contract_hash(value)
