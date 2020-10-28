@@ -142,7 +142,12 @@ pub(super) fn session_str_params<'a>(matches: &'a ArgMatches) -> SessionStrParam
     let session_args_simple = arg_simple::session::get(matches);
     let session_args_complex = args_complex::session::get(matches);
     if let Some(session_path) = session_path::get(matches) {
-        return SessionStrParams::with_path(session_path, session_entry_point, session_args_simple, session_args_complex);
+        return SessionStrParams::with_path(
+            session_path,
+            session_entry_point,
+            session_args_simple,
+            session_args_complex,
+        );
     }
     if let Some(session_hash) = session_hash::get(matches) {
         return SessionStrParams::with_hash(
@@ -190,7 +195,12 @@ pub(super) fn payment_str_params<'a>(matches: &'a ArgMatches) -> PaymentStrParam
     let payment_args_simple = arg_simple::payment::get(matches);
     let payment_args_complex = args_complex::payment::get(matches);
     if let Some(payment_path) = payment_path::get(matches) {
-        return PaymentStrParams::with_path(payment_path, payment_entry_point, payment_args_simple, payment_args_complex);
+        return PaymentStrParams::with_path(
+            payment_path,
+            payment_entry_point,
+            payment_args_simple,
+            payment_args_complex,
+        );
     }
     if let Some(payment_hash) = payment_hash::get(matches) {
         return PaymentStrParams::with_hash(
@@ -236,7 +246,6 @@ pub(super) mod timestamp {
 
     const ARG_NAME: &str = "timestamp";
     const ARG_VALUE_NAME: &str = "TIMESTAMP";
-    const ARG_HELP: &str =
     const ARG_HELP: &str =
         "RFC3339-like formatted timestamp, e.g. '2018-02-16 00:31:37'. If not provided, the \
         current time will be used. Note that timestamp is UTC, not local. See \
