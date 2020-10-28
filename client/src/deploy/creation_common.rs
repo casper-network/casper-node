@@ -237,8 +237,8 @@ pub(super) mod timestamp {
     const ARG_NAME: &str = "timestamp";
     const ARG_VALUE_NAME: &str = "TIMESTAMP";
     const ARG_HELP: &str =
-        "RFC3339-like formatted timestamp, surrounded by single-quotes. e.g. `'2018-02-16T00:31:37Z'`. If not provided, the current time will be used. \
-        See https://docs.rs/humantime/latest/humantime/fn.parse_rfc3339_weak.html for more information.";
+        "RFC3339-like formatted timestamp, surrounded by quotes (\"\" or ''). e.g. `'2018-02-16T00:31:37Z'`. If not provided, the \
+        current time will be used. See https://docs.rs/humantime/latest/humantime/fn.parse_rfc3339_weak.html for more information.";
 
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
