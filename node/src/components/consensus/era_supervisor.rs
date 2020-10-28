@@ -236,7 +236,7 @@ where
             validator_stakes.into_iter().map(scale_stake).collect();
 
         let slashed = era_id
-            .iter_other_bonded(self.bonded_eras)
+            .iter_other(self.bonded_eras)
             .flat_map(|e_id| &self.active_eras[&e_id].newly_slashed)
             .chain(&newly_slashed)
             .cloned()
@@ -722,7 +722,7 @@ where
                 effects
             }
             ConsensusProtocolResult::SendEvidence(sender, pub_key) => era_id
-                .iter_other_bonded(self.era_supervisor.bonded_eras)
+                .iter_other(self.era_supervisor.bonded_eras)
                 .flat_map(|e_id| {
                     self.delegate_to_era(e_id, |consensus, _| {
                         consensus.request_evidence(sender.clone(), &pub_key)
