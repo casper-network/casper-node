@@ -61,6 +61,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         params: Params,
         ftt: Weight,
     ) -> Self {
+        let min_round_exp = params.min_round_exp();
         let round_exp = params.init_round_exp();
         let start_timestamp = params.start_timestamp();
         HighwayProtocol {
@@ -69,7 +70,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
             vertices_to_be_added_later: BTreeMap::new(),
-            round_success_meter: RoundSuccessMeter::new(round_exp, round_exp, start_timestamp),
+            round_success_meter: RoundSuccessMeter::new(round_exp, min_round_exp, start_timestamp),
         }
     }
 
@@ -304,6 +305,13 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         satisfied_deps
             .into_iter()
             .flat_map(move |dep| self.vertex_deps.remove(&dep).unwrap())
+    }
+
+    /// Returns the median round exponent of all the validators that haven't been observed to be
+    /// malicious, as seen by the current panorama.
+    /// Returns `None` if there are no correct validators in the panorama.
+    pub(crate) fn median_round_exp(&self) -> Option<u8> {
+        self.highway.state().median_round_exp()
     }
 }
 

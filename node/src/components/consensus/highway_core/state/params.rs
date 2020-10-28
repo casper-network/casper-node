@@ -30,11 +30,13 @@ impl Params {
     /// * `end_height`, `end_timestamp`: The last block will be the first one that has at least the
     ///   specified height _and_ is no earlier than the specified timestamp. No children of this
     ///   block can be proposed.
+    #[allow(clippy::too_many_arguments)] // FIXME
     pub(crate) fn new(
         seed: u64,
         block_reward: u64,
         reduced_block_reward: u64,
         min_round_exp: u8,
+        init_round_exp: u8,
         end_height: u64,
         start_timestamp: Timestamp,
         end_timestamp: Timestamp,
@@ -48,7 +50,7 @@ impl Params {
             block_reward,
             reduced_block_reward,
             min_round_exp,
-            init_round_exp: min_round_exp, // TODO: The median seen by previous era's switch block?
+            init_round_exp,
             end_height,
             start_timestamp,
             end_timestamp,
