@@ -22,6 +22,7 @@ mod rpc;
 pub mod cl_type;
 pub mod keygen;
 pub use error::Error;
+pub use deploy::ListDeploysResult;
 
 use std::convert::TryInto;
 
@@ -151,25 +152,6 @@ pub fn send_deploy_file(
     input_path: &str,
 ) -> Result<JsonRpc> {
     RpcCall::new(maybe_rpc_id, node_address, verbose)?.send_deploy_file(input_path)
-}
-
-/// Lists `Deploy`s included in the specified `Block`.
-///
-/// * `maybe_rpc_id` is used for RPC-ID as required by the JSON-RPC specification, and is returned
-///   by the node in the corresponding response.  It must be either able to be parsed as a `u32` or
-///   empty.  If empty, a random ID will be assigned.
-/// * `node_address` identifies the network address of the target node's HTTP server, e.g.
-///   `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the request will be printed to `stdout`.
-/// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the block
-///   height or empty.  If empty, the latest block will be used.
-pub fn list_deploys(
-    maybe_rpc_id: &str,
-    node_address: &str,
-    verbose: bool,
-    maybe_block_id: &str,
-) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.list_deploys(maybe_block_id)
 }
 
 /// Gets a `Block` from the node.
@@ -402,9 +384,21 @@ impl<'a> PaymentStrParams<'a> {
     /// Construct PaymentStrParams from a file.
     ///
     /// * `payment_path` is the path to the compiled Wasm payment code.
-    pub fn with_path(payment_path: &'a str) -> Self {
+    /// * `payment_entry_point` is the name of the method that will be used when calling the payment
+    ///   contract.
+    /// * See `Self::with_name` for a description of `payment_args_simple` and
+    ///   `payment_args_complex`.
+    pub fn with_path(
+        payment_path: &'a str,
+        payment_entry_point: &'a str,
+        payment_args_simple: Vec<&'a str>,
+        payment_args_complex: &'a str,
+    ) -> Self {
         Self {
             payment_path,
+            payment_entry_point,
+            payment_args_simple,
+            payment_args_complex,
             ..Default::default()
         }
     }
@@ -575,9 +569,21 @@ impl<'a> SessionStrParams<'a> {
     /// Construct a SessionStrParams from a file.
     ///
     /// * `session_path` is the path to the compiled Wasm session code.
-    pub fn with_path(session_path: &'a str) -> Self {
+    /// * `session_entry_point` is the name of the method that will be used when calling the session
+    ///   contract.
+    /// * See `Self::with_name` for a description of `session_args_simple` and
+    ///   `session_args_complex`.
+    pub fn with_path(
+        session_path: &'a str,
+        session_entry_point: &'a str,
+        session_args_simple: Vec<&'a str>,
+        session_args_complex: &'a str,
+    ) -> Self {
         Self {
             session_path,
+            session_entry_point,
+            session_args_simple,
+            session_args_complex,
             ..Default::default()
         }
     }

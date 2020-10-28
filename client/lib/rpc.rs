@@ -22,7 +22,7 @@ use casper_node::{
 use casper_types::{bytesrepr::ToBytes, Key, RuntimeArgs, URef, U512};
 
 use crate::{
-    deploy::{DeployExt, DeployParams, ListDeploys, SendDeploy, Transfer},
+    deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
     error::{Error, Result},
     merkle_proofs,
 };
@@ -178,16 +178,6 @@ impl RpcCall {
     pub(crate) fn put_deploy(self, deploy: Deploy) -> Result<JsonRpc> {
         let params = PutDeployParams { deploy };
         PutDeploy::request_with_map_params(self, params)
-    }
-
-    pub(crate) fn list_deploys(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
-        match Self::block_identifier(maybe_block_identifier)? {
-            Some(block_identifier) => {
-                let params = GetBlockParams { block_identifier };
-                ListDeploys::request_with_map_params(self, params)
-            }
-            None => ListDeploys::request(self),
-        }
     }
 
     pub(crate) fn get_block(self, maybe_block_identifier: &str) -> Result<JsonRpc> {

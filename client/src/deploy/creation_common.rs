@@ -138,12 +138,12 @@ pub(super) mod show_arg_examples {
 }
 
 pub(super) fn session_str_params<'a>(matches: &'a ArgMatches) -> SessionStrParams<'a> {
-    if let Some(session_path) = session_path::get(matches) {
-        return SessionStrParams::with_path(session_path);
-    }
     let session_entry_point = session_entry_point::get(matches);
     let session_args_simple = arg_simple::session::get(matches);
     let session_args_complex = args_complex::session::get(matches);
+    if let Some(session_path) = session_path::get(matches) {
+        return SessionStrParams::with_path(session_path, session_entry_point, session_args_simple, session_args_complex);
+    }
     if let Some(session_hash) = session_hash::get(matches) {
         return SessionStrParams::with_hash(
             session_hash,
@@ -186,12 +186,12 @@ pub(super) fn payment_str_params<'a>(matches: &'a ArgMatches) -> PaymentStrParam
     if let Some(payment_amount) = standard_payment_amount::get(matches) {
         return PaymentStrParams::with_amount(payment_amount);
     }
-    if let Some(payment_path) = payment_path::get(matches) {
-        return PaymentStrParams::with_path(payment_path);
-    }
     let payment_entry_point = payment_entry_point::get(matches);
     let payment_args_simple = arg_simple::payment::get(matches);
     let payment_args_complex = args_complex::payment::get(matches);
+    if let Some(payment_path) = payment_path::get(matches) {
+        return PaymentStrParams::with_path(payment_path, payment_entry_point, payment_args_simple, payment_args_complex);
+    }
     if let Some(payment_hash) = payment_hash::get(matches) {
         return PaymentStrParams::with_hash(
             payment_hash,

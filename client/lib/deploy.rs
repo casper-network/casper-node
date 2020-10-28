@@ -9,12 +9,7 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
     crypto::asymmetric_key::SecretKey,
-    rpcs::{
-        account::PutDeploy,
-        chain::{GetBlock, GetBlockResult},
-        info::GetDeploy,
-        RpcWithOptionalParams, RpcWithParams,
-    },
+    rpcs::{account::PutDeploy, chain::GetBlockResult, info::GetDeploy, RpcWithParams},
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
 
@@ -28,9 +23,6 @@ pub(crate) struct SendDeploy;
 
 /// Transfer allows transferring an amount between accounts.
 pub(crate) struct Transfer {}
-
-/// ListDeploys gets a list of the deploys within a block.
-pub(crate) struct ListDeploys {}
 
 impl RpcClient for PutDeploy {
     const RPC_METHOD: &'static str = Self::METHOD;
@@ -46,10 +38,6 @@ impl RpcClient for SendDeploy {
 
 impl RpcClient for Transfer {
     const RPC_METHOD: &'static str = PutDeploy::METHOD;
-}
-
-impl RpcClient for ListDeploys {
-    const RPC_METHOD: &'static str = GetBlock::METHOD;
 }
 
 /// Result for "chain_get_block" RPC response.

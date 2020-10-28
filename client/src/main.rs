@@ -18,10 +18,10 @@ use casper_node::rpcs::{
     state::{GetAuctionInfo, GetBalance, GetItem as QueryState},
 };
 
-use deploy::{MakeDeploy, SendDeploy, SignDeploy};
+use deploy::{MakeDeploy, SendDeploy, SignDeploy, ListDeploys};
 
 use command::ClientCommand;
-use deploy::{ListDeploys, Transfer};
+use deploy::{Transfer};
 use generate_completion::GenerateCompletion;
 use keygen::Keygen;
 
