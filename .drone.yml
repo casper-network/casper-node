@@ -125,25 +125,24 @@ kind: pipeline
 name: package
 
 steps:
-
 - name: build-deb
   image: casperlabs/node-build-u1804:latest
   commands:
-    - "make deb"
+  - "make deb"
 
 - name: test-deb
   image: casperlabs/node-build-u1804:latest
   commands:
-    - "export DRONE_DIR=$(pwd)"
-    - "./ci/test_deb.sh casper-node"
-    - "./ci/test_deb.sh casper-client"
+  - "export DRONE_DIR=$(pwd)"
+  - "./ci/test_deb.sh casper-node"
+  - "./ci/test_deb.sh casper-client"
   depends_on:
-    - build-deb
+  - build-deb
 
 - name: build-wasm-package-push-to-s3
   image: casperlabs/s3cmd-build:latest
   commands:
-    - "./build_wasm_package.sh"
+  - "./build_wasm_package.sh"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -161,7 +160,7 @@ steps:
 # we want to publish to the test repo, only when code is pushed to master or release-* branch.
 # bors should make sure, that it has passed on staging or trying branches
 - name: publish-test-bintray
-  <<: casperlabs/node-build-u1804:latest
+  image: casperlabs/node-build-u1804:latest
   commands:
   - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
   - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
@@ -179,18 +178,12 @@ steps:
   depends_on:
   - test-deb
 
-
-volumes:
-  - name: cache
-    host:
-      path: /tmp/cache
-
 trigger:
   branch:
-    - master
-    - trying
-    - staging
-    - "release-*"
+  - master
+  - trying
+  - staging
+  - "release-*"
 
 ---
 # Anchor for default buildenv
