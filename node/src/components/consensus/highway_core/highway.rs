@@ -517,7 +517,7 @@ impl<C: Context> Highway<C> {
             .state
             .opt_evidence(creator)
             .map(|ev| vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(ev.clone())))])
-            .unwrap_or_else(|| vec![]);
+            .unwrap_or_default();
         evidence_effects.extend(self.on_new_vote(&vote_hash, now, rng));
         evidence_effects
     }
