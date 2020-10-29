@@ -95,13 +95,13 @@ global = 390_000
 # Control flow operations multiplier.
 control_flow = 440_000
 # Integer operations multiplier.
-integer_comparsion = 1
+integer_comparsion = 250_000
 # Conversion operations multiplier.
-conversion = 1
+conversion = 420_000
 # Unreachable operation multiplier.
-unreachable = 1
+unreachable = 270_000
 # Nop operation multiplier.
-nop = 1
+nop = 200_000
 # Get current memory operation multiplier.
 current_memory = 290_000
 # Grow memory cost, per page (64kb)
