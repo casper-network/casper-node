@@ -47,11 +47,6 @@ steps:
   settings:
     restore: true
 
-- name: build-deb-update-revision
-  <<: *buildenv
-  commands:
-    - "./update-rev.sh"
-
 - name: cargo-fmt
   <<: *buildenv
   commands:
@@ -125,6 +120,11 @@ kind: pipeline
 name: package
 
 steps:
+- name: build-deb-update-revision
+  image: casperlabs/node-build-u1804:latest
+  commands:
+  - "./update-rev.sh"
+
 - name: build-deb
   image: casperlabs/node-build-u1804:latest
   commands:
@@ -133,9 +133,8 @@ steps:
 - name: test-deb
   image: casperlabs/node-build-u1804:latest
   commands:
-  - "export DRONE_DIR=$(pwd)"
-  - "./ci/test_deb.sh casper-node"
-  - "./ci/test_deb.sh casper-client"
+  - "./ci/test_deb.sh $(pwd) casper-node"
+  - "./ci/test_deb.sh $(pwd) casper-client"
   depends_on:
   - build-deb
 
