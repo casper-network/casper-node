@@ -246,9 +246,9 @@ impl<C: Context> Highway<C> {
         if !self.has_vertex(&vertex) {
             match vertex {
                 Vertex::Vote(vote) => self.add_valid_vote(vote, now, rng),
-                Vertex::Evidence(evidence) => {
-                    self.state.add_evidence(evidence);
-                    vec![]
+                Vertex::Evidence(ref evidence) => {
+                    self.state.add_evidence(evidence.clone());
+                    vec![Effect::NewVertex(ValidVertex(vertex))]
                 }
                 Vertex::Endorsements(endorsements) => {
                     self.state.add_endorsements(endorsements);
