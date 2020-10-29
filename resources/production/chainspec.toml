@@ -23,7 +23,7 @@ auction_installer_path = '/etc/casper/wasm/auction_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the CSV file containing initial account balances and bonds.
 accounts_path = '/etc/casper/accounts.csv'
 # Number of slots available in validator auction.
-validator_slots = 15
+validator_slots = 25
 
 [highway]
 # Tick unit is milliseconds.
