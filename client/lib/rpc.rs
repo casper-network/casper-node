@@ -181,13 +181,16 @@ impl RpcCall {
     }
 
     pub(crate) fn get_block(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
-        match Self::block_identifier(maybe_block_identifier)? {
+        let maybe_block_identifier = Self::block_identifier(maybe_block_identifier)?;
+        let response = match maybe_block_identifier {
             Some(block_identifier) => {
                 let params = GetBlockParams { block_identifier };
                 GetBlock::request_with_map_params(self, params)
             }
             None => GetBlock::request(self),
-        }
+        }?;
+        merkle_proofs::validate_get_block_response(&response, &maybe_block_identifier)?;
+        Ok(response)
     }
 
     fn block_identifier(maybe_block_identifier: &str) -> Result<Option<BlockIdentifier>> {
