@@ -32,6 +32,7 @@ use crate::{
         traits::Context,
     },
     types::{TimeDiff, Timestamp},
+    utils::weighted_median,
 };
 use block::Block;
 use tallies::Tallies;
@@ -495,12 +496,11 @@ impl<C: Context> State<C> {
         }
         let r_id = round_id(timestamp, wvote.round_exp);
         let opt_prev_vote = panorama[creator].correct().map(|vh| self.vote(vh));
-        let prev_round_exp = opt_prev_vote.map_or(self.params.init_round_exp(), |v| v.round_exp);
         if let Some(prev_vote) = opt_prev_vote {
-            if prev_round_exp != wvote.round_exp {
+            if prev_vote.round_exp != wvote.round_exp {
                 // The round exponent must not change within a round: Even with respect to the
                 // greater of the two exponents, a round boundary must be between the votes.
-                let max_re = prev_round_exp.max(wvote.round_exp);
+                let max_re = prev_vote.round_exp.max(wvote.round_exp);
                 if prev_vote.timestamp >> max_re == timestamp >> max_re {
                     return Err(VoteError::RoundLength);
                 }
@@ -617,6 +617,17 @@ impl<C: Context> State<C> {
             next = self.block(current).parent();
             Some(current)
         })
+    }
+
+    /// Returns the median round exponent of all the validators that haven't been observed to be
+    /// malicious, as seen by the current panorama.
+    /// Returns `None` if there are no correct validators in the panorama.
+    pub(crate) fn median_round_exp(&self) -> Option<u8> {
+        weighted_median(
+            self.panorama
+                .iter_correct(self)
+                .map(|vote| (vote.round_exp, self.weight(vote.creator))),
+        )
     }
 }
 

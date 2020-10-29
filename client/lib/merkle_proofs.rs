@@ -44,7 +44,7 @@ impl From<bytesrepr::Error> for ValidateResponseError {
     }
 }
 
-pub fn validate_query_response(
+pub(crate) fn validate_query_response(
     response: &JsonRpc,
     state_root_hash: &Digest,
     key: &Key,
@@ -104,7 +104,7 @@ pub fn validate_query_response(
     .map_err(Into::into)
 }
 
-pub fn validate_get_balance_response(
+pub(crate) fn validate_get_balance_response(
     response: &JsonRpc,
     state_root_hash: &Digest,
     key: &Key,

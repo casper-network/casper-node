@@ -243,9 +243,7 @@ impl HighwayValidator {
         &self.highway
     }
 
-    fn run_finality(
-        &mut self,
-    ) -> Result<Vec<FinalizedBlock<ConsensusValue, ValidatorId>>, FttExceeded> {
+    fn run_finality(&mut self) -> Result<Vec<FinalizedBlock<TestContext>>, FttExceeded> {
         Ok(self.finality_detector.run(&self.highway)?.collect())
     }
 
@@ -886,6 +884,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     seed,
                     TEST_BLOCK_REWARD,
                     TEST_REDUCED_BLOCK_REWARD,
+                    TEST_MIN_ROUND_EXP,
                     TEST_MIN_ROUND_EXP,
                     TEST_END_HEIGHT,
                     Timestamp::now(),

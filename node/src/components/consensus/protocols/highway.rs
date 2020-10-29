@@ -4,7 +4,6 @@ use std::{
     any::Any,
     collections::{BTreeMap, HashMap},
     fmt::Debug,
-    rc::Rc,
 };
 
 use datasize::DataSize;
@@ -16,7 +15,6 @@ use self::round_success_meter::RoundSuccessMeter;
 
 use crate::{
     components::consensus::{
-        candidate_block::CandidateBlock,
         consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
         highway_core::{
             active_validator::Effect as AvEffect,
@@ -27,11 +25,7 @@ use crate::{
             validators::Validators,
             Weight,
         },
-        traits::{Context, NodeIdT, ValidatorSecret},
-    },
-    crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey, Signature},
-        hash::{self, Digest},
+        traits::{Context, NodeIdT},
     },
     types::{CryptoRngCore, Timestamp},
 };
@@ -61,6 +55,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         params: Params,
         ftt: Weight,
     ) -> Self {
+        let min_round_exp = params.min_round_exp();
         let round_exp = params.init_round_exp();
         let start_timestamp = params.start_timestamp();
         HighwayProtocol {
@@ -69,7 +64,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
             vertices_to_be_added_later: BTreeMap::new(),
-            round_success_meter: RoundSuccessMeter::new(round_exp, round_exp, start_timestamp),
+            round_success_meter: RoundSuccessMeter::new(round_exp, min_round_exp, start_timestamp),
         }
     }
 
@@ -305,6 +300,13 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             .into_iter()
             .flat_map(move |dep| self.vertex_deps.remove(&dep).unwrap())
     }
+
+    /// Returns the median round exponent of all the validators that haven't been observed to be
+    /// malicious, as seen by the current panorama.
+    /// Returns `None` if there are no correct validators in the panorama.
+    pub(crate) fn median_round_exp(&self) -> Option<u8> {
+        self.highway.state().median_round_exp()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -317,10 +319,9 @@ enum HighwayMessage<C: Context> {
     RequestDependency(Dependency<C>),
 }
 
-type CpResult<I, C> =
-    ConsensusProtocolResult<I, <C as Context>::ConsensusValue, <C as Context>::ValidatorId>;
+type CpResult<I, C> = ConsensusProtocolResult<I, C>;
 
-impl<I, C> ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId> for HighwayProtocol<I, C>
+impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
 where
     I: NodeIdT,
     C: Context + 'static,
@@ -474,52 +475,5 @@ where
 
     fn as_any(&self) -> &dyn Any {
         self
-    }
-}
-
-pub(crate) struct HighwaySecret {
-    secret_key: Rc<SecretKey>,
-    public_key: PublicKey,
-}
-
-impl HighwaySecret {
-    pub(crate) fn new(secret_key: Rc<SecretKey>, public_key: PublicKey) -> Self {
-        Self {
-            secret_key,
-            public_key,
-        }
-    }
-}
-
-impl ValidatorSecret for HighwaySecret {
-    type Hash = Digest;
-    type Signature = Signature;
-
-    fn sign(&self, hash: &Digest, rng: &mut dyn CryptoRngCore) -> Signature {
-        asymmetric_key::sign(hash, self.secret_key.as_ref(), &self.public_key, rng)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct HighwayContext;
-
-impl Context for HighwayContext {
-    type ConsensusValue = CandidateBlock;
-    type ValidatorId = PublicKey;
-    type ValidatorSecret = HighwaySecret;
-    type Signature = Signature;
-    type Hash = Digest;
-    type InstanceId = Digest;
-
-    fn hash(data: &[u8]) -> Digest {
-        hash::hash(data)
-    }
-
-    fn verify_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
-        if let Err(error) = asymmetric_key::verify(hash, signature, public_key) {
-            info!(%error, %signature, %public_key, %hash, "failed to validate signature");
-            return false;
-        }
-        true
     }
 }
