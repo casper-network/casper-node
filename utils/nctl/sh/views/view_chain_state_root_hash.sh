@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# Renders a network faucet account key.
+# Renders a state root hash.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
+#   Node ordinal identifier.
 
 # Import utils.
 source $NCTL/sh/utils/misc.sh

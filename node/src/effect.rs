@@ -105,7 +105,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
-        BlockLike, Deploy, DeployHash, FinalizedBlock, Item, ProtoBlock,
+        BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock, Item, ProtoBlock,
     },
     utils::Source,
     Chainspec,
@@ -576,7 +576,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_linear_chain_block(
         self,
         block: Block,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     ) where
         REv: From<BlockExecutorAnnouncement>,
     {

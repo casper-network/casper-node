@@ -198,7 +198,9 @@ mod tests {
             TEST_BLOCK_REWARD,
             TEST_BLOCK_REWARD / 5,
             3,
+            3,
             u64::MAX,
+            Timestamp::from(u64::MAX),
             Timestamp::from(u64::MAX),
         );
         let weights = &[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)];

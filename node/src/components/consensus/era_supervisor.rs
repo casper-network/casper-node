@@ -37,13 +37,14 @@ use crate::{
         chainspec_loader::{Chainspec, HighwayConfig},
         consensus::{
             candidate_block::CandidateBlock,
+            cl_context::{ClContext, Keypair},
             consensus_protocol::{
                 BlockContext, ConsensusProtocol, ConsensusProtocolResult, EraEnd,
                 FinalizedBlock as CpFinalizedBlock,
             },
             highway_core::{highway::Params, validators::Validators},
             metrics::ConsensusMetrics,
-            protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
+            protocols::highway::HighwayProtocol,
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
         },
@@ -202,7 +203,7 @@ where
         start_time: Timestamp,
         start_height: u64,
         state_root_hash: hash::Digest,
-    ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>> {
+    ) -> Vec<ConsensusProtocolResult<I, ClContext>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
         }
@@ -213,14 +214,28 @@ where
             !sum_stakes.value().is_zero(),
             "cannot start era with total weight 0"
         );
+
+        let init_round_exp = era_id
+            .checked_sub(1)
+            .and_then(|last_era_id| self.active_eras.get(&last_era_id))
+            .and_then(|era| {
+                era.consensus
+                    .as_any()
+                    .downcast_ref::<HighwayProtocol<I, ClContext>>()
+            })
+            .and_then(|highway_proto| highway_proto.median_round_exp())
+            .unwrap_or(self.highway_config().minimum_round_exponent);
+
         info!(
             ?validator_stakes,
             %start_time,
             %timestamp,
             %start_height,
             era = era_id.0,
+            %init_round_exp,
             "starting era",
         );
+
         // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
         // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
         let scaling_factor = (sum_stakes.value() + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
@@ -251,7 +266,9 @@ where
             BLOCK_REWARD,
             BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
             self.highway_config().minimum_round_exponent,
+            init_round_exp,
             self.highway_config().minimum_era_height,
+            start_time,
             start_time + self.highway_config().era_duration,
         );
 
@@ -281,7 +298,7 @@ where
             true
         };
 
-        let mut highway = HighwayProtocol::<I, HighwayContext>::new(
+        let mut highway = HighwayProtocol::<I, ClContext>::new(
             instance_id(&self.chainspec, state_root_hash, start_height),
             validators,
             params,
@@ -289,8 +306,8 @@ where
         );
 
         let results = if should_activate {
-            let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
-            highway.activate_validator(our_id, secret, timestamp.max(start_time))
+            let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
+            highway.activate_validator(our_id, secret, params, timestamp)
         } else {
             Vec::new()
         };
@@ -347,9 +364,9 @@ where
     fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
     where
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, CandidateBlock, PublicKey>,
+            &mut dyn ConsensusProtocol<I, ClContext>,
             &mut dyn CryptoRngCore,
-        ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>>,
+        ) -> Vec<ConsensusProtocolResult<I, ClContext>>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
@@ -569,7 +586,7 @@ where
 
     fn handle_consensus_results<T>(&mut self, era_id: EraId, results: T) -> Effects<Event<I>>
     where
-        T: IntoIterator<Item = ConsensusProtocolResult<I, CandidateBlock, PublicKey>>,
+        T: IntoIterator<Item = ConsensusProtocolResult<I, ClContext>>,
     {
         results
             .into_iter()
@@ -598,7 +615,7 @@ where
     fn handle_consensus_result(
         &mut self,
         era_id: EraId,
-        consensus_result: ConsensusProtocolResult<I, CandidateBlock, PublicKey>,
+        consensus_result: ConsensusProtocolResult<I, ClContext>,
     ) -> Effects<Event<I>> {
         match consensus_result {
             ConsensusProtocolResult::InvalidIncomingMessage(_, sender, error) => {
@@ -639,11 +656,16 @@ where
                 timestamp,
                 height,
                 rewards,
+                equivocators,
                 proposer,
             }) => {
+                self.era_mut(era_id).add_accusations(&equivocators);
+                self.era_mut(era_id).add_accusations(value.accusations());
+                // If this is the era's last block, it contains rewards. Everyone who is accused in
+                // the block or seen as equivocating via the consensus protocol gets slashed.
                 let era_end = rewards.map(|rewards| EraEnd {
-                    equivocators: value.accusations().clone(),
                     rewards,
+                    equivocators: self.era(era_id).accusations(),
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.proto_block().clone(),

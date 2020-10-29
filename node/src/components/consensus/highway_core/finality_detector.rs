@@ -49,10 +49,7 @@ impl<C: Context> FinalityDetector<C> {
     pub(crate) fn run<'a>(
         &'a mut self,
         highway: &'a Highway<C>,
-    ) -> Result<
-        impl Iterator<Item = FinalizedBlock<C::ConsensusValue, C::ValidatorId>> + 'a,
-        FttExceeded,
-    > {
+    ) -> Result<impl Iterator<Item = FinalizedBlock<C>> + 'a, FttExceeded> {
         let state = highway.state();
         let fault_w = state.faulty_weight();
         if fault_w >= self.ftt || fault_w > (state.total_weight() - Weight(1)) / 2 {
@@ -71,12 +68,14 @@ impl<C: Context> FinalityDetector<C> {
             } else {
                 None
             };
+            let faulty_iter = vote.panorama.enumerate().filter(|(_, obs)| obs.is_faulty());
 
             Some(FinalizedBlock {
                 value: block.value.clone(),
                 timestamp: vote.timestamp,
                 height: block.height,
                 rewards,
+                equivocators: faulty_iter.map(|(vidx, _)| to_id(vidx)).collect(),
                 proposer: to_id(vote.creator),
             })
         }))
@@ -111,7 +110,12 @@ impl<C: Context> FinalityDetector<C> {
     /// Returns the number of levels of the highest summit with a quorum that a `target_lvl` summit
     /// would need for the desired FTT. If the returned number is `target_lvl` that means the
     /// `candidate` is finalized. If not, we need to retry with a lower `target_lvl`.
-    fn find_summit(&self, target_lvl: usize, candidate: &C::Hash, state: &State<C>) -> usize {
+    pub(crate) fn find_summit(
+        &self,
+        target_lvl: usize,
+        candidate: &C::Hash,
+        state: &State<C>,
+    ) -> usize {
         let total_w = state.total_weight();
         let quorum = self.quorum_for_lvl(target_lvl, total_w);
         let latest = state.panorama().iter().map(Observation::correct).collect();

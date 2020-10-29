@@ -562,6 +562,7 @@ where
     Self: Sized + 'static,
 {
     type Event = Event<S>;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,

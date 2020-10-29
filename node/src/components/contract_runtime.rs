@@ -39,7 +39,7 @@ use crate::{
 
 /// The contract runtime components.
 #[derive(DataSize)]
-pub(crate) struct ContractRuntime {
+pub struct ContractRuntime {
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
 }
@@ -145,6 +145,7 @@ where
     REv: From<Event> + Send,
 {
     type Event = Event;
+    type ConstructionError = ConfigError;
 
     fn handle_event(
         &mut self,
@@ -355,7 +356,7 @@ pub enum ConfigError {
 impl ContractRuntime {
     pub(crate) fn new(
         storage_config: WithDir<StorageConfig>,
-        contract_runtime_config: Config,
+        contract_runtime_config: &Config,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         let path = storage_config.with_dir(storage_config.value().path());

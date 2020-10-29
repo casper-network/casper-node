@@ -1,6 +1,7 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
 mod candidate_block;
+mod cl_context;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
@@ -11,8 +12,12 @@ mod protocols;
 mod tests;
 mod traits;
 
+use std::{
+    convert::Infallible,
+    fmt::{self, Debug, Display, Formatter},
+};
+
 use datasize::DataSize;
-use std::fmt::{self, Debug, Display, Formatter};
 
 use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
 use casper_types::auction::ValidatorWeights;
@@ -185,6 +190,7 @@ where
     REv: ReactorEventT<I>,
 {
     type Event = Event<I>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

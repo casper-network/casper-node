@@ -32,6 +32,7 @@ use crate::{
         traits::Context,
     },
     types::{TimeDiff, Timestamp},
+    utils::weighted_median,
 };
 use block::Block;
 use tallies::Tallies;
@@ -421,12 +422,11 @@ impl<C: Context> State<C> {
         }
         let r_id = round_id(timestamp, wvote.round_exp);
         let opt_prev_vote = panorama[creator].correct().map(|vh| self.vote(vh));
-        let prev_round_exp = opt_prev_vote.map_or(self.params.init_round_exp(), |v| v.round_exp);
         if let Some(prev_vote) = opt_prev_vote {
-            if prev_round_exp != wvote.round_exp {
+            if prev_vote.round_exp != wvote.round_exp {
                 // The round exponent must not change within a round: Even with respect to the
                 // greater of the two exponents, a round boundary must be between the votes.
-                let max_re = prev_round_exp.max(wvote.round_exp);
+                let max_re = prev_vote.round_exp.max(wvote.round_exp);
                 if prev_vote.timestamp >> max_re == timestamp >> max_re {
                     return Err(VoteError::RoundLength);
                 }
@@ -543,6 +543,17 @@ impl<C: Context> State<C> {
             Some(current)
         })
     }
+
+    /// Returns the median round exponent of all the validators that haven't been observed to be
+    /// malicious, as seen by the current panorama.
+    /// Returns `None` if there are no correct validators in the panorama.
+    pub(crate) fn median_round_exp(&self) -> Option<u8> {
+        weighted_median(
+            self.panorama
+                .iter_correct(self)
+                .map(|vote| (vote.round_exp, self.weight(vote.creator))),
+        )
+    }
 }
 
 /// Returns the round length, given the round exponent.
@@ -555,7 +566,7 @@ pub(super) fn round_len(round_exp: u8) -> TimeDiff {
 /// The boundaries of rounds with length `1 << round_exp` are multiples of that length, in
 /// milliseconds since the epoch. So the beginning of the current round is the greatest multiple
 /// of `1 << round_exp` that is less or equal to `timestamp`.
-pub(super) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
+pub(crate) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
     // The greatest multiple less or equal to the timestamp is the timestamp with the last
     // `round_exp` bits set to zero.
     (timestamp >> round_exp) << round_exp

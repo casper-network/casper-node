@@ -39,6 +39,7 @@ use crate::{
         },
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
+    rpcs::chain::BlockIdentifier,
     types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
         Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
@@ -366,7 +367,7 @@ pub enum ApiRequest<I> {
     /// `maybe_hash` is `None`, return the latest block.
     GetBlock {
         /// The hash of the block to be retrieved.
-        maybe_hash: Option<BlockHash>,
+        maybe_id: Option<BlockIdentifier>,
         /// Responder to call with the result.
         responder: Responder<Option<LinearBlock>>,
     },
@@ -437,12 +438,14 @@ impl<I> Display for ApiRequest<I> {
         match self {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
             ApiRequest::GetBlock {
-                maybe_hash: Some(hash),
+                maybe_id: Some(BlockIdentifier::Hash(hash)),
                 ..
             } => write!(formatter, "get {}", hash),
             ApiRequest::GetBlock {
-                maybe_hash: None, ..
-            } => write!(formatter, "get latest block"),
+                maybe_id: Some(BlockIdentifier::Height(height)),
+                ..
+            } => write!(formatter, "get {}", height),
+            ApiRequest::GetBlock { maybe_id: None, .. } => write!(formatter, "get latest block"),
             ApiRequest::QueryProtocolData {
                 protocol_version, ..
             } => write!(formatter, "protocol_version {}", protocol_version),
