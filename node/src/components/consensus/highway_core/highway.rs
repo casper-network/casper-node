@@ -511,8 +511,15 @@ impl<C: Context> Highway<C> {
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let vote_hash = swvote.hash();
+        let creator = swvote.wire_vote.creator;
         self.state.add_valid_vote(swvote);
-        self.on_new_vote(&vote_hash, now, rng)
+        let mut evidence_effects = self
+            .state
+            .opt_evidence(creator)
+            .map(|ev| vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(ev.clone())))])
+            .unwrap_or_else(|| vec![]);
+        evidence_effects.extend(self.on_new_vote(&vote_hash, now, rng));
+        evidence_effects
     }
 }
 
