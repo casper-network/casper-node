@@ -201,13 +201,14 @@ impl<C: Context> Highway<C> {
         match pvv.inner() {
             Vertex::Evidence(_) => None,
             Vertex::Endorsements(endorsements) => {
-                if self.state.has_vote(endorsements.vote()) {
-                    None
-                } else if self.state.is_endorsed(endorsements.vote()) {
+                let vote = *endorsements.vote();
+                if !self.state.has_vote(&vote) {
+                    Some(Dependency::Vote(vote))
+                } else if !self.state.is_endorsed(&vote) {
                     // Vote is not endorsed yet. Request more endorsements.
-                    Some(Dependency::Endorsement(*endorsements.vote()))
+                    Some(Dependency::Endorsement(vote))
                 } else {
-                    Some(Dependency::Vote(*endorsements.vote()))
+                    None
                 }
             }
             Vertex::Vote(vote) => vote.wire_vote.panorama.missing_dependency(&self.state),
