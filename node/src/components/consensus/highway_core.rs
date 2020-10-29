@@ -37,6 +37,7 @@ pub(crate) mod finality_detector;
 pub(crate) mod highway;
 pub(crate) mod validators;
 
+mod endorsement;
 mod evidence;
 #[cfg(test)]
 mod highway_testing;

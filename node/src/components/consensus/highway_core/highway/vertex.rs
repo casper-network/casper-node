@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::consensus::{
         highway_core::{
+            endorsement::Endorsements,
             evidence::Evidence,
             state::{self, Panorama},
             validators::ValidatorIndex,
@@ -23,6 +24,7 @@ use crate::{
 pub(crate) enum Dependency<C: Context> {
     Vote(C::Hash),
     Evidence(ValidatorIndex),
+    Endorsement(C::Hash),
 }
 
 /// An element of the protocol state, that might depend on other elements.
@@ -36,6 +38,7 @@ pub(crate) enum Dependency<C: Context> {
 pub(crate) enum Vertex<C: Context> {
     Vote(SignedWireVote<C>),
     Evidence(Evidence<C>),
+    Endorsements(Endorsements<C>),
 }
 
 impl<C: Context> Vertex<C> {
@@ -49,6 +52,7 @@ impl<C: Context> Vertex<C> {
         match self {
             Vertex::Vote(swvote) => swvote.wire_vote.value.as_ref(),
             Vertex::Evidence(_) => None,
+            Vertex::Endorsements(_) => None,
         }
     }
 
@@ -57,6 +61,7 @@ impl<C: Context> Vertex<C> {
         match self {
             Vertex::Vote(swvote) => Some(swvote.hash()),
             Vertex::Evidence(_) => None,
+            Vertex::Endorsements(_) => None,
         }
     }
 
@@ -65,6 +70,7 @@ impl<C: Context> Vertex<C> {
         match self {
             Vertex::Vote(_) => false,
             Vertex::Evidence(_) => true,
+            Vertex::Endorsements(_) => false,
         }
     }
 
@@ -73,6 +79,7 @@ impl<C: Context> Vertex<C> {
         match self {
             Vertex::Vote(signed_wire_vote) => Some(signed_wire_vote.wire_vote.timestamp),
             Vertex::Evidence(_) => None,
+            Vertex::Endorsements(_) => None,
         }
     }
 }

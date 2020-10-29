@@ -13,6 +13,7 @@ use tracing::{trace, warn};
 
 use super::{
     active_validator::Effect,
+    endorsement::Endorsements,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FttExceeded},
     highway::{
@@ -127,6 +128,17 @@ impl Ord for HighwayMessage {
                     .cmp(&ev2_a.hash())
                     .then_with(|| ev1_b.hash().cmp(&ev2_b.hash())),
                 (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
+                (
+                    Vertex::Endorsements(Endorsements {
+                        vote: l_hash,
+                        endorsers: l_vid,
+                    }),
+                    Vertex::Endorsements(Endorsements {
+                        vote: r_hash,
+                        endorsers: r_vid,
+                    }),
+                ) => l_hash.cmp(r_hash).then_with(|| l_vid.cmp(r_vid)),
+                (Vertex::Endorsements(_), _) => std::cmp::Ordering::Less,
             },
             (HighwayMessage::RequestBlock(bc1), HighwayMessage::RequestBlock(bc2)) => bc1.cmp(&bc2),
             (HighwayMessage::WeEquivocated(ev1), HighwayMessage::WeEquivocated(ev2)) => {
@@ -879,7 +891,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     Timestamp::zero(), // Length depends only on block number.
                 );
                 let mut highway = Highway::new(instance_id, validators.clone(), params);
-                let effects = highway.activate_validator(vid, v_sec, params, start_time);
+                let effects = highway.activate_validator(vid, v_sec, start_time);
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));
 
@@ -946,7 +958,7 @@ pub(crate) struct TestSecret(pub(crate) u64);
 
 // Newtype wrapper for test signature.
 // Added so that we can use custom Debug impl.
-#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Hash, PartialOrd, Ord, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct SignatureWrapper(u64);
 
 impl Debug for SignatureWrapper {
@@ -957,7 +969,7 @@ impl Debug for SignatureWrapper {
 
 // Newtype wrapper for test hash.
 // Added so that we can use custom Debug impl.
-#[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct HashWrapper(u64);
 
 impl Debug for HashWrapper {

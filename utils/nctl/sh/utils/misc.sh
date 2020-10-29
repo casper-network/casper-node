@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # ###############################################################
-# UTILS: conostants
+# UTILS: constants
 # ###############################################################
 
 # OS types.
@@ -12,6 +12,21 @@ declare _OS_LINUX_ARCH="$_OS_LINUX-arch"
 declare _OS_LINUX_DEBIAN="$_OS_LINUX-debian"
 declare _OS_MACOSX="macosx"
 declare _OS_UNKNOWN="unknown"
+
+# Genesis balance of faucet account.
+NCTL_INITIAL_BALANCE_FAUCET=100000000000000000
+
+# Genesis balance of validator account.
+NCTL_INITIAL_BALANCE_VALIDATOR=100000000000000000
+
+# Base weight applied to a validator at genesis.
+NCTL_VALIDATOR_BASE_WEIGHT=100000000000000
+
+# Base HTTP server port number.
+NCTL_BASE_PORT_HTTP=50000
+
+# Base network server port number.
+NCTL_BASE_PORT_NETWORK=34452
 
 # ###############################################################
 # UTILS: helper functions
@@ -136,7 +151,7 @@ function get_node_address_rpc {
 #   Node ordinal identifier.
 #######################################
 function get_node_port {
-    echo $((50000 + ($1 * 100) + $2))
+    echo $(($NCTL_BASE_PORT_HTTP + ($1 * 100) + $2))
 }
 
 #######################################
@@ -145,7 +160,12 @@ function get_node_port {
 #   Data to be hashed.
 #######################################
 function get_hash() {
-    instruction='import hashlib; h=hashlib.blake2b(digest_size=32); h.update(b"'$1'"); print(h.digest().hex());'
+    instruction='
+        import hashlib;
+        h=hashlib.blake2b(digest_size=32);
+        h.update(b"'$1'");
+        print(h.digest().hex());
+        '
     python3 <<< $instruction
 }
 
@@ -198,6 +218,20 @@ function get_os()
 	else
 		echo $_OS_UNKNOWN
 	fi
+}
+
+#######################################
+# Returns a timestamp for use in chainspec.toml.
+# Arguments:
+#   Delay in seconds to apply to genesis timestamp.
+#######################################
+function get_genesis_timestamp()
+{
+    instruction='
+        from datetime import datetime, timedelta;
+        print((datetime.utcnow() + timedelta(seconds='$1')).isoformat("T") + "Z");
+        '
+    python3 <<< $instruction
 }
 
 #######################################
