@@ -572,6 +572,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
+            endorsed: vec![],
         };
         let invalid_signature = 1u64;
         let invalid_signature_vote = SignedWireVote {
@@ -634,6 +635,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
+            endorsed: vec![],
         };
         let wvote1 = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
@@ -643,6 +645,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
+            endorsed: vec![],
         };
 
         assert!(validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC,).is_ok());

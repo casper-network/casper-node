@@ -295,6 +295,7 @@ impl<C: Context> ActiveValidator<C> {
             panorama = state.panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
+        let endorsed = state.endorsements().collect();
         let wvote = WireVote {
             panorama,
             creator: self.vidx,
@@ -303,6 +304,7 @@ impl<C: Context> ActiveValidator<C> {
             seq_number,
             timestamp,
             round_exp: self.round_exp(state, timestamp),
+            endorsed,
         };
         SignedWireVote::new(wvote, &self.secret, rng)
     }

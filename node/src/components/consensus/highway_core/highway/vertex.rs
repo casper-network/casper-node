@@ -126,6 +126,7 @@ pub(crate) struct WireVote<C: Context> {
     pub(crate) seq_number: u64,
     pub(crate) timestamp: Timestamp,
     pub(crate) round_exp: u8,
+    pub(crate) endorsed: Vec<C::Hash>,
 }
 
 impl<C: Context> Debug for WireVote<C> {
@@ -148,6 +149,7 @@ impl<C: Context> Debug for WireVote<C> {
             .field("timestamp", &self.timestamp.millis())
             .field("panorama", self.panorama.as_ref())
             .field("round_exp", &self.round_exp)
+            .field("endorsed_votes", &self.endorsed)
             .field("round_id()", &self.round_id())
             .finish()
     }

@@ -191,6 +191,11 @@ impl<C: Context> State<C> {
         &self.weights
     }
 
+    /// Returns hashes of endorsed votes.
+    pub(crate) fn endorsements<'a>(&'a self) -> impl Iterator<Item = C::Hash> + 'a {
+        self.endorsements.keys().cloned()
+    }
+
     /// Returns the total weight of all validators marked faulty in this panorama.
     pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
         panorama
@@ -398,6 +403,7 @@ impl<C: Context> State<C> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
+        let endorsed = self.endorsements().collect();
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
             creator: vote.creator,
@@ -406,6 +412,7 @@ impl<C: Context> State<C> {
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
             round_exp: vote.round_exp,
+            endorsed,
         };
         Some(SignedWireVote {
             wire_vote: wvote,
