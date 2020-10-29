@@ -259,8 +259,12 @@ impl<C: Context> State<C> {
     }
 
     /// Returns hash of vote that needs to be endorsed.
-    pub(crate) fn needs_endorsements(&self, _vote: &SignedWireVote<C>) -> Option<C::Hash> {
-        None
+    pub(crate) fn needs_endorsements(&self, vote: &SignedWireVote<C>) -> Option<C::Hash> {
+        vote.wire_vote
+            .endorsed
+            .iter()
+            .find(|hash| self.endorsements.contains_key(&hash))
+            .cloned()
     }
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
