@@ -15,9 +15,9 @@
 mod deploy;
 mod error;
 mod executable_deploy_item_ext;
-mod merkle_proofs;
 mod parsing;
 mod rpc;
+mod validation;
 
 pub mod cl_type;
 pub mod keygen;

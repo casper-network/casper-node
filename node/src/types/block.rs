@@ -510,6 +510,41 @@ impl Display for BlockHeader {
     }
 }
 
+/// An error that can arise when validating a block's cryptographic integrity using its hashes
+#[derive(Debug)]
+pub enum BlockValidationError {
+    /// Problem serializing some of a block's data into bytes
+    SerializationError(bincode::Error),
+
+    /// The body hash in the header is not the same as the hash of the body of the block
+    UnexpectedBodyHash {
+        /// The block body hash specified in the header that is apparently incorrect
+        expected_by_block_header: Digest,
+        /// The actual hash of the block's body
+        actual: Digest,
+    },
+
+    /// The block's hash is not the same as the header's hash
+    UnexpectedBlockHash {
+        /// The hash specified by the block
+        expected_by_block: BlockHash,
+        /// The actual hash of the block
+        actual: BlockHash,
+    },
+}
+
+impl Display for BlockValidationError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(formatter, "{:?}", self)
+    }
+}
+
+impl From<bincode::Error> for BlockValidationError {
+    fn from(err: bincode::Error) -> Self {
+        BlockValidationError::SerializationError(err)
+    }
+}
+
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
 #[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -576,7 +611,8 @@ impl Block {
         self.header
     }
 
-    pub(crate) fn hash(&self) -> &BlockHash {
+    /// The hash of this block's header.
+    pub fn hash(&self) -> &BlockHash {
         &self.hash
     }
 
@@ -589,7 +625,8 @@ impl Block {
         self.header.deploy_hashes()
     }
 
-    pub(crate) fn height(&self) -> u64 {
+    /// The height of a block.
+    pub fn height(&self) -> u64 {
         self.header.height()
     }
 
@@ -601,6 +638,26 @@ impl Block {
 
     fn serialize_body(body: &()) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(body)
+    }
+
+    /// Check the integrity of a block by hashing its body and header
+    pub fn verify(&self) -> Result<(), BlockValidationError> {
+        let serialized_body = Block::serialize_body(&self.body)?;
+        let actual_body_hash = hash::hash(&serialized_body);
+        if self.header.body_hash != actual_body_hash {
+            return Err(BlockValidationError::UnexpectedBodyHash {
+                expected_by_block_header: self.header.body_hash,
+                actual: actual_body_hash,
+            });
+        }
+        let actual_header_hash = self.header.hash();
+        if self.hash != actual_header_hash {
+            return Err(BlockValidationError::UnexpectedBlockHash {
+                expected_by_block: self.hash,
+                actual: actual_header_hash,
+            });
+        }
+        Ok(())
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -766,5 +823,58 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&finalized_block).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(finalized_block, decoded);
+    }
+
+    #[test]
+    fn random_block_check() {
+        let mut rng = TestRng::from_seed([1u8; 16]);
+        let loop_iterations = 50;
+        for _ in 0..loop_iterations {
+            Block::random(&mut rng)
+                .verify()
+                .expect("block hash should check");
+        }
+    }
+
+    #[test]
+    fn block_check_bad_body_hash_sad_path() {
+        let mut rng = TestRng::from_seed([2u8; 16]);
+        let mut block = Block::random(&mut rng);
+
+        let bogus_block_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
+        block.header.body_hash = bogus_block_hash;
+
+        let serialized_body =
+            Block::serialize_body(&block.body).expect("Could not serialize block body");
+        let actual_body_hash = hash::hash(&serialized_body);
+
+        // No Eq trait for BlockValidationError, so pattern match
+        match block.verify() {
+            Err(BlockValidationError::UnexpectedBodyHash {
+                expected_by_block_header,
+                actual,
+            }) if expected_by_block_header == bogus_block_hash && actual == actual_body_hash => {}
+            unexpected => panic!("Bad check response: {:?}", unexpected),
+        }
+    }
+
+    #[test]
+    fn block_check_bad_block_hash_sad_path() {
+        let mut rng = TestRng::from_seed([3u8; 16]);
+        let mut block = Block::random(&mut rng);
+
+        let bogus_block_hash: BlockHash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
+        block.hash = bogus_block_hash;
+
+        let actual_block_hash = block.header.hash();
+
+        // No Eq trait for BlockValidationError, so pattern match
+        match block.verify() {
+            Err(BlockValidationError::UnexpectedBlockHash {
+                expected_by_block,
+                actual,
+            }) if expected_by_block == bogus_block_hash && actual == actual_block_hash => {}
+            unexpected => panic!("Bad check response: {:?}", unexpected),
+        }
     }
 }

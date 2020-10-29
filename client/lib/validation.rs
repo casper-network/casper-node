@@ -7,14 +7,18 @@ use casper_execution_engine::{
     core, core::ValidationError, shared::stored_value::StoredValue,
     storage::trie::merkle_proof::TrieMerkleProof,
 };
-use casper_node::{crypto::hash::Digest, types::json_compatibility};
+use casper_node::{
+    crypto::hash::Digest,
+    rpcs::chain::BlockIdentifier,
+    types::{json_compatibility, Block, BlockValidationError},
+};
 use casper_types::{bytesrepr, Key, U512};
 
 const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";
 const GET_ITEM_RESULT_MERKLE_PROOF: &str = "merkle_proof";
 
-/// Error that can be returned by validate_response.
+/// Error that can be returned by when validating
 #[derive(Error, Debug)]
 pub enum ValidateResponseError {
     /// Failed to marshall value
@@ -25,22 +29,44 @@ pub enum ValidateResponseError {
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 
-    /// [`validate_response`] failed to parse JSON
+    /// Failed to parse JSON
     #[error("validate_response failed to parse")]
     ValidateResponseFailedToParse,
 
-    /// [`validate_response`] failed to validate
+    /// Failed to validate Merkle proofs
     #[error(transparent)]
     ValidationError(#[from] ValidationError),
+
+    /// Failed to validate a block
+    #[error("Block validation error {0}")]
+    BlockValidationError(BlockValidationError),
 
     /// Serialized value not contained in proof
     #[error("serialized value not contained in proof")]
     SerializedValueNotContainedInProof,
+
+    /// No block in response
+    #[error("no block in response")]
+    NoBlockInResponse,
+
+    /// Block hash requested does not correspond to response
+    #[error("block hash requested does not correspond to response")]
+    UnexpectedBlockHash,
+
+    /// Block height was not as requested
+    #[error("block height was not as requested")]
+    UnexpectedBlockHeight,
 }
 
 impl From<bytesrepr::Error> for ValidateResponseError {
     fn from(e: bytesrepr::Error) -> Self {
         ValidateResponseError::BytesRepr(e)
+    }
+}
+
+impl From<BlockValidationError> for ValidateResponseError {
+    fn from(e: BlockValidationError) -> Self {
+        ValidateResponseError::BlockValidationError(e)
     }
 }
 
@@ -151,4 +177,34 @@ pub(crate) fn validate_get_balance_response(
         &balance,
     )
     .map_err(Into::into)
+}
+
+pub(crate) fn validate_get_block_response(
+    response: &JsonRpc,
+    maybe_block_identifier: &Option<BlockIdentifier>,
+) -> Result<(), ValidateResponseError> {
+    let maybe_result = response.get_result();
+    let block_value = maybe_result
+        .and_then(|value| value.get("block"))
+        .ok_or_else(|| ValidateResponseError::NoBlockInResponse)?;
+    let block: Block = serde_json::from_value(block_value.to_owned())?;
+    block.verify()?;
+    match maybe_block_identifier {
+        Some(BlockIdentifier::Hash(block_hash)) => {
+            if block_hash != block.hash() {
+                return Err(ValidateResponseError::UnexpectedBlockHash);
+            }
+        }
+        Some(BlockIdentifier::Height(height)) => {
+            // More is necessary here to mitigate a MITM attack
+            if height != &block.height() {
+                return Err(ValidateResponseError::UnexpectedBlockHeight);
+            }
+        }
+        // More is necessary here to mitigate a MITM attack.  In this case we would want to validate
+        // `block.proofs()` to make sure that 1/3 of the validator weight signed the block, and we
+        // would have to know the latest validators through some trustworthy means
+        None => (),
+    }
+    Ok(())
 }

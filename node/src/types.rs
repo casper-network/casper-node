@@ -10,7 +10,7 @@ mod timestamp;
 
 use rand::{CryptoRng, RngCore};
 
-pub use block::{Block, BlockHash, BlockHeader};
+pub use block::{Block, BlockHash, BlockHeader, BlockValidationError};
 pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock, ProtoBlockHash};
 pub use deploy::{Approval, Deploy, DeployHash, DeployHeader, Error as DeployError};
 pub use item::{Item, Tag};
