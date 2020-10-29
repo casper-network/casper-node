@@ -96,7 +96,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             "initializing Highway instance",
         );
 
-        // TODO: The initial round length should be the observed median of the switch block.
         let params = Params::new(
             seed,
             BLOCK_REWARD,
