@@ -14,12 +14,12 @@ use crate::{
     types::CryptoRngCore,
 };
 
-pub(crate) struct ClSecret {
+pub(crate) struct Keypair {
     secret_key: Rc<SecretKey>,
     public_key: PublicKey,
 }
 
-impl ClSecret {
+impl Keypair {
     pub(crate) fn new(secret_key: Rc<SecretKey>, public_key: PublicKey) -> Self {
         Self {
             secret_key,
@@ -28,7 +28,7 @@ impl ClSecret {
     }
 }
 
-impl ValidatorSecret for ClSecret {
+impl ValidatorSecret for Keypair {
     type Hash = Digest;
     type Signature = Signature;
 
@@ -44,7 +44,7 @@ pub(crate) struct ClContext;
 impl Context for ClContext {
     type ConsensusValue = CandidateBlock;
     type ValidatorId = PublicKey;
-    type ValidatorSecret = ClSecret;
+    type ValidatorSecret = Keypair;
     type Signature = Signature;
     type Hash = Digest;
     type InstanceId = Digest;

@@ -37,7 +37,7 @@ use crate::{
         chainspec_loader::{Chainspec, HighwayConfig},
         consensus::{
             candidate_block::CandidateBlock,
-            cl_context::{ClContext, ClSecret},
+            cl_context::{ClContext, Keypair},
             consensus_protocol::{
                 BlockContext, ConsensusProtocol, ConsensusProtocolResult, EraEnd,
                 FinalizedBlock as CpFinalizedBlock,
@@ -306,7 +306,7 @@ where
         );
 
         let results = if should_activate {
-            let secret = ClSecret::new(Rc::clone(&self.secret_signing_key), our_id);
+            let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
             highway.activate_validator(our_id, secret, params, timestamp)
         } else {
             Vec::new()
