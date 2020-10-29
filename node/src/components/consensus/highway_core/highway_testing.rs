@@ -231,9 +231,7 @@ impl HighwayValidator {
         &self.highway
     }
 
-    fn run_finality(
-        &mut self,
-    ) -> Result<Vec<FinalizedBlock<ConsensusValue, ValidatorId>>, FttExceeded> {
+    fn run_finality(&mut self) -> Result<Vec<FinalizedBlock<TestContext>>, FttExceeded> {
         Ok(self.finality_detector.run(&self.highway)?.collect())
     }
 
