@@ -11,7 +11,7 @@ use tracing::warn;
 use crate::{
     components::consensus::{
         candidate_block::CandidateBlock, cl_context::ClContext,
-        consensus_protocol::ConsensusProtocol, era_supervisor::BONDED_ERAS,
+        consensus_protocol::ConsensusProtocol,
         protocols::highway::HighwayProtocol, ConsensusMessage,
     },
     crypto::asymmetric_key::PublicKey,
