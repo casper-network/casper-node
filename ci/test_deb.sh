@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -ex
 
-apt install "$DRONE_DIR"/"$1"*.deb
+echo "$1"/"$2"*.deb
+apt install "$1"/target/debian/"$2"*.deb
 
-if ! type "$1" > /dev/null; then
+if ! type "$2" > /dev/null; then
   exit 1
 fi
 
-apt remove "$1"
+apt remove -y "$2"
