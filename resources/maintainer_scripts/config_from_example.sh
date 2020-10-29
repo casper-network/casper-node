@@ -3,14 +3,14 @@ set -e
 
 # This script will generate a CONFIG file appropriate to installation machine.
 
-PATH=/etc/casper/
+CONFIG_PATH=/etc/casper/
 
 EXTERNAL_IP=$(dig TXT +short o-o.myaddr.l.google.com @ns1.google.com | tr -d '"')
 echo "Using External IP: $EXTERNAL_IP"
 
-CONFIG=$PATH"config.toml"
-CONFIG_EXAMPLE=$PATH"config-example.toml"
-CONFIG_NEW=$PATH"config.toml.new"
+CONFIG=$CONFIG_PATH"config.toml"
+CONFIG_EXAMPLE=$CONFIG_PATH"config-example.toml"
+CONFIG_NEW=$CONFIG_PATH"config.toml.new"
 
 OUTFILE=$CONFIG
 
