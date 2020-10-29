@@ -307,7 +307,7 @@ where
 
         let results = if should_activate {
             let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
-            highway.activate_validator(our_id, secret, params, timestamp)
+            highway.activate_validator(our_id, secret, timestamp)
         } else {
             Vec::new()
         };

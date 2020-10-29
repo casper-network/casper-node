@@ -72,12 +72,9 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         &mut self,
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        params: Params,
         timestamp: Timestamp,
     ) -> Vec<CpResult<I, C>> {
-        let av_effects = self
-            .highway
-            .activate_validator(our_id, secret, params, timestamp);
+        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
         self.process_av_effects(av_effects)
     }
 
