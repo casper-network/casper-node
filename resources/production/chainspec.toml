@@ -73,31 +73,27 @@ initial_memory = 64
 # Max stack height (native WebAssembly stack limiter).
 max_stack_height = 65_536
 
-[wasm_config.storage_costs]
-# Gas charged per byte stored in the global state.
-gas_per_byte = 630_000_000
-
 [wasm_config.opcode_costs]
 # Bit operations multiplier.
-bit = 1
+bit = 300_000
 # Arithmetic add operations multiplier.
-add = 1
+add = 210_000
 # Mul operations multiplier.
-mul = 1
+mul = 240_000
 # Div operations multiplier.
-div = 2
+div = 320_000
 # Memory load operation multiplier.
-load = 1
+load = 2_500_000
 # Memory store operation multiplier.
-store = 1
+store = 4_700_000
 # Const store operation multiplier.
-const = 1
+const = 110_000
 # Local operations multiplier.
-local = 1
+local = 390_000
 # Global operations multiplier.
-global = 1
+global = 390_000
 # Control flow operations multiplier.
-control_flow = 1
+control_flow = 440_000
 # Integer operations multiplier.
 integer_comparsion = 1
 # Conversion operations multiplier.
@@ -107,53 +103,57 @@ unreachable = 1
 # Nop operation multiplier.
 nop = 1
 # Get current memory operation multiplier.
-current_memory = 23
+current_memory = 290_000
 # Grow memory cost, per page (64kb)
 grow_memory = 240_000_000
-# Regular opcode cost
+# Regular opcode cost.
 regular = 210_000
+
+[wasm_config.storage_costs]
+# Gas charged per byte stored in the global state.
+gas_per_byte = 630_000_000
 
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
 [wasm_config.host_function_costs]
-add = { cost = 5_800_000, arguments = [0, 1, 2, 3] }
-add_associated_key = { cost = 9_000_000, arguments = [0, 1, 2, 3] }
-add_contract_version = { cost = 200_000_000, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] } # Not instrumented yet, assuming a sufficiently large number
-add_local = { cost = 4_700_000, arguments = [0, 1, 2, 3] }
-call_contract = { cost = 4_500_000, arguments = [0, 1, 2, 3, 4, 5, 6] }
-call_versioned_contract = { cost = 4_500_000, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8] } # Not instrumented yet, assuming the same as call_contract
-create_contract_package_at_hash = { cost = 200_000_000, arguments = [0, 1] } # Not instrumented yet, assuming a sufficiently large number
-create_contract_user_group = { cost = 200_000_000, arguments = [0, 1, 2, 3, 4, 5, 6, 7] } # Not instrumented yet, assuming a sufficiently large number
-create_purse = { cost = 170_000_000, arguments = [0, 1] }
-disable_contract_version = { cost = 200_000_000, arguments = [0, 1, 2, 3] } # Not instrumented yet, assuming a sufficiently large number
-get_balance = { cost = 3_800_000, arguments = [0, 1, 2] }
+add = { cost = 5_800_000, arguments = [0, 0, 0, 0] }
+add_associated_key = { cost = 9_000_000, arguments = [0, 0, 0] }
+add_contract_version = { cost = 200_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+blake2b = { cost = 200_000, arguments = [0, 0, 0, 0] }
+call_contract = { cost = 4_500_000, arguments = [0, 0, 0, 0, 0, 420, 0] }
+call_versioned_contract = { cost = 200_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
+create_contract_package_at_hash = { cost = 200_000, arguments = [0, 0] }
+create_contract_user_group = { cost = 200_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0] }
+create_purse = { cost = 170_000_000, arguments = [0, 0] }
+disable_contract_version = { cost = 200_000, arguments = [0, 0, 0, 0] }
+get_balance = { cost = 3_800_000, arguments = [0, 0, 0] }
 get_blocktime = { cost = 330_000, arguments = [0] }
 get_caller = { cost = 380_000, arguments = [0] }
-get_key = { cost = 2_000_000, arguments = [0, 1, 2, 3, 4] }
+get_key = { cost = 2_000_000, arguments = [0, 440, 0, 0, 0] }
 get_main_purse = { cost = 1_300_000, arguments = [0] }
-get_named_arg = { cost = 2_500_000, arguments = [0, 1, 2, 3] }
-get_named_arg_size = { cost = 450_000, arguments = [0, 1, 2] }
+get_named_arg = { cost = 200_000, arguments = [0, 0, 0, 0] }
+get_named_arg_size = { cost = 200_000, arguments = [0, 0, 0] }
 get_phase = { cost = 710_000, arguments = [0] }
-get_system_contract = { cost = 1_100_000, arguments = [0, 1, 2] }
-has_key = { cost = 1_500_000, arguments = [0, 1] }
-is_valid_uref = { cost = 760_000, arguments = [0, 1] }
-load_named_keys = { cost = 42_000_000, arguments = [0, 1] }
-new_uref = { cost = 17_000_000, arguments = [0, 1, 2] }
-print = { cost = 20_000_000, arguments = [0, 1] }
-provision_contract_user_group_uref = { cost = 200_000_000, arguments = [0,1,2,3,4] } # Not instrumented yet, assuming a sufficiently large number
-put_key = { cost = 38_000_000, arguments = [0, 1] }
-read_host_buffer = { cost = 3_500_000, arguments = [0, 1, 2] }
-read_value = { cost = 6_000_000, arguments = [0, 1, 0] }
-read_value_local = { cost = 5_500_000,  arguments = [0, 1, 0] }
-remove_associated_key = { cost = 4_200_000, arguments = [0, 1] }
-remove_contract_user_group = { cost = 200_000_000, arguments = [0, 1, 2, 3] } # Not instrumented yet, assuming a sufficiently large number
-remove_contract_user_group_urefs = { cost = 200_000_000, arguments = [0,1,2,3,4,5] } # Not instrumented yet, assuming a sufficiently large number
-remove_key = { cost = 61_000_000, arguments = [0, 1] }
-ret = { cost = 23_000_000, arguments = [0, 1] }
+get_system_contract = { cost = 1_100_000, arguments = [0, 0, 0] }
+has_key = { cost = 1_500_000, arguments = [0, 840] }
+is_valid_uref = { cost = 760_000, arguments = [0, 0] }
+load_named_keys = { cost = 42_000_000, arguments = [0, 0] }
+new_uref = { cost = 17_000_000, arguments = [0, 0, 590] }
+print = { cost = 20_000_000, arguments = [0, 4_600] }
+provision_contract_user_group_uref = { cost = 200_000, arguments = [0, 0, 0, 0, 0] }
+put_key = { cost = 38_000_000, arguments = [0, 1_100, 0, 0] }
+read_host_buffer = { cost = 3_500_000, arguments = [0, 310, 0] }
+read_value = { cost = 6_000_000, arguments = [0, 0, 0] }
+read_value_local = { cost = 5_500_000, arguments = [0, 590, 0] }
+remove_associated_key = { cost = 4_200_000, arguments = [0, 0] }
+remove_contract_user_group = { cost = 200_000, arguments = [0, 0, 0, 0] }
+remove_contract_user_group_urefs = { cost = 200_000, arguments = [0, 0, 0, 0, 0, 0] }
+remove_key = { cost = 61_000_000, arguments = [0, 3_200] }
+ret = { cost = 23_000_000, arguments = [0, 420_000] }
 revert = { cost = 500_000, arguments = [0] }
-set_action_threshold = { cost = 74_000_000, arguments = [0, 1] }
-transfer_from_purse_to_account = { cost = 160_000_000, arguments = [0, 1, 2, 3, 4, 5] }
-transfer_from_purse_to_purse = { cost = 82_000_000, arguments = [0, 1, 2, 3, 4, 5] }
-transfer_to_account = { cost = 24_000_000, arguments = [0, 1, 2, 3] }
-update_associated_key = { cost = 4_200_000, arguments = [0, 1, 2] }
-write = { cost = 14_000_000,  arguments = [0, 1, 0, 2] }
-write_local = { cost = 9_500_000, arguments = [0, 1, 2, 3] }
+set_action_threshold = { cost = 74_000_000, arguments = [0, 0] }
+transfer_from_purse_to_account = { cost = 160_000_000, arguments = [0, 0, 0, 0, 0, 0] }
+transfer_from_purse_to_purse = { cost = 82_000_000, arguments = [0, 0, 0, 0, 0, 0] }
+transfer_to_account = { cost = 24_000_000, arguments = [0, 0, 0, 0] }
+update_associated_key = { cost = 4_200_000, arguments = [0, 0, 0] }
+write = { cost = 14_000_000, arguments = [0, 0, 0, 980] }
+write_local = { cost = 9_500_000, arguments = [0, 1_800, 0, 520] }
