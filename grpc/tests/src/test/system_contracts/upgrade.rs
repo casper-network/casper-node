@@ -817,7 +817,7 @@ fn should_upgrade_only_locked_funds_period() {
 
     let before_locked_funds_period: EraId = builder
         .query(None, locked_funds_period_key, &[])
-        .expect("should have auction delay")
+        .expect("should have locked funds period")
         .as_cl_value()
         .expect("should be a CLValue")
         .clone()
@@ -845,7 +845,7 @@ fn should_upgrade_only_locked_funds_period() {
 
     let after_locked_funds_period: EraId = builder
         .query(None, locked_funds_period_key, &[])
-        .expect("should have auction delay")
+        .expect("should have locked funds period")
         .as_cl_value()
         .expect("should be a CLValue")
         .clone()

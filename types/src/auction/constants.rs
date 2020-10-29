@@ -64,7 +64,7 @@ pub const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
 /// Named constant of `auction_delay`
 pub const ARG_AUCTION_DELAY: &str = "auction_delay";
 /// Named constant for `locked_funds_period`
-pub const ARG_LOCKED_FUNDS_PERIOD: &str = "locked_funds_periods";
+pub const ARG_LOCKED_FUNDS_PERIOD: &str = "locked_funds_period";
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
 /// Named constant for method `read_seigniorage_recipients`.

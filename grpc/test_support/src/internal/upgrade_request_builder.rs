@@ -96,7 +96,7 @@ impl UpgradeRequestBuilder {
             upgrade_point.set_new_auction_delay(chainspec_new_auction_delay);
         }
 
-        if let Some(new_locked_funds_period) = self.new_auction_delay {
+        if let Some(new_locked_funds_period) = self.new_locked_funds_period {
             let mut chainspec_new_locked_funds_period = ChainSpec_NewLockedFundsPeriod::new();
             chainspec_new_locked_funds_period.set_new_locked_funds_period(new_locked_funds_period);
             upgrade_point.set_new_locked_funds_period(chainspec_new_locked_funds_period);
