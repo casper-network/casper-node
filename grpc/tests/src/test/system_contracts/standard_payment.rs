@@ -1,28 +1,55 @@
 use assert_matches::assert_matches;
+use lazy_static::lazy_static;
 
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+        UpgradeRequestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{Error, CONV_RATE, MAX_PAYMENT},
+        engine_state::{upgrade::ActivationPoint, Error, CONV_RATE, MAX_PAYMENT},
         execution,
     },
-    shared::{motes::Motes, transform::Transform},
+    shared::{
+        host_function_costs::{Cost, HostFunction, HostFunctionCosts},
+        motes::Motes,
+        opcode_costs::OpcodeCosts,
+        storage_costs::StorageCosts,
+        transform::Transform,
+        wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
+    },
 };
-use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
+use casper_types::{
+    account::AccountHash, runtime_args, ApiError, ProtocolVersion, RuntimeArgs, U512,
+};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 const TRANSFER_PURSE_TO_ACCOUNT_WASM: &str = "transfer_purse_to_account.wasm";
 const REVERT_WASM: &str = "revert.wasm";
 const ENDLESS_LOOP_WASM: &str = "endless_loop.wasm";
+// const STANDARD_PAYMENT_WASM: &str = "standard_payment.wasm";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
+lazy_static! {
+    static ref EXHAUSTIVE_HOST_FUNCTION_COSTS: HostFunctionCosts = HostFunctionCosts {
+        // Settings where all opcodes are so expensive so we can run out of gas very quickly
+        get_main_purse: HostFunction::fixed(Cost::max_value()),
+        .. Default::default()
+    };
+
+static ref EXHAUSTIVE_WASM_CONFIG: WasmConfig = WasmConfig::new(
+    DEFAULT_INITIAL_MEMORY,
+    DEFAULT_MAX_STACK_HEIGHT,
+    OpcodeCosts::default(),
+    StorageCosts::new(u32::max_value()),
+    *EXHAUSTIVE_HOST_FUNCTION_COSTS,
+);
+}
 
 #[ignore]
 #[test]
@@ -32,7 +59,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         TRANSFER_PURSE_TO_ACCOUNT_WASM,
-        runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => *MAX_PAYMENT - U512::one() },
+        runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => MAX_PAYMENT.value() - U512::one() },
     )
     .build();
 
@@ -117,16 +144,17 @@ fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
     );
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let penalty_payment_amount: U512 = *MAX_PAYMENT;
+    let penalty_payment_amount = *MAX_PAYMENT;
 
     assert_eq!(
         modified_balance,
-        initial_balance - penalty_payment_amount,
+        initial_balance - penalty_payment_amount.value(),
         "modified balance is incorrect"
     );
 
     assert_eq!(
-        paid_transaction_fee, penalty_payment_amount,
+        paid_transaction_fee,
+        penalty_payment_amount.value(),
         "transaction fee is incorrect"
     );
 
@@ -196,12 +224,13 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
 
     assert_eq!(
         modified_balance,
-        initial_balance - expected_reward_balance,
+        initial_balance - expected_reward_balance.value(),
         "modified balance is incorrect"
     );
 
     assert_eq!(
-        transaction_fee, expected_reward_balance,
+        transaction_fee,
+        expected_reward_balance.value(),
         "transaction fee is incorrect"
     );
 
@@ -269,12 +298,13 @@ fn should_forward_payment_execution_runtime_error() {
 
     assert_eq!(
         modified_balance,
-        initial_balance - expected_reward_balance,
+        initial_balance - expected_reward_balance.value(),
         "modified balance is incorrect"
     );
 
     assert_eq!(
-        transaction_fee, expected_reward_balance,
+        transaction_fee,
+        expected_reward_balance.value(),
         "transaction fee is incorrect"
     );
 
@@ -302,6 +332,10 @@ fn should_forward_payment_execution_gas_limit_error() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let transferred_amount = U512::from(1);
 
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
     let exec_request = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
@@ -316,10 +350,6 @@ fn should_forward_payment_execution_gas_limit_error() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -338,12 +368,13 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     assert_eq!(
         modified_balance,
-        initial_balance - expected_reward_balance,
+        initial_balance - expected_reward_balance.value(),
         "modified balance is incorrect"
     );
 
     assert_eq!(
-        transaction_fee, expected_reward_balance,
+        transaction_fee,
+        expected_reward_balance.value(),
         "transaction fee is incorrect"
     );
 
@@ -365,36 +396,54 @@ fn should_forward_payment_execution_gas_limit_error() {
 #[ignore]
 #[test]
 fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
-    let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount = *DEFAULT_PAYMENT;
-    let transferred_amount = 1;
+    // Run tests as an account that starts with a smaller balance
+    let account_1_balance: U512 = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_deploy_hash([1; 32])
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
-            .with_session_code(
-                ENDLESS_LOOP_WASM,
-                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
-            )
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
+    //
+    // Increase cost of host function used inside test to decrease runtime of this test in debug
+    // mode.
+    //
+    let new_protocol_version = ProtocolVersion::from_parts(
+        DEFAULT_PROTOCOL_VERSION.value().major,
+        DEFAULT_PROTOCOL_VERSION.value().minor,
+        DEFAULT_PROTOCOL_VERSION.value().patch + 1,
+    );
+
+    const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
+
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+        .with_new_protocol_version(new_protocol_version)
+        .with_activation_point(DEFAULT_ACTIVATION_POINT)
+        .with_new_wasm_config(*EXHAUSTIVE_WASM_CONFIG)
+        .build();
+
+    // Fund separate account
+    let fund_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        TRANSFER_PURSE_TO_ACCOUNT_WASM,
+        runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => account_1_balance },
+    )
+    .with_protocol_version(new_protocol_version)
+    .build();
+
+    let exec_request =
+        ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, ENDLESS_LOOP_WASM, RuntimeArgs::new())
+            .with_protocol_version(new_protocol_version)
             .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    let transfer_result = builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
-        .commit()
-        .finish();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let response = transfer_result
-        .builder()
-        .get_exec_response(0)
+    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+
+    builder.exec(fund_exec_request).expect_success().commit();
+
+    builder.exec(exec_request).commit();
+
+    let response = builder
+        .get_exec_response(1)
         .expect("there should be a response");
 
     let execution_result = utils::get_success_result(response);
