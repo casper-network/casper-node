@@ -52,6 +52,14 @@ impl<C: Context> Vertex<C> {
         }
     }
 
+    /// Returns the vote hash of this vertex (if it is a vote).
+    pub(crate) fn vote_hash(&self) -> Option<C::Hash> {
+        match self {
+            Vertex::Vote(swvote) => Some(swvote.hash()),
+            Vertex::Evidence(_) => None,
+        }
+    }
+
     /// Returns whether this is evidence, as opposed to other types of vertices.
     pub(crate) fn is_evidence(&self) -> bool {
         match self {

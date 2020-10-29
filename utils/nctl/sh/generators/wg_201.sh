@@ -80,8 +80,9 @@ deploy_hash=$(
         --secret-key $bidder_secret_key \
         --session-arg "amount:u512='$amount'" \
         --session-path $path_contract \
-        --ttl "1day" | \
-        python3 -c "import sys, json; print(json.load(sys.stdin)['deploy_hash'])"
+        --ttl "1day" \
+        | jq '.result.deploy_hash' \
+        | sed -e 's/^"//' -e 's/"$//'        
     )
 
 # Display deploy hash.

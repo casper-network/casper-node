@@ -25,6 +25,7 @@ Requirements
     - make
     - cargo
     - bash
+    - jq (bash utility library for parsing json)
 
 Setup
 --------------------------------------

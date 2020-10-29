@@ -15,9 +15,10 @@ use casper_types::auction::ValidatorWeights;
 use crate::{
     components::{small_network::NodeId, storage::DeployMetadata},
     effect::{requests::ApiRequest, Responder},
+    rpcs::chain::BlockIdentifier,
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-        FinalizedBlock,
+        DeployHeader, FinalizedBlock,
     },
 };
 
@@ -26,7 +27,7 @@ pub enum Event {
     #[from]
     ApiRequest(ApiRequest<NodeId>),
     GetBlockResult {
-        maybe_hash: Option<BlockHash>,
+        maybe_id: Option<BlockIdentifier>,
         result: Box<Option<Block>>,
         main_responder: Responder<Option<Block>>,
     },
@@ -66,6 +67,7 @@ pub enum Event {
     },
     DeployProcessed {
         deploy_hash: DeployHash,
+        deploy_header: Box<DeployHeader>,
         block_hash: BlockHash,
         execution_result: ExecutionResult,
     },
@@ -76,12 +78,17 @@ impl Display for Event {
         match self {
             Event::ApiRequest(request) => write!(formatter, "{}", request),
             Event::GetBlockResult {
-                maybe_hash: Some(hash),
+                maybe_id: Some(BlockIdentifier::Hash(hash)),
                 result,
                 ..
             } => write!(formatter, "get block result for {}: {:?}", hash, result),
             Event::GetBlockResult {
-                maybe_hash: None,
+                maybe_id: Some(BlockIdentifier::Height(height)),
+                result,
+                ..
+            } => write!(formatter, "get block result for {}: {:?}", height, result),
+            Event::GetBlockResult {
+                maybe_id: None,
                 result,
                 ..
             } => write!(formatter, "get latest block result: {:?}", result),

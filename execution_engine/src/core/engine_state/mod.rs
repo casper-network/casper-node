@@ -38,8 +38,8 @@ use casper_types::{
     },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
-    runtime_args,
-    system_contract_errors::mint,
+    mint, proof_of_stake, runtime_args,
+    system_contract_errors::mint::Error as MintError,
     AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractVersionKey, DeployInfo, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
     RuntimeArgs, URef, U512,
@@ -54,7 +54,7 @@ pub use self::{
     executable_deploy_item::ExecutableDeployItem,
     execute_request::ExecuteRequest,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE, POS_REWARDS_PURSE},
+    genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE},
     query::{QueryRequest, QueryResult},
     system_contract_cache::SystemContractCache,
     transfer::{TransferRuntimeArgsBuilder, TransferTargetMode},
@@ -99,7 +99,6 @@ lazy_static! {
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 const GENESIS_INITIAL_BLOCKTIME: u64 = 0;
-const ARG_AMOUNT: &str = "amount";
 
 #[derive(Debug)]
 pub struct EngineState<S> {
@@ -506,7 +505,7 @@ where
             for (account, named_keys) in accounts.into_iter() {
                 let module = module.clone();
                 let args = runtime_args! {
-                    ARG_AMOUNT => account.balance().value(),
+                    mint::ARG_AMOUNT => account.balance().value(),
                 };
                 let tracking_copy_exec = Rc::clone(&tracking_copy);
                 let tracking_copy_write = Rc::clone(&tracking_copy);
@@ -527,7 +526,7 @@ where
                 let transfer_address_generator = Rc::clone(&transfer_address_generator);
                 let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
-                let mint_result: Result<URef, mint::Error> = {
+                let mint_result: Result<URef, MintError> = {
                     // ...call the Mint's "mint" endpoint to create purse with tokens...
                     let (_instance, mut runtime) = executor.create_runtime(
                         module,
@@ -559,7 +558,7 @@ where
                             "mint".to_string(),
                             args,
                         )?
-                        .into_t::<Result<URef, mint::Error>>()
+                        .into_t::<Result<URef, MintError>>()
                         .expect("should convert")
                 };
 
@@ -878,6 +877,7 @@ where
                         exec_request.parent_state_hash,
                         BlockTime::new(exec_request.block_time),
                         deploy_item,
+                        exec_request.proposer,
                     ),
                 },
             };
@@ -1076,13 +1076,22 @@ where
         state_hash: Blake2bHash,
         purse_uref: URef,
     ) -> Result<BalanceResult, Error> {
-        let mut tracking_copy = match self.tracking_copy(state_hash)? {
+        let tracking_copy = match self.tracking_copy(state_hash)? {
             Some(tracking_copy) => tracking_copy,
             None => return Ok(BalanceResult::RootNotFound),
         };
-        let balance_key = tracking_copy.get_purse_balance_key(correlation_id, purse_uref.into())?;
-        let balance = tracking_copy.get_purse_balance(correlation_id, balance_key)?;
-        Ok(BalanceResult::Success(balance.value()))
+        let (purse_balance_key, purse_proof) =
+            tracking_copy.get_purse_balance_key_with_proof(correlation_id, purse_uref.into())?;
+        let (balance, balance_proof) =
+            tracking_copy.get_purse_balance_with_proof(correlation_id, purse_balance_key)?;
+        let purse_proof = Box::new(purse_proof);
+        let balance_proof = Box::new(balance_proof);
+        let motes = balance.value();
+        Ok(BalanceResult::Success {
+            motes,
+            purse_proof,
+            balance_proof,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1305,6 +1314,7 @@ where
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
         deploy_item: DeployItem,
+        proposer: casper_types::PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
         // spec: https://casperlabs.atlassian.net/wiki/spaces/EN/pages/123404576/Payment+code+execution+specification
 
@@ -1336,7 +1346,7 @@ where
 
         // Get addr bytes from `address` (which is actually a Key)
         // validation_spec_3: account validity
-        let account_public_key = match base_key.into_account() {
+        let account_hash = match base_key.into_account() {
             Some(account_addr) => account_addr,
             None => {
                 return Ok(ExecutionResult::precondition_failure(
@@ -1351,7 +1361,7 @@ where
         // validation_spec_3: account validity
         let account = match self.get_authorized_account(
             correlation_id,
-            account_public_key,
+            account_hash,
             &authorization_keys,
             Rc::clone(&tracking_copy),
         ) {
@@ -1713,23 +1723,29 @@ where
             }
         };
 
+        // the proposer of the block this deploy is in receives the gas from this deploy execution
+        let proposer_purse = {
+            let proposer_account: Account = match tracking_copy
+                .borrow_mut()
+                .get_account(correlation_id, proposer.into())
+            {
+                Ok(account) => account,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            };
+            proposer_account.main_purse()
+        };
+
         if let Some(forced_transfer) = payment_result.check_forced_transfer(payment_purse_balance) {
             // Get rewards purse balance key
             // payment_code_spec_6: system contract validity
-            let rewards_purse_balance_key: Key = {
+            let proposer_main_purse_balance_key = {
                 // Get reward purse Key from proof of stake contract
                 // payment_code_spec_6: system contract validity
-                let rewards_purse_key: Key =
-                    match proof_of_stake_contract.named_keys().get(POS_REWARDS_PURSE) {
-                        Some(key) => *key,
-                        None => {
-                            return Ok(ExecutionResult::precondition_failure(Error::Deploy));
-                        }
-                    };
-
                 match tracking_copy
                     .borrow_mut()
-                    .get_purse_balance_key(correlation_id, rewards_purse_key)
+                    .get_purse_balance_key(correlation_id, proposer_purse.into())
                 {
                     Ok(key) => key,
                     Err(error) => {
@@ -1747,7 +1763,7 @@ where
                 max_payment_cost,
                 account_main_purse_balance,
                 account_main_purse_balance_key,
-                rewards_purse_balance_key,
+                proposer_main_purse_balance_key,
             ));
         }
 
@@ -1872,11 +1888,10 @@ where
                 let finalize_cost_motes: Motes =
                     Motes::from_gas(execution_result_builder.total_cost(), CONV_RATE)
                         .expect("motes overflow");
-                const ARG_AMOUNT: &str = "amount";
-                const ARG_ACCOUNT_KEY: &str = "account";
                 runtime_args! {
-                    ARG_AMOUNT => finalize_cost_motes.value(),
-                    ARG_ACCOUNT_KEY => account_public_key,
+                    proof_of_stake::ARG_AMOUNT => finalize_cost_motes.value(),
+                    proof_of_stake::ARG_ACCOUNT => account_hash,
+                    proof_of_stake::ARG_TARGET => proposer_purse
                 }
             };
 

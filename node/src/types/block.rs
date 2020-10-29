@@ -271,6 +271,10 @@ impl FinalizedBlock {
         self.era_id() == EraId(0) && self.height() == 0
     }
 
+    pub(crate) fn proposer(&self) -> PublicKey {
+        self.proposer
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {

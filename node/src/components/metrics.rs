@@ -32,6 +32,7 @@ use crate::{
     effect::{requests::MetricsRequest, EffectBuilder, EffectExt, Effects},
     types::CryptoRngCore,
 };
+use std::convert::Infallible;
 
 /// The metrics component.
 #[derive(DataSize, Debug)]
@@ -43,6 +44,7 @@ pub(crate) struct Metrics {
 
 impl<REv> Component<REv> for Metrics {
     type Event = MetricsRequest;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

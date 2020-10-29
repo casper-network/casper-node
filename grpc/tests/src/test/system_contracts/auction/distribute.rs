@@ -289,7 +289,7 @@ fn should_distribute_delegation_rate_half() {
 
     // Validator share
     let validator_share = Ratio::new(U512::from(2), U512::from(3));
-    let remainders = Ratio::from(U512::one());
+    let remainders = Ratio::from(U512::zero());
 
     // Delegator shares
     let delegator_shares = Ratio::new(U512::one(), U512::from(6));
@@ -416,6 +416,7 @@ fn should_distribute_delegation_rate_half() {
         withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance =
         (expected_total_reward * validator_share + remainders).to_integer();
+
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let delegator_1_balance =
@@ -592,7 +593,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
     let delegator_1_portion = Ratio::new(U512::from(3), U512::from(8));
     let delegator_2_portion = Ratio::new(U512::from(4), U512::from(8));
 
-    let remainder = Ratio::from(U512::from(2));
+    let remainder = Ratio::from(U512::from(1));
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

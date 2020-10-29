@@ -11,6 +11,7 @@ mod keyed_counter;
 
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
+    convert::Infallible,
     fmt::Debug,
 };
 
@@ -88,6 +89,7 @@ where
         + Send,
 {
     type Event = Event<T, I>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

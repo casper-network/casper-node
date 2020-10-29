@@ -3,6 +3,7 @@ mod event;
 
 use std::{
     collections::{HashMap, VecDeque},
+    convert::Infallible,
     fmt::Debug,
 };
 
@@ -35,7 +36,7 @@ use crate::{
     small_network::NodeId,
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, CryptoRngCore, Deploy, DeployHash,
-        FinalizedBlock,
+        DeployHeader, FinalizedBlock,
     },
 };
 pub(crate) use event::Event;
@@ -211,6 +212,7 @@ impl BlockExecutor {
             }
         };
         let deploy_hash = *next_deploy.id();
+        let deploy_header = next_deploy.header().clone();
         let deploy_item = DeployItem::from(next_deploy);
 
         let execute_request = ExecuteRequest::new(
@@ -218,6 +220,7 @@ impl BlockExecutor {
             state.finalized_block.timestamp().millis(),
             vec![Ok(deploy_item)],
             ProtocolVersion::V1_0_0,
+            state.finalized_block.proposer().into(),
         );
 
         effect_builder
@@ -225,6 +228,7 @@ impl BlockExecutor {
             .event(move |result| Event::DeployExecutionResult {
                 state,
                 deploy_hash,
+                deploy_header,
                 result,
             })
     }
@@ -274,9 +278,20 @@ impl BlockExecutor {
             None => {
                 let height = finalized_block.height();
                 debug!("no pre-state hash for height {}", height);
-                // The parent block has not been executed yet; delay handling.
-                self.exec_queue.insert(height, (finalized_block, deploys));
-                Effects::new()
+                // re-check the parent map - the parent might have been executed in the meantime!
+                if let Some(state_root_hash) = self.pre_state_hash(&finalized_block) {
+                    let state = Box::new(State {
+                        finalized_block,
+                        remaining_deploys: deploys,
+                        execution_results: HashMap::new(),
+                        state_root_hash,
+                    });
+                    self.execute_next_deploy_or_create_block(effect_builder, state)
+                } else {
+                    // The parent block has not been executed yet; delay handling.
+                    self.exec_queue.insert(height, (finalized_block, deploys));
+                    Effects::new()
+                }
             }
             Some(parent_summary) => {
                 // Parent found in the storage.
@@ -295,6 +310,7 @@ impl BlockExecutor {
         effect_builder: EffectBuilder<REv>,
         mut state: Box<State>,
         deploy_hash: DeployHash,
+        deploy_header: DeployHeader,
         execution_results: ExecutionResults,
     ) -> Effects<Event> {
         let ee_execution_result = execution_results
@@ -304,7 +320,7 @@ impl BlockExecutor {
         let execution_result = ExecutionResult::from(&ee_execution_result);
         let _ = state
             .execution_results
-            .insert(deploy_hash, execution_result);
+            .insert(deploy_hash, (deploy_header, execution_result));
 
         let execution_effect = match ee_execution_result {
             EngineExecutionResult::Success { effect, cost, .. } => {
@@ -373,6 +389,7 @@ impl BlockExecutor {
 
 impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
     type Event = Event;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -428,12 +445,19 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
             Event::DeployExecutionResult {
                 state,
                 deploy_hash,
+                deploy_header,
                 result,
             } => {
                 trace!(?state, %deploy_hash, ?result, "deploy execution result");
                 // As for now a given state is expected to exist.
                 let execution_results = result.unwrap();
-                self.commit_execution_effects(effect_builder, state, deploy_hash, execution_results)
+                self.commit_execution_effects(
+                    effect_builder,
+                    state,
+                    deploy_hash,
+                    deploy_header,
+                    execution_results,
+                )
             }
 
             Event::CommitExecutionEffects {

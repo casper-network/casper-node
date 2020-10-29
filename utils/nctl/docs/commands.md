@@ -143,6 +143,100 @@ nctl-stop net=1 node=all  (same as above)
 nctl-stop net=1 node=3
 ```
 
+## Viewing chain information
+
+### nctl-view-chain-account net={W:-1} node={X:-1} account-key=Y root-hash=Z
+
+Displays result of performing a state query by account key Y at state root hash Z.
+
+```
+nctl-view-chain-account account-key=AN_ACCOUNT_KEY root-hash=A_STATE_ROOT_HASH
+
+nctl-view-chain-account net=1 node=1 account-key=AN_ACCOUNT_KEY root-hash=A_STATE_ROOT_HASH (same as above)
+```
+
+### nctl-view-chain-account-balance net={W:-1} node={X:-1} purse-uref=Y root-hash=Z
+
+Displays balance of an account purse with uref Y at state root hash Z.
+
+```
+nctl-view-chain-account-balance purse-uref=A_PURSE_UREF root-hash=A_STATE_ROOT_HASH
+
+nctl-view-chain-account-balance net=1 node=1 purse-uref=A_PURSE_UREF root-hash=A_STATE_ROOT_HASH (same as above)
+```
+
+### nctl-view-chain-block net={X:-1} node={Y:-1} block=Z
+
+Displays details of block Z at node Y on network Z.
+
+```
+nctl-view-chain-block block=A_BLOCK_HASH
+
+nctl-view-chain-block net=1 node=1 block=A_BLOCK_HASH (same as above)
+```
+
+### nctl-view-chain-deploy net={X:-1} node={Y:-1} deploy=Z
+
+Displays details of deploy Z at node Y on network Z.
+
+```
+nctl-view-chain-deploy deploy=A_DEPLOY_HASH
+
+nctl-view-chain-deploy net=1 node=1 deploy=A_DEPLOY_HASH (same as above)
+```
+
+### nctl-view-chain-state-root-hash net={X:-1} node={Y:-1}
+
+Displays a chain's state root hash.
+
+```
+nctl-view-chain-state-root-hash 
+
+nctl-view-chain-state-root-hash net=1 node=1 (same as above)
+```
+
+## Viewing faucet information
+
+### nctl-view-faucet-account net={X:-1}
+
+Displays on-chain faucet account information.
+
+```
+nctl-view-faucet-account
+
+nctl-view-faucet-account net=1  (same as above)
+```
+
+### nctl-view-faucet-account-balance net={X:-1}
+
+Displays main purse balance of faucet account associated with network X.
+
+```
+nctl-view-faucet-account-balance
+
+nctl-view-faucet-account-balance net=1  (same as above)
+```
+
+### nctl-view-faucet-account-hash net={X:-1}
+
+Displays account hash of the faucet associated with network X.
+
+```
+nctl-view-faucet-account-hash
+
+nctl-view-faucet-account-hash net=1  (same as above)
+```
+
+### nctl-view-faucet-account-key net={X:-1}
+
+Displays public key in HEX format of the faucet associated with network X.
+
+```
+nctl-view-faucet-account-key
+
+nctl-view-faucet-account-key net=1  (same as above)
+```
+
 ## Viewing node information
 
 ### nctl-view-node-log net={X:-1} node={Y:-1} typeof={Z:-stdout}
@@ -169,6 +263,26 @@ nctl-view-node-metrics net=1 node=all metric=all (same as above)
 nctl-view-node-metrics net=1 node=all metric=scheduler_queue_regular_count
 
 nctl-view-node-metrics net=1 node=2 metric=runner_events
+```
+
+### nctl-view-node-metric-finalised-block-count net={X:-1} node={Y:-all}
+
+Renders count of finalised blocks at node Y in network X to stdout.
+
+```
+nctl-view-node-metric-finalised-block-count
+
+nctl-view-node-metric-finalised-block-count net=1 node=all (same as above)
+```
+
+### nctl-view-node-metric-pending-deploy net={X:-1} node={Y:-all}
+
+Renders count of pending deploys at node Y in network X to stdout.
+
+```
+nctl-view-node-metric-pending-deploy
+
+nctl-view-node-metric-pending-deploy net=1 node=all (same as above)
 ```
 
 ### nctl-view-node-peers net={X:-1} node={Y:-all}
@@ -205,6 +319,124 @@ nctl-view-node-storage
 nctl-view-node-storage net=1 node=all  (same as above)
 
 nctl-view-node-storage net=1 node=3
+```
+
+## Viewing user information
+
+### nctl-view-user-account net={X:-1} user={Y:-1}
+
+Displays on-chain user account information.
+
+```
+nctl-view-user-account
+
+nctl-view-user-account net=1 user=1  (same as above)
+```
+
+### nctl-view-user-account-balance net={X:-1} node={Y:-1} user={Z:-1}
+
+Displays main purse balance of user Y.
+
+```
+nctl-view-user-account-balance
+
+nctl-view-user-account-balance net=1 node=1 user=1  (same as above)
+```
+
+### nctl-view-user-account-key net={X:-1} user={Y:-all}
+
+Displays public key in HEX format of user Y.
+
+```
+nctl-view-user-account-key
+
+nctl-view-user-account-key net=1 user=all  (same as above)
+
+nctl-view-user-account-key net=1 user=1  
+```
+
+### nctl-view-user-account-hash net={X:-1} user={Y:-all}
+
+Displays account hash of user Y.
+
+```
+nctl-view-user-account-hash
+
+nctl-view-user-account-hash net=1 user=all  (same as above)
+
+nctl-view-user-account-hash net=1 user=1  
+```
+
+### nctl-view-user-secret-key-path net={X:-1} user={Y:-all}
+
+Displays path to secret key in PEM format of user Y.
+
+```
+nctl-view-user-secret-key-path
+
+nctl-view-user-secret-key-path net=1 user=all  (same as above)
+
+nctl-view-user-secret-key-path net=1 user=1
+```
+
+## Viewing validator information
+
+### nctl-view-validator-account net={X:-1} user={Y:-1}
+
+Displays on-chain validator account information.
+
+```
+nctl-view-validator-account
+
+nctl-view-validator-account net=1 node=1  (same as above)
+```
+
+### nctl-view-validator-account-balance net={X:-1} node={Y:-all}
+
+Displays main purse balance of validator Y.
+
+```
+nctl-view-validator-account-balance
+
+nctl-view-validator-account-balance net=1 node=all  (same as above)
+
+nctl-view-validator-account-balance net=1 node=1
+```
+
+### nctl-view-validator-account-key net={X:-1} node={Y:-all}
+
+Displays public key in HEX format of validator Y.
+
+```
+nctl-view-validator-account-key
+
+nctl-view-validator-account-key net=1 node=all  (same as above)
+
+nctl-view-validator-account-key net=1 node=1  
+```
+
+### nctl-view-validator-account-hash net={X:-1} node={Y:-all}
+
+Displays account hash of validator Y.
+
+```
+nctl-view-validator-account-hash
+
+nctl-view-validator-account-hash net=1 node=all  (same as above)
+
+nctl-view-validator-account-hash net=1 node=1  
+```
+
+### nctl-view-validator-secret-key-path net={X:-1} node={Y:-all}
+
+Displays path to secret key in PEM format of validator Y.
+
+```
+nctl-view-validator-secret-key-path
+
+nctl-view-validator-secret-key-path net=1 node=all  (same as above)
+
+nctl-view-validator-secret-key-path net=1 node=1
 ```
 
 ## Dispatching deploys

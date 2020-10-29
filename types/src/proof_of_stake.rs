@@ -35,8 +35,13 @@ pub trait ProofOfStake: MintProvider + RuntimeProvider + Sized {
     }
 
     /// Finalize payment with `amount_spent` and a given `account`.
-    fn finalize_payment(&mut self, amount_spent: U512, account: AccountHash) -> Result<()> {
-        internal::finalize_payment(self, amount_spent, account)
+    fn finalize_payment(
+        &mut self,
+        amount_spent: U512,
+        account: AccountHash,
+        target: URef,
+    ) -> Result<()> {
+        internal::finalize_payment(self, amount_spent, account, target)
     }
 }
 
@@ -53,9 +58,6 @@ mod internal {
 
     /// The uref name where the PoS accepts payment for computation on behalf of validators.
     const PAYMENT_PURSE_KEY: &str = "pos_payment_purse";
-
-    /// The uref name where the PoS holds validator earnings before distributing them.
-    const REWARDS_PURSE_KEY: &str = "pos_rewards_purse";
 
     /// The uref name where the PoS will refund unused payment back to the user. The uref this name
     /// corresponds to is set by the user.
@@ -78,11 +80,6 @@ mod internal {
     /// Returns the purse for accepting payment for transactions.
     pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef> {
         get_purse::<R>(runtime_provider, PAYMENT_PURSE_KEY).map_err(PurseLookupError::payment)
-    }
-
-    /// Returns the purse for holding validator earnings
-    pub fn get_rewards_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef> {
-        get_purse::<R>(runtime_provider, REWARDS_PURSE_KEY).map_err(PurseLookupError::rewards)
     }
 
     /// Sets the purse where refunds (excess funds not spent to pay for computation) will be sent.
@@ -113,6 +110,7 @@ mod internal {
         provider: &mut P,
         amount_spent: U512,
         account: AccountHash,
+        target: URef,
     ) -> Result<()> {
         let caller = provider.get_caller();
         if caller != SYSTEM_ACCOUNT {
@@ -130,13 +128,12 @@ mod internal {
         }
         let refund_amount = total - amount_spent;
 
-        let rewards_purse = get_rewards_purse(provider)?;
         let refund_purse = get_refund_purse(provider)?;
         provider.remove_key(REFUND_PURSE_KEY); //unset refund purse after reading it
 
-        // pay validators
+        // pay target validator
         provider
-            .transfer_purse_to_purse(payment_purse, rewards_purse, amount_spent)
+            .transfer_purse_to_purse(payment_purse, target, amount_spent)
             .map_err(|_| Error::FailedTransferToRewardsPurse)?;
 
         if refund_amount.is_zero() {

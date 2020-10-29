@@ -156,6 +156,15 @@ impl Cli {
                     &registry,
                 )
                 .await?;
+
+                // let mut initializer2_runner = Runner::<initializer2::Initializer>::with_metrics(
+                //     WithDir::new(root.clone(), validator_config),
+                //     &mut rng,
+                //     &registry,
+                // )
+                // .await?;
+                // initializer2_runner.run(&mut rng).await;
+
                 initializer_runner.run(&mut rng).await;
 
                 info!("finished initialization");

@@ -218,7 +218,7 @@ message QueryRequest {
 message QueryResponse {
     reserved 1; // previously `casper.state.Value`
     oneof result {
-        // serialized `StoredValue`
+        // serialized `(StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>)`
         bytes success = 3;
         //TODO: ADT for errors
         string failure = 2;

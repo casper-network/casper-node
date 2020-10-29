@@ -121,15 +121,14 @@ fn should_transfer_from_account_to_account() {
         .get_exec_response(0)
         .expect("should have exec response");
 
-    let genesis_balance = builder.get_purse_balance(default_account_purse);
+    let modified_balance = builder.get_purse_balance(default_account_purse);
 
     let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_1_response)[0], CONV_RATE)
         .expect("should convert");
 
-    assert_eq!(
-        genesis_balance,
-        initial_genesis_amount - gas_cost.value() - transfer_1_amount
-    );
+    let expected_balance = initial_genesis_amount - gas_cost.value() - transfer_1_amount;
+
+    assert_eq!(modified_balance, expected_balance);
 
     // Check account 1 balance
     let account_1 = builder

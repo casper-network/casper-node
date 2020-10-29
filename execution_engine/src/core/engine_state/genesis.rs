@@ -21,7 +21,6 @@ use crate::{
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 pub const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
-pub const POS_REWARDS_PURSE: &str = "pos_rewards_purse";
 
 #[derive(Debug)]
 pub enum GenesisResult {

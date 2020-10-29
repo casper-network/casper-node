@@ -45,11 +45,13 @@ pub const MOCKED_ACCOUNT_ADDRESS: AccountHash = AccountHash::new([48u8; 32]);
 pub const ARG_AMOUNT: &str = "amount";
 
 lazy_static! {
-    // NOTE: Those values could be contants but are kept az lazy statics to avoid changes of `*FOO` into `FOO` back and forth.
+    // NOTE: Those values could be constants but are kept as lazy statics to avoid changes of `*FOO` into `FOO` back and forth.
     pub static ref DEFAULT_GENESIS_CONFIG_HASH: Blake2bHash = [42; 32].into();
     pub static ref DEFAULT_ACCOUNT_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([199; 32]);
     pub static ref DEFAULT_ACCOUNT_ADDR: AccountHash = AccountHash::from(*DEFAULT_ACCOUNT_PUBLIC_KEY);
     pub static ref DEFAULT_ACCOUNT_KEY: AccountHash = *DEFAULT_ACCOUNT_ADDR;
+    pub static ref DEFAULT_PROPOSER_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([198; 32]);
+    pub static ref DEFAULT_PROPOSER_ADDR: AccountHash = AccountHash::from(*DEFAULT_PROPOSER_PUBLIC_KEY);
     pub static ref DEFAULT_ACCOUNTS: Vec<GenesisAccount> = {
         let mut ret = Vec::new();
         let genesis_account = GenesisAccount::new(
@@ -59,6 +61,13 @@ lazy_static! {
             Motes::zero(),
         );
         ret.push(genesis_account);
+        let proposer_account = GenesisAccount::new(
+            *DEFAULT_PROPOSER_PUBLIC_KEY,
+            *DEFAULT_PROPOSER_ADDR,
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::zero(),
+        );
+        ret.push(proposer_account);
         ret
     };
     pub static ref DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
