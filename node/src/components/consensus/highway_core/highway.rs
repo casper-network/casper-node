@@ -204,14 +204,19 @@ impl<C: Context> Highway<C> {
                 let vote = *endorsements.vote();
                 if !self.state.has_vote(&vote) {
                     Some(Dependency::Vote(vote))
-                } else if !self.state.is_endorsed(&vote) {
-                    // Vote is not endorsed yet. Request more endorsements.
-                    Some(Dependency::Endorsement(vote))
                 } else {
                     None
                 }
             }
-            Vertex::Vote(vote) => vote.wire_vote.panorama.missing_dependency(&self.state),
+            Vertex::Vote(vote) => vote
+                .wire_vote
+                .panorama
+                .missing_dependency(&self.state)
+                .or_else(|| {
+                    self.state
+                        .needs_endorsements(vote)
+                        .map(Dependency::Endorsement)
+                }),
         }
     }
 

@@ -125,7 +125,7 @@ pub(crate) struct State<C: Context> {
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
     /// All currently endorsed votes, by hash.
-    endorsement: HashMap<C::Hash, Vec<Endorsement<C>>>,
+    endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
     /// Votes that don't yet have 2/3 of stake endorsing them.
     incomplete_endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
 }
@@ -166,7 +166,7 @@ impl<C: Context> State<C> {
             blocks: HashMap::new(),
             faults,
             panorama,
-            endorsement: HashMap::new(),
+            endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
         }
     }
@@ -222,7 +222,7 @@ impl<C: Context> State<C> {
 
     /// Returns endorsements for `vote`, if any.
     pub(crate) fn opt_endorsements(&self, vote: &C::Hash) -> Option<Vec<Endorsement<C>>> {
-        self.endorsement.get(vote).cloned()
+        self.endorsements.get(vote).cloned()
     }
 
     /// Returns whether evidence against validator nr. `idx` is known.
@@ -249,8 +249,13 @@ impl<C: Context> State<C> {
     /// Returns whether we have seen enough endorsements for the vote.
     /// Vote is endorsed when it, or its descendant, has more than ≥ ⅔ of votes (by weight).
     pub(crate) fn is_endorsed(&self, hash: &C::Hash) -> bool {
-        self.endorsement.contains_key(hash)
+        self.endorsements.contains_key(hash)
         // TODO: check if any descendant (from the same creator) of `hash` is endorsed.
+    }
+
+    /// Returns hash of vote that needs to be endorsed.
+    pub(crate) fn needs_endorsements(&self, _vote: &SignedWireVote<C>) -> Option<C::Hash> {
+        None
     }
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
@@ -368,19 +373,20 @@ impl<C: Context> State<C> {
         }
         // Stake required to consider vote to be endorsed.
         let threshold = self.total_weight() / 3 * 2;
-        let endorsed = self
+        let endorsed: Weight = self
             .incomplete_endorsements
             .get(&vote)
             .unwrap()
             .iter()
-            .fold(Weight(0), |acc, e| {
+            .map(|e| {
                 let v_id = e.validator_idx();
-                acc + self.weight(v_id)
-            });
+                self.weight(v_id)
+            })
+            .sum();
         if endorsed >= threshold {
             info!(%vote, "Vote endorsed by at least 2/3 of validators.");
             let fully_endorsed = self.incomplete_endorsements.remove(&vote).unwrap();
-            self.endorsement.insert(vote, fully_endorsed);
+            self.endorsements.insert(vote, fully_endorsed);
         }
     }
 
