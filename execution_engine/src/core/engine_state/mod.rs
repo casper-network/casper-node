@@ -91,7 +91,7 @@ use crate::{
 pub const CONV_RATE: u64 = 10;
 
 lazy_static! {
-    pub static ref MAX_PAYMENT: Motes = Motes::new(U512::from(500_000_000_000u64));
+    pub static ref MAX_PAYMENT: U512 = U512::from(500_000_000_000u64 * CONV_RATE);
 }
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -1438,7 +1438,7 @@ where
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
         };
 
-        let max_payment_cost = *MAX_PAYMENT;
+        let max_payment_cost = Motes::new(*MAX_PAYMENT);
 
         // Enforce minimum main purse balance validation
         // validation_spec_5: account main purse minimum balance
@@ -1648,7 +1648,6 @@ where
         debug!("Payment result: {:?}", payment_result);
 
         let payment_result_cost = payment_result.cost();
-        eprintln!("payment_gas_cost {}", payment_result_cost);
         // payment_code_spec_3: fork based upon payment purse balance and cost of
         // payment code execution
         let payment_purse_balance: Motes = {

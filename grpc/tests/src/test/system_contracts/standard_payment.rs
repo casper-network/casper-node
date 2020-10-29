@@ -59,7 +59,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         TRANSFER_PURSE_TO_ACCOUNT_WASM,
-        runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => MAX_PAYMENT.value() - U512::one() },
+        runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => *MAX_PAYMENT - U512::one() },
     )
     .build();
 
@@ -148,13 +148,12 @@ fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
 
     assert_eq!(
         modified_balance,
-        initial_balance - penalty_payment_amount.value(),
+        initial_balance - penalty_payment_amount,
         "modified balance is incorrect"
     );
 
     assert_eq!(
-        paid_transaction_fee,
-        penalty_payment_amount.value(),
+        paid_transaction_fee, penalty_payment_amount,
         "transaction fee is incorrect"
     );
 
@@ -224,13 +223,12 @@ fn should_raise_insufficient_payment_error_when_out_of_gas() {
 
     assert_eq!(
         modified_balance,
-        initial_balance - expected_reward_balance.value(),
+        initial_balance - expected_reward_balance,
         "modified balance is incorrect"
     );
 
     assert_eq!(
-        transaction_fee,
-        expected_reward_balance.value(),
+        transaction_fee, expected_reward_balance,
         "transaction fee is incorrect"
     );
 
@@ -298,13 +296,12 @@ fn should_forward_payment_execution_runtime_error() {
 
     assert_eq!(
         modified_balance,
-        initial_balance - expected_reward_balance.value(),
+        initial_balance - expected_reward_balance,
         "modified balance is incorrect"
     );
 
     assert_eq!(
-        transaction_fee,
-        expected_reward_balance.value(),
+        transaction_fee, expected_reward_balance,
         "transaction fee is incorrect"
     );
 
@@ -368,13 +365,12 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     assert_eq!(
         modified_balance,
-        initial_balance - expected_reward_balance.value(),
+        initial_balance - expected_reward_balance,
         "modified balance is incorrect"
     );
 
     assert_eq!(
-        transaction_fee,
-        expected_reward_balance.value(),
+        transaction_fee, expected_reward_balance,
         "transaction fee is incorrect"
     );
 

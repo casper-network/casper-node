@@ -70,7 +70,7 @@ lazy_static! {
     };
     pub static ref DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 
-    pub static ref DEFAULT_PAYMENT: U512 =    1550000000000000u64.into();
+    pub static ref DEFAULT_PAYMENT: U512 = 1_550_000_000_000_000u64.into();
 
     pub static ref DEFAULT_WASM_CONFIG: WasmConfig = WasmConfig::default();
     pub static ref DEFAULT_EXEC_CONFIG: ExecConfig = {
