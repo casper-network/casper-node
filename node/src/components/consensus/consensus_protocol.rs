@@ -5,7 +5,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::consensus::traits::{ConsensusValueT, Context},
+    components::consensus::traits::Context,
     types::{CryptoRngCore, Timestamp},
 };
 
@@ -48,19 +48,19 @@ pub struct EraEnd<VID> {
 /// about all the information contained in this type, as long as the total weight of faulty
 /// validators remains below the threshold.
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) struct FinalizedBlock<C: ConsensusValueT, VID> {
+pub(crate) struct FinalizedBlock<C: Context> {
     /// The finalized value.
-    pub(crate) value: C,
+    pub(crate) value: C::ConsensusValue,
     /// The timestamp at which this value was proposed.
     pub(crate) timestamp: Timestamp,
     /// The relative height in this instance of the protocol.
     pub(crate) height: u64,
     /// If this is a terminal block, i.e. the last one to be finalized, this includes rewards.
-    pub(crate) rewards: Option<BTreeMap<VID, u64>>,
+    pub(crate) rewards: Option<BTreeMap<C::ValidatorId, u64>>,
     /// The validators known to be faulty as seen by this block.
-    pub(crate) equivocators: Vec<VID>,
+    pub(crate) equivocators: Vec<C::ValidatorId>,
     /// Proposer of this value
-    pub(crate) proposer: VID,
+    pub(crate) proposer: C::ValidatorId,
 }
 
 #[derive(Debug)]
@@ -75,7 +75,7 @@ pub(crate) enum ConsensusProtocolResult<I, C: Context> {
         block_context: BlockContext,
     },
     /// A block was finalized.
-    FinalizedBlock(FinalizedBlock<C::ConsensusValue, C::ValidatorId>),
+    FinalizedBlock(FinalizedBlock<C>),
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.
     ///
