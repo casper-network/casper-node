@@ -154,7 +154,6 @@ impl<C: Context> Highway<C> {
         &mut self,
         id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        params: Params,
         current_time: Timestamp,
     ) -> Vec<Effect<C>> {
         assert!(
@@ -165,7 +164,7 @@ impl<C: Context> Highway<C> {
             .validators
             .get_index(&id)
             .expect("missing own validator ID");
-        let start_time = current_time.max(params.start_timestamp());
+        let start_time = current_time.max(self.state.params().start_timestamp());
         let (av, effects) = ActiveValidator::new(idx, secret, start_time, &self.state);
         self.active_validator = Some(av);
         effects
