@@ -123,8 +123,10 @@ pub(crate) struct State<C: Context> {
     faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
-    /// All current endorsements, by hash.
+    /// All currently endorsed votes, by hash.
     endorsement: HashMap<C::Hash, Vec<Endorsement<C>>>,
+    /// Votes that don't yet have 2/3 of stake endorsing them.
+    incomplete_endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
 }
 
 impl<C: Context> State<C> {
@@ -164,6 +166,7 @@ impl<C: Context> State<C> {
             faults,
             panorama,
             endorsement: HashMap::new(),
+            incomplete_endorsements: HashMap::new(),
         }
     }
 
@@ -232,29 +235,21 @@ impl<C: Context> State<C> {
         vote: &C::Hash,
         v_ids: I,
     ) -> bool {
-        self.endorsement
+        self.incomplete_endorsements
             .get(vote)
             .map(|v| {
                 v_ids
                     .into_iter()
                     .all(|v_id| v.get(v_id.0 as usize).is_some())
             })
-            .unwrap_or_else(|| false)
+            .unwrap_or(false)
     }
 
     /// Returns whether we have seen enough endorsements for the vote.
+    /// Vote is endorsed when it, or its descendant, has more than ≥ ⅔ of votes (by weight).
     pub(crate) fn is_endorsed(&self, hash: &C::Hash) -> bool {
-        if let Some(endorsements) = self.endorsement.get(hash) {
-            // Stake required to consider vote being endorsed.
-            let threshold = self.total_weight() / 3 * 2;
-            let endorsed = endorsements.iter().fold(Weight(0), |acc, e| {
-                let v_id = e.validator_idx();
-                acc + self.weight(v_id)
-            });
-            endorsed >= threshold
-        } else {
-            false
-        }
+        self.endorsement.contains_key(hash)
+        // TODO: check if any descendant (from the same creator) of `hash` is endorsed.
     }
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
@@ -350,19 +345,41 @@ impl<C: Context> State<C> {
         self.panorama[idx] = Observation::Faulty;
     }
 
+    /// Add set of endorsements to the state.
+    /// If, after adding, we have collected enough endorsements to consider vote _endorsed_,
+    /// it will be *upgraded* to fully endorsed.
     pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
         let vote = *endorsements.vote();
         let validator_count = self.validator_count();
         info!("Received endorsements of {:?}", vote);
-        let entry = self
-            .endorsement
-            .entry(vote)
-            .or_insert_with(|| Vec::with_capacity(validator_count));
-        for (vid, signature) in endorsements.endorsers {
-            if !entry.iter().any(|e| e.validator_idx() == vid) {
-                let endorsement = Endorsement::new(vote, vid, signature);
-                entry.push(endorsement)
+        {
+            let entry = self
+                .incomplete_endorsements
+                .entry(vote)
+                .or_insert_with(|| Vec::with_capacity(validator_count));
+            for (vid, signature) in endorsements.endorsers {
+                // Add endorsements from validators we haven't seen endorsement yet.
+                if !entry.iter().any(|e| e.validator_idx() == vid) {
+                    let endorsement = Endorsement::new(vote, vid, signature);
+                    entry.push(endorsement)
+                }
             }
+        }
+        // Stake required to consider vote to be endorsed.
+        let threshold = self.total_weight() / 3 * 2;
+        let endorsed = self
+            .incomplete_endorsements
+            .get(&vote)
+            .unwrap()
+            .iter()
+            .fold(Weight(0), |acc, e| {
+                let v_id = e.validator_idx();
+                acc + self.weight(v_id)
+            });
+        if endorsed >= threshold {
+            info!(%vote, "Vote endorsed by at least 2/3 of validators.");
+            let fully_endorsed = self.incomplete_endorsements.remove(&vote).unwrap();
+            self.endorsement.insert(vote, fully_endorsed);
         }
     }
 
@@ -510,6 +527,7 @@ impl<C: Context> State<C> {
                 return Err(VoteError::ValueAfterTerminalBlock);
             }
         }
+        // TODO: Validate against LNC.
         Ok(())
     }
 

@@ -203,6 +203,9 @@ impl<C: Context> Highway<C> {
             Vertex::Endorsements(endorsements) => {
                 if self.state.has_vote(endorsements.vote()) {
                     None
+                } else if self.state.is_endorsed(endorsements.vote()) {
+                    // Vote is not endorsed yet. Request more endorsements.
+                    Some(Dependency::Endorsement(*endorsements.vote()))
                 } else {
                     Some(Dependency::Vote(*endorsements.vote()))
                 }
@@ -242,8 +245,8 @@ impl<C: Context> Highway<C> {
                     self.state.add_evidence(evidence);
                     vec![]
                 }
-                Vertex::Endorsements(endorsement) => {
-                    self.state.add_endorsements(endorsement);
+                Vertex::Endorsements(endorsements) => {
+                    self.state.add_endorsements(endorsements);
                     vec![]
                 }
             }
@@ -257,11 +260,12 @@ impl<C: Context> Highway<C> {
         match vertex {
             Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
             Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
-            Vertex::Endorsements(endorsement) => {
-                // TODO: Maybe return `false` since we will add only missing endorsements anyway.
-                // Might be better in terms of performance.
-                self.state
-                    .has_all_endorsements(endorsement.vote(), endorsement.validator_ids())
+            Vertex::Endorsements(endorsements) => {
+                let vote = endorsements.vote();
+                self.state.is_endorsed(vote)
+                    || self
+                        .state
+                        .has_all_endorsements(vote, endorsements.validator_ids())
             }
         }
     }
@@ -485,8 +489,7 @@ impl<C: Context> Highway<C> {
             Vertex::Vote(vote) => Ok(self.state.validate_vote(vote)?),
             Vertex::Evidence(_evidence) => Ok(()),
             Vertex::Endorsements(_endorsements) => {
-                // TODO: Validate against LNC.
-                // We can validate against LNC only after having downloaded all dependencies.
+                // TODO: Validate against equivocations in endorsements.
                 Ok(())
             }
         }
