@@ -84,7 +84,7 @@ impl PendingCandidate {
 
 pub struct Era<I> {
     /// The consensus protocol instance.
-    pub(crate) consensus: Box<dyn ConsensusProtocol<I, CandidateBlock, PublicKey>>,
+    pub(crate) consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
     /// The height of this era's first block.
     pub(crate) start_height: u64,
     /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
@@ -101,7 +101,7 @@ pub struct Era<I> {
 }
 
 impl<I> Era<I> {
-    pub(crate) fn new<C: 'static + ConsensusProtocol<I, CandidateBlock, PublicKey>>(
+    pub(crate) fn new<C: 'static + ConsensusProtocol<I, ClContext>>(
         consensus: C,
         start_height: u64,
         newly_slashed: Vec<PublicKey>,

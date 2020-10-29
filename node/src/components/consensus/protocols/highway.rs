@@ -319,10 +319,9 @@ enum HighwayMessage<C: Context> {
     RequestDependency(Dependency<C>),
 }
 
-type CpResult<I, C> =
-    ConsensusProtocolResult<I, <C as Context>::ConsensusValue, <C as Context>::ValidatorId>;
+type CpResult<I, C> = ConsensusProtocolResult<I, C>;
 
-impl<I, C> ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId> for HighwayProtocol<I, C>
+impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
 where
     I: NodeIdT,
     C: Context + 'static,

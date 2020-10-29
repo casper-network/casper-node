@@ -203,7 +203,7 @@ where
         start_time: Timestamp,
         start_height: u64,
         state_root_hash: hash::Digest,
-    ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>> {
+    ) -> Vec<ConsensusProtocolResult<I, ClContext>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
         }
@@ -364,9 +364,9 @@ where
     fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
     where
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, CandidateBlock, PublicKey>,
+            &mut dyn ConsensusProtocol<I, ClContext>,
             &mut dyn CryptoRngCore,
-        ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>>,
+        ) -> Vec<ConsensusProtocolResult<I, ClContext>>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
@@ -586,7 +586,7 @@ where
 
     fn handle_consensus_results<T>(&mut self, era_id: EraId, results: T) -> Effects<Event<I>>
     where
-        T: IntoIterator<Item = ConsensusProtocolResult<I, CandidateBlock, PublicKey>>,
+        T: IntoIterator<Item = ConsensusProtocolResult<I, ClContext>>,
     {
         results
             .into_iter()
@@ -615,7 +615,7 @@ where
     fn handle_consensus_result(
         &mut self,
         era_id: EraId,
-        consensus_result: ConsensusProtocolResult<I, CandidateBlock, PublicKey>,
+        consensus_result: ConsensusProtocolResult<I, ClContext>,
     ) -> Effects<Event<I>> {
         match consensus_result {
             ConsensusProtocolResult::InvalidIncomingMessage(_, sender, error) => {
