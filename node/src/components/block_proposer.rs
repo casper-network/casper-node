@@ -98,40 +98,40 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
-#[derive(DataSize, Default, Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct BlockProposerState {
+/// Stores the internal state of the BlockProposer.
+#[derive(DataSize, Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BlockProposerState {
     pending: DeployCollection,
     proposed: ProtoBlockCollection,
     finalized: ProtoBlockCollection,
-    // We don't need the whole Chainspec here (it's also unnecessarily big), just the deploy
-    // config.
-    #[data_size(skip)]
-    chainspecs: HashMap<Version, DeployConfig>,
+}
+
+impl Display for BlockProposerState {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(
+            f,
+            "(pending:{}, proposed:{}, finalized:{})",
+            self.pending.len(),
+            self.proposed.len(),
+            self.finalized.len()
+        )
+    }
 }
 
 impl BlockProposerState {
-    /// For a fresh node with no existing state
-    pub(crate) fn with_finalized_blocks(
+    // When deserialized, we will update the instance with finalized blocks from the linear chain
+    pub(crate) fn update_finalized_blocks(
+        &mut self,
         finalized: ProtoBlockCollection,
         current_instant: Timestamp,
-    ) -> Self {
-        let mut finalized = finalized;
-        let _ = prune::prune_blocks(&mut finalized, current_instant);
-        Self {
-            finalized,
-            ..Default::default()
-        }
-    }
-
-    // When deserialized, we will update the instance with finalized blocks from the linear chain
-    pub(crate) fn update_finalized_blocks(&mut self, finalized: ProtoBlockCollection, current_instant: Timestamp) {
+    ) {
         self.prune(current_instant);
         let mut finalized = finalized;
         let _ = prune::prune_blocks(&mut finalized, current_instant);
         self.finalized.extend(finalized);
     }
-
-    /// Prunes expired deploy information from the BlockProposerState, returns the total deploys pruned
+    /// Prunes expired deploy information from the BlockProposerState, returns the total deploys
+    /// pruned
     pub(crate) fn prune(&mut self, current_instant: Timestamp) -> usize {
         let pending = prune::prune_deploys(&mut self.pending, current_instant);
         let proposed = prune::prune_blocks(&mut self.proposed, current_instant);
@@ -142,29 +142,34 @@ impl BlockProposerState {
 
 mod prune {
     use super::*;
-        /// Prunes expired deploy information from an individual DeployCollection, returns the total
-        /// deploys pruned
-        pub(super) fn prune_deploys(deploys: &mut DeployCollection, current_instant: Timestamp) -> usize {
-            let initial_len = deploys.len();
-            deploys.retain(|_hash, header| !header.expired(current_instant));
-            initial_len - deploys.len()
-        }
-        /// Prunes expired deploy information from each ProtoBlockCollection, returns the total
-        /// deploys pruned
-        pub(super) fn prune_blocks(blocks: &mut ProtoBlockCollection, current_instant: Timestamp) -> usize {
-            let mut pruned = 0;
-            let mut remove = Vec::new();
-            for (block_hash, deploys) in blocks.iter_mut() {
-                pruned += prune_deploys(deploys, current_instant);
-                if deploys.is_empty() {
-                    remove.push(*block_hash);
-                }
+    /// Prunes expired deploy information from an individual DeployCollection, returns the total
+    /// deploys pruned
+    pub(super) fn prune_deploys(
+        deploys: &mut DeployCollection,
+        current_instant: Timestamp,
+    ) -> usize {
+        let initial_len = deploys.len();
+        deploys.retain(|_hash, header| !header.expired(current_instant));
+        initial_len - deploys.len()
+    }
+    /// Prunes expired deploy information from each ProtoBlockCollection, returns the total
+    /// deploys pruned
+    pub(super) fn prune_blocks(
+        blocks: &mut ProtoBlockCollection,
+        current_instant: Timestamp,
+    ) -> usize {
+        let mut pruned = 0;
+        let mut remove = Vec::new();
+        for (block_hash, deploys) in blocks.iter_mut() {
+            pruned += prune_deploys(deploys, current_instant);
+            if deploys.is_empty() {
+                remove.push(*block_hash);
             }
-            blocks.retain(|k, _v| !remove.contains(&k));
-            pruned
         }
+        blocks.retain(|k, _v| !remove.contains(&k));
+        pruned
+    }
 }
-
 
 /// Block proposer.
 #[derive(DataSize, Debug, Clone)]
@@ -172,6 +177,10 @@ pub(crate) struct BlockProposer {
     state: BlockProposerState,
     #[data_size(skip)]
     metrics: BlockProposerMetrics,
+    // We don't need the whole Chainspec here (it's also unnecessarily big), just the deploy
+    // config.
+    #[data_size(skip)]
+    chainspecs: HashMap<Version, DeployConfig>,
 }
 
 impl BlockProposer {
@@ -192,6 +201,7 @@ impl BlockProposer {
         let this = BlockProposer {
             metrics,
             state,
+            chainspecs: HashMap::new(),
         };
         Ok((this, effects))
     }
@@ -236,7 +246,7 @@ impl BlockProposer {
     {
         // TODO - should the current protocol version be passed in here?
         let chainspec_version = Version::from((1, 0, 0));
-        let cached_chainspec = self.state.chainspecs.get(&chainspec_version).cloned();
+        let cached_chainspec = self.chainspecs.get(&chainspec_version).cloned();
         match cached_chainspec {
             Some(chainspec) => {
                 effect_builder
@@ -433,9 +443,7 @@ where
             } => {
                 let deploy_config = maybe_deploy_config.expect("should return chainspec");
                 // Update chainspec cache.
-                self.state
-                    .chainspecs
-                    .insert(chainspec_version, deploy_config);
+                self.chainspecs.insert(chainspec_version, deploy_config);
                 let deploys = self.remaining_deploys(deploy_config, current_instant, past_blocks);
                 return responder.respond(deploys).ignore();
             }

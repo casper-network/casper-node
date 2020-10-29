@@ -1,8 +1,8 @@
-use std::sync::RwLock; 
+use std::sync::RwLock;
 
 use crate::components::{
     block_proposer::BlockProposerState,
-    storage::{block_proposer_state_store::BlockProposerStateStore, Result}
+    storage::{block_proposer_state_store::BlockProposerStateStore, Result},
 };
 
 /// In-memory version of a store.

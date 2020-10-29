@@ -30,13 +30,23 @@ use smallvec::{smallvec, SmallVec};
 use tokio::task;
 use tracing::{debug, error, warn};
 
-use crate::{components::{
-        chainspec_loader::Chainspec, small_network::NodeId,
+use crate::{
+    components::{
+        block_proposer::BlockProposerState, chainspec_loader::Chainspec, small_network::NodeId,
         Component,
-    }, crypto::asymmetric_key::Signature, effect::{
+    },
+    crypto::asymmetric_key::Signature,
+    effect::{
         requests::{NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
-    }, protocol::Message, types::{Block, CryptoRngCore, Deploy, Item, ProtoBlockHash, Timestamp, json_compatibility::ExecutionResult}, utils::WithDir};
+    },
+    protocol::Message,
+    types::{
+        json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, Item, ProtoBlockHash,
+        Timestamp,
+    },
+    utils::WithDir,
+};
 use block_height_store::BlockHeightStore;
 use block_proposer_state_store::BlockProposerStateStore;
 use chainspec_store::ChainspecStore;
@@ -45,16 +55,14 @@ pub use error::Error;
 pub(crate) use error::Result;
 pub use event::Event;
 use in_mem_block_height_store::InMemBlockHeightStore;
-use in_mem_chainspec_store::InMemChainspecStore;
 use in_mem_block_proposer_state_store::InMemBlockProposerStateStore;
+use in_mem_chainspec_store::InMemChainspecStore;
 use in_mem_store::InMemStore;
 use lmdb_block_height_store::LmdbBlockHeightStore;
-use lmdb_chainspec_store::LmdbChainspecStore;
 use lmdb_block_proposer_state_store::LmdbBlockProposerStateStore;
+use lmdb_chainspec_store::LmdbChainspecStore;
 use lmdb_store::LmdbStore;
 use store::{DeployStore, Multiple, Store};
-
-use super::block_proposer::BlockProposerState;
 
 pub(crate) type Storage = LmdbStorage<Block, Deploy>;
 
@@ -143,46 +151,110 @@ impl<B: Value> Default for DeployMetadata<B> {
 }
 
 impl LmdbStorage<Block, Deploy> {
+    async fn load_block_deploys(&self, block: &Block) -> (ProtoBlockHash, Vec<Deploy>) {
+        let deploy_store = self.deploy_store();
+        let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
+
+        let block_hash = ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
+
+        let deploys = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+            .await
+            .expect("should run")
+            .into_iter()
+            .map(|result| result.unwrap_or_else(|error| panic!("failed to get deploy: {}", error)))
+            .flatten()
+            .collect::<Vec<_>>();
+        (block_hash, deploys)
+    }
+
     /// This method is intended to only be used by the joiner when transitioning to the validator
     /// state.
     pub(crate) async fn get_block_proposer_state(
         &self,
-        maybe_latest_block: Option<Block>,
+        latest_block_height: u64,
+        chainspec_version: Version,
+        current_instant: Timestamp,
     ) -> BlockProposerState {
-
+        //
         // - load BlockProposerState from storage
-        let mut block_proposer_state = self.block_proposer_state_store().get();
+        let block_proposer_state_store = self.block_proposer_state_store();
+        let block_proposer_state = task::spawn_blocking(move || block_proposer_state_store.get())
+            .await
+            .expect("should run");
 
-        // - load linear chain from latest block back to max_ttl
-        if let Some(latest_block) = maybe_latest_block {
-            let now = Timestamp::now();
-            let mut finalized = HashMap::new();
+        // If there is not yet a BlockProposerState stored, we should continue with a default.
+        let mut block_proposer_state = match block_proposer_state {
+            Ok(Some(state)) => state,
+            _ => BlockProposerState::default(),
+        };
 
-            // TODO
-            let linear_chain = latest_block.get_ancestors().iter();
-            let block_by_height_store = self.block_height_store();
+        let max_ttl = {
+            let chainspec_store = self.chainspec_store();
+            let chainspec = task::spawn_blocking(move || chainspec_store.get(chainspec_version))
+                .await
+                .expect("should run blocking");
+            let chainspec = match chainspec {
+                Ok(Some(chainspec)) => chainspec,
+                // If we can't get our hands on a chainspec, then we can't get a max_ttl to compare
+                // blocks and deploys against.
+                _ => return block_proposer_state,
+            };
+            chainspec.genesis.deploy_config.max_ttl
+        };
 
-            let deploy_store = self.deploy_store();
-            for block in linear_chain.iter() {
-                let deploy_store = deploy_store.clone();
-                let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
-                let block_hash =
-                    ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
-                let deploys = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+        // deploys, organized by ProtoBlockHash, which have been finalized
+        let mut finalized = HashMap::new();
+
+        //
+        // - get block by height of latest block
+        'iterate_ancestry: for height in (0..=latest_block_height).rev() {
+            let block = {
+                let block_store = self.block_store();
+                let block_by_height_store = self.block_height_store();
+
+                let ancestor_hash = task::spawn_blocking(move || block_by_height_store.get(height))
                     .await
-                    .expect("should run")
-                    .into_iter()
-                    .map(|result| {
-                        result.unwrap_or_else(|error| panic!("failed to get deploy: {}", error))
-                    })
-                    .flatten()
-                    .map(|deploy| (*deploy.id(), deploy.header().clone()))
-                    .collect::<HashMap<_, _>>();
-                finalized.insert(block_hash, deploys);
+                    .expect("should spawn_blocking");
+                let ancestor_hash = match ancestor_hash {
+                    Ok(Some(hash)) => hash,
+                    _ => break 'iterate_ancestry,
+                };
+
+                let block = task::spawn_blocking(move || block_store.get(smallvec![ancestor_hash]))
+                    .await
+                    .expect("should spawn_blocking")
+                    .pop();
+                match block {
+                    Some(Ok(Some(block))) => block,
+                    _ => break 'iterate_ancestry,
+                }
+            };
+
+            let (block_hash, deploys) = self.load_block_deploys(&block).await;
+
+            {
+                let has_deploys_older_than_max_ttl = deploys
+                    .iter()
+                    .any(|deploy| deploy.header().timestamp() > block.header().timestamp());
+                // if none of the deploys in the block are younger than the block and the block
+                // itself is older than now - max_ttl
+                if !has_deploys_older_than_max_ttl
+                    && block.header().timestamp() > current_instant - max_ttl
+                {
+                    break 'iterate_ancestry;
+                }
             }
 
-            // TODO - update BlockProposerState with latest deploys
-            block_proposer_state.update_finalized_blocks(finalized, now);
+            let deploys = deploys
+                .iter()
+                .map(|deploy| (*deploy.id(), deploy.header().clone()))
+                .collect::<HashMap<_, _>>();
+
+            finalized.insert(block_hash, deploys);
+        }
+
+        if !finalized.is_empty() {
+            block_proposer_state.update_finalized_blocks(finalized, current_instant);
         }
 
         block_proposer_state
@@ -553,6 +625,26 @@ pub trait StorageType {
         }
         .ignore()
     }
+
+    fn put_block_proposer_state(
+        &self,
+        state: BlockProposerState,
+        responder: Responder<()>,
+    ) -> Effects<Event<Self>>
+    where
+        Self: Sized,
+    {
+        let block_proposer_state_store = self.block_proposer_state_store();
+        async move {
+            tracing::info!("saving block_proposer_state {}", state);
+            task::spawn_blocking(move || block_proposer_state_store.put(state))
+                .await
+                .expect("should run")
+                .unwrap_or_else(|error| panic!("failed to put chainspec: {}", error));
+            responder.respond(()).await
+        }
+        .ignore()
+    }
 }
 
 impl<REv, S> Component<REv> for S
@@ -618,6 +710,9 @@ where
             Event::Request(StorageRequest::GetChainspec { version, responder }) => {
                 self.get_chainspec(version, responder)
             }
+            Event::Request(StorageRequest::PutBlockProposerState { state, responder }) => {
+                self.put_block_proposer_state(*state, responder)
+            }
         }
     }
 }
@@ -629,6 +724,7 @@ pub(crate) struct InMemStorage<B: Value, D: Value> {
     block_height_store: Arc<InMemBlockHeightStore<B::Id>>,
     deploy_store: Arc<InMemStore<D, DeployMetadata<B>>>,
     chainspec_store: Arc<InMemChainspecStore>,
+    block_proposer_state_store: Arc<InMemBlockProposerStateStore>,
 }
 
 #[allow(trivial_casts)]
@@ -656,12 +752,17 @@ where
         Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
     }
 
+    fn block_proposer_state_store(&self) -> Arc<dyn BlockProposerStateStore> {
+        Arc::clone(&self.block_proposer_state_store) as Arc<dyn BlockProposerStateStore>
+    }
+
     fn new(_config: WithDir<Config>) -> Result<Self> {
         Ok(InMemStorage {
             block_store: Arc::new(InMemStore::new()),
             block_height_store: Arc::new(InMemBlockHeightStore::new()),
             deploy_store: Arc::new(InMemStore::new()),
             chainspec_store: Arc::new(InMemChainspecStore::new()),
+            block_proposer_state_store: Arc::new(InMemBlockProposerStateStore::new()),
         })
     }
 }
@@ -677,6 +778,7 @@ where
     block_height_store: Arc<LmdbBlockHeightStore>,
     deploy_store: Arc<LmdbStore<D, DeployMetadata<B>>>,
     chainspec_store: Arc<LmdbChainspecStore>,
+    block_proposer_state_store: Arc<LmdbBlockProposerStateStore>,
 }
 
 #[allow(trivial_casts)]
@@ -699,6 +801,7 @@ where
         let block_height_store_path = root.join(BLOCK_HEIGHT_STORE_FILENAME);
         let deploy_store_path = root.join(DEPLOY_STORE_FILENAME);
         let chainspec_store_path = root.join(CHAINSPEC_STORE_FILENAME);
+        let block_proposer_state_store_path = root.join(BLOCK_PROPOSER_STATE_FILENAME);
 
         let block_store = LmdbStore::new(block_store_path, config.value().max_block_store_size())?;
         let block_height_store = LmdbBlockHeightStore::new(
@@ -712,11 +815,17 @@ where
             config.value().max_chainspec_store_size(),
         )?;
 
+        let block_proposer_state_store = LmdbBlockProposerStateStore::new(
+            block_proposer_state_store_path,
+            config.value().max_block_proposer_state_store_size(),
+        )?;
+
         Ok(LmdbStorage {
             block_store: Arc::new(block_store),
             block_height_store: Arc::new(block_height_store),
             deploy_store: Arc::new(deploy_store),
             chainspec_store: Arc::new(chainspec_store),
+            block_proposer_state_store: Arc::new(block_proposer_state_store),
         })
     }
 
@@ -734,5 +843,9 @@ where
 
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore> {
         Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
+    }
+
+    fn block_proposer_state_store(&self) -> Arc<dyn BlockProposerStateStore> {
+        Arc::clone(&self.block_proposer_state_store) as Arc<dyn BlockProposerStateStore>
     }
 }

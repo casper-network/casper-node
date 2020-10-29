@@ -32,6 +32,7 @@ use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
 use super::Responder;
 use crate::{
     components::{
+        block_proposer::BlockProposerState,
         chainspec_loader::ChainspecInfo,
         fetcher::FetchResult,
         storage::{
@@ -276,6 +277,13 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// Responder to call with the result.
         responder: Responder<Option<Chainspec>>,
     },
+    /// Store the given BlockProposerState.
+    PutBlockProposerState {
+        /// BlockProposerState to be stored.
+        state: Box<BlockProposerState>,
+        /// Responder to call with result.
+        responder: Responder<()>,
+    },
 }
 
 impl<S: StorageType> Display for StorageRequest<S> {
@@ -312,6 +320,9 @@ impl<S: StorageType> Display for StorageRequest<S> {
             ),
             StorageRequest::GetChainspec { version, .. } => {
                 write!(formatter, "get chainspec {}", version)
+            }
+            StorageRequest::PutBlockProposerState { state, .. } => {
+                write!(formatter, "put block proposer state {}", state)
             }
         }
     }

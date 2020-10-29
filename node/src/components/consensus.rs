@@ -28,8 +28,8 @@ use crate::{
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
-            BlockProposerRequest, NetworkRequest, StorageRequest,
+            self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },

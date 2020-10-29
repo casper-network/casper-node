@@ -683,17 +683,20 @@ impl reactor::Reactor for Reactor {
                 execution_results,
             }) => {
                 let mut effects = Effects::new();
-                
+
                 {
-                    // If we've advance in era, save the BlockProposer state.
+                    // If we've advanced an era, save the BlockProposer state.
+                    use crate::effect::EffectExt;
                     let last_era_id = self.last_era_id;
                     let new_era_id = block.header().era_id().0;
                     if last_era_id < new_era_id {
-                        let block_proposer_state = self.block_proposer.get_state().clone();
-                        let reactor_event = Event::Storage(storage::Event::SaveBlockProposerState {
-                            state: block_proposer_state
-                        });
-                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                        tracing::debug!(
+                            "reached a new era ({} -> {}) will store block_proposer_state",
+                            last_era_id,
+                            new_era_id
+                        );
+                        let state = self.block_proposer.get_state().clone();
+                        effects.extend(effect_builder.put_block_proposer_state(state).ignore());
                         self.last_era_id = new_era_id;
                     }
                 }

@@ -94,6 +94,7 @@ use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion};
 
 use crate::{
     components::{
+        block_proposer::BlockProposerState,
         chainspec_loader::ChainspecInfo,
         consensus::BlockContext,
         fetcher::FetchResult,
@@ -115,9 +116,9 @@ use announcements::{
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
 };
 use requests::{
-    BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-    ContractRuntimeRequest, BlockProposerRequest, FetcherRequest, MetricsRequest,
-    NetworkInfoRequest, NetworkRequest, StorageRequest,
+    BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -938,6 +939,22 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetChainspec { version, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Puts the given block_proposer_state into the block proposer state store.
+    pub(crate) async fn put_block_proposer_state<S>(self, state: BlockProposerState)
+    where
+        S: StorageType + 'static,
+        REv: From<StorageRequest<S>>,
+    {
+        self.make_request(
+            |responder| StorageRequest::PutBlockProposerState {
+                state: Box::new(state),
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

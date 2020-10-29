@@ -3,10 +3,11 @@ use std::{fmt::Debug, path::Path};
 use lmdb::{self, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags};
 use tracing::info;
 
-use super::{block_proposer_state_store::BlockProposerStateStore, Error, Result};
-use crate::{MAX_THREAD_COUNT};
-use crate::components::block_proposer::BlockProposerState; 
-use super::block_proposer_state_store::BLOCK_PROPOSER_STATE_KEY;
+use super::{
+    block_proposer_state_store::{BlockProposerStateStore, BLOCK_PROPOSER_STATE_KEY},
+    Error, Result,
+};
+use crate::{components::block_proposer::BlockProposerState, MAX_THREAD_COUNT};
 
 /// LMDB version of a store.
 #[derive(Debug)]
@@ -34,8 +35,8 @@ impl BlockProposerStateStore for LmdbBlockProposerStateStore {
     fn put(&self, block_proposer: BlockProposerState) -> Result<()> {
         let id = bincode::serialize(&BLOCK_PROPOSER_STATE_KEY)
             .map_err(|error| Error::from_serialization(*error))?;
-        let serialized_value =
-            bincode::serialize(&block_proposer).map_err(|error| Error::from_serialization(*error))?;
+        let serialized_value = bincode::serialize(&block_proposer)
+            .map_err(|error| Error::from_serialization(*error))?;
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
         txn.put(self.db, &id, &serialized_value, WriteFlags::empty())
             .expect("should put");
@@ -44,7 +45,8 @@ impl BlockProposerStateStore for LmdbBlockProposerStateStore {
     }
 
     fn get(&self) -> Result<Option<BlockProposerState>> {
-        let id = bincode::serialize(&BLOCK_PROPOSER_STATE_KEY).map_err(|error| Error::from_serialization(*error))?;
+        let id = bincode::serialize(&BLOCK_PROPOSER_STATE_KEY)
+            .map_err(|error| Error::from_serialization(*error))?;
         let txn = self.env.begin_ro_txn().expect("should create ro txn");
         let serialized_value = match txn.get(self.db, &id) {
             Ok(value) => value,
