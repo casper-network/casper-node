@@ -5,7 +5,7 @@
 name = 'casper-testnet-8'
 # Timestamp for the genesis block, also used in seeding the pseudo-random number generator used in contract-runtime for
 # computing genesis post-state hash.
-timestamp = '2020-10-15T19:00:00Z'
+timestamp = '2020-10-29T19:00:00Z'
 # Protocol version at genesis.
 protocol_version = '1.0.0'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the mint
@@ -32,7 +32,7 @@ validator_slots = 15
 # key blocks for the upcoming eras.  If the era is over by the time we start the nodes, they'll not be able to produce
 # blocks in it, and there won't be a new era build either.  That means when a completely new network is started, the
 # genesis era start time has to be adjusted to be active at the time.
-genesis_era_start_timestamp = '2020-10-15T19:00:00Z'
+genesis_era_start_timestamp = '2020-10-29T19:00:00Z'
 # Era duration.
 era_duration = '30minutes'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
