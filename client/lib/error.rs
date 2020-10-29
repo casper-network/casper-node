@@ -7,7 +7,7 @@ use thiserror::Error;
 use casper_node::crypto::Error as CryptoError;
 use casper_types::{bytesrepr::Error as ToBytesError, UIntParseError, URefFromStrError};
 
-use crate::merkle_proofs::ValidateResponseError;
+use crate::validation::ValidateResponseError;
 
 /// Crate-wide Result type wrapper.
 pub(crate) type Result<T> = std::result::Result<T, Error>;
