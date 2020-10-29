@@ -121,9 +121,8 @@ trigger:
   - "release-*"
 
 ---
-
 kind: pipeline
-name: cargo
+name: package
 
 steps:
 
