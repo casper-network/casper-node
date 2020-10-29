@@ -113,6 +113,24 @@ steps:
   depends_on:
   - cargo-test
 
+- name: build-wasm-package-push-to-s3
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - "./build_wasm_package.sh"
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+    - master
+    - "release-*"
+    event:
+    - push  
+  depends_on:
+  - build-deb
+
 # we want to publish to the test repo, only when code is pushed to master or release-* branch. 
 # bors should make sure, that it has passed on staging or trying branches
 - name: publish-test-bintray
