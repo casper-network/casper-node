@@ -10,11 +10,9 @@ use tracing::warn;
 
 use crate::{
     components::consensus::{
-        candidate_block::CandidateBlock,
-        consensus_protocol::ConsensusProtocol,
-        era_supervisor::BONDED_ERAS,
-        protocols::highway::{HighwayContext, HighwayProtocol},
-        ConsensusMessage,
+        candidate_block::CandidateBlock, cl_context::ClContext,
+        consensus_protocol::ConsensusProtocol, era_supervisor::BONDED_ERAS,
+        protocols::highway::HighwayProtocol, ConsensusMessage,
     },
     crypto::asymmetric_key::PublicKey,
     types::ProtoBlock,
@@ -227,12 +225,12 @@ where
         let consensus_heap_size = {
             let any_ref = consensus.as_any();
 
-            if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, HighwayContext>>() {
+            if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, ClContext>>() {
                 highway.estimate_heap_size()
             } else {
                 warn!(
                     "could not downcast consensus protocol to \
-                    HighwayProtocol<I, HighwayContext> to determine heap allocation size"
+                    HighwayProtocol<I, ClContext> to determine heap allocation size"
                 );
                 0
             }

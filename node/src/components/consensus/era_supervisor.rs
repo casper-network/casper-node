@@ -37,13 +37,14 @@ use crate::{
         chainspec_loader::{Chainspec, HighwayConfig},
         consensus::{
             candidate_block::CandidateBlock,
+            cl_context::{ClContext, ClSecret},
             consensus_protocol::{
                 BlockContext, ConsensusProtocol, ConsensusProtocolResult, EraEnd,
                 FinalizedBlock as CpFinalizedBlock,
             },
             highway_core::{highway::Params, validators::Validators},
             metrics::ConsensusMetrics,
-            protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
+            protocols::highway::HighwayProtocol,
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
         },
@@ -220,7 +221,7 @@ where
             .and_then(|era| {
                 era.consensus
                     .as_any()
-                    .downcast_ref::<HighwayProtocol<I, HighwayContext>>()
+                    .downcast_ref::<HighwayProtocol<I, ClContext>>()
             })
             .and_then(|highway_proto| highway_proto.median_round_exp())
             .unwrap_or(self.highway_config().minimum_round_exponent);
@@ -297,7 +298,7 @@ where
             true
         };
 
-        let mut highway = HighwayProtocol::<I, HighwayContext>::new(
+        let mut highway = HighwayProtocol::<I, ClContext>::new(
             instance_id(&self.chainspec, state_root_hash, start_height),
             validators,
             params,
@@ -305,7 +306,7 @@ where
         );
 
         let results = if should_activate {
-            let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
+            let secret = ClSecret::new(Rc::clone(&self.secret_signing_key), our_id);
             highway.activate_validator(our_id, secret, params, timestamp)
         } else {
             Vec::new()
