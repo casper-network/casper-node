@@ -129,6 +129,14 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<ConsensusProtocolResult<I, C>>;
 
+    /// Turns this instance into an active validator, that participates in the consensus protocol.
+    fn activate_validator(
+        &mut self,
+        our_id: C::ValidatorId,
+        secret: C::ValidatorSecret,
+        timestamp: Timestamp,
+    ) -> Vec<ConsensusProtocolResult<I, C>>;
+
     /// Turns this instance into a passive observer, that does not create any new vertices.
     fn deactivate_validator(&mut self);
 

@@ -68,16 +68,6 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
         }
     }
 
-    pub(crate) fn activate_validator(
-        &mut self,
-        our_id: C::ValidatorId,
-        secret: C::ValidatorSecret,
-        timestamp: Timestamp,
-    ) -> Vec<CpResult<I, C>> {
-        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
-        self.process_av_effects(av_effects)
-    }
-
     fn process_av_effects<E>(&mut self, av_effects: E) -> Vec<CpResult<I, C>>
     where
         E: IntoIterator<Item = AvEffect<C>>,
@@ -430,6 +420,16 @@ where
             // TODO: Disconnect from senders.
             vec![]
         }
+    }
+
+    fn activate_validator(
+        &mut self,
+        our_id: C::ValidatorId,
+        secret: C::ValidatorSecret,
+        timestamp: Timestamp,
+    ) -> Vec<CpResult<I, C>> {
+        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
+        self.process_av_effects(av_effects)
     }
 
     fn deactivate_validator(&mut self) {
