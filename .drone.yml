@@ -50,7 +50,7 @@ steps:
 - name: build-deb-update-revision
   <<: *buildenv
   commands:
-    - "./update-rev.sh" 
+    - "./update-rev.sh"
 
 - name: cargo-fmt
   <<: *buildenv
@@ -94,7 +94,9 @@ steps:
   - make test
   - make test-contracts
   depends_on:
-  - build-deb-update-revision
+  - updater-dry-run
+  - cargo-audit
+  - cargo-clippy
 
 - name: rebuild-cache
   <<: *cache
@@ -106,12 +108,29 @@ steps:
     event:
     - push
 
+volumes:
+  - name: cache
+    host:
+      path: /tmp/cache
+
+trigger:
+  branch:
+  - master
+  - trying
+  - staging
+  - "release-*"
+
+---
+
+kind: pipeline
+name: cargo
+
+steps:
+
 - name: build-deb
   image: casperlabs/node-build-u1804:latest
   commands:
     - "make deb"
-  depends_on:
-  - cargo-test
 
 - name: test-deb
   image: casperlabs/node-build-u1804:latest
@@ -136,14 +155,14 @@ steps:
     - master
     - "release-*"
     event:
-    - push  
+    - push
   depends_on:
-  - build-deb
+  - test-deb
 
-# we want to publish to the test repo, only when code is pushed to master or release-* branch. 
+# we want to publish to the test repo, only when code is pushed to master or release-* branch.
 # bors should make sure, that it has passed on staging or trying branches
 - name: publish-test-bintray
-  <<: *buildenv
+  <<: casperlabs/node-build-u1804:latest
   commands:
   - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
   - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
@@ -157,9 +176,10 @@ steps:
     - master
     - "release-*"
     event:
-    - push  
+    - push
   depends_on:
-  - build-deb
+  - test-deb
+
 
 volumes:
   - name: cache
@@ -168,10 +188,10 @@ volumes:
 
 trigger:
   branch:
-  - master
-  - trying
-  - staging
-  - "release-*"
+    - master
+    - trying
+    - staging
+    - "release-*"
 
 ---
 # Anchor for default buildenv
@@ -324,3 +344,4 @@ trigger:
 
 depends_on:
 - cargo
+- package
