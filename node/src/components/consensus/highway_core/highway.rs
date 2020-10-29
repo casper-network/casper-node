@@ -20,6 +20,8 @@ use crate::{
     types::{CryptoRngCore, Timestamp},
 };
 
+use super::endorsement::{Endorsement, EndorsementError, Endorsements};
+
 /// An error due to an invalid vertex.
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VertexError {
@@ -27,6 +29,8 @@ pub(crate) enum VertexError {
     Vote(#[from] VoteError),
     #[error("The vertex contains invalid evidence.")]
     Evidence(#[from] EvidenceError),
+    #[error("The endorsements contains invalid entry.")]
+    Endorsement(#[from] EndorsementError),
 }
 
 /// A vertex that has passed initial validation.
@@ -196,7 +200,23 @@ impl<C: Context> Highway<C> {
     pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
         match pvv.inner() {
             Vertex::Evidence(_) => None,
-            Vertex::Vote(vote) => vote.wire_vote.panorama.missing_dependency(&self.state),
+            Vertex::Endorsements(endorsements) => {
+                let vote = *endorsements.vote();
+                if !self.state.has_vote(&vote) {
+                    Some(Dependency::Vote(vote))
+                } else {
+                    None
+                }
+            }
+            Vertex::Vote(vote) => vote
+                .wire_vote
+                .panorama
+                .missing_dependency(&self.state)
+                .or_else(|| {
+                    self.state
+                        .needs_endorsements(vote)
+                        .map(Dependency::Endorsement)
+                }),
         }
     }
 
@@ -231,6 +251,10 @@ impl<C: Context> Highway<C> {
                     self.state.add_evidence(evidence);
                     vec![]
                 }
+                Vertex::Endorsements(endorsements) => {
+                    self.state.add_endorsements(endorsements);
+                    vec![]
+                }
             }
         } else {
             vec![]
@@ -242,6 +266,13 @@ impl<C: Context> Highway<C> {
         match vertex {
             Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
             Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
+            Vertex::Endorsements(endorsements) => {
+                let vote = endorsements.vote();
+                self.state.is_endorsed(vote)
+                    || self
+                        .state
+                        .has_all_endorsements(vote, endorsements.validator_ids())
+            }
         }
     }
 
@@ -264,6 +295,7 @@ impl<C: Context> Highway<C> {
         match dependency {
             Dependency::Vote(hash) => self.state.has_vote(hash),
             Dependency::Evidence(idx) => self.state.is_faulty(*idx),
+            Dependency::Endorsement(hash) => self.state.is_endorsed(hash),
         }
     }
 
@@ -273,7 +305,7 @@ impl<C: Context> Highway<C> {
     /// case, `get_dependency` will never return `None`, unless the peer is faulty.
     pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> GetDepOutcome<C> {
         match dependency {
-            Dependency::Vote(hash) => match self.state.wire_vote(hash, self.instance_id.clone()) {
+            Dependency::Vote(hash) => match self.state.wire_vote(hash, self.instance_id) {
                 None => GetDepOutcome::None,
                 Some(vote) => GetDepOutcome::Vertex(ValidVertex(Vertex::Vote(vote))),
             },
@@ -287,6 +319,12 @@ impl<C: Context> Highway<C> {
                     GetDepOutcome::Evidence(vid)
                 }
             },
+            Dependency::Endorsement(hash) => match self.state.opt_endorsements(hash) {
+                None => GetDepOutcome::None,
+                Some(e) => {
+                    GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(Endorsements::new(e))))
+                }
+            },
         }
     }
 
@@ -295,7 +333,7 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let instance_id = self.instance_id.clone();
+        let instance_id = self.instance_id;
 
         // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
         //
@@ -324,7 +362,7 @@ impl<C: Context> Highway<C> {
         block_context: BlockContext,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let instance_id = self.instance_id.clone();
+        let instance_id = self.instance_id;
 
         // We just use the block context's timestamp, which is
         // hopefully not much older than `Timestamp::now()`
@@ -377,7 +415,7 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let instance_id = self.instance_id.clone();
+        let instance_id = self.instance_id;
         self.map_active_validator(
             |av, state, rng| av.on_new_vote(vhash, timestamp, state, instance_id, rng),
             timestamp,
@@ -436,6 +474,17 @@ impl<C: Context> Highway<C> {
                     .ok_or(EvidenceError::UnknownPerpetrator)?;
                 Ok(evidence.validate(v_id, &self.instance_id)?)
             }
+            Vertex::Endorsements(endorsements) => {
+                let vote = *endorsements.vote();
+                for (v_id, signature) in endorsements.endorsers.iter() {
+                    let validator = self.validators.id(*v_id).ok_or(EndorsementError::Creator)?;
+                    let endorsement: Endorsement<C> = Endorsement::new(vote, *v_id, *signature);
+                    if !C::verify_signature(&endorsement.hash(), validator, &signature) {
+                        return Err(EndorsementError::Signature.into());
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -445,6 +494,10 @@ impl<C: Context> Highway<C> {
         match vertex {
             Vertex::Vote(vote) => Ok(self.state.validate_vote(vote)?),
             Vertex::Evidence(_evidence) => Ok(()),
+            Vertex::Endorsements(_endorsements) => {
+                // TODO: Validate against equivocations in endorsements.
+                Ok(())
+            }
         }
     }
 

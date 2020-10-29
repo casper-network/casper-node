@@ -37,6 +37,8 @@ use crate::{
 use block::Block;
 use tallies::Tallies;
 
+use super::endorsement::{Endorsement, Endorsements};
+
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
     #[error("The vote is a ballot but doesn't cite any block.")]
@@ -122,6 +124,10 @@ pub(crate) struct State<C: Context> {
     faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
+    /// All currently endorsed votes, by hash.
+    endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
+    /// Votes that don't yet have 2/3 of stake endorsing them.
+    incomplete_endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
 }
 
 impl<C: Context> State<C> {
@@ -160,6 +166,8 @@ impl<C: Context> State<C> {
             blocks: HashMap::new(),
             faults,
             panorama,
+            endorsements: HashMap::new(),
+            incomplete_endorsements: HashMap::new(),
         }
     }
 
@@ -212,9 +220,42 @@ impl<C: Context> State<C> {
         self.opt_fault(idx).and_then(Fault::evidence)
     }
 
+    /// Returns endorsements for `vote`, if any.
+    pub(crate) fn opt_endorsements(&self, vote: &C::Hash) -> Option<Vec<Endorsement<C>>> {
+        self.endorsements.get(vote).cloned()
+    }
+
     /// Returns whether evidence against validator nr. `idx` is known.
     pub(crate) fn has_evidence(&self, idx: ValidatorIndex) -> bool {
         self.opt_evidence(idx).is_some()
+    }
+
+    /// Returns whether we have all endorsements for `vote`.
+    pub(crate) fn has_all_endorsements<'a, I: IntoIterator<Item = &'a ValidatorIndex>>(
+        &self,
+        vote: &C::Hash,
+        v_ids: I,
+    ) -> bool {
+        self.incomplete_endorsements
+            .get(vote)
+            .map(|v| {
+                v_ids
+                    .into_iter()
+                    .all(|v_id| v.get(v_id.0 as usize).is_some())
+            })
+            .unwrap_or(false)
+    }
+
+    /// Returns whether we have seen enough endorsements for the vote.
+    /// Vote is endorsed when it, or its descendant, has more than ≥ ⅔ of votes (by weight).
+    pub(crate) fn is_endorsed(&self, hash: &C::Hash) -> bool {
+        self.endorsements.contains_key(hash)
+        // TODO: check if any descendant (from the same creator) of `hash` is endorsed.
+    }
+
+    /// Returns hash of vote that needs to be endorsed.
+    pub(crate) fn needs_endorsements(&self, _vote: &SignedWireVote<C>) -> Option<C::Hash> {
+        None
     }
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
@@ -291,7 +332,7 @@ impl<C: Context> State<C> {
         let (vote, opt_value) = Vote::new(swvote, fork_choice.as_ref(), self);
         if let Some(value) = opt_value {
             let block = Block::new(fork_choice, value, self);
-            self.blocks.insert(hash.clone(), block);
+            self.blocks.insert(hash, block);
         }
         self.votes.insert(hash, vote);
     }
@@ -308,6 +349,45 @@ impl<C: Context> State<C> {
         info!(?evidence, "marking validator #{} as faulty", idx.0);
         self.faults.insert(idx, Fault::Direct(evidence));
         self.panorama[idx] = Observation::Faulty;
+    }
+
+    /// Add set of endorsements to the state.
+    /// If, after adding, we have collected enough endorsements to consider vote _endorsed_,
+    /// it will be *upgraded* to fully endorsed.
+    pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
+        let vote = *endorsements.vote();
+        let validator_count = self.validator_count();
+        info!("Received endorsements of {:?}", vote);
+        {
+            let entry = self
+                .incomplete_endorsements
+                .entry(vote)
+                .or_insert_with(|| Vec::with_capacity(validator_count));
+            for (vid, signature) in endorsements.endorsers {
+                // Add endorsements from validators we haven't seen endorsement yet.
+                if !entry.iter().any(|e| e.validator_idx() == vid) {
+                    let endorsement = Endorsement::new(vote, vid, signature);
+                    entry.push(endorsement)
+                }
+            }
+        }
+        // Stake required to consider vote to be endorsed.
+        let threshold = self.total_weight() / 3 * 2;
+        let endorsed: Weight = self
+            .incomplete_endorsements
+            .get(&vote)
+            .unwrap()
+            .iter()
+            .map(|e| {
+                let v_id = e.validator_idx();
+                self.weight(v_id)
+            })
+            .sum();
+        if endorsed >= threshold {
+            info!(%vote, "Vote endorsed by at least 2/3 of validators.");
+            let fully_endorsed = self.incomplete_endorsements.remove(&vote).unwrap();
+            self.endorsements.insert(vote, fully_endorsed);
+        }
     }
 
     pub(crate) fn wire_vote(
@@ -453,6 +533,7 @@ impl<C: Context> State<C> {
                 return Err(VoteError::ValueAfterTerminalBlock);
             }
         }
+        // TODO: Validate against LNC.
         Ok(())
     }
 
@@ -483,7 +564,7 @@ impl<C: Context> State<C> {
                 // predecessor of wvote must be a predecessor of hash0. So we already have a
                 // conflicting vote with the same sequence number:
                 let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
-                let wvote0 = self.wire_vote(prev0, wvote.instance_id.clone()).unwrap();
+                let wvote0 = self.wire_vote(prev0, wvote.instance_id).unwrap();
                 self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
                 Observation::Faulty
             }

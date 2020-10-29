@@ -93,7 +93,7 @@ impl<C: Context> FinalityDetector<C> {
             trace!(%target_lvl, "looking for summit");
             let lvl = self.find_summit(target_lvl, candidate, state);
             if lvl == target_lvl {
-                self.last_finalized = Some(candidate.clone());
+                self.last_finalized = Some(*candidate);
                 let elapsed = start_time.elapsed();
                 trace!(%elapsed, "found finalized block");
                 return Some(candidate);
