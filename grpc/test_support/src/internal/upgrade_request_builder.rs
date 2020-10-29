@@ -90,23 +90,16 @@ impl UpgradeRequestBuilder {
             }
         }
 
-        match self.new_auction_delay {
-            None => {}
-            Some(new_auction_delay) => {
-                let mut chainspec_new_auction_delay = ChainSpec_NewAuctionDelay::new();
-                chainspec_new_auction_delay.set_new_auction_delay(new_auction_delay);
-                upgrade_point.set_new_auction_delay(chainspec_new_auction_delay);
-            }
+        if let Some(new_auction_delay) = self.new_auction_delay {
+            let mut chainspec_new_auction_delay = ChainSpec_NewAuctionDelay::new();
+            chainspec_new_auction_delay.set_new_auction_delay(new_auction_delay);
+            upgrade_point.set_new_auction_delay(chainspec_new_auction_delay);
         }
 
-        match self.new_locked_funds_period {
-            None => {}
-            Some(new_locked_funds_period) => {
-                let mut chainspec_new_locked_funds_period = ChainSpec_NewLockedFundsPeriod::new();
-                chainspec_new_locked_funds_period
-                    .set_new_locked_funds_period(new_locked_funds_period);
-                upgrade_point.set_new_locked_funds_period(chainspec_new_locked_funds_period);
-            }
+        if let Some(new_locked_funds_period) = self.new_auction_delay {
+            let mut chainspec_new_locked_funds_period = ChainSpec_NewLockedFundsPeriod::new();
+            chainspec_new_locked_funds_period.set_new_locked_funds_period(new_locked_funds_period);
+            upgrade_point.set_new_locked_funds_period(chainspec_new_locked_funds_period);
         }
 
         upgrade_point.set_protocol_version(self.new_protocol_version);
