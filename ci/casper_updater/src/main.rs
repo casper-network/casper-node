@@ -171,6 +171,9 @@ fn main() {
     );
     execution_engine.update();
 
+    let node_macros = Package::cargo("node_macros", &*regex_data::node_macros::DEPENDENT_FILES);
+    node_macros.update();
+
     let node = Package::cargo("node", &*regex_data::node::DEPENDENT_FILES);
     node.update();
 

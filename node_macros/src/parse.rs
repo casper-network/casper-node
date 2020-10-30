@@ -1,4 +1,4 @@
-//! Parser for cosy macro.
+//! Parser for reactor macro.
 //!
 //! Contains the `Parse` implementations for the intermediate representation of the macro, which is
 //! `ReactorDefinition`. Many functions required by the code generator are also included here as
