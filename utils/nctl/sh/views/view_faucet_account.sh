@@ -11,6 +11,7 @@
 
 # Import utils.
 source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils/queries.sh
 
 #######################################
 # Destructure input args.
@@ -43,6 +44,10 @@ node=${node:-1}
 # Main
 #######################################
 
-source $NCTL/sh/views/view_chain_account.sh net=$net node=$node \
-    root-hash=$(source $NCTL/sh/views/view_chain_state_root_hash.sh) \
-    account-key=$(cat $NCTL/assets/net-$net/faucet/public_key_hex)
+state_root_hash=$(get_state_root_hash $net $node)
+account_key=$(cat $NCTL/assets/net-$net/faucet/public_key_hex)
+
+source $NCTL/sh/views/view_chain_account.sh \
+    net=$net node=$node \
+    root-hash=$state_root_hash \
+    account-key=$account_key
