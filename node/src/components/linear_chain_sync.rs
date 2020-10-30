@@ -554,8 +554,9 @@ fn fetch_block_deploys<I: Send + Copy + 'static, REv>(
 where
     REv: ReactorEventT<I>,
 {
+    let block_timestamp = Some(block_header.timestamp());
     effect_builder
-        .validate_block(peer, block_header)
+        .validate_block(peer, block_header, block_timestamp)
         .event(move |(found, block_header)| {
             if found {
                 Event::DeploysFound(Box::new(block_header))

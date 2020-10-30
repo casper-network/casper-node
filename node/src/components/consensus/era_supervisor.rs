@@ -711,7 +711,7 @@ where
                     .add_candidate(candidate_block, missing_evidence);
                 effects.extend(
                     self.effect_builder
-                        .validate_block(sender.clone(), proto_block)
+                        .validate_block(sender.clone(), proto_block, None)
                         .event(move |(valid, proto_block)| Event::ResolveValidity {
                             era_id,
                             sender,
