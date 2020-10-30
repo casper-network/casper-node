@@ -11,13 +11,7 @@ mod lmdb_chainspec_store;
 mod lmdb_store;
 mod store;
 
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Display},
-    fs,
-    hash::Hash,
-    sync::Arc,
-};
+use std::{collections::HashMap, collections::HashSet, fmt::{Debug, Display}, fs, hash::Hash, sync::Arc};
 
 use datasize::DataSize;
 use futures::TryFutureExt;
@@ -57,8 +51,6 @@ use lmdb_block_height_store::LmdbBlockHeightStore;
 use lmdb_chainspec_store::LmdbChainspecStore;
 use lmdb_store::LmdbStore;
 use store::{DeployStore, Multiple, Store};
-
-use super::block_proposer::ProtoBlockCollection;
 
 pub(crate) type Storage = LmdbStorage<Block, Deploy>;
 
@@ -163,7 +155,7 @@ impl LmdbStorage<Block, Deploy> {
 
     fn load_pending_deploys(
         &self,
-        finalized: &ProtoBlockCollection,
+        finalized: &HashSet<DeployHash>,
         current_instant: Timestamp,
     ) -> Result<HashMap<DeployHash, DeployHeader>> {
         let ids = self.deploy_store().ids()?;
@@ -181,20 +173,11 @@ impl LmdbStorage<Block, Deploy> {
             if header.expired(current_instant) {
                 break;
             }
-            if !Self::finalized_contains(finalized, deploy.id()) {
+            if !finalized.contains(deploy.id()) {
                 pending.insert(*deploy.id(), header.clone());
             }
         }
         Ok(pending)
-    }
-
-    fn finalized_contains(finalized: &ProtoBlockCollection, deploy_hash: &DeployHash) -> bool {
-        for (_, deploys) in finalized.iter() {
-            if deploys.contains_key(deploy_hash) {
-                return true;
-            }
-        }
-        false
     }
 
     /// This method is intended to only be used by the joiner when transitioning to the validator
@@ -221,6 +204,7 @@ impl LmdbStorage<Block, Deploy> {
 
         // deploys, organized by ProtoBlockHash, which have been finalized
         let mut finalized = HashMap::new();
+        let mut finalized_hashes = HashSet::new();
 
         'iterate_ancestry: for height in (0..=latest_block_height).rev() {
             let block = {
@@ -255,13 +239,14 @@ impl LmdbStorage<Block, Deploy> {
                 .map(|deploy| (*deploy.id(), deploy.header().clone()))
                 .collect::<HashMap<_, _>>();
 
+            finalized_hashes.extend(deploys.iter().map(|(hash, _)| hash));
             finalized.insert(block_hash, deploys);
         }
 
         // Once finalized block's deploys are loaded, iterate over Deploy store to find 'pending'
         // deploys.
         let pending = self
-            .load_pending_deploys(&finalized, current_instant)
+            .load_pending_deploys(&finalized_hashes, current_instant)
             .expect("should load pending deploys");
 
         BlockProposerState::with_pending_and_finalized(pending, finalized)
