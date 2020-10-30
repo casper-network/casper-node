@@ -130,6 +130,7 @@ impl BlockProposerState {
         let _ = prune::prune_blocks(&mut finalized, current_instant);
         self.finalized.extend(finalized);
     }
+
     /// Prunes expired deploy information from the BlockProposerState, returns the total deploys
     /// pruned
     pub(crate) fn prune(&mut self, current_instant: Timestamp) -> usize {
@@ -142,6 +143,7 @@ impl BlockProposerState {
 
 mod prune {
     use super::*;
+
     /// Prunes expired deploy information from an individual DeployCollection, returns the total
     /// deploys pruned
     pub(super) fn prune_deploys(
@@ -152,6 +154,7 @@ mod prune {
         deploys.retain(|_hash, header| !header.expired(current_instant));
         initial_len - deploys.len()
     }
+
     /// Prunes expired deploy information from each ProtoBlockCollection, returns the total
     /// deploys pruned
     pub(super) fn prune_blocks(
@@ -166,7 +169,9 @@ mod prune {
                 remove.push(*block_hash);
             }
         }
-        blocks.retain(|k, _v| !remove.contains(&k));
+        remove.iter().for_each(|block_hash| {
+            blocks.remove(block_hash);
+        });
         pruned
     }
 }
@@ -207,7 +212,7 @@ impl BlockProposer {
     }
 
     /// Get the serializable state from this `BlockProposer` instance.
-    pub(crate) fn get_state(&self) -> &BlockProposerState {
+    pub(crate) fn state(&self) -> &BlockProposerState {
         &self.state
     }
 

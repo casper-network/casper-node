@@ -215,6 +215,7 @@ impl LmdbStorage<Block, Deploy> {
                 let ancestor_hash = task::spawn_blocking(move || block_by_height_store.get(height))
                     .await
                     .expect("should spawn_blocking");
+
                 let ancestor_hash = match ancestor_hash {
                     Ok(Some(hash)) => hash,
                     _ => break 'iterate_ancestry,
@@ -223,28 +224,20 @@ impl LmdbStorage<Block, Deploy> {
                 let block = task::spawn_blocking(move || block_store.get(smallvec![ancestor_hash]))
                     .await
                     .expect("should spawn_blocking")
-                    .pop();
+                    .pop()
+                    .unwrap_or_else(|| panic!("block at height {} should exist", height));
+
                 match block {
-                    Some(Ok(Some(block))) => block,
+                    Ok(Some(block)) => block,
                     _ => break 'iterate_ancestry,
                 }
             };
 
-            let (block_hash, deploys) = self.load_block_deploys(&block).await;
-
-            {
-                let has_deploys_older_than_max_ttl = deploys
-                    .iter()
-                    .any(|deploy| deploy.header().timestamp() > block.header().timestamp());
-                // if none of the deploys in the block are younger than the block and the block
-                // itself is older than now - max_ttl
-                if !has_deploys_older_than_max_ttl
-                    && block.header().timestamp() > current_instant - max_ttl
-                {
-                    break 'iterate_ancestry;
-                }
+            if block.header().timestamp() < current_instant - max_ttl {
+                break 'iterate_ancestry;
             }
 
+            let (block_hash, deploys) = self.load_block_deploys(&block).await;
             let deploys = deploys
                 .iter()
                 .map(|deploy| (*deploy.id(), deploy.header().clone()))

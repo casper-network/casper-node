@@ -695,7 +695,7 @@ impl reactor::Reactor for Reactor {
                             last_era_id,
                             new_era_id
                         );
-                        let state = self.block_proposer.get_state().clone();
+                        let state = self.block_proposer.state().clone();
                         effects.extend(effect_builder.put_block_proposer_state(state).ignore());
                         self.last_era_id = new_era_id;
                     }
