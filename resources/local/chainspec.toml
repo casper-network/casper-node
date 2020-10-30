@@ -24,7 +24,7 @@ auction_installer_path = '../../target/wasm32-unknown-unknown/release/auction_in
 accounts_path = 'accounts.csv'
 # Number of slots available in validator auction.
 validator_slots = 5
-# Auction delay. 
+# Number of eras before an auction actually defines the set of validators.
 auction_delay = 3
 # The delay for the payout of funds, in eras. If a withdraw request is included in a block in era N
 # (other than the last one), they are paid out in the last block of era N + locked_funds_period.

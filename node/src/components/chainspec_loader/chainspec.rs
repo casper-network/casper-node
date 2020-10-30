@@ -180,7 +180,11 @@ pub struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: Timestamp,
     pub(crate) validator_slots: u32,
+    /// Number of eras before an auction actually defines the set of validators.
     pub(crate) auction_delay: u64,
+    /// The delay for the payout of funds, in eras. If a withdraw request is included in a block in
+    /// era N (other than the last one), they are paid out in the last block of era N +
+    /// locked_funds_period.
     pub(crate) locked_funds_period: EraId,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
