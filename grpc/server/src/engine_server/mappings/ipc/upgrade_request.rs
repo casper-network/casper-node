@@ -38,7 +38,7 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
         let activation_point = if !upgrade_point.has_activation_point() {
             None
         } else {
-            Some(upgrade_point.get_activation_point().rank)
+            Some(upgrade_point.get_activation_point().height)
         };
 
         let new_validator_slots: Option<u32> = if !upgrade_point.has_new_validator_slots() {
