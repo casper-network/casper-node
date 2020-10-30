@@ -12,7 +12,7 @@ use casper_execution_engine::{
         engine_state::{Error, CONV_RATE, MAX_PAYMENT},
         execution,
     },
-    shared::{motes::Motes, transform::Transform},
+    shared::{gas::Gas, motes::Motes, transform::Transform},
 };
 use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
@@ -360,6 +360,13 @@ fn should_forward_payment_execution_gas_limit_error() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    let payment_gas_limit =
+        Gas::from_motes(Motes::new(*MAX_PAYMENT), CONV_RATE).expect("should convert to gas");
+    assert_eq!(
+        execution_result.cost(),
+        payment_gas_limit,
+        "cost should equal gas limit"
+    );
 }
 
 #[ignore]
@@ -400,6 +407,13 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), CONV_RATE)
+        .expect("should convert to gas");
+    assert_eq!(
+        execution_result.cost(),
+        session_gas_limit,
+        "cost should equal gas limit"
+    );
 }
 
 #[ignore]
@@ -456,6 +470,13 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), CONV_RATE)
+        .expect("should convert to gas");
+    assert_eq!(
+        execution_result.cost(),
+        session_gas_limit,
+        "cost should equal gas limit"
+    );
 }
 
 #[ignore]
