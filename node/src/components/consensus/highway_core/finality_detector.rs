@@ -49,10 +49,7 @@ impl<C: Context> FinalityDetector<C> {
     pub(crate) fn run<'a>(
         &'a mut self,
         highway: &'a Highway<C>,
-    ) -> Result<
-        impl Iterator<Item = FinalizedBlock<C::ConsensusValue, C::ValidatorId>> + 'a,
-        FttExceeded,
-    > {
+    ) -> Result<impl Iterator<Item = FinalizedBlock<C>> + 'a, FttExceeded> {
         let state = highway.state();
         let fault_w = state.faulty_weight();
         if fault_w >= self.ftt || fault_w > (state.total_weight() - Weight(1)) / 2 {
@@ -96,7 +93,7 @@ impl<C: Context> FinalityDetector<C> {
             trace!(%target_lvl, "looking for summit");
             let lvl = self.find_summit(target_lvl, candidate, state);
             if lvl == target_lvl {
-                self.last_finalized = Some(candidate.clone());
+                self.last_finalized = Some(*candidate);
                 let elapsed = start_time.elapsed();
                 trace!(%elapsed, "found finalized block");
                 return Some(candidate);

@@ -2,6 +2,7 @@
 //! being factored out into standalone crates.
 
 mod external;
+mod median;
 pub mod milliseconds;
 mod round_robin;
 
@@ -21,6 +22,7 @@ use thiserror::Error;
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
 pub use external::{External, LoadError, Loadable};
+pub(crate) use median::weighted_median;
 pub(crate) use round_robin::WeightedRoundRobin;
 
 /// Sensible default for many if not all systems.

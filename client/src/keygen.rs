@@ -1,20 +1,14 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process,
-};
+use std::process;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 use lazy_static::lazy_static;
 
-use casper_node::crypto::asymmetric_key::{PublicKey, SecretKey};
+use casper_client::{
+    keygen::{self, FILES, PUBLIC_KEY_HEX},
+    Error,
+};
 
 use crate::{command::ClientCommand, common};
-
-const PUBLIC_KEY_HEX: &str = "public_key_hex";
-const SECRET_KEY_PEM: &str = "secret_key.pem";
-const PUBLIC_KEY_PEM: &str = "public_key.pem";
-const FILES: [&str; 3] = [PUBLIC_KEY_HEX, SECRET_KEY_PEM, PUBLIC_KEY_PEM];
 
 lazy_static! {
     static ref MORE_ABOUT: String = format!(
@@ -51,8 +45,11 @@ mod output_dir {
             .display_order(DisplayOrder::OutputDir as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> PathBuf {
-        matches.value_of(ARG_NAME).unwrap_or_else(|| ".").into()
+    pub(super) fn get(matches: &ArgMatches) -> String {
+        matches
+            .value_of(ARG_NAME)
+            .unwrap_or_else(|| ".")
+            .to_string()
     }
 }
 
@@ -63,8 +60,6 @@ mod algorithm {
     const ARG_NAME: &str = "algorithm";
     const ARG_SHORT: &str = "a";
     const ARG_VALUE_NAME: &str = common::ARG_STRING;
-    pub(super) const ED25519: &str = "Ed25519";
-    pub(super) const SECP256K1: &str = "secp256k1";
     const ARG_HELP: &str = "The type of keys to generate";
 
     pub fn arg() -> Arg<'static, 'static> {
@@ -72,19 +67,18 @@ mod algorithm {
             .long(ARG_NAME)
             .short(ARG_SHORT)
             .required(false)
-            .default_value(ED25519)
-            .possible_value(ED25519)
-            .possible_value(SECP256K1)
+            .default_value(keygen::ED25519)
+            .possible_value(keygen::ED25519)
+            .possible_value(keygen::SECP256K1)
             .value_name(ARG_VALUE_NAME)
             .help(ARG_HELP)
             .display_order(DisplayOrder::Algorithm as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> String {
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
     }
 }
 
@@ -106,57 +100,20 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Keygen {
 
     fn run(matches: &ArgMatches<'_>) {
         let output_dir = output_dir::get(matches);
-        let force = common::force::get(matches);
         let algorithm = algorithm::get(matches);
+        let force = common::force::get(matches);
 
-        let _ = fs::create_dir_all(&output_dir)
-            .unwrap_or_else(|error| panic!("should create {}: {}", output_dir.display(), error));
-        let output_dir = output_dir.canonicalize().expect("should canonicalize path");
-
-        if !force {
-            for file in FILES.iter().map(|filename| output_dir.join(filename)) {
-                if file.exists() {
-                    eprintln!(
-                        "{} exists. To overwrite, rerun with --{}",
-                        file.display(),
-                        common::force::ARG_NAME
-                    );
-                    process::exit(1);
-                }
+        match keygen::generate_files(&output_dir, algorithm, force) {
+            Err(Error::FileAlreadyExists(existing)) => {
+                eprintln!(
+                    "{} exists. To overwrite, rerun with --{}",
+                    existing.display(),
+                    common::force::ARG_NAME
+                );
+                process::exit(1);
             }
+            Err(error) => panic!("should write key files: {}", error),
+            Ok(_) => println!("Wrote files to {}", output_dir),
         }
-
-        let secret_key = if algorithm == algorithm::ED25519 {
-            SecretKey::generate_ed25519()
-        } else if algorithm == algorithm::SECP256K1 {
-            SecretKey::generate_secp256k1()
-        } else {
-            panic!("Invalid key algorithm");
-        };
-        let public_key = PublicKey::from(&secret_key);
-
-        write_file(PUBLIC_KEY_HEX, output_dir.as_path(), public_key.to_hex());
-
-        let secret_key_path = output_dir.join(SECRET_KEY_PEM);
-        secret_key
-            .to_file(&secret_key_path)
-            .unwrap_or_else(|error| {
-                panic!("should write {}: {}", secret_key_path.display(), error)
-            });
-
-        let public_key_path = output_dir.join(PUBLIC_KEY_PEM);
-        public_key
-            .to_file(&public_key_path)
-            .unwrap_or_else(|error| {
-                panic!("should write {}: {}", public_key_path.display(), error)
-            });
-
-        println!("Wrote files to {}", output_dir.display());
     }
-}
-
-fn write_file(filename: &str, dir: &Path, value: String) {
-    let path = dir.join(filename);
-    fs::write(&path, value)
-        .unwrap_or_else(|error| panic!("should write {}: {}", path.display(), error))
 }

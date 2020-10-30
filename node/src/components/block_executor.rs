@@ -278,9 +278,20 @@ impl BlockExecutor {
             None => {
                 let height = finalized_block.height();
                 debug!("no pre-state hash for height {}", height);
-                // The parent block has not been executed yet; delay handling.
-                self.exec_queue.insert(height, (finalized_block, deploys));
-                Effects::new()
+                // re-check the parent map - the parent might have been executed in the meantime!
+                if let Some(state_root_hash) = self.pre_state_hash(&finalized_block) {
+                    let state = Box::new(State {
+                        finalized_block,
+                        remaining_deploys: deploys,
+                        execution_results: HashMap::new(),
+                        state_root_hash,
+                    });
+                    self.execute_next_deploy_or_create_block(effect_builder, state)
+                } else {
+                    // The parent block has not been executed yet; delay handling.
+                    self.exec_queue.insert(height, (finalized_block, deploys));
+                    Effects::new()
+                }
             }
             Some(parent_summary) => {
                 // Parent found in the storage.

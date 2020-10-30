@@ -21,13 +21,20 @@ const FORMATTED_STRING_PREFIX: &str = "uref-";
 /// The address of a [`URef`](types::URef) (unforgeable reference) on the network.
 pub type URefAddr = [u8; UREF_ADDR_LENGTH];
 
+/// Error while parsing a URef from a formatted string.
 #[derive(Debug)]
 pub enum FromStrError {
+    /// Prefix is not "uref-".
     InvalidPrefix,
+    /// No access rights as suffix.
     MissingSuffix,
+    /// Access rights are invalid.
     InvalidAccessRights,
+    /// Failed to decode address portion of URef.
     Hex(base16::DecodeError),
+    /// Failed to parse an int.
     Int(ParseIntError),
+    /// The address portion is the wrong length.
     Address(TryFromSliceError),
 }
 

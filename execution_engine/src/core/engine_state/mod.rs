@@ -91,7 +91,7 @@ use crate::{
 pub const CONV_RATE: u64 = 10;
 
 lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000_000u64 * CONV_RATE);
+    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000u64 * CONV_RATE);
 }
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -1042,13 +1042,22 @@ where
         state_hash: Blake2bHash,
         purse_uref: URef,
     ) -> Result<BalanceResult, Error> {
-        let mut tracking_copy = match self.tracking_copy(state_hash)? {
+        let tracking_copy = match self.tracking_copy(state_hash)? {
             Some(tracking_copy) => tracking_copy,
             None => return Ok(BalanceResult::RootNotFound),
         };
-        let balance_key = tracking_copy.get_purse_balance_key(correlation_id, purse_uref.into())?;
-        let balance = tracking_copy.get_purse_balance(correlation_id, balance_key)?;
-        Ok(BalanceResult::Success(balance.value()))
+        let (purse_balance_key, purse_proof) =
+            tracking_copy.get_purse_balance_key_with_proof(correlation_id, purse_uref.into())?;
+        let (balance, balance_proof) =
+            tracking_copy.get_purse_balance_with_proof(correlation_id, purse_balance_key)?;
+        let purse_proof = Box::new(purse_proof);
+        let balance_proof = Box::new(balance_proof);
+        let motes = balance.value();
+        Ok(BalanceResult::Success {
+            motes,
+            purse_proof,
+            balance_proof,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]

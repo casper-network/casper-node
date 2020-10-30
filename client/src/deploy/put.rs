@@ -1,13 +1,10 @@
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_node::rpcs::{account::PutDeploy, RpcWithParams};
+use casper_client::DeployStrParams;
+use casper_node::rpcs::account::PutDeploy;
 
 use super::creation_common::{self, DisplayOrder};
-use crate::{command::ClientCommand, common, RpcClient};
-
-impl RpcClient for PutDeploy {
-    const RPC_METHOD: &'static str = Self::METHOD;
-}
+use crate::{command::ClientCommand, common};
 
 impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     const NAME: &'static str = "put-deploy";
@@ -27,13 +24,36 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     fn run(matches: &ArgMatches<'_>) {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
-        let verbose = common::verbose::get(matches);
+        let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
-        let session = creation_common::parse_session_info(matches);
-        let params = creation_common::construct_deploy(matches, session);
+        let verbose = common::verbose::get(matches);
 
-        let response = Self::request_with_map_params(verbose, &node_address, rpc_id, params);
+        let secret_key = common::secret_key::get(matches);
+        let timestamp = creation_common::timestamp::get(matches);
+        let ttl = creation_common::ttl::get(matches);
+        let gas_price = creation_common::gas_price::get(matches);
+        let dependencies = creation_common::dependencies::get(matches);
+        let chain_name = creation_common::chain_name::get(matches);
+
+        let session_str_params = creation_common::session_str_params(matches);
+        let payment_str_params = creation_common::payment_str_params(matches);
+
+        let response = casper_client::put_deploy(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            DeployStrParams {
+                secret_key,
+                timestamp,
+                ttl,
+                dependencies: &dependencies,
+                gas_price,
+                chain_name,
+            },
+            session_str_params,
+            payment_str_params,
+        )
+        .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")

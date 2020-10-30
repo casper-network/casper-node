@@ -22,6 +22,7 @@ use crate::{
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
+    rpcs::{RpcWithoutParams, RpcWithoutParamsExt},
     types::{
         json_compatibility::{AuctionState, StoredValue},
         Block,
@@ -159,6 +160,8 @@ pub struct GetBalanceResult {
     pub api_version: Version,
     /// The balance value.
     pub balance_value: U512,
+    /// The merkle proof.
+    pub merkle_proof: String,
 }
 
 /// "state_get_balance" RPC.
@@ -203,8 +206,12 @@ impl RpcWithParamsExt for GetBalance {
                 )
                 .await;
 
-            let balance_value = match balance_result {
-                Ok(BalanceResult::Success(value)) => value,
+            let (balance_value, purse_proof, balance_proof) = match balance_result {
+                Ok(BalanceResult::Success {
+                    motes,
+                    purse_proof,
+                    balance_proof,
+                }) => (motes, purse_proof, balance_proof),
                 Ok(balance_result) => {
                     let error_msg = format!("get-balance failed: {:?}", balance_result);
                     info!("{}", error_msg);
@@ -223,10 +230,21 @@ impl RpcWithParamsExt for GetBalance {
                 }
             };
 
+            let proof_bytes = match (*purse_proof, *balance_proof).to_bytes() {
+                Ok(proof_bytes) => proof_bytes,
+                Err(error) => {
+                    info!("failed to encode stored value: {}", error);
+                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
+                }
+            };
+
+            let merkle_proof = hex::encode(proof_bytes);
+
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 balance_value,
+                merkle_proof,
             };
             Ok(response_builder.success(result)?)
         }
@@ -235,10 +253,6 @@ impl RpcWithParamsExt for GetBalance {
 }
 
 // auction info
-
-/// Params for "state_get_auction_info" RPC request.
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct GetAuctionInfoParams {}
 
 /// Result for "state_get_auction_info" RPC response.
 #[derive(Serialize, Deserialize, Debug)]
@@ -252,24 +266,22 @@ pub struct GetAuctionInfoResult {
 /// "state_get_auction_info" RPC.
 pub struct GetAuctionInfo {}
 
-impl RpcWithParams for GetAuctionInfo {
+impl RpcWithoutParams for GetAuctionInfo {
     const METHOD: &'static str = "state_get_auction_info";
-    type RequestParams = GetAuctionInfoParams;
     type ResponseResult = GetAuctionInfoResult;
 }
 
-impl RpcWithParamsExt for GetAuctionInfo {
+impl RpcWithoutParamsExt for GetAuctionInfo {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        _params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let block: Block = {
                 let maybe_block = effect_builder
                     .make_request(
                         |responder| ApiRequest::GetBlock {
-                            maybe_hash: None,
+                            maybe_id: None,
                             responder,
                         },
                         QueueKind::Api,
