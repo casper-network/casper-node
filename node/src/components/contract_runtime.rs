@@ -346,7 +346,7 @@ where
                     })
                     .await
                     .expect("should run");
-                    trace!(?result, "get era validators response");
+                    trace!(?result, "get validator weights by era id response");
                     responder.respond(result).await
                 }
                 .ignore()
