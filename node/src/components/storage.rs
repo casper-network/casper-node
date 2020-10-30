@@ -146,12 +146,11 @@ impl<B: Value> Default for DeployMetadata<B> {
 }
 
 impl LmdbStorage<Block, Deploy> {
+
     async fn load_block_deploys(&self, block: &Block) -> (ProtoBlockHash, Vec<Deploy>) {
         let deploy_store = self.deploy_store();
         let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
-
         let block_hash = ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
-
         let deploys = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
             .await
             .expect("should run")
