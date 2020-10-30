@@ -7,9 +7,7 @@ mod generate_completion;
 mod get_auction_info;
 mod get_state_hash;
 mod keygen;
-mod merkle_proofs;
 mod query_state;
-mod rpc;
 
 use clap::{crate_description, crate_version, App};
 
@@ -20,13 +18,12 @@ use casper_node::rpcs::{
     state::{GetAuctionInfo, GetBalance, GetItem as QueryState},
 };
 
-use deploy::{MakeDeploy, SendDeploy, SignDeploy};
+use deploy::{ListDeploys, MakeDeploy, SendDeploy, SignDeploy};
 
 use command::ClientCommand;
-use deploy::{ListDeploys, Transfer};
+use deploy::Transfer;
 use generate_completion::GenerateCompletion;
 use keygen::Keygen;
-use rpc::RpcClient;
 
 const APP_NAME: &str = "Casper client";
 

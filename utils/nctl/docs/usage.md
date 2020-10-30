@@ -40,6 +40,8 @@ nctl-assets-setup
 /storage
 ```
 
+- Examining the contents of `$NCTL/assets/net-1/users/user-1`, i.e. user 1, you will find both cryptographic keys & account public key (hex) files. 
+
 - Once assets have been created you are advised to review contents of toml files, i.e. `/chainspec/chainspec.toml` & the various `/nodes/node-X/config/node-config.toml` files.
 
 - If you wish to test a modification to the node software, you can make the code modification, recompile the binary set, create a new set of network assets by incrementing the network identifier to 2.  At this point we will have 2 test networks ready to be run side by side.
@@ -120,10 +122,9 @@ You can view chain, faucet, node & user information using the set of `nctl-view-
 To teardown a network once a testing session is complete:
 
 ```
-# Not only does this delete all previously created assets, it also stops any nodes still running in daemon mode.
+# Delete previously created assets and stops all running nodes.
 nctl-assets-teardown
 ```
-
 
 ## Summary
 

@@ -84,6 +84,8 @@ impl ToBytes for DeployInfo {
 
 #[cfg(test)]
 pub(crate) mod gens {
+    use alloc::vec::Vec;
+
     use proptest::{
         array,
         collection::{self, SizeRange},

@@ -4,11 +4,11 @@
 
 Upon successful setup, nctl commands are made available via aliases for execution from within a terminal session.  All such commands are prefixed by `nctl-` and allow you to perform various tasks as detailed below.
 
-NOTE 1: all network & node ordinal identifiers are 1 based.
+NOTE 1: all network, node & user ordinal identifiers are 1 based.
 
 NOTE 2: all command parameterrs have default values to simplify the general case of testing a single local network.
 
-NOTE 3: when executing either the `nctl-interactive` or `nctl-start` commands, the node logging level output can be assigned by passing in the `loglevel` parameter.  If you do not pass in this variable then current it defaults either to the current value of RUST_LOG or `debug`.
+NOTE 3: when executing either the `nctl-interactive` or `nctl-start` commands, the node logging level output can be assigned by passing in the `loglevel` parameter.  If you do not pass in this variable then nctl defaults either to the current value of RUST_LOG or `debug`.
 
 
 ## Compiling network binaries
@@ -73,7 +73,7 @@ nctl-assets-dump net=1  (same as above)
 
 ## Controlling network nodes
 
-### nctl-interactive net={X:-1} node={Y:-1} loglevel={Z:-($NCTL_NODE_LOG_LEVEL | debug)}
+### nctl-interactive net={X:-1} node={Y:-1} loglevel={Z:-($RUST_LOG | debug)}
 
 Starts (in interactive mode) node Y in network X.  See note 3 above in repsec of logging level.
 
@@ -109,7 +109,7 @@ nctl-restart net=1 node=all  (same as above)
 nctl-restart net=1 node=3
 ```
 
-### nctl-start net={X:-1} node={Y:-all} loglevel={Z:-($NCTL_NODE_LOG_LEVEL | debug)}
+### nctl-start net={X:-1} node={Y:-all} loglevel={Z:-($RUST_LOG | debug)}
 
 Starts node Y in network X.  If Y=all then all nodes in the network are restarted.  See note 3 above in repsec of logging level.
 
@@ -443,7 +443,7 @@ nctl-view-validator-secret-key-path net=1 node=1
 
 ### nctl-wg-100 net={X:-1} node={Y:-1} payment={P:-200000} gas={G:-10} transfers={T:-100} interval={I:-0.01} user={U:-1}
 
-Dispatches to node Y in network X, T wasmless transfers from network faucet to user #U.  If node=all then transfers are dispatched to nodes in a round-robin fashion.
+Dispatches to node Y in network X, T wasmless transfers from network faucet to user U.  If node=all then transfers are dispatched to nodes in a round-robin fashion.
 
 ```
 nctl-wg-100
@@ -457,7 +457,7 @@ NOTE - this command has a synonym: `nctl-do-transfer`
 
 ### nctl-wg-110 net={X:-1} node={Y:-1} payment={P:-200000} gas={G:-10} transfers={T:-100} interval={I:-0.01} user={U:-1}
 
-Dispatches to node Y in network X, T wasm based transfers from network faucet to user #U.  If node=all then transfers are dispatched to nodes in a round-robin fashion.
+Dispatches to node Y in network X, T wasm based transfers from network faucet to user U.  If node=all then transfers are dispatched to nodes in a round-robin fashion.
 
 ```
 nctl-wg-110
@@ -471,7 +471,7 @@ NOTE - this command has a synonym: `nctl-do-transfer-wasm`
 
 ### nctl-wg-200 net={X:-1} node={Y:-1} amount={A:-1000000} rate={R:-125} payment={P:-200000} gas={G:-10} user={U:-1}
 
-Dispatches to node Y in network X from user #U, a Proof-Of-Stake auction bid **submission** for amount A (motes) with a delegation rate of R.  Displays relevant deploy hash for subsequent querying.
+Dispatches to node Y in network X from user U, a Proof-Of-Stake auction bid **submission** for amount A (motes) with a delegation rate of R.  Displays relevant deploy hash for subsequent querying.
 
 ```
 nctl-wg-200
@@ -485,7 +485,7 @@ NOTE - this command has a synonym: `nctl-do-auction-submit`
 
 ### nctl-wg-201 net={X:-1} node={Y:-1} amount={A:-1000000} payment={P:-200000} gas={G:-10} user={U:-1}
 
-Dispatches to node Y in network X from user #U, a Proof-Of-Stake auction bid **withdrawal** for amount A (motes).  Displays relevant deploy hash for subsequent querying.
+Dispatches to node Y in network X from user U, a Proof-Of-Stake auction bid **withdrawal** for amount A (motes).  Displays relevant deploy hash for subsequent querying.
 
 ```
 nctl-wg-201
@@ -499,7 +499,7 @@ NOTE - this command has a synonym: `nctl-do-auction-withdraw`
 
 ### nctl-wg-210 net={X:-1} node={Y:-1} amount={A:-1000000} payment={P:-200000} gas={G:-10} user={U:-1}
 
-Dispatches to node Y in network X from user #U, a Proof-Of-Stake **delegate** bid for amount A (motes).  Displays relevant deploy hash for subsequent querying.
+Dispatches to node Y in network X from user U, a Proof-Of-Stake **delegate** bid for amount A (motes).  Displays relevant deploy hash for subsequent querying.
 
 ```
 nctl-wg-210
@@ -513,7 +513,7 @@ NOTE - this command has a synonym: `nctl-do-auction-delegate`
 
 ### nctl-wg-211 net={X:-1} node={Y:-1} amount={A:-1000000} payment={P:-200000} gas={G:-10} user={U:-1}
 
-Dispatches to node Y in network X from user #U, a Proof-Of-Stake **undelegate** bid for amount A (motes).  Displays relevant deploy hash for subsequent querying.
+Dispatches to node Y in network X from user U, a Proof-Of-Stake **undelegate** bid for amount A (motes).  Displays relevant deploy hash for subsequent querying.
 
 ```
 nctl-wg-211

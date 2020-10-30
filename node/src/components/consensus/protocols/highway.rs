@@ -2,36 +2,36 @@ mod round_success_meter;
 
 use std::{
     any::Any,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
-    rc::Rc,
 };
 
+use casper_execution_engine::shared::motes::Motes;
 use datasize::DataSize;
 use itertools::Itertools;
+use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::{info, trace};
 
 use self::round_success_meter::RoundSuccessMeter;
+use casper_types::{auction::BLOCK_REWARD, U512};
 
 use crate::{
-    components::consensus::{
-        candidate_block::CandidateBlock,
-        consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
-        highway_core::{
-            active_validator::Effect as AvEffect,
-            finality_detector::FinalityDetector,
-            highway::{
-                Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex, Vertex,
+    components::{
+        chainspec_loader::HighwayConfig,
+        consensus::{
+            consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
+            highway_core::{
+                active_validator::Effect as AvEffect,
+                finality_detector::FinalityDetector,
+                highway::{
+                    Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
+                    Vertex,
+                },
+                validators::Validators,
             },
-            validators::Validators,
-            Weight,
+            traits::{Context, NodeIdT},
         },
-        traits::{Context, NodeIdT, ValidatorSecret},
-    },
-    crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey, Signature},
-        hash::{self, Digest},
     },
     types::{CryptoRngCore, Timestamp},
 };
@@ -54,13 +54,59 @@ where
     round_success_meter: RoundSuccessMeter<C>,
 }
 
-impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
+impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     pub(crate) fn new(
         instance_id: C::InstanceId,
-        validators: Validators<C::ValidatorId>,
-        params: Params,
-        ftt: Weight,
+        validator_stakes: Vec<(C::ValidatorId, Motes)>,
+        slashed: &HashSet<C::ValidatorId>,
+        highway_config: &HighwayConfig,
+        prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
+        start_time: Timestamp,
+        seed: u64,
     ) -> Self {
+        let sum_stakes: Motes = validator_stakes.iter().map(|(_, stake)| *stake).sum();
+        assert!(
+            !sum_stakes.value().is_zero(),
+            "cannot start era with total weight 0"
+        );
+        // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
+        // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
+        let scaling_factor = (sum_stakes.value() + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
+        let scale_stake = |(key, stake): (C::ValidatorId, Motes)| {
+            (key, AsPrimitive::<u64>::as_(stake.value() / scaling_factor))
+        };
+        let mut validators: Validators<C::ValidatorId> =
+            validator_stakes.into_iter().map(scale_stake).collect();
+
+        for vid in slashed {
+            validators.ban(vid);
+        }
+
+        let total_weight = u128::from(validators.total_weight());
+        let ftt_percent = u128::from(highway_config.finality_threshold_percent);
+        let ftt = ((total_weight * ftt_percent / 100) as u64).into();
+
+        let init_round_exp = prev_cp
+            .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
+            .and_then(|highway_proto| highway_proto.median_round_exp())
+            .unwrap_or(highway_config.minimum_round_exponent);
+
+        info!(
+            %init_round_exp,
+            "initializing Highway instance",
+        );
+
+        let params = Params::new(
+            seed,
+            BLOCK_REWARD,
+            BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
+            highway_config.minimum_round_exponent,
+            init_round_exp,
+            highway_config.minimum_era_height,
+            start_time,
+            start_time + highway_config.era_duration,
+        );
+
         let min_round_exp = params.min_round_exp();
         let round_exp = params.init_round_exp();
         let start_timestamp = params.start_timestamp();
@@ -72,19 +118,6 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
             vertices_to_be_added_later: BTreeMap::new(),
             round_success_meter: RoundSuccessMeter::new(round_exp, min_round_exp, start_timestamp),
         }
-    }
-
-    pub(crate) fn activate_validator(
-        &mut self,
-        our_id: C::ValidatorId,
-        secret: C::ValidatorSecret,
-        params: Params,
-        timestamp: Timestamp,
-    ) -> Vec<CpResult<I, C>> {
-        let av_effects = self
-            .highway
-            .activate_validator(our_id, secret, params, timestamp);
-        self.process_av_effects(av_effects)
     }
 
     fn process_av_effects<E>(&mut self, av_effects: E) -> Vec<CpResult<I, C>>
@@ -325,10 +358,9 @@ enum HighwayMessage<C: Context> {
     RequestDependency(Dependency<C>),
 }
 
-type CpResult<I, C> =
-    ConsensusProtocolResult<I, <C as Context>::ConsensusValue, <C as Context>::ValidatorId>;
+type CpResult<I, C> = ConsensusProtocolResult<I, C>;
 
-impl<I, C> ConsensusProtocol<I, C::ConsensusValue, C::ValidatorId> for HighwayProtocol<I, C>
+impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
 where
     I: NodeIdT,
     C: Context + 'static,
@@ -442,6 +474,16 @@ where
         }
     }
 
+    fn activate_validator(
+        &mut self,
+        our_id: C::ValidatorId,
+        secret: C::ValidatorSecret,
+        timestamp: Timestamp,
+    ) -> Vec<CpResult<I, C>> {
+        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
+        self.process_av_effects(av_effects)
+    }
+
     fn deactivate_validator(&mut self) {
         self.highway.deactivate_validator()
     }
@@ -482,52 +524,5 @@ where
 
     fn as_any(&self) -> &dyn Any {
         self
-    }
-}
-
-pub(crate) struct HighwaySecret {
-    secret_key: Rc<SecretKey>,
-    public_key: PublicKey,
-}
-
-impl HighwaySecret {
-    pub(crate) fn new(secret_key: Rc<SecretKey>, public_key: PublicKey) -> Self {
-        Self {
-            secret_key,
-            public_key,
-        }
-    }
-}
-
-impl ValidatorSecret for HighwaySecret {
-    type Hash = Digest;
-    type Signature = Signature;
-
-    fn sign(&self, hash: &Digest, rng: &mut dyn CryptoRngCore) -> Signature {
-        asymmetric_key::sign(hash, self.secret_key.as_ref(), &self.public_key, rng)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct HighwayContext;
-
-impl Context for HighwayContext {
-    type ConsensusValue = CandidateBlock;
-    type ValidatorId = PublicKey;
-    type ValidatorSecret = HighwaySecret;
-    type Signature = Signature;
-    type Hash = Digest;
-    type InstanceId = Digest;
-
-    fn hash(data: &[u8]) -> Digest {
-        hash::hash(data)
-    }
-
-    fn verify_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
-        if let Err(error) = asymmetric_key::verify(hash, signature, public_key) {
-            info!(%error, %signature, %public_key, %hash, "failed to validate signature");
-            return false;
-        }
-        true
     }
 }

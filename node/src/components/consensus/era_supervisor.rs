@@ -19,7 +19,6 @@ use blake2::{
 };
 use datasize::DataSize;
 use itertools::Itertools;
-use num_traits::AsPrimitive;
 use prometheus::Registry;
 use rand::Rng;
 use tracing::{error, info, trace, warn};
@@ -28,8 +27,8 @@ use casper_execution_engine::{
     core::engine_state::era_validators::GetEraValidatorsRequest, shared::motes::Motes,
 };
 use casper_types::{
-    auction::{ValidatorWeights, AUCTION_DELAY, BLOCK_REWARD, DEFAULT_UNBONDING_DELAY},
-    ProtocolVersion, U512,
+    auction::{ValidatorWeights, AUCTION_DELAY, DEFAULT_UNBONDING_DELAY},
+    ProtocolVersion,
 };
 
 use crate::{
@@ -37,13 +36,13 @@ use crate::{
         chainspec_loader::{Chainspec, HighwayConfig},
         consensus::{
             candidate_block::CandidateBlock,
+            cl_context::{ClContext, Keypair},
             consensus_protocol::{
                 BlockContext, ConsensusProtocol, ConsensusProtocolResult, EraEnd,
                 FinalizedBlock as CpFinalizedBlock,
             },
-            highway_core::{highway::Params, validators::Validators},
             metrics::ConsensusMetrics,
-            protocols::highway::{HighwayContext, HighwayProtocol, HighwaySecret},
+            protocols::highway::HighwayProtocol,
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
         },
@@ -155,8 +154,8 @@ where
         }
     }
 
-    fn highway_config(&self) -> HighwayConfig {
-        self.chainspec.genesis.highway_config
+    fn highway_config(&self) -> &HighwayConfig {
+        &self.chainspec.genesis.highway_config
     }
 
     fn booking_block_height(&self, era_id: EraId) -> u64 {
@@ -202,28 +201,11 @@ where
         start_time: Timestamp,
         start_height: u64,
         state_root_hash: hash::Digest,
-    ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>> {
+    ) -> Vec<ConsensusProtocolResult<I, ClContext>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
         }
         self.current_era = era_id;
-
-        let sum_stakes: Motes = validator_stakes.iter().map(|(_, stake)| *stake).sum();
-        assert!(
-            !sum_stakes.value().is_zero(),
-            "cannot start era with total weight 0"
-        );
-
-        let init_round_exp = era_id
-            .checked_sub(1)
-            .and_then(|last_era_id| self.active_eras.get(&last_era_id))
-            .and_then(|era| {
-                era.consensus
-                    .as_any()
-                    .downcast_ref::<HighwayProtocol<I, HighwayContext>>()
-            })
-            .and_then(|highway_proto| highway_proto.median_round_exp())
-            .unwrap_or(self.highway_config().minimum_round_exponent);
 
         info!(
             ?validator_stakes,
@@ -231,18 +213,8 @@ where
             %timestamp,
             %start_height,
             era = era_id.0,
-            %init_round_exp,
             "starting era",
         );
-
-        // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
-        // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
-        let scaling_factor = (sum_stakes.value() + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
-        let scale_stake = |(key, stake): (PublicKey, Motes)| {
-            (key, AsPrimitive::<u64>::as_(stake.value() / scaling_factor))
-        };
-        let mut validators: Validators<PublicKey> =
-            validator_stakes.into_iter().map(scale_stake).collect();
 
         let slashed = era_id
             .iter_other_bonded()
@@ -251,45 +223,16 @@ where
             .cloned()
             .collect();
 
-        for pub_key in &slashed {
-            validators.ban(pub_key);
-        }
-
-        let total_weight = u128::from(validators.total_weight());
-        let ftt_percent = u128::from(self.highway_config().finality_threshold_percent);
-        let ftt = ((total_weight * ftt_percent / 100) as u64).into();
-
-        // TODO: The initial round length should be the observed median of the switch block.
-        let params = Params::new(
-            seed,
-            BLOCK_REWARD,
-            BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
-            self.highway_config().minimum_round_exponent,
-            init_round_exp,
-            self.highway_config().minimum_era_height,
-            start_time,
-            start_time + self.highway_config().era_duration,
-        );
-
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
         let our_id = self.public_signing_key;
-        let era_rounds_len = params.min_round_len() * params.end_height();
-        let min_end_time = start_time + self.highway_config().era_duration.max(era_rounds_len);
         let should_activate = if self.node_start_time >= start_time {
             info!(
                 era = era_id.0,
                 %self.node_start_time, "not voting; node was not started before the era began",
             );
             false
-        } else if min_end_time < timestamp {
-            info!(
-                era = era_id.0,
-                %min_end_time,
-                "not voting; era started too long ago",
-            );
-            false
-        } else if !validators.iter().any(|v| *v.id() == our_id) {
+        } else if !validator_stakes.iter().any(|(v, _)| *v == our_id) {
             info!(era = era_id.0, %our_id, "not voting; not a validator");
             false
         } else {
@@ -297,16 +240,23 @@ where
             true
         };
 
-        let mut highway = HighwayProtocol::<I, HighwayContext>::new(
+        let prev_era = era_id
+            .checked_sub(1)
+            .and_then(|last_era_id| self.active_eras.get(&last_era_id));
+
+        let mut highway = HighwayProtocol::<I, ClContext>::new(
             instance_id(&self.chainspec, state_root_hash, start_height),
-            validators,
-            params,
-            ftt,
+            validator_stakes,
+            &slashed,
+            self.highway_config(),
+            prev_era.map(|era| &*era.consensus),
+            start_time,
+            seed,
         );
 
         let results = if should_activate {
-            let secret = HighwaySecret::new(Rc::clone(&self.secret_signing_key), our_id);
-            highway.activate_validator(our_id, secret, params, timestamp)
+            let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
+            highway.activate_validator(our_id, secret, timestamp)
         } else {
             Vec::new()
         };
@@ -363,9 +313,9 @@ where
     fn delegate_to_era<F>(&mut self, era_id: EraId, f: F) -> Effects<Event<I>>
     where
         F: FnOnce(
-            &mut dyn ConsensusProtocol<I, CandidateBlock, PublicKey>,
+            &mut dyn ConsensusProtocol<I, ClContext>,
             &mut dyn CryptoRngCore,
-        ) -> Vec<ConsensusProtocolResult<I, CandidateBlock, PublicKey>>,
+        ) -> Vec<ConsensusProtocolResult<I, ClContext>>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
@@ -585,7 +535,7 @@ where
 
     fn handle_consensus_results<T>(&mut self, era_id: EraId, results: T) -> Effects<Event<I>>
     where
-        T: IntoIterator<Item = ConsensusProtocolResult<I, CandidateBlock, PublicKey>>,
+        T: IntoIterator<Item = ConsensusProtocolResult<I, ClContext>>,
     {
         results
             .into_iter()
@@ -614,7 +564,7 @@ where
     fn handle_consensus_result(
         &mut self,
         era_id: EraId,
-        consensus_result: ConsensusProtocolResult<I, CandidateBlock, PublicKey>,
+        consensus_result: ConsensusProtocolResult<I, ClContext>,
     ) -> Effects<Event<I>> {
         match consensus_result {
             ConsensusProtocolResult::InvalidIncomingMessage(_, sender, error) => {

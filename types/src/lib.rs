@@ -79,7 +79,7 @@ pub use semver::{SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use system_contract_type::SystemContractType;
 pub use transfer::Transfer;
 pub use transfer_result::{TransferResult, TransferredTo};
-pub use uref::{URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
+pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
 
 /// The length of a deploy hash.
 pub const DEPLOY_HASH_LENGTH: usize = 32;
