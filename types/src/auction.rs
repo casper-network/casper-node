@@ -50,9 +50,9 @@ pub trait Auction:
     ///
     /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
     /// internal data structures recording current and past winners.
-    fn get_era_validators(&mut self, era_id: EraId) -> Result<Option<ValidatorWeights>> {
-        let mut era_validators = internal::get_era_validators(self)?;
-        Ok(era_validators.remove(&era_id))
+    fn get_era_validators(&mut self) -> Result<EraValidators> {
+        let era_validators = internal::get_era_validators(self)?;
+        Ok(era_validators)
     }
 
     /// Returns validators in era_validators, mapped to their bids or founding stakes, delegation

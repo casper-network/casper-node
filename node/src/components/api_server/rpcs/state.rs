@@ -327,8 +327,6 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
             let path = vec![casper_types::auction::BIDS_KEY.to_string()];
             // the global state hash of the last block
             let state_root_hash = *block.header().state_root_hash();
-            // the era of the last block
-            let era_id = block.header().era_id().0;
 
             let query_result = effect_builder
                 .make_request(
@@ -354,7 +352,6 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
                 .make_request(
                     |responder| ApiRequest::QueryEraValidators {
                         state_root_hash,
-                        era_id,
                         protocol_version,
                         responder,
                     },
@@ -362,9 +359,9 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let validator_weights = era_validators_result.ok().flatten();
+            let era_validators = era_validators_result.ok().flatten();
 
-            let auction_state = AuctionState::new(state_root_hash, era_id, bids, validator_weights);
+            let auction_state = AuctionState::new(state_root_hash, bids, era_validators);
             debug!("responding to client with: {:?}", auction_state);
             Ok(response_builder.success(auction_state)?)
         }

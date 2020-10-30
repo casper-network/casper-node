@@ -1970,9 +1970,7 @@ where
 
         let ret: CLValue = match entry_point_name {
             auction::METHOD_GET_ERA_VALIDATORS => {
-                let era_id = Self::get_named_argument(&runtime_args, auction::ARG_ERA_ID)?;
-
-                let result = runtime.get_era_validators(era_id).map_err(Self::reverter)?;
+                let result = runtime.get_era_validators().map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
             }

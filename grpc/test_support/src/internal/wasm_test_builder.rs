@@ -792,14 +792,17 @@ where
             .finish()
     }
 
-    pub fn get_era_validators(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
+    pub fn get_validator_weights(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
         let correlation_id = CorrelationId::new();
         let state_hash = Blake2bHash::try_from(self.get_post_state_hash().as_slice())
             .expect("should create state hash");
-        let request = GetEraValidatorsRequest::new(state_hash, era_id, *DEFAULT_PROTOCOL_VERSION);
-        self.engine_state
+        let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
+        let mut result = self
+            .engine_state
             .get_era_validators(correlation_id, request)
-            .expect("should get era validators")
+            .expect("get era validators should not error")
+            .expect("should get era validators");
+        result.remove(&era_id)
     }
 
     pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T

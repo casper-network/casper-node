@@ -10,7 +10,7 @@ use casper_execution_engine::{
     core::engine_state::{self, BalanceResult, GetEraValidatorsError, QueryResult},
     storage::protocol_data::ProtocolData,
 };
-use casper_types::auction::ValidatorWeights;
+use casper_types::auction::EraValidators;
 
 use crate::{
     components::{small_network::NodeId, storage::DeployMetadata},
@@ -40,8 +40,8 @@ pub enum Event {
         main_responder: Responder<Result<QueryResult, engine_state::Error>>,
     },
     QueryEraValidatorsResult {
-        result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
-        main_responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
+        result: Result<Option<EraValidators>, GetEraValidatorsError>,
+        main_responder: Responder<Result<Option<EraValidators>, GetEraValidatorsError>>,
     },
     GetDeployResult {
         hash: DeployHash,

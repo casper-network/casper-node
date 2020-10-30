@@ -30,18 +30,17 @@ use tokio::sync::mpsc::{self, UnboundedSender};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, BalanceRequest, BalanceResult, GetEraValidatorsError, GetEraValidatorsRequest,
-        QueryRequest, QueryResult,
+        self, BalanceRequest, BalanceResult, GetEraValidatorsError, QueryRequest, QueryResult,
     },
     storage::protocol_data::ProtocolData,
 };
-use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
+use casper_types::{auction::EraValidators, Key, ProtocolVersion, URef};
 
 use self::rpcs::chain::BlockIdentifier;
 
 use super::Component;
 use crate::{
-    components::storage::Storage,
+    components::{contract_runtime::EraValidatorsRequest, storage::Storage},
     crypto::hash::Digest,
     effect::{
         announcements::ApiServerAnnouncement,
@@ -148,18 +147,16 @@ impl ApiServer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         state_root_hash: Digest,
-        era_id: u64,
         protocol_version: ProtocolVersion,
-        responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
+        responder: Responder<Result<Option<EraValidators>, GetEraValidatorsError>>,
     ) -> Effects<Event> {
-        let request =
-            GetEraValidatorsRequest::new(state_root_hash.into(), era_id, protocol_version);
-        effect_builder.get_validators(request).event(move |result| {
-            Event::QueryEraValidatorsResult {
+        let request = EraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+        effect_builder
+            .get_era_validators(request)
+            .event(move |result| Event::QueryEraValidatorsResult {
                 result,
                 main_responder: responder,
-            }
-        })
+            })
     }
 
     fn handle_get_balance<REv: ReactorEventT>(
@@ -255,13 +252,11 @@ where
             }) => self.handle_query(effect_builder, state_root_hash, base_key, path, responder),
             Event::ApiRequest(ApiRequest::QueryEraValidators {
                 state_root_hash,
-                era_id,
                 protocol_version,
                 responder,
             }) => self.handle_era_validators(
                 effect_builder,
                 state_root_hash,
-                era_id,
                 protocol_version,
                 responder,
             ),

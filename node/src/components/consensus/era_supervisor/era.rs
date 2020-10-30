@@ -49,6 +49,10 @@ impl EraId {
     pub(crate) fn checked_sub(&self, x: u64) -> Option<EraId> {
         self.0.checked_sub(x).map(EraId)
     }
+
+    pub(crate) fn value(&self) -> u64 {
+        self.0
+    }
 }
 
 impl Display for EraId {

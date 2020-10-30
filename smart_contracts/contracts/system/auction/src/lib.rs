@@ -15,7 +15,7 @@ use casper_types::{
     auction::{
         Auction, DelegationRate, MintProvider, RuntimeProvider, SeigniorageRecipients,
         StorageProvider, SystemProvider, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_ERA_ID, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
+        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
         ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_UNBOND_PURSE, ARG_VALIDATOR,
         ARG_VALIDATOR_PUBLIC_KEY, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_DELEGATE,
         METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
@@ -128,11 +128,7 @@ impl Auction for AuctionContract {}
 
 #[no_mangle]
 pub extern "C" fn get_era_validators() {
-    let era_id = runtime::get_named_arg(ARG_ERA_ID);
-
-    let result = AuctionContract
-        .get_era_validators(era_id)
-        .unwrap_or_revert();
+    let result = AuctionContract.get_era_validators().unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(cl_value)
