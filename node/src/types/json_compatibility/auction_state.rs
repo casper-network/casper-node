@@ -47,6 +47,8 @@ impl From<AuctionBid> for Bid {
 pub struct AuctionState {
     /// Global state hash
     pub state_root_hash: Digest,
+    /// Block height
+    pub block_height: u64,
     /// Era validators
     pub era_validators: Option<EraValidators>,
     /// All bids.
@@ -57,6 +59,7 @@ impl AuctionState {
     /// Create new instance of `AuctionState`
     pub fn new(
         state_root_hash: Digest,
+        block_height: u64,
         bids: Option<AuctionBids>,
         era_validators: Option<AuctionEraValidators>,
     ) -> Self {
@@ -84,6 +87,7 @@ impl AuctionState {
 
         AuctionState {
             state_root_hash,
+            block_height,
             bids,
             era_validators,
         }

@@ -327,6 +327,8 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
             let path = vec![casper_types::auction::BIDS_KEY.to_string()];
             // the global state hash of the last block
             let state_root_hash = *block.header().state_root_hash();
+            // the block height of the last added block
+            let block_height = block.header().height();
 
             let query_result = effect_builder
                 .make_request(
@@ -361,7 +363,8 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
 
             let era_validators = era_validators_result.ok().flatten();
 
-            let auction_state = AuctionState::new(state_root_hash, bids, era_validators);
+            let auction_state =
+                AuctionState::new(state_root_hash, block_height, bids, era_validators);
             debug!("responding to client with: {:?}", auction_state);
             Ok(response_builder.success(auction_state)?)
         }
