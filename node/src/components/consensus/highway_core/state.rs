@@ -191,6 +191,11 @@ impl<C: Context> State<C> {
         &self.weights
     }
 
+    /// Returns hashes of endorsed votes.
+    pub(crate) fn endorsements<'a>(&'a self) -> impl Iterator<Item = C::Hash> + 'a {
+        self.endorsements.keys().cloned()
+    }
+
     /// Returns the total weight of all validators marked faulty in this panorama.
     pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
         panorama
@@ -254,8 +259,12 @@ impl<C: Context> State<C> {
     }
 
     /// Returns hash of vote that needs to be endorsed.
-    pub(crate) fn needs_endorsements(&self, _vote: &SignedWireVote<C>) -> Option<C::Hash> {
-        None
+    pub(crate) fn needs_endorsements(&self, vote: &SignedWireVote<C>) -> Option<C::Hash> {
+        vote.wire_vote
+            .endorsed
+            .iter()
+            .find(|hash| !self.endorsements.contains_key(&hash))
+            .cloned()
     }
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
@@ -398,6 +407,8 @@ impl<C: Context> State<C> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
+        // TODO: After LNC we won't always need all known endorsements.
+        let endorsed = self.endorsements().collect();
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
             creator: vote.creator,
@@ -406,6 +417,7 @@ impl<C: Context> State<C> {
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
             round_exp: vote.round_exp,
+            endorsed,
         };
         Some(SignedWireVote {
             wire_vote: wvote,
