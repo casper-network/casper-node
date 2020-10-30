@@ -149,7 +149,7 @@ impl<C: Context> Debug for WireVote<C> {
             .field("timestamp", &self.timestamp.millis())
             .field("panorama", self.panorama.as_ref())
             .field("round_exp", &self.round_exp)
-            .field("endorsed_votes", &self.endorsed)
+            .field("endorsed", &self.endorsed)
             .field("round_id()", &self.round_id())
             .finish()
     }

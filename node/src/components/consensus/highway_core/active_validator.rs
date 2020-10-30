@@ -295,6 +295,7 @@ impl<C: Context> ActiveValidator<C> {
             panorama = state.panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
+        // TODO: After LNC we won't always need all known endorsements.
         let endorsed = state.endorsements().collect();
         let wvote = WireVote {
             panorama,

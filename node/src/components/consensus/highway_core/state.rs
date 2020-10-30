@@ -263,7 +263,7 @@ impl<C: Context> State<C> {
         vote.wire_vote
             .endorsed
             .iter()
-            .find(|hash| self.endorsements.contains_key(&hash))
+            .find(|hash| !self.endorsements.contains_key(&hash))
             .cloned()
     }
 
@@ -407,6 +407,7 @@ impl<C: Context> State<C> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
+        // TODO: After LNC we won't always need all known endorsements.
         let endorsed = self.endorsements().collect();
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
