@@ -875,14 +875,12 @@ fn should_distribute_by_factor() {
 
     let validator_2_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
-    let expected_validator_2_balance =
-        (expected_total_reward * one_third).to_integer();
+    let expected_validator_2_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_2_balance, expected_validator_2_balance);
 
     let validator_3_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
-    let expected_validator_3_balance =
-        (expected_total_reward * one_third).to_integer();
+    let expected_validator_3_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
     let total_payout = validator_1_balance + validator_2_balance + validator_3_balance;
@@ -1032,14 +1030,12 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     let validator_2_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
-    let expected_validator_2_balance =
-        (expected_total_reward * one_third).to_integer();
+    let expected_validator_2_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_2_balance, expected_validator_2_balance);
 
     let validator_3_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
-    let expected_validator_3_balance =
-        (expected_total_reward * one_third).to_integer();
+    let expected_validator_3_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
     let total_payout = validator_1_balance + validator_2_balance + validator_3_balance;
@@ -1662,8 +1658,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_1_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
-    let expected_validator_1_balance =
-        (expected_total_reward * validator_1_portion).to_integer();
+    let expected_validator_1_balance = (expected_total_reward * validator_1_portion).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let validator_2_balance =
