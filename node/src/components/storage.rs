@@ -11,7 +11,13 @@ mod lmdb_chainspec_store;
 mod lmdb_store;
 mod store;
 
-use std::{collections::HashMap, collections::HashSet, fmt::{Debug, Display}, fs, hash::Hash, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Debug, Display},
+    fs,
+    hash::Hash,
+    sync::Arc,
+};
 
 use datasize::DataSize;
 use futures::TryFutureExt;
@@ -138,7 +144,6 @@ impl<B: Value> Default for DeployMetadata<B> {
 }
 
 impl LmdbStorage<Block, Deploy> {
-
     async fn load_block_deploys(&self, block: &Block) -> (ProtoBlockHash, Vec<Deploy>) {
         let deploy_store = self.deploy_store();
         let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
