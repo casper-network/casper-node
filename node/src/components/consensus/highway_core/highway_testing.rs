@@ -49,9 +49,9 @@ pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
 #[derive(Clone, Eq, PartialEq)]
 enum HighwayMessage {
     Timer(Timestamp),
-    NewVertex(Vertex<TestContext>),
+    NewVertex(Box<Vertex<TestContext>>),
     RequestBlock(BlockContext),
-    WeEquivocated(Evidence<TestContext>),
+    WeEquivocated(Box<Evidence<TestContext>>),
 }
 
 impl Debug for HighwayMessage {
@@ -99,10 +99,10 @@ impl From<Effect<TestContext>> for HighwayMessage {
         match eff {
             // The effect is `ValidVertex` but we want to gossip it to other
             // validators so for them it's just `Vertex` that needs to be validated.
-            Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(v),
+            Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(Box::new(v)),
             Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
             Effect::RequestNewBlock(block_context) => HighwayMessage::RequestBlock(block_context),
-            Effect::WeEquivocated(evidence) => HighwayMessage::WeEquivocated(evidence),
+            Effect::WeEquivocated(evidence) => HighwayMessage::WeEquivocated(Box::new(evidence)),
         }
     }
 }
@@ -117,33 +117,35 @@ impl Ord for HighwayMessage {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
             (HighwayMessage::Timer(t1), HighwayMessage::Timer(t2)) => t1.cmp(&t2),
-            (HighwayMessage::NewVertex(v1), HighwayMessage::NewVertex(v2)) => match (v1, v2) {
-                (Vertex::Vote(swv1), Vertex::Vote(swv2)) => swv1.hash().cmp(&swv2.hash()),
-                (Vertex::Vote(_), _) => std::cmp::Ordering::Less,
-                (
-                    Vertex::Evidence(Evidence::Equivocation(ev1_a, ev1_b)),
-                    Vertex::Evidence(Evidence::Equivocation(ev2_a, ev2_b)),
-                ) => ev1_a
-                    .hash()
-                    .cmp(&ev2_a.hash())
-                    .then_with(|| ev1_b.hash().cmp(&ev2_b.hash())),
-                (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
-                (
-                    Vertex::Endorsements(Endorsements {
-                        vote: l_hash,
-                        endorsers: l_vid,
-                    }),
-                    Vertex::Endorsements(Endorsements {
-                        vote: r_hash,
-                        endorsers: r_vid,
-                    }),
-                ) => l_hash.cmp(r_hash).then_with(|| l_vid.cmp(r_vid)),
-                (Vertex::Endorsements(_), _) => std::cmp::Ordering::Less,
-            },
+            (HighwayMessage::NewVertex(v1), HighwayMessage::NewVertex(v2)) => {
+                match (&**v1, &**v2) {
+                    (Vertex::Vote(swv1), Vertex::Vote(swv2)) => swv1.hash().cmp(&swv2.hash()),
+                    (Vertex::Vote(_), _) => std::cmp::Ordering::Less,
+                    (
+                        Vertex::Evidence(Evidence::Equivocation(ev1_a, ev1_b)),
+                        Vertex::Evidence(Evidence::Equivocation(ev2_a, ev2_b)),
+                    ) => ev1_a
+                        .hash()
+                        .cmp(&ev2_a.hash())
+                        .then_with(|| ev1_b.hash().cmp(&ev2_b.hash())),
+                    (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
+                    (
+                        Vertex::Endorsements(Endorsements {
+                            vote: l_hash,
+                            endorsers: l_vid,
+                        }),
+                        Vertex::Endorsements(Endorsements {
+                            vote: r_hash,
+                            endorsers: r_vid,
+                        }),
+                    ) => l_hash.cmp(r_hash).then_with(|| l_vid.cmp(r_vid)),
+                    (Vertex::Endorsements(_), _) => std::cmp::Ordering::Less,
+                }
+            }
             (HighwayMessage::RequestBlock(bc1), HighwayMessage::RequestBlock(bc2)) => bc1.cmp(&bc2),
             (HighwayMessage::WeEquivocated(ev1), HighwayMessage::WeEquivocated(ev2)) => {
-                let Evidence::Equivocation(ev1_a, ev1_b) = ev1;
-                let Evidence::Equivocation(ev2_a, ev2_b) = ev2;
+                let Evidence::Equivocation(ev1_a, ev1_b) = &**ev1;
+                let Evidence::Equivocation(ev2_a, ev2_b) = &**ev2;
                 ev1_a
                     .hash()
                     .cmp(&ev2_a.hash())
@@ -279,17 +281,25 @@ impl HighwayValidator {
             }
             Some(Fault::Equivocate) => {
                 match msg {
-                    HighwayMessage::NewVertex(Vertex::Vote(ref swvote)) => {
-                        // Create an equivocating message, with a different timestamp.
-                        // TODO: Don't send both messages to every peer. Add different strategies.
-                        let mut wvote = swvote.wire_vote.clone();
-                        wvote.timestamp += 1.into();
-                        let secret = TestSecret(wvote.creator.0.into());
-                        let swvote2 = SignedWireVote::new(wvote, &secret, rng);
-                        vec![msg, HighwayMessage::NewVertex(Vertex::Vote(swvote2))]
+                    HighwayMessage::NewVertex(ref vertex) => {
+                        match **vertex {
+                            Vertex::Vote(ref swvote) => {
+                                // Create an equivocating message, with a different timestamp.
+                                // TODO: Don't send both messages to every peer. Add different
+                                // strategies.
+                                let mut wvote = swvote.wire_vote.clone();
+                                wvote.timestamp += 1.into();
+                                let secret = TestSecret(wvote.creator.0.into());
+                                let swvote2 = SignedWireVote::new(wvote, &secret, rng);
+                                vec![
+                                    msg,
+                                    HighwayMessage::NewVertex(Box::new(Vertex::Vote(swvote2))),
+                                ]
+                            }
+                            _ => vec![msg],
+                        }
                     }
-                    HighwayMessage::NewVertex(_)
-                    | HighwayMessage::RequestBlock(_)
+                    HighwayMessage::RequestBlock(_)
                     | HighwayMessage::WeEquivocated(_)
                     | HighwayMessage::Timer(_) => vec![msg],
                 }
@@ -437,7 +447,13 @@ where
                     })?
                 }
                 HighwayMessage::NewVertex(v) => {
-                    match self.add_vertex(rng, validator_id, sender_id, v.clone(), delivery_time)? {
+                    match self.add_vertex(
+                        rng,
+                        validator_id,
+                        sender_id,
+                        *v.clone(),
+                        delivery_time,
+                    )? {
                         Ok(msgs) => {
                             trace!("{:?} successfuly added to the state.", v);
                             msgs
