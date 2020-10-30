@@ -668,7 +668,7 @@ impl Reactor {
                 .unwrap_or(0);
 
             self.storage
-                .get_block_proposer_state(latest_block_height, chainspec_version, Timestamp::now())
+                .load_block_proposer_state(latest_block_height, chainspec_version, Timestamp::now())
                 .await
         };
 

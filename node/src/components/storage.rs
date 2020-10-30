@@ -1,15 +1,12 @@
 mod block_height_store;
-mod block_proposer_state_store;
 mod chainspec_store;
 mod config;
 mod error;
 mod event;
 mod in_mem_block_height_store;
-mod in_mem_block_proposer_state_store;
 mod in_mem_chainspec_store;
 mod in_mem_store;
 mod lmdb_block_height_store;
-mod lmdb_block_proposer_state_store;
 mod lmdb_chainspec_store;
 mod lmdb_store;
 mod store;
@@ -42,27 +39,26 @@ use crate::{
     },
     protocol::Message,
     types::{
-        json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, Item, ProtoBlockHash,
-        Timestamp,
+        json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, DeployHash,
+        DeployHeader, Item, ProtoBlockHash, Timestamp,
     },
     utils::WithDir,
 };
 use block_height_store::BlockHeightStore;
-use block_proposer_state_store::BlockProposerStateStore;
 use chainspec_store::ChainspecStore;
 pub use config::Config;
 pub use error::Error;
 pub(crate) use error::Result;
 pub use event::Event;
 use in_mem_block_height_store::InMemBlockHeightStore;
-use in_mem_block_proposer_state_store::InMemBlockProposerStateStore;
 use in_mem_chainspec_store::InMemChainspecStore;
 use in_mem_store::InMemStore;
 use lmdb_block_height_store::LmdbBlockHeightStore;
-use lmdb_block_proposer_state_store::LmdbBlockProposerStateStore;
 use lmdb_chainspec_store::LmdbChainspecStore;
 use lmdb_store::LmdbStore;
 use store::{DeployStore, Multiple, Store};
+
+use super::block_proposer::ProtoBlockCollection;
 
 pub(crate) type Storage = LmdbStorage<Block, Deploy>;
 
@@ -74,7 +70,6 @@ type DeployAndMetadata<D, B> = (D, DeployMetadata<B>);
 
 const BLOCK_STORE_FILENAME: &str = "block_store.db";
 const BLOCK_HEIGHT_STORE_FILENAME: &str = "block_height_store.db";
-const BLOCK_PROPOSER_STATE_FILENAME: &str = "block_proposer_state_store.db";
 const DEPLOY_STORE_FILENAME: &str = "deploy_store.db";
 const CHAINSPEC_STORE_FILENAME: &str = "chainspec_store.db";
 
@@ -167,27 +162,50 @@ impl LmdbStorage<Block, Deploy> {
         (block_hash, deploys)
     }
 
+    fn load_pending_deploys(
+        &self,
+        finalized: &ProtoBlockCollection,
+        current_instant: Timestamp,
+    ) -> Result<HashMap<DeployHash, DeployHeader>> {
+        let ids = self.deploy_store().ids()?;
+        let mut pending = HashMap::new();
+        for id in ids {
+            let deploy = self
+                .deploy_store()
+                .get(smallvec![id])
+                .pop()
+                .expect("should pop")
+                .expect("should load")
+                .expect("should be some");
+
+            let header = deploy.header();
+            if header.expired(current_instant) {
+                break;
+            }
+            if !Self::finalized_contains(finalized, deploy.id()) {
+                pending.insert(*deploy.id(), header.clone());
+            }
+        }
+        Ok(pending)
+    }
+
+    fn finalized_contains(finalized: &ProtoBlockCollection, deploy_hash: &DeployHash) -> bool {
+        for (_, deploys) in finalized.iter() {
+            if deploys.contains_key(deploy_hash) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// This method is intended to only be used by the joiner when transitioning to the validator
     /// state.
-    pub(crate) async fn get_block_proposer_state(
+    pub(crate) async fn load_block_proposer_state(
         &self,
         latest_block_height: u64,
         chainspec_version: Version,
         current_instant: Timestamp,
     ) -> BlockProposerState {
-        //
-        // - load BlockProposerState from storage
-        let block_proposer_state_store = self.block_proposer_state_store();
-        let block_proposer_state = task::spawn_blocking(move || block_proposer_state_store.get())
-            .await
-            .expect("should run");
-
-        // If there is not yet a BlockProposerState stored, we should continue with a default.
-        let mut block_proposer_state = match block_proposer_state {
-            Ok(Some(state)) => state,
-            _ => BlockProposerState::default(),
-        };
-
         let max_ttl = {
             let chainspec_store = self.chainspec_store();
             let chainspec = task::spawn_blocking(move || chainspec_store.get(chainspec_version))
@@ -197,7 +215,7 @@ impl LmdbStorage<Block, Deploy> {
                 Ok(Some(chainspec)) => chainspec,
                 // If we can't get our hands on a chainspec, then we can't get a max_ttl to compare
                 // blocks and deploys against.
-                _ => return block_proposer_state,
+                _ => panic!("unable to load chainspec"),
             };
             chainspec.genesis.deploy_config.max_ttl
         };
@@ -205,8 +223,6 @@ impl LmdbStorage<Block, Deploy> {
         // deploys, organized by ProtoBlockHash, which have been finalized
         let mut finalized = HashMap::new();
 
-        //
-        // - get block by height of latest block
         'iterate_ancestry: for height in (0..=latest_block_height).rev() {
             let block = {
                 let block_store = self.block_store();
@@ -221,16 +237,13 @@ impl LmdbStorage<Block, Deploy> {
                     _ => break 'iterate_ancestry,
                 };
 
-                let block = task::spawn_blocking(move || block_store.get(smallvec![ancestor_hash]))
+                task::spawn_blocking(move || block_store.get(smallvec![ancestor_hash]))
                     .await
                     .expect("should spawn_blocking")
                     .pop()
-                    .unwrap_or_else(|| panic!("block at height {} should exist", height));
-
-                match block {
-                    Ok(Some(block)) => block,
-                    _ => break 'iterate_ancestry,
-                }
+                    .expect("should pop")
+                    .expect("should load")
+                    .unwrap_or_else(|| panic!("block at height {} should exist", height))
             };
 
             if block.header().timestamp() < current_instant - max_ttl {
@@ -246,11 +259,13 @@ impl LmdbStorage<Block, Deploy> {
             finalized.insert(block_hash, deploys);
         }
 
-        if !finalized.is_empty() {
-            block_proposer_state.update_finalized_blocks(finalized, current_instant);
-        }
+        // Once finalized block's deploys are loaded, iterate over Deploy store to find 'pending'
+        // deploys.
+        let pending = self
+            .load_pending_deploys(&finalized, current_instant)
+            .expect("should load pending deploys");
 
-        block_proposer_state
+        BlockProposerState::with_pending_and_finalized(pending, finalized)
     }
 }
 
@@ -271,8 +286,6 @@ pub trait StorageType {
     ) -> Arc<dyn DeployStore<Block = Self::Block, Deploy = Self::Deploy, Value = Self::Deploy>>;
 
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore>;
-
-    fn block_proposer_state_store(&self) -> Arc<dyn BlockProposerStateStore>;
 
     fn new(config: WithDir<Config>) -> Result<Self>
     where
@@ -618,26 +631,6 @@ pub trait StorageType {
         }
         .ignore()
     }
-
-    fn put_block_proposer_state(
-        &self,
-        state: BlockProposerState,
-        responder: Responder<()>,
-    ) -> Effects<Event<Self>>
-    where
-        Self: Sized,
-    {
-        let block_proposer_state_store = self.block_proposer_state_store();
-        async move {
-            tracing::info!("saving block_proposer_state {}", state);
-            task::spawn_blocking(move || block_proposer_state_store.put(state))
-                .await
-                .expect("should run")
-                .unwrap_or_else(|error| panic!("failed to put chainspec: {}", error));
-            responder.respond(()).await
-        }
-        .ignore()
-    }
 }
 
 impl<REv, S> Component<REv> for S
@@ -703,9 +696,6 @@ where
             Event::Request(StorageRequest::GetChainspec { version, responder }) => {
                 self.get_chainspec(version, responder)
             }
-            Event::Request(StorageRequest::PutBlockProposerState { state, responder }) => {
-                self.put_block_proposer_state(*state, responder)
-            }
         }
     }
 }
@@ -717,7 +707,6 @@ pub(crate) struct InMemStorage<B: Value, D: Value> {
     block_height_store: Arc<InMemBlockHeightStore<B::Id>>,
     deploy_store: Arc<InMemStore<D, DeployMetadata<B>>>,
     chainspec_store: Arc<InMemChainspecStore>,
-    block_proposer_state_store: Arc<InMemBlockProposerStateStore>,
 }
 
 #[allow(trivial_casts)]
@@ -745,17 +734,12 @@ where
         Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
     }
 
-    fn block_proposer_state_store(&self) -> Arc<dyn BlockProposerStateStore> {
-        Arc::clone(&self.block_proposer_state_store) as Arc<dyn BlockProposerStateStore>
-    }
-
     fn new(_config: WithDir<Config>) -> Result<Self> {
         Ok(InMemStorage {
             block_store: Arc::new(InMemStore::new()),
             block_height_store: Arc::new(InMemBlockHeightStore::new()),
             deploy_store: Arc::new(InMemStore::new()),
             chainspec_store: Arc::new(InMemChainspecStore::new()),
-            block_proposer_state_store: Arc::new(InMemBlockProposerStateStore::new()),
         })
     }
 }
@@ -771,7 +755,6 @@ where
     block_height_store: Arc<LmdbBlockHeightStore>,
     deploy_store: Arc<LmdbStore<D, DeployMetadata<B>>>,
     chainspec_store: Arc<LmdbChainspecStore>,
-    block_proposer_state_store: Arc<LmdbBlockProposerStateStore>,
 }
 
 #[allow(trivial_casts)]
@@ -794,7 +777,6 @@ where
         let block_height_store_path = root.join(BLOCK_HEIGHT_STORE_FILENAME);
         let deploy_store_path = root.join(DEPLOY_STORE_FILENAME);
         let chainspec_store_path = root.join(CHAINSPEC_STORE_FILENAME);
-        let block_proposer_state_store_path = root.join(BLOCK_PROPOSER_STATE_FILENAME);
 
         let block_store = LmdbStore::new(block_store_path, config.value().max_block_store_size())?;
         let block_height_store = LmdbBlockHeightStore::new(
@@ -808,17 +790,11 @@ where
             config.value().max_chainspec_store_size(),
         )?;
 
-        let block_proposer_state_store = LmdbBlockProposerStateStore::new(
-            block_proposer_state_store_path,
-            config.value().max_block_proposer_state_store_size(),
-        )?;
-
         Ok(LmdbStorage {
             block_store: Arc::new(block_store),
             block_height_store: Arc::new(block_height_store),
             deploy_store: Arc::new(deploy_store),
             chainspec_store: Arc::new(chainspec_store),
-            block_proposer_state_store: Arc::new(block_proposer_state_store),
         })
     }
 
@@ -836,9 +812,5 @@ where
 
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore> {
         Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
-    }
-
-    fn block_proposer_state_store(&self) -> Arc<dyn BlockProposerStateStore> {
-        Arc::clone(&self.block_proposer_state_store) as Arc<dyn BlockProposerStateStore>
     }
 }

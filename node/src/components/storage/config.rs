@@ -17,7 +17,6 @@ const DEFAULT_MAX_BLOCK_STORE_SIZE: usize = 483_183_820_800; // 450 GiB
 const DEFAULT_MAX_DEPLOY_STORE_SIZE: usize = 322_122_547_200; // 300 GiB
 const DEFAULT_MAX_BLOCK_HEIGHT_STORE_SIZE: usize = 10_485_100; // 10 MiB
 const DEFAULT_MAX_CHAINSPEC_STORE_SIZE: usize = 1_073_741_824; // 1 GiB
-const DEFAULT_MAX_BLOCK_PROPOSER_STATE_STORE_SIZE: usize = 1_073_741_824; // 1 GiB
 
 #[cfg(test)]
 const DEFAULT_TEST_MAX_DB_SIZE: usize = 52_428_800; // 50 MiB
@@ -109,14 +108,6 @@ impl Config {
         let value = self
             .max_chainspec_store_size
             .unwrap_or(DEFAULT_MAX_CHAINSPEC_STORE_SIZE);
-        utils::check_multiple_of_page_size(value);
-        value
-    }
-
-    pub(crate) fn max_block_proposer_state_store_size(&self) -> usize {
-        let value = self
-            .max_block_store_size
-            .unwrap_or(DEFAULT_MAX_BLOCK_PROPOSER_STATE_STORE_SIZE);
         utils::check_multiple_of_page_size(value);
         value
     }

@@ -14,7 +14,6 @@ use datasize::DataSize;
 use derive_more::From;
 use prometheus::{self, IntGauge, Registry};
 use semver::Version;
-use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace};
 
 use crate::{
@@ -99,8 +98,8 @@ impl<REv> ReactorEventT for REv where
 }
 
 /// Stores the internal state of the BlockProposer.
-#[derive(DataSize, Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BlockProposerState {
+#[derive(DataSize, Default, Debug, Clone, PartialEq)]
+pub(crate) struct BlockProposerState {
     pending: DeployCollection,
     proposed: ProtoBlockCollection,
     finalized: ProtoBlockCollection,
@@ -120,15 +119,15 @@ impl Display for BlockProposerState {
 
 impl BlockProposerState {
     // When deserialized, we will update the instance with finalized blocks from the linear chain
-    pub(crate) fn update_finalized_blocks(
-        &mut self,
+    pub(crate) fn with_pending_and_finalized(
+        pending: DeployCollection,
         finalized: ProtoBlockCollection,
-        current_instant: Timestamp,
-    ) {
-        self.prune(current_instant);
-        let mut finalized = finalized;
-        let _ = prune::prune_blocks(&mut finalized, current_instant);
-        self.finalized.extend(finalized);
+    ) -> Self {
+        Self {
+            pending,
+            finalized,
+            proposed: HashMap::new(),
+        }
     }
 
     /// Prunes expired deploy information from the BlockProposerState, returns the total deploys
@@ -209,11 +208,6 @@ impl BlockProposer {
             chainspecs: HashMap::new(),
         };
         Ok((this, effects))
-    }
-
-    /// Get the serializable state from this `BlockProposer` instance.
-    pub(crate) fn state(&self) -> &BlockProposerState {
-        &self.state
     }
 
     /// Adds a deploy to the block proposer.

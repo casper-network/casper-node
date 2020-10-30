@@ -10,7 +10,6 @@ mod tests;
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-use casper_types::auction::EraId;
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
@@ -292,10 +291,6 @@ pub struct Reactor {
 
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
-
-    // Keep track of last era to determine when the era advances. This is used to trigger
-    // periodic serialization to support restarts.
-    last_era_id: EraId,
 }
 
 #[cfg(test)]
@@ -391,7 +386,6 @@ impl reactor::Reactor for Reactor {
                 linear_chain,
                 memory_metrics,
                 event_queue_metrics,
-                last_era_id: 0,
             },
             effects,
         ))
@@ -683,24 +677,6 @@ impl reactor::Reactor for Reactor {
                 execution_results,
             }) => {
                 let mut effects = Effects::new();
-
-                {
-                    // If we've advanced an era, save the BlockProposer state.
-                    use crate::effect::EffectExt;
-                    let last_era_id = self.last_era_id;
-                    let new_era_id = block.header().era_id().0;
-                    if last_era_id < new_era_id {
-                        tracing::debug!(
-                            "reached a new era ({} -> {}) will store block_proposer_state",
-                            last_era_id,
-                            new_era_id
-                        );
-                        let state = self.block_proposer.state().clone();
-                        effects.extend(effect_builder.put_block_proposer_state(state).ignore());
-                        self.last_era_id = new_era_id;
-                    }
-                }
-
                 let block_hash = *block.hash();
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
                     block: Box::new(block),
