@@ -247,8 +247,14 @@ impl<C: Context> Highway<C> {
             match vertex {
                 Vertex::Vote(vote) => self.add_valid_vote(vote, now, rng),
                 Vertex::Evidence(ref evidence) => {
+                    let was_honest = !self.state.is_faulty(evidence.perpetrator());
                     self.state.add_evidence(evidence.clone());
-                    vec![Effect::NewVertex(ValidVertex(vertex))]
+                    if was_honest {
+                        // Gossip `Evidence` only if we just learned about faults by the validator.
+                        vec![Effect::NewVertex(ValidVertex(vertex))]
+                    } else {
+                        vec![]
+                    }
                 }
                 Vertex::Endorsements(endorsements) => {
                     self.state.add_endorsements(endorsements);
@@ -512,11 +518,20 @@ impl<C: Context> Highway<C> {
     ) -> Vec<Effect<C>> {
         let vote_hash = swvote.hash();
         let creator = swvote.wire_vote.creator;
+        let was_honest = !self.state.is_faulty(creator);
         self.state.add_valid_vote(swvote);
         let mut evidence_effects = self
             .state
             .opt_evidence(creator)
-            .map(|ev| vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(ev.clone())))])
+            .map(|ev| {
+                if was_honest {
+                    // Send the evidence only if we just learned about validator being faulty.
+                    // i.e. if it was faulty _before_ we added `swvote`, don't send evidence.
+                    vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(ev.clone())))]
+                } else {
+                    vec![]
+                }
+            })
             .unwrap_or_default();
         evidence_effects.extend(self.on_new_vote(&vote_hash, now, rng));
         evidence_effects
