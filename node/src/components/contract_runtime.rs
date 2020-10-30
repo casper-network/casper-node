@@ -329,7 +329,7 @@ where
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
-                        let era_id = request.era_id().value();
+                        let era_id = request.era_id().into();
                         let era_validators =
                             engine_state.get_era_validators(correlation_id, request.into());
                         let ret: Result<Option<ValidatorWeights>, GetEraValidatorsError> =

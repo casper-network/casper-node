@@ -49,15 +49,17 @@ impl EraId {
     pub(crate) fn checked_sub(&self, x: u64) -> Option<EraId> {
         self.0.checked_sub(x).map(EraId)
     }
-
-    pub(crate) fn value(&self) -> u64 {
-        self.0
-    }
 }
 
 impl Display for EraId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "era {}", self.0)
+    }
+}
+
+impl From<EraId> for u64 {
+    fn from(era_id: EraId) -> Self {
+        era_id.0
     }
 }
 
