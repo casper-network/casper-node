@@ -59,12 +59,10 @@ pub mod rpc_id {
     use super::*;
 
     const ARG_NAME: &str = "id";
-    // TODO: If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
-    //       update this to "STRING OR INTEGER".
-    const ARG_VALUE_NAME: &str = "INTEGER";
+    const ARG_VALUE_NAME: &str = "STRING OR INTEGER";
     const ARG_HELP: &str =
         "JSON-RPC identifier, applied to the request and returned in the response. If not \
-        provided, a random one will be assigned";
+        provided, a random integer will be assigned";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)

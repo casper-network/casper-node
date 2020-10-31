@@ -41,8 +41,8 @@ use rpc::{RpcCall, TransferTarget};
 /// Creates a `Deploy` and sends it to the network for execution.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. It must either be able to be parsed as a `u32` or empty. If empty, a random ID will
-///   be assigned.
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
@@ -75,8 +75,8 @@ pub fn put_deploy(
 /// using [`send_deploy_file()`](fn.send_deploy_file.html).
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. It must either be able to be parsed as a `u32` or empty. If empty, a random ID will
-///   be assigned.
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * `maybe_output_path` specifies the output file, or if empty, will print it to `stdout`. If the
@@ -117,8 +117,8 @@ pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. It must either be able to be parsed as a `u32` or empty. If empty, a random ID will
-///   be assigned.
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
@@ -135,8 +135,8 @@ pub fn send_deploy_file(
 /// Transfers funds between purses.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. It must either be able to be parsed as a `u32` or empty. If empty, a random ID will
-///   be assigned.
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
@@ -187,8 +187,8 @@ pub fn transfer(
 /// Retrieves a `Deploy` from the network.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. It must either be able to be parsed as a `u32` or empty. If empty, a random ID will
-///   be assigned.
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
@@ -205,8 +205,8 @@ pub fn get_deploy(
 /// Retrieves a `Block` from the network.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. It must either be able to be parsed as a `u32` or empty. If empty, a random ID will
-///   be assigned.
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
@@ -224,8 +224,8 @@ pub fn get_block(
 /// Retrieves a state root hash at a given `Block`.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. It must either be able to be parsed as a `u32` or empty. If empty, a random ID will
-///   be assigned.
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
@@ -243,8 +243,8 @@ pub fn get_state_root_hash(
 /// Retrieves a stored value from the network.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. It must either be able to be parsed as a `u32` or empty. If empty, a random ID will
-///   be assigned.
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
@@ -275,8 +275,8 @@ pub fn get_item(
 /// Retrieves a purse's balance from the network.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. It must either be able to be parsed as a `u32` or empty. If empty, a random ID will
-///   be assigned.
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
@@ -298,8 +298,8 @@ pub fn get_balance(
 /// Retrieves the bids and validators as of the most recently added `Block`.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
-///   response. It must either be able to be parsed as a `u32` or empty. If empty, a random ID will
-///   be assigned.
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
