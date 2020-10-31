@@ -201,7 +201,7 @@ pub(crate) fn validate_get_block_response(
                 return Err(ValidateResponseError::UnexpectedBlockHeight);
             }
         }
-        // More is necessary here to mitigate a MITM attack.  In this case we would want to validate
+        // More is necessary here to mitigate a MITM attack. In this case we would want to validate
         // `block.proofs()` to make sure that 1/3 of the validator weight signed the block, and we
         // would have to know the latest validators through some trustworthy means
         None => (),

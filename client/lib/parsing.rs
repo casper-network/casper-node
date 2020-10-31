@@ -22,7 +22,7 @@ use crate::{
     cl_type,
     deploy::DeployParams,
     error::{Error, Result},
-    ExecutableDeployItemExt, TransferTarget,
+    help, ExecutableDeployItemExt, TransferTarget,
 };
 
 pub(super) fn none_if_empty(value: &'_ str) -> Option<&'_ str> {
@@ -108,7 +108,7 @@ mod arg_simple {
             Error::InvalidCLValue(format!(
                 "unknown variant {}, expected one of {}",
                 parts[1],
-                cl_type::supported_cl_type_list()
+                help::supported_cl_type_list()
             ))
         })?;
         Ok((parts[0], cl_type, parts[2]))
@@ -126,7 +126,7 @@ mod arg_simple {
     }
 }
 
-/// Handles providing the arg for and retrieval of complex session and payment args.  These are read
+/// Handles providing the arg for and retrieval of complex session and payment args. These are read
 /// in from a file.
 mod args_complex {
     use super::*;

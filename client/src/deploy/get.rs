@@ -39,7 +39,7 @@ mod deploy_hash {
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
     const NAME: &'static str = "get-deploy";
-    const ABOUT: &'static str = "Retrieves a stored deploy";
+    const ABOUT: &'static str = "Retrieves a deploy from the network";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)

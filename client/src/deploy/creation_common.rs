@@ -1,14 +1,12 @@
 //! This module contains structs and helpers which are used by multiple subcommands related to
 //! creating deploys.
 
-use std::{convert::TryFrom, process};
+use std::process;
 
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
 
-use casper_client::{cl_type, PaymentStrParams, SessionStrParams};
-use casper_node::crypto::asymmetric_key::PublicKey as NodePublicKey;
-use casper_types::{account::AccountHash, AccessRights, Key, URef};
+use casper_client::{help, PaymentStrParams, SessionStrParams};
 
 use crate::common;
 
@@ -75,63 +73,8 @@ pub(super) mod show_arg_examples {
             return false;
         }
 
-        let bytes = (1..33).collect::<Vec<_>>();
-        let array = <[u8; 32]>::try_from(bytes.as_ref()).unwrap();
-
         println!("Examples for passing values via --session-arg or --payment-arg:");
-        println!("name_01:bool='false'");
-        println!("name_02:i32='-1'");
-        println!("name_03:i64='-2'");
-        println!("name_04:u8='3'");
-        println!("name_05:u32='4'");
-        println!("name_06:u64='5'");
-        println!("name_07:u128='6'");
-        println!("name_08:u256='7'");
-        println!("name_09:u512='8'");
-        println!("name_10:unit=''");
-        println!("name_11:string='a value'");
-        println!(
-            "key_account_name:key='{}'",
-            Key::Account(AccountHash::new(array)).to_formatted_string()
-        );
-        println!(
-            "key_hash_name:key='{}'",
-            Key::Hash(array).to_formatted_string()
-        );
-        println!(
-            "key_uref_name:key='{}'",
-            Key::URef(URef::new(array, AccessRights::NONE)).to_formatted_string()
-        );
-        println!(
-            "account_hash_name:account_hash='{}'",
-            AccountHash::new(array).to_formatted_string()
-        );
-        println!(
-            "uref_name:uref='{}'",
-            URef::new(array, AccessRights::READ_ADD_WRITE).to_formatted_string()
-        );
-        println!(
-            "public_key_name:public_key='{}'",
-            NodePublicKey::from_hex(
-                "0119bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1"
-            )
-            .unwrap()
-            .to_hex()
-        );
-        println!("\nOptional values of each of these types can also be specified.");
-        println!(
-            r#"Prefix the type with "opt_" and use the term "null" without quotes to specify a None value:"#
-        );
-        println!("name_01:opt_bool='true'       # Some(true)");
-        println!("name_02:opt_bool='false'      # Some(false)");
-        println!("name_03:opt_bool=null         # None");
-        println!("name_04:opt_i32='-1'          # Some(-1)");
-        println!("name_05:opt_i32=null          # None");
-        println!("name_06:opt_unit=''           # Some(())");
-        println!("name_07:opt_unit=null         # None");
-        println!("name_08:opt_string='a value'  # Some(\"a value\".to_string())");
-        println!("name_09:opt_string='null'     # Some(\"null\".to_string())");
-        println!("name_10:opt_string=null       # None");
+        println!("{}", help::supported_cl_type_examples());
 
         true
     }
@@ -409,7 +352,7 @@ pub(super) mod arg_simple {
             an example for each type, run '--{}'. This arg can be repeated to pass multiple named, \
             typed args, but can only be used for the following types: {}",
             super::show_arg_examples::ARG_NAME,
-            cl_type::supported_cl_type_list()
+            help::supported_cl_type_list()
         );
     }
 
@@ -466,14 +409,15 @@ pub(super) mod arg_simple {
     }
 }
 
-/// Handles providing the arg for and retrieval of complex session and payment args.  These are read
+/// Handles providing the arg for and retrieval of complex session and payment args. These are read
 /// in from a file.
 pub(super) mod args_complex {
     use super::*;
 
     const ARG_VALUE_NAME: &str = common::ARG_PATH;
     const ARG_HELP: &str =
-        "Path to file containing named and typed args for passing to the Wasm code";
+        "Path to file containing 'ToBytes'-encoded named and typed args for passing to the Wasm \
+        code";
 
     pub(in crate::deploy) mod session {
         use super::*;

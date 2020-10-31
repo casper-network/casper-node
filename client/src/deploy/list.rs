@@ -19,7 +19,7 @@ pub struct ListDeploys;
 
 impl<'a, 'b> ClientCommand<'a, 'b> for ListDeploys {
     const NAME: &'static str = "list-deploys";
-    const ABOUT: &'static str = "Gets the list of all deploy hashes from a given block";
+    const ABOUT: &'static str = "Retrieves the list of all deploy hashes in a given block";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)

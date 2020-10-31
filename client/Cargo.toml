@@ -17,6 +17,7 @@ path = "lib/lib.rs"
 [[bin]]
 name = "casper-client"
 path = "src/main.rs"
+doc = false
 
 [dependencies]
 base64 = "0.13.0"

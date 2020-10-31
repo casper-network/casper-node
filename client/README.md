@@ -5,7 +5,7 @@ A client for interacting with the Casper network.
 
 ## Running the client
 
-The client runs in one of several modes, each mode performing a single action.  To see all available commands:
+The client runs in one of several modes, each mode performing a single action. To see all available commands:
 
 ```
 cd client
@@ -83,7 +83,7 @@ ARGS:
 
 ### Generate asymmetric signing keys
 
-Some commands require the use of a secret key for signing data.  To generate a secret and public key pair:
+Some commands require the use of a secret key for signing data. To generate a secret and public key pair:
 
 ```
 cargo run --release -- keygen $HOME/.client_keys
@@ -92,10 +92,10 @@ cargo run --release -- keygen $HOME/.client_keys
 
 ## Interacting with a local node
 
-Many client commands require to send HTTP requests and receive responses.  To do this with a local node running on the
+Many client commands require to send HTTP requests and receive responses. To do this with a local node running on the
 same machine, follow the instructions in [the `nctl` README](../utils/nctl/README.md) to set up a local test network.
 
-Ensure the network has fully started before running client commands.  This can be determined by running
+Ensure the network has fully started before running client commands. This can be determined by running
 `nctl-view-node-peers` and checking each node has connections to all others.
 
 For client commands requiring a node address (specified via the `--node-address` or `-n` arg), the default value is
@@ -105,18 +105,18 @@ can usually be omitted.
 
 ### Transfer funds between purses
 
-The testnet will be set up so that the nodes each have an initial balance of tokens in their main purses.  Let's say we
-want to create a new purse under the public key we just created (in the "Generate asymmetric signing keys" section).  We
-can do this by creating a new deploy which will transfer funds between two purses once executed.  The simplest way to
+The testnet will be set up so that the nodes each have an initial balance of tokens in their main purses. Let's say we
+want to create a new purse under the public key we just created (in the "Generate asymmetric signing keys" section). We
+can do this by creating a new deploy which will transfer funds between two purses once executed. The simplest way to
 achieve this is via the `transfer` subcommand.
 
-First, set the contents of the `public_key_hex` file to a variable.  We'll use this as the target account:
+First, set the contents of the `public_key_hex` file to a variable. We'll use this as the target account:
 
 ```
 PUBLIC_KEY=$(cat $HOME/.client_keys/public_key_hex)
 ```
 
-Then execute the `transfer` subcommand.  We'll specify that we want to transfer 1,234,567 tokens from the main purse of
+Then execute the `transfer` subcommand. We'll specify that we want to transfer 1,234,567 tokens from the main purse of
 node 3, and that we'll pay a maximum of 10,000 tokens to execute this deploy: 
 
 ```
@@ -252,13 +252,13 @@ cargo run --release -- get-deploy c42210759368a07a1b1ff4f019f7e77e7c9eaf2961b8c9
 </details>
 
 The `block_hash` in the response's `execution_results` is worth noting, as it can be used to identify the block in which
-the deploy is included.  If the deploy was successfully received and parsed by the node, but failed to execute, the
+the deploy is included. If the deploy was successfully received and parsed by the node, but failed to execute, the
 `error_message` in `execution_results` may provide useful information.
 
 
 ### Get details of a `Block`
 
-To see information about a `Block` created by the network, you can use `get-block`.  For example:
+To see information about a `Block` created by the network, you can use `get-block`. For example:
 
 ```
 cargo run --release -- get-block --block-hash=80a09df67f45bfb290c8f36021daf2fb898587a48fa0e4f7c506202ae8f791b8
@@ -305,7 +305,7 @@ for the purposes of querying the global state.
 
 ### Query the global state
 
-To view data stored to global state after executing a deploy, you can use `query-state`.  For example, to see the value
+To view data stored to global state after executing a deploy, you can use `query-state`. For example, to see the value
 stored under our new account's public key:
 
 ```
@@ -349,7 +349,7 @@ This yields details of the newly-created account object, including the `URef` of
 
 ### Get the balance of a purse
 
-This can be done via `get-balance`.  For example, to get the balance of the main purse of our newly-created account:
+This can be done via `get-balance`. For example, to get the balance of the main purse of our newly-created account:
 
 ```
 cargo run --release -- get-balance \
@@ -371,6 +371,6 @@ cargo run --release -- get-balance \
 ```
 </details>
 
-Note that the system mint contract is required to retrieve the balance of any given purse.  If you execute a
+Note that the system mint contract is required to retrieve the balance of any given purse. If you execute a
 `query-state` specifying a purse `URef` as the `--key` argument, you'll find that the actual value stored there is a unit
-value `()`.  This makes the `get-balance` subcommand particularly useful. 
+value `()`. This makes the `get-balance` subcommand particularly useful. 
