@@ -344,7 +344,7 @@ pub(super) mod session_path {
 pub(super) mod arg_simple {
     use super::*;
 
-    const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE' OR NAME:TYPE=null";
+    const ARG_VALUE_NAME: &str = r#""NAME:TYPE='VALUE'" OR "NAME:TYPE=null""#;
 
     lazy_static! {
         static ref ARG_HELP: String = format!(

@@ -60,7 +60,7 @@ fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
 mod arg_simple {
     use super::*;
 
-    const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE'";
+    const ARG_VALUE_NAME: &str = r#""NAME:TYPE='VALUE'" OR "NAME:TYPE=null""#;
 
     pub(crate) mod session {
         use super::*;
