@@ -4,16 +4,20 @@ set -e
 
 FILE_DIR=$1
 
-function error_output()
+function check_for_error()
 {
-  echo
-  echo "Validation failed for accounts.csv and chainspec.toml in $FILE_DIR"
-  echo "Run generate_validation.sh in $FILE_DIR to update validation.md5 and commit."
-  echo
+  exit_val=$?
+  if [[ $exit_val -ne "0" ]]; then
+    echo
+    echo "Validation failed for accounts.csv and chainspec.toml in $FILE_DIR"
+    echo "Run generate_validation.sh in $FILE_DIR to update validation.md5 and commit."
+    echo
+  fi
+  exit $exit_val
 }
 
-trap 'error_output' EXIT
+trap check_for_error EXIT
 
-cd ${FILE_DIR}
+cd "$FILE_DIR"
 echo "Testing validation.md5 in $FILE_DIR"
 md5sum -c validation.md5
