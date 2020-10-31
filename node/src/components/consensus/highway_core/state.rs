@@ -362,6 +362,16 @@ impl<C: Context> State<C> {
         info!(?evidence, "marking validator #{} as faulty", idx.0);
         self.faults.insert(idx, Fault::Direct(evidence));
         self.panorama[idx] = Observation::Faulty;
+        // Remove endorsements for vote created by known equivocator.
+        let equivocator_vote = self
+            .endorsements
+            .keys()
+            .find(|v| {
+                let vidx = self.votes.get(v).expect("vote exists").creator;
+                vidx == idx
+            })
+            .cloned();
+        equivocator_vote.map(|v| self.endorsements.remove(&v));
     }
 
     /// Add set of endorsements to the state.
