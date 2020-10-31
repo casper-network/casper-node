@@ -65,7 +65,7 @@ impl RpcCall {
 
         Ok(Self {
             rpc_id,
-            node_address: node_address.to_string(),
+            node_address: node_address.trim_end_matches('/').to_string(),
             verbose,
         })
     }
