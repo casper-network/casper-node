@@ -141,7 +141,7 @@ pub mod state_root_hash {
     use super::*;
 
     const ARG_NAME: &str = "state-root-hash";
-    const ARG_SHORT: &str = "g";
+    const ARG_SHORT: &str = "s";
     const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
     const ARG_HELP: &str = "Hex-encoded hash of the state root";
 
