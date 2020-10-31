@@ -52,6 +52,11 @@ steps:
   commands:
     - "./update-rev.sh" 
 
+- name: verify-genesis-checksums
+  <<: *buildenv
+  commands:
+    - "./ci/check_genesis_validation.sh $(pwd)/resources/production"
+
 - name: cargo-fmt
   <<: *buildenv
   commands:
