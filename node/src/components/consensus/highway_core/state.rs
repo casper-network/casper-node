@@ -382,17 +382,19 @@ impl<C: Context> State<C> {
         let validator_count = self.validator_count();
         info!("Received endorsements of {:?}", vote);
         {
-            let entry = self
+            let mut entry = self
                 .incomplete_endorsements
-                .entry(vote)
-                .or_insert_with(|| Vec::with_capacity(validator_count));
+                .remove(&vote)
+                .unwrap_or_else(|| Vec::with_capacity(validator_count));
             for (vid, signature) in endorsements.endorsers {
                 // Add endorsements from validators we haven't seen endorsement yet.
-                if !entry.iter().any(|e| e.validator_idx() == vid) {
+                // Do not add endorsements from validators we know to be equivocators.
+                if !self.is_faulty(vid) && !entry.iter().any(|e| e.validator_idx() == vid) {
                     let endorsement = Endorsement::new(vote, vid, signature);
                     entry.push(endorsement)
                 }
             }
+            self.incomplete_endorsements.insert(vote, entry);
         }
         // Stake required to consider vote to be endorsed.
         let threshold = self.total_weight() / 3 * 2;
