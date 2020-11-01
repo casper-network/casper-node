@@ -4,10 +4,15 @@ use std::convert::TryFrom;
 
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
-use casper_types::bytesrepr::{self, ToBytes};
+use casper_execution_engine::shared::{
+    account::Account, stored_value::StoredValue as ExecutionEngineStoredValue,
+};
+use casper_types::{
+    bytesrepr::{self, ToBytes},
+    CLValue, Transfer,
+};
 
-use super::{Account, CLValue, DeployInfo, Transfer};
+use super::DeployInfo;
 
 /// Representation of a value stored in global state.
 ///
@@ -38,10 +43,8 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
 
     fn try_from(ee_stored_value: &ExecutionEngineStoredValue) -> Result<Self, Self::Error> {
         let stored_value = match ee_stored_value {
-            ExecutionEngineStoredValue::Account(account) => StoredValue::Account(account.into()),
-            ExecutionEngineStoredValue::CLValue(cl_value) => {
-                StoredValue::CLValue(CLValue::from(cl_value))
-            }
+            ExecutionEngineStoredValue::CLValue(cl_value) => StoredValue::CLValue(cl_value.clone()),
+            ExecutionEngineStoredValue::Account(account) => StoredValue::Account(account.clone()),
             ExecutionEngineStoredValue::ContractWasm(contract_wasm) => {
                 StoredValue::ContractWasm(hex::encode(&contract_wasm.to_bytes()?))
             }
@@ -51,9 +54,7 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
             ExecutionEngineStoredValue::ContractPackage(contract_package) => {
                 StoredValue::ContractPackage(hex::encode(&contract_package.to_bytes()?))
             }
-            ExecutionEngineStoredValue::Transfer(transfer) => {
-                StoredValue::Transfer(transfer.into())
-            }
+            ExecutionEngineStoredValue::Transfer(transfer) => StoredValue::Transfer(*transfer),
             ExecutionEngineStoredValue::DeployInfo(deploy_info) => {
                 StoredValue::DeployInfo(deploy_info.into())
             }
