@@ -258,8 +258,18 @@ impl<C: Context> State<C> {
     /// Returns whether we have seen enough endorsements for the vote.
     /// Vote is endorsed when it, or its descendant, has more than ≥ ⅔ of votes (by weight).
     pub(crate) fn is_endorsed(&self, hash: &C::Hash) -> bool {
-        self.endorsements.contains_key(hash)
-        // TODO: check if any descendant (from the same creator) of `hash` is endorsed.
+        if self.endorsements.contains_key(hash) {
+            return true;
+        }
+        let vid = self.vote(&hash).creator;
+        match self.panorama.get(vid) {
+            Observation::None | Observation::Faulty => false,
+            Observation::Correct(latest) => self
+                .swimlane(&latest)
+                .map(|(hash, _)| *hash)
+                .take_while(|v| v != hash)
+                .any(|v| self.endorsements.contains_key(&v)),
+        }
     }
 
     /// Returns hash of vote that needs to be endorsed.
