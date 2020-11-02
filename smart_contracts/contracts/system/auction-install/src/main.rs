@@ -15,9 +15,10 @@ use casper_types::{
         UnbondingPurses, ValidatorRewardMap, ValidatorWeights, ARG_AUCTION_DELAY,
         ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD, ARG_MINT_CONTRACT_PACKAGE_HASH,
         ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY,
-        DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE, ERA_ID_KEY, ERA_VALIDATORS_KEY,
+        DELEGATOR_REWARD_MAP_KEY, DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY,
         INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
+        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP_KEY, VALIDATOR_REWARD_PURSE_KEY,
+        VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
@@ -101,19 +102,19 @@ pub extern "C" fn install() {
             storage::new_uref(UnbondingPurses::new()).into(),
         );
         named_keys.insert(
-            DELEGATOR_REWARD_PURSE.into(),
+            DELEGATOR_REWARD_PURSE_KEY.into(),
             create_purse(mint_package_hash, U512::zero()).into(),
         );
         named_keys.insert(
-            VALIDATOR_REWARD_PURSE.into(),
+            VALIDATOR_REWARD_PURSE_KEY.into(),
             create_purse(mint_package_hash, U512::zero()).into(),
         );
         named_keys.insert(
-            DELEGATOR_REWARD_MAP.into(),
+            DELEGATOR_REWARD_MAP_KEY.into(),
             storage::new_uref(DelegatorRewardMap::new()).into(),
         );
         named_keys.insert(
-            VALIDATOR_REWARD_MAP.into(),
+            VALIDATOR_REWARD_MAP_KEY.into(),
             storage::new_uref(ValidatorRewardMap::new()).into(),
         );
         named_keys.insert(

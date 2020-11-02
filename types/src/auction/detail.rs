@@ -2,12 +2,12 @@ use alloc::vec::Vec;
 
 use num_rational::Ratio;
 
-use super::{
-    Auction, BidPurses, UnbondingPurse, UnbondingPurses, BID_PURSES_KEY, DEFAULT_UNBONDING_DELAY,
-    SYSTEM_ACCOUNT, UNBONDING_PURSES_KEY,
-};
 use crate::{
-    auction::{internal, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
+    auction::{
+        internal, Auction, BidPurses, MintProvider, RuntimeProvider, StorageProvider,
+        SystemProvider, UnbondingPurse, UnbondingPurses, BID_PURSES_KEY, DEFAULT_UNBONDING_DELAY,
+        SYSTEM_ACCOUNT, UNBONDING_PURSES_KEY,
+    },
     system_contract_errors::auction::{Error, Result},
     Key, PublicKey, URef, U512,
 };

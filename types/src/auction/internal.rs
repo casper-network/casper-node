@@ -4,8 +4,8 @@ use crate::{
     auction::{
         providers::StorageProvider, Bids, DelegatorRewardMap, Delegators, EraId, EraValidators,
         RuntimeProvider, SeigniorageRecipientsSnapshot, ValidatorRewardMap, AUCTION_DELAY_KEY,
-        BIDS_KEY, DELEGATORS_KEY, DELEGATOR_REWARD_MAP, ERA_ID_KEY, ERA_VALIDATORS_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_SLOTS_KEY,
+        BIDS_KEY, DELEGATORS_KEY, DELEGATOR_REWARD_MAP_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_MAP_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
@@ -66,7 +66,7 @@ pub fn get_delegator_reward_map<P>(provider: &mut P) -> Result<DelegatorRewardMa
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    read_from(provider, DELEGATOR_REWARD_MAP)
+    read_from(provider, DELEGATOR_REWARD_MAP_KEY)
 }
 
 pub fn set_delegator_reward_map<P>(
@@ -76,14 +76,14 @@ pub fn set_delegator_reward_map<P>(
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    write_to(provider, DELEGATOR_REWARD_MAP, delegator_reward_map)
+    write_to(provider, DELEGATOR_REWARD_MAP_KEY, delegator_reward_map)
 }
 
 pub fn get_validator_reward_map<P>(provider: &mut P) -> Result<ValidatorRewardMap>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    read_from(provider, VALIDATOR_REWARD_MAP)
+    read_from(provider, VALIDATOR_REWARD_MAP_KEY)
 }
 
 pub fn set_validator_reward_map<P>(
@@ -93,7 +93,7 @@ pub fn set_validator_reward_map<P>(
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    write_to(provider, VALIDATOR_REWARD_MAP, validator_reward_map)
+    write_to(provider, VALIDATOR_REWARD_MAP_KEY, validator_reward_map)
 }
 
 pub fn get_era_validators<P>(provider: &mut P) -> Result<EraValidators>

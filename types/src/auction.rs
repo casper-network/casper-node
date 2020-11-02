@@ -2,7 +2,6 @@
 mod bid;
 mod constants;
 mod detail;
-mod era_validators;
 mod internal;
 mod providers;
 mod seigniorage_recipient;
@@ -19,28 +18,12 @@ use crate::{
     Key, PublicKey, URef, U512,
 };
 
-pub use bid::{Bid, Bids};
+pub use bid::Bid;
 pub use constants::*;
-pub use era_validators::{EraId, EraValidators, ValidatorWeights};
 pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider};
-pub use seigniorage_recipient::{
-    SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
-};
+pub use seigniorage_recipient::SeigniorageRecipient;
 pub use types::*;
-pub use unbonding_purse::{UnbondingPurse, UnbondingPurses};
-
-/// Bidders mapped to their bidding purses and tokens contained therein. Delegators' tokens
-/// are kept in the validator bid purses, available for withdrawal up to the delegated number
-/// of tokens. Withdrawal moves the tokens to a delegator-controlled unbonding purse.
-pub type BidPurses = BTreeMap<PublicKey, URef>;
-
-/// Name of bid purses named key.
-pub const BID_PURSES_KEY: &str = "bid_purses";
-/// Name of unbonding purses key.
-pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
-
-/// Default number of eras that need to pass to be able to withdraw unbonded funds.
-pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
+pub use unbonding_purse::UnbondingPurse;
 
 /// Bonding auction contract interface
 pub trait Auction:
@@ -537,7 +520,7 @@ pub trait Auction:
 
             // TODO: add "mint into existing purse" facility
             let validator_reward_purse = self
-                .get_key(VALIDATOR_REWARD_PURSE)
+                .get_key(VALIDATOR_REWARD_PURSE_KEY)
                 .ok_or(Error::MissingKey)?
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
@@ -552,7 +535,7 @@ pub trait Auction:
 
             // TODO: add "mint into existing purse" facility
             let delegator_reward_purse = self
-                .get_key(DELEGATOR_REWARD_PURSE)
+                .get_key(DELEGATOR_REWARD_PURSE_KEY)
                 .ok_or(Error::MissingKey)?
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
@@ -595,7 +578,7 @@ pub trait Auction:
 
         if !ret.is_zero() {
             let source_purse = self
-                .get_key(DELEGATOR_REWARD_PURSE)
+                .get_key(DELEGATOR_REWARD_PURSE_KEY)
                 .ok_or(Error::MissingKey)?
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
@@ -633,7 +616,7 @@ pub trait Auction:
 
         if !ret.is_zero() {
             let source_purse = self
-                .get_key(VALIDATOR_REWARD_PURSE)
+                .get_key(VALIDATOR_REWARD_PURSE_KEY)
                 .ok_or(Error::MissingKey)?
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
