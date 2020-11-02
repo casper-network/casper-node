@@ -49,7 +49,7 @@ pub enum Event {
     GetChainspecResult {
         maybe_deploy_config: Box<Option<DeployConfig>>,
         chainspec_version: Version,
-        current_instant: Timestamp,
+        block_timestamp: Timestamp,
         past_blocks: HashSet<ProtoBlockHash>,
         responder: Responder<HashSet<DeployHash>>,
     },
@@ -236,7 +236,7 @@ impl BlockProposer {
     fn get_chainspec<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        current_instant: Timestamp,
+        block_timestamp: Timestamp,
         past_blocks: HashSet<ProtoBlockHash>,
         responder: Responder<HashSet<DeployHash>>,
     ) -> Effects<Event>
@@ -253,7 +253,7 @@ impl BlockProposer {
                     .event(move |_| Event::GetChainspecResult {
                         maybe_deploy_config: Box::new(Some(chainspec)),
                         chainspec_version,
-                        current_instant,
+                        block_timestamp,
                         past_blocks,
                         responder,
                     })
@@ -261,7 +261,7 @@ impl BlockProposer {
             None => self.get_chainspec_from_storage(
                 effect_builder,
                 chainspec_version,
-                current_instant,
+                block_timestamp,
                 past_blocks,
                 responder,
             ),
@@ -273,7 +273,7 @@ impl BlockProposer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         chainspec_version: Version,
-        current_instant: Timestamp,
+        block_timestamp: Timestamp,
         past_blocks: HashSet<ProtoBlockHash>,
         responder: Responder<HashSet<DeployHash>>,
     ) -> Effects<Event>
@@ -285,7 +285,7 @@ impl BlockProposer {
             .event(move |maybe_chainspec| Event::GetChainspecResult {
                 maybe_deploy_config: Box::new(maybe_chainspec.map(|c| c.genesis.deploy_config)),
                 chainspec_version,
-                current_instant,
+                block_timestamp,
                 past_blocks,
                 responder,
             })
@@ -297,7 +297,7 @@ impl BlockProposer {
     fn remaining_deploys(
         &mut self,
         deploy_config: DeployConfig,
-        current_instant: Timestamp,
+        block_timestamp: Timestamp,
         past_blocks: HashSet<ProtoBlockHash>,
     ) -> HashSet<DeployHash> {
         let past_deploys = past_blocks
@@ -313,7 +313,7 @@ impl BlockProposer {
             .pending
             .iter()
             .filter(|&(hash, deploy)| {
-                self.is_deploy_valid(deploy, current_instant, &deploy_config, &past_deploys)
+                self.is_deploy_valid(deploy, block_timestamp, &deploy_config, &past_deploys)
                     && !past_deploys.contains(hash)
             })
             .map(|(hash, _deploy)| *hash)
@@ -326,7 +326,7 @@ impl BlockProposer {
     fn is_deploy_valid(
         &self,
         deploy: &DeployHeader,
-        current_instant: Timestamp,
+        block_timestamp: Timestamp,
         deploy_config: &DeployConfig,
         past_deploys: &HashSet<&DeployHash>,
     ) -> bool {
@@ -337,8 +337,8 @@ impl BlockProposer {
                 .all(|dep| past_deploys.contains(dep))
         };
         let ttl_valid = deploy.ttl() <= deploy_config.max_ttl;
-        let timestamp_valid = deploy.timestamp() <= current_instant;
-        let deploy_valid = deploy.timestamp() + deploy.ttl() >= current_instant;
+        let timestamp_valid = deploy.timestamp() <= block_timestamp;
+        let deploy_valid = deploy.timestamp() + deploy.ttl() >= block_timestamp;
         let num_deps_valid = deploy.dependencies().len() <= deploy_config.max_dependencies as usize;
         ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
     }
@@ -436,14 +436,14 @@ where
             Event::GetChainspecResult {
                 maybe_deploy_config,
                 chainspec_version,
-                current_instant,
+                block_timestamp,
                 past_blocks,
                 responder,
             } => {
                 let deploy_config = maybe_deploy_config.expect("should return chainspec");
                 // Update chainspec cache.
                 self.chainspecs.insert(chainspec_version, deploy_config);
-                let deploys = self.remaining_deploys(deploy_config, current_instant, past_blocks);
+                let deploys = self.remaining_deploys(deploy_config, block_timestamp, past_blocks);
                 return responder.respond(deploys).ignore();
             }
         }
