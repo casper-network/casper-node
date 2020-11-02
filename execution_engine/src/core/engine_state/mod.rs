@@ -28,10 +28,21 @@ use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
 
-use casper_types::{AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey, DeployInfo, EntryPoint, EntryPointType, Key, auction::LOCKED_FUNDS_PERIOD_KEY, Phase, ProtocolVersion, RuntimeArgs, U512, URef, account::AccountHash, auction::ARG_AUCTION_DELAY, auction::ARG_LOCKED_FUNDS_PERIOD, auction::AUCTION_DELAY_KEY, auction::{
-        EraValidators, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS,
-        ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, VALIDATOR_SLOTS_KEY,
-    }, bytesrepr::{self, ToBytes}, contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME}, mint, proof_of_stake, runtime_args, system_contract_errors::mint::Error as MintError};
+use casper_types::{
+    account::AccountHash,
+    auction::{
+        EraValidators, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
+        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
+        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, VALIDATOR_SLOTS_KEY,
+    },
+    bytesrepr::{self, ToBytes},
+    contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
+    mint, proof_of_stake, runtime_args,
+    system_contract_errors::mint::Error as MintError,
+    AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    ContractVersionKey, DeployInfo, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
+    RuntimeArgs, URef, U512,
+};
 
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
