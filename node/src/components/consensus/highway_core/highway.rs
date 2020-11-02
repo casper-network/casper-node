@@ -483,7 +483,7 @@ impl<C: Context> Highway<C> {
                 let vote = *endorsements.vote();
                 for (v_id, signature) in endorsements.endorsers.iter() {
                     let validator = self.validators.id(*v_id).ok_or(EndorsementError::Creator)?;
-                    let endorsement: Endorsement<C> = Endorsement::new(vote, *v_id, *signature);
+                    let endorsement: Endorsement<C> = Endorsement::new(vote, *v_id);
                     if !C::verify_signature(&endorsement.hash(), validator, &signature) {
                         return Err(EndorsementError::Signature.into());
                     }

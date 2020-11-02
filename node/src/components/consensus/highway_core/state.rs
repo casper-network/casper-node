@@ -38,7 +38,7 @@ use crate::{
 use block::Block;
 use tallies::Tallies;
 
-use super::endorsement::{Endorsement, Endorsements};
+use super::endorsement::{Endorsement, Endorsements, SignedEndorsement};
 
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
@@ -126,9 +126,9 @@ pub(crate) struct State<C: Context> {
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
     /// All currently endorsed votes, by hash.
-    endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
+    endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
     /// Votes that don't yet have 2/3 of stake endorsing them.
-    incomplete_endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
+    incomplete_endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
     /// Clock to track fork choice
     clock: Clock,
 }
@@ -230,7 +230,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns endorsements for `vote`, if any.
-    pub(crate) fn opt_endorsements(&self, vote: &C::Hash) -> Option<Vec<Endorsement<C>>> {
+    pub(crate) fn opt_endorsements(&self, vote: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
         self.endorsements.get(vote).cloned()
     }
 
@@ -379,7 +379,8 @@ impl<C: Context> State<C> {
             for (vid, signature) in endorsements.endorsers {
                 // Add endorsements from validators we haven't seen endorsement yet.
                 if !entry.iter().any(|e| e.validator_idx() == vid) {
-                    let endorsement = Endorsement::new(vote, vid, signature);
+                    let endorsement =
+                        SignedEndorsement::new(Endorsement::new(vote, vid), signature);
                     entry.push(endorsement)
                 }
             }
