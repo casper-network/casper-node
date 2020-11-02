@@ -18,7 +18,7 @@ use casper_types::{auction::BLOCK_REWARD, U512};
 
 use crate::{
     components::{
-        chainspec_loader::HighwayConfig,
+        chainspec_loader::Chainspec,
         consensus::{
             consensus_protocol::{BlockContext, ConsensusProtocol, ConsensusProtocolResult},
             highway_core::{
@@ -55,15 +55,16 @@ where
 }
 
 impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
-    pub(crate) fn new(
+    /// Creates a new boxed `HighwayProtocol` instance.
+    pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
         validator_stakes: Vec<(C::ValidatorId, Motes)>,
         slashed: &HashSet<C::ValidatorId>,
-        highway_config: &HighwayConfig,
+        chainspec: &Chainspec,
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
         start_time: Timestamp,
         seed: u64,
-    ) -> Self {
+    ) -> Box<dyn ConsensusProtocol<I, C>> {
         let sum_stakes: Motes = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         assert!(
             !sum_stakes.value().is_zero(),
@@ -81,6 +82,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         for vid in slashed {
             validators.ban(vid);
         }
+
+        // TODO: Apply all upgrades with a height less than or equal to the start height.
+        let highway_config = &chainspec.genesis.highway_config;
 
         let total_weight = u128::from(validators.total_weight());
         let ftt_percent = u128::from(highway_config.finality_threshold_percent);
@@ -110,14 +114,14 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let min_round_exp = params.min_round_exp();
         let round_exp = params.init_round_exp();
         let start_timestamp = params.start_timestamp();
-        HighwayProtocol {
+        Box::new(HighwayProtocol {
             vertex_deps: BTreeMap::new(),
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
             highway: Highway::new(instance_id, validators, params),
             vertices_to_be_added_later: BTreeMap::new(),
             round_success_meter: RoundSuccessMeter::new(round_exp, min_round_exp, start_timestamp),
-        }
+        })
     }
 
     fn process_av_effects<E>(&mut self, av_effects: E) -> Vec<CpResult<I, C>>

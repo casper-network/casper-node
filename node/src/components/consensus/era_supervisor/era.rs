@@ -107,14 +107,14 @@ pub struct Era<I> {
 }
 
 impl<I> Era<I> {
-    pub(crate) fn new<C: 'static + ConsensusProtocol<I, ClContext>>(
-        consensus: C,
+    pub(crate) fn new(
+        consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
         start_height: u64,
         newly_slashed: Vec<PublicKey>,
         slashed: HashSet<PublicKey>,
     ) -> Self {
         Era {
-            consensus: Box::new(consensus),
+            consensus,
             start_height,
             candidates: Vec::new(),
             newly_slashed,
