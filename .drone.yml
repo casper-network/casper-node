@@ -62,6 +62,8 @@ steps:
   commands:
   - rustup component add rustfmt
   - cargo fmt --all -- --check
+  depends_on:
+  - build-deb-update-revision
 
 - name: cargo-clippy
   <<: *buildenv
@@ -71,6 +73,8 @@ steps:
   - make setup-rs
   - rustup component add clippy
   - cargo clippy --all-targets --all-features --workspace
+  depends_on:
+  - build-deb-update-revision
 
 - name: cargo-audit
   <<: *buildenv
@@ -78,11 +82,15 @@ steps:
   - cargo install cargo-audit
   - cargo generate-lockfile
   - cargo audit
+  depends_on:
+  - build-deb-update-revision
 
 - name: updater-dry-run
   <<: *buildenv
   commands:
   - cargo run --package=casper-updater -- --root-dir=. --dry-run
+  depends_on:
+  - build-deb-update-revision
 
 - name: cargo-test
   <<: *buildenv
@@ -90,6 +98,8 @@ steps:
   - make setup
   - make test
   - make test-contracts
+  depends_on:
+  - build-deb-update-revision
 
 - name: rebuild-cache
   <<: *cache
@@ -105,6 +115,8 @@ steps:
   <<: *buildenv
   commands:
     - "make deb"
+  depends_on:
+  - cargo-test
 
 - name: build-wasm-package-push-to-s3
   image: casperlabs/s3cmd-build:latest
@@ -121,6 +133,8 @@ steps:
     - "release-*"
     event:
     - push  
+  depends_on:
+  - build-deb
 
 # we want to publish to the test repo, only when code is pushed to master or release-* branch. 
 # bors should make sure, that it has passed on staging or trying branches
@@ -140,6 +154,8 @@ steps:
     - "release-*"
     event:
     - push  
+  depends_on:
+  - build-deb
 
 volumes:
   - name: cache
