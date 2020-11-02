@@ -49,6 +49,7 @@ use crate::{
         hash::Digest,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
+    fatal,
     types::{BlockHash, BlockHeader, CryptoRngCore, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
 };
@@ -708,6 +709,24 @@ where
                     })
                 })
                 .collect(),
+        }
+    }
+
+    /// Emits a fatal error if the consensus state is still empty.
+    pub(super) fn shutdown_if_necessary(&self) -> Effects<Event<I>> {
+        let should_emit_error = self
+            .era_supervisor
+            .active_eras
+            .get(&self.era_supervisor.current_era)
+            .map(|era| era.consensus.has_received_messages())
+            .unwrap_or(true);
+        if should_emit_error {
+            fatal!(
+                self.effect_builder,
+                "Consensus shutting down due to inability to participate in the network"
+            )
+        } else {
+            Default::default()
         }
     }
 }
