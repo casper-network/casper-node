@@ -219,9 +219,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                                     .or_default()
                                     .push(vv);
                                 results.push(ConsensusProtocolResult::ValidateConsensusValue(
-                                    sender,
-                                    value,
-                                    timestamp,
+                                    sender, value, timestamp,
                                 ));
                             } else {
                                 // It's not a block: Add it to the state.
