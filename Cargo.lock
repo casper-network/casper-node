@@ -523,6 +523,7 @@ dependencies = [
  "log 0.4.11",
  "num-rational 0.3.0",
  "num-traits",
+ "parity-wasm 0.41.0",
  "rand 0.7.3",
  "serde_json",
  "tempfile",
