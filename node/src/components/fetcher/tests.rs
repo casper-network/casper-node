@@ -10,12 +10,13 @@ use tokio::time;
 use super::*;
 use crate::{
     components::{
+        deploy_acceptor,
         in_memory_network::{NetworkController, NodeId},
         storage::{self, Storage, StorageType},
     },
-    effect::announcements::DeployAcceptorAnnouncement,
+    effect::announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
     protocol::Message,
-    reactor::Runner,
+    reactor::{Reactor as ReactorTrait, Runner},
     testing::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
@@ -139,19 +140,79 @@ reactor!(Reactor {
         LinearChainRequest<NodeId> -> !;
         NetworkRequest<NodeId, Message> -> network;
         StorageRequest<Storage> -> storage;
-        // TODO: Route to deploy fetcher.
-        FetcherRequest<NodeId, Deploy> -> !;
+        FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
     }
 
     announcements: {
-        // TODO: Route announcements for deploy acceptor and networking.
-        DeployAcceptorAnnouncement<NodeId> -> [];
+        // The deploy fetcher needs to be notified about new deploys.
+        DeployAcceptorAnnouncement<NodeId> -> [deploy_fetcher];
         // TODO: Route network messages
-        NetworkAnnouncement<NodeId, Message> -> [];
-        // TODO: Ignore all ApiServer announcements?
-        ApiServerAnnouncement -> [];
+        NetworkAnnouncement<NodeId, Message> -> [fn handle_message];
+        // Currently the ApiServerAnnouncement is misnamed - it solely tells of new deploys arriving
+        // from a client.
+        ApiServerAnnouncement -> [deploy_acceptor];
     }
 });
+
+impl Reactor {
+    fn handle_message(
+        &mut self,
+        effect_builder: EffectBuilder<ReactorEvent>,
+        rng: &mut dyn CryptoRngCore,
+        network_announcement: NetworkAnnouncement<NodeId, Message>,
+    ) -> Effects<ReactorEvent> {
+        // TODO: Make this manual routing disappear and supply appropriate
+        // announcements.
+        match network_announcement {
+            NetworkAnnouncement::MessageReceived { sender, payload } => match payload {
+                Message::GetRequest { serialized_id, .. } => {
+                    let deploy_hash = match bincode::deserialize(&serialized_id) {
+                        Ok(hash) => hash,
+                        Err(error) => {
+                            error!(
+                                "failed to decode {:?} from {}: {}",
+                                serialized_id, sender, error
+                            );
+                            return Effects::new();
+                        }
+                    };
+
+                    self.dispatch_event(
+                        effect_builder,
+                        rng,
+                        ReactorEvent::Storage(storage::Event::GetDeployForPeer {
+                            deploy_hash,
+                            peer: sender,
+                        }),
+                    )
+                }
+
+                Message::GetResponse {
+                    serialized_item, ..
+                } => {
+                    let deploy = match bincode::deserialize(&serialized_item) {
+                        Ok(deploy) => Box::new(deploy),
+                        Err(error) => {
+                            error!("failed to decode deploy from {}: {}", sender, error);
+                            return Effects::new();
+                        }
+                    };
+
+                    self.dispatch_event(
+                        effect_builder,
+                        rng,
+                        ReactorEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
+                            deploy,
+                            source: Source::Peer(sender),
+                        }),
+                    )
+                }
+                msg => panic!("should not get {}", msg),
+            },
+            ann => panic!("should not received any network announcements: {:?}", ann),
+        }
+    }
+}
 
 // impl reactor::Reactor for Reactor {
 //     type Event = Event;
