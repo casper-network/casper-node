@@ -220,7 +220,7 @@ impl<I: NodeIdT, C: Context> HighwayProtocol<I, C> {
                                     .push(vv);
                                 results.push(ConsensusProtocolResult::ValidateConsensusValue(
                                     sender,
-                                    value.clone(),
+                                    value,
                                     timestamp,
                                 ));
                             } else {
