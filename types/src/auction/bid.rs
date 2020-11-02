@@ -1,5 +1,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
+use serde::{Deserialize, Serialize};
+
 use super::{types::DelegationRate, EraId};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -7,7 +9,7 @@ use crate::{
 };
 
 /// An entry in a founding validator map.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub struct Bid {
     /// The purse that was used for bonding.
     pub bonding_purse: URef,

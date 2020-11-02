@@ -246,9 +246,15 @@ impl<C: Context> Highway<C> {
         if !self.has_vertex(&vertex) {
             match vertex {
                 Vertex::Vote(vote) => self.add_valid_vote(vote, now, rng),
-                Vertex::Evidence(evidence) => {
-                    self.state.add_evidence(evidence);
-                    vec![]
+                Vertex::Evidence(ref evidence) => {
+                    let was_honest = !self.state.is_faulty(evidence.perpetrator());
+                    self.state.add_evidence(evidence.clone());
+                    if was_honest {
+                        // Gossip `Evidence` only if we just learned about faults by the validator.
+                        vec![Effect::NewVertex(ValidVertex(vertex))]
+                    } else {
+                        vec![]
+                    }
                 }
                 Vertex::Endorsements(endorsements) => {
                     self.state.add_endorsements(endorsements);
@@ -511,8 +517,24 @@ impl<C: Context> Highway<C> {
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let vote_hash = swvote.hash();
+        let creator = swvote.wire_vote.creator;
+        let was_honest = !self.state.is_faulty(creator);
         self.state.add_valid_vote(swvote);
-        self.on_new_vote(&vote_hash, now, rng)
+        let mut evidence_effects = self
+            .state
+            .opt_evidence(creator)
+            .map(|ev| {
+                if was_honest {
+                    // Send the evidence only if we just learned about validator being faulty.
+                    // i.e. if it was faulty _before_ we added `swvote`, don't send evidence.
+                    vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(ev.clone())))]
+                } else {
+                    vec![]
+                }
+            })
+            .unwrap_or_default();
+        evidence_effects.extend(self.on_new_vote(&vote_hash, now, rng));
+        evidence_effects
     }
 }
 
@@ -572,6 +594,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
+            endorsed: vec![],
         };
         let invalid_signature = 1u64;
         let invalid_signature_vote = SignedWireVote {
@@ -634,6 +657,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
+            endorsed: vec![],
         };
         let wvote1 = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
@@ -643,6 +667,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
+            endorsed: vec![],
         };
 
         assert!(validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC,).is_ok());

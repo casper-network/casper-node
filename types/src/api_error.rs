@@ -88,7 +88,7 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// # use casper_types::ApiError::{self, *};
 /// # macro_rules! show_and_check {
 /// #     ($lhs:literal => $rhs:expr) => {
-/// #         assert_eq!($lhs as u32, ApiError::from($rhs).into());
+/// #         assert_eq!($lhs as u32, u32::from(ApiError::from($rhs)));
 /// #     };
 /// # }
 /// // General system errors:

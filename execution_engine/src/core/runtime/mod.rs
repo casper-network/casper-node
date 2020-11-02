@@ -1402,17 +1402,22 @@ where
         self.context.protocol_data()
     }
 
-    /// Charge specified amount of gas
+    /// Safely charge the specified amount of gas, up to the available gas limit.
     ///
     /// Returns false if gas limit exceeded and true if not.
-    /// Intuition about the return value sense is to answer the question 'are we
-    /// allowed to continue?'
     fn charge_gas(&mut self, amount: Gas) -> bool {
         let prev = self.context.gas_counter();
+        let gas_limit = self.context.gas_limit();
+        // gas charge overflow protection
         match prev.checked_add(amount) {
-            // gas charge overflow protection
-            None => false,
-            Some(val) if val > self.context.gas_limit() => false,
+            None => {
+                self.context.set_gas_counter(gas_limit);
+                false
+            }
+            Some(val) if val > gas_limit => {
+                self.context.set_gas_counter(gas_limit);
+                false
+            }
             Some(val) => {
                 self.context.set_gas_counter(val);
                 true
@@ -1970,9 +1975,7 @@ where
 
         let ret: CLValue = match entry_point_name {
             auction::METHOD_GET_ERA_VALIDATORS => {
-                let era_id = Self::get_named_argument(&runtime_args, auction::ARG_ERA_ID)?;
-
-                let result = runtime.get_era_validators(era_id).map_err(Self::reverter)?;
+                let result = runtime.get_era_validators().map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
             }

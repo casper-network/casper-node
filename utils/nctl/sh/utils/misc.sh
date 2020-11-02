@@ -255,5 +255,5 @@ function exec_node_rpc() {
             "jsonrpc": "2.0",
             "method": "'$3'",
             "params": {'$4'}
-        }' | jq $5 
+        }' | jq $5
 }

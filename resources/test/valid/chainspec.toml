@@ -120,7 +120,7 @@ protocol_version = '0.2.0'
 upgrade_installer_path = 'upgrade.wasm'
 
 [upgrade.activation_point]
-rank = 23
+height = 23
 
 [upgrade.new_wasm_config]
 initial_memory = 17
@@ -221,4 +221,4 @@ block_gas_limit = 38
 protocol_version = '0.3.0'
 
 [upgrade.activation_point]
-rank = 39
+height = 39

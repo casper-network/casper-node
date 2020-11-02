@@ -80,7 +80,7 @@ use tracing::error;
 use casper_execution_engine::{
     core::engine_state::{
         self,
-        era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
+        era_validators::GetEraValidatorsError,
         execute_request::ExecuteRequest,
         execution_result::ExecutionResults,
         genesis::GenesisResult,
@@ -96,6 +96,7 @@ use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
         consensus::BlockContext,
+        contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
         small_network::GossipedAddress,
         storage::{DeployHashes, DeployMetadata, DeployResults, StorageType, Value},
@@ -114,6 +115,7 @@ use announcements::{
     ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
     DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
 };
+use casper_types::auction::EraValidators;
 use requests::{
     BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
     ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
@@ -1046,21 +1048,35 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Returns a map of validators weights for all eras as known from `root_hash`.
+    ///
+    /// This operation is read only.
+    pub(crate) async fn get_era_validators(
+        self,
+        request: EraValidatorsRequest,
+    ) -> Result<EraValidators, GetEraValidatorsError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
     ///
     /// This operation is read only.
-    pub(crate) async fn get_validators(
+    pub(crate) async fn get_validator_weights_by_era_id(
         self,
-        get_request: GetEraValidatorsRequest,
+        request: ValidatorWeightsByEraIdRequest,
     ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetEraValidators {
-                get_request,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::GetValidatorWeightsByEraId { request, responder },
             QueueKind::Regular,
         )
         .await
@@ -1087,7 +1103,7 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the set of validators, the booking block and the key block for a new era
     pub(crate) async fn create_new_era<S>(
         self,
-        request: GetEraValidatorsRequest,
+        request: ValidatorWeightsByEraIdRequest,
         booking_block_height: u64,
         key_block_height: u64,
     ) -> (
@@ -1099,7 +1115,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest> + From<StorageRequest<S>>,
         S: StorageType + 'static,
     {
-        let future_validators = self.get_validators(request);
+        let future_validators = self.get_validator_weights_by_era_id(request);
         let future_booking_block = self.get_block_at_height(booking_block_height);
         let future_key_block = self.get_block_at_height(key_block_height);
         join!(future_validators, future_booking_block, future_key_block)
