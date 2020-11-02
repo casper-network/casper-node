@@ -57,6 +57,10 @@ finality_threshold_percent = 10
 # Integer between 0 and 255. The power of two that is the number of milliseconds in the minimum round length, and
 # therefore the minimum delay between a block and its child. E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
 minimum_round_exponent = 17
+# Integer between 0 and 255. Must be greater than `minimum_round_exponent`. The power of two that is the number of
+# milliseconds in the minimum round length, and therefore the minimum delay between a block and its child. E.g. 19
+# means 2^19 milliseconds, i.e. about 8.7 minutes.
+maximum_round_exponent = 19
 
 [deploys]
 # The maximum number of Motes allowed to be spent during payment.  0 means unlimited.
