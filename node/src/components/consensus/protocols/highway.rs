@@ -252,14 +252,17 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 } else {
                     match self.highway.validate_vertex(pvv) {
                         Ok(vv) => {
-                            if let Some(value) = vv.inner().value().cloned() {
+                            let vertex = vv.inner();
+                            if let (Some(value), Some(timestamp)) =
+                                (vertex.value().cloned(), vertex.timestamp())
+                            {
                                 // It's a block: Request validation before adding it to the state.
                                 self.pending_values
                                     .entry(value.clone())
                                     .or_default()
                                     .push(vv);
                                 results.push(ConsensusProtocolResult::ValidateConsensusValue(
-                                    sender, value,
+                                    sender, value, timestamp,
                                 ));
                             } else {
                                 // It's not a block: Add it to the state.

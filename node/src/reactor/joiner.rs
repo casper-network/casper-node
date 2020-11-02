@@ -5,6 +5,7 @@ use std::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
+use semver::Version;
 use tracing::{error, info, warn};
 
 use block_executor::BlockExecutor;
@@ -34,8 +35,8 @@ use crate::{
             GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
         },
         requests::{
-            BlockExecutorRequest, BlockValidationRequest, ConsensusRequest, ContractRuntimeRequest,
-            DeployBufferRequest, FetcherRequest, LinearChainRequest, NetworkRequest,
+            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ConsensusRequest,
+            ContractRuntimeRequest, FetcherRequest, LinearChainRequest, NetworkRequest,
             StorageRequest,
         },
         EffectBuilder, Effects,
@@ -129,9 +130,9 @@ pub enum Event {
     #[from]
     BlockExecutorRequest(BlockExecutorRequest),
 
-    /// Deploy buffer request.
+    /// Block proposer request.
     #[from]
-    DeployBufferRequest(DeployBufferRequest),
+    BlockProposerRequest(BlockProposerRequest),
 
     /// Proto block validator request.
     #[from]
@@ -225,7 +226,7 @@ impl Display for Event {
             Event::BlockExecutorRequest(request) => {
                 write!(f, "block executor request: {}", request)
             }
-            Event::DeployBufferRequest(req) => write!(f, "deploy buffer request: {}", req),
+            Event::BlockProposerRequest(req) => write!(f, "block proposer request: {}", req),
             Event::ContractRuntime(event) => write!(f, "contract runtime event: {}", event),
             Event::LinearChain(event) => write!(f, "linear chain event: {}", event),
             Event::BlockExecutorAnnouncement(announcement) => {
@@ -611,10 +612,10 @@ impl reactor::Reactor for Reactor {
                     Effects::new()
                 }
             },
-            Event::DeployBufferRequest(request) => {
+            Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.
-                error!("Ignoring deploy buffer request {}", request);
+                error!("Ignoring block proposer request {}", request);
                 Effects::new()
             }
             Event::ProtoBlockValidatorRequest(request) => {
@@ -656,8 +657,22 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
-        let linear_chain = self.linear_chain.linear_chain();
-        let finalized_deploys = self.storage.get_finalized_deploys(linear_chain).await;
+        let linear_chain = self.linear_chain.linear_chain().clone();
+        let block_proposer_state = {
+            // TODO - should the current chainspec version be passed in here?
+            let chainspec_version = Version::from((1, 0, 0));
+
+            let latest_block_height = linear_chain
+                .iter()
+                .last()
+                .map(|block| block.height())
+                .unwrap_or(0);
+
+            self.storage
+                .load_block_proposer_state(latest_block_height, chainspec_version, Timestamp::now())
+                .await
+        };
+
         let (net, config) = (
             self.net,
             ValidatorInitConfig {
@@ -667,8 +682,8 @@ impl Reactor {
                 storage: self.storage,
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
-                linear_chain: linear_chain.clone(),
-                finalized_deploys,
+                linear_chain: self.linear_chain.linear_chain().clone(),
+                block_proposer_state,
             },
         );
         net.finalize().await;

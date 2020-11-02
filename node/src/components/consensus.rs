@@ -28,8 +28,8 @@ use crate::{
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
-            DeployBufferRequest, NetworkRequest, StorageRequest,
+            self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -163,7 +163,7 @@ pub trait ReactorEventT<I>:
     From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
-    + From<DeployBufferRequest>
+    + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
@@ -176,7 +176,7 @@ impl<REv, I> ReactorEventT<I> for REv where
     REv: From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
-        + From<DeployBufferRequest>
+        + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>

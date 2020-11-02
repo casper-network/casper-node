@@ -378,10 +378,10 @@ impl<C: Context> Highway<C> {
         // millisecond 64, so we set a timer.
         //
         // 2. The timer for timestamp 64 fires, and we request deploys
-        // for the new block from the deploy buffer (with 64 in the
+        // for the new block from the block proposer (with 64 in the
         // block context).
         //
-        // 3. The deploy buffer responds and we finally end up here,
+        // 3. The block proposer responds and we finally end up here,
         // and can propose the new block. But we still have to use
         // timestamp 64.
 
