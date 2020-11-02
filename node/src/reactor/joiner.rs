@@ -17,7 +17,7 @@ use crate::{
         block_executor,
         block_validator::{self, BlockValidator},
         chainspec_loader::ChainspecLoader,
-        consensus::{self},
+        consensus::{self, HighwayProtocol},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor,
         fetcher::{self, Fetcher},
@@ -361,6 +361,7 @@ impl reactor::Reactor for Reactor {
                 .genesis_state_root_hash()
                 .expect("should have genesis post state hash"),
             registry,
+            Box::new(HighwayProtocol::new_boxed),
             rng,
         )?;
 

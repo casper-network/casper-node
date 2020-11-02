@@ -6,7 +6,7 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     rc::Rc,
@@ -31,7 +31,7 @@ use casper_types::{
 
 use crate::{
     components::{
-        chainspec_loader::{Chainspec, HighwayConfig},
+        chainspec_loader::Chainspec,
         consensus::{
             candidate_block::CandidateBlock,
             cl_context::{ClContext, Keypair},
@@ -40,14 +40,13 @@ use crate::{
                 FinalizedBlock as CpFinalizedBlock,
             },
             metrics::ConsensusMetrics,
-            protocols::highway::HighwayProtocol,
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
         },
     },
     crypto::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
-        hash,
+        hash::Digest,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     types::{BlockHash, BlockHeader, CryptoRngCore, FinalizedBlock, ProtoBlock, Timestamp},
@@ -66,6 +65,16 @@ mod era;
 /// receive blocks that refer to `BONDED_ERAS` before that.
 const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - AUCTION_DELAY;
 
+type ConsensusConstructor<I> = dyn Fn(
+    Digest,
+    Vec<(PublicKey, Motes)>,
+    &HashSet<PublicKey>,
+    &Chainspec,
+    Option<&dyn ConsensusProtocol<I, ClContext>>,
+    Timestamp,
+    u64,
+) -> Box<dyn ConsensusProtocol<I, ClContext>>;
+
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
     /// A map of active consensus protocols.
@@ -78,6 +87,8 @@ pub struct EraSupervisor<I> {
     pub(super) public_signing_key: PublicKey,
     current_era: EraId,
     chainspec: Chainspec,
+    #[data_size(skip)] // Negligible for most closures, zero for functions.
+    new_consensus: Box<ConsensusConstructor<I>>,
     node_start_time: Timestamp,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
@@ -102,8 +113,9 @@ where
         effect_builder: EffectBuilder<REv>,
         validator_stakes: Vec<(PublicKey, Motes)>,
         chainspec: &Chainspec,
-        genesis_state_root_hash: hash::Digest,
+        genesis_state_root_hash: Digest,
         registry: &Registry,
+        new_consensus: Box<ConsensusConstructor<I>>,
         mut rng: &mut dyn CryptoRngCore,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
@@ -118,6 +130,7 @@ where
             public_signing_key,
             current_era: EraId(0),
             chainspec: chainspec.clone(),
+            new_consensus,
             node_start_time: Timestamp::now(),
             metrics,
         };
@@ -153,10 +166,6 @@ where
         }
     }
 
-    fn highway_config(&self) -> &HighwayConfig {
-        &self.chainspec.genesis.highway_config
-    }
-
     fn booking_block_height(&self, era_id: EraId) -> u64 {
         // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
         // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1
@@ -174,9 +183,9 @@ where
         start_height.saturating_sub(1)
     }
 
-    fn era_seed(booking_block_hash: BlockHash, key_block_seed: hash::Digest) -> u64 {
-        let mut result = [0; hash::Digest::LENGTH];
-        let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
+    fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
+        let mut result = [0; Digest::LENGTH];
+        let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
 
         hasher.update(booking_block_hash);
         hasher.update(key_block_seed);
@@ -199,7 +208,7 @@ where
         seed: u64,
         start_time: Timestamp,
         start_height: u64,
-        state_root_hash: hash::Digest,
+        state_root_hash: Digest,
     ) -> Vec<ConsensusProtocolResult<I, ClContext>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
@@ -243,11 +252,11 @@ where
             .checked_sub(1)
             .and_then(|last_era_id| self.active_eras.get(&last_era_id));
 
-        let mut highway = HighwayProtocol::<I, ClContext>::new(
+        let mut consensus = (self.new_consensus)(
             instance_id(&self.chainspec, state_root_hash, start_height),
             validator_stakes,
             &slashed,
-            self.highway_config(),
+            &self.chainspec,
             prev_era.map(|era| &*era.consensus),
             start_time,
             seed,
@@ -255,12 +264,12 @@ where
 
         let results = if should_activate {
             let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
-            highway.activate_validator(our_id, secret, timestamp)
+            consensus.activate_validator(our_id, secret, timestamp)
         } else {
             Vec::new()
         };
 
-        let era = Era::new(highway, start_height, newly_slashed, slashed);
+        let era = Era::new(consensus, start_height, newly_slashed, slashed);
         let _ = self.active_eras.insert(era_id, era);
 
         // Remove the era that has become obsolete now. We keep 2 * BONDED_ERAS past eras because
@@ -458,7 +467,7 @@ where
         &mut self,
         block_header: BlockHeader,
         booking_block_hash: BlockHash,
-        key_block_seed: hash::Digest,
+        key_block_seed: Digest,
         validator_weights: ValidatorWeights,
     ) -> Effects<Event<I>> {
         let validator_stakes = validator_weights
@@ -699,13 +708,9 @@ where
 }
 
 /// Computes the instance ID for an era, given the state root hash, block height and chainspec.
-fn instance_id(
-    chainspec: &Chainspec,
-    state_root_hash: hash::Digest,
-    block_height: u64,
-) -> hash::Digest {
-    let mut result = [0; hash::Digest::LENGTH];
-    let mut hasher = VarBlake2b::new(hash::Digest::LENGTH).expect("should create hasher");
+fn instance_id(chainspec: &Chainspec, state_root_hash: Digest, block_height: u64) -> Digest {
+    let mut result = [0; Digest::LENGTH];
+    let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
 
     hasher.update(&chainspec.genesis.name);
     hasher.update(chainspec.genesis.timestamp.millis().to_le_bytes());
