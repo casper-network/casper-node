@@ -7,6 +7,8 @@ use casper_types::{
     U512,
 };
 
+use super::gas::Gas;
+
 pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 625_000;
 
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]

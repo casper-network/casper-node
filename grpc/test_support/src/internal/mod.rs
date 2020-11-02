@@ -69,7 +69,7 @@ lazy_static! {
         ret
     };
     pub static ref DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
-    pub static ref DEFAULT_PAYMENT: U512 = 50_000_000_000u64.into();
+    pub static ref DEFAULT_PAYMENT: U512 = 1_500_000_000_000u64.into();
     pub static ref DEFAULT_WASM_CONFIG: WasmConfig = WasmConfig::default();
     pub static ref DEFAULT_EXEC_CONFIG: ExecConfig = {
         let mint_installer_bytes;

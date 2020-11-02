@@ -967,20 +967,29 @@ where
         Ok(contract_package)
     }
 
-    /// Charge specified amount of gas
+    /// Safely charge the specified amount of gas, up to the available gas limit.
     ///
     /// Returns [`Error::GasLimit`] if gas limit exceeded and `()` if not.
     /// Intuition about the return value sense is to answer the question 'are we
     /// allowed to continue?'
     pub(crate) fn charge_gas(&mut self, amount: Gas) -> Result<(), Error> {
         let prev = self.gas_counter();
+        let gas_limit = self.gas_limit();
+        // gas charge overflow protection
         match prev.checked_add(amount) {
-            // gas charge overflow protection
-            None => return Err(Error::GasLimit),
-            Some(val) if val > self.gas_limit => return Err(Error::GasLimit),
-            Some(val) => self.set_gas_counter(val),
+            None => {
+                self.set_gas_counter(gas_limit);
+                Err(Error::GasLimit)
+            }
+            Some(val) if val > gas_limit => {
+                self.set_gas_counter(gas_limit);
+                Err(Error::GasLimit)
+            }
+            Some(val) => {
+                self.set_gas_counter(val);
+                Ok(())
+            }
         }
-        Ok(())
     }
 
     /// Charges gas for specified amount of bytes used.
