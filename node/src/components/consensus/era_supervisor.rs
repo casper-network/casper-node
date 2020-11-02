@@ -704,11 +704,7 @@ where
             .era_supervisor
             .active_eras
             .get(&self.era_supervisor.current_era)
-            .and_then(|era| {
-                let any_ref = era.consensus.as_any();
-                any_ref.downcast_ref::<HighwayProtocol<I, ClContext>>()
-            })
-            .map(|protocol| protocol.is_state_empty())
+            .map(|era| era.consensus.has_received_messages())
             .unwrap_or(true);
         if should_emit_error {
             fatal!(

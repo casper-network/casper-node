@@ -322,16 +322,9 @@ impl reactor::Reactor for Reactor {
 
         match init_hash {
             None => {
-                let genesis_timestamp = chainspec_loader
-                    .chainspec()
-                    .genesis
-                    .highway_config
-                    .genesis_era_start_timestamp;
-                let era_duration = chainspec_loader
-                    .chainspec()
-                    .genesis
-                    .highway_config
-                    .era_duration;
+                let highway_config = &chainspec_loader.chainspec().genesis.highway_config;
+                let genesis_timestamp = highway_config.genesis_era_start_timestamp;
+                let era_duration = highway_config.era_duration;
                 if Timestamp::now() > genesis_timestamp + era_duration {
                     error!(
                         "Node started with no trusted hash after the expected end of \

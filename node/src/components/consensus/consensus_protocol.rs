@@ -155,4 +155,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
 
     /// Returns the list of all validators that were observed as faulty in this consensus instance.
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId>;
+
+    /// Returns true if the protocol has received some messages since initialization.
+    fn has_received_messages(&self) -> bool;
 }

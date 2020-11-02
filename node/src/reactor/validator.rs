@@ -372,16 +372,17 @@ impl reactor::Reactor for Reactor {
         ));
 
         // set timeout to 5 minutes after now, or 5 minutes after genesis, whichever is later
+        let now = Timestamp::now();
         let five_minutes = TimeDiff::from_str("5minutes").unwrap();
         let later_timestamp = cmp::max(
-            Timestamp::now(),
+            now,
             chainspec_loader
                 .chainspec()
                 .genesis
                 .highway_config
                 .genesis_era_start_timestamp,
         );
-        let timer_duration = later_timestamp + five_minutes - Timestamp::now();
+        let timer_duration = later_timestamp + five_minutes - now;
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
             effect_builder
