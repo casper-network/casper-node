@@ -258,12 +258,13 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
             match target {
                 Target::Discard => {
                     // Don't do anything.
+                    // TODO: Add `trace!` call here? Consider the log spam though.
                 }
                 Target::Panic => {
-                    announcement_dispatches.push(quote!(panic!(
-                        "announcement received that was expressively declard as panic: {:?}",
-                        announcement
-                    )));
+                    announcement_dispatches.push(quote!(
+                        panic!("announcement received that was expressively declard as panic: {:?}",
+                               announcement);
+                    ));
                 }
                 Target::Dest(ref dest) => {
                     let dest_component_type = def.component(dest).full_component_type();
