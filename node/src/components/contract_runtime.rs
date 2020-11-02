@@ -1,7 +1,9 @@
 //! Contract Runtime component.
 mod config;
+mod types;
 
 pub use config::Config;
+pub use types::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
 
 use std::{
     fmt::{self, Debug, Display, Formatter},
@@ -18,7 +20,9 @@ use tokio::task;
 use tracing::trace;
 
 use casper_execution_engine::{
-    core::engine_state::{genesis::GenesisResult, EngineConfig, EngineState, Error},
+    core::engine_state::{
+        genesis::GenesisResult, EngineConfig, EngineState, Error, GetEraValidatorsError,
+    },
     shared::newtypes::CorrelationId,
     storage::{
         error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
@@ -26,7 +30,7 @@ use casper_execution_engine::{
         transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::ProtocolVersion;
+use casper_types::{auction::ValidatorWeights, ProtocolVersion};
 
 use crate::{
     components::Component,
@@ -294,24 +298,55 @@ where
                 }
                 .ignore()
             }
-            Event::Request(ContractRuntimeRequest::GetEraValidators {
-                get_request,
-                responder,
-            }) => {
-                trace!(?get_request, "get era validators request");
+            Event::Request(ContractRuntimeRequest::GetEraValidators { request, responder }) => {
+                trace!(?request, "get era validators request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
-                        let result = engine_state.get_era_validators(correlation_id, get_request);
+                        let era_validators =
+                            engine_state.get_era_validators(correlation_id, request.into());
                         metrics.get_balance.observe(start.elapsed().as_secs_f64());
-                        result
+                        era_validators
                     })
                     .await
                     .expect("should run");
                     trace!(?result, "get era validators response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::GetValidatorWeightsByEraId {
+                request,
+                responder,
+            }) => {
+                trace!(?request, "get validator weights by era id request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let era_id = request.era_id().into();
+                        let era_validators =
+                            engine_state.get_era_validators(correlation_id, request.into());
+                        let ret: Result<Option<ValidatorWeights>, GetEraValidatorsError> =
+                            match era_validators {
+                                Ok(era_validators) => {
+                                    let validator_weights = era_validators.get(&era_id).cloned();
+                                    Ok(validator_weights)
+                                }
+                                Err(GetEraValidatorsError::EraValidatorsMissing) => Ok(None),
+                                Err(error) => Err(error),
+                            };
+                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        ret
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "get validator weights by era id response");
                     responder.respond(result).await
                 }
                 .ignore()

@@ -16,13 +16,10 @@ impl TryFrom<ipc::GetEraValidatorsRequest> for GetEraValidatorsRequest {
             .try_into()
             .map_err(|_| MappingError::InvalidStateHash("parent_state_hash".to_string()))?;
 
-        let era_id = pb_get_era_validators_request.era_id;
-
         let protocol_version = pb_get_era_validators_request.take_protocol_version().into();
 
         Ok(GetEraValidatorsRequest::new(
             pre_state_hash,
-            era_id,
             protocol_version,
         ))
     }

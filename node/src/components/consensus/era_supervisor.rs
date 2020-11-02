@@ -23,9 +23,7 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{error, info, trace, warn};
 
-use casper_execution_engine::{
-    core::engine_state::era_validators::GetEraValidatorsRequest, shared::motes::Motes,
-};
+use casper_execution_engine::shared::motes::Motes;
 use casper_types::{
     auction::{ValidatorWeights, AUCTION_DELAY, DEFAULT_UNBONDING_DELAY},
     ProtocolVersion,
@@ -57,6 +55,7 @@ use crate::{
 };
 
 pub use self::era::{Era, EraId};
+use crate::components::contract_runtime::ValidatorWeightsByEraIdRequest;
 
 mod era;
 
@@ -419,9 +418,9 @@ where
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = block_header.era_id().successor();
-            let request = GetEraValidatorsRequest::new(
+            let request = ValidatorWeightsByEraIdRequest::new(
                 (*block_header.state_root_hash()).into(),
-                new_era_id.0,
+                new_era_id,
                 ProtocolVersion::V1_0_0,
             );
             let key_block_height = self
