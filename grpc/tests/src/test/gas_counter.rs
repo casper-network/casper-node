@@ -17,6 +17,8 @@ use casper_execution_engine::{
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs};
 
+const DO_NOTHING_CONTRACT: &str = "do_nothing.wasm";
+
 /// Prepare malicious payload with amount of opcodes that could potentially overflow injected gas
 /// counter.
 fn make_gas_counter_overflow() -> Vec<u8> {
@@ -117,8 +119,6 @@ fn should_fail_to_overflow_gas_counter() {
 fn should_correctly_measure_gas_for_opcodes() {
     let opcode_costs = DEFAULT_WASM_CONFIG.opcode_costs();
 
-    let mut builder = InMemoryWasmTestBuilder::default();
-
     const GROW_PAGES: u32 = 1;
 
     let opcodes = vec![
@@ -163,6 +163,21 @@ fn should_correctly_measure_gas_for_opcodes() {
 
     let session_bytes = make_session_code_with(instructions);
 
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        DO_NOTHING_CONTRACT,
+        RuntimeArgs::new(),
+    )
+    .build();
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    builder.exec(exec_request).commit().expect_success();
+
+    let payment_cost = builder.last_exec_gas_cost();
+
     let exec_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
@@ -176,11 +191,9 @@ fn should_correctly_measure_gas_for_opcodes() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
     builder.exec(exec_request).commit().expect_success();
 
-    let gas_cost = builder.last_exec_gas_cost();
+    let gas_cost = builder.last_exec_gas_cost() - payment_cost;
     let expected_cost = accounted_opcodes.clone().into_iter().map(Gas::from).sum();
     assert_eq!(
         gas_cost, expected_cost,
