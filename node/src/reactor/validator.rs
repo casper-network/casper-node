@@ -8,7 +8,11 @@ mod memory_metrics;
 #[cfg(test)]
 mod tests;
 
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+    cmp,
+    fmt::{self, Debug, Display, Formatter},
+    str::FromStr,
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -48,11 +52,11 @@ use crate::{
             ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
             LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
         },
-        EffectBuilder, Effects,
+        EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle},
-    types::{Block, CryptoRngCore, Deploy, ProtoBlock, Tag},
+    types::{Block, CryptoRngCore, Deploy, ProtoBlock, Tag, TimeDiff, Timestamp},
     utils::Source,
 };
 pub use config::Config;
@@ -365,6 +369,24 @@ impl reactor::Reactor for Reactor {
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
             init_consensus_effects,
+        ));
+
+        // set timeout to 5 minutes after now, or 5 minutes after genesis, whichever is later
+        let five_minutes = TimeDiff::from_str("5minutes").unwrap();
+        let later_timestamp = cmp::max(
+            Timestamp::now(),
+            chainspec_loader
+                .chainspec()
+                .genesis
+                .highway_config
+                .genesis_era_start_timestamp,
+        );
+        let timer_duration = later_timestamp + five_minutes - Timestamp::now();
+        effects.extend(reactor::wrap_effects(
+            Event::Consensus,
+            effect_builder
+                .set_timeout(timer_duration.into())
+                .event(|_| consensus::Event::Shutdown),
         ));
 
         Ok((

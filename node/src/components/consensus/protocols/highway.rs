@@ -343,6 +343,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     pub(crate) fn median_round_exp(&self) -> Option<u8> {
         self.highway.state().median_round_exp()
     }
+
+    /// Returns `true` if the state of the Highway protocol is empty.
+    pub(crate) fn is_state_empty(&self) -> bool {
+        self.highway.state().is_empty()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]

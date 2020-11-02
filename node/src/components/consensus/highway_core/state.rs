@@ -655,6 +655,11 @@ impl<C: Context> State<C> {
                 .map(|vote| (vote.round_exp, self.weight(vote.creator))),
         )
     }
+
+    /// Returns `true` if the state contains no votes.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.votes.is_empty()
+    }
 }
 
 /// Returns the round length, given the round exponent.

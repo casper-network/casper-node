@@ -50,6 +50,7 @@ use crate::{
         hash,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
+    fatal,
     types::{BlockHash, BlockHeader, CryptoRngCore, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
 };
@@ -694,6 +695,28 @@ where
                     })
                 })
                 .collect(),
+        }
+    }
+
+    /// Emits a fatal error if the consensus state is still empty.
+    pub(super) fn shutdown_if_necessary(&self) -> Effects<Event<I>> {
+        let should_emit_error = self
+            .era_supervisor
+            .active_eras
+            .get(&self.era_supervisor.current_era)
+            .and_then(|era| {
+                let any_ref = era.consensus.as_any();
+                any_ref.downcast_ref::<HighwayProtocol<I, ClContext>>()
+            })
+            .map(|protocol| protocol.is_state_empty())
+            .unwrap_or(true);
+        if should_emit_error {
+            fatal!(
+                self.effect_builder,
+                "Consensus shutting down due to inability to participate in the network"
+            )
+        } else {
+            Default::default()
         }
     }
 }
