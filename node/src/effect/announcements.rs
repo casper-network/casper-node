@@ -57,6 +57,10 @@ where
 }
 
 /// An HTTP API server announcement.
+// TODO: This needs to renamed and factored out -- new incoming deploys should be their own
+// announcement. Additionally, the `DeployReceived` is actually a deploy-received-from-client event
+// as it stands right now, note that there is no sender ID -- anyone processing this announcement
+// will claim it as Source::Client.
 #[derive(Debug)]
 #[must_use]
 pub enum ApiServerAnnouncement {
