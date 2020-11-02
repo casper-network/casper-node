@@ -1933,7 +1933,7 @@ where
         &self,
         correlation_id: CorrelationId,
         get_era_validators_request: GetEraValidatorsRequest,
-    ) -> Result<Option<EraValidators>, GetEraValidatorsError> {
+    ) -> Result<EraValidators, GetEraValidatorsError> {
         let protocol_version = get_era_validators_request.protocol_version();
 
         let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
@@ -2017,7 +2017,10 @@ where
             return Err(error.into());
         }
 
-        Ok(era_validators)
+        match era_validators {
+            None => Err(GetEraValidatorsError::EraValidatorsMissing),
+            Some(era_validators) => Ok(era_validators),
+        }
     }
 
     pub fn commit_step(

@@ -361,7 +361,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let era_validators = era_validators_result.ok().flatten();
+            let era_validators = era_validators_result.ok();
 
             let auction_state =
                 AuctionState::new(state_root_hash, block_height, bids, era_validators);

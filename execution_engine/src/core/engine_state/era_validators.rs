@@ -14,6 +14,9 @@ pub enum GetEraValidatorsError {
     /// Engine state error
     #[error(transparent)]
     Other(#[from] Error),
+    /// EraValidators missing
+    #[error("Era validators missing")]
+    EraValidatorsMissing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

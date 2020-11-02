@@ -148,7 +148,7 @@ impl ApiServer {
         effect_builder: EffectBuilder<REv>,
         state_root_hash: Digest,
         protocol_version: ProtocolVersion,
-        responder: Responder<Result<Option<EraValidators>, GetEraValidatorsError>>,
+        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     ) -> Effects<Event> {
         let request = EraValidatorsRequest::new(state_root_hash.into(), protocol_version);
         effect_builder

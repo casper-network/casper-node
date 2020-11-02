@@ -40,8 +40,8 @@ pub enum Event {
         main_responder: Responder<Result<QueryResult, engine_state::Error>>,
     },
     QueryEraValidatorsResult {
-        result: Result<Option<EraValidators>, GetEraValidatorsError>,
-        main_responder: Responder<Result<Option<EraValidators>, GetEraValidatorsError>>,
+        result: Result<EraValidators, GetEraValidatorsError>,
+        main_responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
     GetDeployResult {
         hash: DeployHash,

@@ -401,7 +401,7 @@ where
         let mut response = ipc::GetEraValidatorsResponse::new();
 
         match self.get_era_validators(correlation_id, request) {
-            Ok(Some(era_validators)) => {
+            Ok(era_validators) => {
                 if let Some(validator_weights) = era_validators.get(&era_id) {
                     match ipc::GetEraValidatorsResponse_ValidatorWeights::try_from(
                         validator_weights.clone(),
@@ -413,8 +413,6 @@ where
                     }
                 }
             }
-
-            Ok(None) => {}
 
             Err(GetEraValidatorsError::RootNotFound) => response
                 .mut_missing_prestate()

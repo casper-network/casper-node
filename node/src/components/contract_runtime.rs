@@ -334,11 +334,11 @@ where
                             engine_state.get_era_validators(correlation_id, request.into());
                         let ret: Result<Option<ValidatorWeights>, GetEraValidatorsError> =
                             match era_validators {
-                                Ok(Some(era_validators)) => {
+                                Ok(era_validators) => {
                                     let validator_weights = era_validators.get(&era_id).cloned();
                                     Ok(validator_weights)
                                 }
-                                Ok(None) => Ok(None),
+                                Err(GetEraValidatorsError::EraValidatorsMissing) => Ok(None),
                                 Err(error) => Err(error),
                             };
                         metrics.get_balance.observe(start.elapsed().as_secs_f64());

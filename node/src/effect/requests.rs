@@ -393,7 +393,7 @@ pub enum ApiRequest<I> {
         /// The protocol version.
         protocol_version: ProtocolVersion,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<EraValidators>, GetEraValidatorsError>>,
+        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
     /// Query the contract runtime for protocol version data.
     QueryProtocolData {
@@ -541,7 +541,7 @@ pub enum ContractRuntimeRequest {
         /// Get validators weights request.
         request: EraValidatorsRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<EraValidators>, GetEraValidatorsError>>,
+        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
     /// Returns validator weights for given era.
     GetValidatorWeightsByEraId {

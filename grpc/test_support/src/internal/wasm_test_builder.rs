@@ -800,8 +800,7 @@ where
         let mut result = self
             .engine_state
             .get_era_validators(correlation_id, request)
-            .expect("get era validators should not error")
-            .expect("should get era validators");
+            .expect("get era validators should not error");
         result.remove(&era_id)
     }
 

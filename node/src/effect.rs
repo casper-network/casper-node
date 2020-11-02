@@ -1054,7 +1054,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_era_validators(
         self,
         request: EraValidatorsRequest,
-    ) -> Result<Option<EraValidators>, GetEraValidatorsError>
+    ) -> Result<EraValidators, GetEraValidatorsError>
     where
         REv: From<ContractRuntimeRequest>,
     {
