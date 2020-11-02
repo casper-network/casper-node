@@ -104,7 +104,7 @@ where
                 block,
                 sender,
                 responder,
-                maybe_block_timestamp,
+                block_timestamp,
             }) => {
                 if block.deploys().is_empty() {
                     // If there are no deploys, return early.
@@ -131,14 +131,10 @@ where
                                 move |result: FetchResult<Deploy>| match result {
                                     FetchResult::FromStorage(deploy)
                                     | FetchResult::FromPeer(deploy, _) => {
-                                        match maybe_block_timestamp {
-                                            Some(block_timestamp)
-                                                if deploy.header().timestamp()
-                                                    > block_timestamp =>
-                                            {
-                                                Event::DeployMissing(dh_found)
-                                            }
-                                            _ => Event::DeployFound(dh_found),
+                                        if deploy.header().timestamp() > block_timestamp {
+                                            Event::DeployMissing(dh_found)
+                                        } else {
+                                            Event::DeployFound(dh_found)
                                         }
                                     }
                                 },

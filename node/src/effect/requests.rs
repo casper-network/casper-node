@@ -659,9 +659,9 @@ pub struct BlockValidationRequest<T, I> {
     ///
     /// Indicates whether or not validation was successful and returns `block` unchanged.
     pub(crate) responder: Responder<(bool, T)>,
-    /// If provided, a check will be performed against the deploys to ensure their timestamp is
+    /// A check will be performed against the deploys to ensure their timestamp is
     /// older than or equal to the block itself.
-    pub(crate) maybe_block_timestamp: Option<Timestamp>,
+    pub(crate) block_timestamp: Timestamp,
 }
 
 impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {

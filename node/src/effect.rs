@@ -831,7 +831,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         sender: I,
         block: T,
-        maybe_block_timestamp: Option<Timestamp>,
+        block_timestamp: Timestamp,
     ) -> (bool, T)
     where
         REv: From<BlockValidationRequest<T, I>>,
@@ -842,7 +842,7 @@ impl<REv> EffectBuilder<REv> {
                 block,
                 sender,
                 responder,
-                maybe_block_timestamp,
+                block_timestamp,
             },
             QueueKind::Regular,
         )

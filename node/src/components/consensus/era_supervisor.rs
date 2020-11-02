@@ -687,7 +687,7 @@ where
                 effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects
             }
-            ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block) => {
+            ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block, timestamp) => {
                 if !self.era_supervisor.is_bonded(era_id) {
                     return Effects::new();
                 }
@@ -711,7 +711,7 @@ where
                     .add_candidate(candidate_block, missing_evidence);
                 effects.extend(
                     self.effect_builder
-                        .validate_block(sender.clone(), proto_block, None)
+                        .validate_block(sender.clone(), proto_block, timestamp)
                         .event(move |(valid, proto_block)| Event::ResolveValidity {
                             era_id,
                             sender,
