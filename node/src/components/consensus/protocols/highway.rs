@@ -311,15 +311,12 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         rng: &mut dyn CryptoRngCore,
         now: Timestamp,
     ) -> Vec<CpResult<I, C>> {
-        let start_time = Timestamp::now();
         // Check whether we should change the round exponent.
         // It's important to do it before the vertex is added to the state - this way if the last
         // round has finished, we now have all the vertices from that round in the state, and no
         // newer ones.
         self.calculate_round_exponent(&vv);
         let av_effects = self.highway.add_valid_vertex(vv.clone(), rng, now);
-        let elapsed = start_time.elapsed();
-        trace!(%elapsed, "added valid vertex");
         let mut results = self.process_av_effects(av_effects);
         let msg = HighwayMessage::NewVertex(vv.into());
         results.push(ConsensusProtocolResult::CreatedGossipMessage(

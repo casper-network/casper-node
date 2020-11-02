@@ -1,6 +1,5 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::{crypto::hash::Digest, types::json_compatibility};
 use casper_types::{
@@ -52,7 +51,7 @@ pub struct AuctionState {
     /// Era validators
     pub era_validators: Option<EraValidators>,
     /// All bids.
-    pub bids: Option<Bids>,
+    bids: Option<Bids>,
 }
 
 impl AuctionState {

@@ -1,5 +1,7 @@
 use alloc::vec::Vec;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
@@ -7,7 +9,7 @@ use crate::{
 };
 
 /// Represents a transfer from one purse to another
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Transfer {
     /// Deploy that created the transfer
     pub deploy_hash: DeployHash,

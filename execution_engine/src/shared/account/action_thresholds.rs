@@ -1,10 +1,12 @@
+use serde::{Deserialize, Serialize};
+
 use casper_types::{
     account::{ActionType, SetThresholdFailure, Weight, WEIGHT_SERIALIZED_LENGTH},
     bytesrepr::{self, Error, FromBytes, ToBytes},
 };
 
 /// Thresholds that have to be met when executing an action of a certain type.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionThresholds {
     deployment: Weight,
     key_management: Weight,

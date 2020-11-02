@@ -8,6 +8,7 @@
 
 # Import utils.
 source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils/queries.sh
 
 #######################################
 # Displays to stdout a validator's account balance.
@@ -18,14 +19,9 @@ source $NCTL/sh/utils/misc.sh
 #   Node ordinal identifer.
 #######################################
 function _view_validator_account_balance() {
-    state_root_hash=$(source $NCTL/sh/views/view_chain_state_root_hash.sh)
+    state_root_hash=$(get_state_root_hash $1 $2)
     account_key=$(cat $NCTL/assets/net-$1/nodes/node-$2/keys/public_key_hex)
-    purse_uref=$(
-        source $NCTL/sh/views/view_chain_account.sh net=$1 root-hash=$state_root_hash account-key=$account_key \
-        | jq '.Account.main_purse' \
-        | sed -e 's/^"//' -e 's/"$//'
-        ) 
-
+    purse_uref=$(get_main_purse_uref $1 $state_root_hash $account_key)
     source $NCTL/sh/views/view_chain_account_balance.sh net=$1 node=$2 \
         root-hash=$state_root_hash \
         purse-uref=$purse_uref \

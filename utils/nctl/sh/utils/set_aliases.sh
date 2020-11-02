@@ -44,6 +44,7 @@ alias nctl-up='source $NCTL/sh/node/start.sh'
 # Views: chain.
 alias nctl-view-chain-account='source $NCTL/sh/views/view_chain_account.sh'
 alias nctl-view-chain-account-balance='source $NCTL/sh/views/view_chain_account_balance.sh'
+alias nctl-view-chain-auction-info='source $NCTL/sh/views/view_chain_auction_info.sh'
 alias nctl-view-chain-block='source $NCTL/sh/views/view_chain_block.sh'
 alias nctl-view-chain-deploy='source $NCTL/sh/views/view_chain_deploy.sh'
 alias nctl-view-chain-state-root-hash='source $NCTL/sh/views/view_chain_state_root_hash.sh'

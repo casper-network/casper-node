@@ -17,6 +17,7 @@ use core::mem::{self, MaybeUninit};
 use core::ptr::NonNull;
 
 use failure::Fail;
+use serde::{Deserialize, Serialize};
 
 /// The number of bytes in a serialized `()`.
 pub const UNIT_SERIALIZED_LENGTH: usize = 0;
@@ -86,7 +87,7 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 }
 
 /// Serialization and deserialization errors.
-#[derive(Debug, Fail, PartialEq, Eq, Clone)]
+#[derive(Debug, Fail, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum Error {
     /// Early end of stream while deserializing.

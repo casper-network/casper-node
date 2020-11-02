@@ -24,7 +24,7 @@ num-rational = { version = "0.3.0", default-features = false }
 num-traits = { version = "0.2.10", default-features = false }
 proptest = { version = "0.10.0", optional = true }
 serde = { version = "1", default-features = false, features = ["derive"] }
-serde-big-array = "0.3.0"
+serde_json = { version = "1.0.59", default-features = false }
 uint = { version = "0.8.3", default-features = false }
 
 [dev-dependencies]
@@ -35,8 +35,8 @@ serde_json = "1.0.55"
 version-sync = "0.9"
 
 [features]
-default = ["base16/alloc", "serde/alloc"]
-std = ["base16/std"]
+default = ["base16/alloc", "serde/alloc", "serde_json/alloc"]
+std = ["base16/std", "serde/std", "serde_json/std"]
 gens = ["std", "proptest/std"]
 no-unstable-features = []
 
@@ -46,4 +46,3 @@ harness = false
 
 [package.metadata.docs.rs]
 features = ["no-unstable-features"]
-

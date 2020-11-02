@@ -9,6 +9,7 @@ mod weight;
 pub(crate) mod tests;
 
 pub(crate) use params::Params;
+use quanta::Clock;
 pub(crate) use weight::Weight;
 
 pub(super) use panorama::{Observation, Panorama};
@@ -20,7 +21,7 @@ use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use crate::{
     components::consensus::{
@@ -128,6 +129,8 @@ pub(crate) struct State<C: Context> {
     endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
     /// Votes that don't yet have 2/3 of stake endorsing them.
     incomplete_endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
+    /// Clock to track fork choice
+    clock: Clock,
 }
 
 impl<C: Context> State<C> {
@@ -168,6 +171,7 @@ impl<C: Context> State<C> {
             panorama,
             endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
+            clock: Clock::new(),
         }
     }
 
@@ -189,6 +193,11 @@ impl<C: Context> State<C> {
     /// Returns the map of validator weights.
     pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
         &self.weights
+    }
+
+    /// Returns hashes of endorsed votes.
+    pub(crate) fn endorsements<'a>(&'a self) -> impl Iterator<Item = C::Hash> + 'a {
+        self.endorsements.keys().cloned()
     }
 
     /// Returns the total weight of all validators marked faulty in this panorama.
@@ -254,8 +263,12 @@ impl<C: Context> State<C> {
     }
 
     /// Returns hash of vote that needs to be endorsed.
-    pub(crate) fn needs_endorsements(&self, _vote: &SignedWireVote<C>) -> Option<C::Hash> {
-        None
+    pub(crate) fn needs_endorsements(&self, vote: &SignedWireVote<C>) -> Option<C::Hash> {
+        vote.wire_vote
+            .endorsed
+            .iter()
+            .find(|hash| !self.endorsements.contains_key(&hash))
+            .cloned()
     }
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
@@ -398,6 +411,8 @@ impl<C: Context> State<C> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
+        // TODO: After LNC we won't always need all known endorsements.
+        let endorsed = self.endorsements().collect();
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
             creator: vote.creator,
@@ -406,6 +421,7 @@ impl<C: Context> State<C> {
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
             round_exp: vote.round_exp,
+            endorsed,
         };
         Some(SignedWireVote {
             wire_vote: wvote,
@@ -420,6 +436,7 @@ impl<C: Context> State<C> {
     /// children of the previously selected block (or from all blocks at height 0), until a block
     /// is reached that has no children with any votes.
     pub(crate) fn fork_choice<'a>(&'a self, pan: &Panorama<C>) -> Option<&'a C::Hash> {
+        let start = self.clock.start();
         // Collect all correct votes in a `Tallies` map, sorted by height.
         let to_entry = |(obs, w): (&Observation<C>, &Weight)| {
             let bhash = &self.vote(obs.correct()?).block;
@@ -433,6 +450,9 @@ impl<C: Context> State<C> {
             tallies = tallies.filter_descendants(height, bhash, self);
             // If there are no blocks left, `bhash` itself is the fork choice. Otherwise repeat.
             if tallies.is_empty() {
+                let end = self.clock.end();
+                let delta = self.clock.delta(start, end).as_nanos();
+                trace!(%delta,"Time taken for fork-choice to run");
                 return Some(bhash);
             }
         }

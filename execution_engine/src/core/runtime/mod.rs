@@ -1402,17 +1402,22 @@ where
         self.context.protocol_data()
     }
 
-    /// Charge specified amount of gas
+    /// Safely charge the specified amount of gas, up to the available gas limit.
     ///
     /// Returns false if gas limit exceeded and true if not.
-    /// Intuition about the return value sense is to answer the question 'are we
-    /// allowed to continue?'
     fn charge_gas(&mut self, amount: Gas) -> bool {
         let prev = self.context.gas_counter();
+        let gas_limit = self.context.gas_limit();
+        // gas charge overflow protection
         match prev.checked_add(amount) {
-            // gas charge overflow protection
-            None => false,
-            Some(val) if val > self.context.gas_limit() => false,
+            None => {
+                self.context.set_gas_counter(gas_limit);
+                false
+            }
+            Some(val) if val > gas_limit => {
+                self.context.set_gas_counter(gas_limit);
+                false
+            }
             Some(val) => {
                 self.context.set_gas_counter(val);
                 true

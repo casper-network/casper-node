@@ -91,7 +91,7 @@ use crate::{
 pub const CONV_RATE: u64 = 10;
 
 lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000_000u64 * CONV_RATE);
+    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000u64 * CONV_RATE);
 }
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);

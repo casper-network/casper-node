@@ -24,7 +24,7 @@ use casper_types::{bytesrepr::ToBytes, Key, RuntimeArgs, URef, U512};
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
     error::{Error, Result},
-    merkle_proofs,
+    validation,
 };
 
 /// Target for a given transfer.
@@ -103,7 +103,7 @@ impl RpcCall {
             path: path.clone(),
         };
         let response = GetItem::request_with_map_params(self, params)?;
-        merkle_proofs::validate_query_response(&response, &state_root_hash, &key, &path)?;
+        validation::validate_query_response(&response, &state_root_hash, &key, &path)?;
         Ok(response)
     }
 
@@ -127,7 +127,7 @@ impl RpcCall {
             purse_uref: purse_uref.to_string(),
         };
         let response = GetBalance::request_with_map_params(self, params)?;
-        merkle_proofs::validate_get_balance_response(&response, &state_root_hash, &key)?;
+        validation::validate_get_balance_response(&response, &state_root_hash, &key)?;
         Ok(response)
     }
 
@@ -181,13 +181,16 @@ impl RpcCall {
     }
 
     pub(crate) fn get_block(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
-        match Self::block_identifier(maybe_block_identifier)? {
+        let maybe_block_identifier = Self::block_identifier(maybe_block_identifier)?;
+        let response = match maybe_block_identifier {
             Some(block_identifier) => {
                 let params = GetBlockParams { block_identifier };
                 GetBlock::request_with_map_params(self, params)
             }
             None => GetBlock::request(self),
-        }
+        }?;
+        validation::validate_get_block_response(&response, &maybe_block_identifier)?;
+        Ok(response)
     }
 
     fn block_identifier(maybe_block_identifier: &str) -> Result<Option<BlockIdentifier>> {

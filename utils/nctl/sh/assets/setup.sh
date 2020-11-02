@@ -4,7 +4,9 @@
 # Arguments:
 #   Network ordinal identifer.
 #   Count of nodes to setup.
+#   Count of nodes that will be bootstraps.
 #   Count of users to setup.
+#   Delay in seconds to apply to genesis timestamp.
 
 #######################################
 # Sets assets pertaining to network binaries.
@@ -43,6 +45,7 @@ function _set_bin() {
 # Arguments:
 #   Path to network directory.
 #   Network ordinal identifer.
+#   Delay in seconds to apply to genesis timestamp.
 #######################################
 function _set_chainspec() {
     log "... chainspec"
@@ -52,8 +55,8 @@ function _set_chainspec() {
 
     # Set config params.
     GENESIS_NAME=casper-net-$2
-    GENESIS_TIMESTAMP=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() + timedelta(seconds=30)).isoformat("T") + "Z")')
-    HIGHWAY_GENESIS_ERA_START_TIMESTAMP=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() + timedelta(seconds=30)).isoformat("T") + "Z")')
+    GENESIS_TIMESTAMP=$(get_genesis_timestamp $3)
+    HIGHWAY_GENESIS_ERA_START_TIMESTAMP=$(get_genesis_timestamp $3)
 
     # Set config.
     path_config=$1/chainspec/chainspec.toml
@@ -123,7 +126,7 @@ function _set_faucet() {
     _set_chainspec_account \
         $1 \
         $1/faucet/public_key_hex \
-        100000000000000000 \
+        $NCTL_INITIAL_BALANCE_FAUCET \
         0
 }
 
@@ -166,10 +169,10 @@ function _set_node ()
     $1/bin/casper-client keygen -f $1/nodes/node-$3/keys > /dev/null 2>&1
 
     # Set config params.
-    HTTP_SERVER_BIND_PORT=$((50000 + ($2 * 100) + $node_id))
+    HTTP_SERVER_BIND_PORT=$(($NCTL_BASE_PORT_HTTP + ($2 * 100) + $node_id))
     NETWORK_BIND_PORT=0
     if [ $3 -le $4 ]; then
-        NETWORK_BIND_PORT=$((34452 + ($2 * 100) + $node_id))
+        NETWORK_BIND_PORT=$(($NCTL_BASE_PORT_NETWORK + ($2 * 100) + $node_id))
         NETWORK_KNOWN_ADDRESSES=""
     else
         NETWORK_BIND_PORT=0
@@ -187,8 +190,8 @@ function _set_node ()
     _set_chainspec_account \
         $1 \
         $1/nodes/node-$3/keys/public_key_hex \
-        100000000000000000 \
-        $((100000000000000 * $3))
+        $NCTL_INITIAL_BALANCE_VALIDATOR \
+        $(($NCTL_VALIDATOR_BASE_WEIGHT * $3))
 }
 
 #######################################
@@ -216,7 +219,7 @@ function get_bootstrap_known_addresses() {
 #   Node ordinal identifer.
 #######################################
 function get_bootstrap_known_address() {
-    port=$((34452 + ($1 * 100) + $2))
+    port=$(($NCTL_BASE_PORT_NETWORK + ($1 * 100) + $2))
     address="127.0.0.1:"$port
 
     echo $address
@@ -283,6 +286,7 @@ export NCTL_NET_USER_COUNT=$5
 #   Count of nodes to setup.
 #   Count of bootstraps to setup.
 #   Count of users to setup.
+#   Delay in seconds to apply to genesis timestamp.
 #######################################
 function _main() {
     # Set directory.
@@ -301,7 +305,7 @@ function _main() {
     # Set artefacts.
     log "setting network artefacts:"
     _set_bin $net_path
-    _set_chainspec $net_path $1
+    _set_chainspec $net_path $1 $5
     _set_daemon $net_path $1 $2
     _set_faucet $net_path
     _set_nodes $net_path $1 $2 $3
@@ -331,6 +335,7 @@ unset bootstraps
 unset net
 unset nodes
 unset users
+unset delay
 
 for ARGUMENT in "$@"
 do
@@ -338,6 +343,7 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         bootstraps) bootstraps=${VALUE} ;;
+        delay) delay=${VALUE} ;;
         net) net=${VALUE} ;;
         nodes) nodes=${VALUE} ;;
         users) users=${VALUE} ;;
@@ -347,6 +353,7 @@ done
 
 # Set defaults.
 bootstraps=${bootstraps:-1}
+delay=${delay:-30}
 net=${net:-1}
 nodes=${nodes:-5}
 users=${users:-5}
@@ -359,5 +366,5 @@ users=${users:-5}
 if [ $bootstraps -ge $nodes ]; then
     log_error "Invalid input: bootstraps MUST BE < nodes"
 else
-    _main $net $nodes $bootstraps $users
+    _main $net $nodes $bootstraps $users $delay
 fi

@@ -53,7 +53,9 @@ user=${user:-1}
 #######################################
 
 # Set vars.
-bidder_secret_key=$path_net/users/user-$user/secret_key.pem
+user_public_key=$(cat $path_net/users/user-$user/public_key_hex)
+user_purse_uref="TODO"
+user_secret_key=$path_net/users/user-$user/secret_key.pem
 contract_name="withdraw_bid.wasm"
 node_address=$(get_node_address $net $node)
 path_net=$NCTL/assets/net-$net
@@ -66,8 +68,10 @@ log "... network = $net"
 log "... node = $node"
 log "... node address = $node_address"
 log "... contract = $path_contract"
-log "... bidder id = $user"
-log "... bidder secret key = $bidder_secret_key"
+log "... user id = $user"
+log "... user public key = $user_public_key"
+log "... user secret key = $user_secret_key"
+log "... user purse uref = $user_purse_uref"
 log "... withdrawal amount = $amount"
 
 # Dispatch deploy.
@@ -77,8 +81,10 @@ deploy_hash=$(
         --gas-price $gas_price \
         --node-address $node_address \
         --payment-amount $gas_payment \
-        --secret-key $bidder_secret_key \
+        --secret-key $user_secret_key \
+        --session-arg="public_key:public_key='$user_public_key'" \
         --session-arg "amount:u512='$amount'" \
+        --session-arg "unbond_purse:uref-='$user_purse_uref'" \
         --session-path $path_contract \
         --ttl "1day" \
         | jq '.result.deploy_hash' \

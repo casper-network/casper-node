@@ -58,6 +58,7 @@ validator=${validator:-1}
 
 # Set vars.
 contract_name="delegate.wasm"
+delegator_public_key=$(cat $path_net/users/user-$user/public_key_hex)
 delegator_secret_key=$path_net/users/user-$user/secret_key.pem
 node_address=$(get_node_address $net $node)
 path_net=$NCTL/assets/net-$net
@@ -84,6 +85,7 @@ deploy_hash=$(
         --payment-amount $gas_payment \
         --secret-key $delegator_secret_key \
         --session-arg "amount:u512='$amount'" \
+        --session-arg "delegator:public_key='$delegator_public_key'" \
         --session-arg "validator:public_key='$validator_public_key'" \
         --session-path $path_contract \
         --ttl "1day" \
