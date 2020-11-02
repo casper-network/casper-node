@@ -473,13 +473,15 @@ pub(crate) enum Target {
     Panic,
     /// Forward to destination.
     Dest(Ident),
+    /// Dispatch using a method.
+    Dispatch(Ident),
 }
 
 impl Target {
     /// Returns a reference to the destination identifier if the target is a destination, or `None`.
     fn as_dest(&self) -> Option<&Ident> {
         match self {
-            Target::Discard | Target::Panic => None,
+            Target::Discard | Target::Panic | Target::Dispatch(_) => None,
             Target::Dest(ident) => Some(ident),
         }
     }
@@ -491,6 +493,7 @@ impl Debug for Target {
             Target::Discard => write!(f, "#"),
             Target::Panic => write!(f, "!"),
             Target::Dest(id) => write!(f, "{}", id.to_string()),
+            Target::Dispatch(id) => write!(f, "{}()", id.to_string()),
         }
     }
 }
@@ -503,6 +506,11 @@ impl Parse for Target {
         } else if input.peek(Token!(#)) {
             let _: Token!(#) = input.parse()?;
             Ok(Target::Discard)
+        } else if input.peek(Token!(fn)) {
+            let _: Token!(fn) = input.parse()?;
+            let dispatch = input.parse()?;
+
+            Ok(Target::Dispatch(dispatch))
         } else {
             input.parse().map(Target::Dest)
         }

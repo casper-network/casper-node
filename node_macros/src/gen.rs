@@ -246,6 +246,13 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                             },
                         ));
             }
+            Target::Dispatch(ref fname) => {
+                dispatches.push(quote!(
+                    #event_ident::#request_variant_ident(request) => {
+                        self.#fname(effect_builder, rng, request)
+                    },
+                ));
+            }
         }
     }
 
@@ -279,6 +286,13 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                             #event_ident::#dest_variant_ident,
                             <#dest_component_type as crate::components::Component<Self::Event>>::handle_event(&mut self.#dest_field_ident, effect_builder, rng, dest_event)
                         );
+
+                        announcement_effects.extend(effects.into_iter());
+                    ));
+                }
+                Target::Dispatch(ref fname) => {
+                    announcement_dispatches.push(quote!(
+                        let effects = self.#fname(effect_builder, rng, announcement);
 
                         announcement_effects.extend(effects.into_iter());
                     ));
