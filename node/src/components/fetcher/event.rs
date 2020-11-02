@@ -2,8 +2,9 @@ use std::fmt::{self, Display, Formatter};
 
 use super::Item;
 use crate::{
-    effect::{requests::FetcherRequest, Responder},
+    effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest, Responder},
     small_network::NodeId,
+    types::Deploy,
     utils::Source,
 };
 use datasize::DataSize;
@@ -37,6 +38,13 @@ pub enum Event<T: Item> {
         item: Box<T>,
         source: Source<NodeId>,
     },
+    /// A different component rejected an item.
+    // TODO: If having this event is not desirable, the `DeployAcceptorAnnouncement` needs to be
+    //       split in two instead.
+    RejectedRemotely {
+        item: Box<T>,
+        source: Source<NodeId>,
+    },
     /// An item was not available on the remote peer.
     AbsentRemotely { id: T::Id, peer: NodeId },
     /// The timeout has elapsed and we should clean up state.
@@ -59,6 +67,27 @@ impl<T: Item> From<FetcherRequest<NodeId, T>> for Event<T> {
     }
 }
 
+// A deploy fetcher knows how to update its state if deploys are coming in via the deploy acceptor.
+impl From<DeployAcceptorAnnouncement<NodeId>> for Event<Deploy> {
+    #[inline]
+    fn from(announcement: DeployAcceptorAnnouncement<NodeId>) -> Self {
+        match announcement {
+            DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => {
+                Event::GotRemotely {
+                    item: deploy,
+                    source,
+                }
+            }
+            DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
+                Event::RejectedRemotely {
+                    item: deploy,
+                    source,
+                }
+            }
+        }
+    }
+}
+
 impl<T: Item> Display for Event<T> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -73,6 +102,12 @@ impl<T: Item> Display for Event<T> {
             Event::GotRemotely { item, source } => {
                 write!(formatter, "got {} from {}", item.id(), source)
             }
+            Event::RejectedRemotely { item, source } => write!(
+                formatter,
+                "other component rejected {} from {}",
+                item.id(),
+                source
+            ),
             Event::TimeoutPeer { id, peer } => write!(
                 formatter,
                 "check get from peer timeout for {} with {}",

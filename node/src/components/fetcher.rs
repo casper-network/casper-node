@@ -299,6 +299,8 @@ where
                     }
                 }
             }
+            // We do nothing in the case of having an incoming deploy rejected.
+            Event::RejectedRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => self.signal(id, None, peer),
             Event::TimeoutPeer { id, peer } => self.signal(id, None, peer),
         }
