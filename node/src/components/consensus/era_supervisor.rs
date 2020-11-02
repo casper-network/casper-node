@@ -66,13 +66,13 @@ mod era;
 const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - AUCTION_DELAY;
 
 type ConsensusConstructor<I> = dyn Fn(
-    Digest,
-    Vec<(PublicKey, Motes)>,
-    &HashSet<PublicKey>,
-    &Chainspec,
-    Option<&dyn ConsensusProtocol<I, ClContext>>,
-    Timestamp,
-    u64,
+    Digest,                                       // the era's unique instance ID
+    Vec<(PublicKey, Motes)>,                      // validator stakes
+    &HashSet<PublicKey>,                          // slashed validators that are banned in this era
+    &Chainspec,                                   // the network's chainspec
+    Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
+    Timestamp,                                    // start time for this era
+    u64,                                          // random seed
 ) -> Box<dyn ConsensusProtocol<I, ClContext>>;
 
 #[derive(DataSize)]
