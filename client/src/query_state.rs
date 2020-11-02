@@ -24,13 +24,13 @@ mod key {
     const ARG_SHORT: &str = "k";
     const ARG_VALUE_NAME: &str = "FORMATTED STRING or PATH";
     const ARG_HELP: &str =
-        "The base key for the query.  This must be a properly formatted public key, account hash, \
-        contract address hash or URef.  The format for each respectively is \"<HEX STRING>\", \
-        \"account-hash-<HEX STRING>\", \"hash-<HEX STRING>\" and \
-        \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\".  The public key may instead be read in from a \
-        file, in which case enter the path to the file as the --key argument.  The file should be \
-        one of the two public key files generated via the `keygen` subcommand; \"public_key_hex\" \
-        or \"public_key.pem\"";
+        "The base key for the query. This must be a properly formatted public key, account hash, \
+        contract address hash, URef, transfer hash or deploy-info hash. The format for each \
+        respectively is \"<HEX STRING>\", \"account-hash-<HEX STRING>\", \"hash-<HEX STRING>\", \
+        \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\", \"transfer-<HEX-STRING>\" and \
+        \"deploy-<HEX-STRING>\". The public key may instead be read in from a file, in which case \
+        enter the path to the file as the --key argument. The file should be one of the two public \
+        key files generated via the `keygen` subcommand; \"public_key_hex\" or \"public_key.pem\"";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -76,8 +76,8 @@ mod path {
 
     const ARG_NAME: &str = "query-path";
     const ARG_SHORT: &str = "q";
-    const ARG_VALUE_NAME: &str = "PATH/FROM/BASE/KEY";
-    const ARG_HELP: &str = "The path from the base key for the query";
+    const ARG_VALUE_NAME: &str = "PATH/FROM/KEY";
+    const ARG_HELP: &str = "The path from the key of the query";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -96,7 +96,7 @@ mod path {
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetItem {
     const NAME: &'static str = "query-state";
-    const ABOUT: &'static str = "Retrieves a stored value from global state";
+    const ABOUT: &'static str = "Retrieves a stored value from the network";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)

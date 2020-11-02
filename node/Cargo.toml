@@ -86,7 +86,7 @@ untrusted = "0.7.1"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
 wabt = "0.10.0"
 warp = "0.2.4"
-warp-json-rpc = "0.1.6"
+warp-json-rpc = "0.2.0"
 wasmi = "0.6.2"
 wheelbuf = "0.2.0"
 

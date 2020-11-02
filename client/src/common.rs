@@ -11,7 +11,7 @@ pub mod verbose {
 
     pub const ARG_NAME: &str = "verbose";
     const ARG_NAME_SHORT: &str = "v";
-    const ARG_HELP: &str = "Generates verbose output";
+    const ARG_HELP: &str = "Generates verbose output, e.g. prints the RPC request";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -59,12 +59,10 @@ pub mod rpc_id {
     use super::*;
 
     const ARG_NAME: &str = "id";
-    // TODO: If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
-    //       update this to "STRING OR INTEGER".
-    const ARG_VALUE_NAME: &str = "INTEGER";
+    const ARG_VALUE_NAME: &str = "STRING OR INTEGER";
     const ARG_HELP: &str =
-        "JSON-RPC identifier, applied to the request and returned in the response.  If not \
-        provided, a random one will be assigned";
+        "JSON-RPC identifier, applied to the request and returned in the response. If not \
+        provided, a random integer will be assigned";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -141,7 +139,7 @@ pub mod state_root_hash {
     use super::*;
 
     const ARG_NAME: &str = "state-root-hash";
-    const ARG_SHORT: &str = "g";
+    const ARG_SHORT: &str = "s";
     const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
     const ARG_HELP: &str = "Hex-encoded hash of the state root";
 
@@ -168,9 +166,9 @@ pub mod block_identifier {
 
     const ARG_NAME: &str = "block-identifier";
     const ARG_SHORT: &str = "b";
-    const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
+    const ARG_VALUE_NAME: &str = "HEX STRING OR INTEGER";
     const ARG_HELP: &str =
-        "Hex-encoded block hash or height of the block.  If not given, the last block added to the \
+        "Hex-encoded block hash or height of the block. If not given, the last block added to the \
         chain as known at the given node will be used";
 
     pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
