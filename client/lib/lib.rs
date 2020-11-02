@@ -16,6 +16,8 @@ mod cl_type;
 mod deploy;
 mod error;
 mod executable_deploy_item_ext;
+#[cfg(feature = "ffi")]
+pub mod ffi;
 pub mod keygen;
 mod parsing;
 mod rpc;
