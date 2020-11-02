@@ -11,8 +11,8 @@ use tracing::warn;
 use crate::{
     components::consensus::{
         candidate_block::CandidateBlock, cl_context::ClContext,
-        consensus_protocol::ConsensusProtocol, era_supervisor::BONDED_ERAS,
-        protocols::highway::HighwayProtocol, ConsensusMessage,
+        consensus_protocol::ConsensusProtocol, protocols::highway::HighwayProtocol,
+        ConsensusMessage,
     },
     crypto::asymmetric_key::PublicKey,
     types::ProtoBlock,
@@ -36,13 +36,13 @@ impl EraId {
     }
 
     /// Returns an iterator over all eras that are still bonded in this one, including this one.
-    pub(crate) fn iter_bonded(&self) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(BONDED_ERAS)..=self.0).map(EraId)
+    pub(crate) fn iter_bonded(&self, bonded_eras: u64) -> impl Iterator<Item = EraId> {
+        (self.0.saturating_sub(bonded_eras)..=self.0).map(EraId)
     }
 
     /// Returns an iterator over all eras that are still bonded in this one, excluding this one.
-    pub(crate) fn iter_other_bonded(&self) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(BONDED_ERAS)..self.0).map(EraId)
+    pub(crate) fn iter_other(&self, count: u64) -> impl Iterator<Item = EraId> {
+        (self.0.saturating_sub(count)..self.0).map(EraId)
     }
 
     /// Returns the current era minus `x`, or `None` if that would be less than `0`.

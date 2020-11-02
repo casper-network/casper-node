@@ -25,7 +25,7 @@ use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::shared::motes::Motes;
 use casper_types::{
-    auction::{ValidatorWeights, AUCTION_DELAY, DEFAULT_UNBONDING_DELAY},
+    auction::{ValidatorWeights, DEFAULT_UNBONDING_DELAY},
     ProtocolVersion,
 };
 
@@ -58,13 +58,6 @@ use crate::components::contract_runtime::ValidatorWeightsByEraIdRequest;
 
 mod era;
 
-/// The unbonding period, in number of eras. After this many eras, a former validator is allowed to
-/// withdraw their stake, so their signature can't be trusted anymore.
-///
-/// A node keeps `2 * BONDED_ERAS` past eras around, because the oldest bonded era could still
-/// receive blocks that refer to `BONDED_ERAS` before that.
-const BONDED_ERAS: u64 = DEFAULT_UNBONDING_DELAY - AUCTION_DELAY;
-
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
     Vec<(PublicKey, Motes)>,                      // validator stakes
@@ -80,7 +73,7 @@ pub struct EraSupervisor<I> {
     /// A map of active consensus protocols.
     /// A value is a trait so that we can run different consensus protocol instances per era.
     ///
-    /// This map always contains exactly `2 * BONDED_ERAS + 1` entries, with the last one being the
+    /// This map always contains exactly `2 * bonded_eras + 1` entries, with the last one being the
     /// current one.
     active_eras: HashMap<EraId, Era<I>>,
     pub(super) secret_signing_key: Rc<SecretKey>,
@@ -90,6 +83,12 @@ pub struct EraSupervisor<I> {
     #[data_size(skip)] // Negligible for most closures, zero for functions.
     new_consensus: Box<ConsensusConstructor<I>>,
     node_start_time: Timestamp,
+    /// The unbonding period, in number of eras. After this many eras, a former validator is
+    /// allowed to withdraw their stake, so their signature can't be trusted anymore.
+    ///
+    /// A node keeps `2 * bonded_eras` past eras around, because the oldest bonded era could still
+    /// receive blocks that refer to `bonded_eras` before that.
+    bonded_eras: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
 }
@@ -121,6 +120,7 @@ where
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
+        let bonded_eras: u64 = DEFAULT_UNBONDING_DELAY - chainspec.genesis.auction_delay;
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
 
@@ -132,6 +132,7 @@ where
             chainspec: chainspec.clone(),
             new_consensus,
             node_start_time: Timestamp::now(),
+            bonded_eras,
             metrics,
         };
 
@@ -169,7 +170,11 @@ where
     fn booking_block_height(&self, era_id: EraId) -> u64 {
         // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
         // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1
-        let after_booking_era_id = EraId(era_id.0.saturating_sub(AUCTION_DELAY));
+        let after_booking_era_id = EraId(
+            era_id
+                .0
+                .saturating_sub(self.chainspec.genesis.auction_delay),
+        );
         self.active_eras
             .get(&after_booking_era_id)
             .expect("should have era after booking block")
@@ -225,7 +230,7 @@ where
         );
 
         let slashed = era_id
-            .iter_other_bonded()
+            .iter_other(self.bonded_eras)
             .flat_map(|e_id| &self.active_eras[&e_id].newly_slashed)
             .chain(&newly_slashed)
             .cloned()
@@ -272,9 +277,9 @@ where
         let era = Era::new(consensus, start_height, newly_slashed, slashed);
         let _ = self.active_eras.insert(era_id, era);
 
-        // Remove the era that has become obsolete now. We keep 2 * BONDED_ERAS past eras because
-        // the oldest bonded era could still receive blocks that refer to BONDED_ERAS before that.
-        if let Some(obsolete_era_id) = era_id.checked_sub(2 * BONDED_ERAS + 1) {
+        // Remove the era that has become obsolete now. We keep 2 * bonded_eras past eras because
+        // the oldest bonded era could still receive blocks that refer to bonded_eras before that.
+        if let Some(obsolete_era_id) = era_id.checked_sub(2 * self.bonded_eras + 1) {
             trace!(era = obsolete_era_id.0, "removing obsolete era");
             self.active_eras.remove(&obsolete_era_id);
         }
@@ -291,7 +296,7 @@ where
 
     /// Returns `true` if the specified era is active and bonded.
     fn is_bonded(&self, era_id: EraId) -> bool {
-        era_id.0 + BONDED_ERAS >= self.current_era.0 && era_id <= self.current_era
+        era_id.0 + self.bonded_eras >= self.current_era.0 && era_id <= self.current_era
     }
 
     /// Inspect the active eras.
@@ -367,7 +372,7 @@ where
                     return Effects::new();
                 }
                 era_id
-                    .iter_bonded()
+                    .iter_bonded(self.era_supervisor.bonded_eras)
                     .flat_map(|e_id| {
                         self.delegate_to_era(e_id, |consensus, _| {
                             consensus.request_evidence(sender.clone(), &pub_key)
@@ -393,7 +398,7 @@ where
             .announce_proposed_proto_block(proto_block.clone())
             .ignore();
         let accusations = era_id
-            .iter_bonded()
+            .iter_bonded(self.era_supervisor.bonded_eras)
             .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
             .unique()
             .filter(|pub_key| !self.era(era_id).slashed.contains(pub_key))
@@ -555,7 +560,7 @@ where
     /// `pub_key`.
     fn has_evidence(&self, era_id: EraId, pub_key: PublicKey) -> bool {
         era_id
-            .iter_bonded()
+            .iter_bonded(self.era_supervisor.bonded_eras)
             .any(|eid| self.era(eid).consensus.has_evidence(&pub_key))
     }
 
@@ -680,7 +685,7 @@ where
             }
             ConsensusProtocolResult::NewEvidence(pub_key) => {
                 let mut effects = Effects::new();
-                for e_id in (era_id.0..=(era_id.0 + BONDED_ERAS)).map(EraId) {
+                for e_id in (era_id.0..=(era_id.0 + self.era_supervisor.bonded_eras)).map(EraId) {
                     let candidate_blocks =
                         if let Some(era) = self.era_supervisor.active_eras.get_mut(&e_id) {
                             era.resolve_evidence(&pub_key)
@@ -696,7 +701,7 @@ where
                 effects
             }
             ConsensusProtocolResult::SendEvidence(sender, pub_key) => era_id
-                .iter_other_bonded()
+                .iter_other(self.era_supervisor.bonded_eras)
                 .flat_map(|e_id| {
                     self.delegate_to_era(e_id, |consensus, _| {
                         consensus.request_evidence(sender.clone(), &pub_key)

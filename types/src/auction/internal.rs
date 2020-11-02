@@ -3,8 +3,8 @@ use core::convert::TryInto;
 use crate::{
     auction::{
         providers::StorageProvider, Bids, DelegatorRewardMap, Delegators, EraId, EraValidators,
-        RuntimeProvider, SeigniorageRecipientsSnapshot, ValidatorRewardMap, BIDS_KEY,
-        DELEGATORS_KEY, DELEGATOR_REWARD_MAP, ERA_ID_KEY, ERA_VALIDATORS_KEY,
+        RuntimeProvider, SeigniorageRecipientsSnapshot, ValidatorRewardMap, AUCTION_DELAY_KEY,
+        BIDS_KEY, DELEGATORS_KEY, DELEGATOR_REWARD_MAP, ERA_ID_KEY, ERA_VALIDATORS_KEY,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{FromBytes, ToBytes},
@@ -152,4 +152,12 @@ where
         .try_into()
         .map_err(|_| Error::InvalidValidatorSlotsValue)?;
     Ok(validator_slots)
+}
+
+pub fn get_auction_delay<P>(provider: &mut P) -> Result<u64>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    let auction_delay: u64 = read_from(provider, AUCTION_DELAY_KEY)?;
+    Ok(auction_delay)
 }
