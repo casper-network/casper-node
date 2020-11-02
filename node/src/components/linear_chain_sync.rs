@@ -38,7 +38,7 @@ use effect::requests::{
 use event::BlockByHeightResult;
 pub use event::Event;
 use rand::{seq::SliceRandom, Rng};
-use std::{fmt::Display, mem};
+use std::{convert::Infallible, fmt::Display, mem};
 use tracing::{error, info, trace, warn};
 
 pub trait ReactorEventT<I>:
@@ -400,6 +400,7 @@ where
     REv: ReactorEventT<I>,
 {
     type Event = Event<I>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -553,8 +554,9 @@ fn fetch_block_deploys<I: Send + Copy + 'static, REv>(
 where
     REv: ReactorEventT<I>,
 {
+    let block_timestamp = block_header.timestamp();
     effect_builder
-        .validate_block(peer, block_header)
+        .validate_block(peer, block_header, block_timestamp)
         .event(move |(found, block_header)| {
             if found {
                 Event::DeploysFound(Box::new(block_header))

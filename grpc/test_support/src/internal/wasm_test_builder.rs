@@ -26,7 +26,7 @@ use casper_execution_engine::{
         engine_state::{
             era_validators::GetEraValidatorsRequest, execute_request::ExecuteRequest,
             execution_result::ExecutionResult, run_genesis_request::RunGenesisRequest,
-            EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
+            BalanceResult, EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -44,6 +44,7 @@ use casper_execution_engine::{
         global_state::{in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider},
         protocol_data_store::lmdb::LmdbProtocolDataStore,
         transaction_source::lmdb::LmdbEnvironment,
+        trie::merkle_proof::TrieMerkleProof,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
@@ -383,21 +384,27 @@ where
         if query_response.has_failure() {
             return Err(query_response.take_failure());
         }
-        bytesrepr::deserialize(query_response.take_success()).map_err(|err| format!("{}", err))
+
+        let (value, _proofs): (StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>) =
+            bytesrepr::deserialize(query_response.take_success())
+                .map_err(|err| format!("{:?}", err))?;
+
+        Ok(value)
     }
 
-    pub fn total_supply(&self, maybe_post_state: Option<Vec<u8>>) -> U512 {
+    pub fn query_with_proof(
+        &self,
+        maybe_post_state: Option<Vec<u8>>,
+        base_key: Key,
+        path: &[String],
+    ) -> Result<(StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>), String> {
         let post_state = maybe_post_state
             .or_else(|| self.post_state_hash.clone())
             .expect("builder must have a post-state hash");
 
-        let mint_key: Key = self
-            .mint_contract_hash
-            .expect("should have mint_contract_hash")
-            .into();
+        let path_vec: Vec<String> = path.to_vec();
 
-        let query_request =
-            create_query_request(post_state, mint_key, vec![TOTAL_SUPPLY_KEY.to_string()]);
+        let query_request = create_query_request(post_state, base_key, path_vec);
 
         let mut query_response = self
             .engine_state
@@ -406,10 +413,23 @@ where
             .expect("should get query response");
 
         if query_response.has_failure() {
-            panic!("mint error: {}", query_response.take_failure());
+            return Err(query_response.take_failure());
         }
 
-        let result = bytesrepr::deserialize(query_response.take_success());
+        let (value, proofs): (StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>) =
+            bytesrepr::deserialize(query_response.take_success())
+                .map_err(|err| format!("{:?}", err))?;
+
+        Ok((value, proofs))
+    }
+
+    pub fn total_supply(&self, maybe_post_state: Option<Vec<u8>>) -> U512 {
+        let mint_key: Key = self
+            .mint_contract_hash
+            .expect("should have mint_contract_hash")
+            .into();
+
+        let result = self.query(maybe_post_state, mint_key, &[TOTAL_SUPPLY_KEY]);
 
         let total_supply: U512 = if let Ok(StoredValue::CLValue(total_supply)) = result {
             total_supply.into_t().expect("total supply should be U512")
@@ -664,6 +684,21 @@ where
             .expect("should parse balance into a U512")
     }
 
+    pub fn get_purse_balance_result(&self, purse: URef) -> BalanceResult {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash_slice: &Vec<u8> = self
+            .post_state_hash
+            .as_ref()
+            .expect("should have post_state_hash");
+        let state_root_hash: Blake2bHash = state_root_hash_slice
+            .as_slice()
+            .try_into()
+            .expect("should convert");
+        self.engine_state
+            .get_purse_balance(correlation_id, state_root_hash, purse)
+            .expect("should get purse balance")
+    }
+
     pub fn get_proposer_purse_balance(&self) -> U512 {
         let proposer_account = self
             .get_account(*DEFAULT_PROPOSER_ADDR)
@@ -757,14 +792,16 @@ where
             .finish()
     }
 
-    pub fn get_era_validators(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
+    pub fn get_validator_weights(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
         let correlation_id = CorrelationId::new();
         let state_hash = Blake2bHash::try_from(self.get_post_state_hash().as_slice())
             .expect("should create state hash");
-        let request = GetEraValidatorsRequest::new(state_hash, era_id, *DEFAULT_PROTOCOL_VERSION);
-        self.engine_state
+        let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
+        let mut result = self
+            .engine_state
             .get_era_validators(correlation_id, request)
-            .expect("should get era validators")
+            .expect("get era validators should not error");
+        result.remove(&era_id)
     }
 
     pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T

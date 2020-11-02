@@ -3,15 +3,18 @@ use casper_types::Key;
 use crate::{
     core::tracking_copy::TrackingCopyQueryResult,
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::trie::merkle_proof::TrieMerkleProof,
 };
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum QueryResult {
     RootNotFound,
     ValueNotFound(String),
     CircularReference(String),
-    Success(StoredValue),
+    Success {
+        value: Box<StoredValue>,
+        proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,7 +53,10 @@ impl From<TrackingCopyQueryResult> for QueryResult {
             TrackingCopyQueryResult::CircularReference(message) => {
                 QueryResult::CircularReference(message)
             }
-            TrackingCopyQueryResult::Success(value) => QueryResult::Success(value),
+            TrackingCopyQueryResult::Success { value, proofs } => {
+                let value = Box::new(value);
+                QueryResult::Success { value, proofs }
+            }
         }
     }
 }

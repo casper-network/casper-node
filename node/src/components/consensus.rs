@@ -1,6 +1,7 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
 mod candidate_block;
+mod cl_context;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
@@ -11,8 +12,12 @@ mod protocols;
 mod tests;
 mod traits;
 
+use std::{
+    convert::Infallible,
+    fmt::{self, Debug, Display, Formatter},
+};
+
 use datasize::DataSize;
-use std::fmt::{self, Debug, Display, Formatter};
 
 use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
 use casper_types::auction::ValidatorWeights;
@@ -23,8 +28,8 @@ use crate::{
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
-            DeployBufferRequest, NetworkRequest, StorageRequest,
+            self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -37,6 +42,7 @@ pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
+pub(crate) use protocols::highway::HighwayProtocol;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use traits::NodeIdT;
@@ -157,7 +163,7 @@ pub trait ReactorEventT<I>:
     From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
-    + From<DeployBufferRequest>
+    + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
@@ -170,7 +176,7 @@ impl<REv, I> ReactorEventT<I> for REv where
     REv: From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
-        + From<DeployBufferRequest>
+        + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
@@ -185,6 +191,7 @@ where
     REv: ReactorEventT<I>,
 {
     type Event = Event<I>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,

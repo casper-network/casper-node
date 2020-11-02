@@ -1,30 +1,14 @@
 //! This module contains structs and helpers which are used by multiple subcommands related to
 //! creating deploys.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    fs::File,
-    io::{self, Write},
-    process,
-    str::FromStr,
-};
+use std::{convert::TryFrom, process};
 
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 use lazy_static::lazy_static;
-use serde::{self, Deserialize};
 
-use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
-use casper_node::{
-    crypto::{asymmetric_key::PublicKey as NodePublicKey, hash::Digest},
-    rpcs::account::PutDeployParams,
-    types::{Deploy, TimeDiff, Timestamp},
-};
-use casper_types::{
-    account::AccountHash,
-    bytesrepr::{self, ToBytes},
-    AccessRights, CLType, CLTyped, CLValue, ContractHash, Key, NamedArg, PublicKey, RuntimeArgs,
-    URef, U128, U256, U512,
-};
+use casper_client::{cl_type, PaymentStrParams, SessionStrParams};
+use casper_node::crypto::asymmetric_key::PublicKey as NodePublicKey;
+use casper_types::{account::AccountHash, AccessRights, Key, URef};
 
 use crate::common;
 
@@ -134,20 +118,137 @@ pub(super) mod show_arg_examples {
             .unwrap()
             .to_hex()
         );
+        println!("\nOptional values of each of these types can also be specified.");
+        println!(
+            r#"Prefix the type with "opt_" and use the term "null" without quotes to specify a None value:"#
+        );
+        println!("name_01:opt_bool='true'       # Some(true)");
+        println!("name_02:opt_bool='false'      # Some(false)");
+        println!("name_03:opt_bool=null         # None");
+        println!("name_04:opt_i32='-1'          # Some(-1)");
+        println!("name_05:opt_i32=null          # None");
+        println!("name_06:opt_unit=''           # Some(())");
+        println!("name_07:opt_unit=null         # None");
+        println!("name_08:opt_string='a value'  # Some(\"a value\".to_string())");
+        println!("name_09:opt_string='null'     # Some(\"null\".to_string())");
+        println!("name_10:opt_string=null       # None");
 
         true
     }
 }
 
+pub(super) fn session_str_params<'a>(matches: &'a ArgMatches) -> SessionStrParams<'a> {
+    let session_args_simple = arg_simple::session::get(matches);
+    let session_args_complex = args_complex::session::get(matches);
+    if let Some(session_path) = session_path::get(matches) {
+        return SessionStrParams::with_path(
+            session_path,
+            session_args_simple,
+            session_args_complex,
+        );
+    }
+    let session_entry_point = session_entry_point::get(matches);
+    if let Some(session_hash) = session_hash::get(matches) {
+        return SessionStrParams::with_hash(
+            session_hash,
+            session_entry_point,
+            session_args_simple,
+            session_args_complex,
+        );
+    }
+    if let Some(session_name) = session_name::get(matches) {
+        return SessionStrParams::with_name(
+            session_name,
+            session_entry_point,
+            session_args_simple,
+            session_args_complex,
+        );
+    }
+    let session_version = session_version::get(matches);
+    if let Some(session_package_hash) = session_package_hash::get(matches) {
+        return SessionStrParams::with_package_hash(
+            session_package_hash,
+            session_version,
+            session_entry_point,
+            session_args_simple,
+            session_args_complex,
+        );
+    }
+    if let Some(session_package_name) = session_package_name::get(matches) {
+        return SessionStrParams::with_package_name(
+            session_package_name,
+            session_version,
+            session_entry_point,
+            session_args_simple,
+            session_args_complex,
+        );
+    }
+    unreachable!("clap arg groups and parsing should prevent this")
+}
+
+pub(super) fn payment_str_params<'a>(matches: &'a ArgMatches) -> PaymentStrParams<'a> {
+    if let Some(payment_amount) = standard_payment_amount::get(matches) {
+        return PaymentStrParams::with_amount(payment_amount);
+    }
+    let payment_args_simple = arg_simple::payment::get(matches);
+    let payment_args_complex = args_complex::payment::get(matches);
+    if let Some(payment_path) = payment_path::get(matches) {
+        return PaymentStrParams::with_path(
+            payment_path,
+            payment_args_simple,
+            payment_args_complex,
+        );
+    }
+    let payment_entry_point = payment_entry_point::get(matches);
+    if let Some(payment_hash) = payment_hash::get(matches) {
+        return PaymentStrParams::with_hash(
+            payment_hash,
+            payment_entry_point,
+            payment_args_simple,
+            payment_args_complex,
+        );
+    }
+    if let Some(payment_name) = payment_name::get(matches) {
+        return PaymentStrParams::with_name(
+            payment_name,
+            payment_entry_point,
+            payment_args_simple,
+            payment_args_complex,
+        );
+    }
+    let payment_version = payment_version::get(matches);
+    if let Some(payment_package_hash) = payment_package_hash::get(matches) {
+        return PaymentStrParams::with_package_hash(
+            payment_package_hash,
+            payment_version,
+            payment_entry_point,
+            payment_args_simple,
+            payment_args_complex,
+        );
+    }
+    if let Some(payment_package_name) = payment_package_name::get(matches) {
+        return PaymentStrParams::with_package_name(
+            payment_package_name,
+            payment_version,
+            payment_entry_point,
+            payment_args_simple,
+            payment_args_complex,
+        );
+    }
+    unreachable!("clap arg groups and parsing should prevent this")
+}
+
 /// Handles providing the arg for and retrieval of the timestamp.
-mod timestamp {
+pub(super) mod timestamp {
     use super::*;
 
     const ARG_NAME: &str = "timestamp";
-    const ARG_VALUE_NAME: &str = "MILLISECONDS";
+    const ARG_VALUE_NAME: &str = "TIMESTAMP";
     const ARG_HELP: &str =
-        "Timestamp as the number of milliseconds since the Unix epoch. If not provided, the \
-        current time will be used";
+        "RFC3339-like formatted timestamp, e.g. '2018-02-16 00:31:37'. If not provided, the \
+        current time will be used. Note that timestamp is UTC, not local. See \
+        https://docs.rs/humantime/latest/humantime/fn.parse_rfc3339_weak.html for more \
+        information.";
 
     pub(in crate::deploy) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -158,18 +259,13 @@ mod timestamp {
             .display_order(DisplayOrder::Timestamp as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Timestamp {
-        matches
-            .value_of(ARG_NAME)
-            .map_or_else(Timestamp::now, |value| {
-                Timestamp::from_str(value)
-                    .unwrap_or_else(|error| panic!("should parse {}: {}", ARG_NAME, error))
-            })
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
 /// Handles providing the arg for and retrieval of the time to live.
-mod ttl {
+pub(super) mod ttl {
     use super::*;
 
     const ARG_NAME: &str = "ttl";
@@ -191,18 +287,13 @@ mod ttl {
             .display_order(DisplayOrder::Ttl as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> TimeDiff {
-        TimeDiff::from_str(
-            matches
-                .value_of(ARG_NAME)
-                .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME)),
-        )
-        .unwrap_or_else(|error| panic!("should parse {}: {}", ARG_NAME, error))
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
 /// Handles providing the arg for and retrieval of the gas price.
-mod gas_price {
+pub(super) mod gas_price {
     use super::*;
 
     const ARG_NAME: &str = "gas-price";
@@ -221,19 +312,14 @@ mod gas_price {
             .display_order(DisplayOrder::GasPrice as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> u64 {
-        matches
-            .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .parse()
-            .unwrap_or_else(|error| panic!("should parse {}: {}", ARG_NAME, error))
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
 /// Handles providing the arg for and retrieval of the deploy dependencies.
-mod dependencies {
+pub(super) mod dependencies {
     use super::*;
-    use casper_node::types::DeployHash;
 
     const ARG_NAME: &str = "dependency";
     const ARG_VALUE_NAME: &str = common::ARG_HEX_STRING;
@@ -251,28 +337,18 @@ mod dependencies {
             .display_order(DisplayOrder::Dependencies as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Vec<DeployHash> {
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> Vec<&'a str> {
         matches
             .values_of(ARG_NAME)
-            .map(|values| {
-                values
-                    .map(|hex_hash| {
-                        let digest = Digest::from_hex(hex_hash).unwrap_or_else(|error| {
-                            panic!(
-                                "could not parse --{} {} as hex-encoded deploy hash: {}",
-                                ARG_NAME, hex_hash, error
-                            )
-                        });
-                        DeployHash::new(digest)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
+            .iter()
+            .map(|i| i.clone().map(|v| v))
+            .flatten()
+            .collect()
     }
 }
 
 /// Handles providing the arg for and retrieval of the chain name.
-mod chain_name {
+pub(super) mod chain_name {
     use super::*;
 
     const ARG_NAME: &str = "chain-name";
@@ -290,16 +366,15 @@ mod chain_name {
             .display_order(DisplayOrder::ChainName as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> String {
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
     }
 }
 
 /// Handles providing the arg for and retrieval of the session code bytes.
-mod session_path {
+pub(super) mod session_path {
     use super::*;
 
     pub(super) const ARG_NAME: &str = "session-path";
@@ -317,51 +392,24 @@ mod session_path {
             .display_order(DisplayOrder::SessionCode as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Option<Vec<u8>> {
-        matches.value_of(ARG_NAME).map(common::read_file)
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
 /// Handles providing the arg for and retrieval of simple session and payment args.
-mod arg_simple {
+pub(super) mod arg_simple {
     use super::*;
 
-    const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE'";
+    const ARG_VALUE_NAME: &str = "NAME:TYPE='VALUE' OR NAME:TYPE=null";
 
     lazy_static! {
-        static ref SUPPORTED_TYPES: Vec<(&'static str, CLType)> = vec![
-            ("bool", CLType::Bool),
-            ("i32", CLType::I32),
-            ("i64", CLType::I64),
-            ("u8", CLType::U8),
-            ("u32", CLType::U32),
-            ("u64", CLType::U64),
-            ("u128", CLType::U128),
-            ("u256", CLType::U256),
-            ("u512", CLType::U512),
-            ("unit", CLType::Unit),
-            ("string", CLType::String),
-            ("key", CLType::Key),
-            ("account_hash", AccountHash::cl_type()),
-            ("uref", CLType::URef),
-            ("public_key", CLType::PublicKey),
-        ];
-        static ref SUPPORTED_LIST: String = {
-            let mut msg = String::new();
-            for (index, item) in SUPPORTED_TYPES.iter().map(|(name, _)| name).enumerate() {
-                msg.push_str(item);
-                if index < SUPPORTED_TYPES.len() - 1 {
-                    msg.push_str(", ")
-                }
-            }
-            msg
-        };
         static ref ARG_HELP: String = format!(
             "For simple CLTypes, a named and typed arg which is passed to the Wasm code. To see \
             an example for each type, run '--{}'. This arg can be repeated to pass multiple named, \
             typed args, but can only be used for the following types: {}",
             super::show_arg_examples::ARG_NAME,
-            *SUPPORTED_LIST
+            cl_type::supported_cl_type_list()
         );
     }
 
@@ -377,8 +425,13 @@ mod arg_simple {
                 .requires(super::session::ARG_NAME)
         }
 
-        pub fn get(matches: &ArgMatches) -> Option<RuntimeArgs> {
-            super::get(matches, ARG_NAME)
+        pub fn get<'a>(matches: &'a ArgMatches) -> Vec<&'a str> {
+            matches
+                .values_of(ARG_NAME)
+                .iter()
+                .map(|i| i.clone().map(|v| v))
+                .flatten()
+                .collect()
         }
     }
 
@@ -392,8 +445,13 @@ mod arg_simple {
                 .requires(super::payment::ARG_NAME)
         }
 
-        pub fn get(matches: &ArgMatches) -> Option<RuntimeArgs> {
-            super::get(matches, ARG_NAME)
+        pub fn get<'a>(matches: &'a ArgMatches) -> Vec<&'a str> {
+            matches
+                .values_of(ARG_NAME)
+                .iter()
+                .map(|i| i.clone().map(|v| v))
+                .flatten()
+                .collect()
         }
     }
 
@@ -406,177 +464,12 @@ mod arg_simple {
             .help(&*ARG_HELP)
             .display_order(order)
     }
-
-    fn get(matches: &ArgMatches, name: &str) -> Option<RuntimeArgs> {
-        let args = matches.values_of(name)?;
-        let mut runtime_args = RuntimeArgs::new();
-        for arg in args {
-            let parts = split_arg(arg);
-            parts_to_cl_value(parts, &mut runtime_args);
-        }
-        Some(runtime_args)
-    }
-
-    /// Splits a single arg of the form `NAME:TYPE='VALUE'` into its constituent parts.
-    fn split_arg(arg: &str) -> (&str, CLType, &str) {
-        let parts: Vec<_> = arg.splitn(3, &[':', '='][..]).collect();
-        if parts.len() != 3 {
-            panic!("arg {} should be formatted as {}", arg, ARG_VALUE_NAME);
-        }
-        let cl_type = match parts[1].to_lowercase() {
-            t if t == SUPPORTED_TYPES[0].0 => SUPPORTED_TYPES[0].1.clone(),
-            t if t == SUPPORTED_TYPES[1].0 => SUPPORTED_TYPES[1].1.clone(),
-            t if t == SUPPORTED_TYPES[2].0 => SUPPORTED_TYPES[2].1.clone(),
-            t if t == SUPPORTED_TYPES[3].0 => SUPPORTED_TYPES[3].1.clone(),
-            t if t == SUPPORTED_TYPES[4].0 => SUPPORTED_TYPES[4].1.clone(),
-            t if t == SUPPORTED_TYPES[5].0 => SUPPORTED_TYPES[5].1.clone(),
-            t if t == SUPPORTED_TYPES[6].0 => SUPPORTED_TYPES[6].1.clone(),
-            t if t == SUPPORTED_TYPES[7].0 => SUPPORTED_TYPES[7].1.clone(),
-            t if t == SUPPORTED_TYPES[8].0 => SUPPORTED_TYPES[8].1.clone(),
-            t if t == SUPPORTED_TYPES[9].0 => SUPPORTED_TYPES[9].1.clone(),
-            t if t == SUPPORTED_TYPES[10].0 => SUPPORTED_TYPES[10].1.clone(),
-            t if t == SUPPORTED_TYPES[11].0 => SUPPORTED_TYPES[11].1.clone(),
-            t if t == SUPPORTED_TYPES[12].0 => SUPPORTED_TYPES[12].1.clone(),
-            t if t == SUPPORTED_TYPES[13].0 => SUPPORTED_TYPES[13].1.clone(),
-            t if t == SUPPORTED_TYPES[14].0 => SUPPORTED_TYPES[14].1.clone(),
-            _ => panic!(
-                "unknown variant {}, expected one of {}",
-                parts[1], *SUPPORTED_LIST
-            ),
-        };
-        (parts[0], cl_type, parts[2].trim_matches('\''))
-    }
-
-    /// Insert a value built from a single arg which has been split into its constituent parts.
-    fn parts_to_cl_value(parts: (&str, CLType, &str), runtime_args: &mut RuntimeArgs) {
-        let (name, cl_type, value) = parts;
-        let cl_value = match cl_type {
-            CLType::Bool => match value.to_lowercase().as_str() {
-                "true" | "t" => CLValue::from_t(true).unwrap(),
-                "false" | "f" => CLValue::from_t(false).unwrap(),
-                invalid => panic!(
-                    "can't parse {} as a bool.  Should be 'true' or 'false'",
-                    invalid
-                ),
-            },
-            CLType::I32 => {
-                let x = i32::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as i32: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::I64 => {
-                let x = i64::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as i64: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U8 => {
-                let x = u8::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as u8: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U32 => {
-                let x = u32::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as u32: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U64 => {
-                let x = u64::from_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as u64: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U128 => {
-                let x = U128::from_dec_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as U128: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U256 => {
-                let x = U256::from_dec_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as U256: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::U512 => {
-                let x = U512::from_dec_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as U512: {}", value, error));
-                CLValue::from_t(x).unwrap()
-            }
-            CLType::Unit => {
-                if !value.is_empty() {
-                    panic!("can't parse {} as unit.  Should be ''", value)
-                }
-                CLValue::from_t(()).unwrap()
-            }
-            CLType::String => CLValue::from_t(value).unwrap(),
-            CLType::Key => {
-                let key = Key::from_formatted_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as Key: {:?}", value, error));
-                CLValue::from_t(key).unwrap()
-            }
-            CLType::FixedList(ty, 32) => match *ty {
-                CLType::U8 => {
-                    let account_hash =
-                        AccountHash::from_formatted_str(value).unwrap_or_else(|error| {
-                            panic!("can't parse {} as AccountHash: {:?}", value, error)
-                        });
-                    CLValue::from_t(account_hash).unwrap()
-                }
-                _ => unreachable!(),
-            },
-            CLType::URef => {
-                let uref = URef::from_formatted_str(value)
-                    .unwrap_or_else(|error| panic!("can't parse {} as URef: {:?}", value, error));
-                CLValue::from_t(uref).unwrap()
-            }
-            CLType::PublicKey => {
-                let pub_key = NodePublicKey::from_hex(value).unwrap_or_else(|error| {
-                    panic!("can't parse {} as PublicKey: {:?}", value, error)
-                });
-                CLValue::from_t(PublicKey::from(pub_key)).unwrap()
-            }
-            _ => unreachable!(),
-        };
-        runtime_args.insert_cl_value(name, cl_value);
-    }
 }
 
 /// Handles providing the arg for and retrieval of complex session and payment args.  These are read
 /// in from a file.
-mod args_complex {
+pub(super) mod args_complex {
     use super::*;
-
-    #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "snake_case")]
-    enum DeployArgValue {
-        /// Contains `CLValue` serialized into bytes in base16 form.
-        #[serde(deserialize_with = "hex::deserialize")]
-        RawBytes(Vec<u8>),
-    }
-
-    #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "snake_case")]
-    struct DeployArg {
-        /// Deploy argument's name.
-        name: String,
-        value: DeployArgValue,
-    }
-
-    impl From<DeployArgValue> for CLValue {
-        fn from(value: DeployArgValue) -> Self {
-            match value {
-                DeployArgValue::RawBytes(bytes) => bytesrepr::deserialize(bytes)
-                    .unwrap_or_else(|error| panic!("should deserialize deploy arg: {}", error)),
-            }
-        }
-    }
-
-    impl From<DeployArg> for NamedArg {
-        fn from(deploy_arg: DeployArg) -> Self {
-            let cl_value = deploy_arg
-                .value
-                .try_into()
-                .unwrap_or_else(|error| panic!("should serialize deploy arg: {}", error));
-            NamedArg::new(deploy_arg.name, cl_value)
-        }
-    }
 
     const ARG_VALUE_NAME: &str = common::ARG_PATH;
     const ARG_HELP: &str =
@@ -592,8 +485,8 @@ mod args_complex {
                 .requires(super::session::ARG_NAME)
         }
 
-        pub fn get(matches: &ArgMatches) -> Option<RuntimeArgs> {
-            super::get(matches, ARG_NAME)
+        pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+            matches.value_of(ARG_NAME).unwrap_or_default()
         }
     }
 
@@ -607,8 +500,8 @@ mod args_complex {
                 .requires(super::payment::ARG_NAME)
         }
 
-        pub fn get(matches: &ArgMatches) -> Option<RuntimeArgs> {
-            super::get(matches, ARG_NAME)
+        pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+            matches.value_of(ARG_NAME).unwrap_or_default()
         }
     }
 
@@ -620,27 +513,10 @@ mod args_complex {
             .help(ARG_HELP)
             .display_order(order)
     }
-
-    fn get(matches: &ArgMatches, name: &str) -> Option<RuntimeArgs> {
-        let path = matches.value_of(name)?;
-        let bytes = common::read_file(path);
-        // Received structured args in JSON format.
-        let args: Vec<DeployArg> = serde_json::from_slice(&bytes)
-            .unwrap_or_else(|error| panic!("should parse {} as Vec<DeployArg>: {}", path, error));
-        // Convert JSON deploy args into vector of named args.
-        let named_args = args
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<Vec<NamedArg>, _>>()
-            .unwrap_or_else(|error| {
-                panic!("should deserialize {} as Vec<NamedArg>: {}", path, error)
-            });
-        Some(RuntimeArgs::from(named_args))
-    }
 }
 
 /// Handles providing the arg for and retrieval of the payment code bytes.
-mod payment_path {
+pub(super) mod payment_path {
     use super::*;
 
     pub(in crate::deploy) const ARG_NAME: &str = "payment-path";
@@ -656,17 +532,14 @@ mod payment_path {
             .display_order(DisplayOrder::PaymentCode as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Option<Vec<u8>> {
-        let path = matches.value_of(ARG_NAME)?;
-        Some(common::read_file(path))
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
 /// Handles providing the arg for and retrieval of the payment-amount arg.
-mod standard_payment {
+pub(super) mod standard_payment_amount {
     use super::*;
-
-    const STANDARD_PAYMENT_ARG_NAME: &str = "amount";
 
     pub(in crate::deploy) const ARG_NAME: &str = "payment-amount";
     const ARG_VALUE_NAME: &str = "AMOUNT";
@@ -686,160 +559,9 @@ mod standard_payment {
             .display_order(DisplayOrder::StandardPayment as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> Option<RuntimeArgs> {
-        let arg = U512::from_dec_str(matches.value_of(ARG_NAME)?)
-            .unwrap_or_else(|error| panic!("should parse {} as U512: {}", ARG_NAME, error));
-
-        let mut runtime_args = RuntimeArgs::new();
-        runtime_args.insert(STANDARD_PAYMENT_ARG_NAME, arg);
-        Some(runtime_args)
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
-}
-
-fn args_from_simple_or_complex(
-    simple: Option<RuntimeArgs>,
-    complex: Option<RuntimeArgs>,
-) -> RuntimeArgs {
-    // We can have exactly zero or one of the two as `Some`.
-    match (simple, complex) {
-        (Some(args), None) | (None, Some(args)) => args,
-        (None, None) => RuntimeArgs::new(),
-        (Some(_), Some(_)) => unreachable!("should not have both simple and complex args"),
-    }
-}
-
-pub(super) fn parse_session_info(matches: &ArgMatches) -> ExecutableDeployItem {
-    let session_args = args_from_simple_or_complex(
-        arg_simple::session::get(matches),
-        args_complex::session::get(matches),
-    );
-
-    if let Some(name) = session_name::get(matches) {
-        return ExecutableDeployItem::StoredContractByName {
-            name,
-            args: session_args.to_bytes().expect("should serialize"),
-            entry_point: require_session_entry_point(matches),
-        };
-    }
-
-    if let Some(hash) = session_hash::get(matches) {
-        return ExecutableDeployItem::StoredContractByHash {
-            hash,
-            args: session_args.to_bytes().expect("should serialize"),
-            entry_point: require_session_entry_point(matches),
-        };
-    }
-
-    let version = session_version::get(matches);
-    if let Some(name) = session_package_name::get(matches) {
-        return ExecutableDeployItem::StoredVersionedContractByName {
-            name,
-            version, // defaults to highest enabled version
-            args: session_args.to_bytes().expect("should serialize"),
-            entry_point: require_session_entry_point(matches),
-        };
-    }
-
-    if let Some(hash) = session_package_hash::get(matches) {
-        return ExecutableDeployItem::StoredVersionedContractByHash {
-            hash,
-            version, // defaults to highest enabled version
-            args: session_args.to_bytes().expect("should serialize"),
-            entry_point: require_session_entry_point(matches),
-        };
-    }
-
-    if let Some(module_bytes) = session_path::get(matches) {
-        return ExecutableDeployItem::ModuleBytes {
-            module_bytes,
-            args: session_args.to_bytes().expect("should serialize"),
-        };
-    }
-
-    panic!(
-        "Expected at least one of --{}, --{}, --{}, --{} or --{}",
-        session_name::ARG_NAME,
-        session_hash::ARG_NAME,
-        session_package_name::ARG_NAME,
-        session_package_hash::ARG_NAME,
-        session_path::ARG_NAME,
-    );
-}
-
-fn parse_payment_info(matches: &ArgMatches) -> ExecutableDeployItem {
-    if let Some(payment_args) = standard_payment::get(matches) {
-        return ExecutableDeployItem::ModuleBytes {
-            module_bytes: vec![],
-            args: payment_args.to_bytes().expect("should serialize"),
-        };
-    }
-
-    let payment_args = args_from_simple_or_complex(
-        arg_simple::payment::get(matches),
-        args_complex::payment::get(matches),
-    );
-
-    if let Some(name) = payment_name::get(matches) {
-        return ExecutableDeployItem::StoredContractByName {
-            name,
-            args: payment_args.to_bytes().expect("should serialize"),
-            entry_point: require_payment_entry_point(matches),
-        };
-    }
-
-    if let Some(hash) = payment_hash::get(matches) {
-        return ExecutableDeployItem::StoredContractByHash {
-            hash,
-            args: payment_args.to_bytes().expect("should serialize"),
-            entry_point: require_payment_entry_point(matches),
-        };
-    }
-
-    let version = payment_version::get(matches);
-    if let Some(name) = payment_package_name::get(matches) {
-        return ExecutableDeployItem::StoredVersionedContractByName {
-            name,
-            version, // defaults to highest enabled version
-            args: payment_args.to_bytes().expect("should serialize"),
-            entry_point: require_payment_entry_point(matches),
-        };
-    }
-
-    if let Some(hash) = payment_package_hash::get(matches) {
-        return ExecutableDeployItem::StoredVersionedContractByHash {
-            hash,
-            version, // defaults to highest enabled version
-            args: payment_args.to_bytes().expect("should serialize"),
-            entry_point: require_payment_entry_point(matches),
-        };
-    }
-
-    if let Some(module_bytes) = payment_path::get(matches) {
-        return ExecutableDeployItem::ModuleBytes {
-            module_bytes,
-            args: payment_args.to_bytes().expect("should serialize"),
-        };
-    }
-
-    panic!(
-        "Expected at least one of --{}, --{}, --{}, --{}, --{} or --{}",
-        standard_payment::ARG_NAME,
-        payment_name::ARG_NAME,
-        payment_hash::ARG_NAME,
-        payment_package_name::ARG_NAME,
-        payment_package_hash::ARG_NAME,
-        payment_path::ARG_NAME,
-    );
-}
-
-fn require_session_entry_point(matches: &ArgMatches) -> String {
-    session_entry_point::get(matches)
-        .unwrap_or_else(|| panic!("{} must be present", session_entry_point::ARG_NAME,))
-}
-
-fn require_payment_entry_point(matches: &ArgMatches) -> String {
-    payment_entry_point::get(matches)
-        .unwrap_or_else(|| panic!("{} must be present", payment_entry_point::ARG_NAME,))
 }
 
 pub(super) fn apply_common_creation_options<'a, 'b>(
@@ -904,7 +626,7 @@ pub(crate) fn apply_common_payment_options(
     subcommand: App<'static, 'static>,
 ) -> App<'static, 'static> {
     subcommand
-        .arg(standard_payment::arg())
+        .arg(standard_payment_amount::arg())
         .arg(payment_path::arg())
         .arg(payment_package_hash::arg())
         .arg(payment_package_name::arg())
@@ -923,7 +645,7 @@ pub(crate) fn apply_common_payment_options(
         .arg(payment_version::arg())
         .group(
             ArgGroup::with_name("payment")
-                .arg(standard_payment::ARG_NAME)
+                .arg(standard_payment_amount::ARG_NAME)
                 .arg(payment_path::ARG_NAME)
                 .arg(payment_package_hash::ARG_NAME)
                 .arg(payment_package_name::ARG_NAME)
@@ -939,39 +661,6 @@ pub(super) fn show_arg_examples_and_exit_if_required(matches: &ArgMatches<'_>) {
     if show_arg_examples::get(matches) {
         process::exit(0);
     }
-}
-
-pub(super) fn parse_deploy(matches: &ArgMatches<'_>, session: ExecutableDeployItem) -> Deploy {
-    let secret_key = common::secret_key::get(matches);
-    let timestamp = timestamp::get(matches);
-    let ttl = ttl::get(matches);
-    let gas_price = gas_price::get(matches);
-    let dependencies = dependencies::get(matches);
-    let chain_name = chain_name::get(matches);
-
-    let mut rng = rand::thread_rng();
-
-    let payment = parse_payment_info(matches);
-
-    Deploy::new(
-        timestamp,
-        ttl,
-        gas_price,
-        dependencies,
-        chain_name,
-        payment,
-        session,
-        &secret_key,
-        &mut rng,
-    )
-}
-
-pub(super) fn construct_deploy(
-    matches: &ArgMatches<'_>,
-    session: ExecutableDeployItem,
-) -> PutDeployParams {
-    let deploy = parse_deploy(matches, session);
-    PutDeployParams { deploy }
 }
 
 pub(super) mod output {
@@ -992,31 +681,8 @@ pub(super) mod output {
             .display_order(DisplayOrder::Output as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<String> {
-        matches.value_of(ARG_NAME).map(|v| v.to_string())
-    }
-
-    /// Creates a Write trait object for File or Stdout respective to the path value passed
-    /// Stdout is used when None
-    pub fn output_or_stdout(maybe_path: &Option<String>) -> io::Result<Box<dyn Write>> {
-        match maybe_path {
-            Some(output_path) => File::create(&output_path).map(|f| Box::new(f) as Box<dyn Write>),
-            None => Ok(Box::new(std::io::stdout()) as Box<dyn Write>),
-        }
-    }
-
-    /// Write the deploy to a file, or if maybe_path is None, stdout
-    pub fn write_deploy(deploy: &Deploy, maybe_path: Option<String>) {
-        let target = maybe_path.clone().unwrap_or_else(|| "stdout".to_string());
-        let mut out = output_or_stdout(&maybe_path)
-            .unwrap_or_else(|error| panic!("unable to open {} : {:?}", target, error));
-        let content = serde_json::to_string_pretty(deploy)
-            .unwrap_or_else(|error| panic!("failed to encode deploy to json: {}", error));
-        match out.write_all(content.as_bytes()) {
-            Ok(_) if target == "stdout" => {}
-            Ok(_) => println!("Successfully wrote deploy to file {}", target),
-            Err(err) => panic!("error writing deploy to {}: {}", target, err),
-        }
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
@@ -1038,45 +704,14 @@ pub(super) mod input {
             .display_order(DisplayOrder::Input as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> String {
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
-    }
-
-    /// Read a deploy from a file
-    pub fn read_deploy(input_path: &str) -> Deploy {
-        let input = common::read_file(&input_path);
-        let input = String::from_utf8(input).unwrap_or_else(|error| {
-            panic!(
-                "failed to parse as utf-8 for deploy file {}: {}",
-                input_path, error
-            )
-        });
-        serde_json::from_str(input.as_str()).unwrap_or_else(|error| {
-            panic!(
-                "failed to decode from json for deploy file {}: {}",
-                input_path, error
-            )
-        })
     }
 }
 
-fn get_contract_hash(name: &str, matches: &ArgMatches) -> Option<ContractHash> {
-    if let Some(value) = matches.value_of(name) {
-        if let Ok(digest) = Digest::from_hex(value) {
-            return Some(digest.to_array());
-        }
-        if let Ok(Key::Hash(hash)) = Key::from_formatted_str(value) {
-            return Some(hash);
-        }
-        panic!("Failed to parse {} as a contract hash", value);
-    }
-    None
-}
-
-mod session_hash {
+pub(super) mod session_hash {
     use super::*;
 
     pub const ARG_NAME: &str = "session-hash";
@@ -1093,12 +728,12 @@ mod session_hash {
             .display_order(DisplayOrder::SessionHash as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<ContractHash> {
-        get_contract_hash(ARG_NAME, matches)
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
-mod session_name {
+pub(super) mod session_name {
     use super::*;
 
     pub const ARG_NAME: &str = "session-name";
@@ -1115,12 +750,12 @@ mod session_name {
             .display_order(DisplayOrder::SessionName as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<String> {
-        matches.value_of(ARG_NAME).map(str::to_string)
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
-mod session_package_hash {
+pub(super) mod session_package_hash {
     use super::*;
 
     pub const ARG_NAME: &str = "session-package-hash";
@@ -1137,12 +772,12 @@ mod session_package_hash {
             .display_order(DisplayOrder::SessionPackageHash as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<ContractHash> {
-        get_contract_hash(ARG_NAME, matches)
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
-mod session_package_name {
+pub(super) mod session_package_name {
     use super::*;
 
     pub const ARG_NAME: &str = "session-package-name";
@@ -1159,12 +794,12 @@ mod session_package_name {
             .display_order(DisplayOrder::SessionPackageName as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<String> {
-        matches.value_of(ARG_NAME).map(str::to_string)
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
-mod session_entry_point {
+pub(super) mod session_entry_point {
     use super::*;
 
     pub const ARG_NAME: &str = "session-entry-point";
@@ -1180,12 +815,12 @@ mod session_entry_point {
             .display_order(DisplayOrder::SessionEntryPoint as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<String> {
-        matches.value_of(ARG_NAME).map(str::to_string)
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
-mod session_version {
+pub(super) mod session_version {
     use super::*;
 
     pub const ARG_NAME: &str = "session-version";
@@ -1201,15 +836,12 @@ mod session_version {
             .display_order(DisplayOrder::SessionVersion as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<u32> {
-        matches
-            .value_of(ARG_NAME)
-            .map(|s| s.parse::<u32>().ok())
-            .flatten()
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
-mod payment_hash {
+pub(super) mod payment_hash {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-hash";
@@ -1226,12 +858,12 @@ mod payment_hash {
             .display_order(DisplayOrder::PaymentHash as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<ContractHash> {
-        get_contract_hash(ARG_NAME, matches)
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
-mod payment_name {
+pub(super) mod payment_name {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-name";
@@ -1249,12 +881,12 @@ mod payment_name {
             .display_order(DisplayOrder::PaymentName as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<String> {
-        matches.value_of(ARG_NAME).map(str::to_string)
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
-mod payment_package_hash {
+pub(super) mod payment_package_hash {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-package-hash";
@@ -1271,12 +903,12 @@ mod payment_package_hash {
             .display_order(DisplayOrder::PaymentPackageHash as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<ContractHash> {
-        get_contract_hash(ARG_NAME, matches)
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
-mod payment_package_name {
+pub(super) mod payment_package_name {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-package-name";
@@ -1293,12 +925,12 @@ mod payment_package_name {
             .display_order(DisplayOrder::PaymentPackageName as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<String> {
-        matches.value_of(ARG_NAME).map(str::to_string)
+    pub fn get<'a>(matches: &'a ArgMatches) -> Option<&'a str> {
+        matches.value_of(ARG_NAME)
     }
 }
 
-mod payment_entry_point {
+pub(super) mod payment_entry_point {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-entry-point";
@@ -1314,12 +946,12 @@ mod payment_entry_point {
             .display_order(DisplayOrder::PaymentEntryPoint as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<String> {
-        matches.value_of(ARG_NAME).map(str::to_string)
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
-mod payment_version {
+pub(super) mod payment_version {
     use super::*;
 
     pub const ARG_NAME: &str = "payment-version";
@@ -1335,10 +967,7 @@ mod payment_version {
             .display_order(DisplayOrder::PaymentVersion as usize)
     }
 
-    pub fn get(matches: &ArgMatches) -> Option<u32> {
-        matches
-            .value_of(ARG_NAME)
-            .map(|s| s.parse::<u32>().ok())
-            .flatten()
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }

@@ -10,14 +10,15 @@ use casper_execution_engine::{
     core::engine_state::{self, BalanceResult, GetEraValidatorsError, QueryResult},
     storage::protocol_data::ProtocolData,
 };
-use casper_types::auction::ValidatorWeights;
+use casper_types::auction::EraValidators;
 
 use crate::{
     components::{small_network::NodeId, storage::DeployMetadata},
     effect::{requests::ApiRequest, Responder},
+    rpcs::chain::BlockIdentifier,
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-        FinalizedBlock,
+        DeployHeader, FinalizedBlock,
     },
 };
 
@@ -26,7 +27,7 @@ pub enum Event {
     #[from]
     ApiRequest(ApiRequest<NodeId>),
     GetBlockResult {
-        maybe_hash: Option<BlockHash>,
+        maybe_id: Option<BlockIdentifier>,
         result: Box<Option<Block>>,
         main_responder: Responder<Option<Block>>,
     },
@@ -39,8 +40,8 @@ pub enum Event {
         main_responder: Responder<Result<QueryResult, engine_state::Error>>,
     },
     QueryEraValidatorsResult {
-        result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
-        main_responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
+        result: Result<EraValidators, GetEraValidatorsError>,
+        main_responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
     GetDeployResult {
         hash: DeployHash,
@@ -66,6 +67,7 @@ pub enum Event {
     },
     DeployProcessed {
         deploy_hash: DeployHash,
+        deploy_header: Box<DeployHeader>,
         block_hash: BlockHash,
         execution_result: ExecutionResult,
     },
@@ -76,12 +78,17 @@ impl Display for Event {
         match self {
             Event::ApiRequest(request) => write!(formatter, "{}", request),
             Event::GetBlockResult {
-                maybe_hash: Some(hash),
+                maybe_id: Some(BlockIdentifier::Hash(hash)),
                 result,
                 ..
             } => write!(formatter, "get block result for {}: {:?}", hash, result),
             Event::GetBlockResult {
-                maybe_hash: None,
+                maybe_id: Some(BlockIdentifier::Height(height)),
+                result,
+                ..
+            } => write!(formatter, "get block result for {}: {:?}", height, result),
+            Event::GetBlockResult {
+                maybe_id: None,
                 result,
                 ..
             } => write!(formatter, "get latest block result: {:?}", result),

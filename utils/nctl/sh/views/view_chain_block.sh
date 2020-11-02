@@ -41,16 +41,13 @@ node=${node:-1}
 # Main
 #######################################
 
-node_address=$(get_node_address $net $node)
-log "network #$net :: node #$node :: $node_address :: block:"
-curl -s --header 'Content-Type: application/json' \
-    --request POST $(get_node_address_rpc $net $node) \
-    --data-raw '{
-        "id": 1,
-        "jsonrpc": "2.0",
-        "method": "chain_get_block",
-        "params": {
-            "block_hash":"'$block_hash'"
-        }
-    }' \
-    | jq '.result.block'
+if [ "$block_hash" ]; then
+    $NCTL/assets/net-$net/bin/casper-client get-block \
+        --node-address $(get_node_address $net $node) \
+        --block-identifier $block_hash \
+        | jq '.result.block'
+else
+    $NCTL/assets/net-$net/bin/casper-client get-block \
+        --node-address $(get_node_address $net $node) \
+        | jq '.result.block'
+fi

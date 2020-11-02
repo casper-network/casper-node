@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 #
-# Renders a network faucet account key.
+# Renders a state root hash.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
+#   Node ordinal identifier.
 
 # Import utils.
 source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils/queries.sh
 
 #######################################
 # Destructure input args.
 #######################################
 
 # Unset to avoid parameter collisions.
+unset block_hash
 unset net
 unset node
 
@@ -22,6 +25,7 @@ do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
+        block) block_hash=${VALUE} ;;
         net) net=${VALUE} ;;
         node) node=${VALUE} ;;
         *)
@@ -36,12 +40,6 @@ node=${node:-1}
 # Main
 #######################################
 
-curl -s --header 'Content-Type: application/json' \
-    --request POST $(get_node_address_rpc $net $node) \
-    --data-raw '{
-        "id": 1,
-        "jsonrpc": "2.0",
-        "method": "chain_get_block"
-    }' \
-    | jq '.result.block.header.state_root_hash' \
-    | sed -e 's/^"//' -e 's/"$//'
+node_address=$(get_node_address $net $node)
+state_root_hash=$(get_state_root_hash $net $node $block)
+log "STATE ROOT HASH @ "$node_address" :: "$state_root_hash

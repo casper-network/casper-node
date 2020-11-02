@@ -1,5 +1,10 @@
 # Change Log
 
+## casper-node_1.5.0_amd64.deb
+
+ - pre-Delta test release
+ - debian packaging enhancement for automatic configuration.
+
 ## casper-node_1.4.0_amd64.deb
 
  - pre-Delta test release

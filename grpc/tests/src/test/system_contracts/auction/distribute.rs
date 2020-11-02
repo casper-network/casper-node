@@ -119,7 +119,7 @@ fn should_distribute_delegation_rate_zero() {
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
     let participant_portion = Ratio::new(U512::one(), U512::from(3));
-    let remainders = Ratio::from(U512::zero());
+    let remainders = Ratio::from(U512::one());
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -289,7 +289,7 @@ fn should_distribute_delegation_rate_half() {
 
     // Validator share
     let validator_share = Ratio::new(U512::from(2), U512::from(3));
-    let remainders = Ratio::from(U512::zero());
+    let remainders = Ratio::from(U512::from(2));
 
     // Delegator shares
     let delegator_shares = Ratio::new(U512::one(), U512::from(6));
@@ -875,18 +875,16 @@ fn should_distribute_by_factor() {
 
     let validator_2_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
-    let expected_validator_2_balance =
-        (expected_total_reward * one_third - U512::one()).to_integer();
+    let expected_validator_2_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_2_balance, expected_validator_2_balance);
 
     let validator_3_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
-    let expected_validator_3_balance =
-        (expected_total_reward * one_third - U512::one()).to_integer();
+    let expected_validator_3_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
     let total_payout = validator_1_balance + validator_2_balance + validator_3_balance;
-    let rounded_amount = U512::from(2);
+    let rounded_amount = U512::one();
     assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
 }
 
@@ -1032,18 +1030,16 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     let validator_2_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
-    let expected_validator_2_balance =
-        (expected_total_reward * one_third - U512::one()).to_integer();
+    let expected_validator_2_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_2_balance, expected_validator_2_balance);
 
     let validator_3_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
-    let expected_validator_3_balance =
-        (expected_total_reward * one_third - U512::one()).to_integer();
+    let expected_validator_3_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
     let total_payout = validator_1_balance + validator_2_balance + validator_3_balance;
-    let rounded_amount = U512::from(2);
+    let rounded_amount = U512::from(1);
     assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
 }
 
@@ -1469,7 +1465,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let delegator_1_validator_2_portion = Ratio::new(U512::from(1), U512::from(12));
     let delegator_1_validator_3_portion = Ratio::new(U512::from(1), U512::from(12));
 
-    let remainder = U512::from(2);
+    let remainder = U512::one();
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1662,8 +1658,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_1_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
-    let expected_validator_1_balance =
-        (expected_total_reward * validator_1_portion + U512::zero()).to_integer();
+    let expected_validator_1_balance = (expected_total_reward * validator_1_portion).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let validator_2_balance =

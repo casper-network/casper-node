@@ -34,7 +34,7 @@ impl<C: Context> Block<C> {
         let height = parent.height + 1;
         for i in 0..height.trailing_zeros() as usize {
             let ancestor = state.block(&skip_idx[i]);
-            skip_idx.push(ancestor.skip_idx[i].clone());
+            skip_idx.push(ancestor.skip_idx[i]);
         }
         Block {
             height,

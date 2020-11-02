@@ -12,7 +12,7 @@ use crate::{
     components::small_network::GossipedAddress,
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-        FinalizedBlock, Item, ProtoBlock,
+        DeployHeader, FinalizedBlock, Item, ProtoBlock,
     },
     utils::Source,
 };
@@ -156,7 +156,7 @@ pub enum BlockExecutorAnnouncement {
         /// The block.
         block: Block,
         /// The results of executing the deploys in this block.
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     },
 }
 

@@ -59,6 +59,7 @@ user=${user:-1}
 
 # Set vars.
 bidder_secret_key=$path_net/users/user-$user/secret_key.pem
+bidder_public_key=$(cat $path_net/users/user-$user/public_key_hex)
 contract_name="add_bid.wasm"
 node_address=$(get_node_address $net $node)
 path_net=$NCTL/assets/net-$net
@@ -84,11 +85,13 @@ deploy_hash=$(
         --node-address $node_address \
         --payment-amount $gas_payment \
         --secret-key $bidder_secret_key \
+        --session-arg="public_key:public_key='$bidder_public_key'" \
         --session-arg "amount:u512='$amount'" \
         --session-arg "delegation_rate:u64='$delegation_rate'" \
         --session-path $path_contract \
-        --ttl "1day" | \
-        python3 -c "import sys, json; print(json.load(sys.stdin)['deploy_hash'])"
+        --ttl "1day" \
+        | jq '.result.deploy_hash' \
+        | sed -e 's/^"//' -e 's/"$//'
     )
 
 # Display deploy hash.

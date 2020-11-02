@@ -7,21 +7,24 @@ use casper_types::{
     account::{AccountHash, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
-    AccessRights, CLValue, Contract, EntryPoints, Key, ProtocolVersion, URef,
+    AccessRights, CLValue, Contract, EntryPoints, Key, ProtocolVersion, URef, U512,
 };
 
 use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
 };
 use crate::{
-    core::engine_state::op::Op,
+    core::{engine_state::op::Op, ValidationError},
     shared::{
         account::{Account, AssociatedKeys},
-        newtypes::CorrelationId,
+        newtypes::{Blake2bHash, CorrelationId},
         stored_value::{gens::stored_value_arb, StoredValue},
         transform::Transform,
     },
-    storage::global_state::{in_memory::InMemoryGlobalState, StateProvider, StateReader},
+    storage::{
+        global_state::{in_memory::InMemoryGlobalState, StateProvider, StateReader},
+        trie::merkle_proof::TrieMerkleProof,
+    },
 };
 
 struct CountingDb {
@@ -59,6 +62,14 @@ impl StateReader<Key, StoredValue> for CountingDb {
         };
         self.count.set(count + 1);
         Ok(Some(value))
+    }
+
+    fn read_with_proof(
+        &self,
+        _correlation_id: CorrelationId,
+        _key: &Key,
+    ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
+        Ok(None)
     }
 }
 
@@ -295,8 +306,8 @@ proptest! {
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let empty_path = Vec::new();
-        if let Ok(TrackingCopyQueryResult::Success(result)) = tc.query(correlation_id, k, &empty_path) {
-            assert_eq!(v, result);
+        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query(correlation_id, k, &empty_path) {
+            assert_eq!(v, value);
         } else {
             panic!("Query failed when it should not have!");
         }
@@ -335,8 +346,8 @@ proptest! {
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let path = vec!(name.clone());
-        if let Ok(TrackingCopyQueryResult::Success(result)) = tc.query(correlation_id, contract_key, &path) {
-            assert_eq!(v, result);
+        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query(correlation_id, contract_key, &path) {
+            assert_eq!(v, value);
         } else {
             panic!("Query failed when it should not have!");
         }
@@ -377,8 +388,8 @@ proptest! {
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let path = vec!(name.clone());
-        if let Ok(TrackingCopyQueryResult::Success(result)) = tc.query(correlation_id, account_key, &path) {
-            assert_eq!(v, result);
+        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query(correlation_id, account_key, &path) {
+            assert_eq!(v, value);
         } else {
             panic!("Query failed when it should not have!");
         }
@@ -436,9 +447,9 @@ proptest! {
         let tc = TrackingCopy::new(view);
         let path = vec!(contract_name, state_name);
 
-        let result =  tc.query(correlation_id, account_key, &path);
-        if let Ok(TrackingCopyQueryResult::Success(result)) = result {
-            assert_eq!(v, result);
+        let results =  tc.query(correlation_id, account_key, &path);
+        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = results {
+            assert_eq!(v, value);
         } else {
             panic!("Query failed when it should not have!");
         }
@@ -545,4 +556,237 @@ fn query_for_circular_references_should_fail() {
     } else {
         panic!("Query didn't fail with a circular reference error");
     }
+}
+
+#[test]
+fn validate_query_proof_should_work() {
+    // create account
+    let account_hash = AccountHash::new([3; 32]);
+    let fake_purse = URef::new([4; 32], AccessRights::READ_ADD_WRITE);
+    let account_value = StoredValue::Account(Account::create(
+        account_hash,
+        NamedKeys::default(),
+        fake_purse,
+    ));
+    let account_key = Key::Account(account_hash);
+
+    // create contract that refers to that account
+    let account_name = "account".to_string();
+    let named_keys = {
+        let mut tmp = NamedKeys::new();
+        tmp.insert(account_name.clone(), account_key);
+        tmp
+    };
+    let contract_value = StoredValue::Contract(Contract::new(
+        [2; 32],
+        [3; 32],
+        named_keys,
+        EntryPoints::default(),
+        ProtocolVersion::V1_0_0,
+    ));
+    let contract_key = Key::Hash([5; 32]);
+
+    // create account that refers to that contract
+    let account_hash = AccountHash::new([7; 32]);
+    let fake_purse = URef::new([6; 32], AccessRights::READ_ADD_WRITE);
+    let contract_name = "contract".to_string();
+    let named_keys = {
+        let mut tmp = NamedKeys::new();
+        tmp.insert(contract_name.clone(), contract_key);
+        tmp
+    };
+    let main_account_value =
+        StoredValue::Account(Account::create(account_hash, named_keys, fake_purse));
+    let main_account_key = Key::Account(account_hash);
+
+    // random value for proof injection attack
+    let cl_value = CLValue::from_t(U512::zero()).expect("should convert");
+    let uref_value = StoredValue::CLValue(cl_value);
+    let uref_key = Key::URef(URef::new([8; 32], AccessRights::READ_ADD_WRITE));
+
+    // persist them
+    let correlation_id = CorrelationId::new();
+    let (global_state, root_hash) = InMemoryGlobalState::from_pairs(
+        correlation_id,
+        &[
+            (account_key, account_value.to_owned()),
+            (contract_key, contract_value.to_owned()),
+            (main_account_key, main_account_value.to_owned()),
+            (uref_key, uref_value),
+        ],
+    )
+    .unwrap();
+
+    let view = global_state
+        .checkout(root_hash)
+        .expect("should checkout")
+        .expect("should have view");
+
+    let tracking_copy = TrackingCopy::new(view);
+
+    let path = &[contract_name, account_name];
+
+    let result = tracking_copy
+        .query(correlation_id, main_account_key, path)
+        .expect("should query");
+
+    let proofs = if let TrackingCopyQueryResult::Success { proofs, .. } = result {
+        proofs
+    } else {
+        panic!("query was not successful: {:?}", result)
+    };
+
+    // Happy path
+    crate::core::validate_query_proof(&root_hash, &proofs, &main_account_key, path, &account_value)
+        .expect("should validate");
+
+    // Path should be the same length as the proofs less one (so it should be of length 2)
+    assert_eq!(
+        crate::core::validate_query_proof(
+            &root_hash,
+            &proofs,
+            &main_account_key,
+            &[],
+            &account_value
+        ),
+        Err(ValidationError::PathLengthDifferentThanProofLessOne)
+    );
+
+    // Find an unexpected value after tracing the proof
+    assert_eq!(
+        crate::core::validate_query_proof(
+            &root_hash,
+            &proofs,
+            &main_account_key,
+            path,
+            &main_account_value
+        ),
+        Err(ValidationError::UnexpectedValue)
+    );
+
+    // Wrong key provided for the first entry in the proof
+    assert_eq!(
+        crate::core::validate_query_proof(&root_hash, &proofs, &account_key, path, &account_value),
+        Err(ValidationError::UnexpectedKey)
+    );
+
+    // Bad proof hash
+    assert_eq!(
+        crate::core::validate_query_proof(
+            &Blake2bHash::new(&[]),
+            &proofs,
+            &main_account_key,
+            path,
+            &account_value
+        ),
+        Err(ValidationError::InvalidProofHash)
+    );
+
+    // Provided path contains an unexpected key
+    assert_eq!(
+        crate::core::validate_query_proof(
+            &root_hash,
+            &proofs,
+            &main_account_key,
+            &[
+                "a non-existent path key 1".to_string(),
+                "a non-existent path key 2".to_string()
+            ],
+            &account_value
+        ),
+        Err(ValidationError::PathCold)
+    );
+
+    let misfit_result = tracking_copy
+        .query(correlation_id, uref_key, &[])
+        .expect("should query");
+
+    let misfit_proof = if let TrackingCopyQueryResult::Success { proofs, .. } = misfit_result {
+        proofs[0].to_owned()
+    } else {
+        panic!("query was not successful: {:?}", misfit_result)
+    };
+
+    // Proof has been subject to an injection
+    assert_eq!(
+        crate::core::validate_query_proof(
+            &root_hash,
+            &[
+                proofs[0].to_owned(),
+                misfit_proof.to_owned(),
+                proofs[2].to_owned()
+            ],
+            &main_account_key,
+            path,
+            &account_value
+        ),
+        Err(ValidationError::UnexpectedKey)
+    );
+
+    // Proof has been subject to an injection
+    assert_eq!(
+        crate::core::validate_query_proof(
+            &root_hash,
+            &[
+                misfit_proof.to_owned(),
+                proofs[1].to_owned(),
+                proofs[2].to_owned()
+            ],
+            &uref_key.normalize(),
+            path,
+            &account_value
+        ),
+        Err(ValidationError::PathCold)
+    );
+
+    // Proof has been subject to an injection
+    assert_eq!(
+        crate::core::validate_query_proof(
+            &root_hash,
+            &[misfit_proof, proofs[1].to_owned(), proofs[2].to_owned()],
+            &uref_key.normalize(),
+            path,
+            &account_value
+        ),
+        Err(ValidationError::PathCold)
+    );
+
+    let (misfit_global_state, misfit_root_hash) = InMemoryGlobalState::from_pairs(
+        correlation_id,
+        &[
+            (account_key, account_value.to_owned()),
+            (contract_key, contract_value),
+            (main_account_key, main_account_value),
+        ],
+    )
+    .unwrap();
+
+    let misfit_view = misfit_global_state
+        .checkout(misfit_root_hash)
+        .expect("should checkout")
+        .expect("should have view");
+
+    let misfit_tracking_copy = TrackingCopy::new(misfit_view);
+
+    let misfit_result = misfit_tracking_copy
+        .query(correlation_id, main_account_key, path)
+        .expect("should query");
+
+    let misfit_proof = if let TrackingCopyQueryResult::Success { proofs, .. } = misfit_result {
+        proofs[1].to_owned()
+    } else {
+        panic!("query was not successful: {:?}", misfit_result)
+    };
+
+    // Proof has been subject to an injection
+    assert_eq!(
+        crate::core::validate_query_proof(
+            &root_hash,
+            &[proofs[0].to_owned(), misfit_proof, proofs[2].to_owned()],
+            &main_account_key,
+            path,
+            &account_value
+        ),
+        Err(ValidationError::InvalidProofHash)
+    );
 }

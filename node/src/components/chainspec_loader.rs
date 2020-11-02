@@ -95,7 +95,7 @@ impl From<ChainspecLoader> for ChainspecInfo {
 }
 
 #[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
-pub(crate) struct ChainspecLoader {
+pub struct ChainspecLoader {
     chainspec: Chainspec,
     // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
     completed_successfully: Option<bool>,
@@ -147,6 +147,7 @@ where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
 {
     type Event = Event;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,

@@ -15,7 +15,7 @@ use casper_types::{bytesrepr, Key, ProtocolVersion};
 use crate::storage::{
     protocol_data::ProtocolData,
     transaction_source::{Transaction, TransactionSource},
-    trie::Trie,
+    trie::{merkle_proof::TrieMerkleProof, Trie},
     trie_store::{
         operations::{read, write, ReadResult, WriteResult},
         TrieStore,
@@ -29,6 +29,13 @@ pub trait StateReader<K, V> {
 
     /// Returns the state value from the corresponding key
     fn read(&self, correlation_id: CorrelationId, key: &K) -> Result<Option<V>, Self::Error>;
+
+    /// Returns the merkle proof of the state value from the corresponding key
+    fn read_with_proof(
+        &self,
+        correlation_id: CorrelationId,
+        key: &K,
+    ) -> Result<Option<TrieMerkleProof<K, V>>, Self::Error>;
 }
 
 #[derive(Debug)]

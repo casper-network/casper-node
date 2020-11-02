@@ -31,8 +31,8 @@ use tracing::{debug, error, warn};
 use casper_types::{
     account::AccountHash,
     auction::{
-        ValidatorWeights, ARG_ERA_ID, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, VALIDATOR_SLOTS_KEY,
+        EraValidators, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS,
+        ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
@@ -91,7 +91,7 @@ use crate::{
 pub const CONV_RATE: u64 = 10;
 
 lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(500_000_000_000u64 * CONV_RATE);
+    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000u64 * CONV_RATE);
 }
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -1042,13 +1042,22 @@ where
         state_hash: Blake2bHash,
         purse_uref: URef,
     ) -> Result<BalanceResult, Error> {
-        let mut tracking_copy = match self.tracking_copy(state_hash)? {
+        let tracking_copy = match self.tracking_copy(state_hash)? {
             Some(tracking_copy) => tracking_copy,
             None => return Ok(BalanceResult::RootNotFound),
         };
-        let balance_key = tracking_copy.get_purse_balance_key(correlation_id, purse_uref.into())?;
-        let balance = tracking_copy.get_purse_balance(correlation_id, balance_key)?;
-        Ok(BalanceResult::Success(balance.value()))
+        let (purse_balance_key, purse_proof) =
+            tracking_copy.get_purse_balance_key_with_proof(correlation_id, purse_uref.into())?;
+        let (balance, balance_proof) =
+            tracking_copy.get_purse_balance_with_proof(correlation_id, purse_balance_key)?;
+        let purse_proof = Box::new(purse_proof);
+        let balance_proof = Box::new(balance_proof);
+        let motes = balance.value();
+        Ok(BalanceResult::Success {
+            motes,
+            purse_proof,
+            balance_proof,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1924,7 +1933,7 @@ where
         &self,
         correlation_id: CorrelationId,
         get_era_validators_request: GetEraValidatorsRequest,
-    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError> {
+    ) -> Result<EraValidators, GetEraValidatorsError> {
         let protocol_version = get_era_validators_request.protocol_version();
 
         let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
@@ -1962,10 +1971,6 @@ where
 
         let executor = Executor::new(self.config);
 
-        let auction_args = runtime_args! {
-            ARG_ERA_ID => get_era_validators_request.era_id(),
-        };
-
         let mut named_keys = auction_contract.named_keys().to_owned();
         let base_key = Key::from(protocol_data.auction());
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
@@ -1987,34 +1992,35 @@ where
             Blake2bHash::new(&bytes).value()
         };
 
-        let (era_validators, execution_result): (
-            Option<Option<ValidatorWeights>>,
-            ExecutionResult,
-        ) = executor.exec_system_contract(
-            DirectSystemContractCall::GetEraValidators,
-            auction_module,
-            auction_args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            &virtual_system_account,
-            authorization_keys,
-            blocktime,
-            deploy_hash,
-            gas_limit,
-            protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            protocol_data,
-            SystemContractCache::clone(&self.system_contract_cache),
-        );
+        let (era_validators, execution_result): (Option<EraValidators>, ExecutionResult) = executor
+            .exec_system_contract(
+                DirectSystemContractCall::GetEraValidators,
+                auction_module,
+                runtime_args! {},
+                &mut named_keys,
+                Default::default(),
+                base_key,
+                &virtual_system_account,
+                authorization_keys,
+                blocktime,
+                deploy_hash,
+                gas_limit,
+                protocol_version,
+                correlation_id,
+                Rc::clone(&tracking_copy),
+                Phase::Session,
+                protocol_data,
+                SystemContractCache::clone(&self.system_contract_cache),
+            );
 
         if let Some(error) = execution_result.take_error() {
             return Err(error.into());
         }
 
-        Ok(era_validators.flatten())
+        match era_validators {
+            None => Err(GetEraValidatorsError::EraValidatorsMissing),
+            Some(era_validators) => Ok(era_validators),
+        }
     }
 
     pub fn commit_step(

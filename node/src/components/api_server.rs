@@ -20,7 +20,7 @@ mod rest_server;
 pub mod rpcs;
 mod sse_server;
 
-use std::fmt::Debug;
+use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
 use futures::join;
@@ -30,16 +30,17 @@ use tokio::sync::mpsc::{self, UnboundedSender};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, BalanceRequest, BalanceResult, GetEraValidatorsError, GetEraValidatorsRequest,
-        QueryRequest, QueryResult,
+        self, BalanceRequest, BalanceResult, GetEraValidatorsError, QueryRequest, QueryResult,
     },
     storage::protocol_data::ProtocolData,
 };
-use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
+use casper_types::{auction::EraValidators, Key, ProtocolVersion, URef};
+
+use self::rpcs::chain::BlockIdentifier;
 
 use super::Component;
 use crate::{
-    components::storage::Storage,
+    components::{contract_runtime::EraValidatorsRequest, storage::Storage},
     crypto::hash::Digest,
     effect::{
         announcements::ApiServerAnnouncement,
@@ -146,18 +147,16 @@ impl ApiServer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         state_root_hash: Digest,
-        era_id: u64,
         protocol_version: ProtocolVersion,
-        responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
+        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     ) -> Effects<Event> {
-        let request =
-            GetEraValidatorsRequest::new(state_root_hash.into(), era_id, protocol_version);
-        effect_builder.get_validators(request).event(move |result| {
-            Event::QueryEraValidatorsResult {
+        let request = EraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+        effect_builder
+            .get_era_validators(request)
+            .event(move |result| Event::QueryEraValidatorsResult {
                 result,
                 main_responder: responder,
-            }
-        })
+            })
     }
 
     fn handle_get_balance<REv: ReactorEventT>(
@@ -197,6 +196,7 @@ where
         + Send,
 {
     type Event = Event;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -211,22 +211,32 @@ where
                 effects
             }
             Event::ApiRequest(ApiRequest::GetBlock {
-                maybe_hash: Some(hash),
+                maybe_id: Some(BlockIdentifier::Hash(hash)),
                 responder,
             }) => effect_builder
                 .get_block_from_storage(hash)
                 .event(move |result| Event::GetBlockResult {
-                    maybe_hash: Some(hash),
+                    maybe_id: Some(BlockIdentifier::Hash(hash)),
                     result: Box::new(result),
                     main_responder: responder,
                 }),
             Event::ApiRequest(ApiRequest::GetBlock {
-                maybe_hash: None,
+                maybe_id: Some(BlockIdentifier::Height(height)),
+                responder,
+            }) => effect_builder
+                .get_block_at_height(height)
+                .event(move |result| Event::GetBlockResult {
+                    maybe_id: Some(BlockIdentifier::Height(height)),
+                    result: Box::new(result),
+                    main_responder: responder,
+                }),
+            Event::ApiRequest(ApiRequest::GetBlock {
+                maybe_id: None,
                 responder,
             }) => effect_builder
                 .get_highest_block()
                 .event(move |result| Event::GetBlockResult {
-                    maybe_hash: None,
+                    maybe_id: None,
                     result: Box::new(result),
                     main_responder: responder,
                 }),
@@ -242,13 +252,11 @@ where
             }) => self.handle_query(effect_builder, state_root_hash, base_key, path, responder),
             Event::ApiRequest(ApiRequest::QueryEraValidators {
                 state_root_hash,
-                era_id,
                 protocol_version,
                 responder,
             }) => self.handle_era_validators(
                 effect_builder,
                 state_root_hash,
-                era_id,
                 protocol_version,
                 responder,
             ),
@@ -287,7 +295,7 @@ where
                     main_responder: responder,
                 }),
             Event::GetBlockResult {
-                maybe_hash: _,
+                maybe_id: _,
                 result,
                 main_responder,
             } => main_responder.respond(*result).ignore(),
@@ -332,10 +340,15 @@ where
             }),
             Event::DeployProcessed {
                 deploy_hash,
+                deploy_header,
                 block_hash,
                 execution_result,
             } => self.broadcast(SseData::DeployProcessed {
                 deploy_hash,
+                account: *deploy_header.account(),
+                timestamp: deploy_header.timestamp(),
+                ttl: deploy_header.ttl(),
+                dependencies: deploy_header.dependencies().clone(),
                 block_hash,
                 execution_result,
             }),

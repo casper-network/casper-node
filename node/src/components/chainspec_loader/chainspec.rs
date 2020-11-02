@@ -293,7 +293,7 @@ impl GenesisConfig {
 
 #[derive(Copy, Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ActivationPoint {
-    pub(crate) rank: u64,
+    pub(crate) height: u64,
 }
 
 #[derive(Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -313,7 +313,7 @@ impl UpgradePoint {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let activation_point = ActivationPoint {
-            rank: rng.gen::<u8>() as u64,
+            height: rng.gen::<u8>() as u64,
         };
         let protocol_version = Version::new(
             rng.gen_range(10, 20),
@@ -576,7 +576,7 @@ mod tests {
         assert_eq!(spec.upgrades.len(), 2);
 
         let upgrade0 = &spec.upgrades[0];
-        assert_eq!(upgrade0.activation_point, ActivationPoint { rank: 23 });
+        assert_eq!(upgrade0.activation_point, ActivationPoint { height: 23 });
         assert_eq!(upgrade0.protocol_version, Version::from((0, 2, 0)));
         assert_eq!(
             upgrade0.upgrade_installer_bytes,
@@ -614,7 +614,7 @@ mod tests {
         assert_eq!(upgrade0.new_deploy_config.unwrap().block_gas_limit, 38);
 
         let upgrade1 = &spec.upgrades[1];
-        assert_eq!(upgrade1.activation_point, ActivationPoint { rank: 39 });
+        assert_eq!(upgrade1.activation_point, ActivationPoint { height: 39 });
         assert_eq!(upgrade1.protocol_version, Version::from((0, 3, 0)));
         assert!(upgrade1.upgrade_installer_bytes.is_none());
         assert!(upgrade1.upgrade_installer_args.is_none());

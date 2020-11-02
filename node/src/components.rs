@@ -4,12 +4,12 @@
 //! Each component has a unified interface, expressed by the `Component` trait.
 pub(crate) mod api_server;
 pub(crate) mod block_executor;
+pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
 pub(crate) mod chainspec_loader;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
-pub(crate) mod deploy_buffer;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
@@ -52,6 +52,9 @@ pub trait Component<REv> {
     ///
     /// The event type that is handled by the component.
     type Event;
+
+    /// Error emitted when constructing the component.
+    type ConstructionError;
 
     /// Processes an event, outputting zero or more effects.
     ///

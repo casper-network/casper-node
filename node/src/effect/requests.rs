@@ -16,7 +16,7 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         balance::{BalanceRequest, BalanceResult},
-        era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
+        era_validators::GetEraValidatorsError,
         execute_request::ExecuteRequest,
         execution_result::ExecutionResults,
         genesis::GenesisResult,
@@ -27,18 +27,23 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::{global_state::CommitResult, protocol_data::ProtocolData},
 };
-use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
+use casper_types::{
+    auction::{EraValidators, ValidatorWeights},
+    Key, ProtocolVersion, URef,
+};
 
 use super::Responder;
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
+        contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
         storage::{
             DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
         },
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
+    rpcs::chain::BlockIdentifier,
     types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
         Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
@@ -316,10 +321,10 @@ impl<S: StorageType> Display for StorageRequest<S> {
     }
 }
 
-/// A `DeployBuffer` request.
+/// A `BlockProposer` request.
 #[derive(Debug)]
 #[must_use]
-pub enum DeployBufferRequest {
+pub enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
     ListForInclusion {
         /// The instant for which the deploy is requested.
@@ -331,10 +336,10 @@ pub enum DeployBufferRequest {
     },
 }
 
-impl Display for DeployBufferRequest {
+impl Display for BlockProposerRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployBufferRequest::ListForInclusion {
+            BlockProposerRequest::ListForInclusion {
                 current_instant,
                 past_blocks,
                 responder: _,
@@ -366,7 +371,7 @@ pub enum ApiRequest<I> {
     /// `maybe_hash` is `None`, return the latest block.
     GetBlock {
         /// The hash of the block to be retrieved.
-        maybe_hash: Option<BlockHash>,
+        maybe_id: Option<BlockIdentifier>,
         /// Responder to call with the result.
         responder: Responder<Option<LinearBlock>>,
     },
@@ -385,12 +390,10 @@ pub enum ApiRequest<I> {
     QueryEraValidators {
         /// The global state hash.
         state_root_hash: Digest,
-        /// The era that auction state is requested from.
-        era_id: u64,
         /// The protocol version.
         protocol_version: ProtocolVersion,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
+        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
     /// Query the contract runtime for protocol version data.
     QueryProtocolData {
@@ -437,12 +440,14 @@ impl<I> Display for ApiRequest<I> {
         match self {
             ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
             ApiRequest::GetBlock {
-                maybe_hash: Some(hash),
+                maybe_id: Some(BlockIdentifier::Hash(hash)),
                 ..
             } => write!(formatter, "get {}", hash),
             ApiRequest::GetBlock {
-                maybe_hash: None, ..
-            } => write!(formatter, "get latest block"),
+                maybe_id: Some(BlockIdentifier::Height(height)),
+                ..
+            } => write!(formatter, "get {}", height),
+            ApiRequest::GetBlock { maybe_id: None, .. } => write!(formatter, "get latest block"),
             ApiRequest::QueryProtocolData {
                 protocol_version, ..
             } => write!(formatter, "protocol_version {}", protocol_version),
@@ -457,10 +462,8 @@ impl<I> Display for ApiRequest<I> {
                 state_root_hash, base_key, path
             ),
             ApiRequest::QueryEraValidators {
-                state_root_hash,
-                era_id,
-                ..
-            } => write!(formatter, "auction {}, era_id: {}", state_root_hash, era_id),
+                state_root_hash, ..
+            } => write!(formatter, "auction {}", state_root_hash),
             ApiRequest::GetBalance {
                 state_root_hash,
                 purse_uref,
@@ -533,10 +536,17 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the balance result.
         responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
-    /// Returns validator weights for given era.
+    /// Returns validator weights.
     GetEraValidators {
-        /// Get era validators request.
-        get_request: GetEraValidatorsRequest,
+        /// Get validators weights request.
+        request: EraValidatorsRequest,
+        /// Responder to call with the result.
+        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
+    },
+    /// Returns validator weights for given era.
+    GetValidatorWeightsByEraId {
+        /// Get validators weights request.
+        request: ValidatorWeightsByEraIdRequest,
         /// Responder to call with the result.
         responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
     },
@@ -588,8 +598,12 @@ impl Display for ContractRuntimeRequest {
                 balance_request, ..
             } => write!(formatter, "balance request: {:?}", balance_request),
 
-            ContractRuntimeRequest::GetEraValidators { get_request, .. } => {
-                write!(formatter, "get validator weights: {:?}", get_request)
+            ContractRuntimeRequest::GetEraValidators { request, .. } => {
+                write!(formatter, "get era validators: {:?}", request)
+            }
+
+            ContractRuntimeRequest::GetValidatorWeightsByEraId { request, .. } => {
+                write!(formatter, "get validator weights: {:?}", request)
             }
 
             ContractRuntimeRequest::Step { step_request, .. } => {
@@ -656,6 +670,9 @@ pub struct BlockValidationRequest<T, I> {
     ///
     /// Indicates whether or not validation was successful and returns `block` unchanged.
     pub(crate) responder: Responder<(bool, T)>,
+    /// A check will be performed against the deploys to ensure their timestamp is
+    /// older than or equal to the block itself.
+    pub(crate) block_timestamp: Timestamp,
 }
 
 impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {

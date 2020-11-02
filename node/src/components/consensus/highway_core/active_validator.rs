@@ -74,7 +74,7 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
-        timestamp: Timestamp,
+        start_time: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
         let mut av = ActiveValidator {
@@ -84,8 +84,13 @@ impl<C: Context> ActiveValidator<C> {
             next_timer: Timestamp::zero(),
             next_proposal: None,
         };
-        let effects = av.schedule_timer(timestamp, state);
+        let effects = av.schedule_timer(start_time, state);
         (av, effects)
+    }
+
+    /// Sets the next round exponent to the new value.
+    pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
+        self.next_round_exp = new_round_exp;
     }
 
     /// Returns actions a validator needs to take at the specified `timestamp`, with the given
@@ -224,7 +229,7 @@ impl<C: Context> ActiveValidator<C> {
         if timestamp < earliest_vote_time {
             warn!(%earliest_vote_time, %timestamp, "earliest_vote_time is greater than current time stamp");
             return false;
-        };
+        }
         let vote = state.vote(vhash);
         if vote.timestamp > timestamp {
             error!(%vote.timestamp, %timestamp, "added a vote with a future timestamp, should never happen");
@@ -262,7 +267,7 @@ impl<C: Context> ActiveValidator<C> {
         } else {
             panorama = vote.panorama.clone();
         }
-        panorama[vote.creator] = Observation::Correct(vhash.clone());
+        panorama[vote.creator] = Observation::Correct(*vhash);
         for faulty_v in state.faulty_validators() {
             panorama[faulty_v] = Observation::Faulty;
         }
@@ -290,6 +295,8 @@ impl<C: Context> ActiveValidator<C> {
             panorama = state.panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
+        // TODO: After LNC we won't always need all known endorsements.
+        let endorsed = state.endorsements().collect();
         let wvote = WireVote {
             panorama,
             creator: self.vidx,
@@ -298,6 +305,7 @@ impl<C: Context> ActiveValidator<C> {
             seq_number,
             timestamp,
             round_exp: self.round_exp(state, timestamp),
+            endorsed,
         };
         SignedWireVote::new(wvote, &self.secret, rng)
     }

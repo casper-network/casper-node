@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::{Deserialize, Serialize};
+
 use casper_types::{
     account::{
         AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight, MAX_ASSOCIATED_KEYS,
@@ -7,7 +9,7 @@ use casper_types::{
     bytesrepr::{Error, FromBytes, ToBytes},
 };
 
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Debug)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct AssociatedKeys(BTreeMap<AccountHash, Weight>);
 
 impl AssociatedKeys {

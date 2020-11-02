@@ -105,7 +105,9 @@ impl State<TestContext> {
             TEST_BLOCK_REWARD,
             TEST_BLOCK_REWARD / 5,
             4,
+            4,
             u64::MAX,
+            Timestamp::from(u64::MAX),
             Timestamp::from(u64::MAX),
         );
         State::new(weights, params, vec![])
@@ -155,6 +157,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         seq_number: 3,
         timestamp: 51.into(),
         round_exp: 4u8,
+        endorsed: vec![],
     };
     let vote = SignedWireVote::new(wvote.clone(), &BOB_SEC, &mut rng);
     let opt_err = state.add_vote(vote).err().map(vote_err);
@@ -210,7 +213,9 @@ fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
         TEST_BLOCK_REWARD,
         TEST_BLOCK_REWARD / 5,
         4,
+        4,
         u64::MAX,
+        Timestamp::from(u64::MAX),
         Timestamp::from(u64::MAX),
     );
     // Everyone already knows Alice is faulty, so she is banned.

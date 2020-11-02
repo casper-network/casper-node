@@ -12,10 +12,9 @@ use warp_json_rpc::Builder;
 
 use casper_execution_engine::{
     core::engine_state::{BalanceResult, QueryResult},
-    shared::stored_value,
     storage::protocol_data::ProtocolData,
 };
-use casper_types::{Key, ProtocolVersion, URef, U512};
+use casper_types::{bytesrepr::ToBytes, Key, ProtocolVersion, URef, U512};
 
 use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams, RpcWithParamsExt};
 use crate::{
@@ -23,6 +22,7 @@ use crate::{
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
+    rpcs::{RpcWithoutParams, RpcWithoutParamsExt},
     types::{
         json_compatibility::{AuctionState, StoredValue},
         Block,
@@ -47,6 +47,8 @@ pub struct GetItemResult {
     pub api_version: Version,
     /// The stored value.
     pub stored_value: StoredValue,
+    /// The merkle proof.
+    pub merkle_proof: String,
 }
 
 /// "state_get_item" RPC.
@@ -92,9 +94,10 @@ impl RpcWithParamsExt for GetItem {
                 )
                 .await;
 
-            // Extract the EE `StoredValue` from the result.
-            let ee_stored_value = match query_result {
-                Ok(QueryResult::Success(stored_value)) => stored_value,
+            // Extract the EE `(StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>)` from the
+            // result.
+            let (value, proof) = match query_result {
+                Ok(QueryResult::Success { value, proofs }) => (value, proofs),
                 Ok(query_result) => {
                     let error_msg = format!("state query failed: {:?}", query_result);
                     info!("{}", error_msg);
@@ -104,7 +107,7 @@ impl RpcWithParamsExt for GetItem {
                     ))?);
                 }
                 Err(error) => {
-                    let error_msg = format!("state query failed to execute: {}", error);
+                    let error_msg = format!("state query failed to execute: {:?}", error);
                     info!("{}", error_msg);
                     return Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::QueryFailedToExecute as i64,
@@ -113,20 +116,29 @@ impl RpcWithParamsExt for GetItem {
                 }
             };
 
-            // Return the result.
-            match StoredValue::try_from(&ee_stored_value) {
-                Ok(stored_value) => {
-                    let result = Self::ResponseResult {
-                        api_version: CLIENT_API_VERSION.clone(),
-                        stored_value,
-                    };
-                    Ok(response_builder.success(result)?)
-                }
+            let value_compat = match StoredValue::try_from(&*value) {
+                Ok(value_compat) => value_compat,
                 Err(error) => {
                     info!("failed to encode stored value: {}", error);
                     return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
                 }
-            }
+            };
+
+            let proof_bytes = match proof.to_bytes() {
+                Ok(proof_bytes) => proof_bytes,
+                Err(error) => {
+                    info!("failed to encode stored value: {}", error);
+                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
+                }
+            };
+
+            let result = Self::ResponseResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                stored_value: value_compat,
+                merkle_proof: hex::encode(proof_bytes),
+            };
+
+            Ok(response_builder.success(result)?)
         }
         .boxed()
     }
@@ -148,6 +160,8 @@ pub struct GetBalanceResult {
     pub api_version: Version,
     /// The balance value.
     pub balance_value: U512,
+    /// The merkle proof.
+    pub merkle_proof: String,
 }
 
 /// "state_get_balance" RPC.
@@ -192,8 +206,12 @@ impl RpcWithParamsExt for GetBalance {
                 )
                 .await;
 
-            let balance_value = match balance_result {
-                Ok(BalanceResult::Success(value)) => value,
+            let (balance_value, purse_proof, balance_proof) = match balance_result {
+                Ok(BalanceResult::Success {
+                    motes,
+                    purse_proof,
+                    balance_proof,
+                }) => (motes, purse_proof, balance_proof),
                 Ok(balance_result) => {
                     let error_msg = format!("get-balance failed: {:?}", balance_result);
                     info!("{}", error_msg);
@@ -212,10 +230,21 @@ impl RpcWithParamsExt for GetBalance {
                 }
             };
 
+            let proof_bytes = match (*purse_proof, *balance_proof).to_bytes() {
+                Ok(proof_bytes) => proof_bytes,
+                Err(error) => {
+                    info!("failed to encode stored value: {}", error);
+                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
+                }
+            };
+
+            let merkle_proof = hex::encode(proof_bytes);
+
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 balance_value,
+                merkle_proof,
             };
             Ok(response_builder.success(result)?)
         }
@@ -224,10 +253,6 @@ impl RpcWithParamsExt for GetBalance {
 }
 
 // auction info
-
-/// Params for "state_get_auction_info" RPC request.
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct GetAuctionInfoParams {}
 
 /// Result for "state_get_auction_info" RPC response.
 #[derive(Serialize, Deserialize, Debug)]
@@ -241,24 +266,22 @@ pub struct GetAuctionInfoResult {
 /// "state_get_auction_info" RPC.
 pub struct GetAuctionInfo {}
 
-impl RpcWithParams for GetAuctionInfo {
+impl RpcWithoutParams for GetAuctionInfo {
     const METHOD: &'static str = "state_get_auction_info";
-    type RequestParams = GetAuctionInfoParams;
     type ResponseResult = GetAuctionInfoResult;
 }
 
-impl RpcWithParamsExt for GetAuctionInfo {
+impl RpcWithoutParamsExt for GetAuctionInfo {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
-        _params: Self::RequestParams,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
             let block: Block = {
                 let maybe_block = effect_builder
                     .make_request(
                         |responder| ApiRequest::GetBlock {
-                            maybe_hash: None,
+                            maybe_id: None,
                             responder,
                         },
                         QueueKind::Api,
@@ -304,8 +327,8 @@ impl RpcWithParamsExt for GetAuctionInfo {
             let path = vec![casper_types::auction::BIDS_KEY.to_string()];
             // the global state hash of the last block
             let state_root_hash = *block.header().state_root_hash();
-            // the era of the last block
-            let era_id = block.header().era_id().0;
+            // the block height of the last added block
+            let block_height = block.header().height();
 
             let query_result = effect_builder
                 .make_request(
@@ -319,21 +342,18 @@ impl RpcWithParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let bids = {
-                if let Ok(QueryResult::Success(stored_value::StoredValue::CLValue(cl_value))) =
-                    query_result
-                {
-                    cl_value.into_t().ok()
-                } else {
-                    None
-                }
+            let bids = if let Ok(QueryResult::Success { value, .. }) = query_result {
+                value
+                    .as_cl_value()
+                    .and_then(|cl_value| cl_value.to_owned().into_t().ok())
+            } else {
+                None
             };
 
             let era_validators_result = effect_builder
                 .make_request(
                     |responder| ApiRequest::QueryEraValidators {
                         state_root_hash,
-                        era_id,
                         protocol_version,
                         responder,
                     },
@@ -341,9 +361,10 @@ impl RpcWithParamsExt for GetAuctionInfo {
                 )
                 .await;
 
-            let validator_weights = era_validators_result.ok().flatten();
+            let era_validators = era_validators_result.ok();
 
-            let auction_state = AuctionState::new(state_root_hash, era_id, bids, validator_weights);
+            let auction_state =
+                AuctionState::new(state_root_hash, block_height, bids, era_validators);
             debug!("responding to client with: {:?}", auction_state);
             Ok(response_builder.success(auction_state)?)
         }

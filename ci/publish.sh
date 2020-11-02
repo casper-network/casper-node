@@ -78,6 +78,7 @@ check_python_has_toml
 # least-dependent to most.
 publish types
 publish execution_engine
+publish node_macros
 publish node
 publish grpc/server
 publish client

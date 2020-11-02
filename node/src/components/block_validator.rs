@@ -11,6 +11,7 @@ mod keyed_counter;
 
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
+    convert::Infallible,
     fmt::Debug,
 };
 
@@ -27,6 +28,8 @@ use crate::{
     types::{BlockLike, CryptoRngCore, Deploy, DeployHash},
 };
 use keyed_counter::KeyedCounter;
+
+use super::fetcher::FetchResult;
 
 /// Block validator component event.
 #[derive(Debug, From, Display)]
@@ -88,6 +91,7 @@ where
         + Send,
 {
     type Event = Event<T, I>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -100,6 +104,7 @@ where
                 block,
                 sender,
                 responder,
+                block_timestamp,
             }) => {
                 if block.deploys().is_empty() {
                     // If there are no deploys, return early.
@@ -123,7 +128,16 @@ where
                         effect_builder
                             .fetch_deploy(*deploy_hash, sender.clone())
                             .option(
-                                move |_value| Event::DeployFound(dh_found),
+                                move |result: FetchResult<Deploy>| match result {
+                                    FetchResult::FromStorage(deploy)
+                                    | FetchResult::FromPeer(deploy, _) => {
+                                        if deploy.header().timestamp() > block_timestamp {
+                                            Event::DeployMissing(dh_found)
+                                        } else {
+                                            Event::DeployFound(dh_found)
+                                        }
+                                    }
+                                },
                                 move || Event::DeployMissing(dh_not_found),
                             )
                     })

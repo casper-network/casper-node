@@ -448,7 +448,7 @@ fn should_calculate_era_validators() {
 
     // Verify first era validators
     let first_validator_weights: ValidatorWeights = builder
-        .get_era_validators(INITIAL_ERA_ID)
+        .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have first era validator weights");
     assert_eq!(
         first_validator_weights
@@ -545,7 +545,7 @@ fn should_calculate_era_validators() {
 
     // Check validator weights using the API
     let era_validators_result = builder
-        .get_era_validators(lookup_era_id)
+        .get_validator_weights(lookup_era_id)
         .expect("should have validator weights");
     assert_eq!(era_validators_result, *validator_weights);
 
@@ -673,7 +673,7 @@ fn should_get_first_seigniorage_recipients() {
     );
 
     let first_validator_weights = builder
-        .get_era_validators(era_id)
+        .get_validator_weights(era_id)
         .expect("should have validator weights");
     assert_eq!(first_validator_weights, validator_weights);
 }
@@ -959,7 +959,7 @@ fn should_fail_to_get_era_validators() {
     builder.run_genesis(&run_genesis_request);
 
     assert_eq!(
-        builder.get_era_validators(u64::max_value()),
+        builder.get_validator_weights(u64::max_value()),
         None,
         "should not have era validators for invalid era"
     );
@@ -988,7 +988,7 @@ fn should_use_era_validators_endpoint_for_first_era() {
     builder.run_genesis(&run_genesis_request);
 
     let validator_weights = builder
-        .get_era_validators(INITIAL_ERA_ID)
+        .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have validator weights for era 0");
 
     assert_eq!(validator_weights.len(), 1);
@@ -1045,15 +1045,15 @@ fn should_calculate_era_validators_multiple_new_bids() {
     builder.run_genesis(&run_genesis_request);
 
     let genesis_validator_weights = builder
-        .get_era_validators(INITIAL_ERA_ID)
+        .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have genesis validators for initial era");
 
     // new_era is the first era in the future where new era validator weights will be calculated
     let new_era = INITIAL_ERA_ID + AUCTION_DELAY + 1;
-    assert!(builder.get_era_validators(new_era).is_none());
+    assert!(builder.get_validator_weights(new_era).is_none());
     assert_eq!(
-        builder.get_era_validators(new_era - 1).unwrap(),
-        builder.get_era_validators(INITIAL_ERA_ID).unwrap()
+        builder.get_validator_weights(new_era - 1).unwrap(),
+        builder.get_validator_weights(INITIAL_ERA_ID).unwrap()
     );
 
     assert_eq!(
@@ -1124,7 +1124,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
 
     // Verify first era validators
     let new_validator_weights: ValidatorWeights = builder
-        .get_era_validators(new_era)
+        .get_validator_weights(new_era)
         .expect("should have first era validator weights");
 
     // check that the new computed era has exactly the state we expect
