@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "headers/casper_client.h"
 
-int main(int argc, char ** argv) {
+int main(int argc, char **argv) {
     const char *node_address = "http://localhost:7777";
     const char *rpc_id = "1";
     bool verbose = true;
