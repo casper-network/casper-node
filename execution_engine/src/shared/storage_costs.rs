@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 625_000_000;
+pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 625_000;
 
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct StorageCosts {

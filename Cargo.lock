@@ -690,7 +690,6 @@ dependencies = [
  "num-traits",
  "proptest",
  "serde",
- "serde-big-array",
  "serde_json",
  "uint",
  "version-sync",

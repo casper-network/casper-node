@@ -55,7 +55,6 @@ impl UpgradeRequestBuilder {
         self.new_wasm_config = Some(opcode_costs.into());
         self
     }
-
     pub fn with_new_auction_delay(mut self, new_auction_delay: u64) -> Self {
         self.new_auction_delay = Some(new_auction_delay);
         self
@@ -66,10 +65,10 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    pub fn with_activation_point(mut self, rank: u64) -> Self {
+    pub fn with_activation_point(mut self, height: u64) -> Self {
         self.activation_point = {
             let mut ret = ChainSpec_ActivationPoint::new();
-            ret.set_rank(rank);
+            ret.set_height(height);
             ret
         };
         self

@@ -7,6 +7,7 @@ use core::{
 };
 
 use hex_fmt::HexFmt;
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{bytesrepr, AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH};
 
@@ -53,6 +54,23 @@ impl From<ParseIntError> for FromStrError {
 impl From<TryFromSliceError> for FromStrError {
     fn from(error: TryFromSliceError) -> Self {
         FromStrError::Address(error)
+    }
+}
+
+impl Display for FromStrError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            FromStrError::InvalidPrefix => write!(f, "prefix is not 'uref-'"),
+            FromStrError::MissingSuffix => write!(f, "no access rights as suffix"),
+            FromStrError::InvalidAccessRights => write!(f, "invalid access rights"),
+            FromStrError::Hex(error) => {
+                write!(f, "failed to decode address portion from hex: {}", error)
+            }
+            FromStrError::Int(error) => write!(f, "failed to parse an int: {}", error),
+            FromStrError::Address(error) => {
+                write!(f, "address portion is the wrong length: {}", error)
+            }
+        }
     }
 }
 
@@ -185,6 +203,28 @@ impl bytesrepr::FromBytes for URef {
     }
 }
 
+impl Serialize for URef {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            self.to_formatted_string().serialize(serializer)
+        } else {
+            (self.0, self.1).serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for URef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let formatted_string = String::deserialize(deserializer)?;
+            URef::from_formatted_str(&formatted_string).map_err(D::Error::custom)
+        } else {
+            let (address, access_rights) = <(URefAddr, AccessRights)>::deserialize(deserializer)?;
+            Ok(URef(address, access_rights))
+        }
+    }
+}
+
 impl TryFrom<Key> for URef {
     type Error = ApiError;
 
@@ -266,5 +306,21 @@ mod tests {
         let invalid_access_rights =
             "uref-0000000000000000000000000000000000000000000000000000000000000000-200";
         assert!(URef::from_formatted_str(invalid_access_rights).is_err());
+    }
+
+    #[test]
+    fn serde_roundtrip() {
+        let uref = URef::new([255; 32], AccessRights::READ_ADD_WRITE);
+        let serialized = bincode::serialize(&uref).unwrap();
+        let decoded = bincode::deserialize(&serialized).unwrap();
+        assert_eq!(uref, decoded);
+    }
+
+    #[test]
+    fn json_roundtrip() {
+        let uref = URef::new([255; 32], AccessRights::READ_ADD_WRITE);
+        let json_string = serde_json::to_string_pretty(&uref).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(uref, decoded);
     }
 }

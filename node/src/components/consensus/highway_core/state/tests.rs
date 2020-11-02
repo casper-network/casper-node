@@ -157,6 +157,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         seq_number: 3,
         timestamp: 51.into(),
         round_exp: 4u8,
+        endorsed: vec![],
     };
     let vote = SignedWireVote::new(wvote.clone(), &BOB_SEC, &mut rng);
     let opt_err = state.add_vote(vote).err().map(vote_err);

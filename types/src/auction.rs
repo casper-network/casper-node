@@ -50,9 +50,9 @@ pub trait Auction:
     ///
     /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
     /// internal data structures recording current and past winners.
-    fn get_era_validators(&mut self, era_id: EraId) -> Result<Option<ValidatorWeights>> {
-        let mut era_validators = internal::get_era_validators(self)?;
-        Ok(era_validators.remove(&era_id))
+    fn get_era_validators(&mut self) -> Result<EraValidators> {
+        let era_validators = internal::get_era_validators(self)?;
+        Ok(era_validators)
     }
 
     /// Returns validators in era_validators, mapped to their bids or founding stakes, delegation
@@ -82,7 +82,7 @@ pub trait Auction:
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
-            return Err(Error::InvalidCaller);
+            return Err(Error::InvalidPublicKey);
         }
 
         // Creates new purse with desired amount taken from `source_purse`
@@ -133,7 +133,7 @@ pub trait Auction:
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
-            return Err(Error::InvalidCaller);
+            return Err(Error::InvalidPublicKey);
         }
 
         // Update bids or stakes
@@ -180,7 +180,7 @@ pub trait Auction:
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
-            return Err(Error::InvalidCaller);
+            return Err(Error::InvalidPublicKey);
         }
 
         let bids = internal::get_bids(self)?;
@@ -224,7 +224,7 @@ pub trait Auction:
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
-            return Err(Error::InvalidCaller);
+            return Err(Error::InvalidPublicKey);
         }
 
         let bids = internal::get_bids(self)?;
@@ -339,7 +339,7 @@ pub trait Auction:
     /// Accessed by: node
     fn run_auction(&mut self) -> Result<()> {
         if self.get_caller() != SYSTEM_ACCOUNT {
-            return Err(Error::InvalidContext);
+            return Err(Error::InvalidCaller);
         }
 
         detail::process_unbond_requests(self)?;
@@ -480,7 +480,7 @@ pub trait Auction:
     /// according to `reward_factors` returned by the consensus component.
     fn distribute(&mut self, reward_factors: BTreeMap<PublicKey, u64>) -> Result<()> {
         if self.get_caller() != SYSTEM_ACCOUNT {
-            return Err(Error::InvalidContext);
+            return Err(Error::InvalidCaller);
         }
 
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
@@ -579,7 +579,7 @@ pub trait Auction:
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
-            return Err(Error::InvalidCaller);
+            return Err(Error::InvalidPublicKey);
         }
 
         let mut outer: DelegatorRewardMap = internal::get_delegator_reward_map(self)?;
@@ -620,7 +620,7 @@ pub trait Auction:
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(validator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
-            return Err(Error::InvalidCaller);
+            return Err(Error::InvalidPublicKey);
         }
 
         let mut validator_reward_map = internal::get_validator_reward_map(self)?;

@@ -16,7 +16,7 @@ use casper_execution_engine::{
     core::engine_state::{
         self,
         balance::{BalanceRequest, BalanceResult},
-        era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
+        era_validators::GetEraValidatorsError,
         execute_request::ExecuteRequest,
         execution_result::ExecutionResults,
         genesis::GenesisResult,
@@ -27,12 +27,16 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::{global_state::CommitResult, protocol_data::ProtocolData},
 };
-use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion, URef};
+use casper_types::{
+    auction::{EraValidators, ValidatorWeights},
+    Key, ProtocolVersion, URef,
+};
 
 use super::Responder;
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
+        contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
         storage::{
             DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
@@ -386,12 +390,10 @@ pub enum ApiRequest<I> {
     QueryEraValidators {
         /// The global state hash.
         state_root_hash: Digest,
-        /// The era that auction state is requested from.
-        era_id: u64,
         /// The protocol version.
         protocol_version: ProtocolVersion,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
+        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
     /// Query the contract runtime for protocol version data.
     QueryProtocolData {
@@ -460,10 +462,8 @@ impl<I> Display for ApiRequest<I> {
                 state_root_hash, base_key, path
             ),
             ApiRequest::QueryEraValidators {
-                state_root_hash,
-                era_id,
-                ..
-            } => write!(formatter, "auction {}, era_id: {}", state_root_hash, era_id),
+                state_root_hash, ..
+            } => write!(formatter, "auction {}", state_root_hash),
             ApiRequest::GetBalance {
                 state_root_hash,
                 purse_uref,
@@ -536,10 +536,17 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the balance result.
         responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
-    /// Returns validator weights for given era.
+    /// Returns validator weights.
     GetEraValidators {
-        /// Get era validators request.
-        get_request: GetEraValidatorsRequest,
+        /// Get validators weights request.
+        request: EraValidatorsRequest,
+        /// Responder to call with the result.
+        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
+    },
+    /// Returns validator weights for given era.
+    GetValidatorWeightsByEraId {
+        /// Get validators weights request.
+        request: ValidatorWeightsByEraIdRequest,
         /// Responder to call with the result.
         responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
     },
@@ -591,8 +598,12 @@ impl Display for ContractRuntimeRequest {
                 balance_request, ..
             } => write!(formatter, "balance request: {:?}", balance_request),
 
-            ContractRuntimeRequest::GetEraValidators { get_request, .. } => {
-                write!(formatter, "get validator weights: {:?}", get_request)
+            ContractRuntimeRequest::GetEraValidators { request, .. } => {
+                write!(formatter, "get era validators: {:?}", request)
+            }
+
+            ContractRuntimeRequest::GetValidatorWeightsByEraId { request, .. } => {
+                write!(formatter, "get validator weights: {:?}", request)
             }
 
             ContractRuntimeRequest::Step { step_request, .. } => {

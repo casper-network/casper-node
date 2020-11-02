@@ -57,6 +57,12 @@ impl Display for EraId {
     }
 }
 
+impl From<EraId> for u64 {
+    fn from(era_id: EraId) -> Self {
+        era_id.0
+    }
+}
+
 /// A candidate block waiting for validation and dependencies.
 #[derive(DataSize)]
 pub struct PendingCandidate {

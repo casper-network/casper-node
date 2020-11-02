@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 
 use bitflags::bitflags;
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::bytesrepr;
 
@@ -92,6 +93,19 @@ impl bytesrepr::FromBytes for AccessRights {
             Some(rights) => Ok((rights, rem)),
             None => Err(bytesrepr::Error::Formatting),
         }
+    }
+}
+
+impl Serialize for AccessRights {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.bits.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AccessRights {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bits = u8::deserialize(deserializer)?;
+        AccessRights::from_bits(bits).ok_or_else(|| SerdeError::custom("invalid bits"))
     }
 }
 

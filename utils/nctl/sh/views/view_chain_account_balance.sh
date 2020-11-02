@@ -41,6 +41,7 @@ done
 net=${net:-1}
 node=${node:-1}
 typeof=${typeof:-"account"}
+state_root_hash=${state_root_hash:-$(get_state_root_hash $net $node)}
 
 #######################################
 # Main

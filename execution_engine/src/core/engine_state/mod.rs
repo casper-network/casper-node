@@ -28,22 +28,10 @@ use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
 
-use casper_types::{
-    account::AccountHash,
-    auction::{
-        ValidatorWeights, ARG_AUCTION_DELAY, ARG_ERA_ID, ARG_GENESIS_VALIDATORS,
-        ARG_LOCKED_FUNDS_PERIOD, ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS,
-        ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
-        VALIDATOR_SLOTS_KEY,
-    },
-    bytesrepr::{self, ToBytes},
-    contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
-    mint, proof_of_stake, runtime_args,
-    system_contract_errors::mint::Error as MintError,
-    AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractVersionKey, DeployInfo, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
-    RuntimeArgs, URef, U512,
-};
+use casper_types::{AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey, DeployInfo, EntryPoint, EntryPointType, Key, auction::LOCKED_FUNDS_PERIOD_KEY, Phase, ProtocolVersion, RuntimeArgs, U512, URef, account::AccountHash, auction::ARG_AUCTION_DELAY, auction::ARG_LOCKED_FUNDS_PERIOD, auction::AUCTION_DELAY_KEY, auction::{
+        EraValidators, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS,
+        ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, VALIDATOR_SLOTS_KEY,
+    }, bytesrepr::{self, ToBytes}, contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME}, mint, proof_of_stake, runtime_args, system_contract_errors::mint::Error as MintError};
 
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
@@ -93,7 +81,7 @@ use crate::{
 pub const CONV_RATE: u64 = 10;
 
 lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000_000u64 * CONV_RATE);
+    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000u64 * CONV_RATE);
 }
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -1967,7 +1955,7 @@ where
         &self,
         correlation_id: CorrelationId,
         get_era_validators_request: GetEraValidatorsRequest,
-    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError> {
+    ) -> Result<EraValidators, GetEraValidatorsError> {
         let protocol_version = get_era_validators_request.protocol_version();
 
         let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
@@ -2005,10 +1993,6 @@ where
 
         let executor = Executor::new(self.config);
 
-        let auction_args = runtime_args! {
-            ARG_ERA_ID => get_era_validators_request.era_id(),
-        };
-
         let mut named_keys = auction_contract.named_keys().to_owned();
         let base_key = Key::from(protocol_data.auction());
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
@@ -2030,34 +2014,35 @@ where
             Blake2bHash::new(&bytes).value()
         };
 
-        let (era_validators, execution_result): (
-            Option<Option<ValidatorWeights>>,
-            ExecutionResult,
-        ) = executor.exec_system_contract(
-            DirectSystemContractCall::GetEraValidators,
-            auction_module,
-            auction_args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            &virtual_system_account,
-            authorization_keys,
-            blocktime,
-            deploy_hash,
-            gas_limit,
-            protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            protocol_data,
-            SystemContractCache::clone(&self.system_contract_cache),
-        );
+        let (era_validators, execution_result): (Option<EraValidators>, ExecutionResult) = executor
+            .exec_system_contract(
+                DirectSystemContractCall::GetEraValidators,
+                auction_module,
+                runtime_args! {},
+                &mut named_keys,
+                Default::default(),
+                base_key,
+                &virtual_system_account,
+                authorization_keys,
+                blocktime,
+                deploy_hash,
+                gas_limit,
+                protocol_version,
+                correlation_id,
+                Rc::clone(&tracking_copy),
+                Phase::Session,
+                protocol_data,
+                SystemContractCache::clone(&self.system_contract_cache),
+            );
 
         if let Some(error) = execution_result.take_error() {
             return Err(error.into());
         }
 
-        Ok(era_validators.flatten())
+        match era_validators {
+            None => Err(GetEraValidatorsError::EraValidatorsMissing),
+            Some(era_validators) => Ok(era_validators),
+        }
     }
 
     pub fn commit_step(

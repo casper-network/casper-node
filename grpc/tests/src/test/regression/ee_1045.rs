@@ -100,12 +100,12 @@ fn should_run_ee_1045_squash_validators() {
     builder.run_genesis(&run_genesis_request);
 
     let genesis_validator_weights = builder
-        .get_era_validators(INITIAL_ERA_ID)
+        .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have genesis validator weights");
 
     let mut new_era_id = INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
-    assert!(builder.get_era_validators(new_era_id).is_none());
-    assert!(builder.get_era_validators(new_era_id - 1).is_some());
+    assert!(builder.get_validator_weights(new_era_id).is_none());
+    assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
     builder.exec(transfer_request_1).expect_success().commit();
 
@@ -161,8 +161,8 @@ fn should_run_ee_1045_squash_validators() {
     builder.exec(squash_request_1).expect_success().commit();
 
     // new_era_id += 1;
-    assert!(builder.get_era_validators(new_era_id).is_none());
-    assert!(builder.get_era_validators(new_era_id - 1).is_some());
+    assert!(builder.get_validator_weights(new_era_id).is_none());
+    assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
     builder
         .exec(run_auction_request_1)
@@ -170,7 +170,7 @@ fn should_run_ee_1045_squash_validators() {
         .expect_success();
 
     let post_round_1_auction_weights = builder
-        .get_era_validators(new_era_id)
+        .get_validator_weights(new_era_id)
         .expect("should have new era validator weights computed");
 
     assert_ne!(genesis_validator_weights, post_round_1_auction_weights);
@@ -187,8 +187,8 @@ fn should_run_ee_1045_squash_validators() {
     //
     builder.exec(squash_request_2).expect_success().commit();
     new_era_id += 1;
-    assert!(builder.get_era_validators(new_era_id).is_none());
-    assert!(builder.get_era_validators(new_era_id - 1).is_some());
+    assert!(builder.get_validator_weights(new_era_id).is_none());
+    assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
     builder
         .exec(run_auction_request_2)
@@ -196,7 +196,7 @@ fn should_run_ee_1045_squash_validators() {
         .expect_success();
 
     let post_round_2_auction_weights = builder
-        .get_era_validators(new_era_id)
+        .get_validator_weights(new_era_id)
         .expect("should have new era validator weights computed");
 
     assert_ne!(genesis_validator_weights, post_round_2_auction_weights);

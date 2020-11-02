@@ -1,12 +1,9 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::{crypto::hash::Digest, types::json_compatibility};
 use casper_types::{
-    auction::{
-        Bid as AuctionBid, Bids as AuctionBids, EraId, ValidatorWeights as AuctionValidatorWeights,
-    },
+    auction::{Bid as AuctionBid, Bids as AuctionBids, EraValidators as AuctionEraValidators},
     U512,
 };
 
@@ -14,6 +11,8 @@ use casper_types::{
 pub type Bids = BTreeMap<json_compatibility::PublicKey, Bid>;
 /// Validator weights by validator key.
 pub type ValidatorWeights = BTreeMap<json_compatibility::PublicKey, U512>;
+/// List of era validators
+pub type EraValidators = BTreeMap<u64, ValidatorWeights>;
 
 /// An entry in a founding validator map.
 #[derive(PartialEq, Debug, Deserialize, Serialize, Clone)]
@@ -47,21 +46,21 @@ impl From<AuctionBid> for Bid {
 pub struct AuctionState {
     /// Global state hash
     pub state_root_hash: Digest,
-    /// Era id.
-    pub era_id: EraId,
-    /// Validator weights for this era.
-    pub validator_weights: Option<ValidatorWeights>,
+    /// Block height
+    pub block_height: u64,
+    /// Era validators
+    pub era_validators: Option<EraValidators>,
     /// All bids.
-    pub bids: Option<Bids>,
+    bids: Option<Bids>,
 }
 
 impl AuctionState {
     /// Create new instance of `AuctionState`
     pub fn new(
         state_root_hash: Digest,
-        era_id: EraId,
+        block_height: u64,
         bids: Option<AuctionBids>,
-        validator_weights: Option<AuctionValidatorWeights>,
+        era_validators: Option<AuctionEraValidators>,
     ) -> Self {
         let bids = bids.map(|items| {
             items
@@ -70,18 +69,26 @@ impl AuctionState {
                 .collect()
         });
 
-        let validator_weights = validator_weights.map(|items| {
+        let era_validators = era_validators.map(|items| {
             items
                 .into_iter()
-                .map(|(public_key, weight)| (public_key.into(), weight))
+                .map(|(era_id, validator_weights)| {
+                    (
+                        era_id,
+                        validator_weights
+                            .into_iter()
+                            .map(|(public_key, weight)| (public_key.into(), weight))
+                            .collect(),
+                    )
+                })
                 .collect()
         });
 
         AuctionState {
             state_root_hash,
-            era_id,
+            block_height,
             bids,
-            validator_weights,
+            era_validators,
         }
     }
 }
