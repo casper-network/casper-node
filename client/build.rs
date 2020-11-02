@@ -1,8 +1,8 @@
 fn main() {
     #[cfg(feature = "ffi")]
     {
+        use cbindgen::{Builder, Language};
         use std::env;
-        use cbindgen::{ Builder, Language };
 
         let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
         Builder::new()

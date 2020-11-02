@@ -14,7 +14,8 @@ use super::error::{Error, Result};
 
 lazy_static! {
     static ref LAST_ERROR: Mutex<Option<Error>> = Mutex::new(None);
-    static ref RUNTIME: Mutex<runtime::Runtime> = Mutex::new(runtime::Runtime::new().expect("should build tokio runtime"));
+    static ref RUNTIME: Mutex<runtime::Runtime> =
+        Mutex::new(runtime::Runtime::new().expect("should build tokio runtime"));
 }
 
 fn set_last_error(error: Error) {
