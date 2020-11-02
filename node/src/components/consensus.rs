@@ -42,6 +42,7 @@ pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
+pub(crate) use protocols::highway::HighwayProtocol;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use traits::NodeIdT;
