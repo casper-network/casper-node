@@ -146,7 +146,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
     let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
     let c0 = add_vote!(state, rng, CAROL, 49, 4u8, None; N, b0, N)?;
-    let b1 = add_vote!(state, rng, BOB, None; N, b0, c0)?;
+    let b1 = add_vote!(state, rng, BOB, 49, 4u8, None; N, b0, c0)?;
     let _a1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
 
     // Wrong sequence number: Bob hasn't produced b2 yet.
