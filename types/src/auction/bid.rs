@@ -1,11 +1,11 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
-use super::{types::DelegationRate, EraId};
 use crate::{
+    auction::{types::DelegationRate, EraId},
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, PublicKey, URef, U512,
+    CLType, CLTyped, URef, U512,
 };
 
 /// An entry in a founding validator map.
@@ -88,22 +88,10 @@ impl FromBytes for Bid {
     }
 }
 
-/// Founding validators' public keys mapped to their staked
-/// amount, bid purse held by the mint contract, delegation rate and
-/// whether they are to be considered for the auction, or automatically
-/// entered as “winners” (this also locks them out of unbonding), taking
-/// some slots out of the auction. The autowin status is controlled by
-/// node software and would, presumably, expire after a fixed number of eras.
-///
-/// This structure also contains bids, and founding validator and a bid is
-/// differentiated by the `is_founding_validator` attribute.
-pub type Bids = BTreeMap<PublicKey, Bid>;
-
 #[cfg(test)]
 mod tests {
-    use super::Bid;
     use crate::{
-        auction::{DelegationRate, EraId},
+        auction::{Bid, DelegationRate, EraId},
         bytesrepr, AccessRights, URef, U512,
     };
 
