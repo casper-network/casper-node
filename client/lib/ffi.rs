@@ -55,9 +55,9 @@ macro_rules! r#try_unsafe_arg {
     };
 }
 
-/// Private macro for unwrapping results or, optionally, storing the error in LAST_ERROR and
-/// returning `false` to indicate that an error has occurred. Similar to `try_arg!`, this handles
-/// the sad path, and the happy path is left up to callsites.
+/// Private macro for unwrapping our internal json-rpcs or, optionally, storing the error in
+/// LAST_ERROR and returning `false` to indicate that an error has occurred. Similar to `try_arg!`,
+/// this handles the sad path, and the happy path is left up to callsites.
 macro_rules! r#try_rpc_str {
     ($rpc:expr) => {
         match $rpc {
