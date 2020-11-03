@@ -26,8 +26,9 @@ use tracing::{error, info, trace};
 use crate::{
     components::consensus::{
         highway_core::{
+            endorsement::{Endorsement, SignedEndorsement},
             evidence::Evidence,
-            highway::{SignedWireVote, WireVote},
+            highway::{Endorsements, SignedWireVote, WireVote},
             validators::{ValidatorIndex, ValidatorMap},
         },
         traits::Context,
@@ -37,8 +38,6 @@ use crate::{
 };
 use block::Block;
 use tallies::Tallies;
-
-use super::endorsement::{Endorsement, Endorsements};
 
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {
@@ -126,9 +125,9 @@ pub(crate) struct State<C: Context> {
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
     /// All currently endorsed votes, by hash.
-    endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
+    endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
     /// Votes that don't yet have 2/3 of stake endorsing them.
-    incomplete_endorsements: HashMap<C::Hash, Vec<Endorsement<C>>>,
+    incomplete_endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
     /// Clock to track fork choice
     clock: Clock,
 }
@@ -230,7 +229,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns endorsements for `vote`, if any.
-    pub(crate) fn opt_endorsements(&self, vote: &C::Hash) -> Option<Vec<Endorsement<C>>> {
+    pub(crate) fn opt_endorsements(&self, vote: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
         self.endorsements.get(vote).cloned()
     }
 
@@ -290,6 +289,11 @@ impl<C: Context> State<C> {
     /// Returns an iterator over all faulty validators.
     pub(crate) fn faulty_validators<'a>(&'a self) -> impl Iterator<Item = ValidatorIndex> + 'a {
         self.faults.keys().cloned()
+    }
+
+    /// Returns an iterator over latest vote hashes from honest validators.
+    pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
+        self.panorama.iter_correct_hashes()
     }
 
     /// Returns the vote with the given hash, if present.
@@ -352,16 +356,17 @@ impl<C: Context> State<C> {
 
     /// Adds direct evidence proving a validator to be faulty, unless that validators is already
     /// banned or we already have other direct evidence.
-    pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) {
+    pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) -> bool {
         let idx = evidence.perpetrator();
         match self.faults.get(&idx) {
-            Some(&Fault::Banned) | Some(&Fault::Direct(_)) => return,
+            Some(&Fault::Banned) | Some(&Fault::Direct(_)) => return false,
             None | Some(&Fault::Indirect) => (),
         }
         // TODO: Should use Display, not Debug!
         info!(?evidence, "marking validator #{} as faulty", idx.0);
         self.faults.insert(idx, Fault::Direct(evidence));
         self.panorama[idx] = Observation::Faulty;
+        true
     }
 
     /// Add set of endorsements to the state.
@@ -379,7 +384,8 @@ impl<C: Context> State<C> {
             for (vid, signature) in endorsements.endorsers {
                 // Add endorsements from validators we haven't seen endorsement yet.
                 if !entry.iter().any(|e| e.validator_idx() == vid) {
-                    let endorsement = Endorsement::new(vote, vid, signature);
+                    let endorsement =
+                        SignedEndorsement::new(Endorsement::new(vote, vid), signature);
                     entry.push(endorsement)
                 }
             }
@@ -654,6 +660,11 @@ impl<C: Context> State<C> {
                 .iter_correct(self)
                 .map(|vote| (vote.round_exp, self.weight(vote.creator))),
         )
+    }
+
+    /// Returns `true` if the state contains no votes.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.votes.is_empty()
     }
 }
 

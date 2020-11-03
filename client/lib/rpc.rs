@@ -1,5 +1,5 @@
 use futures::executor;
-use jsonrpc_lite::{JsonRpc, Params};
+use jsonrpc_lite::{Id, JsonRpc, Params};
 use rand::Rng;
 use reqwest::Client;
 use serde::Serialize;
@@ -36,11 +36,9 @@ pub(crate) enum TransferTarget {
 }
 
 /// Struct representing a single JSON-RPC call to the casper node.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct RpcCall {
-    // TODO - If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
-    //        change `rpc_id` to a `jsonrpc_lite::Id`.
-    rpc_id: u32,
+    rpc_id: Id,
     node_address: String,
     verbose: bool,
 }
@@ -58,14 +56,16 @@ impl RpcCall {
     /// When `verbose` is `true`, the request will be printed to `stdout`.
     pub(crate) fn new(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<Self> {
         let rpc_id = if maybe_rpc_id.is_empty() {
-            rand::thread_rng().gen()
+            Id::from(rand::thread_rng().gen::<i64>())
+        } else if let Ok(i64_id) = maybe_rpc_id.parse::<i64>() {
+            Id::from(i64_id)
         } else {
-            maybe_rpc_id.parse()?
+            Id::from(maybe_rpc_id.to_string())
         };
 
         Ok(Self {
             rpc_id,
-            node_address: node_address.to_string(),
+            node_address: node_address.trim_end_matches('/').to_string(),
             verbose,
         })
     }
@@ -209,7 +209,7 @@ impl RpcCall {
 
     async fn request(self, method: &str, params: Params) -> Result<JsonRpc> {
         let url = format!("{}/{}", self.node_address, RPC_API_PATH);
-        let rpc_req = JsonRpc::request_with_params(self.rpc_id as i64, method, params);
+        let rpc_req = JsonRpc::request_with_params(self.rpc_id, method, params);
 
         if self.verbose {
             println!(

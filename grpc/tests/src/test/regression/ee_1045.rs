@@ -1,15 +1,16 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
 use casper_engine_test_support::{
-    internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
+    internal::{
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+        DEFAULT_AUCTION_DELAY,
+    },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::AccountHash,
-    auction::{
-        ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
-    },
+    auction::{ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH},
     runtime_args, PublicKey, RuntimeArgs, U512,
 };
 
@@ -102,7 +103,7 @@ fn should_run_ee_1045_squash_validators() {
         .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have genesis validator weights");
 
-    let mut new_era_id = INITIAL_ERA_ID + AUCTION_DELAY + 1;
+    let mut new_era_id = INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
     assert!(builder.get_validator_weights(new_era_id).is_none());
     assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 

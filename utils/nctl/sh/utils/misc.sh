@@ -14,10 +14,10 @@ declare _OS_MACOSX="macosx"
 declare _OS_UNKNOWN="unknown"
 
 # Genesis balance of faucet account.
-NCTL_INITIAL_BALANCE_FAUCET=100000000000000000
+NCTL_INITIAL_BALANCE_FAUCET=1000000000000000000000000
 
 # Genesis balance of validator account.
-NCTL_INITIAL_BALANCE_VALIDATOR=100000000000000000
+NCTL_INITIAL_BALANCE_VALIDATOR=1000000000000000000000000
 
 # Base weight applied to a validator at genesis.
 NCTL_VALIDATOR_BASE_WEIGHT=100000000000000
@@ -114,13 +114,7 @@ function resetd () {
 #######################################
 function get_account_hash() {
     account_pbk=${1:2}
-    instruction='
-        import hashlib;
-        as_bytes=bytes("ed25519", "utf-8") + bytearray(1) + bytes.fromhex("'$account_pbk'");
-        h=hashlib.blake2b(digest_size=32);
-        h.update(as_bytes);
-        print(h.digest().hex());
-        '
+    instruction='import hashlib; as_bytes=bytes("ed25519", "utf-8") + bytearray(1) + bytes.fromhex("'$account_pbk'"); h=hashlib.blake2b(digest_size=32); h.update(as_bytes); print(h.digest().hex());'
     python3 <<< $instruction
 }
 
@@ -160,12 +154,7 @@ function get_node_port {
 #   Data to be hashed.
 #######################################
 function get_hash() {
-    instruction='
-        import hashlib;
-        h=hashlib.blake2b(digest_size=32);
-        h.update(b"'$1'");
-        print(h.digest().hex());
-        '
+    instruction='import hashlib; h=hashlib.blake2b(digest_size=32); h.update(b"'$1'"); print(h.digest().hex());'
     python3 <<< $instruction
 }
 
@@ -227,10 +216,7 @@ function get_os()
 #######################################
 function get_genesis_timestamp()
 {
-    instruction='
-from datetime import datetime, timedelta;
-print((datetime.utcnow() + timedelta(seconds='$1')).isoformat("T") + "Z");
-'
+    instruction='from datetime import datetime, timedelta; print((datetime.utcnow() + timedelta(seconds='$1')).isoformat("T") + "Z");'
     python3 <<< $instruction
 }
 

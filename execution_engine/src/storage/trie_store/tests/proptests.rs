@@ -10,7 +10,7 @@ use casper_types::{bytesrepr::ToBytes, Key};
 use crate::storage::{
     store::tests as store_tests,
     trie::{gens::trie_arb, Trie},
-    DEFAULT_TEST_MAX_DB_SIZE,
+    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 
 const DEFAULT_MIN_LENGTH: usize = 1;
@@ -49,8 +49,12 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
     };
 
     let tmp_dir = tempdir().unwrap();
-    let env =
-        LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &tmp_dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 
     let inputs: BTreeMap<Blake2bHash, Trie<Key, StoredValue>> = inputs

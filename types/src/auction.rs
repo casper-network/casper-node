@@ -347,6 +347,9 @@ pub trait Auction:
         // get allowed validator slots total
         let validator_slots = internal::get_validator_slots(self)?;
 
+        let auction_delay = internal::get_auction_delay(self)?;
+        let snapshot_size = auction_delay as usize + 1;
+
         let mut era_id = internal::get_era_id(self)?;
 
         let mut bids = internal::get_bids(self)?;
@@ -416,7 +419,7 @@ pub trait Auction:
         // Era index is assumed to be equal to era id on the consensus side.
         era_id += 1;
 
-        let next_era_id = era_id + AUCTION_DELAY;
+        let next_era_id = era_id + auction_delay;
 
         //
         // Compute seiginiorage recipients for current era
@@ -448,12 +451,12 @@ pub trait Auction:
         let seigniorage_recipients_snapshot = seigniorage_recipients_snapshot
             .into_iter()
             .rev()
-            .take(SNAPSHOT_SIZE)
+            .take(snapshot_size)
             .collect();
         internal::set_seigniorage_recipients_snapshot(self, seigniorage_recipients_snapshot)?;
 
         // Index for next set of validators: `era_id + AUCTION_DELAY`
-        let previous_era_validators = era_validators.insert(era_id + AUCTION_DELAY, bid_weights);
+        let previous_era_validators = era_validators.insert(era_id + auction_delay, bid_weights);
         assert!(previous_era_validators.is_none());
 
         internal::set_era_id(self, era_id)?;
@@ -461,7 +464,7 @@ pub trait Auction:
         let era_validators = era_validators
             .into_iter()
             .rev()
-            .take(SNAPSHOT_SIZE)
+            .take(snapshot_size)
             .collect();
 
         internal::set_era_validators(self, era_validators)?;

@@ -18,7 +18,7 @@ use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
     shared::{motes::Motes, wasm_config::WasmConfig},
 };
-use casper_types::U512;
+use casper_types::{auction::EraId, U512};
 
 use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
@@ -180,6 +180,14 @@ pub struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: Timestamp,
     pub(crate) validator_slots: u32,
+    /// Number of eras before an auction actually defines the set of validators.
+    /// If you bond with a sufficient bid in era N, you will be a validator in era N +
+    /// auction_delay + 1
+    pub(crate) auction_delay: u64,
+    /// The delay for the payout of funds, in eras. If a withdraw request is included in a block in
+    /// era N (other than the last one), they are paid out in the last block of era N +
+    /// locked_funds_period.
+    pub(crate) locked_funds_period: EraId,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -260,6 +268,8 @@ impl GenesisConfig {
         let name = rng.gen::<char>().to_string();
         let timestamp = Timestamp::random(rng);
         let validator_slots = rng.gen::<u32>();
+        let auction_delay = rng.gen::<u64>();
+        let locked_funds_period: EraId = rng.gen::<u64>();
         let protocol_version = Version::new(
             rng.gen_range(0, 10),
             rng.gen::<u8>() as u64,
@@ -278,6 +288,8 @@ impl GenesisConfig {
             name,
             timestamp,
             validator_slots,
+            auction_delay,
+            locked_funds_period,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
@@ -393,6 +405,8 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.accounts,
             self.genesis.wasm_config,
             self.genesis.validator_slots,
+            self.genesis.auction_delay,
+            self.genesis.locked_funds_period,
         )
     }
 }

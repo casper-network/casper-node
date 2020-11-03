@@ -11,7 +11,7 @@ use casper_types::{
 use crate::error::{Error, Result};
 
 /// Parse a `CLType` from `&str`.
-pub fn parse(strval: &str) -> StdResult<CLType, ()> {
+pub(crate) fn parse(strval: &str) -> StdResult<CLType, ()> {
     let supported_types = supported_cl_types();
     let cl_type = match strval.to_lowercase() {
         t if t == supported_types[0].0 => supported_types[0].1.clone(),
@@ -90,17 +90,77 @@ pub(crate) fn supported_cl_types() -> Vec<(&'static str, CLType)> {
     ]
 }
 
-/// Returns a list of `CLTypes` supported by casper_client.
-pub fn supported_cl_type_list() -> String {
-    let mut msg = String::new();
-    let supported_types = supported_cl_types();
-    for (index, item) in supported_types.iter().map(|(name, _)| name).enumerate() {
-        msg.push_str(item);
-        if index < supported_types.len() - 1 {
-            msg.push_str(", ")
+/// Functions for use in help commands.
+pub mod help {
+    use std::convert::TryFrom;
+
+    use casper_node::crypto::asymmetric_key::PublicKey as NodePublicKey;
+    use casper_types::{account::AccountHash, AccessRights, Key, URef};
+
+    /// Returns a list of `CLType`s able to be passed as a string for use as payment code or session
+    /// code args.
+    pub fn supported_cl_type_list() -> String {
+        let mut msg = String::new();
+        let supported_types = super::supported_cl_types();
+        for (index, item) in supported_types.iter().map(|(name, _)| name).enumerate() {
+            msg.push_str(item);
+            if index < supported_types.len() - 1 {
+                msg.push_str(", ")
+            }
         }
+        msg
     }
-    msg
+
+    /// Returns a string listing examples of the format required when passing in payment code or
+    /// session code args.
+    pub fn supported_cl_type_examples() -> String {
+        let bytes = (1..33).collect::<Vec<_>>();
+        let array = <[u8; 32]>::try_from(bytes.as_ref()).unwrap();
+
+        format!(
+            r#""name_01:bool='false'"
+"name_02:i32='-1'"
+"name_03:i64='-2'"
+"name_04:u8='3'"
+"name_05:u32='4'"
+"name_06:u64='5'"
+"name_07:u128='6'"
+"name_08:u256='7'"
+"name_09:u512='8'"
+"name_10:unit=''"
+"name_11:string='a value'"
+"key_account_name:key='{}'"
+"key_hash_name:key='{}'"
+"key_uref_name:key='{}'"
+"account_hash_name:account_hash='{}'"
+"uref_name:uref='{}'"
+"public_key_name:public_key='{}'"
+
+Optional values of all of these types can also be specified.
+Prefix the type with "opt_" and use the term "null" without quotes to specify a None value:
+"name_01:opt_bool='true'"       # Some(true)
+"name_02:opt_bool='false'"      # Some(false)
+"name_03:opt_bool=null"         # None
+"name_04:opt_i32='-1'"          # Some(-1)
+"name_05:opt_i32=null"          # None
+"name_06:opt_unit=''"           # Some(())
+"name_07:opt_unit=null"         # None
+"name_08:opt_string='a value'"  # Some("a value".to_string())
+"name_09:opt_string='null'"     # Some("null".to_string())
+"name_10:opt_string=null"       # None
+"#,
+            Key::Account(AccountHash::new(array)).to_formatted_string(),
+            Key::Hash(array).to_formatted_string(),
+            Key::URef(URef::new(array, AccessRights::NONE)).to_formatted_string(),
+            AccountHash::new(array).to_formatted_string(),
+            URef::new(array, AccessRights::READ_ADD_WRITE).to_formatted_string(),
+            NodePublicKey::from_hex(
+                "0119bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1"
+            )
+            .unwrap()
+            .to_hex(),
+        )
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -161,7 +221,7 @@ pub fn parts_to_cl_value(cl_type: CLType, value: &str) -> Result<CLValue> {
                 "true" | "t" => Ok(true),
                 "false" | "f" => Ok(false),
                 invalid => Err(Error::InvalidCLValue(format!(
-                    "can't parse {} as a bool.  Should be 'true' or 'false'",
+                    "can't parse {} as a bool. Should be 'true' or 'false'",
                     invalid
                 ))),
             };
@@ -253,7 +313,7 @@ pub fn parts_to_cl_value(cl_type: CLType, value: &str) -> Result<CLValue> {
             let parse = || {
                 if !trimmed_value.is_empty() {
                     return Err(Error::InvalidCLValue(format!(
-                        "can't parse {} as unit.  Should be ''",
+                        "can't parse {} as unit. Should be ''",
                         trimmed_value
                     )));
                 }

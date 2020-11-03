@@ -7,7 +7,8 @@ pub struct SendDeploy;
 
 impl<'a, 'b> ClientCommand<'a, 'b> for SendDeploy {
     const NAME: &'static str = "send-deploy";
-    const ABOUT: &'static str = "Sends a deploy to the network for execution";
+    const ABOUT: &'static str =
+        "Reads a previously-saved deploy from a file and sends it to the network for execution";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)

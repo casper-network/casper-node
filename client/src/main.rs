@@ -1,10 +1,10 @@
-mod balance;
 mod block;
 mod command;
 mod common;
 mod deploy;
 mod generate_completion;
 mod get_auction_info;
+mod get_balance;
 mod get_state_hash;
 mod keygen;
 mod query_state;
@@ -37,9 +37,9 @@ enum DisplayOrder {
     GetDeploy,
     GetBlock,
     ListDeploys,
-    GetBalance,
     GetStateRootHash,
     QueryState,
+    GetBalance,
     GetAuctionInfo,
     Keygen,
     GenerateCompletion,
