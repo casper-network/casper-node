@@ -178,12 +178,12 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     let opt_err = add_vote!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
         .err()
         .map(vote_err);
-    assert_eq!(Some(VoteError::RoundExpLengthLessThanMinimum), opt_err);
+    assert_eq!(Some(VoteError::RoundLengthExpLessThanMinimum), opt_err);
     // And you can't make the round exponent too big
     let opt_err = add_vote!(state, rng, CAROL, 50, 40u8, None; N, b1, c0)
         .err()
         .map(vote_err);
-    assert_eq!(Some(VoteError::RoundExpLengthGreaterThanMaximum), opt_err);
+    assert_eq!(Some(VoteError::RoundLengthExpGreaterThanMaximum), opt_err);
     // After the round from 48 to 64 has ended, the exponent can change.
     let c1 = add_vote!(state, rng, CAROL, 65, 5u8, None; N, b1, c0)?;
 

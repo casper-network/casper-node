@@ -63,11 +63,11 @@ pub(crate) enum VoteError {
     #[error("The signature is invalid.")]
     Signature,
     #[error("The round length exponent has somehow changed within a round.")]
-    RoundExpLengthChangedWithinRound,
+    RoundLengthExpChangedWithinRound,
     #[error("The round length exponent is less than the minimum allowed by the chain-spec.")]
-    RoundExpLengthLessThanMinimum,
+    RoundLengthExpLessThanMinimum,
     #[error("The round length exponent is greater than the maximum allowed by the chain-spec.")]
-    RoundExpLengthGreaterThanMaximum,
+    RoundLengthExpGreaterThanMaximum,
     #[error("This would be the third vote in that round. Only two are allowed.")]
     ThreeVotesInRound,
     #[error(
@@ -496,10 +496,10 @@ impl<C: Context> State<C> {
             return Err(VoteError::Banned);
         }
         if wvote.round_exp < self.params.min_round_exp() {
-            return Err(VoteError::RoundExpLengthLessThanMinimum);
+            return Err(VoteError::RoundLengthExpLessThanMinimum);
         }
         if wvote.round_exp > self.params.max_round_exp() {
-            return Err(VoteError::RoundExpLengthGreaterThanMaximum);
+            return Err(VoteError::RoundLengthExpGreaterThanMaximum);
         }
         if wvote.value.is_none() && !wvote.panorama.has_correct() {
             return Err(VoteError::MissingBlock);
@@ -535,7 +535,7 @@ impl<C: Context> State<C> {
                 // greater of the two exponents, a round boundary must be between the votes.
                 let max_re = prev_vote.round_exp.max(wvote.round_exp);
                 if prev_vote.timestamp >> max_re == timestamp >> max_re {
-                    return Err(VoteError::RoundExpLengthChangedWithinRound);
+                    return Err(VoteError::RoundLengthExpChangedWithinRound);
                 }
             }
             // There can be at most two votes per round: proposal/confirmation and witness.
