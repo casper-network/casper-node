@@ -164,7 +164,7 @@ If the environment variable is unset, it is equivalent to setting `RUST_LOG=erro
 A typical log message will look like:
 
 ```
-Jun 09 01:40:17.315 INFO  [casper_node::components::api_server api_server.rs:127] starting HTTP server; server_addr=127.0.0.1:7777
+Jun 09 01:40:17.315 INFO  [casper_node::components::rpc_server rpc_server.rs:127] starting HTTP server; server_addr=127.0.0.1:7777
 ```
 
 This is comprised of the following parts:

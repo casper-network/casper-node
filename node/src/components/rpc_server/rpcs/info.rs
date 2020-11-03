@@ -15,11 +15,11 @@ use tracing::info;
 use warp_json_rpc::Builder;
 
 use super::{
-    ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams, RpcWithParamsExt, RpcWithoutParams,
+    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt, RpcWithoutParams,
     RpcWithoutParamsExt,
 };
 use crate::{
-    components::{api_server::CLIENT_API_VERSION, consensus::EraId, small_network::NodeId},
+    components::{consensus::EraId, rpc_server::CLIENT_API_VERSION, small_network::NodeId},
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{
@@ -74,7 +74,7 @@ impl RpcWithParamsExt for GetDeploy {
             // Try to get the deploy and metadata from storage.
             let maybe_deploy_and_metadata = effect_builder
                 .make_request(
-                    |responder| ApiRequest::GetDeploy {
+                    |responder| RpcRequest::GetDeploy {
                         hash: params.deploy_hash,
                         responder,
                     },
@@ -139,7 +139,7 @@ impl RpcWithoutParamsExt for GetPeers {
         async move {
             let peers = effect_builder
                 .make_request(
-                    |responder| ApiRequest::GetPeers { responder },
+                    |responder| RpcRequest::GetPeers { responder },
                     QueueKind::Api,
                 )
                 .await;
@@ -228,7 +228,7 @@ impl RpcWithoutParamsExt for GetStatus {
             // Get the status.
             let status_feed = effect_builder
                 .make_request(
-                    |responder| ApiRequest::GetStatus { responder },
+                    |responder| RpcRequest::GetStatus { responder },
                     QueueKind::Api,
                 )
                 .await;

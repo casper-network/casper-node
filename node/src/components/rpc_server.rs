@@ -43,10 +43,10 @@ use crate::{
     components::{contract_runtime::EraValidatorsRequest, storage::Storage},
     crypto::hash::Digest,
     effect::{
-        announcements::ApiServerAnnouncement,
+        announcements::RpcServerAnnouncement,
         requests::{
-            ApiRequest, ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest,
-            MetricsRequest, NetworkInfoRequest, StorageRequest,
+            ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest,
+            NetworkInfoRequest, RpcRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
@@ -67,7 +67,7 @@ lazy_static! {
 /// work with.
 trait ReactorEventT:
     From<Event>
-    + From<ApiRequest<NodeId>>
+    + From<RpcRequest<NodeId>>
     + From<StorageRequest<Storage>>
     + From<LinearChainRequest<NodeId>>
     + From<ContractRuntimeRequest>
@@ -77,7 +77,7 @@ trait ReactorEventT:
 
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
-        + From<ApiRequest<NodeId>>
+        + From<RpcRequest<NodeId>>
         + From<StorageRequest<Storage>>
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
@@ -87,18 +87,18 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct ApiServer {
+pub(crate) struct RpcServer {
     /// Channel sender to pass event-stream data to the event-stream server.
     // TODO - this should not be skipped.  Awaiting support for `UnboundedSender` in datasize crate.
     #[data_size(skip)]
     sse_data_sender: UnboundedSender<SseData>,
 }
 
-impl ApiServer {
+impl RpcServer {
     pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
     where
         REv: From<Event>
-            + From<ApiRequest<NodeId>>
+            + From<RpcRequest<NodeId>>
             + From<StorageRequest<Storage>>
             + From<LinearChainRequest<NodeId>>
             + From<ContractRuntimeRequest>
@@ -107,11 +107,11 @@ impl ApiServer {
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
         tokio::spawn(http_server::run(config, effect_builder, sse_data_receiver));
 
-        ApiServer { sse_data_sender }
+        RpcServer { sse_data_sender }
     }
 }
 
-impl ApiServer {
+impl RpcServer {
     fn handle_protocol_data<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -182,9 +182,9 @@ impl ApiServer {
     }
 }
 
-impl<REv> Component<REv> for ApiServer
+impl<REv> Component<REv> for RpcServer
 where
-    REv: From<ApiServerAnnouncement>
+    REv: From<RpcServerAnnouncement>
         + From<NetworkInfoRequest<NodeId>>
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
@@ -192,7 +192,7 @@ where
         + From<MetricsRequest>
         + From<StorageRequest<Storage>>
         + From<Event>
-        + From<ApiRequest<NodeId>>
+        + From<RpcRequest<NodeId>>
         + Send,
 {
     type Event = Event;
@@ -205,12 +205,12 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::ApiRequest(ApiRequest::SubmitDeploy { deploy, responder }) => {
+            Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => {
                 let mut effects = effect_builder.announce_deploy_received(deploy).ignore();
                 effects.extend(responder.respond(()).ignore());
                 effects
             }
-            Event::ApiRequest(ApiRequest::GetBlock {
+            Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),
                 responder,
             }) => effect_builder
@@ -220,7 +220,7 @@ where
                     result: Box::new(result),
                     main_responder: responder,
                 }),
-            Event::ApiRequest(ApiRequest::GetBlock {
+            Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Height(height)),
                 responder,
             }) => effect_builder
@@ -230,7 +230,7 @@ where
                     result: Box::new(result),
                     main_responder: responder,
                 }),
-            Event::ApiRequest(ApiRequest::GetBlock {
+            Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: None,
                 responder,
             }) => effect_builder
@@ -240,17 +240,17 @@ where
                     result: Box::new(result),
                     main_responder: responder,
                 }),
-            Event::ApiRequest(ApiRequest::QueryProtocolData {
+            Event::RpcRequest(RpcRequest::QueryProtocolData {
                 protocol_version,
                 responder,
             }) => self.handle_protocol_data(effect_builder, protocol_version, responder),
-            Event::ApiRequest(ApiRequest::QueryGlobalState {
+            Event::RpcRequest(RpcRequest::QueryGlobalState {
                 state_root_hash,
                 base_key,
                 path,
                 responder,
             }) => self.handle_query(effect_builder, state_root_hash, base_key, path, responder),
-            Event::ApiRequest(ApiRequest::QueryEraValidators {
+            Event::RpcRequest(RpcRequest::QueryEraValidators {
                 state_root_hash,
                 protocol_version,
                 responder,
@@ -260,25 +260,25 @@ where
                 protocol_version,
                 responder,
             ),
-            Event::ApiRequest(ApiRequest::GetBalance {
+            Event::RpcRequest(RpcRequest::GetBalance {
                 state_root_hash,
                 purse_uref,
                 responder,
             }) => self.handle_get_balance(effect_builder, state_root_hash, purse_uref, responder),
-            Event::ApiRequest(ApiRequest::GetDeploy { hash, responder }) => effect_builder
+            Event::RpcRequest(RpcRequest::GetDeploy { hash, responder }) => effect_builder
                 .get_deploy_and_metadata_from_storage(hash)
                 .event(move |result| Event::GetDeployResult {
                     hash,
                     result: Box::new(result),
                     main_responder: responder,
                 }),
-            Event::ApiRequest(ApiRequest::GetPeers { responder }) => effect_builder
+            Event::RpcRequest(RpcRequest::GetPeers { responder }) => effect_builder
                 .network_peers()
                 .event(move |peers| Event::GetPeersResult {
                     peers,
                     main_responder: responder,
                 }),
-            Event::ApiRequest(ApiRequest::GetStatus { responder }) => async move {
+            Event::RpcRequest(RpcRequest::GetStatus { responder }) => async move {
                 let (last_added_block, peers, chainspec_info) = join!(
                     effect_builder.get_highest_block(),
                     effect_builder.network_peers(),
@@ -288,7 +288,7 @@ where
                 responder.respond(status_feed).await;
             }
             .ignore(),
-            Event::ApiRequest(ApiRequest::GetMetrics { responder }) => effect_builder
+            Event::RpcRequest(RpcRequest::GetMetrics { responder }) => effect_builder
                 .get_metrics()
                 .event(move |text| Event::GetMetricsResult {
                     text,

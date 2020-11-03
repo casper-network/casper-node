@@ -9,9 +9,9 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use warp_json_rpc::Builder;
 
-use super::{ApiRequest, Error, ReactorEventT, RpcWithParams, RpcWithParamsExt};
+use super::{Error, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt};
 use crate::{
-    components::api_server::CLIENT_API_VERSION,
+    components::rpc_server::CLIENT_API_VERSION,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{Deploy, DeployHash},
@@ -54,7 +54,7 @@ impl RpcWithParamsExt for PutDeploy {
             // Submit the new deploy to be announced.
             effect_builder
                 .make_request(
-                    |responder| ApiRequest::SubmitDeploy {
+                    |responder| RpcRequest::SubmitDeploy {
                         deploy: Box::new(params.deploy),
                         responder,
                     },

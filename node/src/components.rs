@@ -2,7 +2,6 @@
 //!
 //! Components are the building blocks of the whole application, wired together inside a reactor.
 //! Each component has a unified interface, expressed by the `Component` trait.
-pub(crate) mod api_server;
 pub(crate) mod block_executor;
 pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
@@ -14,6 +13,7 @@ pub(crate) mod fetcher;
 pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
 pub(crate) mod linear_chain_sync;
+pub(crate) mod rpc_server;
 // The  `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;

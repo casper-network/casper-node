@@ -11,10 +11,10 @@ use tracing::info;
 use warp_json_rpc::Builder;
 
 use super::{
-    ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithOptionalParams, RpcWithOptionalParamsExt,
+    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithOptionalParamsExt,
 };
 use crate::{
-    components::api_server::CLIENT_API_VERSION,
+    components::rpc_server::CLIENT_API_VERSION,
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
@@ -138,7 +138,7 @@ async fn get_block<REv: ReactorEventT>(
     let getting_specific_block = maybe_id.is_some();
     let maybe_block = effect_builder
         .make_request(
-            |responder| ApiRequest::GetBlock {
+            |responder| RpcRequest::GetBlock {
                 maybe_id,
                 responder,
             },

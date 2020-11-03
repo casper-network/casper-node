@@ -22,7 +22,7 @@ pub struct Config {
 }
 
 impl Config {
-    /// Creates a default instance for `ApiServer`.
+    /// Creates a default instance for `RpcServer`.
     pub fn new() -> Self {
         Config {
             address: DEFAULT_ADDRESS.to_string(),

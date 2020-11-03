@@ -22,8 +22,8 @@ use crate::{
         storage::{self, Storage, StorageType},
     },
     effect::announcements::{
-        ApiServerAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-        NetworkAnnouncement,
+        DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
+        RpcServerAnnouncement,
     },
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, Runner},
@@ -51,7 +51,7 @@ enum Event {
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, NodeMessage>),
     #[from]
-    ApiServerAnnouncement(ApiServerAnnouncement),
+    RpcServerAnnouncement(RpcServerAnnouncement),
     #[from]
     DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
     #[from]
@@ -78,7 +78,7 @@ impl Display for Event {
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
-            Event::ApiServerAnnouncement(ann) => {
+            Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
             }
             Event::DeployAcceptorAnnouncement(ann) => {
@@ -234,7 +234,7 @@ impl reactor::Reactor for Reactor {
                 // We do not care about new peers in the gossiper test.
                 Effects::new()
             }
-            Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
+            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,

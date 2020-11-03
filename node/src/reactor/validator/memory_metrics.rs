@@ -20,8 +20,8 @@ pub(super) struct MemoryMetrics {
     mem_storage: IntGauge,
     /// Estimated heap memory usage of contract runtime component.
     mem_contract_runtime: IntGauge,
-    /// Estimated heap memory usage of api server component.
-    mem_api_server: IntGauge,
+    /// Estimated heap memory usage of rpc server component.
+    mem_rpc_server: IntGauge,
     /// Estimated heap memory usage of chainspec loader component.
     mem_chainspec_loader: IntGauge,
     /// Estimated heap memory usage of consensus component.
@@ -61,7 +61,7 @@ impl MemoryMetrics {
             "mem_contract_runtime",
             "contract_runtime memory usage in bytes",
         )?;
-        let mem_api_server = IntGauge::new("mem_api_server", "api_server memory usage in bytes")?;
+        let mem_rpc_server = IntGauge::new("mem_rpc_server", "rpc_server memory usage in bytes")?;
         let mem_chainspec_loader = IntGauge::new(
             "mem_chainspec_loader",
             "chainspec_loader memory usage in bytes",
@@ -99,7 +99,7 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_address_gossiper.clone()))?;
         registry.register(Box::new(mem_storage.clone()))?;
         registry.register(Box::new(mem_contract_runtime.clone()))?;
-        registry.register(Box::new(mem_api_server.clone()))?;
+        registry.register(Box::new(mem_rpc_server.clone()))?;
         registry.register(Box::new(mem_chainspec_loader.clone()))?;
         registry.register(Box::new(mem_consensus.clone()))?;
         registry.register(Box::new(mem_deploy_fetcher.clone()))?;
@@ -117,7 +117,7 @@ impl MemoryMetrics {
             mem_address_gossiper,
             mem_storage,
             mem_contract_runtime,
-            mem_api_server,
+            mem_rpc_server,
             mem_chainspec_loader,
             mem_consensus,
             mem_deploy_fetcher,
@@ -140,7 +140,7 @@ impl MemoryMetrics {
         let address_gossiper = reactor.address_gossiper.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;
-        let api_server = reactor.api_server.estimate_heap_size() as i64;
+        let rpc_server = reactor.rpc_server.estimate_heap_size() as i64;
         let chainspec_loader = reactor.chainspec_loader.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
         let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
@@ -156,7 +156,7 @@ impl MemoryMetrics {
             + address_gossiper
             + storage
             + contract_runtime
-            + api_server
+            + rpc_server
             + chainspec_loader
             + consensus
             + deploy_fetcher
@@ -172,7 +172,7 @@ impl MemoryMetrics {
         self.mem_address_gossiper.set(address_gossiper);
         self.mem_storage.set(storage);
         self.mem_contract_runtime.set(contract_runtime);
-        self.mem_api_server.set(api_server);
+        self.mem_rpc_server.set(rpc_server);
         self.mem_chainspec_loader.set(chainspec_loader);
         self.mem_consensus.set(consensus);
         self.mem_deploy_fetcher.set(deploy_fetcher);
@@ -192,7 +192,7 @@ impl MemoryMetrics {
                %address_gossiper,
                %storage,
                %contract_runtime,
-               %api_server,
+               %rpc_server,
                %chainspec_loader,
                %consensus,
                %deploy_fetcher,
@@ -226,8 +226,8 @@ impl Drop for MemoryMetrics {
             .unregister(Box::new(self.mem_contract_runtime.clone()))
             .expect("did not expect deregistering mem_contract_runtime, to fail");
         self.registry
-            .unregister(Box::new(self.mem_api_server.clone()))
-            .expect("did not expect deregistering mem_api_server, to fail");
+            .unregister(Box::new(self.mem_rpc_server.clone()))
+            .expect("did not expect deregistering mem_rpc_server, to fail");
         self.registry
             .unregister(Box::new(self.mem_chainspec_loader.clone()))
             .expect("did not expect deregistering mem_chainspec_loader, to fail");

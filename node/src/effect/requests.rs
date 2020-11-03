@@ -359,7 +359,7 @@ impl Display for BlockProposerRequest {
 /// transport.
 #[derive(Debug)]
 #[must_use]
-pub enum ApiRequest<I> {
+pub enum RpcRequest<I> {
     /// Submit a deploy to be announced.
     SubmitDeploy {
         /// The deploy to be announced.
@@ -435,23 +435,23 @@ pub enum ApiRequest<I> {
     },
 }
 
-impl<I> Display for ApiRequest<I> {
+impl<I> Display for RpcRequest<I> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ApiRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
-            ApiRequest::GetBlock {
+            RpcRequest::SubmitDeploy { deploy, .. } => write!(formatter, "submit {}", *deploy),
+            RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),
                 ..
             } => write!(formatter, "get {}", hash),
-            ApiRequest::GetBlock {
+            RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Height(height)),
                 ..
             } => write!(formatter, "get {}", height),
-            ApiRequest::GetBlock { maybe_id: None, .. } => write!(formatter, "get latest block"),
-            ApiRequest::QueryProtocolData {
+            RpcRequest::GetBlock { maybe_id: None, .. } => write!(formatter, "get latest block"),
+            RpcRequest::QueryProtocolData {
                 protocol_version, ..
             } => write!(formatter, "protocol_version {}", protocol_version),
-            ApiRequest::QueryGlobalState {
+            RpcRequest::QueryGlobalState {
                 state_root_hash,
                 base_key,
                 path,
@@ -461,10 +461,10 @@ impl<I> Display for ApiRequest<I> {
                 "query {}, base_key: {}, path: {:?}",
                 state_root_hash, base_key, path
             ),
-            ApiRequest::QueryEraValidators {
+            RpcRequest::QueryEraValidators {
                 state_root_hash, ..
             } => write!(formatter, "auction {}", state_root_hash),
-            ApiRequest::GetBalance {
+            RpcRequest::GetBalance {
                 state_root_hash,
                 purse_uref,
                 ..
@@ -473,10 +473,10 @@ impl<I> Display for ApiRequest<I> {
                 "balance {}, purse_uref: {}",
                 state_root_hash, purse_uref
             ),
-            ApiRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
-            ApiRequest::GetPeers { .. } => write!(formatter, "get peers"),
-            ApiRequest::GetStatus { .. } => write!(formatter, "get status"),
-            ApiRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
+            RpcRequest::GetDeploy { hash, .. } => write!(formatter, "get {}", hash),
+            RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
+            RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
+            RpcRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
         }
     }
 }

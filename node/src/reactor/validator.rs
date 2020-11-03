@@ -25,7 +25,6 @@ use block_proposer::BlockProposerState;
 use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
-        api_server::{self, ApiServer},
         block_executor::{self, BlockExecutor},
         block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
@@ -37,20 +36,22 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
+        rpc_server::{self, RpcServer},
         small_network::{self, GossipedAddress, NodeId, SmallNetwork},
         storage::{self, Storage},
         Component,
     },
     effect::{
         announcements::{
-            ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
-            DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement,
-            NetworkAnnouncement,
+            BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
+            GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+            RpcServerAnnouncement,
         },
         requests::{
-            ApiRequest, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-            LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
+            LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RpcRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -78,8 +79,8 @@ pub enum Event {
     /// Storage event.
     Storage(storage::Event<Storage>),
     #[from]
-    /// API server event.
-    ApiServer(api_server::Event),
+    /// RPC server event.
+    RpcServer(rpc_server::Event),
     #[from]
     /// Chainspec Loader event.
     ChainspecLoader(chainspec_loader::Event),
@@ -143,7 +144,7 @@ pub enum Event {
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
     /// API server announcement.
     #[from]
-    ApiServerAnnouncement(ApiServerAnnouncement),
+    RpcServerAnnouncement(RpcServerAnnouncement),
     /// DeployAcceptor announcement.
     #[from]
     DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
@@ -170,9 +171,9 @@ impl From<StorageRequest<Storage>> for Event {
     }
 }
 
-impl From<ApiRequest<NodeId>> for Event {
-    fn from(request: ApiRequest<NodeId>) -> Self {
-        Event::ApiServer(api_server::Event::ApiRequest(request))
+impl From<RpcRequest<NodeId>> for Event {
+    fn from(request: RpcRequest<NodeId>) -> Self {
+        Event::RpcServer(rpc_server::Event::RpcRequest(request))
     }
 }
 
@@ -218,7 +219,7 @@ impl Display for Event {
             Event::Network(event) => write!(f, "network: {}", event),
             Event::BlockProposer(event) => write!(f, "block proposer: {}", event),
             Event::Storage(event) => write!(f, "storage: {}", event),
-            Event::ApiServer(event) => write!(f, "api server: {}", event),
+            Event::RpcServer(event) => write!(f, "api server: {}", event),
             Event::ChainspecLoader(event) => write!(f, "chainspec loader: {}", event),
             Event::Consensus(event) => write!(f, "consensus: {}", event),
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
@@ -238,7 +239,7 @@ impl Display for Event {
             Event::ProtoBlockValidatorRequest(req) => write!(f, "block validator request: {}", req),
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(f, "network announcement: {}", ann),
-            Event::ApiServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
+            Event::RpcServerAnnouncement(ann) => write!(f, "api server announcement: {}", ann),
             Event::DeployAcceptorAnnouncement(ann) => {
                 write!(f, "deploy acceptor announcement: {}", ann)
             }
@@ -277,7 +278,7 @@ pub struct Reactor {
     address_gossiper: Gossiper<GossipedAddress, Event>,
     storage: Storage,
     contract_runtime: ContractRuntime,
-    api_server: ApiServer,
+    rpc_server: RpcServer,
     chainspec_loader: ChainspecLoader,
     consensus: EraSupervisor<NodeId>,
     #[data_size(skip)]
@@ -344,7 +345,7 @@ impl reactor::Reactor for Reactor {
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
-        let api_server = ApiServer::new(config.http_server, effect_builder);
+        let rpc_server = RpcServer::new(config.rpc_server, effect_builder);
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.fetcher);
         let deploy_gossiper = Gossiper::new_for_partial_items(
@@ -397,7 +398,7 @@ impl reactor::Reactor for Reactor {
                 address_gossiper,
                 storage,
                 contract_runtime,
-                api_server,
+                rpc_server,
                 chainspec_loader,
                 consensus,
                 deploy_acceptor,
@@ -433,9 +434,9 @@ impl reactor::Reactor for Reactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
-            Event::ApiServer(event) => reactor::wrap_effects(
-                Event::ApiServer,
-                self.api_server.handle_event(effect_builder, rng, event),
+            Event::RpcServer(event) => reactor::wrap_effects(
+                Event::RpcServer,
+                self.rpc_server.handle_event(effect_builder, rng, event),
             ),
             Event::ChainspecLoader(event) => reactor::wrap_effects(
                 Event::ChainspecLoader,
@@ -624,7 +625,7 @@ impl reactor::Reactor for Reactor {
                 debug!(%peer_id, "new peer announcement event ignored (validator reactor does not care)");
                 Effects::new()
             }
-            Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
+            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
@@ -682,7 +683,7 @@ impl reactor::Reactor for Reactor {
                             block_proposer::Event::FinalizedProtoBlock(block.proto_block().clone()),
                         );
                         let reactor_event =
-                            Event::ApiServer(api_server::Event::BlockFinalized(block));
+                            Event::RpcServer(rpc_server::Event::BlockFinalized(block));
                         effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
                     }
@@ -711,7 +712,7 @@ impl reactor::Reactor for Reactor {
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
 
                 for (deploy_hash, (deploy_header, execution_result)) in execution_results {
-                    let reactor_event = Event::ApiServer(api_server::Event::DeployProcessed {
+                    let reactor_event = Event::RpcServer(rpc_server::Event::DeployProcessed {
                         deploy_hash,
                         deploy_header: Box::new(deploy_header),
                         block_hash,
@@ -735,7 +736,7 @@ impl reactor::Reactor for Reactor {
                 block_hash,
                 block_header,
             }) => {
-                let reactor_event = Event::ApiServer(api_server::Event::BlockAdded {
+                let reactor_event = Event::RpcServer(rpc_server::Event::BlockAdded {
                     block_hash,
                     block_header,
                 });

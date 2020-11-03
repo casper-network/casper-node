@@ -14,7 +14,7 @@ use casper_types::auction::EraValidators;
 
 use crate::{
     components::{small_network::NodeId, storage::DeployMetadata},
-    effect::{requests::ApiRequest, Responder},
+    effect::{requests::RpcRequest, Responder},
     rpcs::chain::BlockIdentifier,
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
@@ -25,7 +25,7 @@ use crate::{
 #[derive(Debug, From)]
 pub enum Event {
     #[from]
-    ApiRequest(ApiRequest<NodeId>),
+    RpcRequest(RpcRequest<NodeId>),
     GetBlockResult {
         maybe_id: Option<BlockIdentifier>,
         result: Box<Option<Block>>,
@@ -76,7 +76,7 @@ pub enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            Event::ApiRequest(request) => write!(formatter, "{}", request),
+            Event::RpcRequest(request) => write!(formatter, "{}", request),
             Event::GetBlockResult {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),
                 result,
