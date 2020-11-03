@@ -26,8 +26,9 @@ use tracing::{error, info, trace};
 use crate::{
     components::consensus::{
         highway_core::{
+            endorsement::{Endorsement, SignedEndorsement},
             evidence::Evidence,
-            highway::{SignedWireVote, WireVote},
+            highway::{Endorsements, SignedWireVote, WireVote},
             validators::{ValidatorIndex, ValidatorMap},
         },
         traits::Context,
@@ -37,8 +38,6 @@ use crate::{
 };
 use block::Block;
 use tallies::Tallies;
-
-use super::endorsement::{Endorsement, Endorsements, SignedEndorsement};
 
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VoteError {

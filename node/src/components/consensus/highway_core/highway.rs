@@ -1,7 +1,7 @@
 mod vertex;
 
 pub(crate) use crate::components::consensus::highway_core::state::Params;
-pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
+pub(crate) use vertex::{Dependency, Endorsements, SignedWireVote, Vertex, WireVote};
 
 use thiserror::Error;
 use tracing::{debug, error, info};
@@ -20,7 +20,10 @@ use crate::{
     types::{CryptoRngCore, Timestamp},
 };
 
-use super::endorsement::{Endorsement, EndorsementError, Endorsements};
+use super::{
+    endorsement::{Endorsement, EndorsementError},
+    evidence::Evidence,
+};
 
 /// An error due to an invalid vertex.
 #[derive(Debug, Error, PartialEq)]
