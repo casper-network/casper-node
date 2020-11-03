@@ -17,7 +17,7 @@ use crate::{
     components::{
         block_executor,
         block_validator::{self, BlockValidator},
-        chainspec_loader::ChainspecLoader,
+        chainspec_loader::{self, ChainspecLoader},
         consensus::{self, HighwayProtocol},
         contract_runtime::{self, ContractRuntime},
         deploy_acceptor,
@@ -25,6 +25,9 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         linear_chain_sync::{self, LinearChainSync},
+        metrics::Metrics,
+        rest_server,
+        rest_server::RestServer,
         small_network::{self, NodeId, SmallNetwork},
         storage::{self, Storage},
         Component,
@@ -35,8 +38,9 @@ use crate::{
             GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
         },
         requests::{
-            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ConsensusRequest,
-            ContractRuntimeRequest, FetcherRequest, LinearChainRequest, NetworkRequest,
+            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
+            LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
             StorageRequest,
         },
         EffectBuilder, Effects,
@@ -64,6 +68,26 @@ pub enum Event {
     /// Storage event.
     #[from]
     Storage(storage::Event<Storage>),
+
+    #[from]
+    /// REST server event.
+    RestServer(rest_server::Event),
+
+    /// Metrics request.
+    #[from]
+    MetricsRequest(MetricsRequest),
+
+    #[from]
+    /// Chainspec Loader event.
+    ChainspecLoader(chainspec_loader::Event),
+
+    /// Chainspec info request
+    #[from]
+    ChainspecLoaderRequest(ChainspecLoaderRequest),
+
+    /// Network info request.
+    #[from]
+    NetworkInfoRequest(NetworkInfoRequest<NodeId>),
 
     /// Linear chain fetcher event.
     #[from]
@@ -202,12 +226,23 @@ impl From<ConsensusRequest> for Event {
     }
 }
 
+impl From<RestRequest<NodeId>> for Event {
+    fn from(request: RestRequest<NodeId>) -> Self {
+        Event::RestServer(rest_server::Event::RestRequest(request))
+    }
+}
+
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Network(event) => write!(f, "network: {}", event),
             Event::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
             Event::Storage(request) => write!(f, "storage: {}", request),
+            Event::RestServer(event) => write!(f, "rest server: {}", event),
+            Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
+            Event::ChainspecLoader(event) => write!(f, "chainspec loader: {}", event),
+            Event::ChainspecLoaderRequest(req) => write!(f, "chainspec loader request: {}", req),
+            Event::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             Event::BlockFetcherRequest(request) => write!(f, "block fetcher request: {}", request),
             Event::BlockValidatorRequest(request) => {
                 write!(f, "block validator request: {}", request)
@@ -254,6 +289,7 @@ impl Display for Event {
 /// Joining node reactor.
 #[derive(DataSize)]
 pub struct Reactor {
+    pub(super) metrics: Metrics,
     pub(super) net: SmallNetwork<Event, Message>,
     pub(super) address_gossiper: Gossiper<GossipedAddress, Event>,
     pub(super) config: validator::Config,
@@ -279,6 +315,8 @@ pub struct Reactor {
     pub(super) deploy_acceptor: DeployAcceptor,
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
+    #[data_size(skip)]
+    pub(super) rest_server: RestServer,
 }
 
 impl reactor::Reactor for Reactor {
@@ -309,9 +347,12 @@ impl reactor::Reactor for Reactor {
 
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
+        let metrics = Metrics::new(registry.clone());
+
         let (net, net_effects) = SmallNetwork::new(event_queue, config.network.clone(), false)?;
 
         let linear_chain_fetcher = Fetcher::new(config.fetcher);
+
         let effects = reactor::wrap_effects(Event::Network, net_effects);
 
         let address_gossiper =
@@ -339,6 +380,8 @@ impl reactor::Reactor for Reactor {
         }
 
         let linear_chain_sync = LinearChainSync::new(init_hash);
+
+        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
 
         let block_validator = BlockValidator::new();
 
@@ -380,6 +423,7 @@ impl reactor::Reactor for Reactor {
 
         Ok((
             Self {
+                metrics,
                 net,
                 address_gossiper,
                 config,
@@ -397,6 +441,7 @@ impl reactor::Reactor for Reactor {
                 block_by_height_fetcher,
                 deploy_acceptor,
                 event_queue_metrics,
+                rest_server,
             },
             effects,
         ))
@@ -651,6 +696,27 @@ impl reactor::Reactor for Reactor {
                 warn!("Ignoring linear chain announcement {}", ann);
                 Effects::new()
             }
+            Event::RestServer(event) => reactor::wrap_effects(
+                Event::RestServer,
+                self.rest_server.handle_event(effect_builder, rng, event),
+            ),
+            Event::MetricsRequest(req) => reactor::wrap_effects(
+                Event::MetricsRequest,
+                self.metrics.handle_event(effect_builder, rng, req),
+            ),
+            Event::ChainspecLoader(event) => reactor::wrap_effects(
+                Event::ChainspecLoader,
+                self.chainspec_loader
+                    .handle_event(effect_builder, rng, event),
+            ),
+            Event::ChainspecLoaderRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::ChainspecLoader(req.into()))
+            }
+            Event::NetworkInfoRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                Event::Network(small_network::Event::from(req)),
+            ),
         }
     }
 

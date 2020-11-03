@@ -353,9 +353,9 @@ impl Display for BlockProposerRequest {
     }
 }
 
-/// Abstract API request.
+/// Abstract RPC request.
 ///
-/// An API request is an abstract request that does not concern itself with serialization or
+/// An RPC request is an abstract request that does not concern itself with serialization or
 /// transport.
 #[derive(Debug)]
 #[must_use]
@@ -477,6 +477,34 @@ impl<I> Display for RpcRequest<I> {
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
             RpcRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
+        }
+    }
+}
+
+/// Abstract REST request.
+///
+/// An REST request is an abstract request that does not concern itself with serialization or
+/// transport.
+#[derive(Debug)]
+#[must_use]
+pub enum RestRequest<I> {
+    /// Return string formatted status or `None` if an error occurred.
+    GetStatus {
+        /// Responder to call with the result.
+        responder: Responder<StatusFeed<I>>,
+    },
+    /// Return string formatted, prometheus compatible metrics or `None` if an error occurred.
+    GetMetrics {
+        /// Responder to call with the result.
+        responder: Responder<Option<String>>,
+    },
+}
+
+impl<I> Display for RestRequest<I> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            RestRequest::GetStatus { .. } => write!(formatter, "get status"),
+            RestRequest::GetMetrics { .. } => write!(formatter, "get metrics"),
         }
     }
 }

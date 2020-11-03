@@ -46,6 +46,7 @@ pub use components::{
     contract_runtime::Config as ContractRuntimeConfig,
     fetcher::Config as FetcherConfig,
     gossiper::{Config as GossipConfig, Error as GossipError},
+    rest_server::Config as RestServerConfig,
     rpc_server::{rpcs, Config as RpcServerConfig},
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
     storage::{Config as StorageConfig, Error as StorageError},

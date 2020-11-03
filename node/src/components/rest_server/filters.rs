@@ -12,7 +12,7 @@ use warp::{
 
 use super::{ReactorEventT, CLIENT_API_VERSION};
 use crate::{
-    effect::{requests::RpcRequest, EffectBuilder},
+    effect::{requests::RestRequest, EffectBuilder},
     reactor::QueueKind,
     types::GetStatusResult,
 };
@@ -31,7 +31,7 @@ pub(super) fn create_status_filter<REv: ReactorEventT>(
         .and_then(move || {
             effect_builder
                 .make_request(
-                    |responder| RpcRequest::GetStatus { responder },
+                    |responder| RestRequest::GetStatus { responder },
                     QueueKind::Api,
                 )
                 .map(|status_feed| {
@@ -51,7 +51,7 @@ pub(super) fn create_metrics_filter<REv: ReactorEventT>(
         .and_then(move || {
             effect_builder
                 .make_request(
-                    |responder| RpcRequest::GetMetrics { responder },
+                    |responder| RestRequest::GetMetrics { responder },
                     QueueKind::Api,
                 )
                 .map(|maybe_metrics| match maybe_metrics {

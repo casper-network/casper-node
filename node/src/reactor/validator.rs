@@ -219,7 +219,7 @@ impl Display for Event {
             Event::Network(event) => write!(f, "network: {}", event),
             Event::BlockProposer(event) => write!(f, "block proposer: {}", event),
             Event::Storage(event) => write!(f, "storage: {}", event),
-            Event::RpcServer(event) => write!(f, "api server: {}", event),
+            Event::RpcServer(event) => write!(f, "rpc server: {}", event),
             Event::ChainspecLoader(event) => write!(f, "chainspec loader: {}", event),
             Event::Consensus(event) => write!(f, "consensus: {}", event),
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
