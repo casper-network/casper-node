@@ -102,6 +102,11 @@ pub enum Error {
     /// Failed to validate response.
     #[error("Invalid response {0}")]
     InvalidResponse(#[from] ValidateResponseError),
+
+    /// User must call FFI's setup function prior to making ffi calls.
+    #[cfg(feature = "ffi")]
+    #[error("setup function has not been called")]
+    FFISetupNotCalled,
 }
 
 impl From<URefFromStrError> for Error {
