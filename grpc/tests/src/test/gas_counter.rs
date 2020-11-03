@@ -47,10 +47,7 @@ fn make_gas_counter_overflow() -> Vec<u8> {
     let upper_bound = (u32::max_value() as usize / opcode_costs.nop as usize) + 1;
 
     let instructions = {
-        let mut instructions = Vec::with_capacity(upper_bound);
-        for _ in 0..upper_bound {
-            instructions.push(Instruction::Nop);
-        }
+        let mut instructions = vec![Instruction::Nop; upper_bound];
         instructions.push(Instruction::End);
         Instructions::new(instructions)
     };
