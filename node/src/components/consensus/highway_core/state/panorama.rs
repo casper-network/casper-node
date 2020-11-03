@@ -111,7 +111,7 @@ impl<C: Context> Panorama<C> {
     }
 
     /// Returns an iterator over all honest validators' latest messages' hashes.
-    pub(crate) fn iter_correct_hashes<'a>(&'a self) -> impl Iterator<Item = &C::Hash> {
+    pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
         self.iter().filter_map(Observation::correct)
     }
 

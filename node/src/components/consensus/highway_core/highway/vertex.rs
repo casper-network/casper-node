@@ -186,7 +186,7 @@ impl<C: Context> Endorsements<C> {
         let endorsers = iter
             .map(|e| {
                 assert_eq!(e.vote(), &vote, "endorsements for different votes.");
-                (e.validator_idx(), e.signature().clone())
+                (e.validator_idx(), *e.signature())
             })
             .collect();
         Endorsements { vote, endorsers }
