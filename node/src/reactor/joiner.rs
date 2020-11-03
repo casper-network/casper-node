@@ -491,13 +491,6 @@ impl reactor::Reactor for Reactor {
                     });
                     self.dispatch_event(effect_builder, rng, event)
                 }
-                // needed so that consensus can notify us of the eras it knows of
-                // TODO: remove when proper syncing is implemented
-                Message::Consensus(msg) => self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    Event::Consensus(consensus::Event::MessageReceived { sender, msg }),
-                ),
                 Message::AddressGossiper(message) => {
                     let event = Event::AddressGossiper(gossiper::Event::MessageReceived {
                         sender,
