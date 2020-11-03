@@ -48,4 +48,4 @@ source $daemon_mgr $net $node
 
 # Display status.
 sleep 1.0
-source $NCTL/sh/node/status.sh $net
+source $NCTL/sh/node/status.sh net=$net
