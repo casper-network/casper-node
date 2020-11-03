@@ -1696,7 +1696,8 @@ where
         let protocol_data = self.context.protocol_data();
         let transfers = self.context.transfers().to_owned();
 
-        let mint_context = self.context.fork(
+        let mint_context = RuntimeContext::new(
+            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -1804,7 +1805,8 @@ where
         let protocol_data = self.context.protocol_data();
         let transfers = self.context.transfers().to_owned();
 
-        let runtime_context = self.context.fork(
+        let runtime_context = RuntimeContext::new(
+            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -1910,7 +1912,8 @@ where
         let protocol_data = self.context.protocol_data();
         let transfers = self.context.transfers().to_owned();
 
-        let runtime_context = self.context.fork(
+        let runtime_context = RuntimeContext::new(
+            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -2339,7 +2342,8 @@ where
 
         let host_buffer = None;
 
-        let context = self.context.fork(
+        let context = RuntimeContext::new(
+            self.context.state(),
             entry_point.entry_point_type(),
             &mut named_keys,
             access_rights,
@@ -2549,7 +2553,7 @@ where
         Ok(Ok(()))
     }
 
-    fn create_contract_value(&mut self) -> Result<(ContractPackage, URef), Error> {
+    fn create_contract_package(&mut self) -> Result<(ContractPackage, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = ContractPackage::new(
             access_key,
@@ -2563,7 +2567,7 @@ where
 
     fn create_contract_package_at_hash(&mut self) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
-        let (contract_package, access_key) = self.create_contract_value()?;
+        let (contract_package, access_key) = self.create_contract_package()?;
         self.context
             .metered_write_gs_unsafe(addr, contract_package)?;
         Ok((addr, access_key.addr()))

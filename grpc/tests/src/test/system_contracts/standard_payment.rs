@@ -30,9 +30,9 @@ const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 const TRANSFER_PURSE_TO_ACCOUNT_WASM: &str = "transfer_purse_to_account.wasm";
 const REVERT_WASM: &str = "revert.wasm";
 const ENDLESS_LOOP_WASM: &str = "endless_loop.wasm";
-// const STANDARD_PAYMENT_WASM: &str = "standard_payment.wasm";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
+
 lazy_static! {
     static ref EXHAUSTIVE_HOST_FUNCTION_COSTS: HostFunctionCosts = HostFunctionCosts {
         // Settings where all opcodes are so expensive so we can run out of gas very quickly
@@ -40,13 +40,13 @@ lazy_static! {
         .. Default::default()
     };
 
-static ref EXHAUSTIVE_WASM_CONFIG: WasmConfig = WasmConfig::new(
-    DEFAULT_INITIAL_MEMORY,
-    DEFAULT_MAX_STACK_HEIGHT,
-    OpcodeCosts::default(),
-    StorageCosts::new(u32::max_value()),
-    *EXHAUSTIVE_HOST_FUNCTION_COSTS,
-);
+    static ref EXHAUSTIVE_WASM_CONFIG: WasmConfig = WasmConfig::new(
+        DEFAULT_INITIAL_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT,
+        OpcodeCosts::default(),
+        StorageCosts::new(u32::max_value()),
+        *EXHAUSTIVE_HOST_FUNCTION_COSTS,
+    );
 }
 
 #[ignore]

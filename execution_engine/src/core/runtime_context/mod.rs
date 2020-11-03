@@ -163,53 +163,6 @@ where
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn fork(
-        &self,
-        entry_point_type: EntryPointType,
-        named_keys: &'a mut NamedKeys,
-        access_rights: HashMap<Address, HashSet<AccessRights>>,
-        runtime_args: RuntimeArgs,
-        authorization_keys: BTreeSet<AccountHash>,
-        account: &'a Account,
-        base_key: Key,
-        blocktime: BlockTime,
-        deploy_hash: [u8; KEY_HASH_LENGTH],
-        gas_limit: Gas,
-        gas_counter: Gas,
-        hash_address_generator: Rc<RefCell<AddressGenerator>>,
-        uref_address_generator: Rc<RefCell<AddressGenerator>>,
-        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
-        protocol_version: ProtocolVersion,
-        correlation_id: CorrelationId,
-        phase: Phase,
-        protocol_data: ProtocolData,
-        transfers: Vec<TransferAddr>,
-    ) -> Self {
-        RuntimeContext {
-            tracking_copy: Rc::clone(&self.tracking_copy),
-            entry_point_type,
-            named_keys,
-            access_rights,
-            args: runtime_args,
-            account,
-            authorization_keys,
-            blocktime,
-            deploy_hash,
-            base_key,
-            gas_limit,
-            gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
-            protocol_version,
-            correlation_id,
-            phase,
-            protocol_data,
-            transfers,
-        }
-    }
-
     pub fn authorization_keys(&self) -> &BTreeSet<AccountHash> {
         &self.authorization_keys
     }
@@ -334,6 +287,10 @@ where
 
     pub fn transfer_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
         Rc::clone(&self.transfer_address_generator)
+    }
+
+    pub(super) fn state(&self) -> Rc<RefCell<TrackingCopy<R>>> {
+        Rc::clone(&self.tracking_copy)
     }
 
     pub fn gas_limit(&self) -> Gas {
@@ -485,18 +442,6 @@ where
                 key, error
             ))
         })
-    }
-
-    pub fn metered_write_gs<T>(&mut self, key: Key, value: T) -> Result<(), Error>
-    where
-        T: Into<StoredValue>,
-    {
-        let stored_value = value.into();
-        self.validate_writeable(&key)?;
-        self.validate_key(&key)?;
-        self.validate_value(&stored_value)?;
-        self.metered_write_gs_unsafe(key, stored_value)?;
-        Ok(())
     }
 
     pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
@@ -741,22 +686,68 @@ where
         }
     }
 
-    /// Adds `value` to the `key`. The premise for being able to `add` value is
-    /// that the type of it [value] can be added (is a Monoid). If the
-    /// values can't be added, either because they're not a Monoid or if the
-    /// value stored under `key` has different type, then `TypeMismatch`
-    /// errors is returned.
-    pub(crate) fn metered_add_gs<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
+    /// Safely charge the specified amount of gas, up to the available gas limit.
+    ///
+    /// Returns [`Error::GasLimit`] if gas limit exceeded and `()` if not.
+    /// Intuition about the return value sense is to answer the question 'are we
+    /// allowed to continue?'
+    pub(crate) fn charge_gas(&mut self, amount: Gas) -> Result<(), Error> {
+        let prev = self.gas_counter();
+        let gas_limit = self.gas_limit();
+        // gas charge overflow protection
+        match prev.checked_add(amount) {
+            None => {
+                self.set_gas_counter(gas_limit);
+                Err(Error::GasLimit)
+            }
+            Some(val) if val > gas_limit => {
+                self.set_gas_counter(gas_limit);
+                Err(Error::GasLimit)
+            }
+            Some(val) => {
+                self.set_gas_counter(val);
+                Ok(())
+            }
+        }
+    }
+
+    /// Charges gas for specified amount of bytes used.
+    fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
+        let storage_costs = self.protocol_data().wasm_config().storage_costs();
+
+        let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
+
+        self.charge_gas(gas_cost)
+    }
+
+    /// Writes data to global state with a measurement
+    pub(crate) fn metered_write_gs_unsafe<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
     where
         K: Into<Key>,
         V: Into<StoredValue>,
     {
-        let key = key.into();
-        let value = value.into();
-        self.validate_addable(&key)?;
+        let stored_value = value.into();
+
+        // Charge for amount as measured by serialized length
+        let bytes_count = stored_value.serialized_length();
+        self.charge_gas_storage(bytes_count)?;
+
+        self.tracking_copy
+            .borrow_mut()
+            .write(key.into(), stored_value);
+        Ok(())
+    }
+
+    pub fn metered_write_gs<T>(&mut self, key: Key, value: T) -> Result<(), Error>
+    where
+        T: Into<StoredValue>,
+    {
+        let stored_value = value.into();
+        self.validate_writeable(&key)?;
         self.validate_key(&key)?;
-        self.validate_value(&value)?;
-        self.metered_add_gs_unsafe(key, value)
+        self.validate_value(&stored_value)?;
+        self.metered_write_gs_unsafe(key, stored_value)?;
+        Ok(())
     }
 
     fn metered_add_gs_unsafe(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
@@ -774,6 +765,24 @@ where
             Ok(AddResult::TypeMismatch(type_mismatch)) => Err(Error::TypeMismatch(type_mismatch)),
             Ok(AddResult::Serialization(error)) => Err(Error::BytesRepr(error)),
         }
+    }
+
+    /// Adds `value` to the `key`. The premise for being able to `add` value is
+    /// that the type of it [value] can be added (is a Monoid). If the
+    /// values can't be added, either because they're not a Monoid or if the
+    /// value stored under `key` has different type, then `TypeMismatch`
+    /// errors is returned.
+    pub(crate) fn metered_add_gs<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
+    where
+        K: Into<Key>,
+        V: Into<StoredValue>,
+    {
+        let key = key.into();
+        let value = value.into();
+        self.validate_addable(&key)?;
+        self.validate_key(&key)?;
+        self.validate_value(&value)?;
+        self.metered_add_gs_unsafe(key, value)
     }
 
     pub fn add_associated_key(
@@ -965,57 +974,5 @@ where
         let contract_package: ContractPackage = self.read_gs_typed(&Key::from(package_hash))?;
         self.validate_uref(&contract_package.access_key())?;
         Ok(contract_package)
-    }
-
-    /// Safely charge the specified amount of gas, up to the available gas limit.
-    ///
-    /// Returns [`Error::GasLimit`] if gas limit exceeded and `()` if not.
-    /// Intuition about the return value sense is to answer the question 'are we
-    /// allowed to continue?'
-    pub(crate) fn charge_gas(&mut self, amount: Gas) -> Result<(), Error> {
-        let prev = self.gas_counter();
-        let gas_limit = self.gas_limit();
-        // gas charge overflow protection
-        match prev.checked_add(amount) {
-            None => {
-                self.set_gas_counter(gas_limit);
-                Err(Error::GasLimit)
-            }
-            Some(val) if val > gas_limit => {
-                self.set_gas_counter(gas_limit);
-                Err(Error::GasLimit)
-            }
-            Some(val) => {
-                self.set_gas_counter(val);
-                Ok(())
-            }
-        }
-    }
-
-    /// Charges gas for specified amount of bytes used.
-    fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        let storage_costs = self.protocol_data().wasm_config().storage_costs();
-
-        let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
-
-        self.charge_gas(gas_cost)
-    }
-
-    /// Writes data to global state with a measurement
-    pub(crate) fn metered_write_gs_unsafe<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
-    where
-        K: Into<Key>,
-        V: Into<StoredValue>,
-    {
-        let stored_value = value.into();
-
-        // Charge for amount as measured by serialized length
-        let bytes_count = stored_value.serialized_length();
-        self.charge_gas_storage(bytes_count)?;
-
-        self.tracking_copy
-            .borrow_mut()
-            .write(key.into(), stored_value);
-        Ok(())
     }
 }
