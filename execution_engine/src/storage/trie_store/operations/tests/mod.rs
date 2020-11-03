@@ -26,7 +26,7 @@ use crate::storage::{
         operations::{self, read, read_with_proof, write, ReadResult, WriteResult},
         TrieStore,
     },
-    DEFAULT_TEST_MAX_DB_SIZE,
+    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 use std::ops::Not;
 
@@ -517,8 +517,11 @@ impl LmdbTestContext {
         V: FromBytes + ToBytes,
     {
         let _temp_dir = tempdir()?;
-        let environment =
-            LmdbEnvironment::new(&_temp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE)?;
+        let environment = LmdbEnvironment::new(
+            &_temp_dir.path().to_path_buf(),
+            DEFAULT_TEST_MAX_DB_SIZE,
+            DEFAULT_TEST_MAX_READERS,
+        )?;
         let store = LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())?;
         put_tries::<_, _, _, _, error::Error>(&environment, &store, tries)?;
         Ok(LmdbTestContext {

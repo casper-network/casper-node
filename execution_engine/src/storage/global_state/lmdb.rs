@@ -197,7 +197,7 @@ mod tests {
     use super::*;
     use crate::storage::{
         trie_store::operations::{write, WriteResult},
-        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     };
 
     #[derive(Debug, Clone)]
@@ -240,8 +240,12 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let _temp_dir = tempdir().unwrap();
         let environment = Arc::new(
-            LmdbEnvironment::new(&_temp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE)
-                .unwrap(),
+            LmdbEnvironment::new(
+                &_temp_dir.path().to_path_buf(),
+                DEFAULT_TEST_MAX_DB_SIZE,
+                DEFAULT_TEST_MAX_READERS,
+            )
+            .unwrap(),
         );
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());

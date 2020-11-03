@@ -3,15 +3,18 @@ use std::fmt::{self, Debug};
 use tracing::{error, trace, warn};
 
 use super::{
+    endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
-    highway::{ValidVertex, Vertex, WireVote},
+    highway::{Endorsements, ValidVertex, Vertex, WireVote},
     state::{self, Observation, Panorama, State, Vote},
     validators::ValidatorIndex,
 };
 
 use crate::{
     components::consensus::{
-        consensus_protocol::BlockContext, highway_core::highway::SignedWireVote, traits::Context,
+        consensus_protocol::BlockContext,
+        highway_core::highway::SignedWireVote,
+        traits::{Context, ValidatorSecret},
     },
     types::{CryptoRngCore, TimeDiff, Timestamp},
 };
@@ -139,15 +142,41 @@ impl<C: Context> ActiveValidator<C> {
         if let Some(evidence) = state.opt_evidence(self.vidx) {
             return vec![Effect::WeEquivocated(evidence.clone())];
         }
+        let mut effects = vec![];
         if self.should_send_confirmation(vhash, now, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             if panorama.has_correct() {
                 let confirmation_vote = self.new_vote(panorama, now, None, state, instance_id, rng);
                 let vv = ValidVertex(Vertex::Vote(confirmation_vote));
-                return vec![Effect::NewVertex(vv)];
+                effects.extend(vec![Effect::NewVertex(vv)])
             }
+        };
+        if self.should_endorse(vhash, state) {
+            let endorsement = self.endorse(vhash, rng);
+            effects.extend(vec![Effect::NewVertex(ValidVertex(endorsement))]);
         }
-        vec![]
+        effects
+    }
+
+    /// Returns actions validator needs to take upon receiving a new evidence.
+    /// Endorses all latest votes by honest validators that do not mark new perpetrator as faulty
+    /// and cite some new message by that validator.
+    pub(crate) fn on_new_evidence(
+        &mut self,
+        evidence: &Evidence<C>,
+        state: &State<C>,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<Effect<C>> {
+        let vidx = evidence.perpetrator();
+        state
+            .iter_correct_hashes()
+            .filter(|&v| {
+                let vote = state.vote(v);
+                vote.new_hash_obs(state, vidx)
+            })
+            .map(|v| self.endorse(v, rng))
+            .map(|endorsement| Effect::NewVertex(ValidVertex(endorsement)))
+            .collect()
     }
 
     /// Returns an effect to request a consensus value for a block to propose.
@@ -380,6 +409,29 @@ impl<C: Context> ActiveValidator<C> {
                 vote.round_exp
             }
         })
+    }
+
+    /// Returns whether we should endorse the `vhash`.
+    ///
+    /// We should endorse vote from honest validator that cites _an_ equivocator
+    /// as honest and it cites some new message by that validator.
+    fn should_endorse(&self, vhash: &C::Hash, state: &State<C>) -> bool {
+        let vote = state.vote(vhash);
+        !state.is_faulty(vote.creator)
+            && vote
+                .panorama
+                .enumerate()
+                .any(|(vidx, _)| state.is_faulty(vidx) && vote.new_hash_obs(state, vidx))
+    }
+
+    /// Creates endorsement of the `vhash`.
+    fn endorse(&self, vhash: &C::Hash, rng: &mut dyn CryptoRngCore) -> Vertex<C> {
+        let endorsement = Endorsement::new(*vhash, self.vidx);
+        let signature = self.secret.sign(&endorsement.hash(), rng);
+        Vertex::Endorsements(Endorsements::new(vec![SignedEndorsement::new(
+            endorsement,
+            signature,
+        )]))
     }
 }
 

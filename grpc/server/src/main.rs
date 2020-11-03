@@ -60,6 +60,14 @@ const GET_PAGES_EXPECT: &str = "Could not parse pages argument";
 // 805306368000 / 4096 = 196608000
 const DEFAULT_PAGES: usize = 196_608_000;
 
+// max_readers / lmdb
+const ARG_MAX_READERS: &str = "max-readers";
+const ARG_MAX_READERS_SHORT: &str = "r";
+const ARG_MAX_READERS_VALUE: &str = "NUM";
+const ARG_MAX_READERS_HELP: &str = "Sets the max number of readers to use for lmdb";
+const GET_MAX_READERS_EXPECT: &str = "Could not parse max-readers argument";
+const DEFAULT_MAX_READERS: u32 = 512;
+
 // socket
 const ARG_SOCKET: &str = "socket";
 const ARG_SOCKET_HELP: &str =
@@ -126,11 +134,20 @@ fn main() {
 
     let map_size = get_map_size(&arg_matches);
 
+    let max_readers = get_max_readers(&arg_matches);
+
     let thread_count = get_thread_count(&arg_matches);
 
     let engine_config: EngineConfig = get_engine_config(&arg_matches);
 
-    let _server = get_grpc_server(&socket, data_dir, map_size, thread_count, engine_config);
+    let _server = get_grpc_server(
+        &socket,
+        data_dir,
+        map_size,
+        max_readers,
+        thread_count,
+        engine_config,
+    );
 
     log_listening_message(&socket);
 
@@ -214,6 +231,14 @@ fn get_args() -> ArgMatches<'static> {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name(ARG_MAX_READERS)
+                .short(ARG_MAX_READERS_SHORT)
+                .long(ARG_MAX_READERS)
+                .value_name(ARG_MAX_READERS_VALUE)
+                .help(ARG_MAX_READERS_HELP)
+                .takes_value(true),
+        )
+        .arg(
             Arg::with_name(ARG_THREAD_COUNT)
                 .short(ARG_THREAD_COUNT_SHORT)
                 .long(ARG_THREAD_COUNT)
@@ -280,6 +305,15 @@ fn get_map_size(arg_matches: &ArgMatches) -> usize {
     page_size * pages
 }
 
+/// Gets value of max readers argument
+fn get_max_readers(arg_matches: &ArgMatches) -> u32 {
+    let max_readers = arg_matches
+        .value_of(ARG_MAX_READERS)
+        .map_or(Ok(DEFAULT_MAX_READERS), u32::from_str)
+        .expect(GET_MAX_READERS_EXPECT);
+    max_readers
+}
+
 fn get_thread_count(arg_matches: &ArgMatches) -> usize {
     arg_matches
         .value_of(ARG_THREAD_COUNT)
@@ -300,10 +334,11 @@ fn get_grpc_server(
     socket: &socket::Socket,
     data_dir: PathBuf,
     map_size: usize,
+    max_readers: u32,
     thread_count: usize,
     engine_config: EngineConfig,
 ) -> grpc::Server {
-    let engine_state = get_engine_state(data_dir, map_size, engine_config);
+    let engine_state = get_engine_state(data_dir, map_size, max_readers, engine_config);
 
     engine_server::new(socket.as_str(), thread_count, engine_state)
         .build()
@@ -314,10 +349,12 @@ fn get_grpc_server(
 fn get_engine_state(
     data_dir: PathBuf,
     map_size: usize,
+    max_readers: u32,
     engine_config: EngineConfig,
 ) -> EngineState<LmdbGlobalState> {
     let environment = {
-        let ret = LmdbEnvironment::new(&data_dir, map_size).expect(LMDB_ENVIRONMENT_EXPECT);
+        let ret =
+            LmdbEnvironment::new(&data_dir, map_size, max_readers).expect(LMDB_ENVIRONMENT_EXPECT);
         Arc::new(ret)
     };
 
