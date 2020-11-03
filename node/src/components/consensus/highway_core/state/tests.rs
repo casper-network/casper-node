@@ -178,7 +178,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     let opt_err = add_vote!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
         .err()
         .map(vote_err);
-    assert_eq!(Some(VoteError::RoundLengthExpLessThanMinimum), opt_err);
+    assert_eq!(Some(VoteError::RoundLengthExpChangedWithinRound), opt_err);
     // And you can't make the round exponent too big
     let opt_err = add_vote!(state, rng, CAROL, 50, 40u8, None; N, b1, c0)
         .err()
