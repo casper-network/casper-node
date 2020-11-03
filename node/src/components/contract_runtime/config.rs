@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::utils;
 
-const DEFAULT_MAX_GLOBAL_STATE_SIZE: usize = 805_306_368_000; // 750 GiB
 const DEFAULT_USE_SYSTEM_CONTRACTS: bool = false;
+const DEFAULT_MAX_GLOBAL_STATE_SIZE: usize = 805_306_368_000; // 750 GiB
+const DEFAULT_MAX_READERS: u32 = 512;
 
 /// Contract runtime configuration.
 #[derive(Clone, Copy, DataSize, Debug, Deserialize, Serialize)]
@@ -19,6 +20,10 @@ pub struct Config {
     ///
     /// The size should be a multiple of the OS page size.
     max_global_state_size: Option<usize>,
+    /// The maximum number of readers to use for the global state store.
+    ///
+    /// Defaults to 512.
+    max_readers: Option<u32>,
 }
 
 impl Config {
@@ -34,6 +39,10 @@ impl Config {
         utils::check_multiple_of_page_size(value);
         value
     }
+
+    pub(crate) fn max_readers(&self) -> u32 {
+        self.max_readers.unwrap_or(DEFAULT_MAX_READERS)
+    }
 }
 
 impl Default for Config {
@@ -41,6 +50,7 @@ impl Default for Config {
         Config {
             use_system_contracts: Some(DEFAULT_USE_SYSTEM_CONTRACTS),
             max_global_state_size: Some(DEFAULT_MAX_GLOBAL_STATE_SIZE),
+            max_readers: Some(DEFAULT_MAX_READERS),
         }
     }
 }
