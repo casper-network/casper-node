@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn new_exponent_speed_up() {
-        // If there's been enough successful rounds and its an acceleration round, speed up
+        // If there's been enough successful rounds and it's an acceleration round, speed up
         let mut round_success_meter: super::RoundSuccessMeter<ClContext> =
             super::RoundSuccessMeter::new(
                 TEST_ROUND_EXP,
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn new_exponent_can_not_speed_up_because_min_round_exp() {
-        // If there's been enough successful rounds and its an acceleration round, but we are
+        // If there's been enough successful rounds and it's an acceleration round, but we are
         // already at the smallest round exponent possible, stay at the current round exponent
         let mut round_success_meter: super::RoundSuccessMeter<ClContext> =
             super::RoundSuccessMeter::new(
