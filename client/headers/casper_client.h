@@ -85,18 +85,9 @@ void casper_shutdown_client(void);
 uintptr_t casper_get_last_error(unsigned char *buf, uintptr_t len);
 
 /**
- * Get auction info.
+ * Put deploy.
  *
- * See [super::get_auction_info](function.get_auction_info.html) for more details.
- */
-bool casper_get_auction_info(const char *maybe_rpc_id,
-                             const char *node_address,
-                             bool verbose,
-                             unsigned char *response_buf,
-                             uintptr_t response_buf_len);
-
-/**
- * FFI function for `put_deploy.
+ * See [super::put_deploy](function.put_deploy.html) for more details
  */
 bool casper_put_deploy(const char *maybe_rpc_id,
                        const char *node_address,
@@ -106,5 +97,127 @@ bool casper_put_deploy(const char *maybe_rpc_id,
                        const casper_payment_params_t *payment_params,
                        unsigned char *response_buf,
                        uintptr_t response_buf_len);
+
+/**
+ * Make deploy.
+ *
+ * See [super::make_deploy](function.make_deploy.html) for more details
+ */
+bool casper_make_deploy(const char *maybe_output_path,
+                        const casper_deploy_params_t *deploy_params,
+                        const casper_session_params_t *session_params,
+                        const casper_payment_params_t *payment_params);
+
+/**
+ * Sign deploy file.
+ *
+ * See [super::sign_deploy_file](function.sign_deploy_file.html) for more details.
+ */
+bool casper_sign_deploy_file(const char *input_path,
+                             const char *secret_key,
+                             const char *maybe_output_path);
+
+/**
+ * Send deploy file.
+ *
+ * See [super::send_deploy_file](function.send_deploy_file.html) for more details.
+ */
+bool casper_send_deploy_file(const char *maybe_rpc_id,
+                             const char *node_address,
+                             bool verbose,
+                             const char *input_path,
+                             unsigned char *response_buf,
+                             uintptr_t response_buf_len);
+
+/**
+ * Transfer.
+ *
+ * See [super::transfer](function.transfer.html) for more details
+ */
+bool casper_transfer(const char *maybe_rpc_id,
+                     const char *node_address,
+                     bool verbose,
+                     const char *amount,
+                     const char *maybe_source_purse,
+                     const char *maybe_target_purse,
+                     const char *maybe_target_account,
+                     const casper_deploy_params_t *deploy_params,
+                     const casper_payment_params_t *payment_params,
+                     unsigned char *response_buf,
+                     uintptr_t response_buf_len);
+
+/**
+ * Get deploy.
+ *
+ * See [super::get_deploy](function.get_deploy.html) for more details.
+ */
+bool casper_get_deploy(const char *maybe_rpc_id,
+                       const char *node_address,
+                       bool verbose,
+                       const char *deploy_hash,
+                       unsigned char *response_buf,
+                       uintptr_t response_buf_len);
+
+/**
+ * Get block.
+ *
+ * See [super::get_block](function.get_block.html) for more details.
+ */
+bool casper_get_block(const char *maybe_rpc_id,
+                      const char *node_address,
+                      bool verbose,
+                      const char *maybe_block_id,
+                      unsigned char *response_buf,
+                      uintptr_t response_buf_len);
+
+/**
+ * Get state root hash.
+ *
+ * See [super::get_state_root_hash](function.get_state_root_hash.html) for more details.
+ */
+bool casper_get_state_root_hash(const char *maybe_rpc_id,
+                                const char *node_address,
+                                bool verbose,
+                                const char *maybe_block_id,
+                                unsigned char *response_buf,
+                                uintptr_t response_buf_len);
+
+/**
+ * Get item.
+ *
+ * See [super::get_item](function.get_item.html) for more details.
+ */
+bool casper_get_item(const char *maybe_rpc_id,
+                     const char *node_address,
+                     bool verbose,
+                     const char *state_root_hash,
+                     const char *key,
+                     const char *path,
+                     unsigned char *response_buf,
+                     uintptr_t response_buf_len);
+
+/**
+ * Get balance.
+ *
+ * See [super::get_balance](function.get_balance.html) for more details.
+ */
+bool casper_get_balance(const char *maybe_rpc_id,
+                        const char *node_address,
+                        bool verbose,
+                        const char *state_root_hash,
+                        const char *purse,
+                        unsigned char *response_buf,
+                        uintptr_t response_buf_len);
+
+/**
+ * Get auction info.
+ *
+ * See [super::get_auction_info](function.get_auction_info.html) for more details.
+ */
+bool casper_get_auction_info(const char *maybe_rpc_id,
+                             const char *node_address,
+                             bool verbose,
+                             unsigned char *response_buf,
+                             uintptr_t response_buf_len);
 
 #endif /* __CASPER_CLIENT_H__ */

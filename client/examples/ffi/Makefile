@@ -15,6 +15,7 @@ LDFLAGS = -Wl,$(CASPER_SHARED_LIB)
 .PHONY: all
 all: check-format get_auction_info put_deploy
 
+# TODO think about passing in debug|release?
 .PHONY: cargo-build-release
 cargo-build-release:
 	$(CARGO) build --release

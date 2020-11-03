@@ -164,6 +164,293 @@ pub extern "C" fn casper_get_last_error(buf: *mut c_uchar, len: usize) -> usize 
     0
 }
 
+/// Put deploy.
+///
+/// See [super::put_deploy](function.put_deploy.html) for more details
+#[no_mangle]
+pub extern "C" fn casper_put_deploy(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    deploy_params: *const casper_deploy_params_t,
+    session_params: *const casper_session_params_t,
+    payment_params: *const casper_payment_params_t,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> bool {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
+    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
+    let deploy_params = try_unwrap!(unsafe_try_into(deploy_params));
+    let session_params = try_unwrap!(unsafe_try_into(session_params));
+    let payment_params = try_unwrap!(unsafe_try_into(payment_params));
+    runtime.block_on(async move {
+        let result = super::put_deploy(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            deploy_params,
+            session_params,
+            payment_params,
+        );
+        let response = try_rpc_str!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        true
+    })
+}
+
+/// Make deploy.
+///
+/// See [super::make_deploy](function.make_deploy.html) for more details
+#[no_mangle]
+pub extern "C" fn casper_make_deploy(
+    maybe_output_path: *const c_char,
+    deploy_params: *const casper_deploy_params_t,
+    session_params: *const casper_session_params_t,
+    payment_params: *const casper_payment_params_t,
+) -> bool {
+    let maybe_output_path = try_unwrap!(unsafe_str_arg(maybe_output_path, false));
+    let deploy_params = try_unwrap!(unsafe_try_into(deploy_params));
+    let session_params = try_unwrap!(unsafe_try_into(session_params));
+    let payment_params = try_unwrap!(unsafe_try_into(payment_params));
+    let result = super::make_deploy(
+        maybe_output_path,
+        deploy_params,
+        session_params,
+        payment_params,
+    );
+    try_unwrap!(result);
+    true
+}
+
+/// Sign deploy file.
+///
+/// See [super::sign_deploy_file](function.sign_deploy_file.html) for more details.
+#[no_mangle]
+pub extern "C" fn casper_sign_deploy_file(
+    input_path: *const c_char,
+    secret_key: *const c_char,
+    maybe_output_path: *const c_char,
+) -> bool {
+    let input_path = try_unwrap!(unsafe_str_arg(input_path, false));
+    let secret_key = try_unwrap!(unsafe_str_arg(secret_key, false));
+    let maybe_output_path = try_unwrap!(unsafe_str_arg(maybe_output_path, false));
+    let result = super::sign_deploy_file(input_path, secret_key, maybe_output_path);
+    try_unwrap!(result);
+    true
+}
+
+/// Send deploy file.
+///
+/// See [super::send_deploy_file](function.send_deploy_file.html) for more details.
+#[no_mangle]
+pub extern "C" fn casper_send_deploy_file(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    input_path: *const c_char,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> bool {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
+    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
+    let input_path = try_unwrap!(unsafe_str_arg(input_path, false));
+    runtime.block_on(async move {
+        let result = super::send_deploy_file(maybe_rpc_id, node_address, verbose, input_path);
+        let response = try_rpc_str!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        true
+    })
+}
+
+/// Transfer.
+///
+/// See [super::transfer](function.transfer.html) for more details
+#[no_mangle]
+pub extern "C" fn casper_transfer(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    amount: *const c_char,
+    maybe_source_purse: *const c_char,
+    maybe_target_purse: *const c_char,
+    maybe_target_account: *const c_char,
+    deploy_params: *const casper_deploy_params_t,
+    payment_params: *const casper_payment_params_t,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> bool {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
+    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
+    let amount = try_unwrap!(unsafe_str_arg(amount, false));
+    let maybe_source_purse = try_unwrap!(unsafe_str_arg(maybe_source_purse, false));
+    let maybe_target_purse = try_unwrap!(unsafe_str_arg(maybe_target_purse, false));
+    let maybe_target_account = try_unwrap!(unsafe_str_arg(maybe_target_account, false));
+    let deploy_params = try_unwrap!(unsafe_try_into(deploy_params));
+    let payment_params = try_unwrap!(unsafe_try_into(payment_params));
+    runtime.block_on(async move {
+        let result = super::transfer(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            amount,
+            maybe_source_purse,
+            maybe_target_purse,
+            maybe_target_account,
+            deploy_params,
+            payment_params,
+        );
+        let response = try_rpc_str!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        true
+    })
+}
+
+/// Get deploy.
+///
+/// See [super::get_deploy](function.get_deploy.html) for more details.
+#[no_mangle]
+pub extern "C" fn casper_get_deploy(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    deploy_hash: *const c_char,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> bool {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
+    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
+    let deploy_hash = try_unwrap!(unsafe_str_arg(deploy_hash, false));
+    runtime.block_on(async move {
+        let result = super::get_deploy(maybe_rpc_id, node_address, verbose, deploy_hash);
+        let response = try_rpc_str!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        true
+    })
+}
+
+/// Get block.
+///
+/// See [super::get_block](function.get_block.html) for more details.
+#[no_mangle]
+pub extern "C" fn casper_get_block(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    maybe_block_id: *const c_char,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> bool {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
+    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
+    let maybe_block_id = try_unwrap!(unsafe_str_arg(maybe_block_id, false));
+    runtime.block_on(async move {
+        let result = super::get_block(maybe_rpc_id, node_address, verbose, maybe_block_id);
+        let response = try_rpc_str!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        true
+    })
+}
+
+/// Get state root hash.
+///
+/// See [super::get_state_root_hash](function.get_state_root_hash.html) for more details.
+#[no_mangle]
+pub extern "C" fn casper_get_state_root_hash(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    maybe_block_id: *const c_char,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> bool {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
+    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
+    let maybe_block_id = try_unwrap!(unsafe_str_arg(maybe_block_id, false));
+    runtime.block_on(async move {
+        let result =
+            super::get_state_root_hash(maybe_rpc_id, node_address, verbose, maybe_block_id);
+        let response = try_rpc_str!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        true
+    })
+}
+
+/// Get item.
+///
+/// See [super::get_item](function.get_item.html) for more details.
+#[no_mangle]
+pub extern "C" fn casper_get_item(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    state_root_hash: *const c_char,
+    key: *const c_char,
+    path: *const c_char,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> bool {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
+    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
+    let state_root_hash = try_unwrap!(unsafe_str_arg(state_root_hash, false));
+    let key = try_unwrap!(unsafe_str_arg(key, false));
+    let path = try_unwrap!(unsafe_str_arg(path, false));
+    runtime.block_on(async move {
+        let result = super::get_item(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            state_root_hash,
+            key,
+            path,
+        );
+        let response = try_rpc_str!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        true
+    })
+}
+
+/// Get balance.
+///
+/// See [super::get_balance](function.get_balance.html) for more details.
+#[no_mangle]
+pub extern "C" fn casper_get_balance(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    state_root_hash: *const c_char,
+    purse: *const c_char,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> bool {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
+    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
+    let state_root_hash = try_unwrap!(unsafe_str_arg(state_root_hash, false));
+    let purse = try_unwrap!(unsafe_str_arg(purse, false));
+    runtime.block_on(async move {
+        let result =
+            super::get_balance(maybe_rpc_id, node_address, verbose, state_root_hash, purse);
+        let response = try_rpc_str!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        true
+    })
+}
+
 /// Get auction info.
 ///
 /// See [super::get_auction_info](function.get_auction_info.html) for more details.
@@ -181,40 +468,6 @@ pub extern "C" fn casper_get_auction_info(
     let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
     runtime.block_on(async move {
         let result = super::get_auction_info(maybe_rpc_id, node_address, verbose);
-        let response = try_rpc_str!(result);
-        copy_str_to_buf(&response, response_buf, response_buf_len);
-        true
-    })
-}
-
-/// FFI function for `put_deploy.
-#[no_mangle]
-pub extern "C" fn casper_put_deploy(
-    maybe_rpc_id: *const c_char,
-    node_address: *const c_char,
-    verbose: bool,
-    deploy_params: *const casper_deploy_params_t,
-    session_params: *const casper_session_params_t,
-    payment_params: *const casper_payment_params_t,
-    response_buf: *mut c_uchar,
-    response_buf_len: usize,
-) -> bool {
-    let mut runtime = RUNTIME.lock().expect("should lock");
-    let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
-    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
-    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
-    let deploy_params = try_unwrap!(unsafe_try_into(deploy_params));
-    let payment_params = try_unwrap!(unsafe_try_into(payment_params));
-    let session_params = try_unwrap!(unsafe_try_into(session_params));
-    runtime.block_on(async move {
-        let result = super::put_deploy(
-            maybe_rpc_id,
-            node_address,
-            verbose,
-            deploy_params,
-            session_params,
-            payment_params,
-        );
         let response = try_rpc_str!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         true
