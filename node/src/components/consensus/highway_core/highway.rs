@@ -430,14 +430,28 @@ impl<C: Context> Highway<C> {
         .unwrap_or_default()
     }
 
+    /// Takes action on a new evidence.
     fn on_new_evidence(
         &mut self,
-        evidence: &Evidence<C>,
+        evidence: Evidence<C>,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let av = self.active_validator.as_mut().unwrap();
         let state = &self.state;
-        av.on_new_evidence(evidence, state, rng)
+        let mut effects = av.on_new_evidence(&evidence, state, rng);
+        // Add newly created endorsements to the local state.
+        for effect in effects.iter() {
+            if let Effect::NewVertex(vv) = effect {
+                if let Some(e) = vv.endorsements() {
+                    self.state.add_endorsements(e.clone());
+                }
+            }
+        }
+        // Gossip `Evidence` only if we just learned about faults by the validator.
+        effects.extend(vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(
+            evidence,
+        )))]);
+        effects
     }
 
     /// Applies `f` if this is an active validator, otherwise returns `None`.
@@ -525,20 +539,7 @@ impl<C: Context> Highway<C> {
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         if self.state.add_evidence(evidence.clone()) {
-            let mut effects = self.on_new_evidence(&evidence, rng);
-            // Add newly created endorsements to the local state.
-            for effect in effects.iter() {
-                if let Effect::NewVertex(vv) = effect {
-                    if let Some(e) = vv.endorsements() {
-                        self.state.add_endorsements(e.clone());
-                    }
-                }
-            }
-            // Gossip `Evidence` only if we just learned about faults by the validator.
-            effects.extend(vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(
-                evidence,
-            )))]);
-            effects
+            self.on_new_evidence(evidence, rng)
         } else {
             vec![]
         }
@@ -561,11 +562,10 @@ impl<C: Context> Highway<C> {
         let mut evidence_effects = self
             .state
             .opt_evidence(creator)
+            .cloned()
             .map(|ev| {
                 if was_honest {
-                    // Send the evidence only if we just learned about validator being faulty.
-                    // i.e. if it was faulty _before_ we added `swvote`, don't send evidence.
-                    vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(ev.clone())))]
+                    self.on_new_evidence(ev, rng)
                 } else {
                     vec![]
                 }
