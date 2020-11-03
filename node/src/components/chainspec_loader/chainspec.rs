@@ -126,8 +126,14 @@ impl HighwayConfig {
             warn!("Era duration is less than minimum era height * round length!");
         }
 
-        if self.minimum_round_exponent >= self.maximum_round_exponent {
-            warn!("Minimum round exponent is greater than or equal to maximum round exponent.  Minimum round exponent: {min}, Maximum round exponent: {max}", min = self.minimum_round_exponent, max = self.maximum_round_exponent);
+        if self.minimum_round_exponent > self.maximum_round_exponent {
+            panic!(
+                "Minimum round exponent is greater than the maximum round exponent.\n\
+                 Minimum round exponent: {min},\n\
+                 Maximum round exponent: {max}",
+                min = self.minimum_round_exponent,
+                max = self.maximum_round_exponent
+            );
         }
     }
 }
