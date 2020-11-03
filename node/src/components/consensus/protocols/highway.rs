@@ -392,6 +392,7 @@ where
                 vec![]
             }
             Ok(HighwayMessage::NewVertex(v)) => {
+                // Keep track of whether the prevalidated vertex was from an equivocator
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
@@ -405,9 +406,24 @@ where
                 };
                 match pvv.timestamp() {
                     Some(timestamp) if timestamp > Timestamp::now() => {
-                        self.store_vertex_for_addition_later(timestamp, sender, pvv)
+                        // If it's not from an equivocator and from the future, add to queue
+                        if !pvv.is_signed_by_faulty() {
+                            self.store_vertex_for_addition_later(timestamp, sender, pvv)
+                        } else {
+                            return vec![];
+                        }
                     }
-                    _ => self.add_vertices(vec![(sender, pvv)], rng),
+                    _ => {
+                        // If it's a transitive dependency or not from an equivocator, add the
+                        // vertex
+                        if self.vertex_deps.contains_key(&pvv.inner().id())
+                            || !pvv.is_signed_by_faulty()
+                        {
+                            self.add_vertices(vec![(sender, pvv)], rng)
+                        } else {
+                            return vec![];
+                        }
+                    }
                 }
             }
             Ok(HighwayMessage::RequestDependency(dep)) => match self.highway.get_dependency(&dep) {

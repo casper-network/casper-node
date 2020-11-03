@@ -43,26 +43,36 @@ pub(crate) enum VertexError {
 /// checks will be applied once all of its dependencies have been added to `Highway`. (See
 /// `ValidVertex`.)
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct PreValidatedVertex<C: Context>(Vertex<C>);
+pub(crate) struct PreValidatedVertex<C: Context> {
+    vertex: Vertex<C>,
+    is_signed_by_faulty: bool,
+}
 
 impl<C: Context> PreValidatedVertex<C> {
     pub(crate) fn inner(&self) -> &Vertex<C> {
-        &self.0
+        &self.vertex
     }
 
     pub(crate) fn timestamp(&self) -> Option<Timestamp> {
-        self.0.timestamp()
+        self.vertex.timestamp()
+    }
+
+    pub(crate) fn is_signed_by_faulty(&self) -> bool {
+        self.is_signed_by_faulty
     }
 
     #[cfg(test)]
     pub(crate) fn into_vertex(self) -> Vertex<C> {
-        self.0
+        self.vertex
     }
 }
 
 impl<C: Context> From<ValidVertex<C>> for PreValidatedVertex<C> {
     fn from(vv: ValidVertex<C>) -> PreValidatedVertex<C> {
-        PreValidatedVertex(vv.0)
+        PreValidatedVertex {
+            vertex: vv.0,
+            is_signed_by_faulty: false,
+        }
     }
 }
 
@@ -74,7 +84,7 @@ impl<C: Context> From<ValidVertex<C>> for Vertex<C> {
 
 impl<C: Context> From<PreValidatedVertex<C>> for Vertex<C> {
     fn from(pvv: PreValidatedVertex<C>) -> Vertex<C> {
-        pvv.0
+        pvv.vertex
     }
 }
 
@@ -200,7 +210,18 @@ impl<C: Context> Highway<C> {
     ) -> Result<PreValidatedVertex<C>, (Vertex<C>, VertexError)> {
         match self.do_pre_validate_vertex(&vertex) {
             Err(err) => Err((vertex, err)),
-            Ok(()) => Ok(PreValidatedVertex(vertex)),
+            Ok(()) => {
+                let is_signed_by_faulty = match &vertex {
+                    Vertex::Vote(signed_wire_vote) => {
+                        self.state.is_faulty(signed_wire_vote.wire_vote.creator)
+                    }
+                    Vertex::Evidence(_) | Vertex::Endorsements(_) => false,
+                };
+                Ok(PreValidatedVertex {
+                    vertex,
+                    is_signed_by_faulty,
+                })
+            }
         }
     }
 
@@ -239,7 +260,7 @@ impl<C: Context> Highway<C> {
     ) -> Result<ValidVertex<C>, (PreValidatedVertex<C>, VertexError)> {
         match self.do_validate_vertex(pvv.inner()) {
             Err(err) => Err((pvv, err)),
-            Ok(()) => Ok(ValidVertex(pvv.0)),
+            Ok(()) => Ok(ValidVertex(pvv.vertex)),
         }
     }
 

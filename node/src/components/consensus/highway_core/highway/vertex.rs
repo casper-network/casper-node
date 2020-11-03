@@ -80,6 +80,14 @@ impl<C: Context> Vertex<C> {
             Vertex::Endorsements(_) => None,
         }
     }
+
+    pub(crate) fn id(&self) -> Dependency<C> {
+        match self {
+            Vertex::Vote(signed_wire_vote) => Dependency::Vote(signed_wire_vote.wire_vote.hash()),
+            Vertex::Evidence(evidence) => Dependency::Evidence(evidence.perpetrator()),
+            Vertex::Endorsements(endorsement) => Dependency::Endorsement(endorsement.vote),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
