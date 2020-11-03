@@ -249,16 +249,7 @@ impl<C: Context> Highway<C> {
         if !self.has_vertex(&vertex) {
             match vertex {
                 Vertex::Vote(vote) => self.add_valid_vote(vote, now, rng),
-                Vertex::Evidence(ref evidence) => {
-                    let was_honest = !self.state.is_faulty(evidence.perpetrator());
-                    self.state.add_evidence(evidence.clone());
-                    if was_honest {
-                        // Gossip `Evidence` only if we just learned about faults by the validator.
-                        vec![Effect::NewVertex(ValidVertex(vertex))]
-                    } else {
-                        vec![]
-                    }
-                }
+                Vertex::Evidence(evidence) => self.add_evidence(evidence, rng),
                 Vertex::Endorsements(endorsements) => {
                     self.state.add_endorsements(endorsements);
                     vec![]
@@ -432,6 +423,17 @@ impl<C: Context> Highway<C> {
         .unwrap_or_default()
     }
 
+    fn on_new_evidence(
+        &mut self,
+        evidence: &Evidence<C>,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<Effect<C>> {
+        // TODO: Add `InstanceId` to endorsements.
+        let av = self.active_validator.as_mut().unwrap();
+        let state = &self.state;
+        av.on_new_evidence(evidence, state, rng)
+    }
+
     /// Applies `f` if this is an active validator, otherwise returns `None`.
     ///
     /// Newly created vertices are added to the state. If an equivocation of this validator is
@@ -507,6 +509,25 @@ impl<C: Context> Highway<C> {
                 Ok(())
             }
         }
+    }
+
+    /// Adds evidence to the protocol state.
+    /// Gossip the evidence if it's the first equivocation from the creator.
+    fn add_evidence(
+        &mut self,
+        evidence: Evidence<C>,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<Effect<C>> {
+        let was_honest = !self.state.is_faulty(evidence.perpetrator());
+        self.state.add_evidence(evidence.clone());
+        let mut effects = self.on_new_evidence(&evidence, rng);
+        if was_honest {
+            // Gossip `Evidence` only if we just learned about faults by the validator.
+            effects.extend(vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(
+                evidence,
+            )))])
+        };
+        effects
     }
 
     /// Adds a valid vote to the protocol state.

@@ -52,7 +52,7 @@ impl<C: Context> Observation<C> {
         }
     }
 
-    fn is_correct(&self) -> bool {
+    pub(crate) fn is_correct(&self) -> bool {
         match self {
             Self::None | Self::Faulty => false,
             Self::Correct(_) => true,
@@ -107,7 +107,12 @@ impl<C: Context> Panorama<C> {
         state: &'a State<C>,
     ) -> impl Iterator<Item = &'a Vote<C>> {
         let to_vote = move |vh: &C::Hash| state.vote(vh);
-        self.iter().filter_map(Observation::correct).map(to_vote)
+        self.iter_correct_hashes().map(to_vote)
+    }
+
+    /// Returns an iterator over all honest validators' latest messages' hashes.
+    pub(crate) fn iter_correct_hashes<'a>(&'a self) -> impl Iterator<Item = &C::Hash> {
+        self.iter().filter_map(Observation::correct)
     }
 
     /// Returns the correct sequence number for a new vote by `vidx` with this panorama.

@@ -291,6 +291,11 @@ impl<C: Context> State<C> {
         self.faults.keys().cloned()
     }
 
+    /// Returns an iterator over latest message hashes from honest validators.
+    pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
+        self.panorama.iter_correct_hashes()
+    }
+
     /// Returns the vote with the given hash, if present.
     pub(crate) fn opt_vote(&self, hash: &C::Hash) -> Option<&Vote<C>> {
         self.votes.get(hash)
@@ -687,4 +692,24 @@ fn log2(x: u64) -> u32 {
 /// Returns a pseudorandom `u64` betweend `1` and `upper` (inclusive).
 fn leader_prng(upper: u64, seed: u64) -> u64 {
     ChaCha8Rng::seed_from_u64(seed).gen_range(0, upper) + 1
+}
+
+/// Returns whether `vote` cites a new vote from `vidx` in the last panorama.
+/// i.e. whether previous vote from creator of `vhash` cites different vote by `vidx`.
+///
+/// NOTE: Returns `false` if `vidx` is faulty or hasn't produced any messages according to the
+/// creator of `vhash`.
+pub(crate) fn new_hash_obs<C: Context>(
+    vote: &Vote<C>,
+    state: &State<C>,
+    vidx: ValidatorIndex,
+) -> bool {
+    let latest_obs = vote.panorama[vidx].correct();
+    let penultimate_obs = vote
+        .previous()
+        .and_then(|v| state.vote(v).panorama[vidx].correct());
+    match (latest_obs, penultimate_obs) {
+        (Some(latest_hash), Some(penultimate_hash)) => latest_hash != penultimate_hash,
+        _ => false,
+    }
 }
