@@ -160,7 +160,7 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns actions validator needs to take upon receiving a new evidence.
     /// Endorses all latest votes by honest validators that do not mark new perpetrator as faulty
-    /// and cites some new message by that validator.
+    /// and cite some new message by that validator.
     pub(crate) fn on_new_evidence(
         &mut self,
         evidence: &Evidence<C>,
@@ -172,7 +172,7 @@ impl<C: Context> ActiveValidator<C> {
             .iter_correct_hashes()
             .filter(|&v| {
                 let vote = state.vote(v);
-                state::new_hash_obs(vote, state, vidx)
+                vote.new_hash_obs(state, vidx)
             })
             .map(|v| self.endorse(v, rng))
             .map(|endorsement| Effect::NewVertex(ValidVertex(endorsement)))
@@ -421,7 +421,7 @@ impl<C: Context> ActiveValidator<C> {
             && vote
                 .panorama
                 .enumerate()
-                .any(|(vidx, _)| state.is_faulty(vidx) && state::new_hash_obs(vote, state, vidx))
+                .any(|(vidx, _)| state.is_faulty(vidx) && vote.new_hash_obs(state, vidx))
     }
 
     /// Creates endorsement of the `vhash`.

@@ -51,8 +51,7 @@ impl<C: Context> Vertex<C> {
     pub(crate) fn value(&self) -> Option<&C::ConsensusValue> {
         match self {
             Vertex::Vote(swvote) => swvote.wire_vote.value.as_ref(),
-            Vertex::Evidence(_) => None,
-            Vertex::Endorsements(_) => None,
+            Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
         }
     }
 
@@ -60,17 +59,15 @@ impl<C: Context> Vertex<C> {
     pub(crate) fn vote_hash(&self) -> Option<C::Hash> {
         match self {
             Vertex::Vote(swvote) => Some(swvote.hash()),
-            Vertex::Evidence(_) => None,
-            Vertex::Endorsements(_) => None,
+            Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
         }
     }
 
     /// Returns whether this is evidence, as opposed to other types of vertices.
     pub(crate) fn is_evidence(&self) -> bool {
         match self {
-            Vertex::Vote(_) => false,
+            Vertex::Vote(_) | Vertex::Endorsements(_) => false,
             Vertex::Evidence(_) => true,
-            Vertex::Endorsements(_) => false,
         }
     }
 

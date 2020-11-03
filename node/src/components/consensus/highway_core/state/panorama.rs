@@ -101,7 +101,7 @@ impl<C: Context> Panorama<C> {
         self.iter().any(Observation::is_correct)
     }
 
-    /// Returns an iterator over all honest validators' latest messages.
+    /// Returns an iterator over all honest validators' latest votes.
     pub(crate) fn iter_correct<'a>(
         &'a self,
         state: &'a State<C>,
@@ -110,7 +110,7 @@ impl<C: Context> Panorama<C> {
         self.iter_correct_hashes().map(to_vote)
     }
 
-    /// Returns an iterator over all honest validators' latest messages' hashes.
+    /// Returns an iterator over all honest validators' latest votes' hashes.
     pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
         self.iter().filter_map(Observation::correct)
     }
