@@ -13,12 +13,11 @@ use tracing::{trace, warn};
 
 use super::{
     active_validator::Effect,
-    endorsement::Endorsements,
     evidence::Evidence,
     finality_detector::{FinalityDetector, FttExceeded},
     highway::{
-        Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, SignedWireVote,
-        ValidVertex, Vertex, VertexError,
+        Dependency, Endorsements, GetDepOutcome, Highway, Params, PreValidatedVertex,
+        SignedWireVote, ValidVertex, Vertex, VertexError,
     },
     validators::Validators,
     Weight,
