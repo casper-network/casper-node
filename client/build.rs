@@ -14,6 +14,9 @@ fn main() {
             .with_no_includes()
             .with_sys_include("stdint.h") // add sys headers explicitly
             .with_sys_include("stdbool.h")
+            .include_item("casper_deploy_params_t") // individual exported struct definitions need to be explicitly included
+            .include_item("casper_payment_params_t")
+            .include_item("casper_session_params_t")
             .generate()
             .expect("Unable to generate bindings")
             .write_to_file("headers/casper_client.h");

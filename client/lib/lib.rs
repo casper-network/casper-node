@@ -334,7 +334,7 @@ pub struct DeployStrParams<'a> {
     /// Conversion rate between the cost of Wasm opcodes and the motes sent by the payment code.
     pub gas_price: &'a str,
     /// Hex-encoded `Deploy` hashes of deploys which must be executed before this one.
-    pub dependencies: &'a [&'a str],
+    pub dependencies: Vec<&'a str>,
     /// Name of the chain, to avoid the `Deploy` from being accidentally or maliciously included in
     /// a different chain.
     pub chain_name: &'a str,
@@ -357,7 +357,7 @@ impl<'a> TryInto<DeployParams> for DeployStrParams<'a> {
             timestamp,
             ttl,
             gas_price,
-            dependencies,
+            &dependencies,
             chain_name,
         )
     }

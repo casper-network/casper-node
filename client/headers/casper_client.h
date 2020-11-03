@@ -17,6 +17,58 @@
 #define CASPER_MAX_RESPONSE_BUFFER_LEN 1024
 
 /**
+ * Container for `Deploy` construction options.
+ *
+ * See [DeployStrParams](struct.DeployStrParams.html) for more info.
+ */
+typedef struct {
+  const char *secret_key;
+  const char *timestamp;
+  const char *ttl;
+  const char *gas_price;
+  const char *const *dependencies;
+  uintptr_t dependencies_len;
+  const char *chain_name;
+} casper_deploy_params_t;
+
+/**
+ * Container for `Session` construction options.
+ *
+ * See [SessionStrParams](struct.SessionStrParams.html) for more info.
+ */
+typedef struct {
+  const char *session_hash;
+  const char *session_name;
+  const char *session_package_hash;
+  const char *session_package_name;
+  const char *session_path;
+  const char *const *session_args_simple;
+  uintptr_t session_args_simple_len;
+  const char *session_args_complex;
+  const char *session_version;
+  const char *session_entry_point;
+} casper_session_params_t;
+
+/**
+ * Container for `Payment` construction options.
+ *
+ * See [PaymentStrParams](struct.PaymentStrParams.html) for more info.
+ */
+typedef struct {
+  const char *payment_amount;
+  const char *payment_hash;
+  const char *payment_name;
+  const char *payment_package_hash;
+  const char *payment_package_name;
+  const char *payment_path;
+  const char *const *payment_args_simple;
+  uintptr_t payment_args_simple_len;
+  const char *payment_args_complex;
+  const char *payment_version;
+  const char *payment_entry_point;
+} casper_payment_params_t;
+
+/**
  * Perform needed setup for the client library.
  */
 void casper_setup_client(void);
@@ -42,5 +94,17 @@ bool casper_get_auction_info(const char *maybe_rpc_id,
                              bool verbose,
                              unsigned char *response_buf,
                              uintptr_t response_buf_len);
+
+/**
+ * FFI function for `put_deploy.
+ */
+bool casper_put_deploy(const char *maybe_rpc_id,
+                       const char *node_address,
+                       bool verbose,
+                       const casper_deploy_params_t *deploy_params,
+                       const casper_session_params_t *session_params,
+                       const casper_payment_params_t *payment_params,
+                       unsigned char *response_buf,
+                       uintptr_t response_buf_len);
 
 #endif /* __CASPER_CLIENT_H__ */

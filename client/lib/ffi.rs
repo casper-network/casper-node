@@ -1,6 +1,7 @@
 //! Foreign function interfaces.
 
 use std::{
+    convert::TryInto,
     ffi::CStr,
     os::raw::{c_char, c_uchar},
     slice,
@@ -28,8 +29,18 @@ pub const CASPER_MAX_ERROR_LEN: usize = 255;
 /// Maximum length of provided `response_buf` buffer.
 pub const CASPER_MAX_RESPONSE_BUFFER_LEN: usize = 1024;
 
-fn unsafe_arg(arg: *const c_char) -> Result<&'static str> {
-    unsafe { CStr::from_ptr(arg).to_str() }.map_err(|error| {
+fn unsafe_str_arg(arg: *const c_char, required: bool) -> Result<&'static str> {
+    unsafe {
+        if arg.is_null() {
+            if required {
+                return Err(Error::FFIPtrNullButRequired);
+            } else {
+                return Ok(Default::default());
+            }
+        }
+        CStr::from_ptr(arg).to_str()
+    }
+    .map_err(|error| {
         Error::InvalidArgument(format!(
             "invalid utf8 value passed for arg {}: {:?}",
             stringify!($arg),
@@ -38,13 +49,35 @@ fn unsafe_arg(arg: *const c_char) -> Result<&'static str> {
     })
 }
 
+fn unsafe_vec_of_str_arg(arg: *const *const c_char, len: usize) -> Result<Vec<&'static str>> {
+    let slice = unsafe { slice::from_raw_parts(arg, len) };
+    let mut vec = Vec::with_capacity(len);
+    for bytes in slice {
+        vec.push(unsafe_str_arg(*bytes, true)?);
+    }
+    Ok(vec)
+}
+
+fn unsafe_try_into<T, I>(value: *const I) -> Result<T>
+where
+    I: Clone,
+    I: TryInto<T, Error = Error>,
+{
+    if value.is_null() {
+        let value: T = unsafe { (*value).clone().try_into()? };
+        Ok(value)
+    } else {
+        Err(Error::FFIPtrNullButRequired)
+    }
+}
+
 /// Private macro for parsing aruments from c strings, (const char *, or *const c_char in rust
 /// terms). The sad path contract here is that we indicate there was an error by returning `false`,
 /// then we store the argument -name- as an Error::InvalidArgument in LAST_ERROR. The happy path is
 /// left up to callsites to define.
-macro_rules! r#try_unsafe_arg {
+macro_rules! r#try_unwrap {
     ($arg:expr) => {
-        match unsafe_arg($arg) {
+        match $arg {
             Ok(value) => value,
             Err(error) => {
                 set_last_error(error);
@@ -55,8 +88,8 @@ macro_rules! r#try_unsafe_arg {
 }
 
 /// Private macro for unwrapping our internal json-rpcs or, optionally, storing the error in
-/// LAST_ERROR and returning `false` to indicate that an error has occurred. Similar to `try_arg!`,
-/// this handles the sad path, and the happy path is left up to callsites.
+/// LAST_ERROR and returning `false` to indicate that an error has occurred. Similar to
+/// `try_unsafe_arg!`, this handles the sad path, and the happy path is left up to callsites.
 macro_rules! r#try_rpc_str {
     ($rpc:expr) => {
         match $rpc {
@@ -144,13 +177,180 @@ pub extern "C" fn casper_get_auction_info(
 ) -> bool {
     let mut runtime = RUNTIME.lock().expect("should lock");
     let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
-    let ret = runtime.block_on(async move {
-        let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
-        let node_address = try_unsafe_arg!(node_address);
+    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
+    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
+    runtime.block_on(async move {
         let result = super::get_auction_info(maybe_rpc_id, node_address, verbose);
         let response = try_rpc_str!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         true
-    });
-    ret
+    })
+}
+
+/// FFI function for `put_deploy.
+#[no_mangle]
+pub extern "C" fn casper_put_deploy(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    deploy_params: *const casper_deploy_params_t,
+    session_params: *const casper_session_params_t,
+    payment_params: *const casper_payment_params_t,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> bool {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_option_or!(&mut *runtime, Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unwrap!(unsafe_str_arg(maybe_rpc_id, false));
+    let node_address = try_unwrap!(unsafe_str_arg(node_address, false));
+    let deploy_params = try_unwrap!(unsafe_try_into(deploy_params));
+    let payment_params = try_unwrap!(unsafe_try_into(payment_params));
+    let session_params = try_unwrap!(unsafe_try_into(session_params));
+    runtime.block_on(async move {
+        let result = super::put_deploy(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            deploy_params,
+            session_params,
+            payment_params,
+        );
+        let response = try_rpc_str!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        true
+    })
+}
+
+/// Container for `Deploy` construction options.
+///
+/// See [DeployStrParams](struct.DeployStrParams.html) for more info.
+#[allow(non_snake_case)]
+#[repr(C)]
+#[derive(Clone)]
+pub struct casper_deploy_params_t {
+    secret_key: *const c_char,
+    timestamp: *const c_char,
+    ttl: *const c_char,
+    gas_price: *const c_char,
+    dependencies: *const *const c_char,
+    dependencies_len: usize,
+    chain_name: *const c_char,
+}
+
+impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
+    type Error = Error;
+
+    fn try_into(self) -> Result<super::DeployStrParams<'static>> {
+        let secret_key = unsafe_str_arg(self.secret_key, false)?;
+        let timestamp = unsafe_str_arg(self.timestamp, false)?;
+        let ttl = unsafe_str_arg(self.ttl, false)?;
+        let gas_price = unsafe_str_arg(self.gas_price, false)?;
+        let chain_name = unsafe_str_arg(self.chain_name, false)?;
+        let dependencies = unsafe_vec_of_str_arg(self.dependencies, self.dependencies_len)?;
+        Ok(super::DeployStrParams {
+            secret_key,
+            timestamp,
+            ttl,
+            gas_price,
+            chain_name,
+            dependencies,
+        })
+    }
+}
+
+/// Container for `Payment` construction options.
+///
+/// See [PaymentStrParams](struct.PaymentStrParams.html) for more info.
+#[allow(non_snake_case)]
+#[repr(C)]
+#[derive(Clone)]
+pub struct casper_payment_params_t {
+    payment_amount: *const c_char,
+    payment_hash: *const c_char,
+    payment_name: *const c_char,
+    payment_package_hash: *const c_char,
+    payment_package_name: *const c_char,
+    payment_path: *const c_char,
+    payment_args_simple: *const *const c_char,
+    payment_args_simple_len: usize,
+    payment_args_complex: *const c_char,
+    payment_version: *const c_char,
+    payment_entry_point: *const c_char,
+}
+
+impl TryInto<super::PaymentStrParams<'static>> for casper_payment_params_t {
+    type Error = Error;
+
+    fn try_into(self) -> Result<super::PaymentStrParams<'static>> {
+        let payment_amount = unsafe_str_arg(self.payment_amount, false)?;
+        let payment_hash = unsafe_str_arg(self.payment_hash, false)?;
+        let payment_name = unsafe_str_arg(self.payment_name, false)?;
+        let payment_package_hash = unsafe_str_arg(self.payment_package_hash, false)?;
+        let payment_package_name = unsafe_str_arg(self.payment_package_name, false)?;
+        let payment_path = unsafe_str_arg(self.payment_path, false)?;
+        let payment_args_simple =
+            unsafe_vec_of_str_arg(self.payment_args_simple, self.payment_args_simple_len)?;
+        let payment_args_complex = unsafe_str_arg(self.payment_args_complex, false)?;
+        let payment_version = unsafe_str_arg(self.payment_version, false)?;
+        let payment_entry_point = unsafe_str_arg(self.payment_entry_point, false)?;
+        Ok(super::PaymentStrParams {
+            payment_amount,
+            payment_hash,
+            payment_name,
+            payment_package_hash,
+            payment_package_name,
+            payment_path,
+            payment_args_simple,
+            payment_args_complex,
+            payment_version,
+            payment_entry_point,
+        })
+    }
+}
+
+/// Container for `Session` construction options.
+///
+/// See [SessionStrParams](struct.SessionStrParams.html) for more info.
+#[allow(non_snake_case)]
+#[repr(C)]
+#[derive(Clone)]
+pub struct casper_session_params_t {
+    session_hash: *const c_char,
+    session_name: *const c_char,
+    session_package_hash: *const c_char,
+    session_package_name: *const c_char,
+    session_path: *const c_char,
+    session_args_simple: *const *const c_char,
+    session_args_simple_len: usize,
+    session_args_complex: *const c_char,
+    session_version: *const c_char,
+    session_entry_point: *const c_char,
+}
+
+impl TryInto<super::SessionStrParams<'static>> for casper_session_params_t {
+    type Error = Error;
+
+    fn try_into(self) -> Result<super::SessionStrParams<'static>> {
+        let session_hash = unsafe_str_arg(self.session_hash, false)?;
+        let session_name = unsafe_str_arg(self.session_name, false)?;
+        let session_package_hash = unsafe_str_arg(self.session_package_hash, false)?;
+        let session_package_name = unsafe_str_arg(self.session_package_name, false)?;
+        let session_path = unsafe_str_arg(self.session_path, false)?;
+        let session_args_simple =
+            unsafe_vec_of_str_arg(self.session_args_simple, self.session_args_simple_len)?;
+        let session_args_complex = unsafe_str_arg(self.session_args_complex, false)?;
+        let session_version = unsafe_str_arg(self.session_version, false)?;
+        let session_entry_point = unsafe_str_arg(self.session_entry_point, false)?;
+        Ok(super::SessionStrParams {
+            session_hash,
+            session_name,
+            session_package_hash,
+            session_package_name,
+            session_path,
+            session_args_simple,
+            session_args_complex,
+            session_version,
+            session_entry_point,
+        })
+    }
 }

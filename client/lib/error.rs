@@ -103,10 +103,15 @@ pub enum Error {
     #[error("Invalid response {0}")]
     InvalidResponse(#[from] ValidateResponseError),
 
-    /// User must call FFI's setup function prior to making ffi calls.
+    /// Must call FFI's setup function prior to making ffi calls.
     #[cfg(feature = "ffi")]
     #[error("setup function has not been called")]
     FFISetupNotCalled,
+
+    /// Must pass valid pointer values to FFI calls.
+    #[cfg(feature = "ffi")]
+    #[error("null ptr passed to ffi for required argument")]
+    FFIPtrNullButRequired,
 }
 
 impl From<URefFromStrError> for Error {
