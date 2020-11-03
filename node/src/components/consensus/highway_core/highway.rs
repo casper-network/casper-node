@@ -93,6 +93,13 @@ impl<C: Context> ValidVertex<C> {
     pub(crate) fn is_proposal(&self) -> bool {
         self.0.value().is_some()
     }
+
+    pub(crate) fn endorsements(&self) -> Option<&Endorsements<C>> {
+        match &self.0 {
+            Vertex::Endorsements(endorsements) => Some(endorsements),
+            Vertex::Evidence(_) | Vertex::Vote(_) => None,
+        }
+    }
 }
 
 /// A result indicating whether and how a requested dependency is satisfied.
@@ -428,7 +435,6 @@ impl<C: Context> Highway<C> {
         evidence: &Evidence<C>,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        // TODO: Add `InstanceId` to endorsements.
         let av = self.active_validator.as_mut().unwrap();
         let state = &self.state;
         av.on_new_evidence(evidence, state, rng)
@@ -518,16 +524,24 @@ impl<C: Context> Highway<C> {
         evidence: Evidence<C>,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let was_honest = !self.state.is_faulty(evidence.perpetrator());
-        self.state.add_evidence(evidence.clone());
-        let mut effects = self.on_new_evidence(&evidence, rng);
-        if was_honest {
+        if self.state.add_evidence(evidence.clone()) {
+            let mut effects = self.on_new_evidence(&evidence, rng);
+            // Add newly created endorsements to the local state.
+            for effect in effects.iter() {
+                if let Effect::NewVertex(vv) = effect {
+                    if let Some(e) = vv.endorsements() {
+                        self.state.add_endorsements(e.clone());
+                    }
+                }
+            }
             // Gossip `Evidence` only if we just learned about faults by the validator.
             effects.extend(vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(
                 evidence,
-            )))])
-        };
-        effects
+            )))]);
+            effects
+        } else {
+            vec![]
+        }
     }
 
     /// Adds a valid vote to the protocol state.
