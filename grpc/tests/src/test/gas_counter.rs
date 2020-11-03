@@ -1,7 +1,7 @@
 use assert_matches::assert_matches;
 use parity_wasm::{
     builder,
-    elements::{Instruction, Instructions},
+    elements::{BlockType, Instruction, Instructions},
 };
 
 use casper_engine_test_support::{
@@ -137,6 +137,12 @@ fn should_correctly_measure_gas_for_opcodes() {
 
     const GROW_PAGES: u32 = 1;
 
+    // A vector of expected cost of given WASM instruction.
+    // First element of the tuple represents and option where Some case represents metered
+    // instruction and None an instruction that's not accounted for.
+    //
+    // The idea here is to execute hand written WASM and compare the execution result's gas counter
+    // with the expected gathered from here.
     let opcodes = vec![
         (Some(opcode_costs.nop), Instruction::Nop),
         (
@@ -170,6 +176,28 @@ fn should_correctly_measure_gas_for_opcodes() {
         (Some(opcode_costs.op_const), Instruction::I32Const(0)),
         (Some(opcode_costs.store), Instruction::I32Store(0, 4)), /* Store `grow_memory` result
                                                                   * whatever it is */
+        // if 0 { nop } else { nop; nop; }
+        (Some(opcode_costs.op_const), Instruction::I32Const(0)),
+        (
+            Some(opcode_costs.control_flow),
+            Instruction::If(BlockType::NoResult),
+        ),
+        (None, Instruction::Nop),
+        (None, Instruction::Else),
+        // else clause is accounted for only
+        (Some(opcode_costs.nop), Instruction::Nop),
+        (Some(opcode_costs.nop), Instruction::Nop),
+        (None, Instruction::End),
+        // 0 == 1
+        (Some(opcode_costs.op_const), Instruction::I32Const(0)),
+        (Some(opcode_costs.op_const), Instruction::I32Const(1)),
+        (Some(opcode_costs.integer_comparsion), Instruction::I32Eqz),
+        (Some(opcode_costs.store), Instruction::I32Store(0, 4)), /* Store `eqz` result
+                                                                  * whatever it is */
+        // i32 -> i64
+        (Some(opcode_costs.op_const), Instruction::I32Const(123)),
+        (Some(opcode_costs.conversion), Instruction::I64ExtendSI32),
+        (Some(opcode_costs.control_flow), Instruction::Drop), /* Discard the result */
         // Sentinel instruction that's required to be present but it's not accounted for
         (None, Instruction::End),
     ];
