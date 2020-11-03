@@ -6,7 +6,7 @@ cd /etc/casper
 # This will pull latest genesis files down into current directory.
 # The expectation is this is installed in and run in /etc/casper with sudo
 
-BRANCH_NAME="master"
+BRANCH_NAME="release-1.6.0"
 
 BASE_PATH="https://raw.githubusercontent.com/CasperLabs/casper-node/${BRANCH_NAME}/resources/production"
 ACCOUNTS_CSV_PATH="${BASE_PATH}/accounts.csv"
