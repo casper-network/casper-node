@@ -71,7 +71,7 @@ systemd_support = false
 
 
 # =============================================
-# Configuration options for the HTTP RPC server
+# Configuration options for the JSON-RPC HTTP server
 # =============================================
 [rpc_server]
 
@@ -84,7 +84,7 @@ systemd_support = false
 address = '0.0.0.0:7777'
 
 # =============================================
-# Configuration options for the HTTP REST server
+# Configuration options for the REST HTTP server
 # =============================================
 [rest_server]
 
@@ -97,7 +97,7 @@ address = '0.0.0.0:7777'
 address = '0.0.0.0:8888'
 
 # =============================================
-# Configuration options for the HTTP event stream server
+# Configuration options for the SSE HTTP event stream server
 # =============================================
 [event_stream_server]
 

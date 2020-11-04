@@ -9,7 +9,7 @@ use warp::Filter;
 use super::{filters, Config, ReactorEventT};
 use crate::{effect::EffectBuilder, utils};
 
-/// Run the HTTP server.
+/// Run the REST HTTP server.
 ///
 /// A message received on `shutdown_receiver` will cause the server to exit cleanly.
 pub(super) async fn run<REv: ReactorEventT>(
@@ -57,12 +57,13 @@ pub(super) async fn run<REv: ReactorEventT>(
     let server = builder.serve(make_svc);
     info!(address = %server.local_addr(), "started REST server");
 
+    // Shutdown the server gracefully.
     let _ = server
         .with_graceful_shutdown(async {
             shutdown_receiver.await.ok();
         })
         .map_err(|error| {
-            warn!(%error, "error running rest server");
+            warn!(%error, "error running REST server");
         })
         .await;
 }

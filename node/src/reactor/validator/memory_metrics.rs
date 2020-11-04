@@ -110,6 +110,8 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_storage.clone()))?;
         registry.register(Box::new(mem_contract_runtime.clone()))?;
         registry.register(Box::new(mem_rpc_server.clone()))?;
+        registry.register(Box::new(mem_rest_server.clone()))?;
+        registry.register(Box::new(mem_event_stream_server.clone()))?;
         registry.register(Box::new(mem_chainspec_loader.clone()))?;
         registry.register(Box::new(mem_consensus.clone()))?;
         registry.register(Box::new(mem_deploy_fetcher.clone()))?;

@@ -1,13 +1,11 @@
 use std::fmt::{self, Display, Formatter};
 
-use derive_more::From;
-
 use crate::types::{
     json_compatibility::ExecutionResult, BlockHash, BlockHeader, DeployHash, DeployHeader,
     FinalizedBlock,
 };
 
-#[derive(Debug, From)]
+#[derive(Debug)]
 pub enum Event {
     BlockFinalized(Box<FinalizedBlock>),
     BlockAdded {

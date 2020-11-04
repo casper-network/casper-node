@@ -12,10 +12,7 @@ use super::{
 };
 use crate::{effect::EffectBuilder, utils};
 
-/// Run the HTTP server.
-///
-/// `data_receiver` will provide the server with local events which should then be sent to all
-/// subscribed clients.
+/// Run the JSON-RPC server.
 pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: EffectBuilder<REv>) {
     // RPC filters.
     let rpc_put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder);
@@ -43,7 +40,7 @@ pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: Effe
     let mut server_address = match utils::resolve_address(&config.address) {
         Ok(address) => address,
         Err(error) => {
-            warn!(%error, "failed to start RPC server, cannot parse address");
+            warn!(%error, "failed to start JSON-RPC server, cannot parse address");
             return;
         }
     };
@@ -57,11 +54,11 @@ pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: Effe
             }
             Err(error) => {
                 if server_address.port() == 0 {
-                    warn!(%error, "failed to start RPC server");
+                    warn!(%error, "failed to start JSON-RPC server");
                     return;
                 } else {
                     server_address.set_port(0);
-                    debug!(%error, "failed to start RPC server. retrying on random port");
+                    debug!(%error, "failed to start JSON-RPC server. retrying on random port");
                 }
             }
         }
@@ -73,7 +70,7 @@ pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: Effe
     let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
     let server = builder.serve(make_svc);
-    info!(address = %server.local_addr(), "started RPC server");
+    info!(address = %server.local_addr(), "started JSON-RPC server");
 
     let server_with_shutdown = server.with_graceful_shutdown(async {
         shutdown_receiver.await.ok();
@@ -83,8 +80,8 @@ pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: Effe
 
     let _ = server_joiner.await;
 
-    // Kill the event-stream handlers, and shut down the server.
+    // Shut down the server.
     let _ = shutdown_sender.send(());
 
-    trace!("RPC server stopped");
+    trace!("JSON-RPC server stopped");
 }

@@ -1,17 +1,17 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-/// Default binding address for the HTTP server.
+/// Default binding address for the JSON-RPC HTTP server.
 ///
 /// Uses a fixed port per node, but binds on any interface.
 const DEFAULT_ADDRESS: &str = "0.0.0.0:7777";
 
-/// API server configuration.
+/// JSON-RPC HTTP server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// Address to bind HTTP server to.
+    /// Address to bind JSON-RPC HTTP server to.
     pub address: String,
 }
 

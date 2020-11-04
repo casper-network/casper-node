@@ -1,16 +1,23 @@
-//! API server
+//! Event stream server
 //!
-//! The API server provides clients with two types of service: a JSON-RPC API for querying state and
-//! sending commands to the node, and an event-stream returning Server-Sent Events (SSEs) holding
-//! JSON-encoded data.
+//! The event stream server provides clients with an event-stream returning Server-Sent Events
+//! (SSEs) holding JSON-encoded data.
 //!
-//! The actual server is run in backgrounded tasks.   RPCs requests are translated into reactor
-//! requests to various components.
+//! The actual server is run in backgrounded tasks.
 //!
-//! This module currently provides both halves of what is required for an API server: An abstract
-//! API Server that handles API requests and an external service endpoint based on HTTP.
+//! This module currently provides both halves of what is required for an API server:
+//! a component implementation that interfaces with other components via being plugged into a
+//! reactor, and an external facing http server that manages SSE subscriptions on a single endpoint.
 //!
-//! For the list of supported RPCs and SSEs, see
+//! This component is passive and receives announcements made by other components while never making
+//! a request of other components itself. The handled announcements are serialized to JSON and
+//! pushed to subscribers.
+//!
+//! This component uses a ring buffer for outbound events providing some robustness against
+//! unintended subscriber disconnects, if a disconnected subscriber re-subscribes before the buffer
+//! has advanced past their last received event.
+//!
+//! For details about the SSE model and a list of supported SSEs, see:
 //! https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs
 
 mod config;

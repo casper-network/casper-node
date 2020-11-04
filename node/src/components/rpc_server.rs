@@ -1,16 +1,17 @@
-//! API server
+//! JSON-RPC server
 //!
-//! The API server provides clients with two types of service: a JSON-RPC API for querying state and
-//! sending commands to the node, and an event-stream returning Server-Sent Events (SSEs) holding
-//! JSON-encoded data.
+//! The JSON-RPC server provides clients with an API for querying state and
+//! sending commands to the node.
 //!
-//! The actual server is run in backgrounded tasks.   RPCs requests are translated into reactor
+//! The actual server is run in backgrounded tasks. RPCs requests are translated into reactor
 //! requests to various components.
 //!
-//! This module currently provides both halves of what is required for an API server: An abstract
-//! API Server that handles API requests and an external service endpoint based on HTTP.
+//! This module currently provides both halves of what is required for an API server:
+//! a component implementation that interfaces with other components via being plugged into a
+//! reactor, and an external facing http server that exposes various uri routes and converts
+//! JSON-RPC requests into the appropriate component events.
 //!
-//! For the list of supported RPCs and SSEs, see
+//! For the list of supported RPC methods, see:
 //! https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs
 
 mod config;
@@ -52,8 +53,7 @@ use crate::{
 pub use config::Config;
 pub(crate) use event::Event;
 
-/// A helper trait whose bounds represent the requirements for a reactor event that `run_server` can
-/// work with.
+/// A helper trait capturing all of this components Request type dependencies.
 pub trait ReactorEventT:
     From<Event>
     + From<RpcRequest<NodeId>>
