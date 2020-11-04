@@ -14,7 +14,7 @@ use super::{
     Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithOptionalParamsExt,
 };
 use crate::{
-    components::rpc_server::CLIENT_API_VERSION,
+    components::CLIENT_API_VERSION,
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,

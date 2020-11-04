@@ -15,7 +15,7 @@ use super::{
     RpcWithoutParamsExt,
 };
 use crate::{
-    components::rpc_server::CLIENT_API_VERSION,
+    components::CLIENT_API_VERSION,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{

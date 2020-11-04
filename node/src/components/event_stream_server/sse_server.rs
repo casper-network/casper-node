@@ -13,8 +13,8 @@ use warp::{
     Filter, Reply,
 };
 
-use super::CLIENT_API_VERSION;
 use crate::{
+    components::CLIENT_API_VERSION,
     crypto::asymmetric_key::PublicKey,
     types::{
         json_compatibility::ExecutionResult, BlockHash, BlockHeader, DeployHash, FinalizedBlock,

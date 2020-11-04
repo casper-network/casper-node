@@ -10,8 +10,9 @@ use warp::{
     Filter,
 };
 
-use super::{ReactorEventT, CLIENT_API_VERSION};
+use super::ReactorEventT;
 use crate::{
+    components::CLIENT_API_VERSION,
     effect::{requests::RestRequest, EffectBuilder},
     reactor::QueueKind,
     types::GetStatusResult,

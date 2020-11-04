@@ -23,10 +23,18 @@ pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
+use lazy_static::lazy_static;
+use semver::Version;
+
 use crate::{
     effect::{EffectBuilder, Effects},
     types::CryptoRngCore,
 };
+
+// TODO - confirm if we want to use the protocol version for this.
+lazy_static! {
+    pub(crate) static ref CLIENT_API_VERSION: Version = Version::new(1, 0, 0);
+}
 
 /// Core Component.
 ///

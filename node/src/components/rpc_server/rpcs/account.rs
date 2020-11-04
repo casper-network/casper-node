@@ -11,7 +11,7 @@ use warp_json_rpc::Builder;
 
 use super::{Error, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt};
 use crate::{
-    components::rpc_server::CLIENT_API_VERSION,
+    components::CLIENT_API_VERSION,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{Deploy, DeployHash},

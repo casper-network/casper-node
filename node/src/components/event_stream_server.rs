@@ -21,8 +21,6 @@ mod sse_server;
 use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
-use lazy_static::lazy_static;
-use semver::Version;
 use tokio::sync::mpsc::{self, UnboundedSender};
 
 use super::Component;
@@ -34,11 +32,6 @@ use crate::{
 pub use config::Config;
 pub(crate) use event::Event;
 pub use sse_server::SseData;
-
-// TODO - confirm if we want to use the protocol version for this.
-lazy_static! {
-    static ref CLIENT_API_VERSION: Version = Version::new(1, 0, 0);
-}
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `run_server` can
 /// work with.

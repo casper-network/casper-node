@@ -18,7 +18,7 @@ use casper_types::{bytesrepr::ToBytes, Key, ProtocolVersion, URef, U512};
 
 use super::{Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt};
 use crate::{
-    components::rpc_server::CLIENT_API_VERSION,
+    components::CLIENT_API_VERSION,
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
