@@ -20,7 +20,7 @@ use crate::{
         storage::{self, Storage, StorageType},
     },
     effect::{
-        announcements::{ApiServerAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement},
+        announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement, RpcServerAnnouncement},
         requests::FetcherRequest,
     },
     protocol::Message,
@@ -55,7 +55,7 @@ enum Event {
     #[from]
     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
     #[from]
-    ApiServerAnnouncement(ApiServerAnnouncement),
+    RpcServerAnnouncement(RpcServerAnnouncement),
     #[from]
     DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
 }
@@ -75,7 +75,7 @@ impl Display for Event {
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
             Event::DeployFetcherRequest(req) => write!(formatter, "fetcher request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
-            Event::ApiServerAnnouncement(ann) => {
+            Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
             }
             Event::DeployAcceptorAnnouncement(ann) => {
@@ -222,7 +222,7 @@ impl reactor::Reactor for Reactor {
             Event::NetworkAnnouncement(ann) => {
                 unreachable!("should not receive announcements of type {:?}", ann);
             }
-            Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
+            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,

@@ -13,8 +13,8 @@ use warp::{
     Filter, Reply,
 };
 
-use super::CLIENT_API_VERSION;
 use crate::{
+    components::CLIENT_API_VERSION,
     crypto::asymmetric_key::PublicKey,
     types::{
         json_compatibility::ExecutionResult, BlockHash, BlockHeader, DeployHash, FinalizedBlock,
@@ -62,7 +62,7 @@ pub enum SseData {
         ttl: TimeDiff,
         dependencies: Vec<DeployHash>,
         block_hash: BlockHash,
-        execution_result: ExecutionResult,
+        execution_result: Box<ExecutionResult>,
     },
 }
 

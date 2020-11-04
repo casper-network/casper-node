@@ -1,10 +1,6 @@
 //! RPCs returning ancillary information.
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    net::SocketAddr,
-    str,
-};
+use std::{collections::BTreeMap, net::SocketAddr, str};
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -15,16 +11,16 @@ use tracing::info;
 use warp_json_rpc::Builder;
 
 use super::{
-    ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams, RpcWithParamsExt, RpcWithoutParams,
+    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt, RpcWithoutParams,
     RpcWithoutParamsExt,
 };
 use crate::{
-    components::{api_server::CLIENT_API_VERSION, consensus::EraId, small_network::NodeId},
+    components::CLIENT_API_VERSION,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, StatusFeed,
-        Timestamp,
+        json_compatibility::ExecutionResult, BlockHash, Deploy, DeployHash, GetStatusResult,
+        PeersMap,
     },
 };
 
@@ -74,7 +70,7 @@ impl RpcWithParamsExt for GetDeploy {
             // Try to get the deploy and metadata from storage.
             let maybe_deploy_and_metadata = effect_builder
                 .make_request(
-                    |responder| ApiRequest::GetDeploy {
+                    |responder| RpcRequest::GetDeploy {
                         hash: params.deploy_hash,
                         responder,
                     },
@@ -139,12 +135,12 @@ impl RpcWithoutParamsExt for GetPeers {
         async move {
             let peers = effect_builder
                 .make_request(
-                    |responder| ApiRequest::GetPeers { responder },
+                    |responder| RpcRequest::GetPeers { responder },
                     QueueKind::Api,
                 )
                 .await;
 
-            let peers = peers_hashmap_to_btreemap(peers);
+            let peers = PeersMap::from(peers).into();
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 peers,
@@ -152,62 +148,6 @@ impl RpcWithoutParamsExt for GetPeers {
             Ok(response_builder.success(result)?)
         }
         .boxed()
-    }
-}
-
-/// Minimal info of a `Block`.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct MinimalBlockInfo {
-    hash: BlockHash,
-    timestamp: Timestamp,
-    era_id: EraId,
-    height: u64,
-}
-
-impl From<Block> for MinimalBlockInfo {
-    fn from(block: Block) -> Self {
-        MinimalBlockInfo {
-            hash: *block.hash(),
-            timestamp: block.header().timestamp(),
-            era_id: block.header().era_id(),
-            height: block.header().height(),
-        }
-    }
-}
-
-/// Result for "info_get_status" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct GetStatusResult {
-    /// The RPC API version.
-    pub api_version: Version,
-    /// The chainspec name.
-    pub chainspec_name: String,
-    /// The genesis root hash.
-    pub genesis_root_hash: String,
-    /// The node ID and network address of each connected peer.
-    pub peers: BTreeMap<String, SocketAddr>,
-    /// The minimal info of the last block from the linear chain.
-    pub last_added_block_info: Option<MinimalBlockInfo>,
-    /// The compiled node version.
-    pub build_version: String,
-}
-
-impl From<StatusFeed<NodeId>> for GetStatusResult {
-    fn from(status_feed: StatusFeed<NodeId>) -> Self {
-        let chainspec_name = status_feed.chainspec_info.name();
-        let genesis_root_hash = status_feed
-            .chainspec_info
-            .root_hash()
-            .unwrap_or_default()
-            .to_string();
-        GetStatusResult {
-            api_version: CLIENT_API_VERSION.clone(),
-            chainspec_name,
-            genesis_root_hash,
-            peers: peers_hashmap_to_btreemap(status_feed.peers),
-            last_added_block_info: status_feed.last_added_block.map(Into::into),
-            build_version: crate::VERSION_STRING.clone(),
-        }
     }
 }
 
@@ -228,22 +168,16 @@ impl RpcWithoutParamsExt for GetStatus {
             // Get the status.
             let status_feed = effect_builder
                 .make_request(
-                    |responder| ApiRequest::GetStatus { responder },
+                    |responder| RpcRequest::GetStatus { responder },
                     QueueKind::Api,
                 )
                 .await;
 
             // Convert to `ResponseResult` and send.
-            let result = Self::ResponseResult::from(status_feed);
-            Ok(response_builder.success(result)?)
+            let mut body = Self::ResponseResult::from(status_feed);
+            body.set_api_version(CLIENT_API_VERSION.clone());
+            Ok(response_builder.success(body)?)
         }
         .boxed()
     }
-}
-
-fn peers_hashmap_to_btreemap(peers: HashMap<NodeId, SocketAddr>) -> BTreeMap<String, SocketAddr> {
-    peers
-        .into_iter()
-        .map(|(node_id, address)| (format!("{}", node_id), address))
-        .collect()
 }

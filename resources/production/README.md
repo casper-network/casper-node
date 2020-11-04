@@ -60,7 +60,7 @@ Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.202 INFO  [caspe
 Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.202 INFO  [casper_node::components::small_network small_network.rs:694] 339c..c134: shutting down socket, no longer accepting incoming connections
 Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.202 WARN  [casper_node::reactor reactor.rs:206] large event size, consider reducing it or boxing; event_size=544
 Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.205 INFO  [casper_node::components::small_network small_network.rs:166] b076..384a: starting server background task; local_address=0.0.0.0:34553; public_address=127.0.0.1:34553
-Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.205 INFO  [casper_node::components::api_server api_server.rs:169] started HTTP server; addr=127.0.0.1:7777
+Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.205 INFO  [casper_node::components::rpc_server rpc_server.rs:169] started HTTP server; addr=127.0.0.1:7777
 Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.205 INFO  [casper_node::reactor reactor.rs:223] reactor main loop is ready
 ```
 
