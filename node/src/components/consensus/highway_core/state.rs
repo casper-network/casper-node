@@ -74,6 +74,8 @@ pub(crate) enum VoteError {
     ValueAfterTerminalBlock,
     #[error("The vote's creator is banned.")]
     Banned,
+    #[error("The LNC rule was violated. Vote cited ({:?}) naively.", _0)]
+    LncViolated(ValidatorIndex),
 }
 
 /// A reason for a validator to be marked as faulty.
@@ -559,8 +561,26 @@ impl<C: Context> State<C> {
                 return Err(VoteError::ValueAfterTerminalBlock);
             }
         }
-        // TODO: Validate against LNC.
+        self.validate_lnc(wvote)
+            .map_err(|v| VoteError::LncViolated(self.vote(&v).creator))?;
         Ok(())
+    }
+
+    /// Validates whether `wvote` violates the LNC rule.
+    /// Returns the first vote's hash that should have been endorsed but wasn't.
+    ///
+    /// Vote violates LNC rule if it cites naively an equivocation.
+    /// If it cites equivocator then it needs to endorse votes that cite equivocating votes.
+    fn validate_lnc(&self, wvote: &WireVote<C>) -> Result<(), C::Hash> {
+        match wvote
+            .panorama
+            .need_endorsements(self)
+            .into_iter()
+            .find(|&v| !wvote.is_endorsed(v))
+        {
+            Some(v) => Err(*v),
+            None => Ok(()),
+        }
     }
 
     /// Returns `true` if the `bhash` is a block that can have no children.
