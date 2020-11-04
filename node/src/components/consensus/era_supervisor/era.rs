@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -60,6 +61,24 @@ impl Display for EraId {
 impl From<EraId> for u64 {
     fn from(era_id: EraId) -> Self {
         era_id.0
+    }
+}
+
+impl ToBytes for EraId {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for EraId {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (id_value, remainder) = u64::from_bytes(bytes)?;
+        let era_id = EraId(id_value);
+        Ok((era_id, remainder))
     }
 }
 

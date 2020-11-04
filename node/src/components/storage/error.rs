@@ -24,6 +24,14 @@ pub enum Error {
     #[error("deserialization: {0}")]
     Deserialization(#[source] bincode::ErrorKind),
 
+    /// Failed to Serialize using ToBytes.
+    #[error("Error in ToBytes serialization")]
+    CustomSerialization,
+
+    /// Failed to Deserialize using FromBytes.
+    #[error("Error in FromBytes deserialization")]
+    CustomDeserialization,
+
     /// Internal storage component error.
     #[error("internal: {0}")]
     Internal(Box<dyn StdError + Send + Sync>),

@@ -13,7 +13,7 @@ use itertools::Itertools;
 use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::warn;
+use tracing::{info, warn};
 
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
@@ -282,6 +282,28 @@ impl Display for Approval {
     }
 }
 
+impl ToBytes for Approval {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.signer.to_bytes()?);
+        buffer.extend(self.signature.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.signer.serialized_length() + self.signature.serialized_length()
+    }
+}
+
+impl FromBytes for Approval {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (signer, remainder) = PublicKey::from_bytes(bytes)?;
+        let (signature, remainder) = Signature::from_bytes(remainder)?;
+        let approval = Approval { signer, signature };
+        Ok((approval, remainder))
+    }
+}
+
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct Deploy {
@@ -525,6 +547,68 @@ impl From<Deploy> for DeployItem {
             BTreeSet::from_iter(vec![account_hash]),
             deploy.id().inner().to_array(),
         )
+    }
+}
+
+/*
+    hash: DeployHash,
+    header: DeployHeader,
+    payment: ExecutableDeployItem,
+    session: ExecutableDeployItem,
+    approvals: Vec<Approval>,
+    #[serde(skip)]
+    is_valid: Option<bool>,
+*/
+
+impl ToBytes for Deploy {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.header.to_bytes()?);
+        buffer.extend(self.hash.to_bytes()?);
+        buffer.extend(self.payment.to_bytes()?);
+        buffer.extend(self.session.to_bytes()?);
+        buffer.extend(self.approvals.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.hash.serialized_length()
+            + self.payment.serialized_length()
+            + self.session.serialized_length()
+            + self.approvals.serialized_length()
+    }
+}
+
+impl FromBytes for Deploy {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (header, remainder) = DeployHeader::from_bytes(bytes)?;
+        let (hash, remainder) = DeployHash::from_bytes(remainder)?;
+        let (payment, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
+        let (session, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
+        let (approvals, remainder) = Vec::<Approval>::from_bytes(remainder)?;
+        let mut maybe_valid_deploy = Deploy {
+            header,
+            hash,
+            payment,
+            session,
+            approvals,
+            is_valid: None,
+        };
+        if maybe_valid_deploy.is_valid() {
+            let is_valid = Some(true);
+            let valid_deploy = Deploy {
+                header: maybe_valid_deploy.header,
+                hash: maybe_valid_deploy.hash,
+                payment: maybe_valid_deploy.payment,
+                session: maybe_valid_deploy.session,
+                approvals: maybe_valid_deploy.approvals,
+                is_valid,
+            };
+            Ok((valid_deploy, remainder))
+        } else {
+            info!("deploy deserialization led to an invalid block");
+            Err(bytesrepr::Error::Formatting)
+        }
     }
 }
 
