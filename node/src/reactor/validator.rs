@@ -462,13 +462,10 @@ impl reactor::Reactor for Reactor {
                 Event::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),
             ),
-            Event::RestServer(event) => {
-                debug!("validator dispatch_event RestServer called");
-                reactor::wrap_effects(
-                    Event::RestServer,
-                    self.rest_server.handle_event(effect_builder, rng, event),
-                )
-            }
+            Event::RestServer(event) => reactor::wrap_effects(
+                Event::RestServer,
+                self.rest_server.handle_event(effect_builder, rng, event),
+            ),
             Event::EventStreamServer(event) => reactor::wrap_effects(
                 Event::EventStreamServer,
                 self.event_stream_server
