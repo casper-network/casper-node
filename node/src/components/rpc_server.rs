@@ -16,9 +16,7 @@
 mod config;
 mod event;
 mod http_server;
-mod rest_server;
 pub mod rpcs;
-mod sse_server;
 
 use std::{convert::Infallible, fmt::Debug};
 
@@ -26,7 +24,6 @@ use datasize::DataSize;
 use futures::join;
 use lazy_static::lazy_static;
 use semver::Version;
-use tokio::sync::mpsc::{self, UnboundedSender};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -56,7 +53,6 @@ use crate::{
 
 pub use config::Config;
 pub(crate) use event::Event;
-pub use sse_server::SseData;
 
 // TODO - confirm if we want to use the protocol version for this.
 lazy_static! {
@@ -87,12 +83,7 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct RpcServer {
-    /// Channel sender to pass event-stream data to the event-stream server.
-    // TODO - this should not be skipped.  Awaiting support for `UnboundedSender` in datasize crate.
-    #[data_size(skip)]
-    sse_data_sender: UnboundedSender<SseData>,
-}
+pub(crate) struct RpcServer {}
 
 impl RpcServer {
     pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
@@ -104,10 +95,9 @@ impl RpcServer {
             + From<ContractRuntimeRequest>
             + Send,
     {
-        let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
-        tokio::spawn(http_server::run(config, effect_builder, sse_data_receiver));
+        tokio::spawn(http_server::run(config, effect_builder));
 
-        RpcServer { sse_data_sender }
+        RpcServer {}
     }
 }
 
@@ -173,12 +163,6 @@ impl RpcServer {
                 result,
                 main_responder: responder,
             })
-    }
-
-    /// Broadcasts the SSE data to all clients connected to the event stream.
-    fn broadcast(&mut self, sse_data: SseData) -> Effects<Event> {
-        let _ = self.sse_data_sender.send(sse_data);
-        Effects::new()
     }
 }
 
@@ -328,30 +312,6 @@ where
                 text,
                 main_responder,
             } => main_responder.respond(text).ignore(),
-            Event::BlockFinalized(finalized_block) => {
-                self.broadcast(SseData::BlockFinalized(*finalized_block))
-            }
-            Event::BlockAdded {
-                block_hash,
-                block_header,
-            } => self.broadcast(SseData::BlockAdded {
-                block_hash,
-                block_header: *block_header,
-            }),
-            Event::DeployProcessed {
-                deploy_hash,
-                deploy_header,
-                block_hash,
-                execution_result,
-            } => self.broadcast(SseData::DeployProcessed {
-                deploy_hash,
-                account: *deploy_header.account(),
-                timestamp: deploy_header.timestamp(),
-                ttl: deploy_header.ttl(),
-                dependencies: deploy_header.dependencies().clone(),
-                block_hash,
-                execution_result,
-            }),
         }
     }
 }

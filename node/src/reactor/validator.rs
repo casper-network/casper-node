@@ -36,6 +36,8 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
+        rest_server,
+        rest_server::RestServer,
         rpc_server::{self, RpcServer},
         small_network::{self, GossipedAddress, NodeId, SmallNetwork},
         storage::{self, Storage},
@@ -50,8 +52,8 @@ use crate::{
         requests::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
-            LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RpcRequest,
-            StorageRequest,
+            LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
+            RpcRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -81,6 +83,9 @@ pub enum Event {
     #[from]
     /// RPC server event.
     RpcServer(rpc_server::Event),
+    #[from]
+    /// REST server event.
+    RestServer(rest_server::Event),
     #[from]
     /// Chainspec Loader event.
     ChainspecLoader(chainspec_loader::Event),
@@ -177,6 +182,12 @@ impl From<RpcRequest<NodeId>> for Event {
     }
 }
 
+impl From<RestRequest<NodeId>> for Event {
+    fn from(request: RestRequest<NodeId>) -> Self {
+        Event::RestServer(rest_server::Event::RestRequest(request))
+    }
+}
+
 impl From<NetworkRequest<NodeId, consensus::ConsensusMessage>> for Event {
     fn from(request: NetworkRequest<NodeId, consensus::ConsensusMessage>) -> Self {
         Event::NetworkRequest(request.map_payload(Message::from))
@@ -220,6 +231,7 @@ impl Display for Event {
             Event::BlockProposer(event) => write!(f, "block proposer: {}", event),
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::RpcServer(event) => write!(f, "rpc server: {}", event),
+            Event::RestServer(event) => write!(f, "rest server: {}", event),
             Event::ChainspecLoader(event) => write!(f, "chainspec loader: {}", event),
             Event::Consensus(event) => write!(f, "consensus: {}", event),
             Event::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
@@ -278,6 +290,7 @@ pub struct Reactor {
     address_gossiper: Gossiper<GossipedAddress, Event>,
     storage: Storage,
     contract_runtime: ContractRuntime,
+    rest_server: RestServer,
     rpc_server: RpcServer,
     chainspec_loader: ChainspecLoader,
     consensus: EraSupervisor<NodeId>,
@@ -345,7 +358,8 @@ impl reactor::Reactor for Reactor {
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
-        let rpc_server = RpcServer::new(config.rpc_server, effect_builder);
+        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
+        let rpc_server = RpcServer::new(config.rpc_server.clone(), effect_builder);
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.fetcher);
         let deploy_gossiper = Gossiper::new_for_partial_items(
@@ -398,6 +412,7 @@ impl reactor::Reactor for Reactor {
                 address_gossiper,
                 storage,
                 contract_runtime,
+                rest_server,
                 rpc_server,
                 chainspec_loader,
                 consensus,
@@ -437,6 +452,10 @@ impl reactor::Reactor for Reactor {
             Event::RpcServer(event) => reactor::wrap_effects(
                 Event::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),
+            ),
+            Event::RestServer(event) => reactor::wrap_effects(
+                Event::RestServer,
+                self.rest_server.handle_event(effect_builder, rng, event),
             ),
             Event::ChainspecLoader(event) => reactor::wrap_effects(
                 Event::ChainspecLoader,
@@ -683,7 +702,7 @@ impl reactor::Reactor for Reactor {
                             block_proposer::Event::FinalizedProtoBlock(block.proto_block().clone()),
                         );
                         let reactor_event =
-                            Event::RpcServer(rpc_server::Event::BlockFinalized(block));
+                            Event::RestServer(rest_server::Event::BlockFinalized(block));
                         effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
                     }
@@ -702,6 +721,8 @@ impl reactor::Reactor for Reactor {
             }) => {
                 let mut effects = Effects::new();
                 let block_hash = *block.hash();
+
+                // send to linear chain
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
                     block: Box::new(block),
                     execution_results: execution_results
@@ -711,12 +732,13 @@ impl reactor::Reactor for Reactor {
                 });
                 effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
 
+                // send to event stream
                 for (deploy_hash, (deploy_header, execution_result)) in execution_results {
-                    let reactor_event = Event::RpcServer(rpc_server::Event::DeployProcessed {
+                    let reactor_event = Event::RestServer(rest_server::Event::DeployProcessed {
                         deploy_hash,
                         deploy_header: Box::new(deploy_header),
                         block_hash,
-                        execution_result,
+                        execution_result: Box::new(execution_result),
                     });
                     effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 }
@@ -736,7 +758,7 @@ impl reactor::Reactor for Reactor {
                 block_hash,
                 block_header,
             }) => {
-                let reactor_event = Event::RpcServer(rpc_server::Event::BlockAdded {
+                let reactor_event = Event::RestServer(rest_server::Event::BlockAdded {
                     block_hash,
                     block_header,
                 });

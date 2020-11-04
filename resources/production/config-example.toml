@@ -70,9 +70,9 @@ gossip_interval = 120_000
 systemd_support = false
 
 # =============================================
-# Configuration options for the HTTP API server
+# Configuration options for the HTTP RPC server
 # =============================================
-[http_server]
+[rpc_server]
 
 # Listening address for HTTP server.  If the port is set to 0, a random port will be used.
 #
@@ -82,9 +82,21 @@ systemd_support = false
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:7777'
 
+# =============================================
+# Configuration options for the HTTP REST server
+# =============================================
+[rest_server]
+
+# Listening address for HTTP server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the HTTP server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:8888'
+
 # The number of event-stream events to buffer.
 event_stream_buffer_length = 100
-
 
 # ===============================================
 # Configuration options for the storage component

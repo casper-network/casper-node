@@ -97,6 +97,12 @@ impl RestServer {
 
         RestServer { sse_data_sender }
     }
+
+    /// Broadcasts the SSE data to all clients connected to the event stream.
+    fn broadcast(&mut self, sse_data: SseData) -> Effects<Event> {
+        let _ = self.sse_data_sender.send(sse_data);
+        Effects::new()
+    }
 }
 
 impl<REv> Component<REv> for RestServer
@@ -141,6 +147,30 @@ where
                 text,
                 main_responder,
             } => main_responder.respond(text).ignore(),
+            Event::BlockFinalized(finalized_block) => {
+                self.broadcast(SseData::BlockFinalized(*finalized_block))
+            }
+            Event::BlockAdded {
+                block_hash,
+                block_header,
+            } => self.broadcast(SseData::BlockAdded {
+                block_hash,
+                block_header: *block_header,
+            }),
+            Event::DeployProcessed {
+                deploy_hash,
+                deploy_header,
+                block_hash,
+                execution_result,
+            } => self.broadcast(SseData::DeployProcessed {
+                deploy_hash,
+                account: *deploy_header.account(),
+                timestamp: deploy_header.timestamp(),
+                ttl: deploy_header.ttl(),
+                dependencies: deploy_header.dependencies().clone(),
+                block_hash,
+                execution_result,
+            }),
         }
     }
 }

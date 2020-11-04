@@ -62,7 +62,7 @@ pub enum SseData {
         ttl: TimeDiff,
         dependencies: Vec<DeployHash>,
         block_hash: BlockHash,
-        execution_result: ExecutionResult,
+        execution_result: Box<ExecutionResult>,
     },
 }
 

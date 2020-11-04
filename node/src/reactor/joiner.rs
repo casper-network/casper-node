@@ -637,15 +637,31 @@ impl reactor::Reactor for Reactor {
                 block,
                 execution_results,
             }) => {
-                let execution_results = execution_results
-                    .into_iter()
-                    .map(|(hash, (_header, results))| (hash, results))
-                    .collect();
+                let mut effects = Effects::new();
+                let block_hash = *block.hash();
+
+                // send to linear chain
                 let reactor_event = Event::LinearChain(linear_chain::Event::LinearChainBlock {
                     block: Box::new(block),
-                    execution_results,
+                    execution_results: execution_results
+                        .iter()
+                        .map(|(hash, (_header, results))| (*hash, results.clone()))
+                        .collect(),
                 });
-                self.dispatch_event(effect_builder, rng, reactor_event)
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+
+                // send to event stream
+                for (deploy_hash, (deploy_header, execution_result)) in execution_results {
+                    let reactor_event = Event::RestServer(rest_server::Event::DeployProcessed {
+                        deploy_hash,
+                        deploy_header: Box::new(deploy_header),
+                        block_hash,
+                        execution_result: Box::new(execution_result),
+                    });
+                    effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                }
+
+                effects
             }
             Event::LinearChain(event) => reactor::wrap_effects(
                 Event::LinearChain,
@@ -662,6 +678,14 @@ impl reactor::Reactor for Reactor {
                         effect_builder,
                         rng,
                         linear_chain_sync::Event::BlockHandled(block_header),
+                    ),
+                ),
+                ConsensusAnnouncement::Finalized(block) => reactor::wrap_effects(
+                    Event::RestServer,
+                    self.rest_server.handle_event(
+                        effect_builder,
+                        rng,
+                        rest_server::Event::BlockFinalized(block),
                     ),
                 ),
                 other => {
@@ -692,10 +716,21 @@ impl reactor::Reactor for Reactor {
                     Event::Network(small_network::Event::PeerAddressReceived(gossiped_address));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            Event::LinearChainAnnouncement(ann) => {
-                warn!("Ignoring linear chain announcement {}", ann);
-                Effects::new()
-            }
+
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
+                block_hash,
+                block_header,
+            }) => reactor::wrap_effects(
+                Event::RestServer,
+                self.rest_server.handle_event(
+                    effect_builder,
+                    rng,
+                    rest_server::Event::BlockAdded {
+                        block_hash,
+                        block_header,
+                    },
+                ),
+            ),
             Event::RestServer(event) => reactor::wrap_effects(
                 Event::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),

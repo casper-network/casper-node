@@ -84,9 +84,6 @@ systemd_support = false
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:7777'
 
-# The number of event-stream events to buffer.
-event_stream_buffer_length = 100
-
 # =============================================
 # Configuration options for the HTTP REST server
 # =============================================
