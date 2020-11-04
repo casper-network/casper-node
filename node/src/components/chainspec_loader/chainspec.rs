@@ -95,6 +95,7 @@ pub(crate) struct HighwayConfig {
     pub(crate) voting_period_duration: TimeDiff,
     pub(crate) finality_threshold_percent: u8,
     pub(crate) minimum_round_exponent: u8,
+    pub(crate) maximum_round_exponent: u8,
 }
 
 impl Default for HighwayConfig {
@@ -108,6 +109,7 @@ impl Default for HighwayConfig {
             voting_period_duration: TimeDiff::from_str("2days").unwrap(),
             finality_threshold_percent: 10,
             minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
+            maximum_round_exponent: 19, // 2**19 ms = ~8.7 minutes
         }
     }
 }
@@ -122,6 +124,16 @@ impl HighwayConfig {
             && self.era_duration.millis() < self.minimum_era_height * min_era_ms
         {
             warn!("Era duration is less than minimum era height * round length!");
+        }
+
+        if self.minimum_round_exponent > self.maximum_round_exponent {
+            panic!(
+                "Minimum round exponent is greater than the maximum round exponent.\n\
+                 Minimum round exponent: {min},\n\
+                 Maximum round exponent: {max}",
+                min = self.minimum_round_exponent,
+                max = self.maximum_round_exponent
+            );
         }
     }
 }
@@ -138,7 +150,8 @@ impl HighwayConfig {
             entropy_duration: TimeDiff::from(rng.gen_range(600_000, 10_800_000)),
             voting_period_duration: TimeDiff::from(rng.gen_range(600_000, 172_800_000)),
             finality_threshold_percent: rng.gen_range(0, 101),
-            minimum_round_exponent: rng.gen_range(0, 20),
+            minimum_round_exponent: rng.gen_range(0, 16),
+            maximum_round_exponent: rng.gen_range(16, 22),
         }
     }
 }
@@ -571,6 +584,7 @@ mod tests {
         );
         assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
         assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 13);
+        assert_eq!(spec.genesis.highway_config.maximum_round_exponent, 19);
 
         assert_eq!(
             spec.genesis.deploy_config.max_payment_cost,

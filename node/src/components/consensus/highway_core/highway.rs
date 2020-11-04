@@ -436,9 +436,12 @@ impl<C: Context> Highway<C> {
         evidence: Evidence<C>,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let av = self.active_validator.as_mut().unwrap();
         let state = &self.state;
-        let mut effects = av.on_new_evidence(&evidence, state, rng);
+        let mut effects = self
+            .active_validator
+            .as_mut()
+            .map(|av| av.on_new_evidence(&evidence, state, rng))
+            .unwrap_or_default();
         // Add newly created endorsements to the local state.
         for effect in effects.iter() {
             if let Effect::NewVertex(vv) = effect {

@@ -105,6 +105,7 @@ impl State<TestContext> {
             TEST_BLOCK_REWARD,
             TEST_BLOCK_REWARD / 5,
             4,
+            19,
             4,
             u64::MAX,
             Timestamp::from(u64::MAX),
@@ -145,7 +146,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
     let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
     let c0 = add_vote!(state, rng, CAROL, 49, 4u8, None; N, b0, N)?;
-    let b1 = add_vote!(state, rng, BOB, None; N, b0, c0)?;
+    let b1 = add_vote!(state, rng, BOB, 49, 4u8, None; N, b0, c0)?;
     let _a1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
 
     // Wrong sequence number: Bob hasn't produced b2 yet.
@@ -173,11 +174,16 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         .err()
         .map(vote_err);
     assert_eq!(Some(VoteError::InconsistentPanorama(BOB)), opt_err);
-    // And you can't change the round exponent within a round.
+    // And you can't make the round exponent too small
     let opt_err = add_vote!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
         .err()
         .map(vote_err);
-    assert_eq!(Some(VoteError::RoundLength), opt_err);
+    assert_eq!(Some(VoteError::RoundLengthExpChangedWithinRound), opt_err);
+    // And you can't make the round exponent too big
+    let opt_err = add_vote!(state, rng, CAROL, 50, 40u8, None; N, b1, c0)
+        .err()
+        .map(vote_err);
+    assert_eq!(Some(VoteError::RoundLengthExpGreaterThanMaximum), opt_err);
     // After the round from 48 to 64 has ended, the exponent can change.
     let c1 = add_vote!(state, rng, CAROL, 65, 5u8, None; N, b1, c0)?;
 
@@ -213,6 +219,7 @@ fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
         TEST_BLOCK_REWARD,
         TEST_BLOCK_REWARD / 5,
         4,
+        19,
         4,
         u64::MAX,
         Timestamp::from(u64::MAX),
