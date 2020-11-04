@@ -16,7 +16,7 @@ chainspec_config_path = '/etc/casper/chainspec.toml'
 [logging]
 
 # Output format.  Possible values are 'text' or 'json'.
-format = 'text'
+format = 'json'
 
 # Colored output.  Has no effect if format = 'json'.
 color = false
@@ -97,7 +97,7 @@ event_stream_buffer_length = 100
 # If the folder doesn't exist, it and any required parents will be created.
 #
 # If unset, the path must be supplied as an argument via the CLI.
-path = '/root/.local/share/casper-node'
+path = '/var/lib/casper/casper-node'
 
 # Optional maximum size of the database to use for the block store.
 #
