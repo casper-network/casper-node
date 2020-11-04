@@ -116,9 +116,7 @@ impl<C: Context> Panorama<C> {
     }
 
     /// Returns an iterator over validator indexes that are seen as faulty by this panorama.
-    pub(crate) fn iter_faulty_validators<'a>(
-        &'a self,
-    ) -> impl Iterator<Item = ValidatorIndex> + 'a {
+    pub(crate) fn iter_faulty_validators(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.enumerate()
             .filter(|&(_, obs)| obs.is_faulty())
             .map(|(vidx, _)| vidx)
@@ -206,8 +204,7 @@ impl<C: Context> Panorama<C> {
                     .vote(v)
                     .panorama
                     .iter_faulty_validators()
-                    .collect::<Vec<_>>()
-                    != faulty_local
+                    .ne(faulty_local.iter().cloned())
             })
             .collect()
     }
