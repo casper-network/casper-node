@@ -25,21 +25,23 @@
 
 mod event;
 
+use std::{convert::Infallible, fmt::Display, mem};
+
 use datasize::DataSize;
+use rand::{seq::SliceRandom, Rng};
+use tracing::{error, info, trace, warn};
 
 use super::{fetcher::FetchResult, storage::Storage, Component};
 use crate::{
-    effect::{self, EffectBuilder, EffectExt, EffectOptionExt, Effects},
-    types::{Block, BlockByHeight, BlockHash, BlockHeader, CryptoRngCore, FinalizedBlock},
-};
-use effect::requests::{
-    BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest,
+    effect::{
+        requests::{BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest},
+        EffectBuilder, EffectExt, EffectOptionExt, Effects,
+    },
+    types::{Block, BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
+    NodeRng,
 };
 use event::BlockByHeightResult;
 pub use event::Event;
-use rand::{seq::SliceRandom, Rng};
-use std::{convert::Infallible, fmt::Display, mem};
-use tracing::{error, info, trace, warn};
 
 pub trait ReactorEventT<I>:
     From<StorageRequest<Storage>>
@@ -216,12 +218,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     fn block_downloaded<REv>(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
         block_header: &BlockHeader,
     ) -> Effects<Event<I>>
     where
-        I: Send + Copy + 'static,
+        I: Send + 'static,
         REv: ReactorEventT<I>,
     {
         self.reset_peers(rng);
@@ -257,12 +259,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     /// Returns effects that are created as a response to that event.
     fn block_handled<REv>(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         effect_builder: EffectBuilder<REv>,
         block_header: BlockHeader,
     ) -> Effects<Event<I>>
     where
-        I: Send + Copy + 'static,
+        I: Send + 'static,
         REv: ReactorEventT<I>,
     {
         let height = block_header.height();
@@ -320,7 +322,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event<I>>
     where
-        I: Send + Copy + 'static,
+        I: Send + 'static,
         REv: ReactorEventT<I>,
     {
         let peer = self.random_peer_unsafe();
@@ -369,11 +371,11 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     fn fetch_next_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         block_header: &BlockHeader,
     ) -> Effects<Event<I>>
     where
-        I: Send + Copy + 'static,
+        I: Send + 'static,
         REv: ReactorEventT<I>,
     {
         self.reset_peers(rng);
@@ -396,7 +398,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
 impl<I, REv> Component<REv> for LinearChainSync<I>
 where
-    I: Display + Clone + Copy + Send + PartialEq + 'static,
+    I: Display + Clone + Send + PartialEq + 'static,
     REv: ReactorEventT<I>,
 {
     type Event = Event<I>;
@@ -405,7 +407,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -488,8 +490,7 @@ where
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
                         // NOTE: Cannot call `self.ban_peer` with `peer` value b/c it's fixed for
-                        // `KeyFingerprint` type and we're abstract in what
-                        // peer type is.
+                        // `KeyFingerprint` type and we're abstract in what peer type is.
                         return self.handle_event(
                             effect_builder,
                             rng,
@@ -527,10 +528,11 @@ where
                 let mut effects = Effects::new();
                 if self.peers.is_empty() {
                     // First peer connected, start downloading.
+                    let cloned_peer_id = peer_id.clone();
                     effects.extend(
                         effect_builder
                             .immediately()
-                            .event(move |_| Event::Start(peer_id)),
+                            .event(move |_| Event::Start(cloned_peer_id)),
                     );
                 }
                 self.peers.push(peer_id);
@@ -546,7 +548,7 @@ where
     }
 }
 
-fn fetch_block_deploys<I: Send + Copy + 'static, REv>(
+fn fetch_block_deploys<I: Send + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block_header: BlockHeader,
@@ -566,7 +568,7 @@ where
         })
 }
 
-fn fetch_block_by_hash<I: Send + Copy + 'static, REv>(
+fn fetch_block_by_hash<I: Send + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block_hash: BlockHash,
@@ -580,7 +582,7 @@ where
     )
 }
 
-fn fetch_block_at_height<I: Send + Copy + 'static, REv>(
+fn fetch_block_at_height<I: Send + Clone + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block_height: u64,
@@ -589,7 +591,7 @@ where
     REv: ReactorEventT<I>,
 {
     effect_builder
-        .fetch_block_by_height(block_height, peer)
+        .fetch_block_by_height(block_height, peer.clone())
         .option(
             move |fetch_result| match fetch_result {
                 FetchResult::FromPeer(result, _) => match *result {

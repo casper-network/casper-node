@@ -33,7 +33,7 @@ use tokio::sync::mpsc::{self, UnboundedSender};
 use super::Component;
 use crate::{
     effect::{EffectBuilder, Effects},
-    types::CryptoRngCore,
+    NodeRng,
 };
 
 pub use config::Config;
@@ -82,7 +82,7 @@ where
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

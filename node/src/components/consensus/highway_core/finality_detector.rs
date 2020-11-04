@@ -161,12 +161,11 @@ mod tests {
         super::state::{tests::*, State},
         *,
     };
-    use crate::testing::TestRng;
 
     #[test]
     fn finality_detector() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         // Create blocks with scores as follows:
         //
@@ -206,7 +205,7 @@ mod tests {
     fn equivocators() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fd4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         // Create blocks with scores as follows:
         //

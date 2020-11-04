@@ -17,7 +17,8 @@ use crate::{
         },
         traits::Context,
     },
-    types::{CryptoRngCore, Timestamp},
+    types::Timestamp,
+    NodeRng,
 };
 
 use super::{
@@ -250,7 +251,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn add_valid_vertex(
         &mut self,
         ValidVertex(vertex): ValidVertex<C>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         now: Timestamp,
     ) -> Vec<Effect<C>> {
         if !self.has_vertex(&vertex) {
@@ -337,7 +338,7 @@ impl<C: Context> Highway<C> {
     pub(crate) fn handle_timer(
         &mut self,
         timestamp: Timestamp,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
 
@@ -366,7 +367,7 @@ impl<C: Context> Highway<C> {
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
 
@@ -419,7 +420,7 @@ impl<C: Context> Highway<C> {
         &mut self,
         vhash: &C::Hash,
         timestamp: Timestamp,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
         self.map_active_validator(
@@ -431,11 +432,7 @@ impl<C: Context> Highway<C> {
     }
 
     /// Takes action on a new evidence.
-    fn on_new_evidence(
-        &mut self,
-        evidence: Evidence<C>,
-        rng: &mut dyn CryptoRngCore,
-    ) -> Vec<Effect<C>> {
+    fn on_new_evidence(&mut self, evidence: Evidence<C>, rng: &mut NodeRng) -> Vec<Effect<C>> {
         let state = &self.state;
         let mut effects = self
             .active_validator
@@ -465,10 +462,10 @@ impl<C: Context> Highway<C> {
         &mut self,
         f: F,
         timestamp: Timestamp,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Option<Vec<Effect<C>>>
     where
-        F: FnOnce(&mut ActiveValidator<C>, &State<C>, &mut dyn CryptoRngCore) -> Vec<Effect<C>>,
+        F: FnOnce(&mut ActiveValidator<C>, &State<C>, &mut NodeRng) -> Vec<Effect<C>>,
     {
         let effects = f(self.active_validator.as_mut()?, &self.state, rng);
         let mut result = vec![];
@@ -536,11 +533,7 @@ impl<C: Context> Highway<C> {
 
     /// Adds evidence to the protocol state.
     /// Gossip the evidence if it's the first equivocation from the creator.
-    fn add_evidence(
-        &mut self,
-        evidence: Evidence<C>,
-        rng: &mut dyn CryptoRngCore,
-    ) -> Vec<Effect<C>> {
+    fn add_evidence(&mut self, evidence: Evidence<C>, rng: &mut NodeRng) -> Vec<Effect<C>> {
         if self.state.add_evidence(evidence.clone()) {
             self.on_new_evidence(evidence, rng)
         } else {
@@ -556,7 +549,7 @@ impl<C: Context> Highway<C> {
         &mut self,
         swvote: SignedWireVote<C>,
         now: Timestamp,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let vote_hash = swvote.hash();
         let creator = swvote.wire_vote.creator;
@@ -599,7 +592,6 @@ pub(crate) mod tests {
             },
             traits::ValidatorSecret,
         },
-        testing::TestRng,
         types::Timestamp,
     };
 
@@ -617,7 +609,7 @@ pub(crate) mod tests {
 
     #[test]
     fn invalid_signature_error() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let now: Timestamp = 500.into();
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
@@ -663,7 +655,7 @@ pub(crate) mod tests {
 
     #[test]
     fn invalid_evidence() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let highway = Highway {

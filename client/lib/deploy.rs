@@ -141,7 +141,7 @@ impl DeployExt for Deploy {
             chain_name,
             secret_key,
         } = params;
-        let mut rng = rand::thread_rng();
+        let mut rng = casper_node::new_rng();
         Deploy::new(
             timestamp,
             ttl,
@@ -196,7 +196,7 @@ impl DeployExt for Deploy {
         maybe_output_path: Option<&str>,
     ) -> Result<()> {
         let mut deploy = Deploy::read_deploy(input_path)?;
-        let mut rng = rand::thread_rng();
+        let mut rng = casper_node::new_rng();
         deploy.sign(&secret_key, &mut rng);
         deploy.write_deploy(maybe_output_path)?;
         Ok(())

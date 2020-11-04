@@ -809,7 +809,7 @@ mod tests {
 
     #[test]
     fn json_block_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let block = Block::random(&mut rng);
         let json_string = serde_json::to_string_pretty(&block).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
@@ -818,7 +818,7 @@ mod tests {
 
     #[test]
     fn json_finalized_block_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let finalized_block = FinalizedBlock::random(&mut rng);
         let json_string = serde_json::to_string_pretty(&finalized_block).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
