@@ -478,6 +478,7 @@ dependencies = [
  "grpc",
  "lmdb",
  "log 0.4.11",
+ "num-rational 0.3.0",
  "parity-wasm 0.42.1",
  "proptest",
  "protobuf",
@@ -497,6 +498,7 @@ dependencies = [
  "lazy_static",
  "lmdb",
  "log 0.4.11",
+ "num-rational 0.3.0",
  "num-traits",
  "protobuf",
  "rand 0.7.3",
@@ -555,6 +557,7 @@ dependencies = [
  "log 0.4.11",
  "num",
  "num-derive",
+ "num-rational 0.3.0",
  "num-traits",
  "parity-wasm 0.41.0",
  "proptest",
@@ -615,6 +618,7 @@ dependencies = [
  "log 0.4.11",
  "num",
  "num-derive",
+ "num-rational 0.3.0",
  "num-traits",
  "openssl",
  "parity-wasm 0.42.1",
@@ -2892,6 +2896,7 @@ dependencies = [
  "num-bigint 0.3.0",
  "num-integer",
  "num-traits",
+ "serde",
 ]
 
 [[package]]

@@ -13,6 +13,7 @@ mod get_era_validators_request;
 mod host_function_costs;
 mod opcode_costs;
 mod query_request;
+mod ratio;
 mod run_genesis_request;
 mod step;
 mod storage_costs;

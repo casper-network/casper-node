@@ -23,6 +23,7 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
         let validator_slots = pb_exec_config.get_validator_slots();
         let auction_delay = pb_exec_config.get_auction_delay();
         let locked_funds_period = pb_exec_config.get_locked_funds_period();
+        let round_seigniorage_rate = pb_exec_config.take_round_seigniorage_rate().into();
         Ok(ExecConfig::new(
             mint_initializer_bytes,
             proof_of_stake_initializer_bytes,
@@ -33,6 +34,7 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
             validator_slots,
             auction_delay,
             locked_funds_period,
+            round_seigniorage_rate,
         ))
     }
 }
@@ -59,6 +61,7 @@ impl From<ExecConfig> for ipc::ChainSpec_GenesisConfig_ExecConfig {
         pb_exec_config.set_validator_slots(exec_config.validator_slots());
         pb_exec_config.set_auction_delay(exec_config.auction_delay());
         pb_exec_config.set_locked_funds_period(exec_config.locked_funds_period());
+        pb_exec_config.set_round_seigniorage_rate(exec_config.round_seigniorage_rate().into());
         pb_exec_config
     }
 }

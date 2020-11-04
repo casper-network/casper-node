@@ -4,7 +4,10 @@ use lazy_static::lazy_static;
 use num_rational::Ratio;
 
 use casper_engine_test_support::{
-    internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
+    internal::{
+        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+        DEFAULT_RUN_GENESIS_REQUEST,
+    },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{
@@ -16,7 +19,7 @@ use casper_types::{
         DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE, METHOD_WITHDRAW_DELEGATOR_REWARD,
         METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
-    mint, runtime_args, PublicKey, RuntimeArgs, U512,
+    runtime_args, PublicKey, RuntimeArgs, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -43,6 +46,10 @@ lazy_static! {
     static ref DELEGATOR_1_ADDR: AccountHash = DELEGATOR_1.into();
     static ref DELEGATOR_2_ADDR: AccountHash = DELEGATOR_2.into();
     static ref DELEGATOR_3_ADDR: AccountHash = DELEGATOR_3.into();
+    static ref GENESIS_ROUND_SEIGNIORAGE_RATE: Ratio<U512> = Ratio::new(
+        U512::from(*DEFAULT_ROUND_SEIGNIORAGE_RATE.numer()),
+        U512::from(*DEFAULT_ROUND_SEIGNIORAGE_RATE.denom())
+    );
 }
 
 fn withdraw_validator_reward(
@@ -210,7 +217,7 @@ fn should_distribute_delegation_rate_zero() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward = mint::round_seigniorage_rate() * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {
@@ -384,7 +391,7 @@ fn should_distribute_delegation_rate_half() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward = mint::round_seigniorage_rate() * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {
@@ -532,7 +539,7 @@ fn should_distribute_delegation_rate_full() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward = mint::round_seigniorage_rate() * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {
@@ -685,7 +692,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward = mint::round_seigniorage_rate() * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {
@@ -838,7 +845,7 @@ fn should_distribute_by_factor() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward = mint::round_seigniorage_rate() * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {
@@ -998,7 +1005,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward = mint::round_seigniorage_rate() * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {
@@ -1159,7 +1166,7 @@ fn should_distribute_by_factor_uneven() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward = mint::round_seigniorage_rate() * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {
@@ -1389,7 +1396,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward = mint::round_seigniorage_rate() * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {
@@ -1635,7 +1642,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
-    let expected_total_reward = mint::round_seigniorage_rate() * initial_supply;
+    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
     for request in post_genesis_requests {

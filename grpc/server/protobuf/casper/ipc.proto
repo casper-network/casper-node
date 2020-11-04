@@ -7,6 +7,11 @@ import "casper/transforms.proto";
 
 // --- BEGIN EXECUTION ENGINE SERVICE DEFINITION --- //
 
+message Ratio {
+    uint64 numer = 1;
+    uint64 denom = 2;
+}
+
 message DeployCode {
     bytes code = 1; // wasm byte code
     bytes args = 2; // ABI-encoded arguments
@@ -290,6 +295,8 @@ message ChainSpec {
             uint64 auction_delay = 8;
             // the default_locked funds period. 
             uint64 locked_funds_period = 10;
+            // Round seigniorage rate expressed as a fraction.
+            Ratio round_seigniorage_rate = 11;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;

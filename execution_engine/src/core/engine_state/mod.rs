@@ -37,7 +37,9 @@ use casper_types::{
     },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
-    mint, proof_of_stake, runtime_args,
+    mint,
+    mint::ARG_ROUND_SEIGNIORAGE_RATE,
+    proof_of_stake, runtime_args,
     system_contract_errors::mint::Error as MintError,
     AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractVersionKey, DeployInfo, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
@@ -245,7 +247,9 @@ where
         let (mint_package_hash, mint_hash): (ContractPackageHash, ContractHash) = {
             let mint_installer_bytes = ee_config.mint_installer_bytes();
             let mint_installer_module = preprocessor.preprocess(mint_installer_bytes)?;
-            let args = RuntimeArgs::new();
+            let args = runtime_args! {
+                ARG_ROUND_SEIGNIORAGE_RATE => ee_config.round_seigniorage_rate(),
+            };
             let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
             let install_deploy_hash = genesis_config_hash.value();
             let hash_address_generator = Rc::clone(&hash_address_generator);

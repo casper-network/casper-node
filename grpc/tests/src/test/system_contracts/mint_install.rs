@@ -1,3 +1,5 @@
+use num_rational::Ratio;
+
 use casper_engine_test_support::{
     internal::{
         exec_with_return, WasmTestBuilder, DEFAULT_BLOCK_TIME, DEFAULT_RUN_GENESIS_REQUEST,
@@ -9,8 +11,8 @@ use casper_execution_engine::{
     shared::{stored_value::StoredValue, transform::Transform},
 };
 use casper_types::{
-    contracts::CONTRACT_INITIAL_VERSION, runtime_args, ContractHash, ContractPackageHash,
-    ContractVersionKey, ProtocolVersion, RuntimeArgs,
+    contracts::CONTRACT_INITIAL_VERSION, mint::ARG_ROUND_SEIGNIORAGE_RATE, runtime_args,
+    ContractHash, ContractPackageHash, ContractVersionKey, ProtocolVersion, RuntimeArgs,
 };
 
 const DEPLOY_HASH_1: [u8; 32] = [1u8; 32];
@@ -24,6 +26,7 @@ fn should_run_mint_install_contract() {
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
+    let round_seigniorage_rate: Ratio<u64> = Ratio::new_raw(1, 1);
     let ((contract_package_hash, mint_hash), ret_urefs, effect): (
         (ContractPackageHash, ContractHash),
         _,
@@ -36,7 +39,9 @@ fn should_run_mint_install_contract() {
         DEFAULT_BLOCK_TIME,
         DEPLOY_HASH_1,
         "install",
-        runtime_args! {},
+        runtime_args! {
+            ARG_ROUND_SEIGNIORAGE_RATE => round_seigniorage_rate,
+        },
         vec![],
     )
     .expect("should run successfully");
