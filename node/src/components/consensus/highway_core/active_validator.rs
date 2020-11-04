@@ -324,14 +324,7 @@ impl<C: Context> ActiveValidator<C> {
             panorama = state.panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
-        let endorsed = panorama
-            .need_endorsements(state)
-            .into_iter()
-            .map(|v| {
-                assert!(state.is_endorsed(v), "Vote must be endorsed");
-                *v
-            })
-            .collect();
+        let endorsed = panorama.need_endorsements(state);
         let wvote = WireVote {
             panorama,
             creator: self.vidx,

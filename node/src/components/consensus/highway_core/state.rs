@@ -421,11 +421,8 @@ impl<C: Context> State<C> {
         let endorsed = vote
             .panorama
             .need_endorsements(self)
-            .into_iter()
-            .map(|v| {
-                assert!(self.is_endorsed(v), "Vote must be endorsed");
-                *v
-            })
+            .iter()
+            .cloned()
             .collect();
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
