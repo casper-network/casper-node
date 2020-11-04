@@ -93,7 +93,7 @@ where
 
 /// Error reading a file.
 #[derive(Debug, Error)]
-#[error("could not read {0}: {error}", .path.display())]
+#[error("could not read '{0}': {error}", .path.display())]
 pub struct ReadFileError {
     /// Path that failed to be read.
     path: PathBuf,
@@ -104,7 +104,7 @@ pub struct ReadFileError {
 
 /// Error writing a file
 #[derive(Debug, Error)]
-#[error("could not write to {0}: {error}", .path.display())]
+#[error("could not write to '{0}': {error}", .path.display())]
 pub struct WriteFileError {
     /// Path that failed to be written to.
     path: PathBuf,

@@ -7,16 +7,6 @@
 #include <stdbool.h>
 
 /**
- * Maximum length of error-string output in bytes.
- */
-#define CASPER_MAX_ERROR_LEN 255
-
-/**
- * Maximum length of provided `response_buf` buffer.
- */
-#define CASPER_MAX_RESPONSE_BUFFER_LEN 1024
-
-/**
  * Container for `Deploy` construction options.
  *
  * See [DeployStrParams](struct.DeployStrParams.html) for more info.
@@ -74,18 +64,21 @@ typedef struct {
 void casper_setup_client(void);
 
 /**
- * Perform shutdown of resources gathered in the client library.
+ * Perform a clean shutdown of resources gathered in the client library.
  */
 void casper_shutdown_client(void);
 
 /**
- * Get the last error copied to the provided buffer (must be large enough, TODO: 255 chars?
- * MAX_ERROR_LEN)
+ * Gets the last error copied to the provided buffer.
+ *
+ * * `buf` is the buffer where the result will be stored.
+ * * `len` is the length of the `buf` buffer in bytes.
+ * - returns the number of bytes written to `buf`.
  */
 uintptr_t casper_get_last_error(unsigned char *buf, uintptr_t len);
 
 /**
- * Put deploy.
+ * Creates a `Deploy` and sends it to the network for execution.
  *
  * See [super::put_deploy](function.put_deploy.html) for more details
  */
@@ -99,7 +92,7 @@ bool casper_put_deploy(const char *maybe_rpc_id,
                        uintptr_t response_buf_len);
 
 /**
- * Make deploy.
+ * Creates a `Deploy` and outputs it to a file or stdout.
  *
  * See [super::make_deploy](function.make_deploy.html) for more details
  */
@@ -109,7 +102,8 @@ bool casper_make_deploy(const char *maybe_output_path,
                         const casper_payment_params_t *payment_params);
 
 /**
- * Sign deploy file.
+ * Reads a previously-saved `Deploy` from a file, cryptographically signs it, and outputs it to a
+ * file or stdout.
  *
  * See [super::sign_deploy_file](function.sign_deploy_file.html) for more details.
  */
@@ -118,7 +112,7 @@ bool casper_sign_deploy_file(const char *input_path,
                              const char *maybe_output_path);
 
 /**
- * Send deploy file.
+ * Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
  *
  * See [super::send_deploy_file](function.send_deploy_file.html) for more details.
  */
@@ -130,7 +124,7 @@ bool casper_send_deploy_file(const char *maybe_rpc_id,
                              uintptr_t response_buf_len);
 
 /**
- * Transfer.
+ * Transfers funds between purses.
  *
  * See [super::transfer](function.transfer.html) for more details
  */
@@ -147,7 +141,7 @@ bool casper_transfer(const char *maybe_rpc_id,
                      uintptr_t response_buf_len);
 
 /**
- * Get deploy.
+ * Retrieves a `Deploy` from the network.
  *
  * See [super::get_deploy](function.get_deploy.html) for more details.
  */
@@ -159,7 +153,7 @@ bool casper_get_deploy(const char *maybe_rpc_id,
                        uintptr_t response_buf_len);
 
 /**
- * Get block.
+ * Retrieves a `Block` from the network.
  *
  * See [super::get_block](function.get_block.html) for more details.
  */
@@ -171,7 +165,7 @@ bool casper_get_block(const char *maybe_rpc_id,
                       uintptr_t response_buf_len);
 
 /**
- * Get state root hash.
+ * Retrieves a state root hash at a given `Block`.
  *
  * See [super::get_state_root_hash](function.get_state_root_hash.html) for more details.
  */
@@ -183,7 +177,7 @@ bool casper_get_state_root_hash(const char *maybe_rpc_id,
                                 uintptr_t response_buf_len);
 
 /**
- * Get item.
+ * Retrieves a stored value from the network.
  *
  * See [super::get_item](function.get_item.html) for more details.
  */
@@ -197,7 +191,7 @@ bool casper_get_item(const char *maybe_rpc_id,
                      uintptr_t response_buf_len);
 
 /**
- * Get balance.
+ * Retrieves a purse's balance from the network.
  *
  * See [super::get_balance](function.get_balance.html) for more details.
  */
@@ -210,7 +204,7 @@ bool casper_get_balance(const char *maybe_rpc_id,
                         uintptr_t response_buf_len);
 
 /**
- * Get auction info.
+ * Retrieves the bids and validators as of the most recently added `Block`.
  *
  * See [super::get_auction_info](function.get_auction_info.html) for more details.
  */

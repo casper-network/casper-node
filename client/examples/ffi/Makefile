@@ -1,21 +1,18 @@
 # This supports environments where $HOME/.cargo/env has not been sourced (CI, CLion Makefile runner)
 CARGO = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 
-# TODO: The resulting binaries from this example will have absolute paths embedded, which might not be desirable.
-# TODO: one option is copying libcasper_client.so to PWD and then linking directly.
-CASPER_SHARED_LIB = $(abspath ../../../target/release/libcasper_client.so)
+CASPER_RELEASE_SHARED_LIB = $(abspath ../../../target/release/libcasper_client.so)
 
-CASPER_HEADER_PATH = $(abspath ../../headers)
+CASPER_INCLUDE_PATH = $(abspath ../../headers)
 
 BASEDIR = $(abspath .)
 
-CFLAGS = -Wall -I$(CASPER_HEADER_PATH)
-LDFLAGS = -Wl,$(CASPER_SHARED_LIB)
+CFLAGS = -Wall -I$(CASPER_INCLUDE_PATH)
+LDFLAGS = -lcasper_client -L$(BASEDIR)/build
 
 .PHONY: all
 all: check-format get_auction_info put_deploy
 
-# TODO think about passing in debug|release?
 .PHONY: cargo-build-release
 cargo-build-release:
 	$(CARGO) build --release
@@ -37,8 +34,22 @@ build_dir:
 clean:
 	@rm -rf build
 
-get_auction_info: build_dir cargo-build-release
+libcasper_client.so: build_dir cargo-build-release
+	cp $(CASPER_RELEASE_SHARED_LIB) $(BASEDIR)/build
+
+get_auction_info: libcasper_client.so 
 	$(CC) -o build/$@ $(CFLAGS) src/get_auction_info.c $(LDFLAGS)
 
-put_deploy: build_dir cargo-build-release
+.PHONY: run_get_auction_info
+run_get_auction_info: get_auction_info 
+	LD_LIBRARY_PATH=build build/get_auction_info
+
+put_deploy: libcasper_client.so 
 	$(CC) -o build/$@ $(CFLAGS) src/put_deploy.c $(LDFLAGS)
+
+.PHONY: run_put_deploy
+run_put_deploy: put_deploy 
+	LD_LIBRARY_PATH=build build/put_deploy
+
+.PHONY: run-examples
+run-examples: run_get_auction_info run_put_deploy

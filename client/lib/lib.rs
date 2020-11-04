@@ -173,7 +173,7 @@ pub fn transfer(
     let target = parsing::get_transfer_target(maybe_target_account, maybe_target_purse)?;
 
     let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint(UIntParseError::FromDecStr(err)))?;
+        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
 
     let source_purse = parsing::purse(maybe_source_purse).ok();
 
