@@ -418,12 +418,7 @@ impl<C: Context> State<C> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
-        let endorsed = vote
-            .panorama
-            .need_endorsements(self)
-            .iter()
-            .cloned()
-            .collect();
+        let endorsed = vote.panorama.need_endorsements(self);
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
             creator: vote.creator,
@@ -582,9 +577,9 @@ impl<C: Context> State<C> {
             .panorama
             .need_endorsements(self)
             .into_iter()
-            .find(|&v| !wvote.is_endorsed(v))
+            .find(|v| !wvote.is_endorsed(v))
         {
-            Some(v) => Err(*v),
+            Some(v) => Err(v),
             None => Ok(()),
         }
     }

@@ -196,7 +196,7 @@ impl<C: Context> Panorama<C> {
     }
 
     /// Returns votes' hashes from this panorama that cite naively equivocator's vote.
-    pub(crate) fn need_endorsements(&self, state: &State<C>) -> Vec<&C::Hash> {
+    pub(crate) fn need_endorsements(&self, state: &State<C>) -> Vec<C::Hash> {
         let faulty_local: Vec<ValidatorIndex> = self.iter_faulty_validators().collect();
         self.iter_correct_hashes()
             .filter(|&v| {
@@ -206,6 +206,7 @@ impl<C: Context> Panorama<C> {
                     .iter_faulty_validators()
                     .ne(faulty_local.iter().cloned())
             })
+            .cloned()
             .collect()
     }
 }
