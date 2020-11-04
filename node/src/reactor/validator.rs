@@ -284,7 +284,6 @@ pub struct ValidatorInitConfig {
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) linear_chain: Vec<Block>,
     pub(super) block_proposer_state: BlockProposerState,
-    pub(super) rest_server: RestServer,
     pub(super) event_stream_server: EventStreamServer,
 }
 
@@ -351,7 +350,6 @@ impl reactor::Reactor for Reactor {
             init_consensus_effects,
             linear_chain,
             block_proposer_state,
-            rest_server,
             event_stream_server,
         } = config;
 
@@ -368,6 +366,8 @@ impl reactor::Reactor for Reactor {
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
         let rpc_server = RpcServer::new(config.rpc_server.clone(), effect_builder);
+        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
+
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::new(config.fetcher);
         let deploy_gossiper = Gossiper::new_for_partial_items(

@@ -21,8 +21,9 @@ mod http_server;
 use std::{convert::Infallible, fmt::Debug};
 
 use datasize::DataSize;
-use futures::join;
-use tracing::debug;
+use futures::{future::BoxFuture, join, FutureExt};
+use tokio::{sync::oneshot, task::JoinHandle};
+use tracing::{debug, error, warn};
 
 use super::Component;
 use crate::{
@@ -31,6 +32,7 @@ use crate::{
         requests::{ChainspecLoaderRequest, MetricsRequest, NetworkInfoRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    reactor::Finalize,
     small_network::NodeId,
     types::{CryptoRngCore, StatusFeed},
 };
@@ -65,16 +67,27 @@ impl<REv> ReactorEventT for REv where
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct RestServer {}
+pub(crate) struct RestServer {
+    /// When the message is sent, it signals the server loop to exit cleanly.
+    shutdown_sender: oneshot::Sender<()>,
+    /// The task handle which will only join once the server loop has exited.
+    server_join_handle: Option<JoinHandle<()>>,
+}
 
 impl RestServer {
     pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
     where
         REv: ReactorEventT,
     {
-        tokio::spawn(http_server::run(config, effect_builder));
+        let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-        RestServer {}
+        let server_join_handle =
+            tokio::spawn(http_server::run(config, effect_builder, shutdown_receiver));
+
+        RestServer {
+            shutdown_sender,
+            server_join_handle: Some(server_join_handle),
+        }
     }
 }
 
@@ -120,5 +133,24 @@ where
                 main_responder.respond(text).ignore()
             }
         }
+    }
+}
+
+impl Finalize for RestServer {
+    fn finalize(mut self) -> BoxFuture<'static, ()> {
+        async {
+            let _ = self.shutdown_sender.send(());
+
+            // Wait for the server to exit cleanly.
+            if let Some(join_handle) = self.server_join_handle.take() {
+                match join_handle.await {
+                    Ok(_) => debug!("rest server exited cleanly"),
+                    Err(error) => error!(%error, "could not join rest server task cleanly"),
+                }
+            } else {
+                warn!("rest server shutdown while already shut down")
+            }
+        }
+        .boxed()
     }
 }
