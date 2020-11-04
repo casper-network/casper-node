@@ -39,17 +39,19 @@ where
     current_round_id: u64,
     proposals: Vec<C::Hash>,
     min_round_exp: u8,
+    max_round_exp: u8,
     current_round_exp: u8,
 }
 
 impl<C: Context> RoundSuccessMeter<C> {
-    pub fn new(round_exp: u8, min_round_exp: u8, timestamp: Timestamp) -> Self {
+    pub fn new(round_exp: u8, min_round_exp: u8, max_round_exp: u8, timestamp: Timestamp) -> Self {
         let current_round_id = round_id(timestamp, round_exp).millis();
         Self {
             rounds: VecDeque::with_capacity(NUM_ROUNDS_TO_CONSIDER),
             current_round_id,
             proposals: Vec::new(),
             min_round_exp,
+            max_round_exp,
             current_round_exp: round_exp,
         }
     }
@@ -164,7 +166,7 @@ impl<C: Context> RoundSuccessMeter<C> {
     fn new_exponent(&self) -> u8 {
         let current_round_index = self.current_round_id >> self.current_round_exp;
         let num_failures = self.count_failures();
-        if num_failures > MAX_FAILED_ROUNDS {
+        if num_failures > MAX_FAILED_ROUNDS && self.current_round_exp < self.max_round_exp {
             self.current_round_exp + 1
         } else if current_round_index % ACCELERATION_PARAMETER == 0
             && self.current_round_exp > self.min_round_exp
@@ -176,5 +178,108 @@ impl<C: Context> RoundSuccessMeter<C> {
         } else {
             self.current_round_exp
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::components::consensus::{
+        cl_context::ClContext,
+        protocols::highway::round_success_meter::{
+            ACCELERATION_PARAMETER, MAX_FAILED_ROUNDS, NUM_ROUNDS_TO_CONSIDER,
+        },
+    };
+
+    const TEST_ROUND_EXP: u8 = 13;
+    const TEST_MIN_ROUND_EXP: u8 = 8;
+    const TEST_MAX_ROUND_EXP: u8 = 19;
+
+    #[test]
+    fn new_exponent_steady() {
+        let round_success_meter: super::RoundSuccessMeter<ClContext> =
+            super::RoundSuccessMeter::new(
+                TEST_ROUND_EXP,
+                TEST_MIN_ROUND_EXP,
+                TEST_MAX_ROUND_EXP,
+                crate::types::Timestamp::now(),
+            );
+        assert_eq!(round_success_meter.new_exponent(), TEST_ROUND_EXP);
+    }
+
+    #[test]
+    fn new_exponent_slow_down() {
+        let mut round_success_meter: super::RoundSuccessMeter<ClContext> =
+            super::RoundSuccessMeter::new(
+                TEST_ROUND_EXP,
+                TEST_MIN_ROUND_EXP,
+                TEST_MAX_ROUND_EXP,
+                crate::types::Timestamp::now(),
+            );
+        // If there have been more rounds of failure than MAX_FAILED_ROUNDS, slow down
+        round_success_meter.rounds = vec![false; MAX_FAILED_ROUNDS + 1].into();
+        assert_eq!(round_success_meter.new_exponent(), TEST_ROUND_EXP + 1);
+    }
+
+    #[test]
+    fn new_exponent_can_not_slow_down_because_max_round_exp() {
+        // If the round exponent is the same as the maximum round exponent, can't go up
+        let mut round_success_meter: super::RoundSuccessMeter<ClContext> =
+            super::RoundSuccessMeter::new(
+                TEST_MAX_ROUND_EXP,
+                TEST_MIN_ROUND_EXP,
+                TEST_MAX_ROUND_EXP,
+                crate::types::Timestamp::now(),
+            );
+        // If there have been more rounds of failure than MAX_FAILED_ROUNDS, slow down -- but can't
+        // slow down because of ceiling
+        round_success_meter.rounds = vec![false; MAX_FAILED_ROUNDS + 1].into();
+        assert_eq!(round_success_meter.new_exponent(), TEST_MAX_ROUND_EXP);
+    }
+
+    #[test]
+    fn new_exponent_speed_up() {
+        // If there's been enough successful rounds and it's an acceleration round, speed up
+        let mut round_success_meter: super::RoundSuccessMeter<ClContext> =
+            super::RoundSuccessMeter::new(
+                TEST_ROUND_EXP,
+                TEST_MIN_ROUND_EXP,
+                TEST_MAX_ROUND_EXP,
+                crate::types::Timestamp::now(),
+            );
+        round_success_meter.rounds = vec![true; NUM_ROUNDS_TO_CONSIDER].into();
+        // Increase our round index until we are at an acceleration round
+        loop {
+            let current_round_index =
+                round_success_meter.current_round_id >> round_success_meter.current_round_exp;
+            if current_round_index % ACCELERATION_PARAMETER == 0 {
+                break;
+            };
+            round_success_meter.current_round_id += 1;
+        }
+        assert_eq!(round_success_meter.new_exponent(), TEST_ROUND_EXP - 1);
+    }
+
+    #[test]
+    fn new_exponent_can_not_speed_up_because_min_round_exp() {
+        // If there's been enough successful rounds and it's an acceleration round, but we are
+        // already at the smallest round exponent possible, stay at the current round exponent
+        let mut round_success_meter: super::RoundSuccessMeter<ClContext> =
+            super::RoundSuccessMeter::new(
+                TEST_MIN_ROUND_EXP,
+                TEST_MIN_ROUND_EXP,
+                TEST_MAX_ROUND_EXP,
+                crate::types::Timestamp::now(),
+            );
+        round_success_meter.rounds = vec![true; NUM_ROUNDS_TO_CONSIDER].into();
+        // Increase our round index until we are at an acceleration round
+        loop {
+            let current_round_index =
+                round_success_meter.current_round_id >> round_success_meter.current_round_exp;
+            if current_round_index % ACCELERATION_PARAMETER == 0 {
+                break;
+            };
+            round_success_meter.current_round_id += 1;
+        }
+        assert_eq!(round_success_meter.new_exponent(), TEST_MIN_ROUND_EXP);
     }
 }
