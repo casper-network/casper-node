@@ -16,7 +16,7 @@ pub struct Config {
 }
 
 impl Config {
-    /// Creates a default instance for `RpcServer`.
+    /// Creates a default instance for `RestServer`.
     pub fn new() -> Self {
         Config {
             address: DEFAULT_ADDRESS.to_string(),

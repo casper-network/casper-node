@@ -24,6 +24,7 @@ use datasize::DataSize;
 use futures::join;
 use lazy_static::lazy_static;
 use semver::Version;
+use tracing::debug;
 
 use super::Component;
 use crate::{
@@ -99,6 +100,7 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::RestRequest(RestRequest::GetStatus { responder }) => async move {
+                debug!("REST server handle_event get_status");
                 let (last_added_block, peers, chainspec_info) = join!(
                     effect_builder.get_highest_block(),
                     effect_builder.network_peers(),
@@ -108,16 +110,22 @@ where
                 responder.respond(status_feed).await;
             }
             .ignore(),
-            Event::RestRequest(RestRequest::GetMetrics { responder }) => effect_builder
-                .get_metrics()
-                .event(move |text| Event::GetMetricsResult {
-                    text,
-                    main_responder: responder,
-                }),
+            Event::RestRequest(RestRequest::GetMetrics { responder }) => {
+                debug!("REST server handle_event get_metrics");
+                effect_builder
+                    .get_metrics()
+                    .event(move |text| Event::GetMetricsResult {
+                        text,
+                        main_responder: responder,
+                    })
+            }
             Event::GetMetricsResult {
                 text,
                 main_responder,
-            } => main_responder.respond(text).ignore(),
+            } => {
+                debug!("REST server handle_event get_metrics_result");
+                main_responder.respond(text).ignore()
+            }
         }
     }
 }
