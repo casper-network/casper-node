@@ -22,6 +22,10 @@ pub(super) struct MemoryMetrics {
     mem_contract_runtime: IntGauge,
     /// Estimated heap memory usage of rpc server component.
     mem_rpc_server: IntGauge,
+    /// Estimated heap memory usage of rest server component.
+    mem_rest_server: IntGauge,
+    /// Estimated heap memory usage of event stream server component.
+    mem_event_stream_server: IntGauge,
     /// Estimated heap memory usage of chainspec loader component.
     mem_chainspec_loader: IntGauge,
     /// Estimated heap memory usage of consensus component.
@@ -62,6 +66,12 @@ impl MemoryMetrics {
             "contract_runtime memory usage in bytes",
         )?;
         let mem_rpc_server = IntGauge::new("mem_rpc_server", "rpc_server memory usage in bytes")?;
+        let mem_rest_server =
+            IntGauge::new("mem_rest_server", "mem_rest_server memory usage in bytes")?;
+        let mem_event_stream_server = IntGauge::new(
+            "mem_event_stream_server",
+            "mem_event_stream_server memory usage in bytes",
+        )?;
         let mem_chainspec_loader = IntGauge::new(
             "mem_chainspec_loader",
             "chainspec_loader memory usage in bytes",
@@ -118,6 +128,8 @@ impl MemoryMetrics {
             mem_storage,
             mem_contract_runtime,
             mem_rpc_server,
+            mem_rest_server,
+            mem_event_stream_server,
             mem_chainspec_loader,
             mem_consensus,
             mem_deploy_fetcher,
@@ -141,6 +153,8 @@ impl MemoryMetrics {
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;
         let rpc_server = reactor.rpc_server.estimate_heap_size() as i64;
+        let rest_server = reactor.rest_server.estimate_heap_size() as i64;
+        let event_stream_server = reactor.event_stream_server.estimate_heap_size() as i64;
         let chainspec_loader = reactor.chainspec_loader.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
         let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
@@ -157,6 +171,8 @@ impl MemoryMetrics {
             + storage
             + contract_runtime
             + rpc_server
+            + rest_server
+            + event_stream_server
             + chainspec_loader
             + consensus
             + deploy_fetcher
@@ -173,6 +189,8 @@ impl MemoryMetrics {
         self.mem_storage.set(storage);
         self.mem_contract_runtime.set(contract_runtime);
         self.mem_rpc_server.set(rpc_server);
+        self.mem_rest_server.set(rest_server);
+        self.mem_event_stream_server.set(event_stream_server);
         self.mem_chainspec_loader.set(chainspec_loader);
         self.mem_consensus.set(consensus);
         self.mem_deploy_fetcher.set(deploy_fetcher);
@@ -193,6 +211,8 @@ impl MemoryMetrics {
                %storage,
                %contract_runtime,
                %rpc_server,
+               %rest_server,
+               %event_stream_server,
                %chainspec_loader,
                %consensus,
                %deploy_fetcher,
@@ -228,6 +248,12 @@ impl Drop for MemoryMetrics {
         self.registry
             .unregister(Box::new(self.mem_rpc_server.clone()))
             .expect("did not expect deregistering mem_rpc_server, to fail");
+        self.registry
+            .unregister(Box::new(self.mem_rest_server.clone()))
+            .expect("did not expect deregistering mem_rest_server, to fail");
+        self.registry
+            .unregister(Box::new(self.mem_event_stream_server.clone()))
+            .expect("did not expect deregistering mem_event_stream_server, to fail");
         self.registry
             .unregister(Box::new(self.mem_chainspec_loader.clone()))
             .expect("did not expect deregistering mem_chainspec_loader, to fail");
