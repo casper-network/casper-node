@@ -47,6 +47,11 @@ steps:
   settings:
     restore: true
 
+- name: verify-genesis-checksums
+  <<: *buildenv
+  commands:
+    - "./ci/check_genesis_validation.sh $(pwd)/resources/production"
+
 - name: build-deb-update-revision
   <<: *buildenv
   commands:

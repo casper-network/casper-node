@@ -64,6 +64,11 @@ use crate::internal::{utils, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION};
 /// This default value should give 50MiB initial map size by default.
 const DEFAULT_LMDB_PAGES: usize = 128_000;
 
+/// LDMB max readers
+///
+/// The default value is chosen to be the same as the node itself.
+const DEFAULT_MAX_READERS: u32 = 512;
+
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder` in order to match
 /// the behavior of `get_data_dir()` in "engine-grpc-server/src/main.rs".
 const GLOBAL_STATE_DIR: &str = "global_state";
@@ -188,8 +193,12 @@ impl LmdbWasmTestBuilder {
         let page_size = *OS_PAGE_SIZE;
         let global_state_dir = Self::create_and_get_global_state_dir(data_dir);
         let environment = Arc::new(
-            LmdbEnvironment::new(&global_state_dir, page_size * DEFAULT_LMDB_PAGES)
-                .expect("should create LmdbEnvironment"),
+            LmdbEnvironment::new(
+                &global_state_dir,
+                page_size * DEFAULT_LMDB_PAGES,
+                DEFAULT_MAX_READERS,
+            )
+            .expect("should create LmdbEnvironment"),
         );
         let trie_store = Arc::new(
             LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())
@@ -250,8 +259,12 @@ impl LmdbWasmTestBuilder {
         let page_size = *OS_PAGE_SIZE;
         let global_state_dir = Self::create_and_get_global_state_dir(data_dir);
         let environment = Arc::new(
-            LmdbEnvironment::new(&global_state_dir, page_size * DEFAULT_LMDB_PAGES)
-                .expect("should create LmdbEnvironment"),
+            LmdbEnvironment::new(
+                &global_state_dir,
+                page_size * DEFAULT_LMDB_PAGES,
+                DEFAULT_MAX_READERS,
+            )
+            .expect("should create LmdbEnvironment"),
         );
         let trie_store =
             Arc::new(LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore"));

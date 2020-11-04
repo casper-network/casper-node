@@ -15,7 +15,9 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 /// Error that can be returned by `casper-client`.
 #[derive(Error, Debug)]
 pub enum Error {
-    /// Failed to parse a `Key` from a formatted string.
+    /// Failed to parse a
+    /// [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.PublicKey.html) from a
+    /// formatted string.
     #[error("failed to parse as a key")]
     FailedToParseKey,
 

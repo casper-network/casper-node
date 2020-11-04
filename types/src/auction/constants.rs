@@ -1,20 +1,10 @@
-use super::EraId;
-use crate::account::AccountHash;
+use crate::{account::AccountHash, auction::EraId};
 
 /// System account hash.
 pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
-/// Number of eras before an auction actually defines the set of validators.
-pub const AUCTION_DELAY: u64 = 3;
-
-/// Number of eras to keep track of in past.
-pub const SNAPSHOT_SIZE: usize = AUCTION_DELAY as usize + 1;
-
 /// Initial value of era id we start at genesis.
 pub const INITIAL_ERA_ID: EraId = 0;
-
-/// Default lock period for new bid entries represented in eras.
-pub const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
 
 /// Delegation rate is a fraction between 0-1. Validator sets the delegation rate
 /// in integer terms, which is then divided by the denominator to obtain the fraction.
@@ -24,8 +14,8 @@ pub const DELEGATION_RATE_DENOMINATOR: u64 = 1_000_000_000_000;
 /// fractions, and small enough for many block rewards to fit into a u64.
 pub const BLOCK_REWARD: u64 = 1_000_000_000_000;
 
-/// Total validator slots allowed.
-pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
+/// Default number of eras that need to pass to be able to withdraw unbonded funds.
+pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
 
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
@@ -63,7 +53,10 @@ pub const ARG_VALIDATOR_SLOTS: &str = VALIDATOR_SLOTS_KEY;
 pub const ARG_MINT_CONTRACT_PACKAGE_HASH: &str = "mint_contract_package_hash";
 /// Named constant for `genesis_validators`
 pub const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
-
+/// Named constant of `auction_delay`
+pub const ARG_AUCTION_DELAY: &str = "auction_delay";
+/// Named constant for `locked_funds_period`
+pub const ARG_LOCKED_FUNDS_PERIOD: &str = "locked_funds_period";
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
 /// Named constant for method `read_seigniorage_recipients`.
@@ -91,6 +84,10 @@ pub const METHOD_WITHDRAW_VALIDATOR_REWARD: &str = "withdraw_validator_reward";
 /// Named constant for method `read_era_id`.
 pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 
+/// Storage for `BidPurses`.
+pub const BID_PURSES_KEY: &str = "bid_purses";
+/// Storage for `UnbondingPurses`
+pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 /// Storage for `Bids`.
 pub const BIDS_KEY: &str = "bids";
 /// Storage for `Delegators`.
@@ -102,10 +99,16 @@ pub const ERA_ID_KEY: &str = "era_id";
 /// Storage for `SeigniorageRecipientsSnapshot`.
 pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_snapshot";
 /// Storage for delegator reward purse
-pub const DELEGATOR_REWARD_PURSE: &str = "delegator_reward_purse";
+pub const DELEGATOR_REWARD_PURSE_KEY: &str = "delegator_reward_purse";
 /// Storage for validator reward purse
-pub const VALIDATOR_REWARD_PURSE: &str = "validator_reward_purse";
+pub const VALIDATOR_REWARD_PURSE_KEY: &str = "validator_reward_purse";
 /// Storage for `DelegatorRewardMap`.
-pub const DELEGATOR_REWARD_MAP: &str = "delegator_reward_map";
+pub const DELEGATOR_REWARD_MAP_KEY: &str = "delegator_reward_map";
 /// Storage for `ValidatorRewardMap`.
-pub const VALIDATOR_REWARD_MAP: &str = "validator_reward_map";
+pub const VALIDATOR_REWARD_MAP_KEY: &str = "validator_reward_map";
+/// Total validator slots allowed.
+pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
+/// Amount of auction delay.
+pub const AUCTION_DELAY_KEY: &str = "auction_delay";
+/// Default lock period for new bid entries represented in eras.
+pub const LOCKED_FUNDS_PERIOD_KEY: &str = "locked_funds_period";

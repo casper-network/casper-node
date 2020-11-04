@@ -16,7 +16,7 @@ enum DisplayOrder {
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetStateRootHash {
     const NAME: &'static str = "get-state-root-hash";
-    const ABOUT: &'static str = "Retrieves a hash of the state root";
+    const ABOUT: &'static str = "Retrieves a state root hash at a given block";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)

@@ -2,8 +2,6 @@
 mod bid;
 mod constants;
 mod detail;
-mod era_validators;
-mod internal;
 mod providers;
 mod seigniorage_recipient;
 mod types;
@@ -19,28 +17,12 @@ use crate::{
     Key, PublicKey, URef, U512,
 };
 
-pub use bid::{Bid, Bids};
+pub use bid::Bid;
 pub use constants::*;
-pub use era_validators::{EraId, EraValidators, ValidatorWeights};
 pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider};
-pub use seigniorage_recipient::{
-    SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
-};
+pub use seigniorage_recipient::SeigniorageRecipient;
 pub use types::*;
-pub use unbonding_purse::{UnbondingPurse, UnbondingPurses};
-
-/// Bidders mapped to their bidding purses and tokens contained therein. Delegators' tokens
-/// are kept in the validator bid purses, available for withdrawal up to the delegated number
-/// of tokens. Withdrawal moves the tokens to a delegator-controlled unbonding purse.
-pub type BidPurses = BTreeMap<PublicKey, URef>;
-
-/// Name of bid purses named key.
-pub const BID_PURSES_KEY: &str = "bid_purses";
-/// Name of unbonding purses key.
-pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
-
-/// Default number of eras that need to pass to be able to withdraw unbonded funds.
-pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
+pub use unbonding_purse::UnbondingPurse;
 
 /// Bonding auction contract interface
 pub trait Auction:
@@ -51,7 +33,7 @@ pub trait Auction:
     /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
     /// internal data structures recording current and past winners.
     fn get_era_validators(&mut self) -> Result<EraValidators> {
-        let era_validators = internal::get_era_validators(self)?;
+        let era_validators = detail::get_era_validators(self)?;
         Ok(era_validators)
     }
 
@@ -61,9 +43,9 @@ pub trait Auction:
     /// because this data is necessary for distributing seigniorage.
     fn read_seigniorage_recipients(&mut self) -> Result<SeigniorageRecipients> {
         // `era_validators` are assumed to be computed already by calling "run_auction" entrypoint.
-        let era_index = internal::get_era_id(self)?;
+        let era_index = detail::get_era_id(self)?;
         let mut seigniorage_recipients_snapshot =
-            internal::get_seigniorage_recipients_snapshot(self)?;
+            detail::get_seigniorage_recipients_snapshot(self)?;
         let seigniorage_recipients = seigniorage_recipients_snapshot
             .remove(&era_index)
             .unwrap_or_else(|| panic!("No seigniorage_recipients for era {}", era_index));
@@ -90,7 +72,7 @@ pub trait Auction:
         let (bonding_purse, _total_amount) = detail::bond(self, public_key, source, amount)?;
 
         // Update bids or stakes
-        let mut validators = internal::get_bids(self)?;
+        let mut validators = detail::get_bids(self)?;
 
         let bid = validators
             .entry(public_key)
@@ -112,7 +94,7 @@ pub trait Auction:
                 }
             });
         let new_amount = bid.staked_amount;
-        internal::set_bids(self, validators)?;
+        detail::set_bids(self, validators)?;
 
         Ok(new_amount)
     }
@@ -137,7 +119,7 @@ pub trait Auction:
         }
 
         // Update bids or stakes
-        let mut bids = internal::get_bids(self)?;
+        let mut bids = detail::get_bids(self)?;
 
         let bid = bids.get_mut(&public_key).ok_or(Error::ValidatorNotFound)?;
 
@@ -159,7 +141,7 @@ pub trait Auction:
             bids.remove(&public_key).unwrap();
         }
 
-        internal::set_bids(self, bids)?;
+        detail::set_bids(self, bids)?;
 
         let _total_amount = detail::unbond(self, public_key, amount, unbond_purse)?;
 
@@ -183,7 +165,7 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let bids = internal::get_bids(self)?;
+        let bids = detail::get_bids(self)?;
         if !bids.contains_key(&validator_public_key) {
             // Return early if target validator is not in `bids`
             return Err(Error::ValidatorNotFound);
@@ -197,13 +179,13 @@ pub trait Auction:
 
         // Initialize delegator_reward_pool_map entry if it doesn't exist.
         {
-            let mut delegator_reward_map = internal::get_delegator_reward_map(self)?;
+            let mut delegator_reward_map = detail::get_delegator_reward_map(self)?;
             delegator_reward_map
                 .entry(validator_public_key)
                 .or_default()
                 .entry(delegator_public_key)
                 .or_insert_with(U512::zero);
-            internal::set_delegator_reward_map(self, delegator_reward_map)?;
+            detail::set_delegator_reward_map(self, delegator_reward_map)?;
         }
 
         Ok(new_delegation_amount)
@@ -227,7 +209,7 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let bids = internal::get_bids(self)?;
+        let bids = detail::get_bids(self)?;
 
         // Return early if target validator is not in `bids`
         if !bids.contains_key(&validator_public_key) {
@@ -237,7 +219,7 @@ pub trait Auction:
         let _unbonding_purse_balance =
             detail::unbond(self, delegator_public_key, amount, unbonding_purse)?;
 
-        let mut delegators = internal::get_delegators(self)?;
+        let mut delegators = detail::get_delegators(self)?;
         let delegators_map = delegators
             .get_mut(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
@@ -263,7 +245,7 @@ pub trait Auction:
                 .ok_or(Error::DelegatorNotFound)?;
             debug_assert!(_value.is_zero());
 
-            let mut outer = internal::get_delegator_reward_map(self)?;
+            let mut outer = detail::get_delegator_reward_map(self)?;
             let mut inner = outer
                 .remove(&validator_public_key)
                 .ok_or(Error::ValidatorNotFound)?;
@@ -273,10 +255,10 @@ pub trait Auction:
             if !inner.is_empty() {
                 outer.insert(validator_public_key, inner);
             };
-            internal::set_delegator_reward_map(self, outer)?;
+            detail::set_delegator_reward_map(self, outer)?;
         }
 
-        internal::set_delegators(self, delegators)?;
+        detail::set_delegators(self, delegators)?;
 
         Ok(new_amount)
     }
@@ -345,11 +327,14 @@ pub trait Auction:
         detail::process_unbond_requests(self)?;
 
         // get allowed validator slots total
-        let validator_slots = internal::get_validator_slots(self)?;
+        let validator_slots = detail::get_validator_slots(self)?;
 
-        let mut era_id = internal::get_era_id(self)?;
+        let auction_delay = detail::get_auction_delay(self)?;
+        let snapshot_size = auction_delay as usize + 1;
 
-        let mut bids = internal::get_bids(self)?;
+        let mut era_id = detail::get_era_id(self)?;
+
+        let mut bids = detail::get_bids(self)?;
         //
         // Process locked bids
         //
@@ -411,19 +396,19 @@ pub trait Auction:
         let remaining_auction_slots = validator_slots.saturating_sub(bid_weights.len());
         bid_weights.extend(scores.into_iter().take(remaining_auction_slots));
 
-        let mut era_validators = internal::get_era_validators(self)?;
+        let mut era_validators = detail::get_era_validators(self)?;
 
         // Era index is assumed to be equal to era id on the consensus side.
         era_id += 1;
 
-        let next_era_id = era_id + AUCTION_DELAY;
+        let next_era_id = era_id + auction_delay;
 
         //
         // Compute seiginiorage recipients for current era
         //
-        let mut delegators = internal::get_delegators(self)?;
+        let mut delegators = detail::get_delegators(self)?;
         let mut seigniorage_recipients_snapshot =
-            internal::get_seigniorage_recipients_snapshot(self)?;
+            detail::get_seigniorage_recipients_snapshot(self)?;
         let mut seigniorage_recipients = SeigniorageRecipients::new();
 
         // for each validator...
@@ -448,26 +433,26 @@ pub trait Auction:
         let seigniorage_recipients_snapshot = seigniorage_recipients_snapshot
             .into_iter()
             .rev()
-            .take(SNAPSHOT_SIZE)
+            .take(snapshot_size)
             .collect();
-        internal::set_seigniorage_recipients_snapshot(self, seigniorage_recipients_snapshot)?;
+        detail::set_seigniorage_recipients_snapshot(self, seigniorage_recipients_snapshot)?;
 
         // Index for next set of validators: `era_id + AUCTION_DELAY`
-        let previous_era_validators = era_validators.insert(era_id + AUCTION_DELAY, bid_weights);
+        let previous_era_validators = era_validators.insert(era_id + auction_delay, bid_weights);
         assert!(previous_era_validators.is_none());
 
-        internal::set_era_id(self, era_id)?;
+        detail::set_era_id(self, era_id)?;
         // Keep maximum of `AUCTION_DELAY + 1` elements
         let era_validators = era_validators
             .into_iter()
             .rev()
-            .take(SNAPSHOT_SIZE)
+            .take(snapshot_size)
             .collect();
 
-        internal::set_era_validators(self, era_validators)?;
+        detail::set_era_validators(self, era_validators)?;
 
         if bids_modified {
-            internal::set_bids(self, bids)?;
+            detail::set_bids(self, bids)?;
         }
 
         Ok(())
@@ -534,7 +519,7 @@ pub trait Auction:
 
             // TODO: add "mint into existing purse" facility
             let validator_reward_purse = self
-                .get_key(VALIDATOR_REWARD_PURSE)
+                .get_key(VALIDATOR_REWARD_PURSE_KEY)
                 .ok_or(Error::MissingKey)?
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
@@ -549,7 +534,7 @@ pub trait Auction:
 
             // TODO: add "mint into existing purse" facility
             let delegator_reward_purse = self
-                .get_key(DELEGATOR_REWARD_PURSE)
+                .get_key(DELEGATOR_REWARD_PURSE_KEY)
                 .ok_or(Error::MissingKey)?
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
@@ -579,7 +564,7 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let mut outer: DelegatorRewardMap = internal::get_delegator_reward_map(self)?;
+        let mut outer: DelegatorRewardMap = detail::get_delegator_reward_map(self)?;
         let mut inner = outer
             .remove(&validator_public_key)
             .ok_or(Error::ValidatorNotFound)?;
@@ -592,7 +577,7 @@ pub trait Auction:
 
         if !ret.is_zero() {
             let source_purse = self
-                .get_key(DELEGATOR_REWARD_PURSE)
+                .get_key(DELEGATOR_REWARD_PURSE_KEY)
                 .ok_or(Error::MissingKey)?
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
@@ -604,7 +589,7 @@ pub trait Auction:
         }
 
         outer.insert(validator_public_key, inner);
-        internal::set_delegator_reward_map(self, outer)?;
+        detail::set_delegator_reward_map(self, outer)?;
         Ok(ret)
     }
 
@@ -620,7 +605,7 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let mut validator_reward_map = internal::get_validator_reward_map(self)?;
+        let mut validator_reward_map = detail::get_validator_reward_map(self)?;
 
         let reward_amount: &mut U512 = validator_reward_map
             .get_mut(&validator_public_key)
@@ -630,7 +615,7 @@ pub trait Auction:
 
         if !ret.is_zero() {
             let source_purse = self
-                .get_key(VALIDATOR_REWARD_PURSE)
+                .get_key(VALIDATOR_REWARD_PURSE_KEY)
                 .ok_or(Error::MissingKey)?
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
@@ -641,12 +626,12 @@ pub trait Auction:
             *reward_amount = U512::zero();
         }
 
-        internal::set_validator_reward_map(self, validator_reward_map)?;
+        detail::set_validator_reward_map(self, validator_reward_map)?;
         Ok(ret)
     }
 
     /// Reads current era id.
     fn read_era_id(&mut self) -> Result<EraId> {
-        internal::get_era_id(self)
+        detail::get_era_id(self)
     }
 }

@@ -321,10 +321,10 @@ impl<S: StorageType> Display for StorageRequest<S> {
     }
 }
 
-/// A `DeployBuffer` request.
+/// A `BlockProposer` request.
 #[derive(Debug)]
 #[must_use]
-pub enum DeployBufferRequest {
+pub enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
     ListForInclusion {
         /// The instant for which the deploy is requested.
@@ -336,10 +336,10 @@ pub enum DeployBufferRequest {
     },
 }
 
-impl Display for DeployBufferRequest {
+impl Display for BlockProposerRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployBufferRequest::ListForInclusion {
+            BlockProposerRequest::ListForInclusion {
                 current_instant,
                 past_blocks,
                 responder: _,
@@ -670,6 +670,9 @@ pub struct BlockValidationRequest<T, I> {
     ///
     /// Indicates whether or not validation was successful and returns `block` unchanged.
     pub(crate) responder: Responder<(bool, T)>,
+    /// A check will be performed against the deploys to ensure their timestamp is
+    /// older than or equal to the block itself.
+    pub(crate) block_timestamp: Timestamp,
 }
 
 impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {

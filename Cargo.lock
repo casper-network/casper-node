@@ -5471,9 +5471,9 @@ dependencies = [
 
 [[package]]
 name = "warp-json-rpc"
-version = "0.1.6"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8f47179c6df70470fb9f77d6624a825943539d792ab123f63d0dadfa0f1864c"
+checksum = "c902fcb1a0754ea4f78a2231f9e54d2b8e641274ae7967bff9bbf2c564d6c193"
 dependencies = [
  "anyhow",
  "erased-serde",

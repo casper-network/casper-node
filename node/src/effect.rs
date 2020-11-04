@@ -106,7 +106,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
-        BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock, Item, ProtoBlock,
+        BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,
@@ -117,9 +117,9 @@ use announcements::{
 };
 use casper_types::auction::EraValidators;
 use requests::{
-    BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
-    NetworkInfoRequest, NetworkRequest, StorageRequest,
+    BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -795,11 +795,11 @@ impl<REv> EffectBuilder<REv> {
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
-        REv: From<DeployBufferRequest>,
+        REv: From<BlockProposerRequest>,
     {
         let deploys = self
             .make_request(
-                |responder| DeployBufferRequest::ListForInclusion {
+                |responder| BlockProposerRequest::ListForInclusion {
                     current_instant: block_context.timestamp(),
                     past_blocks: Default::default(), // TODO
                     responder,
@@ -826,8 +826,15 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Checks whether the deploys included in the block exist on the network.
-    pub(crate) async fn validate_block<I, T>(self, sender: I, block: T) -> (bool, T)
+    /// Checks whether the deploys included in the block exist on the network. This includes
+    /// the block's timestamp, in order that it be checked against the timestamp of the deploys
+    /// within the block.
+    pub(crate) async fn validate_block<I, T>(
+        self,
+        sender: I,
+        block: T,
+        block_timestamp: Timestamp,
+    ) -> (bool, T)
     where
         REv: From<BlockValidationRequest<T, I>>,
         T: BlockLike + Send + 'static,
@@ -837,6 +844,7 @@ impl<REv> EffectBuilder<REv> {
                 block,
                 sender,
                 responder,
+                block_timestamp,
             },
             QueueKind::Regular,
         )

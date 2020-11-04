@@ -12,7 +12,7 @@ mod lmdb_store;
 mod store;
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{Debug, Display},
     fs,
     hash::Hash,
@@ -29,7 +29,7 @@ use tracing::{debug, error, warn};
 
 use crate::{
     components::{
-        chainspec_loader::Chainspec, deploy_buffer::ProtoBlockCollection, small_network::NodeId,
+        block_proposer::BlockProposerState, chainspec_loader::Chainspec, small_network::NodeId,
         Component,
     },
     crypto::asymmetric_key::Signature,
@@ -39,7 +39,8 @@ use crate::{
     },
     protocol::Message,
     types::{
-        json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, Item, ProtoBlockHash,
+        json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, DeployHash,
+        DeployHeader, Item, ProtoBlockHash, Timestamp,
     },
     utils::WithDir,
 };
@@ -143,32 +144,117 @@ impl<B: Value> Default for DeployMetadata<B> {
 }
 
 impl LmdbStorage<Block, Deploy> {
+    async fn load_block_deploys(&self, block: &Block) -> (ProtoBlockHash, Vec<Deploy>) {
+        let deploy_store = self.deploy_store();
+        let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
+        let block_hash = ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
+        let deploys = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+            .await
+            .expect("should run")
+            .into_iter()
+            .map(|result| result.unwrap_or_else(|error| panic!("failed to get deploy: {}", error)))
+            .flatten()
+            .collect::<Vec<_>>();
+        (block_hash, deploys)
+    }
+
+    fn load_pending_deploys(
+        &self,
+        finalized: &HashSet<DeployHash>,
+        current_instant: Timestamp,
+    ) -> Result<HashMap<DeployHash, DeployHeader>> {
+        let ids = self.deploy_store().ids()?;
+        let mut pending = HashMap::new();
+        for id in ids {
+            let deploy = self
+                .deploy_store()
+                .get(smallvec![id])
+                .pop()
+                .expect("should pop")
+                .expect("should load")
+                .expect("should be some");
+
+            let header = deploy.header();
+            if header.expired(current_instant) {
+                break;
+            }
+            if !finalized.contains(deploy.id()) {
+                pending.insert(*deploy.id(), header.clone());
+            }
+        }
+        Ok(pending)
+    }
+
     /// This method is intended to only be used by the joiner when transitioning to the validator
     /// state.
-    pub(crate) async fn get_finalized_deploys(
+    pub(crate) async fn load_block_proposer_state(
         &self,
-        linear_chain: &[Block],
-    ) -> ProtoBlockCollection {
-        let mut finalized = HashMap::new();
-        let deploy_store = self.deploy_store();
-        for block in linear_chain.iter() {
-            let deploy_store = deploy_store.clone();
-            let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
-            let block_hash =
-                ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
-            let deploys = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+        latest_block_height: u64,
+        chainspec_version: Version,
+        current_instant: Timestamp,
+    ) -> BlockProposerState {
+        let max_ttl = {
+            let chainspec_store = self.chainspec_store();
+            let chainspec = task::spawn_blocking(move || chainspec_store.get(chainspec_version))
                 .await
-                .expect("should run")
-                .into_iter()
-                .map(|result| {
-                    result.unwrap_or_else(|error| panic!("failed to get deploy: {}", error))
-                })
-                .flatten()
+                .expect("should run blocking");
+            let chainspec = match chainspec {
+                Ok(Some(chainspec)) => chainspec,
+                // If we can't get our hands on a chainspec, then we can't get a max_ttl to compare
+                // blocks and deploys against.
+                _ => panic!("unable to load chainspec"),
+            };
+            chainspec.genesis.deploy_config.max_ttl
+        };
+
+        // deploys, organized by ProtoBlockHash, which have been finalized
+        let mut finalized = HashMap::new();
+        let mut finalized_hashes = HashSet::new();
+
+        'iterate_ancestry: for height in (0..=latest_block_height).rev() {
+            let block = {
+                let block_store = self.block_store();
+                let block_by_height_store = self.block_height_store();
+
+                let ancestor_hash = task::spawn_blocking(move || block_by_height_store.get(height))
+                    .await
+                    .expect("should spawn_blocking");
+
+                let ancestor_hash = match ancestor_hash {
+                    Ok(Some(hash)) => hash,
+                    _ => break 'iterate_ancestry,
+                };
+
+                task::spawn_blocking(move || block_store.get(smallvec![ancestor_hash]))
+                    .await
+                    .expect("should spawn_blocking")
+                    .pop()
+                    .expect("should pop")
+                    .expect("should load")
+                    .unwrap_or_else(|| panic!("block at height {} should exist", height))
+            };
+
+            if block.header().timestamp() < current_instant - max_ttl {
+                break 'iterate_ancestry;
+            }
+
+            let (block_hash, deploys) = self.load_block_deploys(&block).await;
+            let deploys = deploys
+                .iter()
                 .map(|deploy| (*deploy.id(), deploy.header().clone()))
                 .collect::<HashMap<_, _>>();
+
+            finalized_hashes.extend(deploys.iter().map(|(hash, _)| hash));
             finalized.insert(block_hash, deploys);
         }
-        finalized
+
+        // Once finalized block's deploys are loaded, iterate over Deploy store to find 'pending'
+        // deploys.
+        let pending = self
+            .load_pending_deploys(&finalized_hashes, current_instant)
+            .expect("should load pending deploys");
+
+        BlockProposerState::with_pending_and_finalized(pending, finalized)
     }
 }
 

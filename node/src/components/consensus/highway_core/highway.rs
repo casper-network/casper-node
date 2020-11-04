@@ -379,10 +379,10 @@ impl<C: Context> Highway<C> {
         // millisecond 64, so we set a timer.
         //
         // 2. The timer for timestamp 64 fires, and we request deploys
-        // for the new block from the deploy buffer (with 64 in the
+        // for the new block from the block proposer (with 64 in the
         // block context).
         //
-        // 3. The deploy buffer responds and we finally end up here,
+        // 3. The block proposer responds and we finally end up here,
         // and can propose the new block. But we still have to use
         // timestamp 64.
 
@@ -436,9 +436,12 @@ impl<C: Context> Highway<C> {
         evidence: Evidence<C>,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let av = self.active_validator.as_mut().unwrap();
         let state = &self.state;
-        let mut effects = av.on_new_evidence(&evidence, state, rng);
+        let mut effects = self
+            .active_validator
+            .as_mut()
+            .map(|av| av.on_new_evidence(&evidence, state, rng))
+            .unwrap_or_default();
         // Add newly created endorsements to the local state.
         for effect in effects.iter() {
             if let Effect::NewVertex(vv) = effect {

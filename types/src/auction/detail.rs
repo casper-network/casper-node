@@ -1,16 +1,168 @@
 use alloc::vec::Vec;
+use core::convert::TryInto;
 
 use num_rational::Ratio;
 
-use super::{
-    Auction, BidPurses, UnbondingPurse, UnbondingPurses, BID_PURSES_KEY, DEFAULT_UNBONDING_DELAY,
-    SYSTEM_ACCOUNT, UNBONDING_PURSES_KEY,
-};
 use crate::{
-    auction::{internal, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
+    auction::{
+        constants::*, Auction, BidPurses, Bids, DelegatorRewardMap, Delegators, EraId,
+        EraValidators, MintProvider, RuntimeProvider, SeigniorageRecipientsSnapshot,
+        StorageProvider, SystemProvider, UnbondingPurse, UnbondingPurses, ValidatorRewardMap,
+    },
+    bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
-    Key, PublicKey, URef, U512,
+    CLTyped, Key, PublicKey, URef, U512,
 };
+
+fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+    T: FromBytes + CLTyped,
+{
+    let key = provider.get_key(name).ok_or(Error::MissingKey)?;
+    let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
+    let value: T = provider.read(uref)?.ok_or(Error::MissingValue)?;
+    Ok(value)
+}
+
+fn write_to<P, T>(provider: &mut P, name: &str, value: T) -> Result<()>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+    T: ToBytes + CLTyped,
+{
+    let key = provider.get_key(name).ok_or(Error::MissingKey)?;
+    let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
+    provider.write(uref, value)?;
+    Ok(())
+}
+
+pub fn get_bids<P>(provider: &mut P) -> Result<Bids>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    Ok(read_from(provider, BIDS_KEY)?)
+}
+
+pub fn set_bids<P>(provider: &mut P, validators: Bids) -> Result<()>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    write_to(provider, BIDS_KEY, validators)
+}
+
+pub fn get_delegators<P>(provider: &mut P) -> Result<Delegators>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    read_from(provider, DELEGATORS_KEY)
+}
+
+pub fn set_delegators<P>(provider: &mut P, delegators: Delegators) -> Result<()>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    write_to(provider, DELEGATORS_KEY, delegators)
+}
+
+pub fn get_delegator_reward_map<P>(provider: &mut P) -> Result<DelegatorRewardMap>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    read_from(provider, DELEGATOR_REWARD_MAP_KEY)
+}
+
+pub fn set_delegator_reward_map<P>(
+    provider: &mut P,
+    delegator_reward_map: DelegatorRewardMap,
+) -> Result<()>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    write_to(provider, DELEGATOR_REWARD_MAP_KEY, delegator_reward_map)
+}
+
+pub fn get_validator_reward_map<P>(provider: &mut P) -> Result<ValidatorRewardMap>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    read_from(provider, VALIDATOR_REWARD_MAP_KEY)
+}
+
+pub fn set_validator_reward_map<P>(
+    provider: &mut P,
+    validator_reward_map: ValidatorRewardMap,
+) -> Result<()>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    write_to(provider, VALIDATOR_REWARD_MAP_KEY, validator_reward_map)
+}
+
+pub fn get_era_validators<P>(provider: &mut P) -> Result<EraValidators>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    Ok(read_from(provider, ERA_VALIDATORS_KEY)?)
+}
+
+pub fn set_era_validators<P>(provider: &mut P, era_validators: EraValidators) -> Result<()>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    write_to(provider, ERA_VALIDATORS_KEY, era_validators)
+}
+
+pub fn get_era_id<P>(provider: &mut P) -> Result<EraId>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    Ok(read_from(provider, ERA_ID_KEY)?)
+}
+
+pub fn set_era_id<P>(provider: &mut P, era_id: u64) -> Result<()>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    write_to(provider, ERA_ID_KEY, era_id)
+}
+
+pub fn get_seigniorage_recipients_snapshot<P>(
+    provider: &mut P,
+) -> Result<SeigniorageRecipientsSnapshot>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    Ok(read_from(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)?)
+}
+
+pub fn set_seigniorage_recipients_snapshot<P>(
+    provider: &mut P,
+    snapshot: SeigniorageRecipientsSnapshot,
+) -> Result<()>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    write_to(provider, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, snapshot)
+}
+
+pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    let validator_slots: u32 = read_from(provider, VALIDATOR_SLOTS_KEY)?;
+    let validator_slots = validator_slots
+        .try_into()
+        .map_err(|_| Error::InvalidValidatorSlotsValue)?;
+    Ok(validator_slots)
+}
+
+pub fn get_auction_delay<P>(provider: &mut P) -> Result<u64>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    let auction_delay: u64 = read_from(provider, AUCTION_DELAY_KEY)?;
+    Ok(auction_delay)
+}
 
 /// Iterates over unbonding entries and checks if a locked amount can be paid already if
 /// a specific era is reached.
@@ -170,14 +322,14 @@ pub fn update_delegators<P>(
 where
     P: RuntimeProvider + StorageProvider + ?Sized,
 {
-    let mut delegators = internal::get_delegators(provider)?;
+    let mut delegators = get_delegators(provider)?;
     let new_quantity = *delegators
         .entry(validator_public_key)
         .or_default()
         .entry(delegator_public_key)
         .and_modify(|delegation| *delegation += delegation_amount)
         .or_insert_with(|| delegation_amount);
-    internal::set_delegators(provider, delegators)?;
+    set_delegators(provider, delegators)?;
     Ok(new_quantity)
 }
 
@@ -191,7 +343,7 @@ where
     P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
 {
     let mut total_delegator_payout = U512::zero();
-    let mut outer = internal::get_delegator_reward_map(provider)?;
+    let mut outer = get_delegator_reward_map(provider)?;
     let mut inner = outer.remove(&validator_public_key).unwrap_or_default();
 
     for (delegator_key, delegator_reward) in rewards {
@@ -204,7 +356,7 @@ where
     }
 
     outer.insert(validator_public_key, inner);
-    internal::set_delegator_reward_map(provider, outer)?;
+    set_delegator_reward_map(provider, outer)?;
     Ok(total_delegator_payout)
 }
 
@@ -217,12 +369,12 @@ pub fn update_validator_reward<P>(
 where
     P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
 {
-    let mut validator_reward_map = internal::get_validator_reward_map(provider)?;
+    let mut validator_reward_map = get_validator_reward_map(provider)?;
     validator_reward_map
         .entry(validator_public_key)
         .and_modify(|sum| *sum += amount)
         .or_insert_with(|| amount);
-    internal::set_validator_reward_map(provider, validator_reward_map)?;
+    set_validator_reward_map(provider, validator_reward_map)?;
     Ok(())
 }
 
@@ -236,7 +388,7 @@ pub(crate) fn quash_bid<P: StorageProvider + RuntimeProvider + ?Sized>(
     validator_public_keys: &[PublicKey],
 ) -> Result<()> {
     // Clean up inside `bids`
-    let mut validators = internal::get_bids(provider)?;
+    let mut validators = get_bids(provider)?;
 
     let mut modified_validators = 0usize;
 
@@ -247,7 +399,7 @@ pub(crate) fn quash_bid<P: StorageProvider + RuntimeProvider + ?Sized>(
     }
 
     if modified_validators > 0 {
-        internal::set_bids(provider, validators)?;
+        set_bids(provider, validators)?;
     }
 
     Ok(())

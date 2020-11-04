@@ -41,6 +41,7 @@ use crate::{
 type ConsensusValue = Vec<u32>;
 
 const TEST_MIN_ROUND_EXP: u8 = 12;
+const TEST_MAX_ROUND_EXP: u8 = 19;
 const TEST_END_HEIGHT: u64 = 100000;
 pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
@@ -900,6 +901,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     TEST_BLOCK_REWARD,
                     TEST_REDUCED_BLOCK_REWARD,
                     TEST_MIN_ROUND_EXP,
+                    TEST_MAX_ROUND_EXP,
                     TEST_MIN_ROUND_EXP,
                     TEST_END_HEIGHT,
                     Timestamp::now(),

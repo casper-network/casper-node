@@ -28,8 +28,8 @@ use crate::{
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
-            DeployBufferRequest, NetworkRequest, StorageRequest,
+            self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -42,6 +42,7 @@ pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
 use hex_fmt::HexFmt;
+pub(crate) use protocols::highway::HighwayProtocol;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use traits::NodeIdT;
@@ -88,6 +89,8 @@ pub enum Event<I> {
         key_block_seed: Result<Digest, u64>,
         get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
+    /// An event instructing us to shutdown if the latest era received no votes
+    Shutdown,
 }
 
 impl Display for ConsensusMessage {
@@ -152,6 +155,7 @@ impl<I: Debug> Display for Event<I> {
                 response to get_validators from the contract runtime: {:?}",
                 booking_block_hash, key_block_seed, get_validators_result
             ),
+            Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
         }
     }
 }
@@ -162,7 +166,7 @@ pub trait ReactorEventT<I>:
     From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
-    + From<DeployBufferRequest>
+    + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
@@ -175,7 +179,7 @@ impl<REv, I> ReactorEventT<I> for REv where
     REv: From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
-        + From<DeployBufferRequest>
+        + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
@@ -258,6 +262,7 @@ where
                     validators,
                 )
             }
+            Event::Shutdown => handling_es.shutdown_if_necessary(),
         }
     }
 }

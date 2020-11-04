@@ -1,9 +1,9 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 
-use super::{Bid, DelegatedAmounts, DelegationRate, EraId};
 use crate::{
+    auction::{Bid, DelegatedAmounts, DelegationRate},
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, PublicKey, U512,
+    CLType, CLTyped, U512,
 };
 
 /// The seigniorage recipient details.
@@ -77,12 +77,6 @@ impl From<&Bid> for SeigniorageRecipient {
         }
     }
 }
-
-/// Collection of seigniorage recipients.
-pub type SeigniorageRecipients = BTreeMap<PublicKey, SeigniorageRecipient>;
-
-/// Snapshot of `SeigniorageRecipients` for a given era.
-pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
 
 #[cfg(test)]
 mod tests {

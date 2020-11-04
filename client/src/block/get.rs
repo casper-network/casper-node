@@ -16,7 +16,7 @@ enum DisplayOrder {
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
     const NAME: &'static str = "get-block";
-    const ABOUT: &'static str = "Retrieves a block";
+    const ABOUT: &'static str = "Retrieves a block from the network";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
