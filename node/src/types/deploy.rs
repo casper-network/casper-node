@@ -594,21 +594,7 @@ impl FromBytes for Deploy {
             approvals,
             is_valid: None,
         };
-        if maybe_valid_deploy.is_valid() {
-            let is_valid = Some(true);
-            let valid_deploy = Deploy {
-                header: maybe_valid_deploy.header,
-                hash: maybe_valid_deploy.hash,
-                payment: maybe_valid_deploy.payment,
-                session: maybe_valid_deploy.session,
-                approvals: maybe_valid_deploy.approvals,
-                is_valid,
-            };
-            Ok((valid_deploy, remainder))
-        } else {
-            info!("deploy deserialization led to an invalid block");
-            Err(bytesrepr::Error::Formatting)
-        }
+        Ok((maybe_valid_deploy, remainder))
     }
 }
 
