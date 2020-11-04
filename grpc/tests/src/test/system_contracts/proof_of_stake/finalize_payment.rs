@@ -5,7 +5,7 @@ use casper_engine_test_support::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::engine_state::{genesis::POS_PAYMENT_PURSE, CONV_RATE},
@@ -33,14 +33,14 @@ fn initialize() -> InMemoryWasmTestBuilder {
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { ARG_TARGET => SYSTEM_ADDR, ARG_AMOUNT => *DEFAULT_PAYMENT },
+        runtime_args! { ARG_TARGET => SYSTEM_ADDR, ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) },
     )
     .build();
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { ARG_TARGET => ACCOUNT_ADDR, ARG_AMOUNT =>  *DEFAULT_PAYMENT },
+        runtime_args! { ARG_TARGET => ACCOUNT_ADDR, ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) },
     )
     .build();
 

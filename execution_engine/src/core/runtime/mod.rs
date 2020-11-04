@@ -1402,35 +1402,8 @@ where
         self.context.protocol_data()
     }
 
-    /// Safely charge the specified amount of gas, up to the available gas limit.
-    ///
-    /// Returns false if gas limit exceeded and true if not.
-    fn charge_gas(&mut self, amount: Gas) -> bool {
-        let prev = self.context.gas_counter();
-        let gas_limit = self.context.gas_limit();
-        // gas charge overflow protection
-        match prev.checked_add(amount) {
-            None => {
-                self.context.set_gas_counter(gas_limit);
-                false
-            }
-            Some(val) if val > gas_limit => {
-                self.context.set_gas_counter(gas_limit);
-                false
-            }
-            Some(val) => {
-                self.context.set_gas_counter(val);
-                true
-            }
-        }
-    }
-
-    fn gas(&mut self, amount: Gas) -> Result<(), Trap> {
-        if self.charge_gas(amount) {
-            Ok(())
-        } else {
-            Err(Error::GasLimit.into())
-        }
+    fn gas(&mut self, amount: Gas) -> Result<(), Error> {
+        self.context.charge_gas(amount)
     }
 
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
@@ -1701,7 +1674,6 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1725,7 +1697,7 @@ where
         let transfers = self.context.transfers().to_owned();
 
         let mint_context = RuntimeContext::new(
-            state,
+            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -1811,7 +1783,6 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1835,7 +1806,7 @@ where
         let transfers = self.context.transfers().to_owned();
 
         let runtime_context = RuntimeContext::new(
-            state,
+            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -1919,7 +1890,6 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1943,7 +1913,7 @@ where
         let transfers = self.context.transfers().to_owned();
 
         let runtime_context = RuntimeContext::new(
-            state,
+            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -2583,7 +2553,7 @@ where
         Ok(Ok(()))
     }
 
-    fn create_contract_value(&mut self) -> Result<(StoredValue, URef), Error> {
+    fn create_contract_package(&mut self) -> Result<(ContractPackage, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = ContractPackage::new(
             access_key,
@@ -2592,17 +2562,14 @@ where
             Groups::default(),
         );
 
-        let value = StoredValue::ContractPackage(contract_package);
-
-        Ok((value, access_key))
+        Ok((contract_package, access_key))
     }
 
     fn create_contract_package_at_hash(&mut self) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
-        let key = Key::Hash(addr);
-        let (stored_value, access_key) = self.create_contract_value()?;
-
-        self.context.state().borrow_mut().write(key, stored_value);
+        let (contract_package, access_key) = self.create_contract_package()?;
+        self.context
+            .metered_write_gs_unsafe(addr, contract_package)?;
         Ok((addr, access_key.addr()))
     }
 
@@ -2614,8 +2581,6 @@ where
         mut existing_urefs: BTreeSet<URef>,
         output_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        let contract_package_key = contract_package_hash.into();
-
         let mut contract_package: ContractPackage = self
             .context
             .get_validated_contract_package(contract_package_hash)?;
@@ -2672,10 +2637,8 @@ where
         }
 
         // Write updated package to the global state
-        self.context.state().borrow_mut().write(
-            contract_package_key,
-            StoredValue::ContractPackage(contract_package),
-        );
+        self.context
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         Ok(Ok(()))
     }
@@ -2691,22 +2654,20 @@ where
         bytes_written_ptr: u32,
         version_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        let contract_package_key = contract_package_hash.into();
-        self.context.validate_key(&contract_package_key)?;
+        self.context
+            .validate_key(&Key::from(contract_package_hash))?;
 
         let mut contract_package: ContractPackage = self
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
         let contract_wasm_hash = self.context.new_hash_address()?;
-        let contract_wasm_key = Key::Hash(contract_wasm_hash);
         let contract_wasm = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
             ContractWasm::new(module_bytes)
         };
 
         let contract_hash = self.context.new_hash_address()?;
-        let contract_key = Key::Hash(contract_hash);
 
         let protocol_version = self.context.protocol_version();
         let major = protocol_version.value().major;
@@ -2731,19 +2692,11 @@ where
         let insert_contract_result = contract_package.insert_contract_version(major, contract_hash);
 
         self.context
-            .state()
-            .borrow_mut()
-            .write(contract_wasm_key, StoredValue::ContractWasm(contract_wasm));
-
+            .metered_write_gs_unsafe(contract_wasm_hash, contract_wasm)?;
         self.context
-            .state()
-            .borrow_mut()
-            .write(contract_key, StoredValue::Contract(contract));
-
-        self.context.state().borrow_mut().write(
-            contract_package_key,
-            StoredValue::ContractPackage(contract_package),
-        );
+            .metered_write_gs_unsafe(contract_hash, contract)?;
+        self.context
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         // return contract key to caller
         {
@@ -2795,10 +2748,8 @@ where
             return Ok(Err(err.into()));
         }
 
-        self.context.state().borrow_mut().write(
-            contract_package_key,
-            StoredValue::ContractPackage(contract_package),
-        );
+        self.context
+            .metered_write_gs_unsafe(contract_package_key, contract_package)?;
 
         Ok(Ok(()))
     }
@@ -2832,7 +2783,7 @@ where
         let key = self.key_from_mem(key_ptr, key_size)?;
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
         self.context
-            .write_gs(key, StoredValue::CLValue(cl_value))
+            .metered_write_gs(key, cl_value)
             .map_err(Into::into)
     }
 
@@ -2889,7 +2840,7 @@ where
         let key = self.key_from_mem(key_ptr, key_size)?;
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
         self.context
-            .add_gs(key, StoredValue::CLValue(cl_value))
+            .metered_add_gs(key, cl_value)
             .map_err(Into::into)
     }
 
@@ -3554,10 +3505,7 @@ where
         }
 
         // Write updated package to the global state
-        self.context.state().borrow_mut().write(
-            Key::from(package_key),
-            StoredValue::ContractPackage(package),
-        );
+        self.context.metered_write_gs_unsafe(package_key, package)?;
         Ok(Ok(()))
     }
 
@@ -3620,10 +3568,8 @@ where
         }
 
         // Write updated package to the global state
-        self.context.state().borrow_mut().write(
-            Key::from(contract_package_hash),
-            StoredValue::ContractPackage(contract_package),
-        );
+        self.context
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         Ok(Ok(()))
     }
@@ -3665,10 +3611,8 @@ where
             }
         }
         // Write updated package to the global state
-        self.context.state().borrow_mut().write(
-            Key::from(contract_package_hash),
-            StoredValue::ContractPackage(contract_package),
-        );
+        self.context
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         Ok(Ok(()))
     }
