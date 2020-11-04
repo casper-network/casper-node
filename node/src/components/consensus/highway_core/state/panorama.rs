@@ -188,12 +188,12 @@ impl<C: Context> Panorama<C> {
         Ok(())
     }
 
-    // Returns a bit mask that for every fault validator flips the bit at equivocator's
+    // Returns a bit mask that sets bit to 1 for every fault validator at equivocator's
     // `ValidatorIndex`.
     pub(crate) fn faults_bit_mask(&self) -> usize {
         let mut bit_mask = 0;
         for (idx, _) in self.enumerate().filter(|&(_, obs)| obs.is_faulty()) {
-            bit_mask = (1 << idx.0) | bit_mask;
+            bit_mask |= 1 << idx.0;
         }
         bit_mask
     }
@@ -207,7 +207,7 @@ impl<C: Context> Panorama<C> {
                 let vote_faults = vote.panorama.faults_bit_mask();
                 // XOR will return 1 in places where we had seen equivocation locally
                 // but `vote_faults` did not (i.e. validator is still seen as correct).
-                // XOR != 0 means that `vote` must be endorsed.
+                // XOR != 0 means that `vote` must be endorsed b/c it cites _an_ equivocator.
                 local_faults ^ vote_faults != 0
             })
             .collect()
