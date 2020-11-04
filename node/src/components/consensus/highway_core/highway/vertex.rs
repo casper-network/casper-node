@@ -165,7 +165,7 @@ impl<C: Context> WireVote<C> {
         state::round_id(self.timestamp, self.round_exp)
     }
 
-    /// Returns whether `vhash` is endorsed by this vote.
+    /// Returns whether vote claims that `vhash` is endorsed.
     pub(crate) fn is_endorsed(&self, vhash: &C::Hash) -> bool {
         self.endorsed.iter().any(|v| v == vhash)
     }

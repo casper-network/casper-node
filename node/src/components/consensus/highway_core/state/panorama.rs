@@ -115,6 +115,15 @@ impl<C: Context> Panorama<C> {
         self.iter().filter_map(Observation::correct)
     }
 
+    /// Returns an iterator over validator indexes that are seen as faulty by this panorama.
+    pub(crate) fn iter_faulty_validators<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = ValidatorIndex> + 'a {
+        self.enumerate()
+            .filter(|&(_, obs)| obs.is_faulty())
+            .map(|(vidx, _)| vidx)
+    }
+
     /// Returns the correct sequence number for a new vote by `vidx` with this panorama.
     pub(crate) fn next_seq_num(&self, state: &State<C>, vidx: ValidatorIndex) -> u64 {
         let add1 = |vh: &C::Hash| state.vote(vh).seq_number + 1;
@@ -188,27 +197,17 @@ impl<C: Context> Panorama<C> {
         Ok(())
     }
 
-    // Returns a bit mask that sets bit to 1 for every fault validator at equivocator's
-    // `ValidatorIndex`.
-    pub(crate) fn faults_bit_mask(&self) -> usize {
-        let mut bit_mask = 0;
-        for (idx, _) in self.enumerate().filter(|&(_, obs)| obs.is_faulty()) {
-            bit_mask |= 1 << idx.0;
-        }
-        bit_mask
-    }
-
     /// Returns votes' hashes from this panorama that cite naively equivocator's vote.
     pub(crate) fn need_endorsements(&self, state: &State<C>) -> Vec<&C::Hash> {
-        let local_faults = state.panorama.faults_bit_mask();
+        let faulty_local: Vec<ValidatorIndex> = self.iter_faulty_validators().collect();
         self.iter_correct_hashes()
             .filter(|&v| {
-                let vote = state.vote(v);
-                let vote_faults = vote.panorama.faults_bit_mask();
-                // XOR will return 1 in places where we had seen equivocation locally
-                // but `vote_faults` did not (i.e. validator is still seen as correct).
-                // XOR != 0 means that `vote` must be endorsed b/c it cites _an_ equivocator.
-                local_faults ^ vote_faults != 0
+                state
+                    .vote(v)
+                    .panorama
+                    .iter_faulty_validators()
+                    .collect::<Vec<_>>()
+                    != faulty_local
             })
             .collect()
     }
