@@ -43,7 +43,7 @@ pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: Effe
     let mut server_address = match utils::resolve_address(&config.address) {
         Ok(address) => address,
         Err(error) => {
-            warn!(%error, "failed to start HTTP server, cannot parse address");
+            warn!(%error, "failed to start RPC server, cannot parse address");
             return;
         }
     };
@@ -57,11 +57,11 @@ pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: Effe
             }
             Err(error) => {
                 if server_address.port() == 0 {
-                    warn!(%error, "failed to start HTTP server");
+                    warn!(%error, "failed to start RPC server");
                     return;
                 } else {
                     server_address.set_port(0);
-                    debug!(%error, "failed to start HTTP server. retrying on random port");
+                    debug!(%error, "failed to start RPC server. retrying on random port");
                 }
             }
         }

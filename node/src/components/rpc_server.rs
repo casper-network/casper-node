@@ -61,12 +61,16 @@ lazy_static! {
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `run_server` can
 /// work with.
-trait ReactorEventT:
+pub trait ReactorEventT:
     From<Event>
     + From<RpcRequest<NodeId>>
-    + From<StorageRequest<Storage>>
-    + From<LinearChainRequest<NodeId>>
+    + From<RpcServerAnnouncement>
+    + From<ChainspecLoaderRequest>
     + From<ContractRuntimeRequest>
+    + From<LinearChainRequest<NodeId>>
+    + From<MetricsRequest>
+    + From<NetworkInfoRequest<NodeId>>
+    + From<StorageRequest<Storage>>
     + Send
 {
 }
@@ -74,9 +78,13 @@ trait ReactorEventT:
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
         + From<RpcRequest<NodeId>>
-        + From<StorageRequest<Storage>>
-        + From<LinearChainRequest<NodeId>>
+        + From<RpcServerAnnouncement>
+        + From<ChainspecLoaderRequest>
         + From<ContractRuntimeRequest>
+        + From<LinearChainRequest<NodeId>>
+        + From<MetricsRequest>
+        + From<NetworkInfoRequest<NodeId>>
+        + From<StorageRequest<Storage>>
         + Send
         + 'static
 {
@@ -88,12 +96,7 @@ pub(crate) struct RpcServer {}
 impl RpcServer {
     pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
     where
-        REv: From<Event>
-            + From<RpcRequest<NodeId>>
-            + From<StorageRequest<Storage>>
-            + From<LinearChainRequest<NodeId>>
-            + From<ContractRuntimeRequest>
-            + Send,
+        REv: ReactorEventT,
     {
         tokio::spawn(http_server::run(config, effect_builder));
 
@@ -168,16 +171,7 @@ impl RpcServer {
 
 impl<REv> Component<REv> for RpcServer
 where
-    REv: From<RpcServerAnnouncement>
-        + From<NetworkInfoRequest<NodeId>>
-        + From<LinearChainRequest<NodeId>>
-        + From<ContractRuntimeRequest>
-        + From<ChainspecLoaderRequest>
-        + From<MetricsRequest>
-        + From<StorageRequest<Storage>>
-        + From<Event>
-        + From<RpcRequest<NodeId>>
-        + Send,
+    REv: ReactorEventT,
 {
     type Event = Event;
     type ConstructionError = Infallible;

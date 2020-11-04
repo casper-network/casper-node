@@ -17,7 +17,6 @@ mod config;
 mod event;
 mod filters;
 mod http_server;
-mod sse_server;
 
 use std::{convert::Infallible, fmt::Debug};
 
@@ -25,16 +24,12 @@ use datasize::DataSize;
 use futures::join;
 use lazy_static::lazy_static;
 use semver::Version;
-use tokio::sync::mpsc::{self, UnboundedSender};
 
 use super::Component;
 use crate::{
     components::storage::Storage,
     effect::{
-        requests::{
-            ChainspecLoaderRequest, ContractRuntimeRequest, LinearChainRequest, MetricsRequest,
-            NetworkInfoRequest, StorageRequest,
-        },
+        requests::{ChainspecLoaderRequest, MetricsRequest, NetworkInfoRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     small_network::NodeId,
@@ -44,7 +39,6 @@ use crate::{
 use crate::effect::requests::RestRequest;
 pub use config::Config;
 pub(crate) use event::Event;
-pub use sse_server::SseData;
 
 // TODO - confirm if we want to use the protocol version for this.
 lazy_static! {
@@ -53,12 +47,13 @@ lazy_static! {
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `run_server` can
 /// work with.
-trait ReactorEventT:
+pub trait ReactorEventT:
     From<Event>
     + From<RestRequest<NodeId>>
+    + From<NetworkInfoRequest<NodeId>>
     + From<StorageRequest<Storage>>
-    + From<LinearChainRequest<NodeId>>
-    + From<ContractRuntimeRequest>
+    + From<ChainspecLoaderRequest>
+    + From<MetricsRequest>
     + Send
 {
 }
@@ -66,56 +61,32 @@ trait ReactorEventT:
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
         + From<RestRequest<NodeId>>
+        + From<NetworkInfoRequest<NodeId>>
         + From<StorageRequest<Storage>>
-        + From<LinearChainRequest<NodeId>>
-        + From<ContractRuntimeRequest>
+        + From<ChainspecLoaderRequest>
+        + From<MetricsRequest>
         + Send
         + 'static
 {
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct RestServer {
-    /// Channel sender to pass event-stream data to the event-stream server.
-    // TODO - this should not be skipped.  Awaiting support for `UnboundedSender` in datasize crate.
-    #[data_size(skip)]
-    sse_data_sender: UnboundedSender<SseData>,
-}
+pub(crate) struct RestServer {}
 
 impl RestServer {
     pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
     where
-        REv: From<Event>
-            + From<RestRequest<NodeId>>
-            + From<StorageRequest<Storage>>
-            + From<LinearChainRequest<NodeId>>
-            + From<ContractRuntimeRequest>
-            + Send,
+        REv: ReactorEventT,
     {
-        let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
-        tokio::spawn(http_server::run(config, effect_builder, sse_data_receiver));
+        tokio::spawn(http_server::run(config, effect_builder));
 
-        RestServer { sse_data_sender }
-    }
-
-    /// Broadcasts the SSE data to all clients connected to the event stream.
-    fn broadcast(&mut self, sse_data: SseData) -> Effects<Event> {
-        let _ = self.sse_data_sender.send(sse_data);
-        Effects::new()
+        RestServer {}
     }
 }
 
 impl<REv> Component<REv> for RestServer
 where
-    REv: From<NetworkInfoRequest<NodeId>>
-        + From<LinearChainRequest<NodeId>>
-        + From<ContractRuntimeRequest>
-        + From<ChainspecLoaderRequest>
-        + From<MetricsRequest>
-        + From<StorageRequest<Storage>>
-        + From<Event>
-        + From<RestRequest<NodeId>>
-        + Send,
+    REv: ReactorEventT,
 {
     type Event = Event;
     type ConstructionError = Infallible;
@@ -147,30 +118,6 @@ where
                 text,
                 main_responder,
             } => main_responder.respond(text).ignore(),
-            Event::BlockFinalized(finalized_block) => {
-                self.broadcast(SseData::BlockFinalized(*finalized_block))
-            }
-            Event::BlockAdded {
-                block_hash,
-                block_header,
-            } => self.broadcast(SseData::BlockAdded {
-                block_hash,
-                block_header: *block_header,
-            }),
-            Event::DeployProcessed {
-                deploy_hash,
-                deploy_header,
-                block_hash,
-                execution_result,
-            } => self.broadcast(SseData::DeployProcessed {
-                deploy_hash,
-                account: *deploy_header.account(),
-                timestamp: deploy_header.timestamp(),
-                ttl: deploy_header.ttl(),
-                dependencies: deploy_header.dependencies().clone(),
-                block_hash,
-                execution_result,
-            }),
         }
     }
 }

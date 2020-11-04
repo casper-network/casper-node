@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     logging::LoggingConfig, types::NodeConfig, ConsensusConfig, ContractRuntimeConfig,
-    FetcherConfig, GossipConfig, RestServerConfig, RpcServerConfig, SmallNetworkConfig,
-    StorageConfig,
+    EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig, RpcServerConfig,
+    SmallNetworkConfig, StorageConfig,
 };
 
 /// Root configuration.
@@ -20,6 +20,8 @@ pub struct Config {
     pub consensus: ConsensusConfig,
     /// Network configuration.
     pub network: SmallNetworkConfig,
+    /// Event stream API server configuration.
+    pub event_stream_server: EventStreamServerConfig,
     /// REST API server configuration.
     pub rest_server: RestServerConfig,
     /// RPC API server configuration.

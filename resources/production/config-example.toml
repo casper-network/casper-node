@@ -69,15 +69,16 @@ gossip_interval = 120_000
 # only in the unit files themselves via `-C=network.systemd_support=true`.
 systemd_support = false
 
+
 # =============================================
 # Configuration options for the HTTP RPC server
 # =============================================
 [rpc_server]
 
-# Listening address for HTTP server.  If the port is set to 0, a random port will be used.
+# Listening address for JSON-RPC HTTP server.  If the port is set to 0, a random port will be used.
 #
 # If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
-# the HTTP server will not run, but the node will be otherwise unaffected.
+# the JSON-RPC HTTP server will not run, but the node will be otherwise unaffected.
 #
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:7777'
@@ -87,16 +88,30 @@ address = '0.0.0.0:7777'
 # =============================================
 [rest_server]
 
-# Listening address for HTTP server.  If the port is set to 0, a random port will be used.
+# Listening address for REST HTTP server.  If the port is set to 0, a random port will be used.
 #
 # If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
-# the HTTP server will not run, but the node will be otherwise unaffected.
+# the REST HTTP server will not run, but the node will be otherwise unaffected.
 #
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:8888'
 
-# The number of event-stream events to buffer.
+# =============================================
+# Configuration options for the HTTP event stream server
+# =============================================
+[event_stream_server]
+
+# Listening address for SSE HTTP event stream server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the SSE HTTP event stream server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:9999'
+
+# The number of event stream events to buffer.
 event_stream_buffer_length = 100
+
 
 # ===============================================
 # Configuration options for the storage component

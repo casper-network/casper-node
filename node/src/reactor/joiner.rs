@@ -20,7 +20,8 @@ use crate::{
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, HighwayProtocol},
         contract_runtime::{self, ContractRuntime},
-        deploy_acceptor,
+        deploy_acceptor, event_stream_server,
+        event_stream_server::EventStreamServer,
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
@@ -72,6 +73,10 @@ pub enum Event {
     #[from]
     /// REST server event.
     RestServer(rest_server::Event),
+
+    #[from]
+    /// Event stream server event.
+    EventStreamServer(event_stream_server::Event),
 
     /// Metrics request.
     #[from]
@@ -239,6 +244,7 @@ impl Display for Event {
             Event::NetworkAnnouncement(event) => write!(f, "network announcement: {}", event),
             Event::Storage(request) => write!(f, "storage: {}", request),
             Event::RestServer(event) => write!(f, "rest server: {}", event),
+            Event::EventStreamServer(event) => write!(f, "event stream server: {}", event),
             Event::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             Event::ChainspecLoader(event) => write!(f, "chainspec loader: {}", event),
             Event::ChainspecLoaderRequest(req) => write!(f, "chainspec loader request: {}", req),
@@ -317,6 +323,8 @@ pub struct Reactor {
     event_queue_metrics: EventQueueMetrics,
     #[data_size(skip)]
     pub(super) rest_server: RestServer,
+    #[data_size(skip)]
+    pub(super) event_stream_server: EventStreamServer,
 }
 
 impl reactor::Reactor for Reactor {
@@ -383,6 +391,9 @@ impl reactor::Reactor for Reactor {
 
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
 
+        let event_stream_server =
+            EventStreamServer::new(config.event_stream_server.clone(), effect_builder);
+
         let block_validator = BlockValidator::new();
 
         let deploy_fetcher = Fetcher::new(config.fetcher);
@@ -442,6 +453,7 @@ impl reactor::Reactor for Reactor {
                 deploy_acceptor,
                 event_queue_metrics,
                 rest_server,
+                event_stream_server,
             },
             effects,
         ))
@@ -652,12 +664,13 @@ impl reactor::Reactor for Reactor {
 
                 // send to event stream
                 for (deploy_hash, (deploy_header, execution_result)) in execution_results {
-                    let reactor_event = Event::RestServer(rest_server::Event::DeployProcessed {
-                        deploy_hash,
-                        deploy_header: Box::new(deploy_header),
-                        block_hash,
-                        execution_result: Box::new(execution_result),
-                    });
+                    let reactor_event =
+                        Event::EventStreamServer(event_stream_server::Event::DeployProcessed {
+                            deploy_hash,
+                            deploy_header: Box::new(deploy_header),
+                            block_hash,
+                            execution_result: Box::new(execution_result),
+                        });
                     effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                 }
 
@@ -681,11 +694,11 @@ impl reactor::Reactor for Reactor {
                     ),
                 ),
                 ConsensusAnnouncement::Finalized(block) => reactor::wrap_effects(
-                    Event::RestServer,
-                    self.rest_server.handle_event(
+                    Event::EventStreamServer,
+                    self.event_stream_server.handle_event(
                         effect_builder,
                         rng,
-                        rest_server::Event::BlockFinalized(block),
+                        event_stream_server::Event::BlockFinalized(block),
                     ),
                 ),
                 other => {
@@ -721,11 +734,11 @@ impl reactor::Reactor for Reactor {
                 block_hash,
                 block_header,
             }) => reactor::wrap_effects(
-                Event::RestServer,
-                self.rest_server.handle_event(
+                Event::EventStreamServer,
+                self.event_stream_server.handle_event(
                     effect_builder,
                     rng,
-                    rest_server::Event::BlockAdded {
+                    event_stream_server::Event::BlockAdded {
                         block_hash,
                         block_header,
                     },
@@ -734,6 +747,11 @@ impl reactor::Reactor for Reactor {
             Event::RestServer(event) => reactor::wrap_effects(
                 Event::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),
+            ),
+            Event::EventStreamServer(event) => reactor::wrap_effects(
+                Event::EventStreamServer,
+                self.event_stream_server
+                    .handle_event(effect_builder, rng, event),
             ),
             Event::MetricsRequest(req) => reactor::wrap_effects(
                 Event::MetricsRequest,
@@ -797,6 +815,8 @@ impl Reactor {
                 init_consensus_effects: self.init_consensus_effects,
                 linear_chain: self.linear_chain.linear_chain().clone(),
                 block_proposer_state,
+                rest_server: self.rest_server,
+                event_stream_server: self.event_stream_server,
             },
         );
         net.finalize().await;
