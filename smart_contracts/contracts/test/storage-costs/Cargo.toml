@@ -1,11 +1,11 @@
 [package]
-name = "endless-loop"
+name = "storage-costs"
 version = "0.1.0"
-authors = ["Henry Till <henrytill@gmail.com>"]
+authors = ["Michał Papierski <michal@casperlabs.io>"]
 edition = "2018"
 
 [[bin]]
-name = "endless_loop"
+name = "storage_costs"
 path = "src/main.rs"
 bench = false
 doctest = false

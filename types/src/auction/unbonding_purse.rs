@@ -1,10 +1,9 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 
 use crate::{
-    bytesrepr::{self, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, PublicKey, URef, U512,
 };
-use bytesrepr::FromBytes;
 
 /// Unbonding purse.
 #[cfg_attr(test, derive(Debug))]
@@ -60,10 +59,6 @@ impl CLTyped for UnbondingPurse {
         CLType::Any
     }
 }
-
-/// Validators and delegators mapped to their purses, validator/bidder key of origin, era of
-/// withdrawal, tokens and expiration timer in eras.
-pub type UnbondingPurses = BTreeMap<PublicKey, Vec<UnbondingPurse>>;
 
 #[cfg(test)]
 mod tests {

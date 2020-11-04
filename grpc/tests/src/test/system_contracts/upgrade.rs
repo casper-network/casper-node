@@ -19,7 +19,7 @@ use casper_execution_engine::{
             DEFAULT_MUL_COST, DEFAULT_NOP_COST, DEFAULT_REGULAR_COST, DEFAULT_STORE_COST,
             DEFAULT_UNREACHABLE_COST,
         },
-        storage_costs::{StorageCosts, DEFAULT_GAS_PER_BYTE_COST},
+        storage_costs::StorageCosts,
         wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
     },
 };
@@ -60,9 +60,7 @@ fn get_upgraded_wasm_config() -> WasmConfig {
         grow_memory: DEFAULT_GROW_MEMORY_COST + 1,
         regular: DEFAULT_REGULAR_COST + 1,
     };
-    let storage_costs = StorageCosts {
-        gas_per_byte: DEFAULT_GAS_PER_BYTE_COST,
-    };
+    let storage_costs = StorageCosts::default();
     let host_function_costs = HostFunctionCosts::default();
     WasmConfig::new(
         DEFAULT_INITIAL_MEMORY,

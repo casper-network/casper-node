@@ -10,6 +10,7 @@ mod host_function_costs;
 mod manage_groups;
 mod regression;
 mod step;
+mod storage_costs;
 mod system_contracts;
 mod upgrade;
 mod wasmless_transfer;

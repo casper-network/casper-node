@@ -88,14 +88,14 @@ where
     fn write<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).expect("should convert");
         self.context
-            .write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
+            .metered_write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
             .map_err(|_| Error::Storage)
     }
 
     fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).expect("should convert");
         self.context
-            .add_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
+            .metered_add_gs(uref, cl_value)
             .map_err(|_| Error::Storage)
     }
 }

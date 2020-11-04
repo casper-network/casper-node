@@ -92,7 +92,7 @@ use crate::{
 pub const CONV_RATE: u64 = 10;
 
 lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000u64 * CONV_RATE);
+    pub static ref MAX_PAYMENT: U512 = U512::from(550_000_000 * CONV_RATE);
 }
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -1480,7 +1480,7 @@ where
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
         };
 
-        let max_payment_cost: Motes = Motes::new(*MAX_PAYMENT);
+        let max_payment_cost = Motes::new(*MAX_PAYMENT);
 
         // Enforce minimum main purse balance validation
         // validation_spec_5: account main purse minimum balance

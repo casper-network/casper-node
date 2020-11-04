@@ -89,6 +89,8 @@ pub enum Event<I> {
         key_block_seed: Result<Digest, u64>,
         get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
+    /// An event instructing us to shutdown if the latest era received no votes
+    Shutdown,
 }
 
 impl Display for ConsensusMessage {
@@ -153,6 +155,7 @@ impl<I: Debug> Display for Event<I> {
                 response to get_validators from the contract runtime: {:?}",
                 booking_block_hash, key_block_seed, get_validators_result
             ),
+            Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
         }
     }
 }
@@ -259,6 +262,7 @@ where
                     validators,
                 )
             }
+            Event::Shutdown => handling_es.shutdown_if_necessary(),
         }
     }
 }

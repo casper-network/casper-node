@@ -322,7 +322,19 @@ impl reactor::Reactor for Reactor {
         let init_hash = config.node.trusted_hash;
 
         match init_hash {
-            None => info!("No synchronization of the linear chain will be done."),
+            None => {
+                let highway_config = &chainspec_loader.chainspec().genesis.highway_config;
+                let genesis_timestamp = highway_config.genesis_era_start_timestamp;
+                let era_duration = highway_config.era_duration;
+                if Timestamp::now() > genesis_timestamp + era_duration {
+                    error!(
+                        "Node started with no trusted hash after the expected end of \
+                        the genesis era! Please specify a trusted hash and restart."
+                    );
+                    panic!("should have trusted hash after genesis era")
+                }
+                info!("No synchronization of the linear chain will be done.")
+            }
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
@@ -479,13 +491,6 @@ impl reactor::Reactor for Reactor {
                     });
                     self.dispatch_event(effect_builder, rng, event)
                 }
-                // needed so that consensus can notify us of the eras it knows of
-                // TODO: remove when proper syncing is implemented
-                Message::Consensus(msg) => self.dispatch_event(
-                    effect_builder,
-                    rng,
-                    Event::Consensus(consensus::Event::MessageReceived { sender, msg }),
-                ),
                 Message::AddressGossiper(message) => {
                     let event = Event::AddressGossiper(gossiper::Event::MessageReceived {
                         sender,

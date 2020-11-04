@@ -20,6 +20,7 @@ entropy_duration = '5days'
 voting_period_duration = '6weeks'
 finality_threshold_percent = 8
 minimum_round_exponent = 13
+maximum_round_exponent = 19
 
 [deploys]
 max_payment_cost = '9'

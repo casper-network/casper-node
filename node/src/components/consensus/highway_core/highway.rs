@@ -1,7 +1,7 @@
 mod vertex;
 
 pub(crate) use crate::components::consensus::highway_core::state::Params;
-pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
+pub(crate) use vertex::{Dependency, Endorsements, SignedWireVote, Vertex, WireVote};
 
 use thiserror::Error;
 use tracing::{debug, error, info};
@@ -20,7 +20,10 @@ use crate::{
     types::{CryptoRngCore, Timestamp},
 };
 
-use super::endorsement::{Endorsement, EndorsementError, Endorsements};
+use super::{
+    endorsement::{Endorsement, EndorsementError},
+    evidence::Evidence,
+};
 
 /// An error due to an invalid vertex.
 #[derive(Debug, Error, PartialEq)]
@@ -89,6 +92,13 @@ impl<C: Context> ValidVertex<C> {
 
     pub(crate) fn is_proposal(&self) -> bool {
         self.0.value().is_some()
+    }
+
+    pub(crate) fn endorsements(&self) -> Option<&Endorsements<C>> {
+        match &self.0 {
+            Vertex::Endorsements(endorsements) => Some(endorsements),
+            Vertex::Evidence(_) | Vertex::Vote(_) => None,
+        }
     }
 }
 
@@ -246,16 +256,7 @@ impl<C: Context> Highway<C> {
         if !self.has_vertex(&vertex) {
             match vertex {
                 Vertex::Vote(vote) => self.add_valid_vote(vote, now, rng),
-                Vertex::Evidence(ref evidence) => {
-                    let was_honest = !self.state.is_faulty(evidence.perpetrator());
-                    self.state.add_evidence(evidence.clone());
-                    if was_honest {
-                        // Gossip `Evidence` only if we just learned about faults by the validator.
-                        vec![Effect::NewVertex(ValidVertex(vertex))]
-                    } else {
-                        vec![]
-                    }
-                }
+                Vertex::Evidence(evidence) => self.add_evidence(evidence, rng),
                 Vertex::Endorsements(endorsements) => {
                     self.state.add_endorsements(endorsements);
                     vec![]
@@ -429,6 +430,33 @@ impl<C: Context> Highway<C> {
         .unwrap_or_default()
     }
 
+    /// Takes action on a new evidence.
+    fn on_new_evidence(
+        &mut self,
+        evidence: Evidence<C>,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<Effect<C>> {
+        let state = &self.state;
+        let mut effects = self
+            .active_validator
+            .as_mut()
+            .map(|av| av.on_new_evidence(&evidence, state, rng))
+            .unwrap_or_default();
+        // Add newly created endorsements to the local state.
+        for effect in effects.iter() {
+            if let Effect::NewVertex(vv) = effect {
+                if let Some(e) = vv.endorsements() {
+                    self.state.add_endorsements(e.clone());
+                }
+            }
+        }
+        // Gossip `Evidence` only if we just learned about faults by the validator.
+        effects.extend(vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(
+            evidence,
+        )))]);
+        effects
+    }
+
     /// Applies `f` if this is an active validator, otherwise returns `None`.
     ///
     /// Newly created vertices are added to the state. If an equivocation of this validator is
@@ -483,7 +511,7 @@ impl<C: Context> Highway<C> {
                 let vote = *endorsements.vote();
                 for (v_id, signature) in endorsements.endorsers.iter() {
                     let validator = self.validators.id(*v_id).ok_or(EndorsementError::Creator)?;
-                    let endorsement: Endorsement<C> = Endorsement::new(vote, *v_id, *signature);
+                    let endorsement: Endorsement<C> = Endorsement::new(vote, *v_id);
                     if !C::verify_signature(&endorsement.hash(), validator, &signature) {
                         return Err(EndorsementError::Signature.into());
                     }
@@ -506,6 +534,20 @@ impl<C: Context> Highway<C> {
         }
     }
 
+    /// Adds evidence to the protocol state.
+    /// Gossip the evidence if it's the first equivocation from the creator.
+    fn add_evidence(
+        &mut self,
+        evidence: Evidence<C>,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<Effect<C>> {
+        if self.state.add_evidence(evidence.clone()) {
+            self.on_new_evidence(evidence, rng)
+        } else {
+            vec![]
+        }
+    }
+
     /// Adds a valid vote to the protocol state.
     ///
     /// Validity must be checked before calling this! Adding an invalid vote will result in a panic
@@ -523,11 +565,10 @@ impl<C: Context> Highway<C> {
         let mut evidence_effects = self
             .state
             .opt_evidence(creator)
+            .cloned()
             .map(|ev| {
                 if was_honest {
-                    // Send the evidence only if we just learned about validator being faulty.
-                    // i.e. if it was faulty _before_ we added `swvote`, don't send evidence.
-                    vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(ev.clone())))]
+                    self.on_new_evidence(ev, rng)
                 } else {
                     vec![]
                 }

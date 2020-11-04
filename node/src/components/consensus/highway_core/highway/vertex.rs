@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     components::consensus::{
         highway_core::{
-            endorsement::Endorsements,
+            endorsement::SignedEndorsement,
             evidence::Evidence,
             state::{self, Panorama},
             validators::ValidatorIndex,
@@ -51,8 +51,7 @@ impl<C: Context> Vertex<C> {
     pub(crate) fn value(&self) -> Option<&C::ConsensusValue> {
         match self {
             Vertex::Vote(swvote) => swvote.wire_vote.value.as_ref(),
-            Vertex::Evidence(_) => None,
-            Vertex::Endorsements(_) => None,
+            Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
         }
     }
 
@@ -60,17 +59,15 @@ impl<C: Context> Vertex<C> {
     pub(crate) fn vote_hash(&self) -> Option<C::Hash> {
         match self {
             Vertex::Vote(swvote) => Some(swvote.hash()),
-            Vertex::Evidence(_) => None,
-            Vertex::Endorsements(_) => None,
+            Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
         }
     }
 
     /// Returns whether this is evidence, as opposed to other types of vertices.
     pub(crate) fn is_evidence(&self) -> bool {
         match self {
-            Vertex::Vote(_) => false,
+            Vertex::Vote(_) | Vertex::Endorsements(_) => false,
             Vertex::Evidence(_) => true,
-            Vertex::Endorsements(_) => false,
         }
     }
 
@@ -166,5 +163,39 @@ impl<C: Context> WireVote<C> {
     /// Returns the time at which the round containing this vote began.
     pub(crate) fn round_id(&self) -> Timestamp {
         state::round_id(self.timestamp, self.round_exp)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub(crate) struct Endorsements<C: Context> {
+    pub(crate) vote: C::Hash,
+    pub(crate) endorsers: Vec<(ValidatorIndex, C::Signature)>,
+}
+
+impl<C: Context> Endorsements<C> {
+    pub fn new<I: IntoIterator<Item = SignedEndorsement<C>>>(endorsements: I) -> Self {
+        let mut iter = endorsements.into_iter().peekable();
+        let vote = *iter.peek().expect("non-empty iter").vote();
+        let endorsers = iter
+            .map(|e| {
+                assert_eq!(e.vote(), &vote, "endorsements for different votes.");
+                (e.validator_idx(), *e.signature())
+            })
+            .collect();
+        Endorsements { vote, endorsers }
+    }
+
+    /// Returns hash of the endorsed vode.
+    pub fn vote(&self) -> &C::Hash {
+        &self.vote
+    }
+
+    /// Returns an iterator over validator indexes that endorsed the `vote`.
+    pub fn validator_ids(&self) -> impl Iterator<Item = &ValidatorIndex> {
+        self.endorsers.iter().map(|(v, _)| v)
     }
 }

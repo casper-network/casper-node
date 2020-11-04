@@ -198,6 +198,7 @@ mod tests {
             TEST_BLOCK_REWARD,
             TEST_BLOCK_REWARD / 5,
             3,
+            19,
             3,
             u64::MAX,
             Timestamp::from(u64::MAX),
