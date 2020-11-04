@@ -804,8 +804,9 @@ impl Reactor {
                 .await
         };
 
-        let (net, config) = (
+        let (net, rest_server, config) = (
             self.net,
+            self.rest_server,
             ValidatorInitConfig {
                 chainspec_loader: self.chainspec_loader,
                 config: self.config,
@@ -815,11 +816,11 @@ impl Reactor {
                 init_consensus_effects: self.init_consensus_effects,
                 linear_chain: self.linear_chain.linear_chain().clone(),
                 block_proposer_state,
-                rest_server: self.rest_server,
                 event_stream_server: self.event_stream_server,
             },
         );
         net.finalize().await;
+        rest_server.finalize().await;
         config
     }
 }
