@@ -171,7 +171,7 @@ impl From<LinearChainRequest<NodeId>> for Event {
 
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {
-        Event::Storage(request.from())
+        Event::Storage(request.into())
     }
 }
 

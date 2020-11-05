@@ -67,6 +67,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     net::SocketAddr,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -908,7 +909,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::PutChainspec {
-                chainspec: Box::new(chainspec),
+                chainspec: Arc::new(chainspec),
                 responder,
             },
             QueueKind::Regular,
@@ -917,7 +918,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested chainspec from the chainspec store.
-    pub(crate) async fn get_chainspec(self, version: Version) -> Option<Chainspec>
+    pub(crate) async fn get_chainspec(self, version: Version) -> Option<Arc<Chainspec>>
     where
         REv: From<StorageRequest>,
     {

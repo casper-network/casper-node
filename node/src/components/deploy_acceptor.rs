@@ -91,7 +91,7 @@ impl DeployAcceptor {
                     deploy,
                     source,
                     chainspec_version,
-                    maybe_deploy_config: Box::new(maybe_chainspec.map(|c| c.into())),
+                    maybe_deploy_config: Box::new(maybe_chainspec.map(|c| (*c).clone().into())),
                 }),
         }
     }

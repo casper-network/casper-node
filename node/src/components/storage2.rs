@@ -22,6 +22,8 @@ use crate::{
     utils::WithDir,
     Chainspec,
 };
+#[cfg(test)]
+use tempfile::TempDir;
 use tracing::{info, warn};
 
 /// We can set this very low, as there is only a single reader/writer accessing the component at any
@@ -31,12 +33,13 @@ const MAX_TRANSACTIONS: u32 = 4;
 const CHAINSPEC_CACHE_FILENAME: &str = "chainspec_cache";
 
 #[derive(Debug, From)]
-pub(crate) enum Event {
+pub enum Event {
     /// Incoming storage request.
     #[from]
     StorageRequest(StorageRequest),
 }
 
+/// A storage component initialization error.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Failure to create the root database directory.
@@ -127,8 +130,7 @@ impl Storage {
             .map_err(Error::LmdbInit)?;
 
         // Load chainspec from file. A corrupt chainspec will lead to a panic.
-        let chainspec_cache = if let Some(raw) = fs::read(root.join(CHAINSPEC_CACHE_FILENAME)).ok()
-        {
+        let chainspec_cache = if let Ok(raw) = fs::read(root.join(CHAINSPEC_CACHE_FILENAME)) {
             Some(deser(&raw))
         } else {
             None
@@ -151,9 +153,7 @@ impl Storage {
                 "found corrupt block in database"
             );
             let header = block.header();
-            if let Some(duplicate) =
-                block_height_index.insert(header.height(), block.hash().clone())
-            {
+            if let Some(duplicate) = block_height_index.insert(header.height(), *block.hash()) {
                 warn!(
                     height = %header.height(),
                     hash_a = %header.hash(),
@@ -197,7 +197,7 @@ impl Storage {
                 if outcome {
                     if let Some(prev) = self
                         .block_height_index
-                        .insert(block.height(), block.hash().clone())
+                        .insert(block.height(), *block.hash())
                     {
                         warn!(height = %block.height(),
                               new=%block.hash(),
@@ -310,16 +310,17 @@ impl Storage {
                 responder,
             } => {
                 // Commit to storage first, then update cache.
-                let mut chainspec_file = fs::File::create(self.root.join(CHAINSPEC_CACHE_FILENAME))
+                let chainspec_file = fs::File::create(self.root.join(CHAINSPEC_CACHE_FILENAME))
                     .expect("could not create chainspec cache file");
                 ser(chainspec_file, &*chainspec).expect("could not update chainspec cache");
                 self.chainspec_cache = Some(chainspec);
 
-                Effects::new()
+                responder.respond(()).ignore()
             }
-            StorageRequest::GetChainspec { version, responder } => {
-                responder.respond(self.chainspec_cache.clone()).ignore()
-            }
+            StorageRequest::GetChainspec {
+                version: _version,
+                responder,
+            } => responder.respond(self.chainspec_cache.clone()).ignore(),
         }
     }
 
@@ -341,14 +342,14 @@ impl Storage {
         let mut tx = self.env.ro_transaction();
 
         deploy_hashes
-            .into_iter()
+            .iter()
             .map(|deploy_hash| tx.get_value(self.deploy_db, deploy_hash))
             .collect()
     }
 }
 
 /// On-disk storage configuration.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// The path to the folder where any files created or read by the storage component will exist.
@@ -369,6 +370,34 @@ pub struct Config {
     ///
     /// The size should be a multiple of the OS page size.
     max_deploy_metadata_store_size: usize,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            // No one should be instantiating a config with storage set to default.
+            path: "/dev/null".into(),
+            max_block_store_size: 483_183_820_800,
+            max_deploy_store_size: 322_122_547_200,
+            max_deploy_metadata_store_size: 322_122_547_200,
+        }
+    }
+}
+
+impl Config {
+    /// Returns a default `Config` suitable for tests, along with a `TempDir` which must be kept
+    /// alive for the duration of the test since its destructor removes the dir from the filesystem.
+    #[cfg(test)]
+    pub(crate) fn default_for_tests() -> (Self, TempDir) {
+        let tempdir = tempfile::tempdir().expect("should get tempdir");
+        let path = tempdir.path().join("lmdb");
+
+        let config = Config {
+            path,
+            ..Default::default()
+        };
+        (config, tempdir)
+    }
 }
 
 /// Deserialization helper.

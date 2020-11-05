@@ -16,11 +16,13 @@ use thiserror::Error;
 use tracing::warn;
 
 use casper_execution_engine::core::engine_state::{
-    executable_deploy_item::ExecutableDeployItem, DeployItem, ExecutionResult,
+    executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use super::{BlockHash, CryptoRngCore, Item, Tag, TimeDiff, Timestamp};
+use super::{
+    json_compatibility::ExecutionResult, BlockHash, CryptoRngCore, Item, Tag, TimeDiff, Timestamp,
+};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
@@ -509,6 +511,7 @@ impl From<Deploy> for DeployItem {
     }
 }
 
+/// TODO: What is this, exactly?
 #[derive(Clone, Default, Serialize, Deserialize, Debug)]
 pub struct DeployMetadata {
     /// The block hashes of blocks containing the related deploy, along with the results of

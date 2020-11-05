@@ -508,7 +508,7 @@ impl reactor::Reactor for Reactor {
                     }
                     Message::GetRequest { tag, serialized_id } => match tag {
                         Tag::Deploy => {
-                            let deploy_hash = match bincode::deserialize(&serialized_id) {
+                            let _deploy_hash = match bincode::deserialize(&serialized_id) {
                                 Ok(hash) => hash,
                                 Err(error) => {
                                     error!(
