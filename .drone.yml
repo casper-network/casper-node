@@ -14,7 +14,7 @@ steps:
       - rustup component add rustfmt
       - cargo fmt --all -- --check
 
-  - name: cargo-clippy-and-audit
+  - name: cargo-clippy
     image: casperlabs/node-build-u1804
     environment:
       RUSTFLAGS: '-D warnings'
@@ -22,6 +22,10 @@ steps:
       - make setup-rs
       - rustup component add clippy
       - cargo clippy --all-targets --all-features --workspace
+
+  - name: cargo-audit
+    image: casperlabs/node-build-u1804
+    commands:
       - cargo install cargo-audit
       - cargo generate-lockfile
       - cargo audit
