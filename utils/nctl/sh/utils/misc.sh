@@ -135,6 +135,18 @@ function get_node_address_rpc {
 }
 
 #######################################
+# Returns node RPC address, intended for use with cURL.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_curl_node_address_rpc {
+    # For cURL, need to append '/rpc' to the RPC endpoint URL.
+    # This suffix is not needed for use with the client via '--node-address'.
+    echo "$(get_node_address_rpc $1 $2)/rpc"
+}
+
+#######################################
 # Returns node JSON address.
 # Arguments:
 #   Network ordinal identifier.
