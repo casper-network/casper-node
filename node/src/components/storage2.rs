@@ -119,7 +119,7 @@ impl Storage {
             .set_max_readers(MAX_TRANSACTIONS)
             .set_max_dbs(4)
             .set_map_size(total_size)
-            .open(&root)
+            .open(&root.join("storage.lmdb"))
             .map_err(Error::LmdbInit)?;
 
         let block_db = env
