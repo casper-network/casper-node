@@ -117,6 +117,7 @@ vergen = "3.1.0"
 [package.metadata.deb]
 features = ["vendored-openssl"]
 revision = "0"
+depends = "curl"
 assets = [
     ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
     ["../resources/maintainer_scripts/logrotate.d/casper-node", "/etc/logrotate.d/casper-node", "644"],
