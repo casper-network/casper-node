@@ -13,7 +13,7 @@ use itertools::Itertools;
 use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::warn;
 
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
@@ -550,16 +550,6 @@ impl From<Deploy> for DeployItem {
     }
 }
 
-/*
-    hash: DeployHash,
-    header: DeployHeader,
-    payment: ExecutableDeployItem,
-    session: ExecutableDeployItem,
-    approvals: Vec<Approval>,
-    #[serde(skip)]
-    is_valid: Option<bool>,
-*/
-
 impl ToBytes for Deploy {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -572,7 +562,8 @@ impl ToBytes for Deploy {
     }
 
     fn serialized_length(&self) -> usize {
-        self.hash.serialized_length()
+        self.header.serialized_length()
+            + self.hash.serialized_length()
             + self.payment.serialized_length()
             + self.session.serialized_length()
             + self.approvals.serialized_length()
@@ -586,7 +577,7 @@ impl FromBytes for Deploy {
         let (payment, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
         let (session, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
         let (approvals, remainder) = Vec::<Approval>::from_bytes(remainder)?;
-        let mut maybe_valid_deploy = Deploy {
+        let maybe_valid_deploy = Deploy {
             header,
             hash,
             payment,
@@ -631,6 +622,8 @@ mod tests {
 
         let deploy = Deploy::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(deploy.header());
+
+        bytesrepr::test_serialization_roundtrip(&deploy);
     }
 
     #[test]

@@ -378,3 +378,15 @@ impl Distribution<ExecConfig> for Standard {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let mut rng = rand::thread_rng();
+        let genesis_account: GenesisAccount = rng.gen();
+        bytesrepr::test_serialization_roundtrip(&genesis_account);
+    }
+}

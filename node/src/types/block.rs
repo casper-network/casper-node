@@ -979,7 +979,7 @@ mod tests {
     fn bytesrepr_roundtrip() {
         let mut rng = TestRng::new();
         let block = Block::random(&mut rng);
-        bytesrepr::test_serialization_roundtrip(&block.proofs);
+        bytesrepr::test_serialization_roundtrip(&block);
     }
 
     #[test]
