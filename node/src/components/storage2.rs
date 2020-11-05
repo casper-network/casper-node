@@ -358,8 +358,6 @@ pub struct Config {
     /// The path to the folder where any files created or read by the storage component will exist.
     ///
     /// If the folder doesn't exist, it and any required parents will be created.
-    ///
-    /// If unset via the configuration file, the value must be provided via the CLI.
     pub(crate) path: PathBuf,
     /// The maximum size of the database to use for the block store.
     ///
