@@ -20,12 +20,12 @@ source $NCTL/sh/utils/misc.sh
 #   Metric name.
 #######################################
 function _view_metrics() {
-    node_address=$(get_node_address $1 $2)
+    node_address=$(get_node_address_json $1 $2)
     log "network #$1 :: node #$2 :: $node_address :: metrics:"
     if [ $3 = "all" ]; then
         exec_node_rest_get $1 $2 "metrics"
     else
-        exec_node_rest_get $1 $2 "metrics" | grep $3 | tail -n 1 
+        exec_node_rest_get $1 $2 "metrics" | grep $3 | tail -n 1
     fi
 }
 

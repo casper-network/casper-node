@@ -46,7 +46,7 @@ state_root_hash=${state_root_hash:-$(get_state_root_hash $net $node)}
 #######################################
 
 $NCTL/assets/net-$net/bin/casper-client query-state \
-    --node-address $(get_node_address $net $node) \
+    --node-address $(get_node_address_json $net $node) \
     --state-root-hash $state_root_hash \
     --key $account_key \
     | jq '.result'

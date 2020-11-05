@@ -19,7 +19,7 @@ source $NCTL/sh/utils/misc.sh
 #   Node ordinal identifer.
 #######################################
 function _view_status() {
-    node_address=$(get_node_address $1 $2)
+    node_address=$(get_node_address_json $1 $2)
     log "network #$1 :: node #$2 :: $node_address :: status:"
     curl -s --header 'Content-Type: application/json' \
         --request POST $(get_node_address_rpc $1 $2) \
