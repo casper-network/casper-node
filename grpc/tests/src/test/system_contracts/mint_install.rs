@@ -12,7 +12,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     contracts::CONTRACT_INITIAL_VERSION, mint::ARG_ROUND_SEIGNIORAGE_RATE, runtime_args,
-    ContractHash, ContractPackageHash, ContractVersionKey, ProtocolVersion, RuntimeArgs,
+    ContractHash, ContractPackageHash, ContractVersionKey, ProtocolVersion, RuntimeArgs, U512,
 };
 
 const DEPLOY_HASH_1: [u8; 32] = [1u8; 32];
@@ -26,7 +26,7 @@ fn should_run_mint_install_contract() {
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let round_seigniorage_rate: Ratio<u64> = Ratio::new_raw(1, 1);
+    let round_seigniorage_rate: Ratio<U512> = Ratio::from(U512::one());
     let ((contract_package_hash, mint_hash), ret_urefs, effect): (
         (ContractPackageHash, ContractHash),
         _,

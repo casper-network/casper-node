@@ -25,7 +25,7 @@ mod tests {
 
     use super::*;
     use crate::engine_server::mappings::test_utils;
-    
+
     proptest! {
         #[test]
         fn round_trip((numer, denom) in (any::<u64>(), 1..u64::max_value())) {

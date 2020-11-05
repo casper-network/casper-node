@@ -461,6 +461,8 @@ message ChainSpec {
         NewAuctionDelay new_auction_delay = 7;
         // Change the locked funds period (optional)
         NewLockedFundsPeriod new_locked_funds_period = 9;
+        // Change the round seigniorage rate (optional)
+        Ratio new_round_seigniorage_rate = 10;
     }
 
     message NewValidatorSlots {

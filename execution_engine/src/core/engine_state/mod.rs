@@ -24,6 +24,7 @@ use std::{
 };
 
 use lazy_static::lazy_static;
+use num_rational::Ratio;
 use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
@@ -38,7 +39,7 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     mint,
-    mint::ARG_ROUND_SEIGNIORAGE_RATE,
+    mint::{ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY},
     proof_of_stake, runtime_args,
     system_contract_errors::mint::Error as MintError,
     AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
@@ -247,8 +248,18 @@ where
         let (mint_package_hash, mint_hash): (ContractPackageHash, ContractHash) = {
             let mint_installer_bytes = ee_config.mint_installer_bytes();
             let mint_installer_module = preprocessor.preprocess(mint_installer_bytes)?;
+
+            let arg_round_seigniorage_rate: Ratio<U512> = {
+                let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
+                    ee_config.round_seigniorage_rate().into();
+                Ratio::new(
+                    round_seigniorage_rate_numer.into(),
+                    round_seigniorage_rate_denom.into(),
+                )
+            };
+
             let args = runtime_args! {
-                ARG_ROUND_SEIGNIORAGE_RATE => ee_config.round_seigniorage_rate(),
+                ARG_ROUND_SEIGNIORAGE_RATE => arg_round_seigniorage_rate,
             };
             let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
             let install_deploy_hash = genesis_config_hash.value();
@@ -793,6 +804,26 @@ where
             let value = StoredValue::CLValue(
                 CLValue::from_t(new_locked_funds_period)
                     .map_err(|_| Error::Bytesrepr("new_locked_funds_period".to_string()))?,
+            );
+            tracking_copy
+                .borrow_mut()
+                .write(locked_funds_period_key, value);
+        }
+
+        if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
+            let new_round_seigniorage_rate: Ratio<U512> = {
+                let (numer, denom) = new_round_seigniorage_rate.into();
+                Ratio::new(numer.into(), denom.into())
+            };
+
+            let mint_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.mint())?;
+
+            let locked_funds_period_key = mint_contract.named_keys()[ROUND_SEIGNIORAGE_RATE_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_round_seigniorage_rate)
+                    .map_err(|_| Error::Bytesrepr("new_round_seigniorage_rate".to_string()))?,
             );
             tracking_copy
                 .borrow_mut()

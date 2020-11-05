@@ -29,6 +29,7 @@ lmdb = "0.8"
 log = "0.4.8"
 protobuf = "=2.8"
 datasize = "0.2.0"
+num = { version = "0.3.0", default-features = false }
 num-rational = "0.3.0" 
 
 [build-dependencies]

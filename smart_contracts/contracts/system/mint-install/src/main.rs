@@ -44,11 +44,7 @@ pub extern "C" fn read_base_round_reward() {
 
 #[no_mangle]
 pub extern "C" fn install() {
-    let round_seigniorage_rate: Ratio<U512> = {
-        let (ratio_numer, ratio_denom): (u64, u64) =
-            runtime::get_named_arg(ARG_ROUND_SEIGNIORAGE_RATE);
-        Ratio::new(U512::from(ratio_numer), U512::from(ratio_denom))
-    };
+    let round_seigniorage_rate: Ratio<U512> = runtime::get_named_arg(ARG_ROUND_SEIGNIORAGE_RATE);
 
     let entry_points = mint_token::get_entry_points();
 

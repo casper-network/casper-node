@@ -478,6 +478,7 @@ dependencies = [
  "grpc",
  "lmdb",
  "log 0.4.11",
+ "num",
  "num-rational 0.3.0",
  "parity-wasm 0.42.1",
  "proptest",
