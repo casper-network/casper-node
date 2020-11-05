@@ -97,8 +97,11 @@ impl Storage {
 
         // Create the database directory.
         let root = cfg.with_dir(config.path.clone());
-        fs::create_dir_all(&root)
-            .map_err(|err| Error::CreateDatabaseDirectory(root.clone(), err))?;
+
+        if !root.exists() {
+            fs::create_dir_all(&root)
+                .map_err(|err| Error::CreateDatabaseDirectory(root.clone(), err))?;
+        }
 
         // Calculate the upper bound for the memory map that is potentially used.
         let total_size = config
