@@ -40,6 +40,6 @@ node=${node:-1}
 # Main
 #######################################
 
-node_address=$(get_node_address_json $net $node)
+node_address=$(get_node_address_rpc $net $node)
 state_root_hash=$(get_state_root_hash $net $node $block)
 log "STATE ROOT HASH @ "$node_address" :: "$state_root_hash

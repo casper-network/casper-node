@@ -25,7 +25,7 @@ echo $(
 #   Block identifer.
 #######################################
 function get_state_root_hash() {
-    node_address=$(get_node_address_json $1 $2)
+    node_address=$(get_node_address_rpc $1 $2)
     if [ "$3" ]; then
         $NCTL/assets/net-$net/bin/casper-client get-state-root-hash \
             --node-address $node_address \
