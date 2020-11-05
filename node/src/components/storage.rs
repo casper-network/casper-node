@@ -20,15 +20,15 @@ use std::{
     sync::Arc,
 };
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use futures::TryFutureExt;
 use semver::Version;
 
-use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::task;
 use tracing::{debug, error, warn};
+
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::{
     components::{
@@ -88,8 +88,6 @@ pub trait Value: ValueT {
         + Hash
         + Debug
         + Display
-        + Serialize
-        + DeserializeOwned
         + ToBytes
         + FromBytes
         + Send

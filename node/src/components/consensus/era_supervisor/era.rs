@@ -269,3 +269,18 @@ where
             + accusations.estimate_heap_size()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rand::Rng;
+
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let era_id = EraId(rng.gen());
+        bytesrepr::test_serialization_roundtrip(&era_id);
+    }
+}

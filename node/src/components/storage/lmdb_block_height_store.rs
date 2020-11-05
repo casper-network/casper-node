@@ -54,7 +54,7 @@ impl LmdbBlockHeightStore {
 impl<H: ToBytes + for<'de> FromBytes> BlockHeightStore<H> for LmdbBlockHeightStore {
     fn put(&self, height: u64, block_hash: H) -> Result<bool> {
         let serialized_value =
-            bytesrepr::serialize(block_hash).map_err(|_| Error::CustomSerialization)?;
+            bytesrepr::serialize(block_hash).map_err(Error::from_serialization)?;
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
         let result = match txn.put(
             self.db,
@@ -79,7 +79,7 @@ impl<H: ToBytes + for<'de> FromBytes> BlockHeightStore<H> for LmdbBlockHeightSto
             Err(error) => panic!("should get: {:?}", error),
         };
         let block_hash = bytesrepr::deserialize(serialized_value.to_vec())
-            .map_err(|_| Error::CustomDeserialization)?;
+            .map_err(Error::from_deserialization)?;
         txn.commit().expect("should commit txn");
         Ok(Some(block_hash))
     }
