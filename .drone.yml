@@ -14,8 +14,7 @@ steps:
       - rustup component add rustfmt
       - cargo fmt --all -- --check
 
-  # Tested below two steps in parallel and had the same speed as running serially, due to contention.
-  - name: cargo-clippy
+  - name: cargo-clippy-and-audit
     image: casperlabs/node-build-u1804
     environment:
       RUSTFLAGS: '-D warnings'
@@ -23,10 +22,6 @@ steps:
       - make setup-rs
       - rustup component add clippy
       - cargo clippy --all-targets --all-features --workspace
-
-  - name: cargo-audit
-    image: casperlabs/node-build-u1804
-    commands:
       - cargo install cargo-audit
       - cargo generate-lockfile
       - cargo audit
