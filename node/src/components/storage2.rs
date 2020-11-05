@@ -147,7 +147,9 @@ impl Storage {
             .open_ro_cursor(block_db)
             .expect("could not create read-only cursor on block store");
 
-        for (raw_key, raw_val) in cursor.iter_start() {
+        // Note: `iter_start` has an undocument panic if called on an empty database. We rely on
+        //       the iterator being at the start when created.
+        for (raw_key, raw_val) in cursor.iter() {
             let block: Block = deser(raw_val);
             // We use the opportunity for a small integrity check.
             assert_eq!(
