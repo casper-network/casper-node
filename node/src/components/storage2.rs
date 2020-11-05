@@ -43,9 +43,9 @@ pub enum Event {
 #[derive(Debug, Error)]
 pub enum Error {
     /// Failure to create the root database directory.
-    #[error("failed to create database directory `{}`: {}", 0, 1)]
+    #[error("failed to create database directory `{}`: {}", .0.display(), .1)]
     CreateDatabaseDirectory(PathBuf, io::Error),
-    #[error("failed to initialize lmdb: {}", 0)]
+    #[error("failed to initialize lmdb: {}", .0)]
     /// LMDB initialization failure.
     LmdbInit(lmdb::Error),
 }
