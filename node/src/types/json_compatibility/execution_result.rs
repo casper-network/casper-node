@@ -27,11 +27,30 @@ use casper_types::{
 #[cfg(test)]
 use crate::testing::TestRng;
 
-///Constants to track operation serialization
+/// Constants to track operation serialization.
 pub const OP_READ_TAG: u8 = 1;
 pub const OP_WRITE_TAG: u8 = 2;
 pub const OP_ADD_TAG: u8 = 3;
 pub const OP_NOOP_TAG: u8 = 4;
+
+/// Constants to track Transform serialization. 
+pub const IDENTITY: u8 = 0;
+pub const WRITE_CLVALUE: u8 = 1;
+pub const WRITE_ACCOUNT: u8 = 2;
+pub const WRITE_CONTRACT_WASM: u8 = 3;
+pub const WRITE_CONTRACT: u8 = 4;
+pub const WRITE_CONTRACT_PACKAGE: u8 = 5;
+pub const WRITE_DEPLOY_INFO: u8 = 6;
+pub const WRITE_TRANSFER: u8 = 7;
+pub const ADD_INT_I32: u8 = 8;
+pub const ADD_INT_U64: u8 = 9;
+pub const ADD_INT_U128: u8 = 10;
+pub const ADD_INT_U256: u8 = 11;
+pub const ADD_UINT_512: u8 = 12;
+pub const ADD_KEYS: u8 = 13;
+pub const FAILURE: u8 = 14;
+
+
 
 /// The result of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
@@ -320,22 +339,6 @@ impl From<&EngineTransform> for Transform {
     }
 }
 
-pub const IDENTITY: u8 = 0;
-pub const WRITE_CLVALUE: u8 = 1;
-pub const WRITE_ACCOUNT: u8 = 2;
-pub const WRITE_CONTRACT_WASM: u8 = 3;
-pub const WRITE_CONTRACT: u8 = 4;
-pub const WRITE_CONTRACT_PACKAGE: u8 = 5;
-pub const WRITE_DEPLOY_INFO: u8 = 6;
-pub const WRITE_TRANSFER: u8 = 7;
-pub const ADD_INT_I32: u8 = 8;
-pub const ADD_INT_U64: u8 = 9;
-pub const ADD_INT_U128: u8 = 10;
-pub const ADD_INT_U256: u8 = 11;
-pub const ADD_UINT_512: u8 = 12;
-pub const ADD_KEYS: u8 = 13;
-pub const FAILURE: u8 = 14;
-
 impl ToBytes for Transform {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -462,5 +465,39 @@ impl FromBytes for Transform {
                 Err(bytesrepr::Error::Formatting)
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_test_transform() {
+        let mut rng = TestRng::new();
+        let transform = Transform::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&transform);
+    }
+
+    #[test]
+    fn bytesrepr_test_operation() {
+        let mut rng = TestRng::new();
+        let execution_result = ExecutionResult::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&execution_result.effect.operations);
+    }
+
+    #[test]
+    fn bytesrepr_test_execution_effect() {
+        let mut rng = TestRng::new();
+        let execution_result = ExecutionResult::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&execution_result.effect);
+    }
+
+    #[test]
+    fn bytesrepr_test_execution_result() {
+        let mut rng = TestRng::new();
+        let execution_result = ExecutionResult::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&execution_result);
     }
 }

@@ -317,9 +317,28 @@ pub struct Deploy {
 }
 
 impl Deploy {
-    /// Constructs a new `Deploy`.
+    /// Constructs a new unsigned `Deploy`
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        hash: DeployHash,
+        header: DeployHeader,
+        payment: ExecutableDeployItem,
+        session: ExecutableDeployItem,
+        approvals: Vec<Approval>,
+    ) -> Self {
+        Deploy {
+            hash,
+            header,
+            payment,
+            session,
+            approvals,
+            is_valid: None,
+        }
+    }
+
+    /// Constructs a new signed `Deploy`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_signed(
         timestamp: Timestamp,
         ttl: TimeDiff,
         gas_price: u64,
@@ -432,7 +451,7 @@ impl Deploy {
 
         let secret_key = SecretKey::random(rng);
 
-        Deploy::new(
+        Deploy::new_signed(
             timestamp,
             ttl,
             gas_price,
@@ -622,7 +641,6 @@ mod tests {
 
         let deploy = Deploy::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(deploy.header());
-
         bytesrepr::test_serialization_roundtrip(&deploy);
     }
 
@@ -637,7 +655,7 @@ mod tests {
 
     #[test]
     fn is_not_valid() {
-        let mut deploy = Deploy::new(
+        let mut deploy = Deploy::new_signed(
             Timestamp::zero(),
             TimeDiff::from(Duration::default()),
             0,

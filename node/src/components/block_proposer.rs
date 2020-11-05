@@ -512,7 +512,7 @@ mod tests {
             args: vec![],
         };
 
-        let deploy = Deploy::new(
+        let deploy = Deploy::new_signed(
             timestamp,
             ttl,
             gas_price,
