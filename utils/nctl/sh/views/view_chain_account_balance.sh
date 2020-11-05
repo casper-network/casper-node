@@ -49,7 +49,7 @@ state_root_hash=${state_root_hash:-$(get_state_root_hash $net $node)}
 
 balance=$(
     $NCTL/assets/net-$net/bin/casper-client get-balance \
-        --node-address $(get_node_address $net $node) \
+        --node-address $(get_node_address_rpc $net $node) \
         --state-root-hash $state_root_hash \
         --purse-uref $purse_uref \
         | jq '.result.balance_value' \

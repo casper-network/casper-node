@@ -19,10 +19,10 @@ source $NCTL/sh/utils/misc.sh
 #   Node ordinal identifer.
 #######################################
 function _view_peers() {
-    node_address=$(get_node_address $1 $2)
+    node_address=$(get_node_address_rpc $1 $2)
     log "network #$1 :: node #$2 :: $node_address :: peers:"
     curl -s --header 'Content-Type: application/json' \
-        --request POST $(get_node_address_rpc $1 $2) \
+        --request POST $(get_curl_node_address_rpc $1 $2) \
         --data-raw '{
             "id": 1,
             "jsonrpc": "2.0",
