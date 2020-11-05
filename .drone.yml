@@ -164,9 +164,9 @@ trigger:
     - "release-*"
 
 ---
-# Run on success of cargo-test and publish pipelines.
+# Run on success of cargo-test and package pipelines.
 kind: pipeline
-name: test-publish-success
+name: test-package-success
 
 steps:
   # Retrieving packages built and put in s3 from package pipeline.
@@ -234,9 +234,9 @@ trigger:
 
 
 ---
-# Runs on failure of cargo-test or publish pipelines.
+# Runs on failure of cargo-test or package pipelines.
 kind: pipeline
-name: test-publish-failure
+name: test-package-failure
 
 clone:
   disable: true
@@ -281,7 +281,7 @@ trigger:
 
 depends_on:
   - cargo-test
-  - package-test
+  - package
 
 # TAGGING PIPELINES
 # release-by-tag
