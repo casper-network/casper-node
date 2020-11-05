@@ -177,9 +177,9 @@ function _set_node ()
         NETWORK_BIND_PORT=0
         NETWORK_KNOWN_ADDRESSES="$(get_bootstrap_known_addresses $2 $4)"
     fi
-    RPC_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_RPC $1 $2)
-    JSON_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_JSON $1 $2)
-    EVENT_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_EVENT $1 $2)
+    RPC_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_RPC $2 $node_id)
+    JSON_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_JSON $2 $node_id)
+    EVENT_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_EVENT $2 $node_id)
 
     # Set config.
     path_config=$1/nodes/node-$3/config/node-config.toml
