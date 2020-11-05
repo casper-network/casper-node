@@ -118,8 +118,8 @@ steps:
   image: ubuntu:bionic
   commands:
     - "apt update"
-    - "./ci/test_deb.sh $(pwd) casper-client"
-    - "./ci/test_deb.sh $(pwd) casper-node"
+    - "$(pwd)/ci/test_deb.sh $(pwd) casper-client"
+    - "$(pwd)/ci/test_deb.sh $(pwd) casper-node"
 
 - name: drone-s3-cache
   image: casperlabs/s3cmd-build:latest
