@@ -5688,6 +5688,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "withdraw-delegator-reward"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "withdraw-validator-reward"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "write-all-types"
 version = "0.1.0"
 dependencies = [
