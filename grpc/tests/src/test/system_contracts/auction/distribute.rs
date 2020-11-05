@@ -2471,7 +2471,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     //
     // Update round seigniorage rate into 50% of default value
     //
-    let new_seigniorage_multiplier = Ratio::new_raw(1, 2);
+    let new_seigniorage_multiplier = Ratio::new_raw(1, 10);
     let new_round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE * new_seigniorage_multiplier;
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
@@ -2491,8 +2491,13 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
+    let initial_supply = builder.total_supply(None);
+
     for _ in 0..5 {
-        super::run_auction(&mut builder);
+        let run_request = super::make_run_auction_request()
+            .with_protocol_version(new_protocol_version)
+            .build();
+        builder.exec(run_request).commit().expect_success();
     }
 
     let reward_factors: BTreeMap<PublicKey, u64> = {
@@ -2509,6 +2514,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             ARG_REWARD_FACTORS => reward_factors
         },
     )
+    .with_protocol_version(new_protocol_version)
     .build();
 
     let new_round_seigniorage_rate = {
@@ -2520,8 +2526,12 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let expected_total_reward_after = new_round_seigniorage_rate * initial_supply;
 
-    let validator_1_balance_after =
-        withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1, None);
+    let validator_1_balance_after = withdraw_validator_reward(
+        &mut builder,
+        *VALIDATOR_1_ADDR,
+        VALIDATOR_1,
+        Some(new_protocol_version),
+    );
     let expected_validator_1_balance_after =
         (expected_total_reward_after * Ratio::from(U512::one())).to_integer();
     assert_eq!(
@@ -2534,7 +2544,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         *DELEGATOR_1_ADDR,
         VALIDATOR_1,
         DELEGATOR_1,
-        None,
+        Some(new_protocol_version),
     );
     let expected_delegator_1_balance_after = U512::zero();
     assert_eq!(
@@ -2547,7 +2557,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         *DELEGATOR_2_ADDR,
         VALIDATOR_1,
         DELEGATOR_2,
-        None,
+        Some(new_protocol_version),
     );
     let expected_delegator_2_balance_after = U512::zero();
     assert_eq!(
