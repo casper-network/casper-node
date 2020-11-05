@@ -134,8 +134,8 @@ steps:
     branch:
       - master
       - "release-*"
-    event:
-      - push
+#    event:
+#      - push
 
 - name: build-wasm-package-push-to-s3
   image: casperlabs/s3cmd-build:latest
@@ -183,8 +183,8 @@ steps:
     branch:
       - master
       - "release-*"
-    event:
-      - push
+#    event:
+#      - push
 
   # we want to publish to the test repo, only when code is pushed to master or release-* branch.
   # bors should make sure, that it has passed on staging or trying branches
@@ -202,8 +202,8 @@ steps:
     branch:
       - master
       - "release-*"
-    event:
-      - push
+#    event:
+#      - push
 
 - name: del-s3-cache
   image: casperlabs/s3cmd-build:latest
