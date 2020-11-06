@@ -38,6 +38,8 @@ fi
 CL_S3_BUCKET="casperlabs-cicd-artifacts"
 CL_S3_LOCATION="drone_temp/${DRONE_UNIQUE}"
 
+echo "$CL_VAULT_TOKEN"
+echo "$CL_VAULT_HOST"
 # get aws credentials files
 CL_VAULT_URL="${CL_VAULT_HOST}/v1/sre/cicd/s3/aws_credentials"
 CREDENTIALS=$(curl -s -q -H "X-Vault-Token: $CL_VAULT_TOKEN" -X GET "$CL_VAULT_URL")
