@@ -1440,12 +1440,11 @@ mod tests {
         assert_eq!(signature, deserialized);
         assert_eq!(signature.tag(), deserialized.tag());
 
-        // Try to/from using bytesrepr. 
+        // Try to/from using bytesrepr.
         let serialized = bytesrepr::serialize(signature).unwrap();
         let deserialized = bytesrepr::deserialize(serialized).unwrap();
         assert_eq!(signature, deserialized);
         assert_eq!(signature.tag(), deserialized.tag())
-
     }
 
     fn signature_hex_roundtrip(signature: Signature) {

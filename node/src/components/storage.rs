@@ -33,7 +33,6 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(test)]
 use crate::testing::TestRng;
 
-
 use crate::{
     components::{
         block_proposer::BlockProposerState, chainspec_loader::Chainspec, small_network::NodeId,
@@ -140,8 +139,6 @@ impl<B: Value> DeployMetadata<B> {
         let _ = execution_results.insert(block_hash, execution_result);
         DeployMetadata { execution_results }
     }
-
-
 }
 
 #[cfg(test)]
@@ -155,7 +152,6 @@ impl DeployMetadata<Block> {
         DeployMetadata { execution_results }
     }
 }
-
 
 impl<B: Value> Default for DeployMetadata<B> {
     fn default() -> Self {
@@ -843,7 +839,6 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -854,6 +849,4 @@ mod tests {
         let deploy_metadata = DeployMetadata::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&deploy_metadata);
     }
-
-
 }

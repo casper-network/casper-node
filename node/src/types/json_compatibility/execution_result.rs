@@ -33,7 +33,7 @@ pub const OP_WRITE_TAG: u8 = 2;
 pub const OP_ADD_TAG: u8 = 3;
 pub const OP_NOOP_TAG: u8 = 4;
 
-/// Constants to track Transform serialization. 
+/// Constants to track Transform serialization.
 pub const IDENTITY: u8 = 0;
 pub const WRITE_CLVALUE: u8 = 1;
 pub const WRITE_ACCOUNT: u8 = 2;
@@ -49,8 +49,6 @@ pub const ADD_INT_U256: u8 = 11;
 pub const ADD_UINT_512: u8 = 12;
 pub const ADD_KEYS: u8 = 13;
 pub const FAILURE: u8 = 14;
-
-
 
 /// The result of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
@@ -467,7 +465,6 @@ impl FromBytes for Transform {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
