@@ -79,7 +79,9 @@ pub(crate) enum VoteError {
     #[error("The vote's creator is banned.")]
     Banned,
     #[error("The LNC rule was violated. Vote cited ({:?}) naively.", _0)]
-    LncViolated(ValidatorIndex),
+    LncNaiveCitation(ValidatorIndex),
+    #[error("")]
+    LncMissingEndorsement,
 }
 
 /// A reason for a validator to be marked as faulty.
@@ -392,7 +394,7 @@ impl<C: Context> State<C> {
             }
         }
         // Stake required to consider vote to be endorsed.
-        let threshold = self.total_weight() / 3 * 2;
+        let threshold = self.total_weight() / 2;
         let endorsed: Weight = self
             .incomplete_endorsements
             .get(&vote)
