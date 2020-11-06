@@ -14,6 +14,22 @@ steps:
       - rustup component add rustfmt
       - cargo fmt --all -- --check
 
+  - name: drone-s3-cache
+    image: casperlabs/s3cmd-build:latest
+    commands:
+      - ./ci/drone_s3_storage.sh put $(pwd)/resources/production/ production/
+    environment:
+      CL_VAULT_TOKEN:
+        from_secret: vault_token
+      CL_VAULT_HOST:
+        from_secret: vault_host
+    when:
+      branch:
+        - master
+        - "release-*"
+      #    event:
+      #      - push
+
   - name: cargo-clippy
     image: casperlabs/node-build-u1804
     environment:
