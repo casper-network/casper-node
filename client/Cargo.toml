@@ -51,12 +51,12 @@ For information on using package, see https://github.com/CasperLabs/casper-node
 """
 
 [dev-dependencies]
+anyhow = "1.0.28"
+casper-node = { path = "../node" }
+lazy_static = "1.4"
+hyper = "0.13.7"
 warp = "0.2.4"
 warp-json-rpc = "0.2"
-hyper = "0.13.7"
-casper-node = { version = "1.5.0", path = "../node" }
 futures = "0.3.5"
-anyhow = "1.0.28"
 semver = "0.11"
-lazy_static = "1.4"
 serde = "1"

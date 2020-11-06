@@ -28,14 +28,16 @@ where
 }
 
 struct MockServerHandle {
-    graceful_shutdown: oneshot::Sender<()>,
-    server_joiner: JoinHandle<Result<(), hyper::error::Error>>,
+    graceful_shutdown: Option<oneshot::Sender<()>>,
+    server_joiner: Option<JoinHandle<Result<(), hyper::error::Error>>>,
 }
-
-impl MockServerHandle {
-    async fn kill(self) {
-        let _ = self.graceful_shutdown.send(());
-        let _ = self.server_joiner.await;
+impl Drop for MockServerHandle {
+    fn drop(&mut self) {
+        let _ = self.graceful_shutdown.take().unwrap().send(());
+        let joiner = self.server_joiner.take().unwrap();
+        futures::executor::block_on(async {
+            let _ = joiner.await;
+        });
     }
 }
 
@@ -51,34 +53,23 @@ where
     let make_svc =
         hyper::service::make_service_fn(move |_| future::ok::<_, Infallible>(service.clone()));
     let (graceful_shutdown, shutdown_receiver) = oneshot::channel::<()>();
+    let graceful_shutdown = Some(graceful_shutdown);
     let server = builder.serve(make_svc);
     let server_with_shutdown = server.with_graceful_shutdown(async {
         shutdown_receiver.await.ok();
     });
     let server_joiner = tokio::spawn(server_with_shutdown);
+    let server_joiner = Some(server_joiner);
     MockServerHandle {
         graceful_shutdown,
         server_joiner,
     }
 }
 
-macro_rules! assert_valid_response {
-    ($response: expr) => {
-        assert_eq!(
-            $response
-                .expect("parsed request values")
-                .get_result()
-                .map(|val| serde_json::from_value::<()>(val.clone()).unwrap()),
-            Some(())
-        );
-    };
-}
-
-#[tokio::test(threaded_scheduler)] // needed to spawn the mock server in the background
+#[tokio::test(threaded_scheduler)]
 async fn client_should_send_get_state_root_hash() {
     let node_port = 8999;
-    let handle =
-        spawn_mock_rpc_server::<GetStateRootHashParams>(node_port, GetStateRootHash::METHOD);
+    let _ = spawn_mock_rpc_server::<GetStateRootHashParams>(node_port, GetStateRootHash::METHOD);
 
     let response = casper_client::get_state_root_hash(
         "1",
@@ -86,15 +77,19 @@ async fn client_should_send_get_state_root_hash() {
         false,
         "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
     );
-    assert_valid_response!(response);
-
-    handle.kill().await;
+    assert_eq!(
+        response
+            .expect("parsed request values")
+            .get_result()
+            .map(|val| serde_json::from_value::<()>(val.clone()).unwrap()),
+        Some(())
+    );
 }
 
-#[tokio::test(threaded_scheduler)] // needed to spawn the mock server in the background
+#[tokio::test(threaded_scheduler)]
 async fn client_should_send_get_deploy() {
     let node_port = 9001;
-    let handle = spawn_mock_rpc_server::<GetDeployParams>(node_port, GetDeploy::METHOD);
+    let _ = spawn_mock_rpc_server::<GetDeployParams>(node_port, GetDeploy::METHOD);
 
     let response = casper_client::get_deploy(
         "1",
@@ -102,15 +97,19 @@ async fn client_should_send_get_deploy() {
         false,
         "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
     );
-    assert_valid_response!(response);
-
-    handle.kill().await;
+    assert_eq!(
+        response
+            .expect("parsed request values")
+            .get_result()
+            .map(|val| serde_json::from_value::<()>(val.clone()).unwrap()),
+        Some(())
+    );
 }
 
 #[tokio::test(threaded_scheduler)]
 async fn client_should_send_put_deploy() {
     let node_port = 9002;
-    let handle = spawn_mock_rpc_server::<PutDeployParams>(node_port, PutDeploy::METHOD);
+    let _ = spawn_mock_rpc_server::<PutDeployParams>(node_port, PutDeploy::METHOD);
 
     let response = casper_client::put_deploy(
         "1",
@@ -130,16 +129,18 @@ async fn client_should_send_put_deploy() {
         ),
         PaymentStrParams::with_amount("100"),
     );
-    assert_valid_response!(response);
-    handle.kill().await;
+    assert_eq!(
+        response
+            .expect("parsed request values")
+            .get_result()
+            .map(|val| serde_json::from_value::<()>(val.clone()).unwrap()),
+        Some(())
+    );
 }
 
 #[tokio::test(threaded_scheduler)]
-#[should_panic(
-    expected = "InvalidArgument(\"Invalid arguments to get_transfer_target - must provide either a target account or purse.\")"
-)]
 async fn client_transfer_with_target_purse_and_target_account_should_fail() {
-    casper_client::transfer(
+    let result = casper_client::transfer(
         "1",
         &format!("http://localhost:{}", 12345),
         false,
@@ -155,6 +156,6 @@ async fn client_transfer_with_target_purse_and_target_account_should_fail() {
             ..Default::default()
         },
         PaymentStrParams::with_amount("100"),
-    )
-    .unwrap();
+    );
+    assert!(result.is_err());
 }
