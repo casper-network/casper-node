@@ -398,6 +398,7 @@ impl ContractRuntime {
         let environment = Arc::new(LmdbEnvironment::new(
             path.as_path(),
             contract_runtime_config.max_global_state_size(),
+            contract_runtime_config.max_readers(),
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(

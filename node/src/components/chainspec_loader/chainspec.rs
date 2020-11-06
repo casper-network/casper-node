@@ -18,7 +18,7 @@ use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
     shared::{motes::Motes, wasm_config::WasmConfig},
 };
-use casper_types::U512;
+use casper_types::{auction::EraId, U512};
 
 use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
@@ -95,6 +95,7 @@ pub(crate) struct HighwayConfig {
     pub(crate) voting_period_duration: TimeDiff,
     pub(crate) finality_threshold_percent: u8,
     pub(crate) minimum_round_exponent: u8,
+    pub(crate) maximum_round_exponent: u8,
 }
 
 impl Default for HighwayConfig {
@@ -108,6 +109,7 @@ impl Default for HighwayConfig {
             voting_period_duration: TimeDiff::from_str("2days").unwrap(),
             finality_threshold_percent: 10,
             minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
+            maximum_round_exponent: 19, // 2**19 ms = ~8.7 minutes
         }
     }
 }
@@ -122,6 +124,16 @@ impl HighwayConfig {
             && self.era_duration.millis() < self.minimum_era_height * min_era_ms
         {
             warn!("Era duration is less than minimum era height * round length!");
+        }
+
+        if self.minimum_round_exponent > self.maximum_round_exponent {
+            panic!(
+                "Minimum round exponent is greater than the maximum round exponent.\n\
+                 Minimum round exponent: {min},\n\
+                 Maximum round exponent: {max}",
+                min = self.minimum_round_exponent,
+                max = self.maximum_round_exponent
+            );
         }
     }
 }
@@ -138,7 +150,8 @@ impl HighwayConfig {
             entropy_duration: TimeDiff::from(rng.gen_range(600_000, 10_800_000)),
             voting_period_duration: TimeDiff::from(rng.gen_range(600_000, 172_800_000)),
             finality_threshold_percent: rng.gen_range(0, 101),
-            minimum_round_exponent: rng.gen_range(0, 20),
+            minimum_round_exponent: rng.gen_range(0, 16),
+            maximum_round_exponent: rng.gen_range(16, 22),
         }
     }
 }
@@ -180,6 +193,14 @@ pub struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: Timestamp,
     pub(crate) validator_slots: u32,
+    /// Number of eras before an auction actually defines the set of validators.
+    /// If you bond with a sufficient bid in era N, you will be a validator in era N +
+    /// auction_delay + 1
+    pub(crate) auction_delay: u64,
+    /// The delay for the payout of funds, in eras. If a withdraw request is included in a block in
+    /// era N (other than the last one), they are paid out in the last block of era N +
+    /// locked_funds_period.
+    pub(crate) locked_funds_period: EraId,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -260,6 +281,8 @@ impl GenesisConfig {
         let name = rng.gen::<char>().to_string();
         let timestamp = Timestamp::random(rng);
         let validator_slots = rng.gen::<u32>();
+        let auction_delay = rng.gen::<u64>();
+        let locked_funds_period: EraId = rng.gen::<u64>();
         let protocol_version = Version::new(
             rng.gen_range(0, 10),
             rng.gen::<u8>() as u64,
@@ -278,6 +301,8 @@ impl GenesisConfig {
             name,
             timestamp,
             validator_slots,
+            auction_delay,
+            locked_funds_period,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
@@ -393,6 +418,8 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.accounts,
             self.genesis.wasm_config,
             self.genesis.validator_slots,
+            self.genesis.auction_delay,
+            self.genesis.locked_funds_period,
         )
     }
 }
@@ -461,7 +488,7 @@ mod tests {
             *EXPECTED_GENESIS_HOST_FUNCTION_COSTS,
         );
     }
-    const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts { gas_per_byte: 101 };
+    const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts::new(101);
 
     const EXPECTED_GENESIS_COSTS: OpcodeCosts = OpcodeCosts {
         bit: 13,
@@ -557,6 +584,7 @@ mod tests {
         );
         assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
         assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 13);
+        assert_eq!(spec.genesis.highway_config.maximum_round_exponent, 19);
 
         assert_eq!(
             spec.genesis.deploy_config.max_payment_cost,

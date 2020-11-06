@@ -64,10 +64,15 @@ pub struct LmdbEnvironment {
 }
 
 impl LmdbEnvironment {
-    pub fn new<P: AsRef<Path>>(path: P, map_size: usize) -> Result<Self, error::Error> {
+    pub fn new<P: AsRef<Path>>(
+        path: P,
+        map_size: usize,
+        max_readers: u32,
+    ) -> Result<Self, error::Error> {
         let env = Environment::new()
             .set_max_dbs(MAX_DBS)
             .set_map_size(map_size)
+            .set_max_readers(max_readers)
             .open(path.as_ref())?;
         Ok(LmdbEnvironment { env })
     }

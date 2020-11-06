@@ -187,7 +187,12 @@ pub(crate) fn validate_get_block_response(
     let block_value = maybe_result
         .and_then(|value| value.get("block"))
         .ok_or_else(|| ValidateResponseError::NoBlockInResponse)?;
-    let block: Block = serde_json::from_value(block_value.to_owned())?;
+    let maybe_block: Option<Block> = serde_json::from_value(block_value.to_owned())?;
+    let block = if let Some(block) = maybe_block {
+        block
+    } else {
+        return Ok(());
+    };
     block.verify()?;
     match maybe_block_identifier {
         Some(BlockIdentifier::Hash(block_hash)) => {
@@ -201,7 +206,7 @@ pub(crate) fn validate_get_block_response(
                 return Err(ValidateResponseError::UnexpectedBlockHeight);
             }
         }
-        // More is necessary here to mitigate a MITM attack.  In this case we would want to validate
+        // More is necessary here to mitigate a MITM attack. In this case we would want to validate
         // `block.proofs()` to make sure that 1/3 of the validator weight signed the block, and we
         // would have to know the latest validators through some trustworthy means
         None => (),

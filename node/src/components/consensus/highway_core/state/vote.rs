@@ -93,4 +93,20 @@ impl<C: Context> Vote<C> {
     pub(crate) fn round_len(&self) -> TimeDiff {
         state::round_len(self.round_exp)
     }
+
+    /// Returns whether `vote` cites a new vote from `vidx` in the last panorama.
+    /// i.e. whether previous vote from creator of `vhash` cites different vote by `vidx`.
+    ///
+    /// NOTE: Returns `false` if `vidx` is faulty or hasn't produced any votes according to the
+    /// creator of `vhash`.
+    pub(crate) fn new_hash_obs(&self, state: &State<C>, vidx: ValidatorIndex) -> bool {
+        let latest_obs = self.panorama[vidx].correct();
+        let penultimate_obs = self
+            .previous()
+            .and_then(|v| state.vote(v).panorama[vidx].correct());
+        match (latest_obs, penultimate_obs) {
+            (Some(latest_hash), Some(penultimate_hash)) => latest_hash != penultimate_hash,
+            _ => false,
+        }
+    }
 }

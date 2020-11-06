@@ -23,7 +23,7 @@ mod purse_uref {
     const ARG_SHORT: &str = "p";
     const ARG_VALUE_NAME: &str = "FORMATTED STRING";
     const ARG_HELP: &str =
-        "The URef under which the purse is stored.  This must be a properly formatted URef \
+        "The URef under which the purse is stored. This must be a properly formatted URef \
         \"uref-<HEX STRING>-<THREE DIGIT INTEGER>\"";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
@@ -45,7 +45,7 @@ mod purse_uref {
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetBalance {
     const NAME: &'static str = "get-balance";
-    const ABOUT: &'static str = "Retrieves a stored balance";
+    const ABOUT: &'static str = "Retrieves a purse's balance from the network";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)

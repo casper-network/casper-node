@@ -1,7 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use casper_execution_engine::core::engine_state::upgrade::UpgradeConfig;
-use casper_types::ProtocolVersion;
+use casper_types::{auction::EraId, ProtocolVersion};
 
 use crate::engine_server::{ipc::UpgradeRequest, mappings::MappingError};
 
@@ -51,6 +51,27 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             )
         };
 
+        let new_auction_delay: Option<u64> = if !upgrade_point.has_new_auction_delay() {
+            None
+        } else {
+            Some(
+                upgrade_point
+                    .take_new_auction_delay()
+                    .get_new_auction_delay(),
+            )
+        };
+
+        let new_locked_funds_period: Option<EraId> = if !upgrade_point.has_new_locked_funds_period()
+        {
+            None
+        } else {
+            Some(
+                upgrade_point
+                    .take_new_locked_funds_period()
+                    .get_new_locked_funds_period(),
+            )
+        };
+
         Ok(UpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
@@ -60,6 +81,8 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             wasm_config,
             activation_point,
             new_validator_slots,
+            new_auction_delay,
+            new_locked_funds_period,
         ))
     }
 }

@@ -2,18 +2,20 @@
 //!
 //! Components are the building blocks of the whole application, wired together inside a reactor.
 //! Each component has a unified interface, expressed by the `Component` trait.
-pub(crate) mod api_server;
 pub(crate) mod block_executor;
+pub(crate) mod block_proposer;
 pub(crate) mod block_validator;
 pub(crate) mod chainspec_loader;
 pub(crate) mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_acceptor;
-pub(crate) mod deploy_buffer;
+pub(crate) mod event_stream_server;
 pub(crate) mod fetcher;
 pub(crate) mod gossiper;
 pub(crate) mod linear_chain;
 pub(crate) mod linear_chain_sync;
+pub(crate) mod rest_server;
+pub(crate) mod rpc_server;
 // The  `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
@@ -21,10 +23,18 @@ pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
+use lazy_static::lazy_static;
+use semver::Version;
+
 use crate::{
     effect::{EffectBuilder, Effects},
     types::CryptoRngCore,
 };
+
+// TODO - confirm if we want to use the protocol version for this.
+lazy_static! {
+    pub(crate) static ref CLIENT_API_VERSION: Version = Version::new(1, 0, 0);
+}
 
 /// Core Component.
 ///

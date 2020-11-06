@@ -8,6 +8,8 @@ standard_payment_installer_path = 'standard_payment.wasm'
 auction_installer_path = 'auction_install.wasm'
 accounts_path = 'accounts.csv'
 validator_slots = 5
+auction_delay = 3
+locked_funds_period = 0
 
 [highway]
 genesis_era_start_timestamp = '2020-09-18T18:45:00Z'
@@ -18,6 +20,7 @@ entropy_duration = '5days'
 voting_period_duration = '6weeks'
 finality_threshold_percent = 8
 minimum_round_exponent = 13
+maximum_round_exponent = 19
 
 [deploys]
 max_payment_cost = '9'

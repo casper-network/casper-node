@@ -36,10 +36,10 @@ mod source_purse {
     use super::*;
 
     pub(super) const ARG_NAME: &str = "source-purse";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_VALUE_NAME: &str = "UREF";
     const ARG_HELP: &str =
-        "Hex-encoded URef of the source purse. If this is omitted, the main purse of the account \
-        creating this transfer will be used as the source purse";
+        "URef of the source purse. If this is omitted, the main purse of the account creating this \
+        transfer will be used as the source purse";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -66,7 +66,7 @@ pub(super) mod target_account {
         "Hex-encoded public key of the account from which the main purse will be used as the \
         target.";
 
-    // Conflicts with --target-purse, but that's handled via an `ArgGroup` in the subcommand.  Don't
+    // Conflicts with --target-purse, but that's handled via an `ArgGroup` in the subcommand. Don't
     // add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -88,8 +88,8 @@ pub(super) mod target_purse {
     use super::*;
 
     pub(super) const ARG_NAME: &str = "target-purse";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
-    const ARG_HELP: &str = "Hex-encoded URef of the target purse";
+    const ARG_VALUE_NAME: &str = "UREF";
+    const ARG_HELP: &str = "URef of the target purse";
 
     // Conflicts with --target-account, but that's handled via an `ArgGroup` in the subcommand.
     // Don't add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.

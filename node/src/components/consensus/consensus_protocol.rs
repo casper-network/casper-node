@@ -82,7 +82,7 @@ pub(crate) enum ConsensusProtocolResult<I, C: Context> {
     /// The domain logic should verify any intrinsic validity conditions of consensus values, e.g.
     /// that it has the expected structure, or that deploys that are mentioned by hash actually
     /// exist, and then call `ConsensusProtocol::resolve_validity`.
-    ValidateConsensusValue(I, C::ConsensusValue),
+    ValidateConsensusValue(I, C::ConsensusValue, Timestamp),
     /// New direct evidence was added against the given validator.
     NewEvidence(C::ValidatorId),
     /// Send evidence about the validator from an earlier era to the peer.
@@ -155,4 +155,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
 
     /// Returns the list of all validators that were observed as faulty in this consensus instance.
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId>;
+
+    /// Returns true if the protocol has received some messages since initialization.
+    fn has_received_messages(&self) -> bool;
 }

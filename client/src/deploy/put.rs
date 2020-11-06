@@ -8,7 +8,7 @@ use crate::{command::ClientCommand, common};
 
 impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
     const NAME: &'static str = "put-deploy";
-    const ABOUT: &'static str = "Creates a new deploy and sends it to the network for execution";
+    const ABOUT: &'static str = "Creates a deploy and sends it to the network for execution";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         let subcommand = SubCommand::with_name(Self::NAME)

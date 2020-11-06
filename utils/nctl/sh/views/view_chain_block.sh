@@ -43,11 +43,11 @@ node=${node:-1}
 
 if [ "$block_hash" ]; then
     $NCTL/assets/net-$net/bin/casper-client get-block \
-        --node-address $(get_node_address $net $node) \
+        --node-address $(get_node_address_rpc $net $node) \
         --block-identifier $block_hash \
         | jq '.result.block'
 else
     $NCTL/assets/net-$net/bin/casper-client get-block \
-        --node-address $(get_node_address $net $node) \
+        --node-address $(get_node_address_rpc $net $node) \
         | jq '.result.block'
 fi

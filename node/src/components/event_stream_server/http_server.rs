@@ -10,59 +10,24 @@ use tokio::{
     sync::{mpsc, oneshot},
 };
 use tracing::{debug, info, trace, warn};
-use warp::Filter;
 use wheelbuf::WheelBuf;
 
 use super::{
-    rest_server,
-    rpcs::{self, RpcWithOptionalParamsExt, RpcWithParamsExt, RpcWithoutParamsExt},
     sse_server::{self, BroadcastChannelMessage, ServerSentEvent, SSE_INITIAL_EVENT},
-    Config, ReactorEventT, SseData,
+    Config, SseData,
 };
-use crate::{effect::EffectBuilder, utils};
+use crate::utils;
 
 /// Run the HTTP server.
 ///
 /// `data_receiver` will provide the server with local events which should then be sent to all
 /// subscribed clients.
-pub(super) async fn run<REv: ReactorEventT>(
-    config: Config,
-    effect_builder: EffectBuilder<REv>,
-    mut data_receiver: mpsc::UnboundedReceiver<SseData>,
-) {
-    // REST filters.
-    let rest_status = rest_server::create_status_filter(effect_builder);
-    let rest_metrics = rest_server::create_metrics_filter(effect_builder);
-
-    // RPC filters.
-    let rpc_put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder);
-    let rpc_get_block = rpcs::chain::GetBlock::create_filter(effect_builder);
-    let rpc_get_state_root_hash = rpcs::chain::GetStateRootHash::create_filter(effect_builder);
-    let rpc_get_item = rpcs::state::GetItem::create_filter(effect_builder);
-    let rpc_get_balance = rpcs::state::GetBalance::create_filter(effect_builder);
-    let rpc_get_deploy = rpcs::info::GetDeploy::create_filter(effect_builder);
-    let rpc_get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
-    let rpc_get_status = rpcs::info::GetStatus::create_filter(effect_builder);
-    let rpc_get_auction_info = rpcs::state::GetAuctionInfo::create_filter(effect_builder);
-
+pub(super) async fn run(config: Config, mut data_receiver: mpsc::UnboundedReceiver<SseData>) {
     // Event stream channels and filter.
     let (broadcaster, mut new_subscriber_info_receiver, sse_filter) =
         sse_server::create_channels_and_filter();
 
-    let service = warp_json_rpc::service(
-        rest_status
-            .or(rest_metrics)
-            .or(rpc_put_deploy)
-            .or(rpc_get_block)
-            .or(rpc_get_state_root_hash)
-            .or(rpc_get_item)
-            .or(rpc_get_balance)
-            .or(rpc_get_deploy)
-            .or(rpc_get_peers)
-            .or(rpc_get_status)
-            .or(rpc_get_auction_info)
-            .or(sse_filter),
-    );
+    let service = warp_json_rpc::service(sse_filter);
 
     let mut server_address = match utils::resolve_address(&config.address) {
         Ok(address) => address,
@@ -140,7 +105,7 @@ pub(super) async fn run<REv: ReactorEventT>(
                     match maybe_data {
                         Some(data) => {
                             // Buffer the data and broadcast it to subscribed clients.
-                            trace!("HTTP server received {:?}", data);
+                            trace!("Event stream server received {:?}", data);
                             let event = ServerSentEvent { id: Some(event_index), data };
                             buffer.push(event.clone());
                             let message = BroadcastChannelMessage::ServerSentEvent(event);
@@ -168,5 +133,5 @@ pub(super) async fn run<REv: ReactorEventT>(
     let _ = broadcaster.send(BroadcastChannelMessage::Shutdown);
     let _ = shutdown_sender.send(());
 
-    trace!("HTTP server stopped");
+    trace!("Event stream server stopped");
 }

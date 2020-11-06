@@ -10,13 +10,15 @@ use casper_contract::{
 };
 use casper_types::{
     auction::{
-        Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraValidators, SeigniorageRecipient,
-        SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorRewardMap,
-        ValidatorWeights, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_VALIDATOR_SLOTS, AUCTION_DELAY, BIDS_KEY, BID_PURSES_KEY, DEFAULT_LOCKED_FUNDS_PERIOD,
-        DELEGATORS_KEY, DELEGATOR_REWARD_MAP, DELEGATOR_REWARD_PURSE, ERA_ID_KEY,
-        ERA_VALIDATORS_KEY, INITIAL_ERA_ID, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP, VALIDATOR_REWARD_PURSE, VALIDATOR_SLOTS_KEY,
+        Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraId, EraValidators,
+        SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
+        UnbondingPurses, ValidatorRewardMap, ValidatorWeights, ARG_AUCTION_DELAY,
+        ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD, ARG_MINT_CONTRACT_PACKAGE_HASH,
+        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY,
+        DELEGATOR_REWARD_MAP_KEY, DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY,
+        INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP_KEY, VALIDATOR_REWARD_PURSE_KEY,
+        VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
@@ -35,6 +37,7 @@ pub extern "C" fn install() {
         runtime::get_named_arg(ARG_MINT_CONTRACT_PACKAGE_HASH);
 
     let validator_slots: u32 = runtime::get_named_arg(ARG_VALIDATOR_SLOTS);
+    let locked_funds_period: EraId = runtime::get_named_arg(ARG_LOCKED_FUNDS_PERIOD);
 
     let entry_points = auction::get_entry_points();
     let (contract_package_hash, access_uref) = storage::create_contract_package_at_hash();
@@ -57,14 +60,14 @@ pub extern "C" fn install() {
 
         for (validator_public_key, amount) in genesis_validators {
             let bonding_purse = create_purse(mint_package_hash, amount);
-            let founding_validator =
-                Bid::new_locked(bonding_purse, amount, DEFAULT_LOCKED_FUNDS_PERIOD);
+            let founding_validator = Bid::new_locked(bonding_purse, amount, locked_funds_period);
             validators.insert(validator_public_key, founding_validator);
             initial_validator_weights.insert(validator_public_key, amount);
             bid_purses.insert(validator_public_key, bonding_purse);
         }
 
-        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + AUCTION_DELAY;
+        let auction_delay: u64 = runtime::get_named_arg(ARG_AUCTION_DELAY);
+        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + auction_delay;
 
         // Starting era validators
         named_keys.insert(ERA_ID_KEY.into(), storage::new_uref(INITIAL_ERA_ID).into());
@@ -99,24 +102,33 @@ pub extern "C" fn install() {
             storage::new_uref(UnbondingPurses::new()).into(),
         );
         named_keys.insert(
-            DELEGATOR_REWARD_PURSE.into(),
+            DELEGATOR_REWARD_PURSE_KEY.into(),
             create_purse(mint_package_hash, U512::zero()).into(),
         );
         named_keys.insert(
-            VALIDATOR_REWARD_PURSE.into(),
+            VALIDATOR_REWARD_PURSE_KEY.into(),
             create_purse(mint_package_hash, U512::zero()).into(),
         );
         named_keys.insert(
-            DELEGATOR_REWARD_MAP.into(),
+            DELEGATOR_REWARD_MAP_KEY.into(),
             storage::new_uref(DelegatorRewardMap::new()).into(),
         );
         named_keys.insert(
-            VALIDATOR_REWARD_MAP.into(),
+            VALIDATOR_REWARD_MAP_KEY.into(),
             storage::new_uref(ValidatorRewardMap::new()).into(),
         );
         named_keys.insert(
             VALIDATOR_SLOTS_KEY.into(),
             storage::new_uref(validator_slots).into(),
+        );
+        named_keys.insert(
+            AUCTION_DELAY_KEY.into(),
+            storage::new_uref(auction_delay).into(),
+        );
+
+        named_keys.insert(
+            LOCKED_FUNDS_PERIOD_KEY.into(),
+            storage::new_uref(locked_funds_period).into(),
         );
 
         named_keys

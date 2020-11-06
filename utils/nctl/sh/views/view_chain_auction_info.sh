@@ -38,5 +38,5 @@ node=${node:-1}
 #######################################
 
 $NCTL/assets/net-$net/bin/casper-client get-auction-info \
-    --node-address $(get_node_address $net $node) \
+    --node-address $(get_node_address_rpc $net $node) \
     | jq '.result'

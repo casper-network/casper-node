@@ -12,7 +12,7 @@ echo $(
         source $NCTL/sh/views/view_chain_account.sh net=$1 root-hash=$2 account-key=$3 \
             | jq '.stored_value.Account.main_purse' \
             | sed -e 's/^"//' -e 's/"$//'
-    ) 
+    )
 }
 
 #######################################
@@ -25,7 +25,7 @@ echo $(
 #   Block identifer.
 #######################################
 function get_state_root_hash() {
-    node_address=$(get_node_address $1 $2)
+    node_address=$(get_node_address_rpc $1 $2)
     if [ "$3" ]; then
         $NCTL/assets/net-$net/bin/casper-client get-state-root-hash \
             --node-address $node_address \

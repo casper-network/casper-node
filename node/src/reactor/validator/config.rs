@@ -2,8 +2,9 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    logging::LoggingConfig, types::NodeConfig, ApiServerConfig, ConsensusConfig,
-    ContractRuntimeConfig, FetcherConfig, GossipConfig, SmallNetworkConfig, StorageConfig,
+    logging::LoggingConfig, types::NodeConfig, ConsensusConfig, ContractRuntimeConfig,
+    EventStreamServerConfig, FetcherConfig, GossipConfig, RestServerConfig, RpcServerConfig,
+    SmallNetworkConfig, StorageConfig,
 };
 
 /// Root configuration.
@@ -19,8 +20,12 @@ pub struct Config {
     pub consensus: ConsensusConfig,
     /// Network configuration.
     pub network: SmallNetworkConfig,
-    /// HTTP API server configuration.
-    pub http_server: ApiServerConfig,
+    /// Event stream API server configuration.
+    pub event_stream_server: EventStreamServerConfig,
+    /// REST API server configuration.
+    pub rest_server: RestServerConfig,
+    /// RPC API server configuration.
+    pub rpc_server: RpcServerConfig,
     /// On-disk storage configuration.
     pub storage: StorageConfig,
     /// Gossip protocol configuration.

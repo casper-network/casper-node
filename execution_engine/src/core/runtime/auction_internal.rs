@@ -32,7 +32,7 @@ where
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).unwrap();
         self.context
-            .write_gs(uref.into(), StoredValue::CLValue(cl_value))
+            .metered_write_gs(uref.into(), StoredValue::CLValue(cl_value))
             .map_err(|_| Error::Storage)
     }
 }
