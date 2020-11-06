@@ -32,7 +32,7 @@ impl From<ApiServerAnnouncement> for Event {
     fn from(announcement: ApiServerAnnouncement) -> Self {
         match announcement {
             ApiServerAnnouncement::DeployReceived { deploy } => Event::Accept {
-                deploy: deploy,
+                deploy,
                 source: Source::<NodeId>::Client,
             },
         }
