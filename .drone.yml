@@ -8,15 +8,10 @@ name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
 steps:
-  - name: cargo-fmt
-    image: casperlabs/node-build-u1804
-    commands:
-      - rustup component add rustfmt
-      - cargo fmt --all -- --check
-
   - name: drone-s3-cache
     image: casperlabs/s3cmd-build:latest
     commands:
+      - echo "${CL_VAULT_TOKEN}"
       - ./ci/drone_s3_storage.sh put $(pwd)/resources/production/ production/
     environment:
       CL_VAULT_TOKEN:
@@ -29,6 +24,12 @@ steps:
         - "release-*"
       #    event:
       #      - push
+
+  - name: cargo-fmt
+    image: casperlabs/node-build-u1804
+    commands:
+      - rustup component add rustfmt
+      - cargo fmt --all -- --check
 
   - name: cargo-clippy
     image: casperlabs/node-build-u1804
