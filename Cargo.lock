@@ -441,7 +441,6 @@ dependencies = [
  "casper-types",
  "cbindgen",
  "clap",
- "cmake",
  "futures 0.3.7",
  "hex",
  "humantime",
