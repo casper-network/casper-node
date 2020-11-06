@@ -4,19 +4,17 @@
 
 #define RESPONSE_BUFFER_LEN 1024
 #define ERROR_LEN 255
+#define NODE_ADDRESS "http://localhost:50101"
+#define RPC_ID "1"
+#define VERBOSE false
 
 int main(int argc, char **argv) {
-    const char *node_address = "http://localhost:50101";
-    const char *rpc_id = "1";
-    bool verbose = true;
-
     casper_setup_client();
 
     unsigned char response_buffer[RESPONSE_BUFFER_LEN] = {0};
-    bool success =
-        casper_get_auction_info(rpc_id, node_address, verbose, response_buffer,
-                                RESPONSE_BUFFER_LEN);
-    if (success == true) {
+    casper_error_t success = casper_get_auction_info(
+        RPC_ID, NODE_ADDRESS, VERBOSE, response_buffer, RESPONSE_BUFFER_LEN);
+    if (success == CASPER_SUCCESS) {
         printf("get_auction_info: got successful response\n%s\n",
                response_buffer);
     } else {

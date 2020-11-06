@@ -23,6 +23,71 @@ fn set_last_error(error: Error) {
     *last_error = Some(error)
 }
 
+/// FFI representation of [super::Error](super::Error)
+///
+/// The full error can be extracted with [get_last_error](get_last_error).
+/// See [super::Error](super::Error) for more details on what these mean.
+#[allow(non_snake_case, non_camel_case_types, missing_docs)]
+#[repr(C)]
+pub enum casper_error_t {
+    CASPER_SUCCESS = 0,
+    CASPER_FAILED_TO_PARSE_KEY = -1,
+    CASPER_FAILED_TO_PARSE_UREF = -2,
+    CASPER_FAILED_TO_PARSE_INT = -3,
+    CASPER_FAILED_TO_PARSE_TIME_DIFF = -4,
+    CASPER_FAILED_TO_PARSE_TIMESTAMP = -5,
+    CASPER_FAILED_TO_PARSE_UINT = -6,
+    CASPER_FAILED_TO_GET_RESPONSE = -7,
+    CASPER_FAILED_TO_PARSE_RESPONSE = -8,
+    CASPER_FILE_ALREADY_EXISTS = -9,
+    CASPER_UNSUPPORTED_ALGORITHM = -10,
+    CASPER_REPSONSE_IS_ERROR = -11,
+    CASPER_INVALID_JSON = -12,
+    CASPER_INVALID_RPC_RESPONSE = -13,
+    CASPER_FAILED_SENDING = -14,
+    CASPER_IO_ERROR = -15,
+    CASPER_TO_BYTES_ERROR = -16,
+    CASPER_CRYPTO_ERROR = -17,
+    CASPER_INVALID_CL_VALUE = -18,
+    CASPER_INVALID_ARGUMENT = -19,
+    CASPER_INVALID_RESPONSE = -20,
+    CASPER_FFI_SETUP_NOT_CALLED = -21,
+    CASPER_FFI_PTR_NULL_BUT_REQUIRED = -22,
+}
+
+trait AsFFIError {
+    fn as_ffi_error(&self) -> casper_error_t;
+}
+
+impl AsFFIError for Error {
+    fn as_ffi_error(&self) -> casper_error_t {
+        match self {
+            Error::FailedToParseKey => casper_error_t::CASPER_FAILED_TO_PARSE_KEY,
+            Error::FailedToParseURef(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_UREF,
+            Error::FailedToParseInt(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_INT,
+            Error::FailedToParseTimeDiff(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_TIME_DIFF,
+            Error::FailedToParseTimestamp(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_TIMESTAMP,
+            Error::FailedToParseUint(_, _) => casper_error_t::CASPER_FAILED_TO_PARSE_UINT,
+            Error::FailedToGetResponse(_) => casper_error_t::CASPER_FAILED_TO_GET_RESPONSE,
+            Error::FailedToParseResponse(_) => casper_error_t::CASPER_FAILED_TO_PARSE_RESPONSE,
+            Error::FileAlreadyExists(_) => casper_error_t::CASPER_FILE_ALREADY_EXISTS,
+            Error::UnsupportedAlgorithm(_) => casper_error_t::CASPER_UNSUPPORTED_ALGORITHM,
+            Error::ResponseIsError(_) => casper_error_t::CASPER_REPSONSE_IS_ERROR,
+            Error::InvalidJson(_) => casper_error_t::CASPER_INVALID_JSON,
+            Error::InvalidRpcResponse(_) => casper_error_t::CASPER_INVALID_RPC_RESPONSE,
+            Error::FailedSending(_) => casper_error_t::CASPER_FAILED_SENDING,
+            Error::IoError { .. } => casper_error_t::CASPER_IO_ERROR,
+            Error::ToBytesError(_) => casper_error_t::CASPER_TO_BYTES_ERROR,
+            Error::CryptoError(_) => casper_error_t::CASPER_CRYPTO_ERROR,
+            Error::InvalidCLValue(_) => casper_error_t::CASPER_INVALID_CL_VALUE,
+            Error::InvalidArgument(_, _) => casper_error_t::CASPER_INVALID_ARGUMENT,
+            Error::InvalidResponse(_) => casper_error_t::CASPER_INVALID_RESPONSE,
+            Error::FFISetupNotCalled => casper_error_t::CASPER_FFI_SETUP_NOT_CALLED,
+            Error::FFIPtrNullButRequired(_) => casper_error_t::CASPER_FFI_PTR_NULL_BUT_REQUIRED,
+        }
+    }
+}
+
 /// Private macro for parsing arguments from c strings, (const char *, or *const c_char in rust
 /// terms). The sad path contract here is that we indicate there was an error by returning `false`,
 /// then we store the argument -name- as an Error::InvalidArgument in LAST_ERROR. The happy path is
@@ -41,8 +106,9 @@ macro_rules! r#try_unwrap_result {
         match $result {
             Ok(value) => value,
             Err(error) => {
+                let error_code = AsFFIError::as_ffi_error(&error);
                 set_last_error(error);
-                return false;
+                return error_code;
             }
         }
     };
@@ -55,8 +121,9 @@ macro_rules! r#try_unwrap_option {
         match $arg {
             Some(value) => value,
             None => {
+                let err_code = $err.as_ffi_error();
                 set_last_error($err);
-                return false;
+                return err_code;
             }
         }
     };
@@ -67,7 +134,7 @@ macro_rules! r#try_unwrap_option {
 /// `try_unsafe_arg!`, this handles the sad path, and the happy path is left up to callsites.
 macro_rules! r#try_unwrap_rpc {
     ($rpc:expr) => {{
-        let rpc = try_unwrap_result!($rpc);
+        let rpc = try_unwrap_result!($rpc.map_err(Into::into));
         let rpc_result = try_unwrap_option!(rpc.get_result(), or_else => {
             let rpc_err = rpc.get_error().expect("should be error");
             Error::ResponseIsError(rpc_err.to_owned())
@@ -183,7 +250,7 @@ pub extern "C" fn casper_get_last_error(buf: *mut c_uchar, len: usize) -> usize 
 
 /// Creates a `Deploy` and sends it to the network for execution.
 ///
-/// See [super::put_deploy](function.put_deploy.html) for more details
+/// See [super::put_deploy](super::put_deploy) for more details
 #[no_mangle]
 pub extern "C" fn casper_put_deploy(
     maybe_rpc_id: *const c_char,
@@ -194,7 +261,7 @@ pub extern "C" fn casper_put_deploy(
     payment_params: *const casper_payment_params_t,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
-) -> bool {
+) -> casper_error_t {
     let mut runtime = RUNTIME.lock().expect("should lock");
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
@@ -213,20 +280,20 @@ pub extern "C" fn casper_put_deploy(
         );
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
-        true
+        casper_error_t::CASPER_SUCCESS
     })
 }
 
 /// Creates a `Deploy` and outputs it to a file or stdout.
 ///
-/// See [super::make_deploy](function.make_deploy.html) for more details
+/// See [super::make_deploy](super::make_deploy) for more details
 #[no_mangle]
 pub extern "C" fn casper_make_deploy(
     maybe_output_path: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     session_params: *const casper_session_params_t,
     payment_params: *const casper_payment_params_t,
-) -> bool {
+) -> casper_error_t {
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
     let deploy_params = try_arg_into!(deploy_params);
     let session_params = try_arg_into!(session_params);
@@ -238,30 +305,30 @@ pub extern "C" fn casper_make_deploy(
         payment_params,
     );
     try_unwrap_result!(result);
-    true
+    casper_error_t::CASPER_SUCCESS
 }
 
 /// Reads a previously-saved `Deploy` from a file, cryptographically signs it, and outputs it to a
 /// file or stdout.
 ///
-/// See [super::sign_deploy_file](function.sign_deploy_file.html) for more details.
+/// See [super::sign_deploy_file](super::sign_deploy_file) for more details.
 #[no_mangle]
 pub extern "C" fn casper_sign_deploy_file(
     input_path: *const c_char,
     secret_key: *const c_char,
     maybe_output_path: *const c_char,
-) -> bool {
+) -> casper_error_t {
     let input_path = try_unsafe_arg!(input_path);
     let secret_key = try_unsafe_arg!(secret_key);
     let maybe_output_path = try_unsafe_arg!(maybe_output_path);
     let result = super::sign_deploy_file(input_path, secret_key, maybe_output_path);
     try_unwrap_result!(result);
-    true
+    casper_error_t::CASPER_SUCCESS
 }
 
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.
 ///
-/// See [super::send_deploy_file](function.send_deploy_file.html) for more details.
+/// See [super::send_deploy_file](super::send_deploy_file) for more details.
 #[no_mangle]
 pub extern "C" fn casper_send_deploy_file(
     maybe_rpc_id: *const c_char,
@@ -270,7 +337,7 @@ pub extern "C" fn casper_send_deploy_file(
     input_path: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
-) -> bool {
+) -> casper_error_t {
     let mut runtime = RUNTIME.lock().expect("should lock");
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
@@ -280,13 +347,13 @@ pub extern "C" fn casper_send_deploy_file(
         let result = super::send_deploy_file(maybe_rpc_id, node_address, verbose, input_path);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
-        true
+        casper_error_t::CASPER_SUCCESS
     })
 }
 
 /// Transfers funds between purses.
 ///
-/// See [super::transfer](function.transfer.html) for more details
+/// See [super::transfer](super::transfer) for more details
 #[no_mangle]
 pub extern "C" fn casper_transfer(
     maybe_rpc_id: *const c_char,
@@ -300,7 +367,7 @@ pub extern "C" fn casper_transfer(
     payment_params: *const casper_payment_params_t,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
-) -> bool {
+) -> casper_error_t {
     let mut runtime = RUNTIME.lock().expect("should lock");
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
@@ -325,13 +392,13 @@ pub extern "C" fn casper_transfer(
         );
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
-        true
+        casper_error_t::CASPER_SUCCESS
     })
 }
 
 /// Retrieves a `Deploy` from the network.
 ///
-/// See [super::get_deploy](function.get_deploy.html) for more details.
+/// See [super::get_deploy](super::get_deploy) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_deploy(
     maybe_rpc_id: *const c_char,
@@ -340,7 +407,7 @@ pub extern "C" fn casper_get_deploy(
     deploy_hash: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
-) -> bool {
+) -> casper_error_t {
     let mut runtime = RUNTIME.lock().expect("should lock");
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
@@ -350,13 +417,13 @@ pub extern "C" fn casper_get_deploy(
         let result = super::get_deploy(maybe_rpc_id, node_address, verbose, deploy_hash);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
-        true
+        casper_error_t::CASPER_SUCCESS
     })
 }
 
 /// Retrieves a `Block` from the network.
 ///
-/// See [super::get_block](function.get_block.html) for more details.
+/// See [super::get_block](super::get_block) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_block(
     maybe_rpc_id: *const c_char,
@@ -365,7 +432,7 @@ pub extern "C" fn casper_get_block(
     maybe_block_id: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
-) -> bool {
+) -> casper_error_t {
     let mut runtime = RUNTIME.lock().expect("should lock");
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
@@ -375,13 +442,13 @@ pub extern "C" fn casper_get_block(
         let result = super::get_block(maybe_rpc_id, node_address, verbose, maybe_block_id);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
-        true
+        casper_error_t::CASPER_SUCCESS
     })
 }
 
 /// Retrieves a state root hash at a given `Block`.
 ///
-/// See [super::get_state_root_hash](function.get_state_root_hash.html) for more details.
+/// See [super::get_state_root_hash](super::get_state_root_hash) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_state_root_hash(
     maybe_rpc_id: *const c_char,
@@ -390,7 +457,7 @@ pub extern "C" fn casper_get_state_root_hash(
     maybe_block_id: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
-) -> bool {
+) -> casper_error_t {
     let mut runtime = RUNTIME.lock().expect("should lock");
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
@@ -401,13 +468,13 @@ pub extern "C" fn casper_get_state_root_hash(
             super::get_state_root_hash(maybe_rpc_id, node_address, verbose, maybe_block_id);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
-        true
+        casper_error_t::CASPER_SUCCESS
     })
 }
 
 /// Retrieves a stored value from the network.
 ///
-/// See [super::get_item](function.get_item.html) for more details.
+/// See [super::get_item](super::get_item) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_item(
     maybe_rpc_id: *const c_char,
@@ -418,7 +485,7 @@ pub extern "C" fn casper_get_item(
     path: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
-) -> bool {
+) -> casper_error_t {
     let mut runtime = RUNTIME.lock().expect("should lock");
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
@@ -437,13 +504,13 @@ pub extern "C" fn casper_get_item(
         );
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
-        true
+        casper_error_t::CASPER_SUCCESS
     })
 }
 
 /// Retrieves a purse's balance from the network.
 ///
-/// See [super::get_balance](function.get_balance.html) for more details.
+/// See [super::get_balance](super::get_balance) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_balance(
     maybe_rpc_id: *const c_char,
@@ -453,7 +520,7 @@ pub extern "C" fn casper_get_balance(
     purse: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
-) -> bool {
+) -> casper_error_t {
     let mut runtime = RUNTIME.lock().expect("should lock");
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
@@ -465,13 +532,13 @@ pub extern "C" fn casper_get_balance(
             super::get_balance(maybe_rpc_id, node_address, verbose, state_root_hash, purse);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
-        true
+        casper_error_t::CASPER_SUCCESS
     })
 }
 
 /// Retrieves the bids and validators as of the most recently added `Block`.
 ///
-/// See [super::get_auction_info](function.get_auction_info.html) for more details.
+/// See [super::get_auction_info](super::get_auction_info) for more details.
 #[no_mangle]
 pub extern "C" fn casper_get_auction_info(
     maybe_rpc_id: *const c_char,
@@ -479,7 +546,7 @@ pub extern "C" fn casper_get_auction_info(
     verbose: bool,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
-) -> bool {
+) -> casper_error_t {
     let mut runtime = RUNTIME.lock().expect("should lock");
     let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
@@ -488,13 +555,13 @@ pub extern "C" fn casper_get_auction_info(
         let result = super::get_auction_info(maybe_rpc_id, node_address, verbose);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
-        true
+        casper_error_t::CASPER_SUCCESS
     })
 }
 
 /// Container for `Deploy` construction options.
 ///
-/// See [DeployStrParams](struct.DeployStrParams.html) for more info.
+/// See [DeployStrParams](super::DeployStrParams) for more info.
 #[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Clone)]
@@ -535,7 +602,7 @@ impl TryInto<super::DeployStrParams<'_>> for casper_deploy_params_t {
 
 /// Container for `Payment` construction options.
 ///
-/// See [PaymentStrParams](struct.PaymentStrParams.html) for more info.
+/// See [PaymentStrParams](super::PaymentStrParams) for more info.
 #[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Clone)]
@@ -609,7 +676,7 @@ impl TryInto<super::PaymentStrParams<'static>> for casper_payment_params_t {
 
 /// Container for `Session` construction options.
 ///
-/// See [SessionStrParams](struct.SessionStrParams.html) for more info.
+/// See [SessionStrParams](super::SessionStrParams) for more info.
 #[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Clone)]

@@ -139,3 +139,6 @@ resources/node-storage/*
 /utils/nctl/assets
 /utils/nctl/dumps
 /utils/nctl/templates/node-config-*.toml
+
+# client c headers
+client/headers/**

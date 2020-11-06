@@ -4,38 +4,40 @@
 
 #define RESPONSE_BUFFER_LEN 1024
 #define ERROR_LEN 255
+#define NODE_ADDRESS "http://localhost:50101"
+#define RPC_ID "1"
+#define VERBOSE false
 
 int main(int argc, char **argv) {
-    const char *node_address = "http://localhost:50101";
-    const char *rpc_id = "1";
-    bool verbose = false;
 
     casper_deploy_params_t deploy_params = {0};
-    deploy_params.secret_key = "../../../resources/local/secret_keys/node-1.pem";
+    deploy_params.secret_key =
+        "../../../resources/local/secret_keys/node-1.pem";
     deploy_params.ttl = "10s";
     deploy_params.chain_name = "casper-charlie-testnet1";
     deploy_params.gas_price = "11";
-    
+
     casper_payment_params_t payment_params = {0};
     payment_params.payment_amount = "1000";
 
-    const char * payment_args[2] = {
+    const char *payment_args[2] = {
         "name_01:bool='false'",
         "name_02:int='42'",
     };
-    payment_params.payment_args_simple = (const char * const *)&payment_args;
+    payment_params.payment_args_simple = (const char *const *)&payment_args;
     payment_params.payment_args_simple_len = 2;
 
     casper_session_params_t session_params = {0};
-    session_params.session_path = "../../../target/wasm32-unknown-unknown/release/standard_payment.wasm";
+    session_params.session_path =
+        "../../../target/wasm32-unknown-unknown/release/standard_payment.wasm";
 
     casper_setup_client();
 
     unsigned char response_buffer[RESPONSE_BUFFER_LEN] = {0};
-    bool success = casper_put_deploy(
-        rpc_id, node_address, verbose, &deploy_params, &session_params,
+    casper_error_t success = casper_put_deploy(
+        RPC_ID, NODE_ADDRESS, VERBOSE, &deploy_params, &session_params,
         &payment_params, response_buffer, RESPONSE_BUFFER_LEN);
-    if (success == true) {
+    if (success == CASPER_SUCCESS) {
         printf("got successful response\n%s\n", response_buffer);
     } else {
         unsigned char error[ERROR_LEN] = {0};

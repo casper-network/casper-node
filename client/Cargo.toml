@@ -53,6 +53,7 @@ For information on using package, see https://github.com/CasperLabs/casper-node
 
 [build-dependencies]
 cbindgen = { version = "0.15", optional = true }
+cmake = "0.1.40"
 
 [features]
 default = ["ffi"]
