@@ -32,11 +32,11 @@ locked_funds_period = 15
 # Round seigniorage rate represented as a fractional number
 #
 # Annual issuance: 2%
-# Minimum round exponent: 14
+# Minimum round exponent: 12
 # Ticks per year: 31536000000
 #
-# (1+0.02)^((2^14)/31536000000)-1
-round_seigniorage_rate = [6_414, 623_437_335_209]
+# (1+0.02)^((2^12)/31536000000)-1 is expressed as a fraction of the total supply.
+round_seigniorage_rate = [15_959, 6_204_824_582_392]
 
 [highway]
 # Beginning of era 0. By this time, a sufficient majority (> 50% + F/2 — see finality_threshold_percent below)
