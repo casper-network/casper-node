@@ -8,28 +8,6 @@ name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
 steps:
-  - name: drone-s3-cache
-    image: casperlabs/s3cmd-build:latest
-    commands:
-      - echo "${TESTING_VAL}"
-      - echo $TESTING_VAL
-      - echo ${TESTING_VAL}
-      - echo "${CL_VAULT_TOKEN}"
-      - ./ci/drone_s3_storage.sh put $(pwd)/resources/production/ production/
-    environment:
-      TESTING_VAL:
-        from_secret: testing
-      CL_VAULT_TOKEN:
-        from_secret: vault_token
-      CL_VAULT_HOST:
-        from_secret: vault_host
-    when:
-      branch:
-        - master
-        - "release-*"
-      #    event:
-      #      - push
-
   - name: cargo-fmt
     image: casperlabs/node-build-u1804
     commands:
@@ -59,37 +37,37 @@ trigger:
     - staging
     - "release-*"
 
-#---
-## Failure state from pre-checks pipeline
-#kind: pipeline
-#name: failed-pre-checks
-#
-#clone:
-#  disable: true
-#
-#steps:
-#  - name: notify
-#    image: plugins/slack
-#    settings:
-#      webhook:
-#        from_secret: slack_webhook
-#      template:
-#        - |
-#          casper-node build status: *{{ uppercasefirst build.status }}*
-#          Author: {{ build.author }}
-#          Drone Build: <{{ build.link }}|#{{ build.number }}>
-#          Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
-#trigger:
-#  status:
-#    - failure
-#  branch:
-#    - master
-#    - trying
-#    - staging
-#    - "release-*"
-#
-#depends_on:
-#  - pre-checks
+---
+# Failure state from pre-checks pipeline
+kind: pipeline
+name: failed-pre-checks
+
+clone:
+  disable: true
+
+steps:
+  - name: notify
+    image: plugins/slack
+    settings:
+      webhook:
+        from_secret: slack_webhook
+      template:
+        - |
+          casper-node build status: *{{ uppercasefirst build.status }}*
+          Author: {{ build.author }}
+          Drone Build: <{{ build.link }}|#{{ build.number }}>
+          Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+trigger:
+  status:
+    - failure
+  branch:
+    - master
+    - trying
+    - staging
+    - "release-*"
+
+depends_on:
+  - pre-checks
 
 ---
 # Testing pipeline, runs in parallel with package pipeline
@@ -155,8 +133,8 @@ steps:
     branch:
       - master
       - "release-*"
-#    event:
-#      - push
+    event:
+      - push
 
 - name: build-wasm-package-push-to-s3
   image: casperlabs/s3cmd-build:latest
@@ -204,8 +182,8 @@ steps:
     branch:
       - master
       - "release-*"
-#    event:
-#      - push
+    event:
+      - push
 
   # we want to publish to the test repo, only when code is pushed to master or release-* branch.
   # bors should make sure, that it has passed on staging or trying branches
@@ -223,8 +201,8 @@ steps:
     branch:
       - master
       - "release-*"
-#    event:
-#      - push
+    event:
+      - push
 
 - name: del-s3-cache
   image: casperlabs/s3cmd-build:latest
