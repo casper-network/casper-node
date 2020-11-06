@@ -593,7 +593,7 @@ mod tests {
             TimeDiff::from(3628800000)
         );
         assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
-        assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 13);
+        assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 14);
         assert_eq!(spec.genesis.highway_config.maximum_round_exponent, 19);
 
         assert_eq!(
