@@ -1,8 +1,7 @@
-use std::{convert::Infallible, sync::Mutex};
+use std::convert::Infallible;
 
 use futures::{channel::oneshot, future};
 use hyper::{Body, Response, Server};
-use lazy_static::lazy_static;
 use serde::Deserialize;
 use tokio::task::JoinHandle;
 use warp::{Filter, Rejection};
@@ -26,12 +25,6 @@ where
         .and(warp_json_rpc::filters::method(method))
         .and(warp_json_rpc::filters::params::<P>())
         .map(|builder: Builder, _params: P| builder.success(()).unwrap())
-}
-
-lazy_static! {
-    /// This is used to serialize tests, as we take the lock at the start of a test and release when complete.
-    /// Alternatively, setup your test to use a unique port.
-    static ref TEST_LOCK_PORT: Mutex<u16> = Mutex::new(9090);
 }
 
 struct MockServerHandle {
