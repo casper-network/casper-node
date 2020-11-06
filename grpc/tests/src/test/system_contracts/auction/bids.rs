@@ -125,11 +125,11 @@ fn should_run_add_bid() {
 
     let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
-        builder.get_purse_balance(active_bid.bonding_purse),
+        builder.get_purse_balance(*active_bid.bonding_purse()),
         U512::from(ADD_BID_AMOUNT_1)
     );
-    assert_eq!(active_bid.delegation_rate, ADD_BID_DELEGATION_RATE_1);
-    assert_eq!(active_bid.funds_locked, None);
+    assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
+    assert!(!active_bid.is_locked());
 
     // 2nd bid top-up
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -151,10 +151,10 @@ fn should_run_add_bid() {
 
     let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
-        builder.get_purse_balance(active_bid.bonding_purse),
+        builder.get_purse_balance(*active_bid.bonding_purse()),
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
-    assert_eq!(active_bid.delegation_rate, ADD_BID_DELEGATION_RATE_2);
+    assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_2);
 
     // 3a. create purse for unbonding purposes
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -195,7 +195,7 @@ fn should_run_add_bid() {
 
     let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
-        builder.get_purse_balance(active_bid.bonding_purse),
+        builder.get_purse_balance(*active_bid.bonding_purse()),
         // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
@@ -282,10 +282,10 @@ fn should_run_delegate_and_undelegate() {
     assert_eq!(bids.len(), 1);
     let active_bid = bids.get(&NON_FOUNDER_VALIDATOR_1_PK).unwrap();
     assert_eq!(
-        builder.get_purse_balance(active_bid.bonding_purse),
+        builder.get_purse_balance(*active_bid.bonding_purse()),
         U512::from(ADD_BID_AMOUNT_1)
     );
-    assert_eq!(active_bid.delegation_rate, ADD_BID_DELEGATION_RATE_1);
+    assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
 
     let auction_stored_value = builder
         .query(None, auction_hash.into(), &[])
@@ -597,13 +597,13 @@ fn should_get_first_seigniorage_recipients() {
 
     let founding_validator_1 = bids.get(&ACCOUNT_1_PK).expect("should have account 1 pk");
     assert_eq!(
-        founding_validator_1.funds_locked,
+        founding_validator_1.release_era(),
         Some(DEFAULT_LOCKED_FUNDS_PERIOD)
     );
 
     let founding_validator_2 = bids.get(&ACCOUNT_2_PK).expect("should have account 2 pk");
     assert_eq!(
-        founding_validator_2.funds_locked,
+        founding_validator_2.release_era(),
         Some(DEFAULT_LOCKED_FUNDS_PERIOD)
     );
 
@@ -756,7 +756,7 @@ fn should_release_founder_stake() {
     let genesis_bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(genesis_bids.len(), 1);
     let entry = genesis_bids.get(&ACCOUNT_1_PK).unwrap();
-    assert_eq!(entry.funds_locked, Some(DEFAULT_LOCKED_FUNDS_PERIOD));
+    assert_eq!(entry.release_era(), Some(DEFAULT_LOCKED_FUNDS_PERIOD));
 
     builder.exec(transfer_request_1).commit().expect_success();
 
@@ -775,9 +775,9 @@ fn should_release_founder_stake() {
     let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(bids.len(), 1);
     let (founding_validator, entry) = bids.into_iter().next().unwrap();
-    assert_eq!(entry.funds_locked, None);
+    assert_eq!(entry.release_era(), None);
     assert_eq!(
-        builder.get_purse_balance(entry.bonding_purse),
+        builder.get_purse_balance(*entry.bonding_purse()),
         ACCOUNT_1_BOND.into()
     );
     assert_eq!(founding_validator, ACCOUNT_1_PK);
@@ -819,7 +819,7 @@ fn should_release_founder_stake() {
     let post_bids_1: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_ne!(post_bids_1, genesis_bids);
     assert_eq!(
-        post_bids_1[&ACCOUNT_1_PK].staked_amount,
+        *post_bids_1[&ACCOUNT_1_PK].staked_amount(),
         U512::from(ACCOUNT_1_BOND - ACCOUNT_1_WITHDRAW_1)
     );
 
@@ -853,7 +853,7 @@ fn should_release_founder_stake() {
 
     // original bonding purse is not updated (yet)
     assert_eq!(
-        builder.get_purse_balance(entry.bonding_purse),
+        builder.get_purse_balance(*entry.bonding_purse()),
         ACCOUNT_1_BOND.into()
     );
 
