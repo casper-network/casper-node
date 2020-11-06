@@ -30,6 +30,10 @@ use tracing::{debug, error, warn};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
+#[cfg(test)]
+use crate::testing::TestRng;
+
+
 use crate::{
     components::{
         block_proposer::BlockProposerState, chainspec_loader::Chainspec, small_network::NodeId,
@@ -123,7 +127,7 @@ pub struct BlockMetadata {
 }
 
 /// Metadata associated with a deploy.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeployMetadata<B: Value> {
     /// The block hashes of blocks containing the related deploy, along with the results of
     /// executing the related deploy.
@@ -136,7 +140,22 @@ impl<B: Value> DeployMetadata<B> {
         let _ = execution_results.insert(block_hash, execution_result);
         DeployMetadata { execution_results }
     }
+
+
 }
+
+#[cfg(test)]
+impl DeployMetadata<Block> {
+    fn random(rng: &mut TestRng) -> Self {
+        let block = Block::random(rng);
+        let id = super::storage::Value::id(&block);
+        let mut execution_results = BTreeMap::new();
+        let execution_result = ExecutionResult::random(rng);
+        execution_results.insert(*id, execution_result);
+        DeployMetadata { execution_results }
+    }
+}
+
 
 impl<B: Value> Default for DeployMetadata<B> {
     fn default() -> Self {
@@ -148,7 +167,7 @@ impl<B: Value> Default for DeployMetadata<B> {
 impl<B: Value> ToBytes for DeployMetadata<B> {
     fn to_bytes(&self) -> StdResult<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.append(&mut self.execution_results.to_bytes()?);
+        buffer.extend(self.execution_results.to_bytes()?);
         Ok(buffer)
     }
     fn serialized_length(&self) -> usize {
@@ -822,4 +841,19 @@ where
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore> {
         Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
     }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_test_deploy_metadata() {
+        let mut rng = TestRng::new();
+        let deploy_metadata = DeployMetadata::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&deploy_metadata);
+    }
+
+
 }

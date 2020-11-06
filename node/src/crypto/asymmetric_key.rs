@@ -1439,6 +1439,13 @@ mod tests {
         let deserialized = serde_json::from_slice(&serialized).unwrap();
         assert_eq!(signature, deserialized);
         assert_eq!(signature.tag(), deserialized.tag());
+
+        // Try to/from using bytesrepr. 
+        let serialized = bytesrepr::serialize(signature).unwrap();
+        let deserialized = bytesrepr::deserialize(serialized).unwrap();
+        assert_eq!(signature, deserialized);
+        assert_eq!(signature.tag(), deserialized.tag())
+
     }
 
     fn signature_hex_roundtrip(signature: Signature) {
@@ -1688,7 +1695,7 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
         }
 
         #[test]
-        fn bytesrepr_roundtrip() {
+        fn bytesrepr_roundtrip_signature() {
             let mut rng = TestRng::new();
             let ed25519_secret_key = SecretKey::random_ed25519(&mut rng);
             let public_key = PublicKey::from(&ed25519_secret_key);
@@ -1831,7 +1838,7 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         }
 
         #[test]
-        fn bytesrepr_roundtrip() {
+        fn bytesrepr_roundtrip_signature() {
             let mut rng = TestRng::new();
             let secret_key = SecretKey::random_secp256k1(&mut rng);
             let public_key = PublicKey::from(&secret_key);
