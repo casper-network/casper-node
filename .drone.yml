@@ -1,8 +1,8 @@
 ---
 # Quick checks to make before spending time on test and package.clone:
 # on failure -> failed-pre-checks pipeline
-# on success --> cargo-test (parallel)
-#            \-> package  (parallel)
+# on success --> cargo-test (parallel) ---> [ test-package-success | test-package-failure ]
+#            \-> package  (parallel) ----/
 kind: pipeline
 name: pre-checks
 
