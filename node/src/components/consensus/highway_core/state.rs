@@ -367,7 +367,7 @@ impl<C: Context> State<C> {
             None | Some(&Fault::Indirect) => (),
         }
         // TODO: Should use Display, not Debug!
-        info!(?evidence, "marking validator #{} as faulty", idx.0);
+        trace!(?evidence, "marking validator #{} as faulty", idx.0);
         self.faults.insert(idx, Fault::Direct(evidence));
         self.panorama[idx] = Observation::Faulty;
         true
