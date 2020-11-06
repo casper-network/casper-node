@@ -685,6 +685,7 @@ where
                 effects
             }
             ConsensusProtocolResult::NewEvidence(pub_key) => {
+                info!(%pub_key, era = era_id.0, "validator equivocated");
                 let mut effects = Effects::new();
                 for e_id in (era_id.0..=(era_id.0 + self.era_supervisor.bonded_eras)).map(EraId) {
                     let candidate_blocks =
