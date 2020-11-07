@@ -120,7 +120,7 @@ steps:
     - "$(pwd)/ci/test_deb.sh $(pwd) casper-client"
     - "$(pwd)/ci/test_deb.sh $(pwd) casper-node"
 
-- name: drone-s3-cache
+- name: put-drone-s3-cache
   image: casperlabs/s3cmd-build:latest
   commands:
     - ./ci/drone_s3_storage.sh put $(pwd)/target/debian/ debian/
@@ -169,10 +169,11 @@ name: test-package-success
 
 steps:
   # Retrieving packages built and put in s3 from package pipeline.
-- name: retrieve-drone-s3-cache
+- name: get-and-del-drone-s3-cache
   image: casperlabs/s3cmd-build:latest
   commands:
     - ./ci/drone_s3_storage.sh get debian/ $(pwd)/target/debian/
+    - ./ci/drone_s3_storage.sh del
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -192,22 +193,6 @@ steps:
   commands:
     - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
     - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
-  environment:
-    CL_VAULT_TOKEN:
-      from_secret: vault_token
-    CL_VAULT_HOST:
-      from_secret: vault_host
-  when:
-    branch:
-      - master
-      - "release-*"
-    event:
-      - push
-
-- name: del-s3-cache
-  image: casperlabs/s3cmd-build:latest
-  commands:
-    - ./ci/drone_s3_storage.sh del
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -300,7 +285,6 @@ steps:
 - name: build-deb
   image: casperlabs/node-build-u1804
   commands:
-    - "make setup-rs"
     - "make deb"
 
 - name: publish-crate-tag-TODO
