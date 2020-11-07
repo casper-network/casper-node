@@ -71,8 +71,8 @@ impl FromBytes for SeigniorageRecipient {
 impl From<&Bid> for SeigniorageRecipient {
     fn from(founding_validator: &Bid) -> Self {
         Self {
-            stake: founding_validator.staked_amount,
-            delegation_rate: founding_validator.delegation_rate,
+            stake: *founding_validator.staked_amount(),
+            delegation_rate: *founding_validator.delegation_rate(),
             ..Default::default()
         }
     }
