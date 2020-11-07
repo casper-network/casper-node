@@ -7,7 +7,7 @@ use super::*;
 use crate::{
     components::{
         consensus::{
-            tests::mock_proto::{Message, MockProto, NodeId},
+            tests::mock_proto::{self, MockProto, NodeId},
             Config,
         },
         storage::Storage,
@@ -28,7 +28,7 @@ use crate::{
     utils::{self, External, Loadable},
 };
 
-type ClMessage = Message<ClContext>;
+type ClMessage = mock_proto::Message<ClContext>;
 
 #[derive(Debug, From)]
 enum Event {
@@ -65,6 +65,12 @@ fn new_test_chainspec(stakes: Vec<(PublicKey, u64)>) -> Chainspec {
     chainspec
 }
 
+/// Creates a new `EffectBuilder` with a new scheduler and queue.
+fn new_effect_builder() -> EffectBuilder<Event> {
+    let scheduler = utils::leak(Scheduler::<Event>::new(QueueKind::weights()));
+    EffectBuilder::new(EventQueueHandle::new(&scheduler))
+}
+
 #[test]
 fn era_supervisor() -> Result<(), Error> {
     let mut rng = TestRng::new();
@@ -80,9 +86,7 @@ fn era_supervisor() -> Result<(), Error> {
     };
 
     let registry = Registry::new();
-    let scheduler = utils::leak(Scheduler::<Event>::new(QueueKind::weights()));
-    let event_queue = EventQueueHandle::new(&scheduler);
-    let effect_builder = EffectBuilder::new(event_queue);
+    let effect_builder = new_effect_builder();
 
     let (mut es, effects) = EraSupervisor::new(
         Timestamp::now(),
@@ -107,10 +111,11 @@ fn era_supervisor() -> Result<(), Error> {
         proposer: bob_pk,
     }
     .received(NodeId(1), EraId(0));
-    handle(&mut es, event);
+    let effects = handle(&mut es, event);
+    assert_eq!(effects.len(), 2); // Validate consensus value, request evidence against Alice.
     let event = ClMessage::FinalizeBlock.received(NodeId(1), EraId(0));
     let effects = handle(&mut es, event);
-    assert_eq!(effects.len(), 2);
+    assert_eq!(effects.len(), 2); // Announce and execute block.
     assert_eq!(&[alice_pk], &*es.active_eras[&EraId(0)].accusations());
 
     // TODO: Add a reactor to verify the effects.
