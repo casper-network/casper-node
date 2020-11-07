@@ -13,14 +13,29 @@ declare _OS_LINUX_DEBIAN="$_OS_LINUX-debian"
 declare _OS_MACOSX="macosx"
 declare _OS_UNKNOWN="unknown"
 
+# Default amount used when making transfers.
+NCTL_DEFAULT_TRANSFER_AMOUNT=1000000000   # (1e9)
+
+# Default amount used when making auction bids.
+NCTL_DEFAULT_AUCTION_BID_AMOUNT=1000000000   # (1e9)
+
+# Default amount used when delegating.
+NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT=1000000000   # (1e9)
+
+# Default motes to pay for consumed gas.
+NCTL_DEFAULT_GAS_PAYMENT=1000000000   # (1e9)
+
+# Default gas price multiplier.
+NCTL_DEFAULT_GAS_PRICE=10
+
 # Genesis balance of faucet account.
-NCTL_INITIAL_BALANCE_FAUCET=1000000000000000000000000
+NCTL_INITIAL_BALANCE_FAUCET=1000000000000000000000000000000000   # (1e33)
 
 # Genesis balance of validator account.
-NCTL_INITIAL_BALANCE_VALIDATOR=1000000000000000000000000
+NCTL_INITIAL_BALANCE_VALIDATOR=1000000000000000000000000000000000   # (1e33)
 
 # Base weight applied to a validator at genesis.
-NCTL_VALIDATOR_BASE_WEIGHT=100000000000000
+NCTL_VALIDATOR_BASE_WEIGHT=1000000000000000   # (1e15)
 
 # Base RPC server port number.
 NCTL_BASE_PORT_RPC=40000
@@ -120,8 +135,14 @@ function resetd () {
 #######################################
 function get_account_hash() {
     account_pbk=${1:2}
-    instruction='import hashlib; as_bytes=bytes("ed25519", "utf-8") + bytearray(1) + bytes.fromhex("'$account_pbk'"); h=hashlib.blake2b(digest_size=32); h.update(as_bytes); print(h.digest().hex());'
-    python3 <<< $instruction
+    python3 <<< $(cat <<END
+import hashlib;
+as_bytes=bytes("ed25519", "utf-8") + bytearray(1) + bytes.fromhex("$account_pbk");
+h=hashlib.blake2b(digest_size=32);
+h.update(as_bytes);
+print(h.digest().hex());
+END
+    )
 }
 
 #######################################
@@ -179,43 +200,6 @@ function calculate_node_port {
 }
 
 #######################################
-# Returns blake2b hash.
-# Arguments:
-#   Data to be hashed.
-#######################################
-function get_hash() {
-    instruction='import hashlib; h=hashlib.blake2b(digest_size=32); h.update(b"'$1'"); print(h.digest().hex());'
-    python3 <<< $instruction
-}
-
-#######################################
-# Returns prettified JSON from a string.
-# Arguments:
-#   JSON string to be prettified.
-#######################################
-function get_json_s() {
-    echo "$1" | python3 -m json.tool
-}
-
-#######################################
-# Returns prettified JSON from a file.
-# Arguments:
-#   JSON file to be prettified.
-#######################################
-function get_json_f() {
-    python3 -m json.tool "$1"
-}
-
-#######################################
-# Returns prettified JSON from internet.
-# Arguments:
-#   URL to JSON to be prettified.
-#######################################
-function get_json_w() {
-    curl "$1" | python3 -m json.tool
-}
-
-#######################################
 # Returns OS type.
 # Globals:
 #   OSTYPE: type of OS being run.
@@ -264,26 +248,4 @@ function exec_node_rest_get() {
         -s \
         --location \
         --request GET $node_api_ep
-}
-
-#######################################
-# Executes a node RPC call.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   RPC method.
-#   RPC method parameters.
-#######################################
-function exec_node_rpc() {
-    curl \
-        -s \
-        --location \
-        --request POST $(get_node_address_rpc $1 $2) \
-        --header 'Content-Type: application/json' \
-        --data-raw '{
-            "id": 1,
-            "jsonrpc": "2.0",
-            "method": "'$3'",
-            "params": {'$4'}
-        }' | jq $5
 }

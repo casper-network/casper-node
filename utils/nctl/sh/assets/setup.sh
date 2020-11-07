@@ -56,14 +56,14 @@ function _set_chainspec() {
     # Set config params.
     GENESIS_NAME=casper-net-$2
     GENESIS_TIMESTAMP=$(get_genesis_timestamp $3)
-    HIGHWAY_GENESIS_ERA_START_TIMESTAMP=$(get_genesis_timestamp $3)
 
     # Set config.
     path_config=$1/chainspec/chainspec.toml
-    cp $NCTL/templates/chainspec.toml $path_config
-    sed -i "s/{GENESIS_NAME}/$GENESIS_NAME/g" $path_config > /dev/null 2>&1
-    sed -i "s/{GENESIS_TIMESTAMP}/$GENESIS_TIMESTAMP/g" $path_config > /dev/null 2>&1
-    sed -i "s/{HIGHWAY_GENESIS_ERA_START_TIMESTAMP}/$HIGHWAY_GENESIS_ERA_START_TIMESTAMP/g" $path_config > /dev/null 2>&1
+    cp $NCTL_CASPER_HOME/resources/local/chainspec.toml $path_config
+
+    # Overwrite config settings.
+    sed -i "s/casper-example/$GENESIS_NAME/g" $path_config > /dev/null 2>&1
+    sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = \"${GENESIS_TIMESTAMP}\"/" $path_config > /dev/null 2>&1
 
     # Set accounts.csv.
     touch $1/chainspec/accounts.csv

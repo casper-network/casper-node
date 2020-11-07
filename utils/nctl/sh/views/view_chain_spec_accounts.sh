@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 #
-# Displays node logs.
+# Displays chain spec toml file.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
-#   Node ordinal identifier.
-#   Log type.
 
 # Import utils.
 source $NCTL/sh/utils/misc.sh
@@ -17,8 +15,6 @@ source $NCTL/sh/utils/misc.sh
 
 # Unset to avoid parameter collisions.
 unset net
-unset node
-unset typeof
 
 for ARGUMENT in "$@"
 do
@@ -26,19 +22,15 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
-        typeof) typeof=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
 net=${net:-1}
-node=${node:-1}
-typeof=${typeof:-stdout}
 
 #######################################
 # Main
 #######################################
 
-less $NCTL/assets/net-$net/nodes/node-$node/logs/$typeof.log
+less $NCTL/assets/net-$net/chainspec/accounts.csv
