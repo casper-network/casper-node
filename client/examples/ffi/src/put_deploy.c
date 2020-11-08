@@ -9,10 +9,11 @@
 #define VERBOSE false
 
 int main(int argc, char **argv) {
+    casper_setup_client();
 
     casper_deploy_params_t deploy_params = {0};
     deploy_params.secret_key =
-        "../../../resources/local/secret_keys/node-1.pem";
+        "resources/local/secret_keys/node-1.pem";
     deploy_params.ttl = "10s";
     deploy_params.chain_name = "casper-charlie-testnet1";
     deploy_params.gas_price = "11";
@@ -29,20 +30,18 @@ int main(int argc, char **argv) {
 
     casper_session_params_t session_params = {0};
     session_params.session_path =
-        "../../../target/wasm32-unknown-unknown/release/standard_payment.wasm";
-
-    casper_setup_client();
+        "target/wasm32-unknown-unknown/release/standard_payment.wasm";
 
     unsigned char response_buffer[RESPONSE_BUFFER_LEN] = {0};
     casper_error_t success = casper_put_deploy(
         RPC_ID, NODE_ADDRESS, VERBOSE, &deploy_params, &session_params,
         &payment_params, response_buffer, RESPONSE_BUFFER_LEN);
     if (success == CASPER_SUCCESS) {
-        printf("got successful response\n%s\n", response_buffer);
+        printf("Got successful response\n%s\n", response_buffer);
     } else {
         unsigned char error[ERROR_LEN] = {0};
         casper_get_last_error(error, ERROR_LEN);
-        printf("ERROR:\t%s\n", error);
+        printf("Got error:\n%s\n", error);
     }
     printf("Done.\n");
 
