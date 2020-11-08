@@ -86,7 +86,7 @@ enum State {
         /// Linear chain block being downloaded.
         linear_chain_block: Box<Option<BlockHeader>>,
         /// Block we received from a node and are currently executing.
-        current_block: Box<Option<BlockHeader>>,
+        current_block: Box<BlockHeader>,
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
@@ -124,11 +124,11 @@ impl State {
         }
     }
 
-    fn sync_descendants(trusted_hash: BlockHash) -> Self {
+    fn sync_descendants(trusted_hash: BlockHash, current_block: BlockHeader) -> Self {
         State::SyncingDescendants {
             trusted_hash,
             linear_chain_block: Box::new(None),
-            current_block: Box::new(None),
+            current_block: Box::new(current_block),
             highest_block_seen: 0,
         }
     }
@@ -291,7 +291,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                     let peer = self.random_peer_unsafe();
                     // Kick off syncing trusted hash descendants.
-                    self.state = State::sync_descendants(trusted_hash);
+                    self.state = State::sync_descendants(trusted_hash, block_header);
                     fetch_block_at_height(effect_builder, peer, block_height + 1)
                 } else {
                     self.state = curr_state;
@@ -301,13 +301,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::SyncingDescendants {
                 ref current_block, ..
             } => {
-                match current_block.as_ref() {
-                    Some(expected) => assert_eq!(
-                        expected, &block_header,
-                        "Block execution result doesn't match received block."
-                    ),
-                    None => panic!("Unexpected block execution results."),
-                }
+                assert_eq!(
+                    **current_block, block_header,
+                    "Block execution result doesn't match received block."
+                );
                 self.state = curr_state;
                 self.fetch_next_block(effect_builder, rng, &block_header)
             }
@@ -351,7 +348,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 Some(block) => {
                     // Update `current_block` so that we can verify whether result of execution
                     // matches the expected value.
-                    current_block.replace(block.clone());
+                    **current_block = block.clone();
                     Some(block)
                 }
             },
@@ -390,6 +387,14 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::Done | State::None => {
                 panic!("Tried fetching block when in {:?} state", self.state)
             }
+        }
+    }
+
+    fn current_block(&self) -> Option<&BlockHeader> {
+        match &self.state {
+            State::SyncingTrustedHash { current_block, .. } => Option::as_ref(&*current_block),
+            State::SyncingDescendants { current_block, .. } => Some(&*current_block),
+            State::Done | State::None => None,
         }
     }
 }
@@ -445,12 +450,16 @@ where
                     self.block_downloaded(rng, effect_builder, block.header())
                 }
                 BlockByHeightResult::FromPeer(block, peer) => {
-                    if block.height() != block_height {
+                    if block.height() != block_height
+                        || *block.header().parent_hash() != self.current_block().unwrap().hash()
+                    {
                         warn!(
-                            "Block height mismatch. Expected {} got {} from {}.",
-                            block_height,
-                            block.height(),
-                            peer
+                            %peer,
+                            got_height = block.height(),
+                            expected_height = block_height,
+                            got_parent = %block.header().parent_hash(),
+                            expected_parent = %self.current_block().unwrap().hash(),
+                            "block mismatch",
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
                         self.ban_peer(peer);
