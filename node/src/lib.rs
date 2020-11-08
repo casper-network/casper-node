@@ -47,7 +47,7 @@ pub use components::{
     contract_runtime::Config as ContractRuntimeConfig,
     gossiper::{Config as GossipConfig, Error as GossipError},
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
-    storage2::{Config as StorageConfig, Error as StorageError},
+    storage::{Config as StorageConfig, Error as StorageError},
 };
 pub use utils::OS_PAGE_SIZE;
 

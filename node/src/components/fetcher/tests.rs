@@ -17,7 +17,7 @@
 //         chainspec_loader::Chainspec,
 //         deploy_acceptor::{self, DeployAcceptor},
 //         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
-//         storage2::{self, Storage},
+//         storage::{self, Storage},
 //     },
 //     effect::{
 //         announcements::{ApiServerAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement},
@@ -40,7 +40,7 @@
 // #[must_use]
 // enum Event {
 //     #[from]
-//     Storage(storage2::Event),
+//     Storage(storage::Event),
 //     #[from]
 //     DeployAcceptor(deploy_acceptor::Event),
 //     #[from]
@@ -119,7 +119,7 @@
 //     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
 //         let network = NetworkController::create_node(event_queue, rng);
 
-//         let (storage_config, _storage_tempdir) = storage2::Config::default_for_tests();
+//         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
 //         let storage = Storage::new(WithDir::new(_storage_tempdir.path(),
 // storage_config)).unwrap();
 
@@ -146,7 +146,7 @@
 //         event: Event,
 //     ) -> Effects<Self::Event> {
 //         match event {
-//             Event::Storage(storage2::Event::StorageRequest(StorageRequest::GetChainspec {
+//             Event::Storage(storage::Event::StorageRequest(StorageRequest::GetChainspec {
 //                 responder,
 //                 ..
 //             })) => responder
@@ -194,7 +194,7 @@
 //                                 return Effects::new();
 //                             }
 //                         };
-//                         Event::Storage(storage2::Event::GetDeployForPeer {
+//                         Event::Storage(storage::Event::GetDeployForPeer {
 //                             deploy_hash,
 //                             peer: sender,
 //                         })

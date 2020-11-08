@@ -12,7 +12,7 @@ use crate::{
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime},
         small_network::NodeId,
-        storage2::{self, Storage},
+        storage::{self, Storage},
         Component,
     },
     effect::{
@@ -35,7 +35,7 @@ pub enum Event {
 
     /// Storage event.
     #[from]
-    Storage(storage2::Event),
+    Storage(storage::Event),
 
     /// Contract runtime event.
     #[from]
@@ -44,7 +44,7 @@ pub enum Event {
 
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {
-        Event::Storage(storage2::Event::StorageRequest(request))
+        Event::Storage(storage::Event::StorageRequest(request))
     }
 }
 
@@ -87,7 +87,7 @@ pub enum Error {
 
     /// `Storage` component error.
     #[error("storage error: {0}")]
-    Storage(#[from] storage2::Error),
+    Storage(#[from] storage::Error),
 
     /// `ContractRuntime` component error.
     #[error("contract runtime config error: {0}")]

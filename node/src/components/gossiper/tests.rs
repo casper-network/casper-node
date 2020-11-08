@@ -19,7 +19,7 @@
 //         chainspec_loader::Chainspec,
 //         deploy_acceptor::{self, DeployAcceptor},
 //         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
-//         storage2::{self, Storage},
+//         storage::{self, Storage},
 //     },
 //     effect::announcements::{
 //         ApiServerAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
@@ -41,7 +41,7 @@
 // #[must_use]
 // enum Event {
 //     #[from]
-//     Storage(storage2::Event<Storage>),
+//     Storage(storage::Event<Storage>),
 //     #[from]
 //     DeployAcceptor(deploy_acceptor::Event),
 //     #[from]

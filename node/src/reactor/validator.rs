@@ -32,7 +32,7 @@ use crate::{
         linear_chain,
         metrics::Metrics,
         small_network::{self, GossipedAddress, NodeId, SmallNetwork},
-        storage2::{self, Storage},
+        storage::{self, Storage},
         Component,
     },
     effect::{
@@ -70,7 +70,7 @@ pub enum Event {
     DeployBuffer(deploy_buffer::Event),
     #[from]
     /// Storage event.
-    Storage(storage2::Event),
+    Storage(storage::Event),
     #[from]
     /// API server event.
     ApiServer(api_server::Event),
@@ -519,7 +519,7 @@ impl reactor::Reactor for Reactor {
                                 }
                             };
                             todo!() // WTF?
-                                    // Event::Storage(storage2::Event::GetDeployForPeer {
+                                    // Event::Storage(storage::Event::GetDeployForPeer {
                                     //     deploy_hash,
                                     //     peer: sender,
                                     // })
