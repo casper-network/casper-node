@@ -145,7 +145,7 @@ path = '/root/.local/share/casper-node'
 # If unset, defaults to 10,485,100 == 10 MiB.
 #
 # The size should be a multiple of the OS page size.
-#max_block_height_store_size = 10485100
+#max_block_height_store_size = 10485760
 
 # Optional maximum size of the database to use for the chainspec store.
 #
