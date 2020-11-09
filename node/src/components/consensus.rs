@@ -56,23 +56,6 @@ pub enum ConsensusMessage {
     EvidenceRequest { era_id: EraId, pub_key: PublicKey },
 }
 
-impl Debug for ConsensusMessage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ConsensusMessage::Protocol { era_id, payload } => f
-                .debug_struct("Protocol")
-                .field("era_id.0", &era_id.0)
-                .field("payload", &HexFmt(payload))
-                .finish(),
-            ConsensusMessage::EvidenceRequest { era_id, pub_key } => f
-                .debug_struct("EvidenceRequest")
-                .field("era_id.0", &era_id.0)
-                .field("pub_key", pub_key)
-                .finish(),
-        }
-    }
-}
-
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
 pub enum Event<I> {
@@ -108,6 +91,21 @@ pub enum Event<I> {
     },
     /// An event instructing us to shutdown if the latest era received no votes
     Shutdown,
+}
+
+impl Debug for ConsensusMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConsensusMessage::Protocol { era_id, payload: _ } => {
+                write!(f, "Protocol {{ era_id.0: {}, .. }}", era_id.0)
+            }
+            ConsensusMessage::EvidenceRequest { era_id, pub_key } => f
+                .debug_struct("EvidenceRequest")
+                .field("era_id.0", &era_id.0)
+                .field("pub_key", pub_key)
+                .finish(),
+        }
+    }
 }
 
 impl Display for ConsensusMessage {
