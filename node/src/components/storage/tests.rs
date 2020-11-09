@@ -2,6 +2,7 @@ use std::any::type_name;
 
 use futures::channel::oneshot;
 use tempfile::TempDir;
+use tokio::runtime::{self, Runtime};
 
 use super::{Config, Storage};
 use crate::{
@@ -44,6 +45,8 @@ struct ComponentHarness<REv: 'static> {
     effect_builder: EffectBuilder<REv>,
     /// A temporary directy that can be used to store various data.
     tmp: TempDir,
+    /// The `async` runtime used to execute effects.
+    runtime: Runtime,
 }
 
 impl<REv: 'static> ComponentHarness<REv> {
@@ -64,6 +67,10 @@ impl<REv: 'static> ComponentHarness<REv> {
             event_queue_handle,
             effect_builder,
             tmp: TempDir::new().expect("could not create temporary directory for test harness"),
+            runtime: runtime::Builder::new()
+                .enable_all()
+                .build()
+                .expect("could not build tokio runtime"),
         }
     }
 
@@ -71,7 +78,7 @@ impl<REv: 'static> ComponentHarness<REv> {
     ///
     /// Sends a request by creating a channel for the response, then mapping it using the function
     /// `f`. Executes all returned effects, then awaits a response.
-    async fn send_request<C, T, F>(&mut self, component: &mut C, f: F) -> T
+    fn send_request<C, T, F>(&mut self, component: &mut C, f: F) -> T
     where
         C: Component<REv>,
         <C as Component<REv>>::Event: Send + 'static,
@@ -90,12 +97,13 @@ impl<REv: 'static> ComponentHarness<REv> {
         // Send directly to component.
         let returned_effects = self.send_event(component, request_event);
 
-        // Execute the effect, creating the response.
+        // Execute the effects on our dedicated runtime, hopefully creating the responses.
         for effect in returned_effects {
-            tokio::spawn(effect);
+            self.runtime.spawn(effect);
         }
 
-        receiver.await.unwrap_or_else(|err| {
+        // Wait for a response to arrive.
+        self.runtime.block_on(receiver).unwrap_or_else(|err| {
             // The channel should never be closed, ever.
             panic!(
                 "request for {} channel closed, this is a serious bug --- \
