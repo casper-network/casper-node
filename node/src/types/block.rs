@@ -11,7 +11,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+
 use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::{HexFmt, HexList};
@@ -23,6 +23,8 @@ use thiserror::Error;
 
 #[cfg(test)]
 use casper_types::auction::BLOCK_REWARD;
+
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::{Item, Tag, Timestamp};
 use crate::{
@@ -818,10 +820,6 @@ impl Display for Block {
         Ok(())
     }
 }
-///        parent_hash: BlockHash,
-/// parent_seed: Digest,
-///  state_root_hash: Digest,
-/// finalized_block: FinalizedBlock,
 
 impl ToBytes for Block {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {

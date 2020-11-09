@@ -317,25 +317,6 @@ pub struct Deploy {
 }
 
 impl Deploy {
-    /// Constructs a new unsigned `Deploy`
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        hash: DeployHash,
-        header: DeployHeader,
-        payment: ExecutableDeployItem,
-        session: ExecutableDeployItem,
-        approvals: Vec<Approval>,
-    ) -> Self {
-        Deploy {
-            hash,
-            header,
-            payment,
-            session,
-            approvals,
-            is_valid: None,
-        }
-    }
-
     /// Constructs a new signed `Deploy`.
     #[allow(clippy::too_many_arguments)]
     pub fn new_signed(
