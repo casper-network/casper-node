@@ -9,7 +9,10 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    account::AccountHash, auction::EraId, bytesrepr, Key, ProtocolVersion, PublicKey, U512,
+    account::AccountHash,
+    auction::EraId,
+    bytesrepr::{self, FromBytes, ToBytes},
+    Key, ProtocolVersion, PublicKey, U512,
 };
 
 use super::SYSTEM_ACCOUNT_ADDR;
@@ -142,6 +145,40 @@ impl Distribution<GenesisAccount> for Standard {
         let bonded_amount = Motes::new(U512::from(u512_array));
 
         GenesisAccount::new(public_key, account_hash, balance, bonded_amount)
+    }
+}
+
+impl ToBytes for GenesisAccount {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.public_key.to_bytes()?);
+        buffer.extend(self.account_hash.to_bytes()?);
+        buffer.extend(self.balance.value().to_bytes()?);
+        buffer.extend(self.bonded_amount.value().to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.public_key.serialized_length()
+            + self.account_hash.serialized_length()
+            + self.balance.value().serialized_length()
+            + self.bonded_amount.value().serialized_length()
+    }
+}
+
+impl FromBytes for GenesisAccount {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (public_key, remainder) = Option::<PublicKey>::from_bytes(bytes)?;
+        let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
+        let (balance_value, remainder) = U512::from_bytes(remainder)?;
+        let (bonded_amount_value, remainder) = U512::from_bytes(remainder)?;
+        let genesis_account = GenesisAccount {
+            public_key,
+            account_hash,
+            balance: Motes::new(balance_value),
+            bonded_amount: Motes::new(bonded_amount_value),
+        };
+        Ok((genesis_account, remainder))
     }
 }
 
@@ -339,5 +376,17 @@ impl Distribution<ExecConfig> for Standard {
             auction_delay,
             locked_funds_period,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let mut rng = rand::thread_rng();
+        let genesis_account: GenesisAccount = rng.gen();
+        bytesrepr::test_serialization_roundtrip(&genesis_account);
     }
 }

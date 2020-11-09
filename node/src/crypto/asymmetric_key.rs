@@ -988,6 +988,62 @@ impl Display for Signature {
     }
 }
 
+impl ToBytes for Signature {
+    fn to_bytes(&self) -> StdResult<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        match self {
+            Signature::Ed25519(signature) => {
+                buffer.insert(0, ED25519_TAG);
+                buffer.extend(signature.to_bytes()?);
+            }
+            Signature::Secp256k1(signature) => {
+                buffer.insert(0, SECP256K1_TAG);
+                buffer.extend(signature.as_ref().to_vec().into_bytes()?);
+            }
+        }
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        TAG_LENGTH
+            + match self {
+                Signature::Ed25519(signature) => signature.serialized_length(),
+                Signature::Secp256k1(signature) => signature.as_ref().to_vec().serialized_length(),
+            }
+    }
+}
+
+impl FromBytes for Signature {
+    fn from_bytes(bytes: &[u8]) -> StdResult<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            ED25519_TAG => {
+                let (ed25519_signature_bytes, remainder) =
+                    <[u8; ed25519::SIGNATURE_LENGTH]>::from_bytes(remainder)?;
+                let ed25519_signature =
+                    Self::new_ed25519(ed25519_signature_bytes).map_err(|error| {
+                        info!("failed to deserialize ed25519 signature:{}", error);
+                        bytesrepr::Error::Formatting
+                    })?;
+                Ok((ed25519_signature, remainder))
+            }
+            SECP256K1_TAG => {
+                let (secp256k1_signature_bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
+                let secp256k1_signature = Self::secp256k1_from_bytes(secp256k1_signature_bytes)
+                    .map_err(|error| {
+                        info!("failed to deserialize secp256k1 signature: {}", error);
+                        bytesrepr::Error::Formatting
+                    })?;
+                Ok((secp256k1_signature, remainder))
+            }
+            _ => {
+                info!("failed to deserialize to signature: invalid tag: {}", tag);
+                Err(bytesrepr::Error::Formatting)
+            }
+        }
+    }
+}
+
 impl Serialize for Signature {
     fn serialize<S: Serializer>(&self, serializer: S) -> StdResult<S::Ok, S::Error> {
         serialize(self, serializer)
@@ -1383,6 +1439,12 @@ mod tests {
         let deserialized = serde_json::from_slice(&serialized).unwrap();
         assert_eq!(signature, deserialized);
         assert_eq!(signature.tag(), deserialized.tag());
+
+        // Try to/from using bytesrepr.
+        let serialized = bytesrepr::serialize(signature).unwrap();
+        let deserialized = bytesrepr::deserialize(serialized).unwrap();
+        assert_eq!(signature, deserialized);
+        assert_eq!(signature.tag(), deserialized.tag())
     }
 
     fn signature_hex_roundtrip(signature: Signature) {
@@ -1630,6 +1692,16 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
             let hash_types: AccountHash = public_key_types.into();
             assert_eq!(hash_types, hash_node)
         }
+
+        #[test]
+        fn bytesrepr_roundtrip_signature() {
+            let mut rng = TestRng::new();
+            let ed25519_secret_key = SecretKey::random_ed25519(&mut rng);
+            let public_key = PublicKey::from(&ed25519_secret_key);
+            let data = b"data";
+            let signature = sign(data, &ed25519_secret_key, &public_key, &mut rng);
+            bytesrepr::test_serialization_roundtrip(&signature);
+        }
     }
 
     mod secp256k1 {
@@ -1762,6 +1834,16 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
             let data = b"data";
             let signature = sign(data, &secret_key, &public_key, &mut rng);
             super::signature_serialization_roundtrip(signature);
+        }
+
+        #[test]
+        fn bytesrepr_roundtrip_signature() {
+            let mut rng = TestRng::new();
+            let secret_key = SecretKey::random_secp256k1(&mut rng);
+            let public_key = PublicKey::from(&secret_key);
+            let data = b"data";
+            let signature = sign(data, &secret_key, &public_key, &mut rng);
+            bytesrepr::test_serialization_roundtrip(&signature);
         }
 
         #[test]
