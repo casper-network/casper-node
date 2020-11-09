@@ -143,12 +143,18 @@ type Multiple<T> = SmallVec<[T; 2]>;
 pub struct Responder<T>(Option<oneshot::Sender<T>>);
 
 impl<T: 'static + Send> Responder<T> {
+    /// Creates a new `Responder`.
     #[inline]
     fn new(sender: oneshot::Sender<T>) -> Self {
         Responder(Some(sender))
     }
 
+    /// Helper method for tests.
+    ///
+    /// Allows creating a responder manually. This function should not be used, unless you are
+    /// writing alternative infrastructure, e.g. for tests.
     #[cfg(test)]
+    #[inline]
     pub(crate) fn create(sender: oneshot::Sender<T>) -> Self {
         Responder::new(sender)
     }
