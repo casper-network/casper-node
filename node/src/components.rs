@@ -16,7 +16,7 @@ pub(crate) mod linear_chain;
 pub(crate) mod linear_chain_sync;
 pub(crate) mod rest_server;
 pub(crate) mod rpc_server;
-// The  `in_memory_network` is public for use in doctests.
+// The `in_memory_network` is public for use in doctests.
 #[cfg(test)]
 pub mod in_memory_network;
 
