@@ -94,7 +94,7 @@ use crate::{
 pub const CONV_RATE: u64 = 1;
 
 lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(550_000_000 * CONV_RATE);
+    pub static ref MAX_PAYMENT: U512 = U512::from(2_500_000_000 * CONV_RATE);
 }
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -1690,6 +1690,7 @@ where
         };
 
         debug!("Payment result: {:?}", payment_result);
+        eprintln!("payment_gas_cost: {}", payment_result.cost());
 
         let payment_result_cost = payment_result.cost();
         // payment_code_spec_3: fork based upon payment purse balance and cost of
@@ -1848,7 +1849,7 @@ where
             )
         };
         debug!("Session result: {:?}", session_result);
-
+        eprintln!("session_gas_cost: {}", session_result.cost());
         // Create + persist deploy info.
         {
             let transfers = session_result.transfers();
