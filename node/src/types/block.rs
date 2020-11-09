@@ -2,6 +2,7 @@
 use std::iter;
 use std::{
     array::TryFromSliceError,
+    collections::BTreeMap,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     hash::Hash,
@@ -18,7 +19,6 @@ use hex_fmt::{HexFmt, HexList};
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use thiserror::Error;
 
 #[cfg(test)]

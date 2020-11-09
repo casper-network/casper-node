@@ -28,10 +28,10 @@ use casper_types::{
 use crate::testing::TestRng;
 
 /// Constants to track operation serialization.
-const OP_READ_TAG: u8 = 1;
-const OP_WRITE_TAG: u8 = 2;
-const OP_ADD_TAG: u8 = 3;
-const OP_NOOP_TAG: u8 = 4;
+const OP_READ_TAG: u8 = 0;
+const OP_WRITE_TAG: u8 = 1;
+const OP_ADD_TAG: u8 = 2;
+const OP_NOOP_TAG: u8 = 3;
 
 /// Constants to track Transform serialization.
 const IDENTITY_TAG: u8 = 0;
