@@ -71,6 +71,8 @@ fn new_effect_builder() -> EffectBuilder<Event> {
     EffectBuilder::new(EventQueueHandle::new(&scheduler))
 }
 
+/// Test proposing and finalizing blocks.
+// TODO: This is still incomplete, and basically just a stub to test using MockProto.
 #[test]
 fn era_supervisor() -> Result<(), Error> {
     let mut rng = TestRng::new();

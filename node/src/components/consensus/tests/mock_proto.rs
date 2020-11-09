@@ -142,7 +142,7 @@ where
             Ok(Message::FinalizeBlock) | Ok(Message::BlockByOtherValidator { .. })
                 if evidence_only =>
             {
-                vec![]
+                vec![] // Evidence only: Other incoming messages are ignored.
             }
             Ok(Message::BlockByOtherValidator {
                 value,
@@ -158,26 +158,25 @@ where
                 vec![result]
             }
             Ok(Message::FinalizeBlock) => {
-                if let Some(PendingBlock {
+                let PendingBlock {
                     value,
                     timestamp,
                     proposer,
-                }) = self.pending_blocks.pop_front()
-                {
-                    let fb = FinalizedBlock {
-                        value,
-                        timestamp,
-                        height: self.finalized_blocks.len() as u64,
-                        rewards: Default::default(),
-                        equivocators: Default::default(),
-                        proposer,
-                    };
-                    self.finalized_blocks.push(fb.clone());
-                    let result = CpResult::FinalizedBlock(fb);
-                    vec![result]
-                } else {
-                    vec![]
-                }
+                } = self
+                    .pending_blocks
+                    .pop_front()
+                    .expect("should have pending blocks when handling FinalizeBlock");
+                let fb = FinalizedBlock {
+                    value,
+                    timestamp,
+                    height: self.finalized_blocks.len() as u64,
+                    rewards: Default::default(),
+                    equivocators: Default::default(),
+                    proposer,
+                };
+                self.finalized_blocks.push(fb.clone());
+                let result = CpResult::FinalizedBlock(fb);
+                vec![result]
             }
         }
     }
@@ -187,7 +186,7 @@ where
         _timestamp: Timestamp,
         _rng: &mut dyn CryptoRngCore,
     ) -> Vec<CpResult<NodeId, C>> {
-        vec![] // TODO
+        todo!("implement handle_timer")
     }
 
     fn propose(
@@ -196,7 +195,7 @@ where
         _block_context: BlockContext,
         _rng: &mut dyn CryptoRngCore,
     ) -> Vec<CpResult<NodeId, C>> {
-        vec![] // TODO
+        todo!("implement propose")
     }
 
     fn resolve_validity(
@@ -205,7 +204,7 @@ where
         _valid: bool,
         _rng: &mut dyn CryptoRngCore,
     ) -> Vec<CpResult<NodeId, C>> {
-        vec![] // TODO
+        todo!("implement resolve_validity")
     }
 
     fn activate_validator(
