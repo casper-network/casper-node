@@ -142,7 +142,7 @@ impl DeployExt for Deploy {
             secret_key,
         } = params;
         let mut rng = rand::thread_rng();
-        Deploy::new_signed(
+        Deploy::new(
             timestamp,
             ttl,
             gas_price,

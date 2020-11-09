@@ -319,7 +319,7 @@ pub struct Deploy {
 impl Deploy {
     /// Constructs a new signed `Deploy`.
     #[allow(clippy::too_many_arguments)]
-    pub fn new_signed(
+    pub fn new(
         timestamp: Timestamp,
         ttl: TimeDiff,
         gas_price: u64,
@@ -432,7 +432,7 @@ impl Deploy {
 
         let secret_key = SecretKey::random(rng);
 
-        Deploy::new_signed(
+        Deploy::new(
             timestamp,
             ttl,
             gas_price,
@@ -636,7 +636,7 @@ mod tests {
 
     #[test]
     fn is_not_valid() {
-        let mut deploy = Deploy::new_signed(
+        let mut deploy = Deploy::new(
             Timestamp::zero(),
             TimeDiff::from(Duration::default()),
             0,
