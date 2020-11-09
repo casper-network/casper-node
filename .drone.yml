@@ -75,25 +75,26 @@ kind: pipeline
 name: cargo-test
 
 steps:
-  - name: updater-dry-run
-    image: casperlabs/node-build-u1804
-    commands:
-      - cargo run --package=casper-updater -- --root-dir=. --dry-run
+- name: updater-dry-run
+  image: casperlabs/node-build-u1804
+  commands:
+  - cargo run --package=casper-updater -- --root-dir=. --dry-run
 
-  - name: cargo-test
-    image: casperlabs/node-build-u1804
-    commands:
-      - make setup
-      - make test
-      - make test-contracts
+- name: cargo-test
+  image: casperlabs/node-build-u1804
+  commands:
+  - make setup
+  - make test
+  - make test-contracts
 
-  - name: client-ffi-examples
-    commands:
-      - make setup-rs
-      - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
-      - cmake --build target/build
-      - ./target/build/get-auction-info
-      - ./target/build/put-deploy
+- name: client-ffi-examples
+  image: casperlabs/node-build-u1804
+  commands:
+  - make setup-rs
+  - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
+  - cmake --build target/build
+  - ./target/build/get-auction-info
+  - ./target/build/put-deploy
 
 depends_on:
   - pre-checks
@@ -111,54 +112,54 @@ kind: pipeline
 name: package
 
 steps:
-  - name: build-deb-update-revision
-    image: casperlabs/node-build-u1804
-    commands:
-      - "./update-rev.sh"
+- name: build-deb-update-revision
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./update-rev.sh"
 
-  - name: build-deb
-    image: casperlabs/node-build-u1804
-    commands:
-      - "make deb"
+- name: build-deb
+  image: casperlabs/node-build-u1804
+  commands:
+    - "make deb"
 
-  - name: test-deb
-    image: ubuntu:bionic
-    commands:
-      - "apt update"
-      - "$(pwd)/ci/test_deb.sh $(pwd) casper-client"
-      - "$(pwd)/ci/test_deb.sh $(pwd) casper-node"
+- name: test-deb
+  image: ubuntu:bionic
+  commands:
+    - "apt update"
+    - "$(pwd)/ci/test_deb.sh $(pwd) casper-client"
+    - "$(pwd)/ci/test_deb.sh $(pwd) casper-node"
 
-  - name: put-drone-s3-cache
-    image: casperlabs/s3cmd-build:latest
-    commands:
-      - ./ci/drone_s3_storage.sh put $(pwd)/target/debian/ debian/
-    environment:
-      CL_VAULT_TOKEN:
-        from_secret: vault_token
-      CL_VAULT_HOST:
-        from_secret: vault_host
-    when:
-      branch:
-        - master
-        - "release-*"
-      event:
-        - push
+- name: put-drone-s3-cache
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - ./ci/drone_s3_storage.sh put $(pwd)/target/debian/ debian/
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
 
-  - name: build-wasm-package-push-to-s3
-    image: casperlabs/s3cmd-build:latest
-    commands:
-      - "./build_wasm_package.sh"
-    environment:
-      CL_VAULT_TOKEN:
-        from_secret: vault_token
-      CL_VAULT_HOST:
-        from_secret: vault_host
-    when:
-      branch:
-        - master
-        - "release-*"
-      event:
-        - push
+- name: build-wasm-package-push-to-s3
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - "./build_wasm_package.sh"
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+    - master
+    - "release-*"
+    event:
+    - push
 
 depends_on:
   - pre-checks
@@ -177,41 +178,41 @@ name: test-package-success
 
 steps:
   # Retrieving packages built and put in s3 from package pipeline.
-  - name: get-and-del-drone-s3-cache
-    image: casperlabs/s3cmd-build:latest
-    commands:
-      - ./ci/drone_s3_storage.sh get debian/ $(pwd)/target/debian/
-      - ./ci/drone_s3_storage.sh del
-    environment:
-      CL_VAULT_TOKEN:
-        from_secret: vault_token
-      CL_VAULT_HOST:
-        from_secret: vault_host
-    when:
-      branch:
-        - master
-        - "release-*"
-      event:
-        - push
+- name: get-and-del-drone-s3-cache
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - ./ci/drone_s3_storage.sh get debian/ $(pwd)/target/debian/
+    - ./ci/drone_s3_storage.sh del
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
 
-    # we want to publish to the test repo, only when code is pushed to master or release-* branch.
-    # bors should make sure, that it has passed on staging or trying branches
-  - name: publish-test-bintray
-    image: casperlabs/node-build-u1804
-    commands:
-      - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
-      - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
-    environment:
-      CL_VAULT_TOKEN:
-        from_secret: vault_token
-      CL_VAULT_HOST:
-        from_secret: vault_host
-    when:
-      branch:
-        - master
-        - "release-*"
-      event:
-        - push
+  # we want to publish to the test repo, only when code is pushed to master or release-* branch.
+  # bors should make sure, that it has passed on staging or trying branches
+- name: publish-test-bintray
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
+    - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
 
 depends_on:
   - cargo-test
@@ -234,33 +235,33 @@ clone:
   disable: true
 
 steps:
-  - name: del-s3-cache
-    image: casperlabs/s3cmd-build:latest
-    commands:
-      - ./ci/drone_s3_storage.sh del
-    environment:
-      CL_VAULT_TOKEN:
-        from_secret: vault_token
-      CL_VAULT_HOST:
-        from_secret: vault_host
-    when:
-      branch:
-        - master
-        - "release-*"
-      event:
-        - push
+- name: del-s3-cache
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - ./ci/drone_s3_storage.sh del
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
 
-  - name: notify
-    image: plugins/slack
-    settings:
-      webhook:
-        from_secret: slack_webhook
-      template:
-        - |
-          casper-node build status: *{{ uppercasefirst build.status }}*
-          Author: {{ build.author }}
-          Drone Build: <{{ build.link }}|#{{ build.number }}>
-          Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+- name: notify
+  image: plugins/slack
+  settings:
+    webhook:
+      from_secret: slack_webhook
+    template:
+      - |
+        casper-node build status: *{{ uppercasefirst build.status }}*
+        Author: {{ build.author }}
+        Drone Build: <{{ build.link }}|#{{ build.number }}>
+        Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
 
 trigger:
   status:
@@ -285,52 +286,52 @@ kind: pipeline
 name: release-by-tag
 
 steps:
-  - name: update-revision
-    image: casperlabs/node-build-u1804
-    commands:
-      - "./update-rev.sh"
+- name: update-revision
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./update-rev.sh"
 
-  - name: build-deb
-    image: casperlabs/node-build-u1804
-    commands:
-      - "make deb"
+- name: build-deb
+  image: casperlabs/node-build-u1804
+  commands:
+    - "make deb"
 
-  - name: publish-crate-tag-TODO
-    image: casperlabs/node-build-u1804
-    commands:
-      - "echo TODO"
+- name: publish-crate-tag-TODO
+  image: casperlabs/node-build-u1804
+  commands:
+  - "echo TODO"
 
-  - name: publish-prod-bintray
-    image: casperlabs/node-build-u1804
-    commands:
-      - "./upload.sh --repo-name debian --package-name casper-node"
-      - "./upload.sh --repo-name debian --package-name casper-client"
-    environment:
-      CL_VAULT_TOKEN:
-        from_secret: vault_token
-      CL_VAULT_HOST:
-        from_secret: vault_host
+- name: publish-prod-bintray
+  image: casperlabs/node-build-u1804
+  commands:
+  - "./upload.sh --repo-name debian --package-name casper-node"
+  - "./upload.sh --repo-name debian --package-name casper-client"
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
 
-  - name: publish-github-pre-release
-    image: plugins/github-release
-    settings:
-      api_key:
-        from_secret: github_token
-      checksum:
-        - sha256
-        - md5
-      files:
-        - "./target/debian/*.deb"
-      prerelease:
-        - true
-    when:
-      ref:
-        - refs/tags/v*
+- name: publish-github-pre-release
+  image: plugins/github-release
+  settings:
+    api_key:
+      from_secret: github_token
+    checksum:
+    - sha256
+    - md5
+    files:
+    - "./target/debian/*.deb"
+    prerelease:
+    - true
+  when:
+    ref:
+    - refs/tags/v*
 
 # push to test repo every time we are going to merge to master (via staging), trying or pushing to release (hot fix)
 trigger:
   ref:
-    - refs/tags/v*
+  - refs/tags/v*
 ---
 kind: pipeline
 name: failed-tag
@@ -339,22 +340,22 @@ clone:
   disable: true
 
 steps:
-  - name: notify
-    image: plugins/slack
-    settings:
-      webhook:
-        from_secret: slack_webhook
-      template:
-        - |
-          casper-node build status: *{{ uppercasefirst build.status }}*
-          Author: {{ build.author }}
-          Drone Build: <{{ build.link }}|#{{ build.number }}>
-          Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+- name: notify
+  image: plugins/slack
+  settings:
+    webhook:
+      from_secret: slack_webhook
+    template:
+    - |
+      casper-node build status: *{{ uppercasefirst build.status }}*
+      Author: {{ build.author }}
+      Drone Build: <{{ build.link }}|#{{ build.number }}>
+      Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
 trigger:
   status:
-    - failure
+  - failure
   ref:
     - refs/tags/v*
 
 depends_on:
-  - release-by-tag
+- release-by-tag
