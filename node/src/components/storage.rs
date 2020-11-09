@@ -9,6 +9,9 @@
 //! * keeping an index of blocks by height and
 //! * [unimplemented] managing disk usage by pruning blocks and deploys from storage.
 
+mod lmdb_ext;
+mod serialization;
+
 use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
@@ -19,12 +22,9 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use lmdb::{
-    Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RoTransaction, RwTransaction,
-    Transaction, WriteFlags,
-};
+use lmdb::{Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction};
 use semver::Version;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::{block_proposer::BlockProposerState, Component};
@@ -34,6 +34,9 @@ use crate::{
     utils::WithDir,
     Chainspec,
 };
+use lmdb_ext::{EnvironmentExt, TransactionExt, WriteTransactionExt};
+use serialization::{deser, ser};
+
 #[cfg(test)]
 use tempfile::TempDir;
 use tracing::{info, warn};
@@ -428,155 +431,10 @@ impl Config {
     }
 }
 
-/// Deserialization helper.
-///
-/// # Panics
-///
-/// Panics if deserialization fails. Storage deserialization is infallibe, unless corruption occurs.
-#[inline(always)]
-fn deser<T: DeserializeOwned>(raw: &[u8]) -> T {
-    bincode::deserialize(raw)
-        .expect("deserialization failed. this is a bug, or your database has been corrupted")
-}
-
-/// Serialization helper
-///
-/// # Panics
-///
-/// Panics if serialization fails, for reasons other than IO errors.
-#[inline(always)]
-fn ser<T: Serialize, W: io::Write>(writer: W, value: &T) -> Result<(), io::Error> {
-    match bincode::serialize_into(writer, value) {
-        Ok(_) => Ok(()),
-        Err(err) => {
-            if let bincode::ErrorKind::Io(io_err) = *err {
-                Err(io_err)
-            } else {
-                panic!("serialization error. this is a bug: {}", err)
-            }
-        }
-    }
-}
-
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::StorageRequest(req) => req.fmt(f),
-        }
-    }
-}
-
-trait EnvironmentExt {
-    /// Creates a new read-only transaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics if creating the transaction fails.
-    fn ro_transaction(&self) -> RoTransaction;
-
-    /// Creates a new read-write transaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics if creating the transaction fails.
-    fn rw_transaction(&self) -> RwTransaction;
-}
-
-/// Additional methods on transaction.
-trait TransactionExt {
-    /// Helper function to load a value from a database.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a value has been successfully loaded from the database but could not be
-    /// deserialized or a database error occurred.
-    fn get_value<K: AsRef<[u8]>, V: DeserializeOwned>(
-        &mut self,
-        db: Database,
-        key: &K,
-    ) -> Option<V>;
-}
-
-/// Additional methods on write transactions.
-trait WriteTransactionExt {
-    /// Commits transaction results.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a database error occurs.
-    fn commit_ok(self);
-
-    /// Helper function to write a value to a database.
-    ///
-    /// Returns `true` if the value has actually been written.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a database error occurs.
-    fn put_value<K: AsRef<[u8]>, V: Serialize>(&mut self, db: Database, key: &K, value: &V)
-        -> bool;
-}
-
-impl EnvironmentExt for Environment {
-    #[inline]
-    fn ro_transaction(&self) -> RoTransaction {
-        self.begin_ro_txn()
-            .expect("could not start new read-only transaction")
-    }
-    #[inline]
-    fn rw_transaction(&self) -> RwTransaction {
-        self.begin_rw_txn()
-            .expect("could not start new read-write transaction")
-    }
-}
-
-impl<T> TransactionExt for T
-where
-    T: Transaction,
-{
-    #[inline]
-    fn get_value<K: AsRef<[u8]>, V: DeserializeOwned>(
-        &mut self,
-        db: Database,
-        key: &K,
-    ) -> Option<V> {
-        match self.get(db, key) {
-            Ok(raw) => Some(deser(raw)),
-            Err(lmdb::Error::NotFound) => None,
-            Err(err) => panic!("error loading value from database. this is a bug or a sign of database corruption: {:?}", err)
-        }
-    }
-}
-
-impl WriteTransactionExt for RwTransaction<'_> {
-    fn commit_ok(self) {
-        self.commit().expect("could not commit transaction")
-    }
-
-    fn put_value<K: AsRef<[u8]>, V: Serialize>(
-        &mut self,
-        db: Database,
-        key: &K,
-        value: &V,
-    ) -> bool {
-        let buf = bincode::serialize(value)
-            .expect("serialization of value failed. this is a serious bug");
-
-        match self.put(
-            db,
-            key,
-            &buf,
-            // TODO - this should be changed back to `WriteFlags::NO_OVERWRITE` once the mutable
-            //        data (i.e. blocks' proofs) are handled via metadata as per deploys'
-            //        execution results.
-            WriteFlags::empty(),
-        ) {
-            Ok(()) => true,
-            Err(lmdb::Error::KeyExist) => false,
-            Err(err) => panic!(
-                "error storing value to database. this is a bug, or a misconfiguration: {:?}",
-                err
-            ),
         }
     }
 }
