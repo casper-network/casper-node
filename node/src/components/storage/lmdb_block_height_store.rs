@@ -4,11 +4,11 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use lmdb::{
     self, Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
 
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use tracing::info;
 
 use super::{BlockHeightStore, Error, Result};

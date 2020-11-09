@@ -145,7 +145,7 @@ impl<B: Value> DeployMetadata<B> {
 impl DeployMetadata<Block> {
     fn random(rng: &mut TestRng) -> Self {
         let block = Block::random(rng);
-        let id = super::storage::Value::id(&block);
+        let id = Value::id(&block);
         let mut execution_results = BTreeMap::new();
         let execution_result = ExecutionResult::random(rng);
         execution_results.insert(*id, execution_result);
@@ -160,16 +160,19 @@ impl<B: Value> Default for DeployMetadata<B> {
         }
     }
 }
+
 impl<B: Value> ToBytes for DeployMetadata<B> {
     fn to_bytes(&self) -> StdResult<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.execution_results.to_bytes()?);
         Ok(buffer)
     }
+
     fn serialized_length(&self) -> usize {
         self.execution_results.serialized_length()
     }
 }
+
 impl<B: Value> FromBytes for DeployMetadata<B> {
     fn from_bytes(bytes: &[u8]) -> StdResult<(Self, &[u8]), bytesrepr::Error> {
         let (execution_results, remainder) = BTreeMap::<B::Id, ExecutionResult>::from_bytes(bytes)?;
