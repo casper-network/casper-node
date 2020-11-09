@@ -33,7 +33,8 @@ use crate::{
             traits::{Context, NodeIdT},
         },
     },
-    types::{CryptoRngCore, Timestamp},
+    types::Timestamp,
+    NodeRng,
 };
 
 #[derive(DataSize, Debug)]
@@ -207,7 +208,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     fn add_past_due_stored_vertices(
         &mut self,
         timestamp: Timestamp,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<CpResult<I, C>> {
         let mut results = vec![];
         let past_due_timestamps: Vec<Timestamp> = self
@@ -230,7 +231,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     fn add_vertices(
         &mut self,
         mut pvvs: Vec<(I, PreValidatedVertex<C>)>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<CpResult<I, C>> {
         // TODO: Is there a danger that this takes too much time, and starves other
         // components and events? Consider replacing the loop with a "callback" effect:
@@ -322,7 +323,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     fn add_valid_vertex(
         &mut self,
         vv: ValidVertex<C>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         now: Timestamp,
     ) -> Vec<CpResult<I, C>> {
         // Check whether we should change the round exponent.
@@ -380,7 +381,7 @@ where
         sender: I,
         msg: Vec<u8>,
         evidence_only: bool,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<CpResult<I, C>> {
         match bincode::deserialize(msg.as_slice()) {
             Err(err) => vec![ConsensusProtocolResult::InvalidIncomingMessage(
@@ -434,11 +435,7 @@ where
         }
     }
 
-    fn handle_timer(
-        &mut self,
-        timestamp: Timestamp,
-        rng: &mut dyn CryptoRngCore,
-    ) -> Vec<CpResult<I, C>> {
+    fn handle_timer(&mut self, timestamp: Timestamp, rng: &mut NodeRng) -> Vec<CpResult<I, C>> {
         let effects = self.highway.handle_timer(timestamp, rng);
         let mut results = self.process_av_effects(effects);
         results.extend(self.add_past_due_stored_vertices(timestamp, rng));
@@ -449,7 +446,7 @@ where
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<CpResult<I, C>> {
         let effects = self.highway.propose(value, block_context, rng);
         self.process_av_effects(effects)
@@ -459,7 +456,7 @@ where
         &mut self,
         value: &C::ConsensusValue,
         valid: bool,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<CpResult<I, C>> {
         if valid {
             let mut results = self

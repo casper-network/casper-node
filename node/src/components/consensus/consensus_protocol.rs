@@ -4,10 +4,7 @@ use anyhow::Error;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    components::consensus::traits::Context,
-    types::{CryptoRngCore, Timestamp},
-};
+use crate::{components::consensus::traits::Context, types::Timestamp, NodeRng};
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd)]
@@ -102,14 +99,14 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
         sender: I,
         msg: Vec<u8>,
         evidence_only: bool,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<ConsensusProtocolResult<I, C>>;
 
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
         timestamp: Timestamp,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<ConsensusProtocolResult<I, C>>;
 
     /// Proposes a new value for consensus.
@@ -117,7 +114,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
         &mut self,
         value: C::ConsensusValue,
         block_context: BlockContext,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<ConsensusProtocolResult<I, C>>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
@@ -126,7 +123,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
         &mut self,
         value: &C::ConsensusValue,
         valid: bool,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<ConsensusProtocolResult<I, C>>;
 
     /// Turns this instance into an active validator, that participates in the consensus protocol.

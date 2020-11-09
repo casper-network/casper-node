@@ -50,8 +50,9 @@ use crate::{
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
-    types::{BlockHash, BlockHeader, CryptoRngCore, FinalizedBlock, ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
+    NodeRng,
 };
 
 pub use self::era::{Era, EraId};
@@ -118,7 +119,7 @@ where
         genesis_state_root_hash: Digest,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor<I>>,
-        mut rng: &mut dyn CryptoRngCore,
+        mut rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
@@ -161,7 +162,7 @@ where
     pub(super) fn handling_wrapper<'a, REv: ReactorEventT<I>>(
         &'a mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &'a mut dyn CryptoRngCore,
+        rng: &'a mut NodeRng,
     ) -> EraSupervisorHandlingWrapper<'a, I, REv> {
         EraSupervisorHandlingWrapper {
             era_supervisor: self,
@@ -317,7 +318,7 @@ where
 pub(super) struct EraSupervisorHandlingWrapper<'a, I, REv: 'static> {
     pub(super) era_supervisor: &'a mut EraSupervisor<I>,
     pub(super) effect_builder: EffectBuilder<REv>,
-    pub(super) rng: &'a mut dyn CryptoRngCore,
+    pub(super) rng: &'a mut NodeRng,
 }
 
 impl<'a, I, REv> EraSupervisorHandlingWrapper<'a, I, REv>
@@ -330,7 +331,7 @@ where
     where
         F: FnOnce(
             &mut dyn ConsensusProtocol<I, ClContext>,
-            &mut dyn CryptoRngCore,
+            &mut NodeRng,
         ) -> Vec<ConsensusProtocolResult<I, ClContext>>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
@@ -687,6 +688,7 @@ where
                 effects
             }
             ConsensusProtocolResult::NewEvidence(pub_key) => {
+                info!(%pub_key, era = era_id.0, "validator equivocated");
                 let mut effects = Effects::new();
                 for e_id in (era_id.0..=(era_id.0 + self.era_supervisor.bonded_eras)).map(EraId) {
                     let candidate_blocks =

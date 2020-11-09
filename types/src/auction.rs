@@ -73,27 +73,17 @@ pub trait Auction:
 
         // Update bids or stakes
         let mut validators = detail::get_bids(self)?;
-
-        let bid = validators
-            .entry(public_key)
-            .and_modify(|bid| {
-                // Update `bids` map since `account_hash` belongs to a validator.
-                bid.bonding_purse = bonding_purse;
-                bid.delegation_rate = delegation_rate;
-                bid.staked_amount += amount;
-
-                // bid.staked_amount
-            })
-            .or_insert_with(|| {
-                // Create new entry.
-                Bid {
-                    bonding_purse,
-                    staked_amount: amount,
-                    delegation_rate,
-                    funds_locked: None,
-                }
-            });
-        let new_amount = bid.staked_amount;
+        let new_amount = match validators.get_mut(&public_key) {
+            Some(bid) => bid
+                .with_delegation_rate(delegation_rate)
+                .increase_stake(amount)?,
+            None => {
+                let staked_amount = amount;
+                let bid = Bid::unlocked(bonding_purse, amount, delegation_rate);
+                validators.insert(public_key, bid);
+                staked_amount
+            }
+        };
         detail::set_bids(self, validators)?;
 
         Ok(new_amount)
@@ -123,19 +113,7 @@ pub trait Auction:
 
         let bid = bids.get_mut(&public_key).ok_or(Error::ValidatorNotFound)?;
 
-        let new_amount = if bid.can_withdraw_funds() {
-            // Carefully decrease bonded funds
-            let new_amount = bid
-                .staked_amount
-                .checked_sub(amount)
-                .ok_or(Error::InvalidAmount)?;
-            bid.staked_amount = new_amount;
-            new_amount
-        } else {
-            // If validator is still locked-up (or with an autowin status), no withdrawals
-            // are allowed.
-            return Err(Error::ValidatorFundsLocked);
-        };
+        let new_amount = bid.decrease_stake(amount)?;
 
         if new_amount.is_zero() {
             bids.remove(&public_key).unwrap();
@@ -335,16 +313,14 @@ pub trait Auction:
         let mut era_id = detail::get_era_id(self)?;
 
         let mut bids = detail::get_bids(self)?;
+
         //
         // Process locked bids
         //
         let mut bids_modified = false;
         for bid in bids.values_mut() {
-            if let Some(locked_until) = bid.funds_locked {
-                if era_id >= locked_until {
-                    bid.funds_locked = None;
-                    bids_modified = true;
-                }
+            if bid.unlock(era_id) {
+                bids_modified = true;
             }
         }
 
@@ -353,25 +329,20 @@ pub trait Auction:
         //
 
         // Take winning validators and add them to validator_weights right away.
-        let mut bid_weights: ValidatorWeights = {
-            bids.iter()
-                .filter(|(_validator_account_hash, founding_validator)| {
-                    founding_validator.funds_locked.is_some()
-                })
-                .map(|(validator_account_hash, amount)| {
-                    (*validator_account_hash, amount.staked_amount)
-                })
-                .collect()
-        };
+        let mut bid_weights: ValidatorWeights = bids
+            .iter()
+            .filter(|(_validator_account_hash, founding_validator)| founding_validator.is_locked())
+            .map(|(validator_account_hash, amount)| {
+                (*validator_account_hash, *amount.staked_amount())
+            })
+            .collect();
 
         // Non-winning validators are taken care of later
         let bid_scores = bids
             .iter()
-            .filter(|(_validator_account_hash, founding_validator)| {
-                founding_validator.funds_locked.is_none()
-            })
+            .filter(|(_validator_account_hash, founding_validator)| !founding_validator.is_locked())
             .map(|(validator_account_hash, amount)| {
-                (*validator_account_hash, amount.staked_amount)
+                (*validator_account_hash, *amount.staked_amount())
             });
 
         // Validator's entries from both maps as a single iterable.
@@ -416,8 +387,8 @@ pub trait Auction:
             let mut seigniorage_recipient = SeigniorageRecipient::default();
             // ... mapped to their bids
             if let Some(founding_validator) = bids.get(era_validator) {
-                seigniorage_recipient.stake = founding_validator.staked_amount;
-                seigniorage_recipient.delegation_rate = founding_validator.delegation_rate;
+                seigniorage_recipient.stake = *founding_validator.staked_amount();
+                seigniorage_recipient.delegation_rate = *founding_validator.delegation_rate();
             }
 
             if let Some(delegator_map) = delegators.remove(era_validator) {

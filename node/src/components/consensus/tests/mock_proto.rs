@@ -20,7 +20,8 @@ use crate::{
             ConsensusMessage, EraId, Event,
         },
     },
-    types::{CryptoRngCore, Timestamp},
+    types::Timestamp,
+    NodeRng,
 };
 
 #[derive(DataSize, Debug, Ord, PartialOrd, Clone, Display, Hash, Eq, PartialEq)]
@@ -125,7 +126,7 @@ where
         sender: NodeId,
         msg: Vec<u8>,
         evidence_only: bool,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
     ) -> Vec<CpResult<NodeId, C>> {
         match bincode::deserialize::<Message<C>>(msg.as_slice()) {
             Err(err) => vec![CpResult::InvalidIncomingMessage(msg, sender, err.into())],
@@ -184,7 +185,7 @@ where
     fn handle_timer(
         &mut self,
         _timestamp: Timestamp,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
     ) -> Vec<CpResult<NodeId, C>> {
         todo!("implement handle_timer")
     }
@@ -193,7 +194,7 @@ where
         &mut self,
         _value: C::ConsensusValue,
         _block_context: BlockContext,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
     ) -> Vec<CpResult<NodeId, C>> {
         todo!("implement propose")
     }
@@ -202,7 +203,7 @@ where
         &mut self,
         _value: &C::ConsensusValue,
         _valid: bool,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
     ) -> Vec<CpResult<NodeId, C>> {
         todo!("implement resolve_validity")
     }

@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use semver::Version;
 
 use super::{DeployAcceptorConfig, Source};
-use crate::{small_network::NodeId, types::Deploy};
+use crate::types::{Deploy, NodeId};
 
 /// `DeployAcceptor` events.
 #[derive(Debug)]

@@ -21,8 +21,8 @@ for file in "${files[@]}"; do
   fi
 done
 
-wget --no-verbose $ACCOUNTS_CSV_PATH
-wget --no-verbose $CHAINSPEC_TOML_PATH
-wget --no-verbose $VALIDATION_PATH
+curl -sLJO $ACCOUNTS_CSV_PATH
+curl -sLJO $CHAINSPEC_TOML_PATH
+curl -sLJO $VALIDATION_PATH
 
 md5sum -c ./validation.md5

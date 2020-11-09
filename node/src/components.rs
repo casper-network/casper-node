@@ -28,7 +28,7 @@ use semver::Version;
 
 use crate::{
     effect::{EffectBuilder, Effects},
-    types::CryptoRngCore,
+    NodeRng,
 };
 
 // TODO - confirm if we want to use the protocol version for this.
@@ -73,7 +73,7 @@ pub trait Component<REv> {
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event>;
 }

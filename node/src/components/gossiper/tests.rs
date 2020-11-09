@@ -18,7 +18,7 @@ use crate::{
     components::{
         chainspec_loader::Chainspec,
         deploy_acceptor::{self, DeployAcceptor},
-        in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
+        in_memory_network::{InMemoryNetwork, NetworkController},
         storage::{self, Storage, StorageType},
     },
     effect::announcements::{
@@ -31,8 +31,9 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::{Deploy, Tag},
+    types::{Deploy, NodeId, Tag},
     utils::{Loadable, WithDir},
+    NodeRng,
 };
 use rand::Rng;
 
@@ -121,7 +122,7 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
@@ -152,7 +153,7 @@ impl reactor::Reactor for Reactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -330,7 +331,7 @@ async fn should_gossip() {
     const NETWORK_SIZES: [usize; 3] = [2, 5, 20];
     const DEPLOY_COUNTS: [usize; 3] = [1, 10, 30];
 
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     for network_size in &NETWORK_SIZES {
         for deploy_count in &DEPLOY_COUNTS {
@@ -347,7 +348,7 @@ async fn should_get_from_alternate_source() {
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = Network::<Reactor>::new();
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     // Add `NETWORK_SIZE` nodes.
     let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
@@ -377,7 +378,7 @@ async fn should_get_from_alternate_source() {
     debug!("removed node {}", &node_ids[0]);
 
     // Run node 2 until it receives and responds to the gossip request from node 0.
-    let node_id_0 = node_ids[0];
+    let node_id_0 = node_ids[0].clone();
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
             Event::NetworkRequest(NetworkRequest::SendMessage {
@@ -429,7 +430,7 @@ async fn should_timeout_gossip_response() {
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = Network::<Reactor>::new();
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     // The target number of peers to infect with a given piece of data.
     let infection_target = Config::default().infection_target();

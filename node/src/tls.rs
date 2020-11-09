@@ -143,15 +143,25 @@ impl Debug for CertFingerprint {
 #[derive(Copy, Clone, DataSize, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct KeyFingerprint(Sha512);
 
+impl KeyFingerprint {
+    /// Size of digest in bytes.
+    pub const LENGTH: usize = Sha512::SIZE;
+}
+
+impl AsRef<[u8]> for KeyFingerprint {
+    fn as_ref(&self) -> &[u8] {
+        self.0.bytes()
+    }
+}
+
 impl Debug for KeyFingerprint {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "KeyFingerprint({:10})", HexFmt(self.0.bytes()))
     }
 }
 
-#[cfg(test)]
-impl From<[u8; Sha512::SIZE]> for KeyFingerprint {
-    fn from(raw_bytes: [u8; Sha512::SIZE]) -> Self {
+impl From<[u8; KeyFingerprint::LENGTH]> for KeyFingerprint {
+    fn from(raw_bytes: [u8; KeyFingerprint::LENGTH]) -> Self {
         KeyFingerprint(Sha512(raw_bytes))
     }
 }

@@ -5,7 +5,7 @@ use std::{
 
 use super::{Item, Message};
 use crate::{
-    components::small_network::NodeId,
+    types::NodeId,
     utils::{DisplayIter, Source},
 };
 
