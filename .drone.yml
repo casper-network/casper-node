@@ -8,6 +8,11 @@ name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
 steps:
+  - name: verify-genesis-checksums
+    image: casperlabs/node-build-u1804
+    commands:
+      - "./ci/check_genesis_validation.sh $(pwd)/resources/production"
+
   - name: cargo-fmt
     image: casperlabs/node-build-u1804
     commands:
@@ -220,6 +225,7 @@ trigger:
 ---
 # Runs on failure of cargo-test or package pipelines.
 kind: pipeline
+type: docker
 name: test-package-failure
 
 clone:
@@ -274,6 +280,7 @@ depends_on:
 ---
 # act on release - when the tag is created
 kind: pipeline
+type: docker
 name: release-by-tag
 
 steps:
@@ -325,6 +332,7 @@ trigger:
   - refs/tags/v*
 ---
 kind: pipeline
+type: docker
 name: failed-tag
 
 clone:
