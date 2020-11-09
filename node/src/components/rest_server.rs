@@ -32,7 +32,6 @@ use tracing::{debug, error, warn};
 
 use super::Component;
 use crate::{
-
     effect::{
         requests::{ChainspecLoaderRequest, MetricsRequest, NetworkInfoRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,

@@ -3,10 +3,7 @@
 use casper_node_macros::reactor;
 
 use crate::{
-    components::{small_network::NodeId},
-    protocol::Message,
-    reactor::validator,
-    utils::WithDir,
+    components::small_network::NodeId, protocol::Message, reactor::validator, utils::WithDir,
 };
 
 reactor!(Initializer {

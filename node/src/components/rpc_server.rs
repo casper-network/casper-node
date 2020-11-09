@@ -36,7 +36,7 @@ use self::rpcs::chain::BlockIdentifier;
 
 use super::Component;
 use crate::{
-    components::{contract_runtime::EraValidatorsRequest},
+    components::contract_runtime::EraValidatorsRequest,
     crypto::hash::Digest,
     effect::{
         announcements::RpcServerAnnouncement,
