@@ -6,6 +6,7 @@ use alloc::{
 };
 use core::mem;
 
+use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -459,6 +460,12 @@ impl<T1: CLTyped, T2: CLTyped, T3: CLTyped> CLTyped for (T1, T2, T3) {
             Box::new(T2::cl_type()),
             Box::new(T3::cl_type()),
         ])
+    }
+}
+
+impl<T: CLTyped> CLTyped for Ratio<T> {
+    fn cl_type() -> CLType {
+        <(T, T)>::cl_type()
     }
 }
 

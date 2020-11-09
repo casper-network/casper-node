@@ -25,7 +25,8 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{BlockLike, CryptoRngCore, Deploy, DeployHash},
+    types::{BlockLike, Deploy, DeployHash},
+    NodeRng,
 };
 use keyed_counter::KeyedCounter;
 
@@ -96,7 +97,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

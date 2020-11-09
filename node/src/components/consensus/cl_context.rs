@@ -11,7 +11,7 @@ use crate::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
     },
-    types::CryptoRngCore,
+    NodeRng,
 };
 
 pub(crate) struct Keypair {
@@ -32,7 +32,7 @@ impl ValidatorSecret for Keypair {
     type Hash = Digest;
     type Signature = Signature;
 
-    fn sign(&self, hash: &Digest, rng: &mut dyn CryptoRngCore) -> Signature {
+    fn sign(&self, hash: &Digest, rng: &mut NodeRng) -> Signature {
         asymmetric_key::sign(hash, self.secret_key.as_ref(), &self.public_key, rng)
     }
 }

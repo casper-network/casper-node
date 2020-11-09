@@ -16,10 +16,8 @@ mod tests {
         *,
     };
 
-    use crate::testing::TestRng;
-
     fn should_put_then_get<T: ChainspecStore>(chainspec_store: &mut T) {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         let chainspec = Chainspec::random(&mut rng);
         let version = chainspec.genesis.protocol_version.clone();
@@ -46,7 +44,7 @@ mod tests {
     }
 
     fn should_fail_get<T: ChainspecStore>(chainspec_store: &mut T) {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         let chainspec = Chainspec::random(&mut rng);
         let mut version = chainspec.genesis.protocol_version.clone();

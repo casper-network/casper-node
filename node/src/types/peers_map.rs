@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::small_network::NodeId;
+use crate::types::NodeId;
 
 /// Map of peers.
 #[derive(Serialize, Deserialize, Debug, PartialOrd, PartialEq)]

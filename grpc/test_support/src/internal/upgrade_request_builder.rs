@@ -1,3 +1,5 @@
+use num_rational::Ratio;
+
 use casper_engine_grpc_server::engine_server::{
     ipc::{
         ChainSpec_ActivationPoint, ChainSpec_NewAuctionDelay, ChainSpec_NewLockedFundsPeriod,
@@ -19,6 +21,7 @@ pub struct UpgradeRequestBuilder {
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_locked_funds_period: Option<EraId>,
+    new_round_seigniorage_rate: Option<Ratio<u64>>,
 }
 
 impl UpgradeRequestBuilder {
@@ -65,6 +68,11 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    pub fn with_new_round_seigniorage_rate(mut self, rate: Ratio<u64>) -> Self {
+        self.new_round_seigniorage_rate = Some(rate);
+        self
+    }
+
     pub fn with_activation_point(mut self, height: u64) -> Self {
         self.activation_point = {
             let mut ret = ChainSpec_ActivationPoint::new();
@@ -101,6 +109,10 @@ impl UpgradeRequestBuilder {
             upgrade_point.set_new_locked_funds_period(chainspec_new_locked_funds_period);
         }
 
+        if let Some(new_round_seigniorage_rate) = self.new_round_seigniorage_rate {
+            upgrade_point.set_new_round_seigniorage_rate(new_round_seigniorage_rate.into());
+        }
+
         upgrade_point.set_protocol_version(self.new_protocol_version);
         upgrade_point.set_upgrade_installer(self.upgrade_installer);
 
@@ -123,6 +135,7 @@ impl Default for UpgradeRequestBuilder {
             new_validator_slots: Default::default(),
             new_auction_delay: Default::default(),
             new_locked_funds_period: Default::default(),
+            new_round_seigniorage_rate: Default::default(),
         }
     }
 }

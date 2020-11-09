@@ -10,6 +10,8 @@ accounts_path = 'accounts.csv'
 validator_slots = 5
 auction_delay = 3
 locked_funds_period = 0
+# (1+0.02)^((2^14)/31536000000)-1 is expressed as a fractional number below.
+round_seigniorage_rate = [6_414, 623_437_335_209]
 
 [highway]
 genesis_era_start_timestamp = '2020-09-18T18:45:00Z'
@@ -19,7 +21,7 @@ booking_duration = '4hours'
 entropy_duration = '5days'
 voting_period_duration = '6weeks'
 finality_threshold_percent = 8
-minimum_round_exponent = 13
+minimum_round_exponent = 14
 maximum_round_exponent = 19
 
 [deploys]
