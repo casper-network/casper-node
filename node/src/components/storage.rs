@@ -11,6 +11,8 @@
 
 mod lmdb_ext;
 mod serialization;
+#[cfg(test)]
+mod tests;
 
 use std::{
     collections::BTreeMap,

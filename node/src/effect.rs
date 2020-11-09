@@ -143,8 +143,14 @@ type Multiple<T> = SmallVec<[T; 2]>;
 pub struct Responder<T>(Option<oneshot::Sender<T>>);
 
 impl<T: 'static + Send> Responder<T> {
+    #[inline]
     fn new(sender: oneshot::Sender<T>) -> Self {
         Responder(Some(sender))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn create(sender: oneshot::Sender<T>) -> Self {
+        Responder::new(sender)
     }
 }
 
