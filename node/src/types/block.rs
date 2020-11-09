@@ -983,9 +983,12 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip_era_end() {
         let mut rng = TestRng::new();
-        let finalized_block = FinalizedBlock::random(&mut rng);
-        if let Some(era_end) = finalized_block.era_end() {
-            bytesrepr::test_serialization_roundtrip(era_end);
+        let loop_iterations = 50;
+        for _ in 0..loop_iterations {
+            let finalized_block = FinalizedBlock::random(&mut rng);
+            if let Some(era_end) = finalized_block.era_end() {
+                bytesrepr::test_serialization_roundtrip(era_end);
+            }
         }
     }
 
