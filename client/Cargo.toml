@@ -39,6 +39,13 @@ serde_json = "1.0.55"
 thiserror = "1.0.20"
 tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
 
+[build-dependencies]
+cbindgen = { version = "0.15", optional = true }
+
+[features]
+default = ["ffi"]
+ffi = ["cbindgen"]
+
 [package.metadata.deb]
 features = ["vendored-openssl"]
 revision = "0"
@@ -50,11 +57,3 @@ Package for Casper Client to connect to Casper Node.
 
 For information on using package, see https://github.com/CasperLabs/casper-node
 """
-
-[build-dependencies]
-cbindgen = { version = "0.15", optional = true }
-
-[features]
-default = ["ffi"]
-ffi = ["cbindgen"]
-

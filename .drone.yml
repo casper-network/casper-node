@@ -55,7 +55,7 @@ steps:
 - name: build-deb-update-revision
   <<: *buildenv
   commands:
-    - "./update-rev.sh" 
+    - "./update-rev.sh"
 
 - name: cargo-fmt
   <<: *buildenv
@@ -101,6 +101,17 @@ steps:
   depends_on:
   - build-deb-update-revision
 
+- name: client-ffi-examples
+  <<: *buildenv
+  commands:
+  - make setup-rs
+  - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
+  - cmake --build target/build
+  - ./target/build/get-auction-info
+  - ./target/build/put-deploy
+  depends_on:
+  - build-deb-update-revision
+
 - name: rebuild-cache
   <<: *cache
   settings:
@@ -132,11 +143,11 @@ steps:
     - master
     - "release-*"
     event:
-    - push  
+    - push
   depends_on:
   - build-deb
 
-# we want to publish to the test repo, only when code is pushed to master or release-* branch. 
+# we want to publish to the test repo, only when code is pushed to master or release-* branch.
 # bors should make sure, that it has passed on staging or trying branches
 - name: publish-test-bintray
   <<: *buildenv
@@ -153,7 +164,7 @@ steps:
     - master
     - "release-*"
     event:
-    - push  
+    - push
   depends_on:
   - build-deb
 
