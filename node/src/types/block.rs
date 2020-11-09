@@ -657,6 +657,13 @@ impl Block {
         Ok(())
     }
 
+    /// Overrides the height of a block.
+    #[cfg(test)]
+    pub fn set_height(&mut self, height: u64) -> &mut Self {
+        self.header.height = height;
+        self
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {

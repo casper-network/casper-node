@@ -2,7 +2,7 @@ use super::{Config, Storage};
 use crate::{
     crypto::hash::Digest,
     effect::requests::StorageRequest,
-    testing::ComponentHarness,
+    testing::{ComponentHarness, TestRng},
     types::{Block, BlockHash},
     utils::WithDir,
 };
@@ -26,19 +26,68 @@ fn storage_fixture(harness: &mut ComponentHarness<()>) -> Storage {
     )
 }
 
-#[test]
-fn get_block_of_non_existant_block_returns_none() {
-    let mut harness = ComponentHarness::new();
-    let mut storage = storage_fixture(&mut harness);
+/// Creates a random block with a specific era.
+fn random_block_at_height(rng: &mut TestRng, height: u64) -> Box<Block> {
+    let mut block = Box::new(Block::random(rng));
+    block.set_height(height);
+    block
+}
 
-    let block_hash = BlockHash::new(Digest::random(&mut harness.rng));
-    let response = harness.send_request(&mut storage, move |responder| {
+/// Requests block at a specific era.
+fn at_era(harness: &mut ComponentHarness<()>, storage: &mut Storage, era_id: u64) -> Option<Block> {
+    let response = harness.send_request(storage, |responder| {
+        StorageRequest::GetBlockAtHeight {
+            height: era_id,
+            responder,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
+/// Loads a block.
+fn get_block(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    block_hash: BlockHash,
+) -> Option<Block> {
+    let response = harness.send_request(storage, move |responder| {
         StorageRequest::GetBlock {
             block_hash,
             responder,
         }
         .into()
     });
+    assert!(harness.is_idle());
+    response
+}
+
+/// Requests the highest block.
+fn highest(harness: &mut ComponentHarness<()>, storage: &mut Storage) -> Option<Block> {
+    let response = harness.send_request(storage, |responder| {
+        StorageRequest::GetHighestBlock { responder }.into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
+/// Stores a block.
+fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: Box<Block>) -> bool {
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::PutBlock { block, responder }.into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
+#[test]
+fn get_block_of_non_existant_block_returns_none() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    let block_hash = BlockHash::new(Digest::random(&mut harness.rng));
+    let response = get_block(&mut harness, &mut storage, block_hash);
 
     assert!(response.is_none());
     assert!(harness.is_idle());
@@ -49,41 +98,131 @@ fn can_put_and_get_block() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
 
-    // Create a random block, load and store it.
+    // Create a random block, store and load it.
     let block = Box::new(Block::random(&mut harness.rng));
-    let block2 = block.clone();
 
-    let was_new = harness.send_request(&mut storage, move |responder| {
-        StorageRequest::PutBlock {
-            block: block,
-            responder,
-        }
-        .into()
-    });
-
+    let was_new = put_block(&mut harness, &mut storage, block.clone());
     assert!(was_new, "putting block should have returned `true`");
 
     // Storing the same block again should work, but yield a result of `false`.
-    let was_new_second_time = harness.send_request(&mut storage, move |responder| {
-        StorageRequest::PutBlock {
-            block: block2,
-            responder,
-        }
-        .into()
-    });
-
+    let was_new_second_time = put_block(&mut harness, &mut storage, block.clone());
     assert!(
         !was_new_second_time,
         "storing block the second time should have returned `false`"
     );
-    assert!(harness.is_idle());
+
+    // Also ensure we can retrieve just the header.
+    let response = harness.send_request(&mut storage, |responder| {
+        StorageRequest::GetBlockHeader {
+            block_hash: block.hash().clone(),
+            responder,
+        }
+        .into()
+    });
+
+    assert_eq!(response.as_ref(), Some(block.header()))
+}
+
+#[test]
+fn can_retrieve_block_by_era_id() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    // Create a random block, load and store it.
+    let block_33_a = random_block_at_height(&mut harness.rng, 33);
+    let block_33_b = random_block_at_height(&mut harness.rng, 33);
+    let block_14 = random_block_at_height(&mut harness.rng, 14);
+    let block_99 = random_block_at_height(&mut harness.rng, 99);
+
+    // Both block at ID and highest block should return `None` initially.
+    assert!(at_era(&mut harness, &mut storage, 0).is_none());
+    assert!(highest(&mut harness, &mut storage).is_none());
+    assert!(at_era(&mut harness, &mut storage, 14).is_none());
+    assert!(at_era(&mut harness, &mut storage, 33).is_none());
+    assert!(at_era(&mut harness, &mut storage, 99).is_none());
+
+    // Inserting 33A changes this.
+    let was_new = put_block(&mut harness, &mut storage, block_33_a.clone());
+    assert!(was_new);
+
+    assert_eq!(
+        highest(&mut harness, &mut storage).as_ref(),
+        Some(&*block_33_a)
+    );
+    assert!(at_era(&mut harness, &mut storage, 0).is_none());
+    assert!(at_era(&mut harness, &mut storage, 14).is_none());
+    assert_eq!(
+        at_era(&mut harness, &mut storage, 33).as_ref(),
+        Some(&*block_33_a)
+    );
+    assert!(at_era(&mut harness, &mut storage, 99).is_none());
+
+    // Inserting block with height 14, no change in highest.
+    let was_new = put_block(&mut harness, &mut storage, block_14.clone());
+    assert!(was_new);
+
+    assert_eq!(
+        highest(&mut harness, &mut storage).as_ref(),
+        Some(&*block_33_a)
+    );
+    assert!(at_era(&mut harness, &mut storage, 0).is_none());
+    assert_eq!(
+        at_era(&mut harness, &mut storage, 14).as_ref(),
+        Some(&*block_14)
+    );
+    assert_eq!(
+        at_era(&mut harness, &mut storage, 33).as_ref(),
+        Some(&*block_33_a)
+    );
+    assert!(at_era(&mut harness, &mut storage, 99).is_none());
+
+    // Inserting block with height 99, changes highest.
+    let was_new = put_block(&mut harness, &mut storage, block_99.clone());
+    assert!(was_new);
+
+    assert_eq!(
+        highest(&mut harness, &mut storage).as_ref(),
+        Some(&*block_99)
+    );
+    assert!(at_era(&mut harness, &mut storage, 0).is_none());
+    assert_eq!(
+        at_era(&mut harness, &mut storage, 14).as_ref(),
+        Some(&*block_14)
+    );
+    assert_eq!(
+        at_era(&mut harness, &mut storage, 33).as_ref(),
+        Some(&*block_33_a)
+    );
+    assert_eq!(
+        at_era(&mut harness, &mut storage, 99).as_ref(),
+        Some(&*block_99)
+    );
+
+    /// Finally updating 33B should not change highest, but block at height 33.
+    let was_new = put_block(&mut harness, &mut storage, block_33_b.clone());
+    assert!(!was_new);
+
+    assert_eq!(
+        highest(&mut harness, &mut storage).as_ref(),
+        Some(&*block_99)
+    );
+    assert!(at_era(&mut harness, &mut storage, 0).is_none());
+    assert_eq!(
+        at_era(&mut harness, &mut storage, 14).as_ref(),
+        Some(&*block_14)
+    );
+    assert_eq!(
+        at_era(&mut harness, &mut storage, 33).as_ref(),
+        Some(&*block_33_b)
+    );
+    assert_eq!(
+        at_era(&mut harness, &mut storage, 99).as_ref(),
+        Some(&*block_99)
+    );
 }
 
 // fn STORAGE(s: StorageRequest) {
 //     match s {
-//         StorageRequest::GetBlockAtHeight { height, responder } => {}
-//         StorageRequest::GetHighestBlock { responder } => {}
-//         StorageRequest::GetBlockHeader { block_hash, responder } => {}
 //         StorageRequest::PutDeploy { deploy, responder } => {}
 //         StorageRequest::GetDeploys { deploy_hashes, responder } => {}
 //         StorageRequest::GetDeployHeaders { deploy_hashes, responder } => {}
