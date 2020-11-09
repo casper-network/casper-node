@@ -50,7 +50,7 @@ pub(super) trait WriteTransactionExt {
 
     /// Helper function to write a value to a database.
     ///
-    /// Returns `true` if the value has actually been written.
+    /// Returns `true` if the value has actually been written, `false` if the key already existed.
     ///
     /// # Panics
     ///

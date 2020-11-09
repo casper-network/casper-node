@@ -1,9 +1,11 @@
+use smallvec::smallvec;
+
 use super::{Config, Storage};
 use crate::{
     crypto::hash::Digest,
-    effect::requests::StorageRequest,
+    effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng},
-    types::{Block, BlockHash},
+    types::{Block, BlockHash, Deploy, DeployHash},
     utils::WithDir,
 };
 
@@ -63,6 +65,23 @@ fn get_block(
     response
 }
 
+/// Loads a deploy.
+fn get_deploys(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    deploy_hashes: Multiple<DeployHash>,
+) -> Vec<Option<Deploy>> {
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::GetDeploys {
+            deploy_hashes,
+            responder,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
 /// Requests the highest block.
 fn highest(harness: &mut ComponentHarness<()>, storage: &mut Storage) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
@@ -81,8 +100,21 @@ fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: B
     response
 }
 
+/// Stores a deploy.
+fn put_deploy(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    deploy: Box<Deploy>,
+) -> bool {
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::PutDeploy { deploy, responder }.into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
 #[test]
-fn get_block_of_non_existant_block_returns_none() {
+fn get_block_of_non_existing_block_returns_none() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
 
@@ -111,6 +143,9 @@ fn can_put_and_get_block() {
         "storing block the second time should have returned `false`"
     );
 
+    let response = get_block(&mut harness, &mut storage, block.hash().clone());
+    assert_eq!(response.as_ref(), Some(&*block));
+
     // Also ensure we can retrieve just the header.
     let response = harness.send_request(&mut storage, |responder| {
         StorageRequest::GetBlockHeader {
@@ -120,7 +155,7 @@ fn can_put_and_get_block() {
         .into()
     });
 
-    assert_eq!(response.as_ref(), Some(block.header()))
+    assert_eq!(response.as_ref(), Some(block.header()));
 }
 
 #[test]
@@ -198,9 +233,9 @@ fn can_retrieve_block_by_era_id() {
         Some(&*block_99)
     );
 
-    /// Finally updating 33B should not change highest, but block at height 33.
+    // Finally updating 33B should not change highest, but block at height 33.
     let was_new = put_block(&mut harness, &mut storage, block_33_b.clone());
-    assert!(!was_new);
+    assert!(was_new);
 
     assert_eq!(
         highest(&mut harness, &mut storage).as_ref(),
@@ -221,11 +256,56 @@ fn can_retrieve_block_by_era_id() {
     );
 }
 
+#[test]
+fn get_block_of_non_existing_deploy_returns_nones() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    let deploy_id = DeployHash::new(Digest::random(&mut harness.rng));
+    let response = get_deploys(&mut harness, &mut storage, smallvec![deploy_id]);
+    assert_eq!(response, vec![None]);
+
+    // Also verify that we can retrieve using an empty set of deploy hashes.
+    let response = get_deploys(&mut harness, &mut storage, smallvec![]);
+    assert!(response.is_empty());
+}
+
+#[test]
+fn can_retrieve_store_and_load_deploys() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    // Create a random deploy, store and load it.
+    let deploy = Box::new(Deploy::random(&mut harness.rng));
+
+    let was_new = put_deploy(&mut harness, &mut storage, deploy.clone());
+    assert!(was_new, "putting deploy should have returned `true`");
+
+    // Storing the same deploy again should work, but yield a result of `false`.
+    let was_new_second_time = put_deploy(&mut harness, &mut storage, deploy.clone());
+    assert!(
+        !was_new_second_time,
+        "storing deploy the second time should have returned `false`"
+    );
+
+    // Retrieve the stored deploy.
+    let response = get_deploys(&mut harness, &mut storage, smallvec![deploy.id().clone()]);
+    assert_eq!(response, vec![Some(deploy.as_ref().clone())]);
+
+    // Also ensure we can retrieve just the header.
+    let response = harness.send_request(&mut storage, |responder| {
+        StorageRequest::GetDeployHeaders {
+            deploy_hashes: smallvec![deploy.id().clone()],
+            responder,
+        }
+        .into()
+    });
+
+    assert_eq!(response, vec![Some(deploy.header().clone())]);
+}
+
 // fn STORAGE(s: StorageRequest) {
 //     match s {
-//         StorageRequest::PutDeploy { deploy, responder } => {}
-//         StorageRequest::GetDeploys { deploy_hashes, responder } => {}
-//         StorageRequest::GetDeployHeaders { deploy_hashes, responder } => {}
 //         StorageRequest::PutExecutionResults { block_hash, execution_results, responder } => {}
 //         StorageRequest::GetDeployAndMetadata { deploy_hash, responder } => {}
 //         StorageRequest::PutChainspec { chainspec, responder } => {}
