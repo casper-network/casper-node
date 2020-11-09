@@ -22,7 +22,6 @@ pub mod in_memory_network;
 
 pub(crate) mod metrics;
 pub(crate) mod small_network;
-// pub(crate) mod storage;
 pub(crate) mod storage;
 
 use lazy_static::lazy_static;
