@@ -1,6 +1,7 @@
 use std::{fmt, iter};
 
 use datasize::DataSize;
+use num_rational::Ratio;
 use num_traits::Zero;
 use rand::{
     distributions::{Distribution, Standard},
@@ -264,6 +265,7 @@ pub struct ExecConfig {
     validator_slots: u32,
     auction_delay: u64,
     locked_funds_period: EraId,
+    round_seigniorage_rate: Ratio<u64>,
 }
 
 impl ExecConfig {
@@ -278,6 +280,7 @@ impl ExecConfig {
         validator_slots: u32,
         auction_delay: u64,
         locked_funds_period: EraId,
+        round_seigniorage_rate: Ratio<u64>,
     ) -> ExecConfig {
         ExecConfig {
             mint_installer_bytes,
@@ -289,6 +292,7 @@ impl ExecConfig {
             validator_slots,
             auction_delay,
             locked_funds_period,
+            round_seigniorage_rate,
         }
     }
 
@@ -337,6 +341,10 @@ impl ExecConfig {
     pub fn locked_funds_period(&self) -> EraId {
         self.locked_funds_period
     }
+
+    pub fn round_seigniorage_rate(&self) -> Ratio<u64> {
+        self.round_seigniorage_rate
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -365,6 +373,11 @@ impl Distribution<ExecConfig> for Standard {
 
         let locked_funds_period: EraId = rng.gen();
 
+        let round_seigniorage_rate = Ratio::new(
+            rng.gen_range(1, 1_000_000_000),
+            rng.gen_range(1, 1_000_000_000),
+        );
+
         ExecConfig {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
@@ -375,6 +388,7 @@ impl Distribution<ExecConfig> for Standard {
             validator_slots,
             auction_delay,
             locked_funds_period,
+            round_seigniorage_rate,
         }
     }
 }
