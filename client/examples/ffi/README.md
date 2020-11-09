@@ -67,10 +67,6 @@ if (response == CASPER_IO_ERROR) {
 Refer to `<project_root>/client/headers/casper_client.h` as well as the examples in the `src` directory for more
 information about specific functions and their arguments.
 
-## Error handling
-
-Error handling: TODO with enumeration of error types!!!!
-
 
 ## Cleanup
 
