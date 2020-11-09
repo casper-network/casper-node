@@ -4,6 +4,7 @@
 # on success --> cargo-test (parallel) ---> [ test-package-success | test-package-failure ]
 #            \-> package  (parallel) ----/
 kind: pipeline
+type: docker
 name: pre-checks
 
 # Steps perform as fast serially, due to file thrashing.
@@ -40,6 +41,7 @@ trigger:
 ---
 # Failure state from pre-checks pipeline
 kind: pipeline
+type: docker
 name: failed-pre-checks
 
 clone:
@@ -72,6 +74,7 @@ depends_on:
 ---
 # Testing pipeline, runs in parallel with package pipeline
 kind: pipeline
+type: docker
 name: cargo-test
 
 steps:
@@ -87,6 +90,15 @@ steps:
   - make test
   - make test-contracts
 
+- name: client-ffi-examples
+  image: casperlabs/node-build-u1804
+  commands:
+  - make setup-rs
+  - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
+  - cmake --build target/build
+  - ./target/build/get-auction-info
+  - ./target/build/put-deploy
+
 depends_on:
   - pre-checks
 
@@ -100,6 +112,7 @@ trigger:
 ---
 # Packaging pipeline, runs in parallel with cargo-test pipeline
 kind: pipeline
+type: docker
 name: package
 
 steps:
@@ -165,6 +178,7 @@ trigger:
 ---
 # Run on success of cargo-test and package pipelines.
 kind: pipeline
+type: docker
 name: test-package-success
 
 steps:
@@ -220,6 +234,7 @@ trigger:
 ---
 # Runs on failure of cargo-test or package pipelines.
 kind: pipeline
+type: docker
 name: test-package-failure
 
 clone:
@@ -274,6 +289,7 @@ depends_on:
 ---
 # act on release - when the tag is created
 kind: pipeline
+type: docker
 name: release-by-tag
 
 steps:
@@ -325,6 +341,7 @@ trigger:
   - refs/tags/v*
 ---
 kind: pipeline
+type: docker
 name: failed-tag
 
 clone:

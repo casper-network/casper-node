@@ -16,6 +16,8 @@ mod cl_type;
 mod deploy;
 mod error;
 mod executable_deploy_item_ext;
+#[cfg(feature = "ffi")]
+pub mod ffi;
 pub mod keygen;
 mod parsing;
 mod rpc;
@@ -171,7 +173,7 @@ pub fn transfer(
     let target = parsing::get_transfer_target(maybe_target_account, maybe_target_purse)?;
 
     let amount = U512::from_dec_str(amount)
-        .map_err(|err| Error::FailedToParseUint(UIntParseError::FromDecStr(err)))?;
+        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
 
     let source_purse = parsing::purse(maybe_source_purse).ok();
 
@@ -333,7 +335,7 @@ pub struct DeployStrParams<'a> {
     /// Conversion rate between the cost of Wasm opcodes and the motes sent by the payment code.
     pub gas_price: &'a str,
     /// Hex-encoded `Deploy` hashes of deploys which must be executed before this one.
-    pub dependencies: &'a [&'a str],
+    pub dependencies: Vec<&'a str>,
     /// Name of the chain, to avoid the `Deploy` from being accidentally or maliciously included in
     /// a different chain.
     pub chain_name: &'a str,
@@ -356,7 +358,7 @@ impl<'a> TryInto<DeployParams> for DeployStrParams<'a> {
             timestamp,
             ttl,
             gas_price,
-            dependencies,
+            &dependencies,
             chain_name,
         )
     }

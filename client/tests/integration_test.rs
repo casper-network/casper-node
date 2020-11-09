@@ -157,14 +157,15 @@ async fn client_transfer_with_target_purse_and_target_account_should_fail() {
         },
         PaymentStrParams::with_amount("100"),
     );
+    let expected_arg_name = "target_account | target_purse";
     let expected_msg =
-        "Invalid arguments to get_transfer_target - must provide either a target account or purse."
-            .to_string();
+        "Invalid arguments to get_transfer_target - must provide either a target account or purse.";
     match result {
-        Err(Error::InvalidArgument(msg)) if msg == expected_msg => (),
+        Err(Error::InvalidArgument(arg_name, msg))
+            if (arg_name, msg.as_str()) == (expected_arg_name, expected_msg) => {}
         _ => panic!(
             "Expected {:?}, but got {:?}",
-            Error::InvalidArgument(expected_msg),
+            Error::InvalidArgument(expected_arg_name, expected_msg.to_string()),
             result
         ),
     }
