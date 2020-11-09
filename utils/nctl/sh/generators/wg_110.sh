@@ -108,7 +108,7 @@ if [ $node = "all" ]; then
         source $NCTL/assets/net-$net/vars
         for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
         do
-            node_address=$(get_node_address $net $node_idx)
+            node_address=$(get_node_address_rpc $net $node_idx)
             deploy_hash=$(_dispatch_deploy)
             if [ $transfers -le 10 ]; then
                 log "... ... "$deploy_hash
@@ -123,7 +123,7 @@ if [ $node = "all" ]; then
 
 # Dispatch transfers to user specified node.
 else
-    node_address=$(get_node_address $net $node)
+    node_address=$(get_node_address_rpc $net $node)
     for transfer_id in $(seq 1 $transfers)
     do
         deploy_hash=$(_dispatch_deploy)

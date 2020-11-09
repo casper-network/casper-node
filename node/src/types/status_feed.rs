@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{chainspec_loader::ChainspecInfo, consensus::EraId},
-    small_network::NodeId,
-    types::{Block, BlockHash, PeersMap, Timestamp},
+    types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
 };
 
 /// Data feed for client "info_get_status" endpoint.

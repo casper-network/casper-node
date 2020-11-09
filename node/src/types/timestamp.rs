@@ -284,7 +284,6 @@ impl From<Duration> for TimeDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
 
     #[test]
     fn timestamp_serialization_roundtrip() {
@@ -310,7 +309,7 @@ mod tests {
 
     #[test]
     fn timediff_serialization_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let timediff = TimeDiff(rng.gen());
 
         let timediff_as_string = timediff.to_string();

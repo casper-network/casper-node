@@ -12,7 +12,8 @@ use crate::{
         },
         traits::{Context, ValidatorSecret},
     },
-    types::{CryptoRngCore, Timestamp},
+    types::Timestamp,
+    NodeRng,
 };
 
 /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
@@ -95,7 +96,7 @@ impl<C: Context> SignedWireVote<C> {
     pub(crate) fn new(
         wire_vote: WireVote<C>,
         secret_key: &C::ValidatorSecret,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Self {
         let signature = secret_key.sign(&wire_vote.hash(), rng);
         SignedWireVote {

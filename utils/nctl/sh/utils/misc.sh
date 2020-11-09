@@ -22,8 +22,14 @@ NCTL_INITIAL_BALANCE_VALIDATOR=1000000000000000000000000
 # Base weight applied to a validator at genesis.
 NCTL_VALIDATOR_BASE_WEIGHT=100000000000000
 
-# Base HTTP server port number.
-NCTL_BASE_PORT_HTTP=50000
+# Base RPC server port number.
+NCTL_BASE_PORT_RPC=40000
+
+# Base JSON server port number.
+NCTL_BASE_PORT_JSON=50000
+
+# Base event server port number.
+NCTL_BASE_PORT_EVENT=60000
 
 # Base network server port number.
 NCTL_BASE_PORT_NETWORK=34452
@@ -119,33 +125,57 @@ function get_account_hash() {
 }
 
 #######################################
-# Returns node address.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#######################################
-function get_node_address {
-    echo http://localhost:"$(get_node_port $1 $2)"
-}
-
-#######################################
-# Returns node rpc address.
+# Returns node RPC address.
 # Arguments:
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
 function get_node_address_rpc {
-    echo $(get_node_address $1 $2)/rpc
+    echo http://localhost:"$(calculate_node_port $NCTL_BASE_PORT_RPC $1 $2)"
 }
 
 #######################################
-# Returns node port.
+# Returns node RPC address, intended for use with cURL.
 # Arguments:
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_port {
-    echo $(($NCTL_BASE_PORT_HTTP + ($1 * 100) + $2))
+function get_curl_node_address_rpc {
+    # For cURL, need to append '/rpc' to the RPC endpoint URL.
+    # This suffix is not needed for use with the client via '--node-address'.
+    echo "$(get_node_address_rpc $1 $2)/rpc"
+}
+
+#######################################
+# Returns node JSON address.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_node_address_json {
+    echo http://localhost:"$(calculate_node_port $NCTL_BASE_PORT_JSON $1 $2)"
+}
+
+#######################################
+# Returns node event address.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_node_address_event {
+    echo http://localhost:"$(calculate_node_port $NCTL_BASE_PORT_EVENT $1 $2)"
+}
+
+#######################################
+# Calculate port for a given base port, network id, and node id.
+# Arguments:
+#   Base starting port.
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function calculate_node_port {
+    # TODO: Need to handle case of more than 99 nodes.
+    echo $(($1 + ($2 * 100) + $3))
 }
 
 #######################################
@@ -228,7 +258,7 @@ function get_genesis_timestamp()
 #   REST endpoint.
 #######################################
 function exec_node_rest_get() {
-    node_api_ep=$(get_node_address $1 $2)/$3
+    node_api_ep=$(get_node_address_json $1 $2)/$3
     log $node_api
     curl \
         -s \

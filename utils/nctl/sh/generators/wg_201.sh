@@ -57,7 +57,7 @@ user_public_key=$(cat $path_net/users/user-$user/public_key_hex)
 user_purse_uref="TODO"
 user_secret_key=$path_net/users/user-$user/secret_key.pem
 contract_name="withdraw_bid.wasm"
-node_address=$(get_node_address $net $node)
+node_address=$(get_node_address_rpc $net $node)
 path_net=$NCTL/assets/net-$net
 path_client=$path_net/bin/casper-client
 path_contract=$path_net/bin/$contract_name
@@ -88,7 +88,7 @@ deploy_hash=$(
         --session-path $path_contract \
         --ttl "1day" \
         | jq '.result.deploy_hash' \
-        | sed -e 's/^"//' -e 's/"$//'        
+        | sed -e 's/^"//' -e 's/"$//'
     )
 
 # Display deploy hash.

@@ -540,7 +540,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::testing::{self, TestRng};
+    use crate::testing;
 
     fn check_spec(spec: Chainspec) {
         assert_eq!(spec.genesis.name, "test-chain");
@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn bincode_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let chainspec = Chainspec::random(&mut rng);
         testing::bincode_roundtrip(&chainspec);
     }

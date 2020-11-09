@@ -27,16 +27,16 @@ pub struct Bid {
     ///
     /// `Some` indicates locked funds for a specific era and an autowin status, and `None` case
     /// means that funds are unlocked and autowin status is removed.
-    pub funds_locked: Option<u64>,
+    pub release_era: Option<u64>,
 }
 
 impl From<AuctionBid> for Bid {
     fn from(bid: AuctionBid) -> Self {
         Bid {
-            bonding_purse: bid.bonding_purse.to_formatted_string(),
-            staked_amount: bid.staked_amount,
-            delegation_rate: bid.delegation_rate,
-            funds_locked: bid.funds_locked,
+            bonding_purse: bid.bonding_purse().to_formatted_string(),
+            staked_amount: *bid.staked_amount(),
+            delegation_rate: *bid.delegation_rate(),
+            release_era: bid.release_era(),
         }
     }
 }

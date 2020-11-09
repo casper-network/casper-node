@@ -38,8 +38,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     reactor::Finalize,
-    small_network::NodeId,
-    types::{CryptoRngCore, StatusFeed},
+    types::{NodeId, StatusFeed},
+    NodeRng,
 };
 
 use crate::effect::requests::RestRequest;
@@ -105,7 +105,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

@@ -169,22 +169,26 @@ function _set_node ()
     $1/bin/casper-client keygen -f $1/nodes/node-$3/keys > /dev/null 2>&1
 
     # Set config params.
-    HTTP_SERVER_BIND_PORT=$(($NCTL_BASE_PORT_HTTP + ($2 * 100) + $node_id))
     NETWORK_BIND_PORT=0
     if [ $3 -le $4 ]; then
-        NETWORK_BIND_PORT=$(($NCTL_BASE_PORT_NETWORK + ($2 * 100) + $node_id))
+        NETWORK_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_NETWORK $2 $node_id)
         NETWORK_KNOWN_ADDRESSES=""
     else
         NETWORK_BIND_PORT=0
         NETWORK_KNOWN_ADDRESSES="$(get_bootstrap_known_addresses $2 $4)"
     fi
+    RPC_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_RPC $2 $node_id)
+    JSON_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_JSON $2 $node_id)
+    EVENT_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_EVENT $2 $node_id)
 
     # Set config.
     path_config=$1/nodes/node-$3/config/node-config.toml
     cp $NCTL/templates/node-config.toml $path_config
     sed -i "s/{NETWORK_BIND_PORT}/$NETWORK_BIND_PORT/g" $path_config > /dev/null 2>&1
     sed -i "s/{NETWORK_KNOWN_ADDRESSES}/$NETWORK_KNOWN_ADDRESSES/g" $path_config > /dev/null 2>&1
-    sed -i "s/{HTTP_SERVER_BIND_PORT}/$HTTP_SERVER_BIND_PORT/g" $path_config > /dev/null 2>&1
+    sed -i "s/{RPC_SERVER_BIND_PORT}/$RPC_SERVER_BIND_PORT/g" $path_config > /dev/null 2>&1
+    sed -i "s/{JSON_SERVER_BIND_PORT}/$JSON_SERVER_BIND_PORT/g" $path_config > /dev/null 2>&1
+    sed -i "s/{EVENT_SERVER_BIND_PORT}/$EVENT_SERVER_BIND_PORT/g" $path_config > /dev/null 2>&1
 
     # Set chainspec account.
     _set_chainspec_account \
