@@ -687,6 +687,7 @@ dependencies = [
 name = "casper-client"
 version = "1.5.0"
 dependencies = [
+ "anyhow",
  "base64 0.13.0",
  "casper-execution-engine",
  "casper-node",
@@ -695,6 +696,7 @@ dependencies = [
  "futures 0.3.7",
  "hex",
  "humantime",
+ "hyper",
  "jsonrpc-lite",
  "lazy_static",
  "rand 0.7.3",
@@ -704,6 +706,8 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio 0.2.22",
+ "warp",
+ "warp-json-rpc",
 ]
 
 [[package]]
