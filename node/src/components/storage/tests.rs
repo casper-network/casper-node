@@ -41,6 +41,7 @@ fn get_block_of_non_existant_block_returns_none() {
     });
 
     assert!(response.is_none());
+    assert!(harness.is_idle());
 }
 
 #[test]
@@ -75,6 +76,7 @@ fn can_put_and_get_block() {
         !was_new_second_time,
         "storing block the second time should have returned `false`"
     );
+    assert!(harness.is_idle());
 }
 
 // fn STORAGE(s: StorageRequest) {

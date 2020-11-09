@@ -123,6 +123,11 @@ impl<REv: 'static> ComponentHarness<REv> {
         }
     }
 
+    /// Returns whether or not there are pending events on the event queue.
+    pub(crate) fn is_idle(&self) -> bool {
+        self.scheduler.item_count() == 0
+    }
+
     /// Sends a request, expecting an immediate response.
     ///
     /// Sends a request by creating a channel for the response, then mapping it using the function
