@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 #
-# Tears down an entire network.
+# Displays chain spec toml file.
 # Globals:
 #   NCTL - path to nctl home directory.
-#   NCTL_DAEMON_TYPE - type of daemon service manager.
 # Arguments:
 #   Network ordinal identifier.
 
@@ -34,20 +33,4 @@ net=${net:-1}
 # Main
 #######################################
 
-log "network #$net: tearing down assets ... please wait"
-
-# Stop all spinning nodes.
-source $NCTL/sh/node/stop.sh net=$net node=all
-
-# Set daemon handler.
-if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    daemon_mgr=$NCTL/sh/daemon/supervisord/daemon_kill.sh
-fi
-
-# Kill service daemon (if appropriate).
-source $daemon_mgr $net
-
-# Delete artefacts.
-rm -rf $NCTL/assets/net-$net
-
-log "network #$net: assets torn down."
+less $NCTL/assets/net-$net/chainspec/chainspec.toml

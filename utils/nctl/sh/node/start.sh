@@ -4,8 +4,8 @@
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifer.
-#   Node ordinal identifer.
+#   Network ordinal identifier.
+#   Node ordinal identifier.
 
 # Import utils.
 source $NCTL/sh/utils/misc.sh
