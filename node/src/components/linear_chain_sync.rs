@@ -75,18 +75,18 @@ enum State {
         /// Chain of downloaded blocks from the linear chain.
         /// We will `pop()` when executing blocks.
         linear_chain: Vec<BlockHeader>,
-        /// Block being downloaded.
-        /// Block we received from a node and are currently executing.
-        /// Will be used to verify whether results we got from the execution are the same.
-        current_block: Box<Option<BlockHeader>>,
+        /// The most recent block we started to execute. This is updated whenever we start
+        /// downloading deploys for the next block to be executed.
+        latest_block: Box<Option<BlockHeader>>,
     },
     /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
         trusted_hash: BlockHash,
         /// Linear chain block being downloaded.
         linear_chain_block: Box<Option<BlockHeader>>,
-        /// Block we received from a node and are currently executing.
-        current_block: Box<BlockHeader>,
+        /// The most recent block we started to execute. This is updated whenever we start
+        /// downloading deploys for the next block to be executed.
+        latest_block: Box<BlockHeader>,
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
@@ -120,15 +120,15 @@ impl State {
             trusted_hash,
             highest_block_seen: 0,
             linear_chain: Vec::new(),
-            current_block: Box::new(None),
+            latest_block: Box::new(None),
         }
     }
 
-    fn sync_descendants(trusted_hash: BlockHash, current_block: BlockHeader) -> Self {
+    fn sync_descendants(trusted_hash: BlockHash, latest_block: BlockHeader) -> Self {
         State::SyncingDescendants {
             trusted_hash,
             linear_chain_block: Box::new(None),
-            current_block: Box::new(current_block),
+            latest_block: Box::new(latest_block),
             highest_block_seen: 0,
         }
     }
@@ -277,10 +277,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::SyncingTrustedHash {
                 highest_block_seen,
                 trusted_hash,
-                ref current_block,
+                ref latest_block,
                 ..
             } => {
-                match current_block.as_ref() {
+                match latest_block.as_ref() {
                     Some(expected) => assert_eq!(
                         expected, &block_header,
                         "Block execution result doesn't match received block."
@@ -299,10 +299,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 }
             }
             State::SyncingDescendants {
-                ref current_block, ..
+                ref latest_block, ..
             } => {
                 assert_eq!(
-                    **current_block, block_header,
+                    **latest_block, block_header,
                     "Block execution result doesn't match received block."
                 );
                 self.state = curr_state;
@@ -328,27 +328,27 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             }
             State::SyncingTrustedHash {
                 ref mut linear_chain,
-                ref mut current_block,
+                ref mut latest_block,
                 ..
             } => match linear_chain.pop() {
                 None => None,
                 Some(block) => {
-                    // Update `current_block` so that we can verify whether result of execution
+                    // Update `latest_block` so that we can verify whether result of execution
                     // matches the expected value.
-                    current_block.replace(block.clone());
+                    latest_block.replace(block.clone());
                     Some(block)
                 }
             },
             State::SyncingDescendants {
                 ref mut linear_chain_block,
-                ref mut current_block,
+                ref mut latest_block,
                 ..
             } => match linear_chain_block.take() {
                 None => None,
                 Some(block) => {
-                    // Update `current_block` so that we can verify whether result of execution
+                    // Update `latest_block` so that we can verify whether result of execution
                     // matches the expected value.
-                    **current_block = block.clone();
+                    **latest_block = block.clone();
                     Some(block)
                 }
             },
@@ -390,10 +390,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         }
     }
 
-    fn current_block(&self) -> Option<&BlockHeader> {
+    fn latest_block(&self) -> Option<&BlockHeader> {
         match &self.state {
-            State::SyncingTrustedHash { current_block, .. } => Option::as_ref(&*current_block),
-            State::SyncingDescendants { current_block, .. } => Some(&*current_block),
+            State::SyncingTrustedHash { latest_block, .. } => Option::as_ref(&*latest_block),
+            State::SyncingDescendants { latest_block, .. } => Some(&*latest_block),
             State::Done | State::None => None,
         }
     }
@@ -451,14 +451,14 @@ where
                 }
                 BlockByHeightResult::FromPeer(block, peer) => {
                     if block.height() != block_height
-                        || *block.header().parent_hash() != self.current_block().unwrap().hash()
+                        || *block.header().parent_hash() != self.latest_block().unwrap().hash()
                     {
                         warn!(
                             %peer,
                             got_height = block.height(),
                             expected_height = block_height,
                             got_parent = %block.header().parent_hash(),
-                            expected_parent = %self.current_block().unwrap().hash(),
+                            expected_parent = %self.latest_block().unwrap().hash(),
                             "block mismatch",
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
