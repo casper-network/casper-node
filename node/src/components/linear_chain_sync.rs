@@ -82,8 +82,6 @@ enum State {
     /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
         trusted_hash: BlockHash,
-        /// Linear chain block being downloaded.
-        linear_chain_block: Box<Option<BlockHeader>>,
         /// The most recent block we started to execute. This is updated whenever we start
         /// downloading deploys for the next block to be executed.
         latest_block: Box<BlockHeader>,
@@ -127,7 +125,6 @@ impl State {
     fn sync_descendants(trusted_hash: BlockHash, latest_block: BlockHeader) -> Self {
         State::SyncingDescendants {
             trusted_hash,
-            linear_chain_block: Box::new(None),
             latest_block: Box::new(latest_block),
             highest_block_seen: 0,
         }
@@ -200,9 +197,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         match &mut self.state {
             State::None | State::Done => {}
             State::SyncingTrustedHash { linear_chain, .. } => linear_chain.push(block_header),
-            State::SyncingDescendants {
-                linear_chain_block, ..
-            } => *linear_chain_block = Box::new(Some(block_header)),
+            State::SyncingDescendants { latest_block, .. } => **latest_block = block_header,
         };
     }
 
@@ -322,13 +317,13 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     {
         let peer = self.random_peer_unsafe();
 
-        let next_block = match self.state {
+        let next_block = match &mut self.state {
             State::None | State::Done => {
                 panic!("Tried fetching next block when in {:?} state.", self.state)
             }
             State::SyncingTrustedHash {
-                ref mut linear_chain,
-                ref mut latest_block,
+                linear_chain,
+                latest_block,
                 ..
             } => match linear_chain.pop() {
                 None => None,
@@ -339,19 +334,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     Some(block)
                 }
             },
-            State::SyncingDescendants {
-                ref mut linear_chain_block,
-                ref mut latest_block,
-                ..
-            } => match linear_chain_block.take() {
-                None => None,
-                Some(block) => {
-                    // Update `latest_block` so that we can verify whether result of execution
-                    // matches the expected value.
-                    **latest_block = block.clone();
-                    Some(block)
-                }
-            },
+            State::SyncingDescendants { latest_block, .. } => Some((**latest_block).clone()),
         };
 
         next_block.map_or_else(
