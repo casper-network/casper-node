@@ -28,10 +28,7 @@ use tokio::task;
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::{
-        block_proposer::BlockProposerState, chainspec_loader::Chainspec, small_network::NodeId,
-        Component,
-    },
+    components::{block_proposer::BlockProposerState, chainspec_loader::Chainspec, Component},
     crypto::asymmetric_key::Signature,
     effect::{
         requests::{NetworkRequest, StorageRequest},
@@ -39,10 +36,11 @@ use crate::{
     },
     protocol::Message,
     types::{
-        json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, DeployHash,
-        DeployHeader, Item, ProtoBlockHash, Timestamp,
+        json_compatibility::ExecutionResult, Block, Deploy, DeployHash, DeployHeader, Item, NodeId,
+        ProtoBlockHash, Timestamp,
     },
     utils::WithDir,
+    NodeRng,
 };
 use block_height_store::BlockHeightStore;
 use chainspec_store::ChainspecStore;
@@ -292,6 +290,7 @@ pub trait StorageType {
     {
         let deploy_store = self.deploy_store();
         let deploy_hashes = smallvec![deploy_hash];
+        let cloned_peer = peer.clone();
         async move {
             task::spawn_blocking(move || deploy_store.get(deploy_hashes))
                 .await
@@ -299,7 +298,12 @@ pub trait StorageType {
                 .pop()
                 .expect("can only contain one result")
         }
-        .map_err(move |error| debug!("failed to get {} for {}: {}", deploy_hash, peer, error))
+        .map_err(move |error| {
+            debug!(
+                "failed to get {} for {}: {}",
+                deploy_hash, cloned_peer, error
+            )
+        })
         .and_then(move |maybe_deploy| async move {
             match maybe_deploy {
                 Some(deploy) => match Message::new_get_response(&deploy) {
@@ -634,7 +638,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

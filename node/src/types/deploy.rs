@@ -20,7 +20,7 @@ use casper_execution_engine::core::engine_state::{
 };
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use super::{CryptoRngCore, Item, Tag, TimeDiff, Timestamp};
+use super::{Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
@@ -31,6 +31,7 @@ use crate::{
         Error as CryptoError,
     },
     utils::DisplayIter,
+    NodeRng,
 };
 
 /// Error returned from constructing or validating a `Deploy`.
@@ -306,7 +307,7 @@ impl Deploy {
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
         secret_key: &SecretKey,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Deploy {
         let serialized_body = serialize_body(&payment, &session);
         let body_hash = hash::hash(&serialized_body);
@@ -340,7 +341,7 @@ impl Deploy {
     }
 
     /// Adds a signature of this deploy's hash to its approvals.
-    pub fn sign(&mut self, secret_key: &SecretKey, rng: &mut dyn CryptoRngCore) {
+    pub fn sign(&mut self, secret_key: &SecretKey, rng: &mut NodeRng) {
         let signer = PublicKey::from(secret_key);
         let signature = asymmetric_key::sign(&self.hash, secret_key, &signer, rng);
         let approval = Approval { signer, signature };
@@ -533,11 +534,10 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::testing::TestRng;
 
     #[test]
     fn json_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let deploy = Deploy::random(&mut rng);
         let json_string = serde_json::to_string_pretty(&deploy).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn bincode_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let deploy = Deploy::random(&mut rng);
         let serialized = bincode::serialize(&deploy).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
@@ -555,7 +555,7 @@ mod tests {
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let hash = DeployHash(Digest::random(&mut rng));
         bytesrepr::test_serialization_roundtrip(&hash);
 
@@ -565,7 +565,7 @@ mod tests {
 
     #[test]
     fn is_valid() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let mut deploy = Deploy::random(&mut rng);
         assert_eq!(deploy.is_valid, None, "is valid should initially be None");
         assert!(deploy.is_valid());
@@ -586,7 +586,7 @@ mod tests {
             },
             ExecutableDeployItem::Transfer { args: vec![] },
             &SecretKey::generate_ed25519(),
-            &mut TestRng::new(),
+            &mut crate::new_rng(),
         );
         deploy.header.gas_price = 1;
         assert_eq!(deploy.is_valid, None, "is valid should initially be None");

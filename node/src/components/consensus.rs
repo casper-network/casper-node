@@ -34,7 +34,8 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{BlockHash, BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, ProtoBlock, Timestamp},
+    NodeRng,
 };
 
 pub use config::Config;
@@ -199,7 +200,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        mut rng: &mut dyn CryptoRngCore,
+        mut rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);

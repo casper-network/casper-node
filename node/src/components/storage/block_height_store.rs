@@ -20,10 +20,9 @@ mod tests {
         super::{Config, InMemBlockHeightStore, LmdbBlockHeightStore},
         *,
     };
-    use crate::testing::TestRng;
 
     fn should_put_then_get<T: BlockHeightStore<String>>(block_height_store: &mut T) {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         let height = rng.gen();
 
@@ -49,7 +48,7 @@ mod tests {
     }
 
     fn should_fail_get<T: BlockHeightStore<String>>(block_height_store: &mut T) {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         let height = rng.gen();
 
@@ -76,7 +75,7 @@ mod tests {
 
     fn should_get_highest<T: BlockHeightStore<String>>(block_height_store: &mut T) {
         const BLOCK_COUNT: usize = 1000;
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         assert!(block_height_store.highest().unwrap().is_none());
 
@@ -112,7 +111,7 @@ mod tests {
         const BLOCK_COUNT: usize = 100;
 
         let (config, _tempdir) = Config::default_for_tests();
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         // Populate the DB then drop it.
         let max_height = {

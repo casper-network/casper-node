@@ -27,9 +27,8 @@ use crate::{
         linear_chain,
         linear_chain_sync::{self, LinearChainSync},
         metrics::Metrics,
-        rest_server,
-        rest_server::RestServer,
-        small_network::{self, NodeId, SmallNetwork},
+        rest_server::{self, RestServer},
+        small_network::{self, SmallNetwork},
         storage::{self, Storage},
         Component,
     },
@@ -54,8 +53,9 @@ use crate::{
         validator::{self, Error, ValidatorInitConfig},
         EventQueueHandle, Finalize,
     },
-    types::{Block, BlockByHeight, BlockHeader, CryptoRngCore, Deploy, ProtoBlock, Tag, Timestamp},
+    types::{Block, BlockByHeight, BlockHeader, Deploy, NodeId, ProtoBlock, Tag, Timestamp},
     utils::{Source, WithDir},
+    NodeRng,
 };
 
 /// Top-level event for the reactor.
@@ -339,7 +339,7 @@ impl reactor::Reactor for Reactor {
         initializer: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (root, initializer) = initializer.into_parts();
 
@@ -462,7 +462,7 @@ impl reactor::Reactor for Reactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

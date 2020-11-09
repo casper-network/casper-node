@@ -12,9 +12,9 @@ use crate::{
     crypto::asymmetric_key::{PublicKey, SecretKey},
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
-    types::{CryptoRngCore, Timestamp},
+    types::Timestamp,
     utils::{External, Loadable, WithDir, RESOURCES_PATH},
-    Chainspec,
+    Chainspec, NodeRng,
 };
 
 struct TestChain {
@@ -89,7 +89,7 @@ impl TestChain {
 
     async fn create_initialized_network(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> anyhow::Result<Network<validator::Reactor>> {
         let root = RESOURCES_PATH.join("local");
 
@@ -143,7 +143,7 @@ fn era_ids(runner: &Runner<ConditionCheckReactor<validator::Reactor>>) -> HashSe
 async fn run_validator_network() {
     testing::init_logging();
 
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;

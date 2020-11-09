@@ -16,7 +16,7 @@ use crate::{
     components::{
         chainspec_loader::Chainspec,
         deploy_acceptor::{self, DeployAcceptor},
-        in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
+        in_memory_network::{InMemoryNetwork, NetworkController},
         storage::{self, Storage, StorageType},
     },
     effect::{
@@ -29,9 +29,9 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::{Deploy, DeployHash, Tag},
+    types::{Deploy, DeployHash, NodeId, Tag},
     utils::{Loadable, WithDir},
-    FetcherConfig,
+    FetcherConfig, NodeRng,
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -116,7 +116,7 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
@@ -142,7 +142,7 @@ impl reactor::Reactor for Reactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -349,7 +349,7 @@ async fn should_fetch_from_local() {
     NetworkController::<Message>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
         (network, rng, node_ids)
     };
@@ -368,7 +368,7 @@ async fn should_fetch_from_local() {
     network
         .process_injected_effect_on(
             node_id,
-            fetch_deploy(deploy_hash, *node_id, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, node_id.clone(), Arc::clone(&fetched)),
         )
         .await;
 
@@ -394,7 +394,7 @@ async fn should_fetch_from_peer() {
     NetworkController::<Message>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
         (network, rng, node_ids)
     };
@@ -414,11 +414,14 @@ async fn should_fetch_from_peer() {
     network
         .process_injected_effect_on(
             node_without_deploy,
-            fetch_deploy(deploy_hash, *node_with_deploy, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, node_with_deploy.clone(), Arc::clone(&fetched)),
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromPeer(Box::new(deploy), *node_with_deploy));
+    let expected_result = Some(FetchResult::FromPeer(
+        Box::new(deploy),
+        node_with_deploy.clone(),
+    ));
     assert_settled(
         node_without_deploy,
         deploy_hash,
@@ -440,7 +443,7 @@ async fn should_timeout_fetch_from_peer() {
     NetworkController::<Message>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
         (network, rng, node_ids)
     };
@@ -449,8 +452,8 @@ async fn should_timeout_fetch_from_peer() {
     let deploy = Deploy::random(&mut rng);
     let deploy_hash = *deploy.id();
 
-    let holding_node = node_ids[0];
-    let requesting_node = node_ids[1];
+    let holding_node = node_ids[0].clone();
+    let requesting_node = node_ids[1].clone();
 
     // Store deploy on holding node.
     store_deploy(&deploy, &holding_node, &mut network, &mut rng).await;
@@ -460,7 +463,7 @@ async fn should_timeout_fetch_from_peer() {
     network
         .process_injected_effect_on(
             &requesting_node,
-            fetch_deploy(deploy_hash, holding_node, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, holding_node.clone(), Arc::clone(&fetched)),
         )
         .await;
 
