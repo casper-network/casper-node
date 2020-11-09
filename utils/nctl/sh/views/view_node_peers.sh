@@ -15,8 +15,8 @@ source $NCTL/sh/utils/misc.sh
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifer.
-#   Node ordinal identifer.
+#   Network ordinal identifier.
+#   Node ordinal identifier.
 #######################################
 function _view_peers() {
     node_address=$(get_node_address_rpc $1 $2)

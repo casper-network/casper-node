@@ -2,7 +2,7 @@
 #
 # Sets assets required to run an N node network.
 # Arguments:
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of nodes to setup.
 #   Count of nodes that will be bootstraps.
 #   Count of users to setup.
@@ -42,7 +42,7 @@ function _set_bin() {
 # Sets assets pertaining to network chainspec.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Delay in seconds to apply to genesis timestamp.
 #######################################
 function _set_chainspec() {
@@ -88,7 +88,7 @@ function _set_chainspec_account() {
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Nodeset count.
 #   Boostrap count.
 #######################################
@@ -133,7 +133,7 @@ function _set_faucet() {
 # Sets assets pertaining to all nodes within network.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of nodes to setup.
 #   Count of bootstraps to setup.
 #######################################
@@ -151,8 +151,8 @@ function _set_nodes() {
 # Sets assets pertaining to a single node.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
-#   Node ordinal identifer.
+#   Network ordinal identifier.
+#   Node ordinal identifier.
 #   Count of bootstraps to setup.
 #######################################
 function _set_node ()
@@ -209,7 +209,7 @@ function _set_user() {
 # Sets assets pertaining to network variables.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of nodes to setup.
 #   Count of bootstraps to setup.
 #   Count of users to setup.
@@ -236,7 +236,7 @@ export NCTL_NET_USER_COUNT=$5
 #######################################
 # Main
 # Arguments:
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of nodes to setup.
 #   Count of bootstraps to setup.
 #   Count of users to setup.
@@ -272,7 +272,7 @@ function _main() {
 #######################################
 # CLI entry point
 # Arguments:
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of nodes to setup.
 #   Count of users to setup.
 #######################################

@@ -5,7 +5,7 @@
 #   NCTL - path to nctl home directory.
 #   NCTL_DAEMON_TYPE - type of daemon service manager.
 # Arguments:
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 
 # Import utils.
 source $NCTL/sh/utils/misc.sh

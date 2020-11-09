@@ -190,7 +190,7 @@ END
 #######################################
 # Get network known addresses - i.e. those of bootstrap nodes.
 # Arguments:
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of bootstraps to setup.
 #######################################
 function get_bootstrap_known_addresses() {
@@ -209,8 +209,8 @@ function get_bootstrap_known_addresses() {
 #######################################
 # Get a network known addresses - i.e. those of bootstrap nodes.
 # Arguments:
-#   Network ordinal identifer.
-#   Node ordinal identifer.
+#   Network ordinal identifier.
+#   Node ordinal identifier.
 #######################################
 function get_bootstrap_known_address() {
     port=$(($NCTL_BASE_PORT_NETWORK + ($1 * 100) + $2))

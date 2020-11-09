@@ -15,8 +15,8 @@ source $NCTL/sh/utils/misc.sh
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifer.
-#   User ordinal identifer.
+#   Network ordinal identifier.
+#   User ordinal identifier.
 #######################################
 function _view_user_account_hash() {
     account_key=$(cat $NCTL/assets/net-$1/users/user-$2/public_key_hex)

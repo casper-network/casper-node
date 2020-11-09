@@ -6,7 +6,7 @@
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Nodeset count.
 #   Boostrap count.
 #######################################
