@@ -1,3 +1,14 @@
+//! Central storage component.
+//!
+//! The central storage component is in charge of persisting data to disk. Its core functionalities
+//! are
+//!
+//! * storing and loading blocks,
+//! * storing and loading deploys,
+//! * holding a read-only copy of the chainspec,
+//! * keeping an index of blocks by height and
+//! * [unimplemented] managing disk usage by pruning blocks and deploys from storage.
+
 use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
@@ -31,6 +42,7 @@ use tracing::{info, warn};
 /// one time.
 const MAX_TRANSACTIONS: u32 = 4;
 
+/// Where to store the chainspec in.
 const CHAINSPEC_CACHE_FILENAME: &str = "chainspec_cache";
 
 #[derive(Debug, From)]
