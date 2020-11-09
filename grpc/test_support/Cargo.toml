@@ -24,7 +24,7 @@ protobuf = "=2.8"
 rand = "0.7.2"
 
 [dev-dependencies]
-version-sync = "0.8"
+version-sync = "0.9"
 
 [features]
 use-as-wasm = []

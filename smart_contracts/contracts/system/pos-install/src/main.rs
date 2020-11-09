@@ -17,7 +17,7 @@ use casper_types::{
     proof_of_stake::{
         ACCESS_KEY, ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE, HASH_KEY, METHOD_FINALIZE_PAYMENT,
         METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
-        POS_PAYMENT_PURSE, POS_REWARDS_PURSE,
+        POS_PAYMENT_PURSE,
     },
     runtime_args,
     system_contract_errors::mint,
@@ -56,12 +56,10 @@ pub extern "C" fn install() {
     // in the form: key: "v_{validator_pk}_{validator_stake}", value: doesn't
     // matter.
     let payment_purse = mint_purse(mint_package_hash, U512::zero());
-    let rewards_purse = mint_purse(mint_package_hash, U512::zero());
 
     // Include PoS purses in its named_keys
     let mut named_keys = NamedKeys::new();
     named_keys.insert(POS_PAYMENT_PURSE.to_string(), payment_purse.into());
-    named_keys.insert(POS_REWARDS_PURSE.to_string(), rewards_purse.into());
 
     let entry_points = {
         let mut entry_points = EntryPoints::new();

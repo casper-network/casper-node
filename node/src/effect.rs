@@ -81,7 +81,7 @@ use tracing::error;
 use casper_execution_engine::{
     core::engine_state::{
         self,
-        era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
+        era_validators::GetEraValidatorsError,
         execute_request::ExecuteRequest,
         execution_result::ExecutionResults,
         genesis::GenesisResult,
@@ -89,13 +89,16 @@ use casper_execution_engine::{
         BalanceRequest, BalanceResult, QueryRequest, QueryResult,
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
-    storage::global_state::CommitResult,
+    storage::{global_state::CommitResult, protocol_data::ProtocolData},
 };
-use casper_types::{auction::ValidatorWeights, Key};
+use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion};
 
 use crate::{
     components::{
-        chainspec_loader::ChainspecInfo, consensus::BlockContext, fetcher::FetchResult,
+        chainspec_loader::ChainspecInfo,
+        consensus::BlockContext,
+        contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
+        fetcher::FetchResult,
         small_network::GossipedAddress,
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
@@ -103,19 +106,21 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
-        BlockLike, Deploy, DeployHash, DeployMetadata, FinalizedBlock, Item, ProtoBlock,
+        BlockLike, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
+        ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,
 };
 use announcements::{
-    ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
+    GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
 };
+use casper_types::auction::EraValidators;
 use requests::{
-    BlockExecutorRequest, BlockValidationRequest, ChainspecLoaderRequest, ConsensusRequest,
-    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MetricsRequest,
-    NetworkInfoRequest, NetworkRequest, StorageRequest,
+    BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -530,11 +535,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that the HTTP API server has received a deploy.
     pub(crate) async fn announce_deploy_received(self, deploy: Box<Deploy>)
     where
-        REv: From<ApiServerAnnouncement>,
+        REv: From<RpcServerAnnouncement>,
     {
         self.0
             .schedule(
-                ApiServerAnnouncement::DeployReceived { deploy },
+                RpcServerAnnouncement::DeployReceived { deploy },
                 QueueKind::Api,
             )
             .await;
@@ -574,7 +579,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_linear_chain_block(
         self,
         block: Block,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     ) where
         REv: From<BlockExecutorAnnouncement>,
     {
@@ -781,11 +786,11 @@ impl<REv> EffectBuilder<REv> {
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
-        REv: From<DeployBufferRequest>,
+        REv: From<BlockProposerRequest>,
     {
         let deploys = self
             .make_request(
-                |responder| DeployBufferRequest::ListForInclusion {
+                |responder| BlockProposerRequest::ListForInclusion {
                     current_instant: block_context.timestamp(),
                     past_blocks: Default::default(), // TODO
                     responder,
@@ -812,8 +817,15 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Checks whether the deploys included in the block exist on the network.
-    pub(crate) async fn validate_block<I, T>(self, sender: I, block: T) -> (bool, T)
+    /// Checks whether the deploys included in the block exist on the network. This includes
+    /// the block's timestamp, in order that it be checked against the timestamp of the deploys
+    /// within the block.
+    pub(crate) async fn validate_block<I, T>(
+        self,
+        sender: I,
+        block: T,
+        block_timestamp: Timestamp,
+    ) -> (bool, T)
     where
         REv: From<BlockValidationRequest<T, I>>,
         T: BlockLike + Send + 'static,
@@ -823,6 +835,7 @@ impl<REv> EffectBuilder<REv> {
                 block,
                 sender,
                 responder,
+                block_timestamp,
             },
             QueueKind::Regular,
         )
@@ -959,7 +972,7 @@ impl<REv> EffectBuilder<REv> {
     /// Requests a commit of effects on the Contract Runtime component.
     pub(crate) async fn request_commit(
         self,
-        pre_state_hash: Digest,
+        state_root_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<CommitResult, engine_state::Error>
     where
@@ -967,7 +980,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::Commit {
-                pre_state_hash,
+                state_root_hash,
                 effects,
                 responder,
             },
@@ -1012,21 +1025,55 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Returns `ProtocolData` by `ProtocolVersion`.
+    ///
+    /// This operation is read only.
+    pub(crate) async fn get_protocol_data(
+        self,
+        protocol_version: ProtocolVersion,
+    ) -> Result<Option<Box<ProtocolData>>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetProtocolData {
+                protocol_version,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Returns a map of validators weights for all eras as known from `root_hash`.
+    ///
+    /// This operation is read only.
+    pub(crate) async fn get_era_validators(
+        self,
+        request: EraValidatorsRequest,
+    ) -> Result<EraValidators, GetEraValidatorsError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Returns a map of validators for given `era` to their weights as known from `root_hash`.
     ///
     /// This operation is read only.
-    pub(crate) async fn get_validators(
+    pub(crate) async fn get_validator_weights_by_era_id(
         self,
-        get_request: GetEraValidatorsRequest,
+        request: ValidatorWeightsByEraIdRequest,
     ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetEraValidators {
-                get_request,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::GetValidatorWeightsByEraId { request, responder },
             QueueKind::Regular,
         )
         .await
@@ -1053,7 +1100,7 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the set of validators, the booking block and the key block for a new era
     pub(crate) async fn create_new_era(
         self,
-        request: GetEraValidatorsRequest,
+        request: ValidatorWeightsByEraIdRequest,
         booking_block_height: u64,
         key_block_height: u64,
     ) -> (
@@ -1064,7 +1111,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
-        let future_validators = self.get_validators(request);
+        let future_validators = self.get_validator_weights_by_era_id(request);
         let future_booking_block = self.get_block_at_height(booking_block_height);
         let future_key_block = self.get_block_at_height(key_block_height);
         join!(future_validators, future_booking_block, future_key_block)

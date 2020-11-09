@@ -24,7 +24,7 @@ use prometheus::Registry;
 
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
-#[structopt(version = casper_node::VERSION_STRING.as_str())]
+#[structopt(version = casper_node::VERSION_STRING_COLOR.as_str())]
 /// Casper blockchain node.
 pub enum Cli {
     /// Run the validator node.
@@ -156,6 +156,15 @@ impl Cli {
                     &registry,
                 )
                 .await?;
+
+                // let mut initializer2_runner = Runner::<initializer2::Initializer>::with_metrics(
+                //     WithDir::new(root.clone(), validator_config),
+                //     &mut rng,
+                //     &registry,
+                // )
+                // .await?;
+                // initializer2_runner.run(&mut rng).await;
+
                 initializer_runner.run(&mut rng).await;
 
                 info!("finished initialization");

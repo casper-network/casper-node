@@ -19,11 +19,11 @@
 //         chainspec_loader::Chainspec,
 //         deploy_acceptor::{self, DeployAcceptor},
 //         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
-//         storage::{self, Storage},
+//         storage::{self, Storage, StorageType},
 //     },
 //     effect::announcements::{
-//         ApiServerAnnouncement, DeployAcceptorAnnouncement, GossiperAnnouncement,
-//         NetworkAnnouncement,
+//         DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
+//         RpcServerAnnouncement,
 //     },
 //     protocol::Message as NodeMessage,
 //     reactor::{self, EventQueueHandle, Runner},
@@ -51,15 +51,15 @@
 //     #[from]
 //     NetworkAnnouncement(NetworkAnnouncement<NodeId, NodeMessage>),
 //     #[from]
-//     ApiServerAnnouncement(ApiServerAnnouncement),
+//     RpcServerAnnouncement(RpcServerAnnouncement),
 //     #[from]
 //     DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
 //     #[from]
 //     DeployGossiperAnnouncement(GossiperAnnouncement<Deploy>),
 // }
 
-// impl From<StorageRequest> for Event {
-//     fn from(request: StorageRequest) -> Self {
+// impl From<StorageRequest<Storage>> for Event {
+//     fn from(request: StorageRequest<Storage>) -> Self {
 //         Event::Storage(storage::Event::Request(request))
 //     }
 // }
@@ -78,7 +78,7 @@
 //             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
 //             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
 //             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}",
-// ann),             Event::ApiServerAnnouncement(ann) => {
+// ann),             Event::RpcServerAnnouncement(ann) => {
 //                 write!(formatter, "api server announcement: {}", ann)
 //             }
 //             Event::DeployAcceptorAnnouncement(ann) => {
@@ -235,7 +235,7 @@
 //                 // We do not care about new peers in the gossiper test.
 //                 Effects::new()
 //             }
-//             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
+//             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
 //                 let event = deploy_acceptor::Event::Accept {
 //                     deploy,
 //                     source: Source::<NodeId>::Client,

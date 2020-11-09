@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
-    CLValue, Contract, ContractWasm,
+    CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
 
 use crate::shared::{account::Account, TypeMismatch};
@@ -15,6 +15,8 @@ enum Tag {
     ContractWasm = 2,
     Contract = 3,
     ContractPackage = 4,
+    Transfer = 5,
+    DeployInfo = 6,
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -24,6 +26,8 @@ pub enum StoredValue {
     ContractWasm(ContractWasm),
     Contract(Contract),
     ContractPackage(ContractPackage),
+    Transfer(Transfer),
+    DeployInfo(DeployInfo),
 }
 
 impl StoredValue {
@@ -69,7 +73,35 @@ impl StoredValue {
             StoredValue::ContractWasm(_) => "Contract".to_string(),
             StoredValue::Contract(_) => "Contract".to_string(),
             StoredValue::ContractPackage(_) => "ContractPackage".to_string(),
+            StoredValue::Transfer(_) => "Transfer".to_string(),
+            StoredValue::DeployInfo(_) => "DeployInfo".to_string(),
         }
+    }
+}
+
+impl From<CLValue> for StoredValue {
+    fn from(value: CLValue) -> StoredValue {
+        StoredValue::CLValue(value)
+    }
+}
+impl From<Account> for StoredValue {
+    fn from(value: Account) -> StoredValue {
+        StoredValue::Account(value)
+    }
+}
+impl From<ContractWasm> for StoredValue {
+    fn from(value: ContractWasm) -> StoredValue {
+        StoredValue::ContractWasm(value)
+    }
+}
+impl From<Contract> for StoredValue {
+    fn from(value: Contract) -> StoredValue {
+        StoredValue::Contract(value)
+    }
+}
+impl From<ContractPackage> for StoredValue {
+    fn from(value: ContractPackage) -> StoredValue {
+        StoredValue::ContractPackage(value)
     }
 }
 
@@ -143,6 +175,31 @@ impl TryFrom<StoredValue> for Contract {
     }
 }
 
+impl TryFrom<StoredValue> for Transfer {
+    type Error = TypeMismatch;
+
+    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
+        match value {
+            StoredValue::Transfer(transfer) => Ok(transfer),
+            _ => Err(TypeMismatch::new("Transfer".to_string(), value.type_name())),
+        }
+    }
+}
+
+impl TryFrom<StoredValue> for DeployInfo {
+    type Error = TypeMismatch;
+
+    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
+        match value {
+            StoredValue::DeployInfo(deploy_info) => Ok(deploy_info),
+            _ => Err(TypeMismatch::new(
+                "DeployInfo".to_string(),
+                value.type_name(),
+            )),
+        }
+    }
+}
+
 impl ToBytes for StoredValue {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
@@ -156,6 +213,8 @@ impl ToBytes for StoredValue {
             StoredValue::ContractPackage(contract_package) => {
                 (Tag::ContractPackage, contract_package.to_bytes()?)
             }
+            StoredValue::Transfer(transfer) => (Tag::Transfer, transfer.to_bytes()?),
+            StoredValue::DeployInfo(deploy_info) => (Tag::DeployInfo, deploy_info.to_bytes()?),
         };
         result.push(tag as u8);
         result.append(&mut serialized_data);
@@ -172,6 +231,8 @@ impl ToBytes for StoredValue {
                 StoredValue::ContractPackage(contract_package) => {
                     contract_package.serialized_length()
                 }
+                StoredValue::Transfer(transfer) => transfer.serialized_length(),
+                StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
             }
     }
 }
@@ -196,6 +257,10 @@ impl FromBytes for StoredValue {
             }
             tag if tag == Tag::Contract as u8 => Contract::from_bytes(remainder)
                 .map(|(contract, remainder)| (StoredValue::Contract(contract), remainder)),
+            tag if tag == Tag::Transfer as u8 => Transfer::from_bytes(remainder)
+                .map(|(transfer, remainder)| (StoredValue::Transfer(transfer), remainder)),
+            tag if tag == Tag::DeployInfo as u8 => DeployInfo::from_bytes(remainder)
+                .map(|(deploy_info, remainder)| (StoredValue::DeployInfo(deploy_info), remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

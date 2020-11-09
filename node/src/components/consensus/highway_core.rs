@@ -37,9 +37,10 @@ pub(crate) mod finality_detector;
 pub(crate) mod highway;
 pub(crate) mod validators;
 
+mod endorsement;
 mod evidence;
 #[cfg(test)]
 mod highway_testing;
 mod state;
 
-pub(crate) use state::Weight;
+pub(crate) use state::{round_id, State, Weight};

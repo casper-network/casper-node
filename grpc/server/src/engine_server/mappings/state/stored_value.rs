@@ -23,6 +23,8 @@ impl From<StoredValue> for state::StoredValue {
             StoredValue::ContractPackage(contract_package) => {
                 pb_value.set_contract_package(contract_package.into())
             }
+            StoredValue::Transfer(transfer) => pb_value.set_transfer(transfer.into()),
+            StoredValue::DeployInfo(deploy_info) => pb_value.set_deploy_info(deploy_info.into()),
         }
 
         pb_value
@@ -52,6 +54,12 @@ impl TryFrom<state::StoredValue> for StoredValue {
             }
             StoredValue_oneof_variants::contract_wasm(pb_contract_wasm) => {
                 StoredValue::ContractWasm(pb_contract_wasm.into())
+            }
+            StoredValue_oneof_variants::transfer(pb_transfer) => {
+                StoredValue::Transfer(pb_transfer.try_into()?)
+            }
+            StoredValue_oneof_variants::deploy_info(pb_deploy_info) => {
+                StoredValue::DeployInfo(pb_deploy_info.try_into()?)
             }
         };
 

@@ -1,7 +1,7 @@
 mod vertex;
 
 pub(crate) use crate::components::consensus::highway_core::state::Params;
-pub(crate) use vertex::{Dependency, SignedWireVote, Vertex, WireVote};
+pub(crate) use vertex::{Dependency, Endorsements, SignedWireVote, Vertex, WireVote};
 
 use thiserror::Error;
 use tracing::{debug, error, info};
@@ -12,12 +12,17 @@ use crate::{
         highway_core::{
             active_validator::{ActiveValidator, Effect},
             evidence::EvidenceError,
-            state::{State, VoteError},
+            state::{Fault, State, VoteError},
             validators::{Validator, Validators},
         },
         traits::Context,
     },
     types::{CryptoRngCore, Timestamp},
+};
+
+use super::{
+    endorsement::{Endorsement, EndorsementError},
+    evidence::Evidence,
 };
 
 /// An error due to an invalid vertex.
@@ -27,6 +32,8 @@ pub(crate) enum VertexError {
     Vote(#[from] VoteError),
     #[error("The vertex contains invalid evidence.")]
     Evidence(#[from] EvidenceError),
+    #[error("The endorsements contains invalid entry.")]
+    Endorsement(#[from] EndorsementError),
 }
 
 /// A vertex that has passed initial validation.
@@ -40,6 +47,10 @@ pub(crate) struct PreValidatedVertex<C: Context>(Vertex<C>);
 impl<C: Context> PreValidatedVertex<C> {
     pub(crate) fn inner(&self) -> &Vertex<C> {
         &self.0
+    }
+
+    pub(crate) fn timestamp(&self) -> Option<Timestamp> {
+        self.0.timestamp()
     }
 
     #[cfg(test)]
@@ -78,6 +89,28 @@ impl<C: Context> ValidVertex<C> {
     pub(crate) fn inner(&self) -> &Vertex<C> {
         &self.0
     }
+
+    pub(crate) fn is_proposal(&self) -> bool {
+        self.0.value().is_some()
+    }
+
+    pub(crate) fn endorsements(&self) -> Option<&Endorsements<C>> {
+        match &self.0 {
+            Vertex::Endorsements(endorsements) => Some(endorsements),
+            Vertex::Evidence(_) | Vertex::Vote(_) => None,
+        }
+    }
+}
+
+/// A result indicating whether and how a requested dependency is satisfied.
+pub(crate) enum GetDepOutcome<C: Context> {
+    /// We don't have this dependency.
+    None,
+    /// This vertex satisfies the dependency.
+    Vertex(ValidVertex<C>),
+    /// The dependency must be satisfied by providing evidence against this faulty validator, but
+    /// this `Highway` instance does not have direct evidence.
+    Evidence(C::ValidatorId),
 }
 
 /// A passive instance of the Highway protocol, containing its local state.
@@ -112,7 +145,9 @@ impl<C: Context> Highway<C> {
         params: Params,
     ) -> Highway<C> {
         info!(%validators, "creating Highway instance {:?}", instance_id);
-        let state = State::new(validators.iter().map(Validator::weight), params);
+        let weights = validators.iter().map(Validator::weight);
+        let banned = validators.iter_banned_idx();
+        let state = State::new(weights, params, banned);
         Highway {
             instance_id,
             validators,
@@ -129,7 +164,7 @@ impl<C: Context> Highway<C> {
         &mut self,
         id: C::ValidatorId,
         secret: C::ValidatorSecret,
-        start_time: Timestamp,
+        current_time: Timestamp,
     ) -> Vec<Effect<C>> {
         assert!(
             self.active_validator.is_none(),
@@ -139,6 +174,7 @@ impl<C: Context> Highway<C> {
             .validators
             .get_index(&id)
             .expect("missing own validator ID");
+        let start_time = current_time.max(self.state.params().start_timestamp());
         let (av, effects) = ActiveValidator::new(idx, secret, start_time, &self.state);
         self.active_validator = Some(av);
         effects
@@ -147,6 +183,13 @@ impl<C: Context> Highway<C> {
     /// Turns this instance into a passive observer, that does not create any new vertices.
     pub(crate) fn deactivate_validator(&mut self) {
         self.active_validator = None;
+    }
+
+    /// Switches the active validator to a new round exponent.
+    pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
+        if let Some(ref mut av) = self.active_validator {
+            av.set_round_exp(new_round_exp);
+        }
     }
 
     /// Does initial validation. Returns an error if the vertex is invalid.
@@ -166,7 +209,23 @@ impl<C: Context> Highway<C> {
     pub(crate) fn missing_dependency(&self, pvv: &PreValidatedVertex<C>) -> Option<Dependency<C>> {
         match pvv.inner() {
             Vertex::Evidence(_) => None,
-            Vertex::Vote(vote) => vote.wire_vote.panorama.missing_dependency(&self.state),
+            Vertex::Endorsements(endorsements) => {
+                let vote = *endorsements.vote();
+                if !self.state.has_vote(&vote) {
+                    Some(Dependency::Vote(vote))
+                } else {
+                    None
+                }
+            }
+            Vertex::Vote(vote) => vote
+                .wire_vote
+                .panorama
+                .missing_dependency(&self.state)
+                .or_else(|| {
+                    self.state
+                        .needs_endorsements(vote)
+                        .map(Dependency::Endorsement)
+                }),
         }
     }
 
@@ -197,8 +256,9 @@ impl<C: Context> Highway<C> {
         if !self.has_vertex(&vertex) {
             match vertex {
                 Vertex::Vote(vote) => self.add_valid_vote(vote, now, rng),
-                Vertex::Evidence(evidence) => {
-                    self.state.add_evidence(evidence);
+                Vertex::Evidence(evidence) => self.add_evidence(evidence, rng),
+                Vertex::Endorsements(endorsements) => {
+                    self.state.add_endorsements(endorsements);
                     vec![]
                 }
             }
@@ -212,37 +272,66 @@ impl<C: Context> Highway<C> {
         match vertex {
             Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
             Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
+            Vertex::Endorsements(endorsements) => {
+                let vote = endorsements.vote();
+                self.state.is_endorsed(vote)
+                    || self
+                        .state
+                        .has_all_endorsements(vote, endorsements.validator_ids())
+            }
         }
     }
 
-    /// Returns whether the validator is known to be faulty.
+    /// Returns whether the validator is known to be faulty and we have evidence.
     pub(crate) fn has_evidence(&self, vid: &C::ValidatorId) -> bool {
         self.validators
             .get_index(vid)
             .map_or(false, |vidx| self.state.has_evidence(vidx))
     }
 
+    /// Marks the given validator as faulty, if it exists.
+    pub(crate) fn mark_faulty(&mut self, vid: &C::ValidatorId) {
+        if let Some(vidx) = self.validators.get_index(vid) {
+            self.state.mark_faulty(vidx);
+        }
+    }
+
     /// Returns whether we have a vertex that satisfies the dependency.
     pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> bool {
         match dependency {
             Dependency::Vote(hash) => self.state.has_vote(hash),
-            Dependency::Evidence(idx) => self.state.has_evidence(*idx),
+            Dependency::Evidence(idx) => self.state.is_faulty(*idx),
+            Dependency::Endorsement(hash) => self.state.is_endorsed(hash),
         }
     }
 
     /// Returns a vertex that satisfies the dependency, if available.
     ///
     /// If we send a vertex to a peer who is missing a dependency, they will ask us for it. In that
-    /// case, `get_dependency` will always return `Some`, unless the peer is faulty.
-    pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> Option<ValidVertex<C>> {
-        let state = &self.state;
+    /// case, `get_dependency` will never return `None`, unless the peer is faulty.
+    pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> GetDepOutcome<C> {
         match dependency {
-            Dependency::Vote(hash) => state
-                .wire_vote(hash, self.instance_id.clone())
-                .map(Vertex::Vote),
-            Dependency::Evidence(idx) => state.opt_evidence(*idx).cloned().map(Vertex::Evidence),
+            Dependency::Vote(hash) => match self.state.wire_vote(hash, self.instance_id) {
+                None => GetDepOutcome::None,
+                Some(vote) => GetDepOutcome::Vertex(ValidVertex(Vertex::Vote(vote))),
+            },
+            Dependency::Evidence(idx) => match self.state.opt_fault(*idx) {
+                None | Some(Fault::Banned) => GetDepOutcome::None,
+                Some(Fault::Direct(ev)) => {
+                    GetDepOutcome::Vertex(ValidVertex(Vertex::Evidence(ev.clone())))
+                }
+                Some(Fault::Indirect) => {
+                    let vid = self.validators.id(*idx).expect("missing validator").clone();
+                    GetDepOutcome::Evidence(vid)
+                }
+            },
+            Dependency::Endorsement(hash) => match self.state.opt_endorsements(hash) {
+                None => GetDepOutcome::None,
+                Some(e) => {
+                    GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(Endorsements::new(e))))
+                }
+            },
         }
-        .map(ValidVertex)
     }
 
     pub(crate) fn handle_timer(
@@ -250,7 +339,7 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let instance_id = self.instance_id.clone();
+        let instance_id = self.instance_id;
 
         // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
         //
@@ -279,7 +368,7 @@ impl<C: Context> Highway<C> {
         block_context: BlockContext,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let instance_id = self.instance_id.clone();
+        let instance_id = self.instance_id;
 
         // We just use the block context's timestamp, which is
         // hopefully not much older than `Timestamp::now()`
@@ -290,10 +379,10 @@ impl<C: Context> Highway<C> {
         // millisecond 64, so we set a timer.
         //
         // 2. The timer for timestamp 64 fires, and we request deploys
-        // for the new block from the deploy buffer (with 64 in the
+        // for the new block from the block proposer (with 64 in the
         // block context).
         //
-        // 3. The deploy buffer responds and we finally end up here,
+        // 3. The block proposer responds and we finally end up here,
         // and can propose the new block. But we still have to use
         // timestamp 64.
 
@@ -313,8 +402,8 @@ impl<C: Context> Highway<C> {
         &self.validators
     }
 
-    /// Returns an iterator over all validators known to be faulty.
-    pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = &C::ValidatorId> {
+    /// Returns an iterator over all validators against which we have direct evidence.
+    pub(crate) fn validators_with_evidence(&self) -> impl Iterator<Item = &C::ValidatorId> {
         self.validators
             .iter()
             .enumerate()
@@ -322,7 +411,7 @@ impl<C: Context> Highway<C> {
             .map(|(_, v)| v.id())
     }
 
-    pub(super) fn state(&self) -> &State<C> {
+    pub(crate) fn state(&self) -> &State<C> {
         &self.state
     }
 
@@ -332,13 +421,40 @@ impl<C: Context> Highway<C> {
         timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
-        let instance_id = self.instance_id.clone();
+        let instance_id = self.instance_id;
         self.map_active_validator(
             |av, state, rng| av.on_new_vote(vhash, timestamp, state, instance_id, rng),
             timestamp,
             rng,
         )
         .unwrap_or_default()
+    }
+
+    /// Takes action on a new evidence.
+    fn on_new_evidence(
+        &mut self,
+        evidence: Evidence<C>,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<Effect<C>> {
+        let state = &self.state;
+        let mut effects = self
+            .active_validator
+            .as_mut()
+            .map(|av| av.on_new_evidence(&evidence, state, rng))
+            .unwrap_or_default();
+        // Add newly created endorsements to the local state.
+        for effect in effects.iter() {
+            if let Effect::NewVertex(vv) = effect {
+                if let Some(e) = vv.endorsements() {
+                    self.state.add_endorsements(e.clone());
+                }
+            }
+        }
+        // Gossip `Evidence` only if we just learned about faults by the validator.
+        effects.extend(vec![Effect::NewVertex(ValidVertex(Vertex::Evidence(
+            evidence,
+        )))]);
+        effects
     }
 
     /// Applies `f` if this is an active validator, otherwise returns `None`.
@@ -391,6 +507,17 @@ impl<C: Context> Highway<C> {
                     .ok_or(EvidenceError::UnknownPerpetrator)?;
                 Ok(evidence.validate(v_id, &self.instance_id)?)
             }
+            Vertex::Endorsements(endorsements) => {
+                let vote = *endorsements.vote();
+                for (v_id, signature) in endorsements.endorsers.iter() {
+                    let validator = self.validators.id(*v_id).ok_or(EndorsementError::Creator)?;
+                    let endorsement: Endorsement<C> = Endorsement::new(vote, *v_id);
+                    if !C::verify_signature(&endorsement.hash(), validator, &signature) {
+                        return Err(EndorsementError::Signature.into());
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -400,6 +527,24 @@ impl<C: Context> Highway<C> {
         match vertex {
             Vertex::Vote(vote) => Ok(self.state.validate_vote(vote)?),
             Vertex::Evidence(_evidence) => Ok(()),
+            Vertex::Endorsements(_endorsements) => {
+                // TODO: Validate against equivocations in endorsements.
+                Ok(())
+            }
+        }
+    }
+
+    /// Adds evidence to the protocol state.
+    /// Gossip the evidence if it's the first equivocation from the creator.
+    fn add_evidence(
+        &mut self,
+        evidence: Evidence<C>,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<Effect<C>> {
+        if self.state.add_evidence(evidence.clone()) {
+            self.on_new_evidence(evidence, rng)
+        } else {
+            vec![]
         }
     }
 
@@ -414,8 +559,23 @@ impl<C: Context> Highway<C> {
         rng: &mut dyn CryptoRngCore,
     ) -> Vec<Effect<C>> {
         let vote_hash = swvote.hash();
+        let creator = swvote.wire_vote.creator;
+        let was_honest = !self.state.is_faulty(creator);
         self.state.add_valid_vote(swvote);
-        self.on_new_vote(&vote_hash, now, rng)
+        let mut evidence_effects = self
+            .state
+            .opt_evidence(creator)
+            .cloned()
+            .map(|ev| {
+                if was_honest {
+                    self.on_new_evidence(ev, rng)
+                } else {
+                    vec![]
+                }
+            })
+            .unwrap_or_default();
+        evidence_effects.extend(self.on_new_vote(&vote_hash, now, rng));
+        evidence_effects
     }
 }
 
@@ -475,6 +635,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
+            endorsed: vec![],
         };
         let invalid_signature = 1u64;
         let invalid_signature_vote = SignedWireVote {
@@ -537,6 +698,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
+            endorsed: vec![],
         };
         let wvote1 = WireVote {
             panorama: Panorama::new(WEIGHTS.len()),
@@ -546,6 +708,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
+            endorsed: vec![],
         };
 
         assert!(validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC,).is_ok());

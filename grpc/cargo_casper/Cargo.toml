@@ -26,6 +26,6 @@ colour = "0.5"
 lazy_static = "1"
 
 [dev-dependencies]
-assert_cmd = "0.12"
-tempdir = "0.3.7"
-toml = "0.5.5"
+assert_cmd = "1"
+tempfile = "3"
+toml = "0.5.7"

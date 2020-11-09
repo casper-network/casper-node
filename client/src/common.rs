@@ -1,12 +1,4 @@
-use std::{fs, path::PathBuf};
-
 use clap::{Arg, ArgMatches};
-use rand::Rng;
-
-use casper_node::{
-    crypto::{asymmetric_key::SecretKey, hash::Digest},
-    types::BlockHash,
-};
 
 pub const ARG_PATH: &str = "PATH";
 pub const ARG_HEX_STRING: &str = "HEX STRING";
@@ -19,7 +11,7 @@ pub mod verbose {
 
     pub const ARG_NAME: &str = "verbose";
     const ARG_NAME_SHORT: &str = "v";
-    const ARG_HELP: &str = "Generates verbose output";
+    const ARG_HELP: &str = "Generates verbose output, e.g. prints the RPC request";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -55,11 +47,10 @@ pub mod node_address {
             .display_order(order)
     }
 
-    pub fn get(matches: &ArgMatches) -> String {
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
         matches
             .value_of(ARG_NAME)
             .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
-            .to_string()
     }
 }
 
@@ -70,8 +61,8 @@ pub mod rpc_id {
     const ARG_NAME: &str = "id";
     const ARG_VALUE_NAME: &str = "STRING OR INTEGER";
     const ARG_HELP: &str =
-        "JSON-RPC identifier, applied to the request and returned in the response.  If not \
-        provided, a random one will be assigned";
+        "JSON-RPC identifier, applied to the request and returned in the response. If not \
+        provided, a random integer will be assigned";
 
     pub fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -82,17 +73,8 @@ pub mod rpc_id {
             .display_order(order)
     }
 
-    // TODO: If/when https://github.com/AtsukiTak/warp-json-rpc/pull/1 is merged and published,
-    //       update this to return a `jsonrpc_lite::Id`, and update the ARG_VALUE_NAME.
-    pub fn get(matches: &ArgMatches) -> u32 {
-        matches
-            .value_of(ARG_NAME)
-            .map(|id_str| {
-                id_str
-                    .parse()
-                    .unwrap_or_else(|error| panic!("should parse {} as u64: {}", id_str, error))
-            })
-            .unwrap_or_else(|| rand::thread_rng().gen())
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
@@ -115,13 +97,10 @@ pub mod secret_key {
             .display_order(order)
     }
 
-    pub fn get(matches: &ArgMatches) -> SecretKey {
-        let path = PathBuf::from(
-            matches
-                .value_of(ARG_NAME)
-                .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME)),
-        );
-        SecretKey::from_file(path).expect("should parse secret key pem file")
+    pub fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
+            .value_of(ARG_NAME)
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
@@ -155,14 +134,14 @@ pub mod force {
     }
 }
 
-/// Handles providing the arg for and retrieval of the global state hash.
-pub mod global_state_hash {
+/// Handles providing the arg for and retrieval of the state root hash.
+pub mod state_root_hash {
     use super::*;
 
-    const ARG_NAME: &str = "global-state-hash";
-    const ARG_SHORT: &str = "g";
+    const ARG_NAME: &str = "state-root-hash";
+    const ARG_SHORT: &str = "s";
     const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
-    const ARG_HELP: &str = "Hex-encoded global state hash";
+    const ARG_HELP: &str = "Hex-encoded hash of the state root";
 
     pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -174,25 +153,23 @@ pub mod global_state_hash {
             .display_order(order)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Digest {
-        let hex_str = matches
+    pub(crate) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
-        Digest::from_hex(hex_str)
-            .unwrap_or_else(|error| panic!("cannot parse as a global state hash: {}", error))
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
-/// Handles providing the arg for and retrieval of the block hash.
-pub mod block_hash {
+/// Handles providing the arg for and retrieval of the block hash or block height.
+pub mod block_identifier {
     use super::*;
 
-    const ARG_NAME: &str = "block-hash";
+    const ARG_NAME: &str = "block-identifier";
     const ARG_SHORT: &str = "b";
-    const ARG_VALUE_NAME: &str = super::ARG_HEX_STRING;
+    const ARG_VALUE_NAME: &str = "HEX STRING OR INTEGER";
     const ARG_HELP: &str =
-        "Hex-encoded block hash.  If not given, the last block added to the chain as known at the \
-        given node will be used";
+        "Hex-encoded block hash or height of the block. If not given, the last block added to the \
+        chain as known at the given node will be used";
 
     pub(crate) fn arg(order: usize) -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -204,15 +181,7 @@ pub mod block_hash {
             .display_order(order)
     }
 
-    pub(crate) fn get(matches: &ArgMatches) -> Option<BlockHash> {
-        matches.value_of(ARG_NAME).map(|hex_str| {
-            let hash = Digest::from_hex(hex_str)
-                .unwrap_or_else(|error| panic!("cannot parse as a block hash: {}", error));
-            BlockHash::new(hash)
-        })
+    pub(crate) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
-}
-
-pub fn read_file(path: &str) -> Vec<u8> {
-    fs::read(path).unwrap_or_else(|error| panic!("should read {}: {}", path, error))
 }

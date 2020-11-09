@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    convert::Infallible,
     fmt::{self, Display, Formatter},
     marker::PhantomData,
 };
@@ -122,6 +123,7 @@ where
     I: Display + Send + 'static,
 {
     type Event = Event<I>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
@@ -183,7 +185,7 @@ where
                     }
                 }
             }
-            Event::LinearChainBlock{ block, execution_results } => {
+            Event::LinearChainBlock { block, execution_results } => {
                 effect_builder
                 .put_block_to_storage(block.clone())
                 .event(move |_| Event::PutBlockResult{ block, execution_results })

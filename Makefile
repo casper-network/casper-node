@@ -66,6 +66,10 @@ CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE := $(patsubst %, doc-stable/%, $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE))
 
+.PHONY: list
+list:
+	@$(MAKE) -pRrq -f $(lastword $(MAKEFILE_LIST)) : 2>/dev/null | awk -v RS= -F: '/^# File/,/^# Finished Make data base/ {if ($$1 !~ "^[#.]") {print $$1}}' | sort | egrep -v -e '^[^[:alnum:]]' -e '^$@$$'
+
 .PHONY: all
 all: build build-contracts
 
@@ -97,6 +101,9 @@ build-contracts-rs: \
 
 .PHONY: build-system-contracts
 build-system-contracts: $(SYSTEM_CONTRACTS)
+
+.PHONY: build-client-contracts
+build-client-contracts: $(CLIENT_CONTRACTS)
 
 build-contract-as/%:
 	cd $* && $(NPM) run asbuild
@@ -185,13 +192,14 @@ clean:
 	$(CARGO) clean
 
 .PHONY: build-for-packaging
-build-for-packaging: build-system-contracts
+build-for-packaging: build-system-contracts build-client-contracts
 	$(CARGO) build --release
 
 .PHONY: deb
 deb: build-for-packaging
 	cd grpc/server && $(CARGO) deb -p casper-engine-grpc-server --no-build
 	cd node && $(CARGO) deb -p casper-node --no-build
+	cd client && $(CARGO) deb -p casper-client --no-build
 
 grpc/server/.rpm:
 	cd grpc/server && $(CARGO) rpm init

@@ -1,5 +1,5 @@
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
 use rand::{RngCore, SeedableRng};
@@ -49,8 +49,8 @@ impl AddressGeneratorBuilder {
     pub fn build(self) -> AddressGenerator {
         let mut seed: [u8; SEED_LENGTH] = [0u8; SEED_LENGTH];
         let mut hasher = VarBlake2b::new(SEED_LENGTH).unwrap();
-        hasher.input(self.data);
-        hasher.variable_result(|hash| seed.clone_from_slice(hash));
+        hasher.update(self.data);
+        hasher.finalize_variable(|hash| seed.clone_from_slice(hash));
         AddressGenerator(ChaChaRng::from_seed(seed))
     }
 }

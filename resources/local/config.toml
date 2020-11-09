@@ -72,19 +72,45 @@ systemd_support = false
 
 
 # =============================================
-# Configuration options for the HTTP API server
+# Configuration options for the JSON-RPC HTTP server
 # =============================================
-[http_server]
+[rpc_server]
 
-# Listening address for HTTP server.  If the port is set to 0, a random port will be used.
+# Listening address for JSON-RPC HTTP server.  If the port is set to 0, a random port will be used.
 #
 # If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
-# the HTTP server will not run, but the node will be otherwise unaffected.
+# the JSON-RPC HTTP server will not run, but the node will be otherwise unaffected.
 #
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:7777'
 
-# The number of event-stream events to buffer.
+# =============================================
+# Configuration options for the REST HTTP server
+# =============================================
+[rest_server]
+
+# Listening address for REST HTTP server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the REST HTTP server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:8888'
+
+# =============================================
+# Configuration options for the SSE HTTP event stream server
+# =============================================
+[event_stream_server]
+
+# Listening address for SSE HTTP event stream server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the SSE HTTP event stream server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:9999'
+
+# The number of event stream events to buffer.
 event_stream_buffer_length = 100
 
 
@@ -159,7 +185,18 @@ gossip_request_timeout_secs = 10
 
 # The timeout duration in seconds for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.
-get_remainder_timeout_secs = 60
+get_remainder_timeout_secs = 5
+
+
+# ===================================
+# Configuration options for fetcher
+# ===================================
+[fetcher]
+
+# The timeout duration in seconds for a single fetcher request, i.e. for a single fetcher message
+# sent from this node to another node, it will be considered timed out if the expected response from that peer is
+# not received within this specified duration.
+get_from_peer_timeout = 3
 
 
 # ========================================================

@@ -60,10 +60,10 @@ impl<C: Context> Vote<C> {
         };
         let mut skip_idx = Vec::new();
         if let Some(hash) = wvote.panorama.get(wvote.creator).correct() {
-            skip_idx.push(hash.clone());
+            skip_idx.push(*hash);
             for i in 0..wvote.seq_number.trailing_zeros() as usize {
                 let old_vote = state.vote(&skip_idx[i]);
-                skip_idx.push(old_vote.skip_idx[i].clone());
+                skip_idx.push(old_vote.skip_idx[i]);
             }
         }
         let vote = Vote {
@@ -92,5 +92,21 @@ impl<C: Context> Vote<C> {
     /// Returns the length of the round containing this vote.
     pub(crate) fn round_len(&self) -> TimeDiff {
         state::round_len(self.round_exp)
+    }
+
+    /// Returns whether `vote` cites a new vote from `vidx` in the last panorama.
+    /// i.e. whether previous vote from creator of `vhash` cites different vote by `vidx`.
+    ///
+    /// NOTE: Returns `false` if `vidx` is faulty or hasn't produced any votes according to the
+    /// creator of `vhash`.
+    pub(crate) fn new_hash_obs(&self, state: &State<C>, vidx: ValidatorIndex) -> bool {
+        let latest_obs = self.panorama[vidx].correct();
+        let penultimate_obs = self
+            .previous()
+            .and_then(|v| state.vote(v).panorama[vidx].correct());
+        match (latest_obs, penultimate_obs) {
+            (Some(latest_hash), Some(penultimate_hash)) => latest_hash != penultimate_hash,
+            _ => false,
+        }
     }
 }

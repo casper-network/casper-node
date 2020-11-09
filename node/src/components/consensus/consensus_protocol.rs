@@ -5,7 +5,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::consensus::traits::ConsensusValueT,
+    components::consensus::traits::Context,
     types::{CryptoRngCore, Timestamp},
 };
 
@@ -48,21 +48,23 @@ pub struct EraEnd<VID> {
 /// about all the information contained in this type, as long as the total weight of faulty
 /// validators remains below the threshold.
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) struct FinalizedBlock<C: ConsensusValueT, VID> {
+pub(crate) struct FinalizedBlock<C: Context> {
     /// The finalized value.
-    pub(crate) value: C,
+    pub(crate) value: C::ConsensusValue,
     /// The timestamp at which this value was proposed.
     pub(crate) timestamp: Timestamp,
     /// The relative height in this instance of the protocol.
     pub(crate) height: u64,
     /// If this is a terminal block, i.e. the last one to be finalized, this includes rewards.
-    pub(crate) rewards: Option<BTreeMap<VID, u64>>,
+    pub(crate) rewards: Option<BTreeMap<C::ValidatorId, u64>>,
+    /// The validators known to be faulty as seen by this block.
+    pub(crate) equivocators: Vec<C::ValidatorId>,
     /// Proposer of this value
-    pub(crate) proposer: VID,
+    pub(crate) proposer: C::ValidatorId,
 }
 
 #[derive(Debug)]
-pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
+pub(crate) enum ConsensusProtocolResult<I, C: Context> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, I),
     InvalidIncomingMessage(Vec<u8>, I, Error),
@@ -73,20 +75,22 @@ pub(crate) enum ConsensusProtocolResult<I, C: ConsensusValueT, VID> {
         block_context: BlockContext,
     },
     /// A block was finalized.
-    FinalizedBlock(FinalizedBlock<C, VID>),
+    FinalizedBlock(FinalizedBlock<C>),
     /// Request validation of the consensus value, contained in a message received from the given
     /// node.
     ///
     /// The domain logic should verify any intrinsic validity conditions of consensus values, e.g.
     /// that it has the expected structure, or that deploys that are mentioned by hash actually
     /// exist, and then call `ConsensusProtocol::resolve_validity`.
-    ValidateConsensusValue(I, C),
+    ValidateConsensusValue(I, C::ConsensusValue, Timestamp),
     /// New direct evidence was added against the given validator.
-    NewEvidence(VID),
+    NewEvidence(C::ValidatorId),
+    /// Send evidence about the validator from an earlier era to the peer.
+    SendEvidence(I, C::ValidatorId),
 }
 
 /// An API for a single instance of the consensus.
-pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
+pub(crate) trait ConsensusProtocol<I, C: Context> {
     /// Upcasts consensus protocol into `dyn Any`.
     ///
     /// Typically called on a boxed trait object for downcasting afterwards.
@@ -99,45 +103,59 @@ pub(crate) trait ConsensusProtocol<I, C: ConsensusValueT, VID> {
         msg: Vec<u8>,
         evidence_only: bool,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+    ) -> Vec<ConsensusProtocolResult<I, C>>;
 
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
         timestamp: Timestamp,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+    ) -> Vec<ConsensusProtocolResult<I, C>>;
 
     /// Proposes a new value for consensus.
     fn propose(
         &mut self,
-        value: C,
+        value: C::ConsensusValue,
         block_context: BlockContext,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+    ) -> Vec<ConsensusProtocolResult<I, C>>;
 
     /// Marks the `value` as valid or invalid, based on validation requested via
     /// `ConsensusProtocolResult::ValidateConsensusvalue`.
     fn resolve_validity(
         &mut self,
-        value: &C,
+        value: &C::ConsensusValue,
         valid: bool,
         rng: &mut dyn CryptoRngCore,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+    ) -> Vec<ConsensusProtocolResult<I, C>>;
+
+    /// Turns this instance into an active validator, that participates in the consensus protocol.
+    fn activate_validator(
+        &mut self,
+        our_id: C::ValidatorId,
+        secret: C::ValidatorSecret,
+        timestamp: Timestamp,
+    ) -> Vec<ConsensusProtocolResult<I, C>>;
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
     fn deactivate_validator(&mut self);
 
     /// Returns whether the validator `vid` is known to be faulty.
-    fn has_evidence(&self, vid: &VID) -> bool;
+    fn has_evidence(&self, vid: &C::ValidatorId) -> bool;
+
+    /// Marks the validator `vid` as faulty, based on evidence from a different instance.
+    fn mark_faulty(&mut self, vid: &C::ValidatorId);
 
     /// Sends evidence for a faulty of validator `vid` to the `sender` of the request.
     fn request_evidence(
         &self,
         sender: I,
-        vid: &VID,
-    ) -> Result<Vec<ConsensusProtocolResult<I, C, VID>>, Error>;
+        vid: &C::ValidatorId,
+    ) -> Vec<ConsensusProtocolResult<I, C>>;
 
     /// Returns the list of all validators that were observed as faulty in this consensus instance.
-    fn faulty_validators(&self) -> Vec<&VID>;
+    fn validators_with_evidence(&self) -> Vec<&C::ValidatorId>;
+
+    /// Returns true if the protocol has received some messages since initialization.
+    fn has_received_messages(&self) -> bool;
 }

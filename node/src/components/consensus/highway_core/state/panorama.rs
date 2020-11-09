@@ -52,7 +52,7 @@ impl<C: Context> Observation<C> {
         }
     }
 
-    fn is_correct(&self) -> bool {
+    pub(crate) fn is_correct(&self) -> bool {
         match self {
             Self::None | Self::Faulty => false,
             Self::Correct(_) => true,
@@ -80,10 +80,8 @@ impl<C: Context> Observation<C> {
     /// Returns the missing dependency if `self` is referring to a vertex we don't know yet.
     fn missing_dep(&self, state: &State<C>, idx: ValidatorIndex) -> Option<Dependency<C>> {
         match self {
-            Observation::Faulty if !state.has_evidence(idx) => Some(Dependency::Evidence(idx)),
-            Observation::Correct(hash) if !state.has_vote(hash) => {
-                Some(Dependency::Vote(hash.clone()))
-            }
+            Observation::Faulty if !state.is_faulty(idx) => Some(Dependency::Evidence(idx)),
+            Observation::Correct(hash) if !state.has_vote(hash) => Some(Dependency::Vote(*hash)),
             _ => None,
         }
     }
@@ -103,13 +101,18 @@ impl<C: Context> Panorama<C> {
         self.iter().any(Observation::is_correct)
     }
 
-    /// Returns an iterator over all honest validators' latest messages.
+    /// Returns an iterator over all honest validators' latest votes.
     pub(crate) fn iter_correct<'a>(
         &'a self,
         state: &'a State<C>,
     ) -> impl Iterator<Item = &'a Vote<C>> {
         let to_vote = move |vh: &C::Hash| state.vote(vh);
-        self.iter().filter_map(Observation::correct).map(to_vote)
+        self.iter_correct_hashes().map(to_vote)
+    }
+
+    /// Returns an iterator over all honest validators' latest votes' hashes.
+    pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
+        self.iter().filter_map(Observation::correct)
     }
 
     /// Returns the correct sequence number for a new vote by `vidx` with this panorama.
@@ -147,7 +150,7 @@ impl<C: Context> Panorama<C> {
             Observation::Correct(vhash) => state
                 .swimlane(vhash)
                 .find(|(_, vote)| vote.timestamp <= timestamp)
-                .map(|(vh, _)| vh.clone())
+                .map(|(vh, _)| *vh)
                 .map_or(Observation::None, Observation::Correct),
             obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
         };

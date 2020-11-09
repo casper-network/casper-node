@@ -7,7 +7,7 @@ use std::{
 };
 
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
 use datasize::DataSize;
@@ -131,8 +131,8 @@ pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
     let mut result = [0; Digest::LENGTH];
 
     let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
-    hasher.input(data);
-    hasher.variable_result(|slice| {
+    hasher.update(data);
+    hasher.finalize_variable(|slice| {
         result.copy_from_slice(slice);
     });
     Digest(result)

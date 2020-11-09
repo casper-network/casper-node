@@ -2,7 +2,7 @@
 use std::{array::TryFromSliceError, convert::TryFrom};
 
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
 
@@ -20,8 +20,8 @@ impl Blake2bHash {
         let mut ret = [0u8; Blake2bHash::LENGTH];
         // Safe to unwrap here because our digest length is constant and valid
         let mut hasher = VarBlake2b::new(Blake2bHash::LENGTH).unwrap();
-        hasher.input(data);
-        hasher.variable_result(|hash| ret.clone_from_slice(hash));
+        hasher.update(data);
+        hasher.finalize_variable(|hash| ret.clone_from_slice(hash));
         Blake2bHash(ret)
     }
 

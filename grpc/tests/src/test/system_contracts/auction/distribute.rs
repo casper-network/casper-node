@@ -5,7 +5,7 @@ use num_rational::Ratio;
 
 use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{
     self,
@@ -20,12 +20,13 @@ use casper_types::{
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
+const ARG_TARGET: &str = "target";
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
-const TRANSFER_AMOUNT: u64 = 250_000_000;
+const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
@@ -118,13 +119,13 @@ fn should_distribute_delegation_rate_zero() {
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
     let participant_portion = Ratio::new(U512::one(), U512::from(3));
-    let remainders = Ratio::from(U512::from(2));
+    let remainders = Ratio::from(U512::zero());
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -134,7 +135,7 @@ fn should_distribute_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -144,7 +145,7 @@ fn should_distribute_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *DELEGATOR_1_ADDR,
+            ARG_TARGET => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -154,7 +155,7 @@ fn should_distribute_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *DELEGATOR_2_ADDR,
+            ARG_TARGET => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -240,9 +241,15 @@ fn should_distribute_delegation_rate_zero() {
 
     let validator_1_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
-    let expected_validator_1_balance =
-        (expected_total_reward * participant_portion + remainders).to_integer();
-    assert_eq!(validator_1_balance, expected_validator_1_balance);
+
+    let expected_validator_1_balance_ratio =
+        expected_total_reward * participant_portion + remainders;
+    let expected_validator_1_balance = expected_validator_1_balance_ratio.to_integer();
+    assert_eq!(
+        validator_1_balance, expected_validator_1_balance,
+        "rhs {}",
+        expected_validator_1_balance_ratio
+    );
 
     let delegator_1_balance =
         withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_1, DELEGATOR_1);
@@ -282,7 +289,8 @@ fn should_distribute_delegation_rate_half() {
 
     // Validator share
     let validator_share = Ratio::new(U512::from(2), U512::from(3));
-    let remainders = Ratio::from(U512::one());
+    let remainders = Ratio::from(U512::from(2));
+    let rounded_amount = U512::from(2);
 
     // Delegator shares
     let delegator_shares = Ratio::new(U512::one(), U512::from(6));
@@ -291,7 +299,7 @@ fn should_distribute_delegation_rate_half() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -301,7 +309,7 @@ fn should_distribute_delegation_rate_half() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -311,7 +319,7 @@ fn should_distribute_delegation_rate_half() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *DELEGATOR_1_ADDR,
+            ARG_TARGET => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -321,7 +329,7 @@ fn should_distribute_delegation_rate_half() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *DELEGATOR_2_ADDR,
+            ARG_TARGET => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -408,7 +416,8 @@ fn should_distribute_delegation_rate_half() {
     let validator_1_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_1_ADDR, VALIDATOR_1);
     let expected_validator_1_balance =
-        (expected_total_reward * validator_share + remainders).to_integer();
+        (expected_total_reward * validator_share + remainders - rounded_amount).to_integer();
+
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
     let delegator_1_balance =
@@ -438,7 +447,7 @@ fn should_distribute_delegation_rate_full() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -448,7 +457,7 @@ fn should_distribute_delegation_rate_full() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -458,7 +467,7 @@ fn should_distribute_delegation_rate_full() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *DELEGATOR_1_ADDR,
+            ARG_TARGET => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -468,7 +477,7 @@ fn should_distribute_delegation_rate_full() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *DELEGATOR_2_ADDR,
+            ARG_TARGET => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -591,7 +600,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -601,7 +610,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -611,7 +620,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_1_ADDR,
+            ARG_TARGET => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -621,7 +630,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_2_ADDR,
+            ARG_TARGET => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -744,7 +753,7 @@ fn should_distribute_by_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -754,7 +763,7 @@ fn should_distribute_by_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -764,7 +773,7 @@ fn should_distribute_by_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_2_ADDR,
+            ARG_TARGET => *VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -774,7 +783,7 @@ fn should_distribute_by_factor() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_3_ADDR,
+            ARG_TARGET => *VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -865,14 +874,19 @@ fn should_distribute_by_factor() {
     let expected_validator_1_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
+    let rounded_amount = U512::one();
+
     let validator_2_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
-    let expected_validator_2_balance = (expected_total_reward * one_third).to_integer();
+    let expected_validator_2_balance =
+        (expected_total_reward * one_third - rounded_amount).to_integer();
     assert_eq!(validator_2_balance, expected_validator_2_balance);
 
     let validator_3_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
-    let expected_validator_3_balance = (expected_total_reward * one_third).to_integer();
+
+    let expected_validator_3_balance =
+        (expected_total_reward * one_third - rounded_amount).to_integer();
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
     let total_payout = validator_1_balance + validator_2_balance + validator_3_balance;
@@ -899,7 +913,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -909,7 +923,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -919,7 +933,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_2_ADDR,
+            ARG_TARGET => *VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -929,7 +943,7 @@ fn should_distribute_by_factor_regardless_of_stake() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_3_ADDR,
+            ARG_TARGET => *VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1020,14 +1034,18 @@ fn should_distribute_by_factor_regardless_of_stake() {
     let expected_validator_1_balance = (expected_total_reward * one_third).to_integer();
     assert_eq!(validator_1_balance, expected_validator_1_balance);
 
+    let rounded_amount = U512::one();
+
     let validator_2_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_2_ADDR, VALIDATOR_2);
-    let expected_validator_2_balance = (expected_total_reward * one_third).to_integer();
+    let expected_validator_2_balance =
+        (expected_total_reward * one_third - rounded_amount).to_integer();
     assert_eq!(validator_2_balance, expected_validator_2_balance);
 
     let validator_3_balance =
         withdraw_validator_reward(&mut builder, *VALIDATOR_3_ADDR, VALIDATOR_3);
-    let expected_validator_3_balance = (expected_total_reward * one_third).to_integer();
+    let expected_validator_3_balance =
+        (expected_total_reward * one_third - rounded_amount).to_integer();
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
     let total_payout = validator_1_balance + validator_2_balance + validator_3_balance;
@@ -1056,7 +1074,7 @@ fn should_distribute_by_factor_uneven() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1066,7 +1084,7 @@ fn should_distribute_by_factor_uneven() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1076,7 +1094,7 @@ fn should_distribute_by_factor_uneven() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_2_ADDR,
+            ARG_TARGET => *VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1086,7 +1104,7 @@ fn should_distribute_by_factor_uneven() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_3_ADDR,
+            ARG_TARGET => *VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1188,7 +1206,7 @@ fn should_distribute_by_factor_uneven() {
     assert_eq!(validator_3_balance, expected_validator_3_balance);
 
     let total_payout = validator_1_balance + validator_2_balance + validator_3_balance;
-    let rounded_amount = U512::from(1);
+    let rounded_amount = U512::one();
     assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
 }
 
@@ -1217,7 +1235,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1227,7 +1245,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1237,7 +1255,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_2_ADDR,
+            ARG_TARGET => *VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1247,7 +1265,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_3_ADDR,
+            ARG_TARGET => *VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1257,7 +1275,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_1_ADDR,
+            ARG_TARGET => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1267,7 +1285,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_2_ADDR,
+            ARG_TARGET => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1277,7 +1295,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_3_ADDR,
+            ARG_TARGET => *DELEGATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1463,7 +1481,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1473,7 +1491,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1483,7 +1501,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_2_ADDR,
+            ARG_TARGET => *VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1493,7 +1511,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_3_ADDR,
+            ARG_TARGET => *VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1503,7 +1521,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_1_ADDR,
+            ARG_TARGET => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1513,7 +1531,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_2_ADDR,
+            ARG_TARGET => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1523,7 +1541,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_3_ADDR,
+            ARG_TARGET => *DELEGATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1672,10 +1690,11 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         expected_delegator_1_validator_1_balance
     );
 
+    let rounded_amount = U512::one();
     let delegator_1_validator_2_balance =
         withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_2, DELEGATOR_1);
     let expected_delegator_1_validator_2_balance =
-        (expected_total_reward * delegator_1_validator_2_portion).to_integer();
+        (expected_total_reward * delegator_1_validator_2_portion - rounded_amount).to_integer();
     assert_eq!(
         delegator_1_validator_2_balance,
         expected_delegator_1_validator_2_balance
@@ -1684,7 +1703,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let delegator_1_validator_3_balance =
         withdraw_delegator_reward(&mut builder, *DELEGATOR_1_ADDR, VALIDATOR_3, DELEGATOR_1);
     let expected_delegator_1_validator_3_balance =
-        (expected_total_reward * delegator_1_validator_3_portion).to_integer();
+        (expected_total_reward * delegator_1_validator_3_portion - rounded_amount).to_integer();
     assert_eq!(
         delegator_1_validator_3_balance,
         expected_delegator_1_validator_3_balance
@@ -1719,7 +1738,7 @@ fn should_prevent_theft_of_validator_reward() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1729,7 +1748,7 @@ fn should_prevent_theft_of_validator_reward() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1739,7 +1758,7 @@ fn should_prevent_theft_of_validator_reward() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *DELEGATOR_1_ADDR,
+            ARG_TARGET => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1749,7 +1768,7 @@ fn should_prevent_theft_of_validator_reward() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *DELEGATOR_2_ADDR,
+            ARG_TARGET => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1779,7 +1798,7 @@ fn should_prevent_theft_of_validator_reward() {
 
     let delegator_2_delegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
-        CONTRACT_AUCTION_BIDS,
+        CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATOR_2_STAKE),
             ARG_VALIDATOR => VALIDATOR_1,
@@ -1845,7 +1864,7 @@ fn should_prevent_theft_of_delegator_reward() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1855,7 +1874,7 @@ fn should_prevent_theft_of_delegator_reward() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1865,7 +1884,7 @@ fn should_prevent_theft_of_delegator_reward() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *DELEGATOR_1_ADDR,
+            ARG_TARGET => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1875,7 +1894,7 @@ fn should_prevent_theft_of_delegator_reward() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => *DELEGATOR_2_ADDR,
+            ARG_TARGET => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1976,7 +1995,7 @@ fn should_increase_total_supply_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>SYSTEM_ADDR,
+            ARG_TARGET => SYSTEM_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1986,7 +2005,7 @@ fn should_increase_total_supply_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_1_ADDR,
+            ARG_TARGET => *VALIDATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -1996,7 +2015,7 @@ fn should_increase_total_supply_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_2_ADDR,
+            ARG_TARGET => *VALIDATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2006,7 +2025,7 @@ fn should_increase_total_supply_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*VALIDATOR_3_ADDR,
+            ARG_TARGET => *VALIDATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2016,7 +2035,7 @@ fn should_increase_total_supply_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_1_ADDR,
+            ARG_TARGET => *DELEGATOR_1_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2026,7 +2045,7 @@ fn should_increase_total_supply_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_2_ADDR,
+            ARG_TARGET => *DELEGATOR_2_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -2036,7 +2055,7 @@ fn should_increase_total_supply_after_distribute() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" =>*DELEGATOR_3_ADDR,
+            ARG_TARGET => *DELEGATOR_3_ADDR,
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )

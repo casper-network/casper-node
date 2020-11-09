@@ -8,7 +8,7 @@ use std::{
 };
 
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
 use datasize::DataSize;
@@ -87,6 +87,12 @@ impl ProtoBlockHash {
     /// Constructs a new `ProtoBlockHash`.
     pub fn new(hash: Digest) -> Self {
         ProtoBlockHash(hash)
+    }
+
+    pub fn from_parts(deploys: &[DeployHash], random_bit: bool) -> Self {
+        ProtoBlockHash::new(hash::hash(
+            &bincode::serialize(&(deploys, random_bit)).expect("serialize ProtoBlock"),
+        ))
     }
 
     /// Returns the wrapped inner hash.
@@ -262,6 +268,10 @@ impl FinalizedBlock {
         self.era_id() == EraId(0) && self.height() == 0
     }
 
+    pub(crate) fn proposer(&self) -> PublicKey {
+        self.proposer
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
@@ -384,7 +394,7 @@ impl AsRef<[u8]> for BlockHash {
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 pub struct BlockHeader {
     parent_hash: BlockHash,
-    global_state_hash: Digest,
+    state_root_hash: Digest,
     body_hash: Digest,
     deploy_hashes: Vec<DeployHash>,
     random_bit: bool,
@@ -403,8 +413,8 @@ impl BlockHeader {
     }
 
     /// The root hash of the resulting global state.
-    pub fn global_state_hash(&self) -> &Digest {
-        &self.global_state_hash
+    pub fn state_root_hash(&self) -> &Digest {
+        &self.state_root_hash
     }
 
     /// The hash of the block's body.
@@ -483,7 +493,7 @@ impl Display for BlockHeader {
             "block header parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
             random bit {}, accumulated seed {}, timestamp {}",
             self.parent_hash.inner(),
-            self.global_state_hash,
+            self.state_root_hash,
             self.body_hash,
             DisplayIter::new(self.deploy_hashes.iter()),
             self.random_bit,
@@ -494,6 +504,41 @@ impl Display for BlockHeader {
             write!(formatter, ", era_end: {}", ee)?;
         }
         Ok(())
+    }
+}
+
+/// An error that can arise when validating a block's cryptographic integrity using its hashes
+#[derive(Debug)]
+pub enum BlockValidationError {
+    /// Problem serializing some of a block's data into bytes
+    SerializationError(bincode::Error),
+
+    /// The body hash in the header is not the same as the hash of the body of the block
+    UnexpectedBodyHash {
+        /// The block body hash specified in the header that is apparently incorrect
+        expected_by_block_header: Digest,
+        /// The actual hash of the block's body
+        actual: Digest,
+    },
+
+    /// The block's hash is not the same as the header's hash
+    UnexpectedBlockHash {
+        /// The hash specified by the block
+        expected_by_block: BlockHash,
+        /// The actual hash of the block
+        actual: BlockHash,
+    },
+}
+
+impl Display for BlockValidationError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(formatter, "{:?}", self)
+    }
+}
+
+impl From<bincode::Error> for BlockValidationError {
+    fn from(err: bincode::Error) -> Self {
+        BlockValidationError::SerializationError(err)
     }
 }
 
@@ -511,7 +556,7 @@ impl Block {
     pub(crate) fn new(
         parent_hash: BlockHash,
         parent_seed: Digest,
-        global_state_hash: Digest,
+        state_root_hash: Digest,
         finalized_block: FinalizedBlock,
     ) -> Self {
         let body = ();
@@ -525,15 +570,15 @@ impl Block {
         let mut accumulated_seed = [0; Digest::LENGTH];
 
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
-        hasher.input(parent_seed);
-        hasher.input([finalized_block.proto_block.random_bit as u8]);
-        hasher.variable_result(|slice| {
+        hasher.update(parent_seed);
+        hasher.update([finalized_block.proto_block.random_bit as u8]);
+        hasher.finalize_variable(|slice| {
             accumulated_seed.copy_from_slice(slice);
         });
 
         let header = BlockHeader {
             parent_hash,
-            global_state_hash,
+            state_root_hash,
             body_hash,
             deploy_hashes: finalized_block.proto_block.deploys,
             random_bit: finalized_block.proto_block.random_bit,
@@ -563,12 +608,13 @@ impl Block {
         self.header
     }
 
-    pub(crate) fn hash(&self) -> &BlockHash {
+    /// The hash of this block's header.
+    pub fn hash(&self) -> &BlockHash {
         &self.hash
     }
 
-    pub(crate) fn post_state_hash(&self) -> &Digest {
-        self.header.global_state_hash()
+    pub(crate) fn state_root_hash(&self) -> &Digest {
+        self.header.state_root_hash()
     }
 
     /// The deploy hashes included in this block.
@@ -576,7 +622,8 @@ impl Block {
         self.header.deploy_hashes()
     }
 
-    pub(crate) fn height(&self) -> u64 {
+    /// The height of a block.
+    pub fn height(&self) -> u64 {
         self.header.height()
     }
 
@@ -590,15 +637,35 @@ impl Block {
         bincode::serialize(body)
     }
 
+    /// Check the integrity of a block by hashing its body and header
+    pub fn verify(&self) -> Result<(), BlockValidationError> {
+        let serialized_body = Block::serialize_body(&self.body)?;
+        let actual_body_hash = hash::hash(&serialized_body);
+        if self.header.body_hash != actual_body_hash {
+            return Err(BlockValidationError::UnexpectedBodyHash {
+                expected_by_block_header: self.header.body_hash,
+                actual: actual_body_hash,
+            });
+        }
+        let actual_header_hash = self.header.hash();
+        if self.hash != actual_header_hash {
+            return Err(BlockValidationError::UnexpectedBlockHash {
+                expected_by_block: self.hash,
+                actual: actual_header_hash,
+            });
+        }
+        Ok(())
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let parent_hash = BlockHash::new(Digest::random(rng));
-        let global_state_hash = Digest::random(rng);
+        let state_root_hash = Digest::random(rng);
         let finalized_block = FinalizedBlock::random(rng);
         let parent_seed = Digest::random(rng);
 
-        let mut block = Block::new(parent_hash, parent_seed, global_state_hash, finalized_block);
+        let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
 
         let signatures_count = rng.gen_range(0, 11);
         for _ in 0..signatures_count {
@@ -620,7 +687,7 @@ impl Display for Block {
             random bit {}, timestamp {}, era_id {}, height {}, proofs count {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
-            self.header.global_state_hash,
+            self.header.state_root_hash,
             self.header.body_hash,
             DisplayIter::new(self.header.deploy_hashes.iter()),
             self.header.random_bit,
@@ -730,5 +797,58 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&finalized_block).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(finalized_block, decoded);
+    }
+
+    #[test]
+    fn random_block_check() {
+        let mut rng = TestRng::from_seed([1u8; 16]);
+        let loop_iterations = 50;
+        for _ in 0..loop_iterations {
+            Block::random(&mut rng)
+                .verify()
+                .expect("block hash should check");
+        }
+    }
+
+    #[test]
+    fn block_check_bad_body_hash_sad_path() {
+        let mut rng = TestRng::from_seed([2u8; 16]);
+        let mut block = Block::random(&mut rng);
+
+        let bogus_block_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
+        block.header.body_hash = bogus_block_hash;
+
+        let serialized_body =
+            Block::serialize_body(&block.body).expect("Could not serialize block body");
+        let actual_body_hash = hash::hash(&serialized_body);
+
+        // No Eq trait for BlockValidationError, so pattern match
+        match block.verify() {
+            Err(BlockValidationError::UnexpectedBodyHash {
+                expected_by_block_header,
+                actual,
+            }) if expected_by_block_header == bogus_block_hash && actual == actual_body_hash => {}
+            unexpected => panic!("Bad check response: {:?}", unexpected),
+        }
+    }
+
+    #[test]
+    fn block_check_bad_block_hash_sad_path() {
+        let mut rng = TestRng::from_seed([3u8; 16]);
+        let mut block = Block::random(&mut rng);
+
+        let bogus_block_hash: BlockHash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
+        block.hash = bogus_block_hash;
+
+        let actual_block_hash = block.header.hash();
+
+        // No Eq trait for BlockValidationError, so pattern match
+        match block.verify() {
+            Err(BlockValidationError::UnexpectedBlockHash {
+                expected_by_block,
+                actual,
+            }) if expected_by_block == bogus_block_hash && actual == actual_block_hash => {}
+            unexpected => panic!("Bad check response: {:?}", unexpected),
+        }
     }
 }

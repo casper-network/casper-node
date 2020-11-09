@@ -17,10 +17,10 @@
 //         chainspec_loader::Chainspec,
 //         deploy_acceptor::{self, DeployAcceptor},
 //         in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
-//         storage::{self, Storage},
+//         storage::{self, Storage, StorageType},
 //     },
 //     effect::{
-//         announcements::{ApiServerAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement},
+//         announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement, RpcServerAnnouncement},
 //         requests::FetcherRequest,
 //     },
 //     protocol::Message,
@@ -31,6 +31,7 @@
 //     },
 //     types::{Deploy, DeployHash, Tag},
 //     utils::{Loadable, WithDir},
+//     FetcherConfig,
 // };
 
 // const TIMEOUT: Duration = Duration::from_secs(1);
@@ -40,7 +41,7 @@
 // #[must_use]
 // enum Event {
 //     #[from]
-//     Storage(storage::Event),
+//     Storage(storage::Event<Storage>),
 //     #[from]
 //     DeployAcceptor(deploy_acceptor::Event),
 //     #[from]
@@ -54,14 +55,14 @@
 //     #[from]
 //     NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
 //     #[from]
-//     ApiServerAnnouncement(ApiServerAnnouncement),
+//     RpcServerAnnouncement(RpcServerAnnouncement),
 //     #[from]
 //     DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
 // }
 
-// impl From<StorageRequest> for Event {
-//     fn from(request: StorageRequest) -> Self {
-//         Event::Storage(request.into())
+// impl From<StorageRequest<Storage>> for Event {
+//     fn from(request: StorageRequest<Storage>) -> Self {
+//         Event::Storage(storage::Event::Request(request))
 //     }
 // }
 
@@ -74,7 +75,7 @@
 //             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
 //             Event::DeployFetcherRequest(req) => write!(formatter, "fetcher request: {}", req),
 //             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}",
-// ann),             Event::ApiServerAnnouncement(ann) => {
+// ann),             Event::RpcServerAnnouncement(ann) => {
 //                 write!(formatter, "api server announcement: {}", ann)
 //             }
 //             Event::DeployAcceptorAnnouncement(ann) => {
@@ -108,7 +109,7 @@
 
 // impl reactor::Reactor for Reactor {
 //     type Event = Event;
-//     type Config = GossipConfig;
+//     type Config = Config;
 //     type Error = Error;
 
 //     fn new(
@@ -146,7 +147,7 @@
 //         event: Event,
 //     ) -> Effects<Self::Event> {
 //         match event {
-//             Event::Storage(storage::Event::StorageRequest(StorageRequest::GetChainspec {
+//             Event::Storage(storage::Event::Request(StorageRequest::GetChainspec {
 //                 responder,
 //                 ..
 //             })) => responder
@@ -222,7 +223,7 @@
 //             Event::NetworkAnnouncement(ann) => {
 //                 unreachable!("should not receive announcements of type {:?}", ann);
 //             }
-//             Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
+//             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
 //                 let event = deploy_acceptor::Event::Accept {
 //                     deploy,
 //                     source: Source::<NodeId>::Client,
@@ -505,7 +506,7 @@
 //         .await;
 
 //     // Advance time.
-//     let secs_to_advance = GossipConfig::default().get_remainder_timeout_secs();
+//     let secs_to_advance = FetcherConfig::default().get_from_peer_timeout();
 //     time::pause();
 //     time::advance(Duration::from_secs(secs_to_advance + 10)).await;
 //     time::resume();

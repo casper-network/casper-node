@@ -89,18 +89,18 @@ impl From<ChainspecLoader> for ChainspecInfo {
     fn from(chainspec_loader: ChainspecLoader) -> Self {
         ChainspecInfo::new(
             chainspec_loader.chainspec.genesis.name.clone(),
-            chainspec_loader.genesis_post_state_hash,
+            chainspec_loader.genesis_state_root_hash,
         )
     }
 }
 
 #[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
-pub(crate) struct ChainspecLoader {
+pub struct ChainspecLoader {
     chainspec: Chainspec,
     // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
     completed_successfully: Option<bool>,
-    // If `Some` then genesis process returned a valid post state hash.
-    genesis_post_state_hash: Option<Digest>,
+    // If `Some` then genesis process returned a valid state root hash.
+    genesis_state_root_hash: Option<Digest>,
 }
 
 impl ChainspecLoader {
@@ -119,7 +119,7 @@ impl ChainspecLoader {
             ChainspecLoader {
                 chainspec,
                 completed_successfully: None,
-                genesis_post_state_hash: None,
+                genesis_state_root_hash: None,
             },
             effects,
         ))
@@ -133,8 +133,8 @@ impl ChainspecLoader {
         self.completed_successfully.unwrap_or_default()
     }
 
-    pub(crate) fn genesis_post_state_hash(&self) -> &Option<Digest> {
-        &self.genesis_post_state_hash
+    pub(crate) fn genesis_state_root_hash(&self) -> &Option<Digest> {
+        &self.genesis_state_root_hash
     }
 
     pub(crate) fn chainspec(&self) -> &Chainspec {
@@ -147,6 +147,7 @@ where
     REv: From<Event> + From<StorageRequest> + From<ContractRuntimeRequest> + Send,
 {
     type Event = Event;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,
@@ -179,10 +180,10 @@ where
                             effect,
                         } => {
                             info!("chainspec name {}", self.chainspec.genesis.name);
-                            info!("genesis root hash {}", post_state_hash);
+                            info!("genesis state root hash {}", post_state_hash);
                             trace!(%post_state_hash, ?effect);
                             self.completed_successfully = Some(true);
-                            self.genesis_post_state_hash = Some(post_state_hash.into());
+                            self.genesis_state_root_hash = Some(post_state_hash.into());
                         }
                     },
                     Err(error) => {

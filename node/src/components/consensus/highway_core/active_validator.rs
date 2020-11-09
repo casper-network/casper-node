@@ -1,17 +1,20 @@
 use std::fmt::{self, Debug};
 
-use tracing::{error, warn};
+use tracing::{error, trace, warn};
 
 use super::{
+    endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
-    highway::{ValidVertex, Vertex, WireVote},
+    highway::{Endorsements, ValidVertex, Vertex, WireVote},
     state::{self, Observation, Panorama, State, Vote},
     validators::ValidatorIndex,
 };
 
 use crate::{
     components::consensus::{
-        consensus_protocol::BlockContext, highway_core::highway::SignedWireVote, traits::Context,
+        consensus_protocol::BlockContext,
+        highway_core::highway::SignedWireVote,
+        traits::{Context, ValidatorSecret},
     },
     types::{CryptoRngCore, TimeDiff, Timestamp},
 };
@@ -74,7 +77,7 @@ impl<C: Context> ActiveValidator<C> {
     pub(crate) fn new(
         vidx: ValidatorIndex,
         secret: C::ValidatorSecret,
-        timestamp: Timestamp,
+        start_time: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
         let mut av = ActiveValidator {
@@ -84,8 +87,13 @@ impl<C: Context> ActiveValidator<C> {
             next_timer: Timestamp::zero(),
             next_proposal: None,
         };
-        let effects = av.schedule_timer(timestamp, state);
+        let effects = av.schedule_timer(start_time, state);
         (av, effects)
+    }
+
+    /// Sets the next round exponent to the new value.
+    pub(crate) fn set_round_exp(&mut self, new_round_exp: u8) {
+        self.next_round_exp = new_round_exp;
     }
 
     /// Returns actions a validator needs to take at the specified `timestamp`, with the given
@@ -134,15 +142,41 @@ impl<C: Context> ActiveValidator<C> {
         if let Some(evidence) = state.opt_evidence(self.vidx) {
             return vec![Effect::WeEquivocated(evidence.clone())];
         }
+        let mut effects = vec![];
         if self.should_send_confirmation(vhash, now, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             if panorama.has_correct() {
                 let confirmation_vote = self.new_vote(panorama, now, None, state, instance_id, rng);
                 let vv = ValidVertex(Vertex::Vote(confirmation_vote));
-                return vec![Effect::NewVertex(vv)];
+                effects.extend(vec![Effect::NewVertex(vv)])
             }
+        };
+        if self.should_endorse(vhash, state) {
+            let endorsement = self.endorse(vhash, rng);
+            effects.extend(vec![Effect::NewVertex(ValidVertex(endorsement))]);
         }
-        vec![]
+        effects
+    }
+
+    /// Returns actions validator needs to take upon receiving a new evidence.
+    /// Endorses all latest votes by honest validators that do not mark new perpetrator as faulty
+    /// and cite some new message by that validator.
+    pub(crate) fn on_new_evidence(
+        &mut self,
+        evidence: &Evidence<C>,
+        state: &State<C>,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Vec<Effect<C>> {
+        let vidx = evidence.perpetrator();
+        state
+            .iter_correct_hashes()
+            .filter(|&v| {
+                let vote = state.vote(v);
+                vote.new_hash_obs(state, vidx)
+            })
+            .map(|v| self.endorse(v, rng))
+            .map(|endorsement| Effect::NewVertex(ValidVertex(endorsement)))
+            .collect()
     }
 
     /// Returns an effect to request a consensus value for a block to propose.
@@ -224,10 +258,10 @@ impl<C: Context> ActiveValidator<C> {
         if timestamp < earliest_vote_time {
             warn!(%earliest_vote_time, %timestamp, "earliest_vote_time is greater than current time stamp");
             return false;
-        };
+        }
         let vote = state.vote(vhash);
         if vote.timestamp > timestamp {
-            warn!(%vote.timestamp, %timestamp, "added a vote with a future timestamp");
+            error!(%vote.timestamp, %timestamp, "added a vote with a future timestamp, should never happen");
             return false;
         }
         // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
@@ -242,9 +276,9 @@ impl<C: Context> ActiveValidator<C> {
         }
         let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
         if vote.timestamp != r_id {
-            warn!(
+            trace!(
                 %vote.timestamp, %r_id,
-                "received proposal from unexpected round",
+                "not confirming proposal: wrong round",
             );
             return false;
         }
@@ -262,7 +296,7 @@ impl<C: Context> ActiveValidator<C> {
         } else {
             panorama = vote.panorama.clone();
         }
-        panorama[vote.creator] = Observation::Correct(vhash.clone());
+        panorama[vote.creator] = Observation::Correct(*vhash);
         for faulty_v in state.faulty_validators() {
             panorama[faulty_v] = Observation::Faulty;
         }
@@ -290,6 +324,8 @@ impl<C: Context> ActiveValidator<C> {
             panorama = state.panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
+        // TODO: After LNC we won't always need all known endorsements.
+        let endorsed = state.endorsements().collect();
         let wvote = WireVote {
             panorama,
             creator: self.vidx,
@@ -298,6 +334,7 @@ impl<C: Context> ActiveValidator<C> {
             seq_number,
             timestamp,
             round_exp: self.round_exp(state, timestamp),
+            endorsed,
         };
         SignedWireVote::new(wvote, &self.secret, rng)
     }
@@ -372,6 +409,29 @@ impl<C: Context> ActiveValidator<C> {
                 vote.round_exp
             }
         })
+    }
+
+    /// Returns whether we should endorse the `vhash`.
+    ///
+    /// We should endorse vote from honest validator that cites _an_ equivocator
+    /// as honest and it cites some new message by that validator.
+    fn should_endorse(&self, vhash: &C::Hash, state: &State<C>) -> bool {
+        let vote = state.vote(vhash);
+        !state.is_faulty(vote.creator)
+            && vote
+                .panorama
+                .enumerate()
+                .any(|(vidx, _)| state.is_faulty(vidx) && vote.new_hash_obs(state, vidx))
+    }
+
+    /// Creates endorsement of the `vhash`.
+    fn endorse(&self, vhash: &C::Hash, rng: &mut dyn CryptoRngCore) -> Vertex<C> {
+        let endorsement = Endorsement::new(*vhash, self.vidx);
+        let signature = self.secret.sign(&endorsement.hash(), rng);
+        Vertex::Endorsements(Endorsements::new(vec![SignedEndorsement::new(
+            endorsement,
+            signature,
+        )]))
     }
 }
 

@@ -12,13 +12,14 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RoTransaction, RwTransaction,
     Transaction, WriteFlags,
 };
+use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
-use super::Component;
+use super::{block_proposer::BlockProposerState, Component};
 use crate::{
     effect::{requests::StorageRequest, EffectExt, Effects},
-    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
+    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, Timestamp},
     utils::WithDir,
     Chainspec,
 };
@@ -51,7 +52,7 @@ pub enum Error {
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct Storage {
+pub struct Storage {
     /// Storage location.
     #[data_size(skip)]
     root: PathBuf,
@@ -77,6 +78,7 @@ pub(crate) struct Storage {
 
 impl<REv> Component<REv> for Storage {
     type Event = Event;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,
@@ -350,6 +352,17 @@ impl Storage {
             .iter()
             .map(|deploy_hash| tx.get_value(self.deploy_db, deploy_hash))
             .collect()
+    }
+
+    /// TODO: What is this?
+    pub(crate) async fn load_block_proposer_state(
+        &self,
+        _latest_block_height: u64,
+        _chainspec_version: Version,
+        _timestamp: Timestamp,
+    ) -> BlockProposerState {
+        // TODO: Re-evaluate if this functionality can be scrapped.
+        todo!()
     }
 }
 

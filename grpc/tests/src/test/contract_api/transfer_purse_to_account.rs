@@ -7,7 +7,7 @@ use casper_engine_test_support::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_types::{
     account::AccountHash, auction::ARG_AMOUNT, mint::ARG_TARGET, runtime_args, ApiError, CLValue,
@@ -92,7 +92,7 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     // When trying to send too much coins the balance is left unchanged
     assert_eq!(
         final_balance,
-        U512::from(100_000_000_000u64) - *DEFAULT_PAYMENT,
+        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - *DEFAULT_PAYMENT,
         "final balance incorrect"
     );
 

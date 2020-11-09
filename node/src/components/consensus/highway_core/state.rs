@@ -9,6 +9,7 @@ mod weight;
 pub(crate) mod tests;
 
 pub(crate) use params::Params;
+use quanta::Clock;
 pub(crate) use weight::Weight;
 
 pub(super) use panorama::{Observation, Panorama};
@@ -20,18 +21,20 @@ use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use crate::{
     components::consensus::{
         highway_core::{
+            endorsement::{Endorsement, SignedEndorsement},
             evidence::Evidence,
-            highway::{SignedWireVote, WireVote},
+            highway::{Endorsements, SignedWireVote, WireVote},
             validators::{ValidatorIndex, ValidatorMap},
         },
         traits::Context,
     },
     types::{TimeDiff, Timestamp},
+    utils::weighted_median,
 };
 use block::Block;
 use tallies::Tallies;
@@ -58,8 +61,12 @@ pub(crate) enum VoteError {
     InstanceId,
     #[error("The signature is invalid.")]
     Signature,
-    #[error("The round length is invalid.")]
-    RoundLength,
+    #[error("The round length exponent has somehow changed within a round.")]
+    RoundLengthExpChangedWithinRound,
+    #[error("The round length exponent is less than the minimum allowed by the chain-spec.")]
+    RoundLengthExpLessThanMinimum,
+    #[error("The round length exponent is greater than the maximum allowed by the chain-spec.")]
+    RoundLengthExpGreaterThanMaximum,
     #[error("This would be the third vote in that round. Only two are allowed.")]
     ThreeVotesInRound,
     #[error(
@@ -69,6 +76,33 @@ pub(crate) enum VoteError {
     NonLeaderBlock(ValidatorIndex),
     #[error("The vote is a block, but its parent is already a terminal block.")]
     ValueAfterTerminalBlock,
+    #[error("The vote's creator is banned.")]
+    Banned,
+}
+
+/// A reason for a validator to be marked as faulty.
+///
+/// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
+/// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
+/// from other consensus protocol instances.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum Fault<C: Context> {
+    /// The validator was known to be faulty from the beginning. All their messages are considered
+    /// invalid in this Highway instance.
+    Banned,
+    /// We have direct evidence of the validator's fault.
+    Direct(Evidence<C>),
+    /// The validator is known to be faulty, but the evidence is not in this Highway instance.
+    Indirect,
+}
+
+impl<C: Context> Fault<C> {
+    pub(crate) fn evidence(&self) -> Option<&Evidence<C>> {
+        match self {
+            Fault::Banned | Fault::Indirect => None,
+            Fault::Direct(ev) => Some(ev),
+        }
+    }
 }
 
 /// A passive instance of the Highway protocol, containing its local state.
@@ -90,17 +124,24 @@ pub(crate) struct State<C: Context> {
     votes: HashMap<C::Hash, Vote<C>>,
     /// All blocks, by hash.
     blocks: HashMap<C::Hash, Block<C>>,
-    /// Evidence to prove a validator malicious, by index.
-    evidence: HashMap<ValidatorIndex, Evidence<C>>,
+    /// List of faulty validators and their type of fault.
+    faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
+    /// All currently endorsed votes, by hash.
+    endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
+    /// Votes that don't yet have 2/3 of stake endorsing them.
+    incomplete_endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
+    /// Clock to track fork choice
+    clock: Clock,
 }
 
 impl<C: Context> State<C> {
-    pub(crate) fn new<I>(weights: I, params: Params) -> State<C>
+    pub(crate) fn new<I, IB>(weights: I, params: Params, banned: IB) -> State<C>
     where
         I: IntoIterator,
         I::Item: Borrow<Weight>,
+        IB: IntoIterator<Item = ValidatorIndex>,
     {
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
         assert!(
@@ -114,15 +155,26 @@ impl<C: Context> State<C> {
         };
         let cumulative_w = weights.iter().map(add).collect();
         assert!(sum > Weight(0), "total weight must not be zero");
-        let panorama = Panorama::new(weights.len());
+        let mut panorama = Panorama::new(weights.len());
+        let faults: HashMap<_, _> = banned.into_iter().map(|idx| (idx, Fault::Banned)).collect();
+        for idx in faults.keys() {
+            assert!(
+                idx.0 < weights.len() as u32,
+                "invalid banned validator index"
+            );
+            panorama[*idx] = Observation::Faulty;
+        }
         State {
             params,
             weights,
             cumulative_w,
             votes: HashMap::new(),
             blocks: HashMap::new(),
-            evidence: HashMap::new(),
+            faults,
             panorama,
+            endorsements: HashMap::new(),
+            incomplete_endorsements: HashMap::new(),
+            clock: Clock::new(),
         }
     }
 
@@ -144,6 +196,11 @@ impl<C: Context> State<C> {
     /// Returns the map of validator weights.
     pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
         &self.weights
+    }
+
+    /// Returns hashes of endorsed votes.
+    pub(crate) fn endorsements<'a>(&'a self) -> impl Iterator<Item = C::Hash> + 'a {
+        self.endorsements.keys().cloned()
     }
 
     /// Returns the total weight of all validators marked faulty in this panorama.
@@ -172,17 +229,75 @@ impl<C: Context> State<C> {
 
     /// Returns evidence against validator nr. `idx`, if present.
     pub(crate) fn opt_evidence(&self, idx: ValidatorIndex) -> Option<&Evidence<C>> {
-        self.evidence.get(&idx)
+        self.opt_fault(idx).and_then(Fault::evidence)
+    }
+
+    /// Returns endorsements for `vote`, if any.
+    pub(crate) fn opt_endorsements(&self, vote: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
+        self.endorsements.get(vote).cloned()
     }
 
     /// Returns whether evidence against validator nr. `idx` is known.
     pub(crate) fn has_evidence(&self, idx: ValidatorIndex) -> bool {
-        self.evidence.contains_key(&idx)
+        self.opt_evidence(idx).is_some()
     }
 
-    /// Returns an iterator over all faulty validators against which we have evidence.
+    /// Returns whether we have all endorsements for `vote`.
+    pub(crate) fn has_all_endorsements<'a, I: IntoIterator<Item = &'a ValidatorIndex>>(
+        &self,
+        vote: &C::Hash,
+        v_ids: I,
+    ) -> bool {
+        self.incomplete_endorsements
+            .get(vote)
+            .map(|v| {
+                v_ids
+                    .into_iter()
+                    .all(|v_id| v.get(v_id.0 as usize).is_some())
+            })
+            .unwrap_or(false)
+    }
+
+    /// Returns whether we have seen enough endorsements for the vote.
+    /// Vote is endorsed when it, or its descendant, has more than ≥ ⅔ of votes (by weight).
+    pub(crate) fn is_endorsed(&self, hash: &C::Hash) -> bool {
+        self.endorsements.contains_key(hash)
+        // TODO: check if any descendant (from the same creator) of `hash` is endorsed.
+    }
+
+    /// Returns hash of vote that needs to be endorsed.
+    pub(crate) fn needs_endorsements(&self, vote: &SignedWireVote<C>) -> Option<C::Hash> {
+        vote.wire_vote
+            .endorsed
+            .iter()
+            .find(|hash| !self.endorsements.contains_key(&hash))
+            .cloned()
+    }
+
+    /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
+    pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
+        self.panorama[idx] = Observation::Faulty;
+        self.faults.entry(idx).or_insert(Fault::Indirect);
+    }
+
+    /// Returns the fault type of validator nr. `idx`, if it is known to be faulty.
+    pub(crate) fn opt_fault(&self, idx: ValidatorIndex) -> Option<&Fault<C>> {
+        self.faults.get(&idx)
+    }
+
+    /// Returns whether validator nr. `idx` is known to be faulty.
+    pub(crate) fn is_faulty(&self, idx: ValidatorIndex) -> bool {
+        self.faults.contains_key(&idx)
+    }
+
+    /// Returns an iterator over all faulty validators.
     pub(crate) fn faulty_validators<'a>(&'a self) -> impl Iterator<Item = ValidatorIndex> + 'a {
-        self.evidence.keys().cloned()
+        self.faults.keys().cloned()
+    }
+
+    /// Returns an iterator over latest vote hashes from honest validators.
+    pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
+        self.panorama.iter_correct_hashes()
     }
 
     /// Returns the vote with the given hash, if present.
@@ -238,16 +353,64 @@ impl<C: Context> State<C> {
         let (vote, opt_value) = Vote::new(swvote, fork_choice.as_ref(), self);
         if let Some(value) = opt_value {
             let block = Block::new(fork_choice, value, self);
-            self.blocks.insert(hash.clone(), block);
+            self.blocks.insert(hash, block);
         }
         self.votes.insert(hash, vote);
     }
 
-    pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) {
+    /// Adds direct evidence proving a validator to be faulty, unless that validators is already
+    /// banned or we already have other direct evidence.
+    pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) -> bool {
         let idx = evidence.perpetrator();
-        info!(?evidence, "marking validator #{} as faulty", idx.0);
-        self.evidence.insert(idx, evidence);
+        match self.faults.get(&idx) {
+            Some(&Fault::Banned) | Some(&Fault::Direct(_)) => return false,
+            None | Some(&Fault::Indirect) => (),
+        }
+        // TODO: Should use Display, not Debug!
+        trace!(?evidence, "marking validator #{} as faulty", idx.0);
+        self.faults.insert(idx, Fault::Direct(evidence));
         self.panorama[idx] = Observation::Faulty;
+        true
+    }
+
+    /// Add set of endorsements to the state.
+    /// If, after adding, we have collected enough endorsements to consider vote _endorsed_,
+    /// it will be *upgraded* to fully endorsed.
+    pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
+        let vote = *endorsements.vote();
+        let validator_count = self.validator_count();
+        info!("Received endorsements of {:?}", vote);
+        {
+            let entry = self
+                .incomplete_endorsements
+                .entry(vote)
+                .or_insert_with(|| Vec::with_capacity(validator_count));
+            for (vid, signature) in endorsements.endorsers {
+                // Add endorsements from validators we haven't seen endorsement yet.
+                if !entry.iter().any(|e| e.validator_idx() == vid) {
+                    let endorsement =
+                        SignedEndorsement::new(Endorsement::new(vote, vid), signature);
+                    entry.push(endorsement)
+                }
+            }
+        }
+        // Stake required to consider vote to be endorsed.
+        let threshold = self.total_weight() / 3 * 2;
+        let endorsed: Weight = self
+            .incomplete_endorsements
+            .get(&vote)
+            .unwrap()
+            .iter()
+            .map(|e| {
+                let v_id = e.validator_idx();
+                self.weight(v_id)
+            })
+            .sum();
+        if endorsed >= threshold {
+            info!(%vote, "Vote endorsed by at least 2/3 of validators.");
+            let fully_endorsed = self.incomplete_endorsements.remove(&vote).unwrap();
+            self.endorsements.insert(vote, fully_endorsed);
+        }
     }
 
     pub(crate) fn wire_vote(
@@ -258,6 +421,8 @@ impl<C: Context> State<C> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
+        // TODO: After LNC we won't always need all known endorsements.
+        let endorsed = self.endorsements().collect();
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
             creator: vote.creator,
@@ -266,6 +431,7 @@ impl<C: Context> State<C> {
             seq_number: vote.seq_number,
             timestamp: vote.timestamp,
             round_exp: vote.round_exp,
+            endorsed,
         };
         Some(SignedWireVote {
             wire_vote: wvote,
@@ -280,6 +446,7 @@ impl<C: Context> State<C> {
     /// children of the previously selected block (or from all blocks at height 0), until a block
     /// is reached that has no children with any votes.
     pub(crate) fn fork_choice<'a>(&'a self, pan: &Panorama<C>) -> Option<&'a C::Hash> {
+        let start = self.clock.start();
         // Collect all correct votes in a `Tallies` map, sorted by height.
         let to_entry = |(obs, w): (&Observation<C>, &Weight)| {
             let bhash = &self.vote(obs.correct()?).block;
@@ -293,6 +460,9 @@ impl<C: Context> State<C> {
             tallies = tallies.filter_descendants(height, bhash, self);
             // If there are no blocks left, `bhash` itself is the fork choice. Otherwise repeat.
             if tallies.is_empty() {
+                let end = self.clock.end();
+                let delta = self.clock.delta(start, end).as_nanos();
+                trace!(%delta,"Time taken for fork-choice to run");
                 return Some(bhash);
             }
         }
@@ -328,8 +498,14 @@ impl<C: Context> State<C> {
             error!("Nonexistent validator should be rejected in Highway::pre_validate_vote.");
             return Err(VoteError::Creator); // Should be unreachable.
         }
+        if Some(&Fault::Banned) == self.faults.get(&creator) {
+            return Err(VoteError::Banned);
+        }
         if wvote.round_exp < self.params.min_round_exp() {
-            return Err(VoteError::RoundLength);
+            return Err(VoteError::RoundLengthExpLessThanMinimum);
+        }
+        if wvote.round_exp > self.params.max_round_exp() {
+            return Err(VoteError::RoundLengthExpGreaterThanMaximum);
         }
         if wvote.value.is_none() && !wvote.panorama.has_correct() {
             return Err(VoteError::MissingBlock);
@@ -359,14 +535,13 @@ impl<C: Context> State<C> {
         }
         let r_id = round_id(timestamp, wvote.round_exp);
         let opt_prev_vote = panorama[creator].correct().map(|vh| self.vote(vh));
-        let prev_round_exp = opt_prev_vote.map_or(self.params.init_round_exp(), |v| v.round_exp);
         if let Some(prev_vote) = opt_prev_vote {
-            if prev_round_exp != wvote.round_exp {
+            if prev_vote.round_exp != wvote.round_exp {
                 // The round exponent must not change within a round: Even with respect to the
                 // greater of the two exponents, a round boundary must be between the votes.
-                let max_re = prev_round_exp.max(wvote.round_exp);
+                let max_re = prev_vote.round_exp.max(wvote.round_exp);
                 if prev_vote.timestamp >> max_re == timestamp >> max_re {
-                    return Err(VoteError::RoundLength);
+                    return Err(VoteError::RoundLengthExpChangedWithinRound);
                 }
             }
             // There can be at most two votes per round: proposal/confirmation and witness.
@@ -391,6 +566,7 @@ impl<C: Context> State<C> {
                 return Err(VoteError::ValueAfterTerminalBlock);
             }
         }
+        // TODO: Validate against LNC.
         Ok(())
     }
 
@@ -406,7 +582,7 @@ impl<C: Context> State<C> {
     ///
     /// If the new vote is valid, it will just add `Observation::Correct(wvote.hash())` to the
     /// panorama. If it represents an equivocation, it adds `Observation::Faulty` and updates
-    /// `self.evidence`.
+    /// `self.faults`.
     ///
     /// Panics unless all dependencies of `wvote` have already been added to `self`.
     fn update_panorama(&mut self, swvote: &SignedWireVote<C>) {
@@ -421,7 +597,7 @@ impl<C: Context> State<C> {
                 // predecessor of wvote must be a predecessor of hash0. So we already have a
                 // conflicting vote with the same sequence number:
                 let prev0 = self.find_in_swimlane(hash0, wvote.seq_number).unwrap();
-                let wvote0 = self.wire_vote(prev0, wvote.instance_id.clone()).unwrap();
+                let wvote0 = self.wire_vote(prev0, wvote.instance_id).unwrap();
                 self.add_evidence(Evidence::Equivocation(wvote0, swvote.clone()));
                 Observation::Faulty
             }
@@ -431,7 +607,7 @@ impl<C: Context> State<C> {
 
     /// Returns `true` if this is a proposal and the creator is not faulty.
     pub(super) fn is_correct_proposal(&self, vote: &Vote<C>) -> bool {
-        !self.has_evidence(vote.creator)
+        !self.is_faulty(vote.creator)
             && self.leader(vote.timestamp) == vote.creator
             && vote.timestamp == round_id(vote.timestamp, vote.round_exp)
     }
@@ -481,6 +657,22 @@ impl<C: Context> State<C> {
             Some(current)
         })
     }
+
+    /// Returns the median round exponent of all the validators that haven't been observed to be
+    /// malicious, as seen by the current panorama.
+    /// Returns `None` if there are no correct validators in the panorama.
+    pub(crate) fn median_round_exp(&self) -> Option<u8> {
+        weighted_median(
+            self.panorama
+                .iter_correct(self)
+                .map(|vote| (vote.round_exp, self.weight(vote.creator))),
+        )
+    }
+
+    /// Returns `true` if the state contains no votes.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.votes.is_empty()
+    }
 }
 
 /// Returns the round length, given the round exponent.
@@ -493,7 +685,7 @@ pub(super) fn round_len(round_exp: u8) -> TimeDiff {
 /// The boundaries of rounds with length `1 << round_exp` are multiples of that length, in
 /// milliseconds since the epoch. So the beginning of the current round is the greatest multiple
 /// of `1 << round_exp` that is less or equal to `timestamp`.
-pub(super) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
+pub(crate) fn round_id(timestamp: Timestamp, round_exp: u8) -> Timestamp {
     // The greatest multiple less or equal to the timestamp is the timestamp with the last
     // `round_exp` bits set to zero.
     (timestamp >> round_exp) << round_exp

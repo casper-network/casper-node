@@ -40,6 +40,7 @@ mod regex_data;
 use std::{
     env,
     path::{Path, PathBuf},
+    process::Command,
     str::FromStr,
 };
 
@@ -170,6 +171,9 @@ fn main() {
     );
     execution_engine.update();
 
+    let node_macros = Package::cargo("node_macros", &*regex_data::node_macros::DEPENDENT_FILES);
+    node_macros.update();
+
     let node = Package::cargo("node", &*regex_data::node::DEPENDENT_FILES);
     node.update();
 
@@ -202,4 +206,13 @@ fn main() {
         &*regex_data::grpc_cargo_casper::DEPENDENT_FILES,
     );
     grpc_cargo_casper.update();
+
+    // Update Cargo.lock.
+    let status = Command::new(env!("CARGO"))
+        .arg("generate-lockfile")
+        .arg("--offline")
+        .current_dir(root_dir())
+        .status()
+        .expect("Failed to execute 'cargo generate-lockfile'");
+    assert!(status.success(), "Failed to update Cargo.lock");
 }

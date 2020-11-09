@@ -61,6 +61,10 @@ where
         let address_generator = AddressGenerator::new(&deploy_hash, phase);
         Rc::new(RefCell::new(address_generator))
     };
+    let transfer_address_generator = {
+        let address_generator = AddressGenerator::new(&deploy_hash, phase);
+        Rc::new(RefCell::new(address_generator))
+    };
     let gas_counter = Gas::default();
     let fn_store_id = {
         let fn_store_id = AddressGenerator::new(&deploy_hash, phase);
@@ -90,6 +94,8 @@ where
         ProtocolData::new(*DEFAULT_WASM_CONFIG, mint, pos, standard_payment, auction)
     };
 
+    let transfers = Vec::default();
+
     let context = RuntimeContext::new(
         Rc::clone(&tracking_copy),
         EntryPointType::Session, // Is it always?
@@ -105,10 +111,12 @@ where
         gas_counter,
         fn_store_id,
         address_generator,
+        transfer_address_generator,
         protocol_version,
         correlation_id,
         phase,
         protocol_data,
+        transfers,
     );
 
     let wasm_bytes = utils::read_wasm_file_bytes(wasm_file);

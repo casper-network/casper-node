@@ -37,6 +37,14 @@ function standardPayment(amount: U512): void {
 }
 
 export function call(): void {
+  const amountBytes = CL.getNamedArg(ARG_AMOUNT);
+  let amountResult = U512.fromBytes(amountBytes);
+  if (amountResult.hasError()) {
+      Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
+      return;
+  }
+  let amount = amountResult.value;
+
   const phaseBytes = CL.getNamedArg(ARG_PHASE);
   if (phaseBytes.length != 1) {
     Error.fromErrorCode(ErrorCode.InvalidArgument).revert();
@@ -48,5 +56,5 @@ export function call(): void {
   const caller = CL.getPhase();
   assert(<u8>phase == <u8>caller);
 
-  standardPayment(U512.fromU64(10000000));
+  standardPayment(amount);
 }

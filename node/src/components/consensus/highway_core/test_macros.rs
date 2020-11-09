@@ -64,12 +64,16 @@ macro_rules! add_vote {
             seq_number,
             timestamp,
             round_exp,
+            endorsed: vec![],
         };
         let hash = wvote.hash();
         let swvote = SignedWireVote::new(wvote, &TestSecret(($creator).0), &mut $rng);
         $state.add_vote(swvote).map(|()| hash)
     }};
     ($state: ident, $rng: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
+        add_vote!($state, $rng, $creator, $time, $round_exp, $val; $($obs),*; vec![])
+    }};
+    ($state: ident, $rng: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*; $($ends:expr),*) => {{
         use crate::components::consensus::highway_core::{
             state::tests::TestSecret,
             highway::{SignedWireVote, WireVote},
@@ -86,6 +90,7 @@ macro_rules! add_vote {
             seq_number,
             timestamp: ($time).into(),
             round_exp: $round_exp,
+            endorsed: $($ends.into()),*
         };
         let hash = wvote.hash();
         let swvote = SignedWireVote::new(wvote, &TestSecret(($creator).0), &mut $rng);

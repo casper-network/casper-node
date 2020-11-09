@@ -1,7 +1,6 @@
 use casper_engine_test_support::{
     internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_ACCOUNT_KEY, DEFAULT_RUN_GENESIS_REQUEST,
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
@@ -10,6 +9,8 @@ use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U5
 const FAUCET: &str = "faucet";
 const CALL_FAUCET: &str = "call_faucet";
 const NEW_ACCOUNT_ADDR: AccountHash = AccountHash::new([99u8; 32]);
+const ARG_TARGET: &str = "target";
+const ARG_AMOUNT: &str = "amount";
 
 fn get_builder() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -47,21 +48,13 @@ fn should_get_funds_from_faucet_stored() {
     let amount = U512::from(1000);
 
     // call stored faucet
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_hash(
-                contract_hash,
-                CALL_FAUCET,
-                runtime_args! { "target" => NEW_ACCOUNT_ADDR, "amount" => amount },
-            )
-            .with_empty_payment_bytes(runtime_args! { "amount" => U512::from(10_000_000) })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .with_deploy_hash([2; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        CALL_FAUCET,
+        runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
+    )
+    .build();
     builder.exec(exec_request).expect_success().commit();
 
     let account = builder
@@ -95,41 +88,26 @@ fn should_fail_if_already_funded() {
     let amount = U512::from(1000);
 
     // call stored faucet
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_hash(
-                contract_hash,
-                CALL_FAUCET,
-                runtime_args! { "target" => NEW_ACCOUNT_ADDR, "amount" => amount },
-            )
-            .with_empty_payment_bytes(runtime_args! { "amount" => U512::from(10_000_000) })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .with_deploy_hash([2; 32])
-            .build();
+    let exec_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        CALL_FAUCET,
+        runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-    builder.exec(exec_request).expect_success().commit();
+    builder.exec(exec_request_1).expect_success().commit();
 
     // call stored faucet again; should error
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_hash(
-                contract_hash,
-                CALL_FAUCET,
-                runtime_args! { "target" => NEW_ACCOUNT_ADDR, "amount" => amount },
-            )
-            .with_empty_payment_bytes(runtime_args! { "amount" => U512::from(10_000_000) })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .with_deploy_hash([2; 32])
-            .build();
+    let exec_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        CALL_FAUCET,
+        runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    builder.exec(exec_request);
+    builder.exec(exec_request_2);
 
     let exec_response = builder
         .get_exec_response(2)
@@ -138,6 +116,7 @@ fn should_fail_if_already_funded() {
     let error_message = utils::get_error_message(exec_response);
     assert!(
         error_message.contains(&format!("{:?}", ApiError::User(1))),
-        "should have reverted with user error 1 (already funded)"
+        "should have reverted with user error 1 (already funded) but received {}",
+        error_message,
     );
 }

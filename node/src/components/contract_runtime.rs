@@ -1,7 +1,9 @@
 //! Contract Runtime component.
 mod config;
+mod types;
 
 pub use config::Config;
+pub use types::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest};
 
 use std::{
     fmt::{self, Debug, Display, Formatter},
@@ -18,7 +20,9 @@ use tokio::task;
 use tracing::trace;
 
 use casper_execution_engine::{
-    core::engine_state::{genesis::GenesisResult, EngineConfig, EngineState, Error},
+    core::engine_state::{
+        genesis::GenesisResult, EngineConfig, EngineState, Error, GetEraValidatorsError,
+    },
     shared::newtypes::CorrelationId,
     storage::{
         error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
@@ -26,7 +30,7 @@ use casper_execution_engine::{
         transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::ProtocolVersion;
+use casper_types::{auction::ValidatorWeights, ProtocolVersion};
 
 use crate::{
     components::Component,
@@ -39,7 +43,7 @@ use crate::{
 
 /// The contract runtime components.
 #[derive(DataSize)]
-pub(crate) struct ContractRuntime {
+pub struct ContractRuntime {
     engine_state: Arc<EngineState<LmdbGlobalState>>,
     metrics: Arc<ContractRuntimeMetrics>,
 }
@@ -145,6 +149,7 @@ where
     REv: From<Event> + Send,
 {
     type Event = Event;
+    type ConstructionError = ConfigError;
 
     fn handle_event(
         &mut self,
@@ -153,6 +158,17 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
+            Event::Request(ContractRuntimeRequest::GetProtocolData {
+                protocol_version,
+                responder,
+            }) => {
+                let result = self
+                    .engine_state
+                    .get_protocol_data(protocol_version)
+                    .map(|inner| inner.map(Box::new));
+
+                responder.respond(result).ignore()
+            }
             Event::Request(ContractRuntimeRequest::CommitGenesis {
                 chainspec,
                 responder,
@@ -184,11 +200,11 @@ where
                 .ignore()
             }
             Event::Request(ContractRuntimeRequest::Commit {
-                pre_state_hash,
+                state_root_hash,
                 effects,
                 responder,
             }) => {
-                trace!(?pre_state_hash, ?effects, "commit");
+                trace!(?state_root_hash, ?effects, "commit");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
@@ -197,7 +213,7 @@ where
                         let start = Instant::now();
                         let apply_result = engine_state.apply_effect(
                             correlation_id,
-                            pre_state_hash.into(),
+                            state_root_hash.into(),
                             effects,
                         );
                         metrics.apply_effect.observe(start.elapsed().as_secs_f64());
@@ -282,24 +298,55 @@ where
                 }
                 .ignore()
             }
-            Event::Request(ContractRuntimeRequest::GetEraValidators {
-                get_request,
-                responder,
-            }) => {
-                trace!(?get_request, "get era validators request");
+            Event::Request(ContractRuntimeRequest::GetEraValidators { request, responder }) => {
+                trace!(?request, "get era validators request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
-                        let result = engine_state.get_era_validators(correlation_id, get_request);
+                        let era_validators =
+                            engine_state.get_era_validators(correlation_id, request.into());
                         metrics.get_balance.observe(start.elapsed().as_secs_f64());
-                        result
+                        era_validators
                     })
                     .await
                     .expect("should run");
                     trace!(?result, "get era validators response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::GetValidatorWeightsByEraId {
+                request,
+                responder,
+            }) => {
+                trace!(?request, "get validator weights by era id request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let era_id = request.era_id().into();
+                        let era_validators =
+                            engine_state.get_era_validators(correlation_id, request.into());
+                        let ret: Result<Option<ValidatorWeights>, GetEraValidatorsError> =
+                            match era_validators {
+                                Ok(era_validators) => {
+                                    let validator_weights = era_validators.get(&era_id).cloned();
+                                    Ok(validator_weights)
+                                }
+                                Err(GetEraValidatorsError::EraValidatorsMissing) => Ok(None),
+                                Err(error) => Err(error),
+                            };
+                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        ret
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "get validator weights by era id response");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -344,13 +391,14 @@ pub enum ConfigError {
 impl ContractRuntime {
     pub(crate) fn new(
         storage_config: WithDir<StorageConfig>,
-        contract_runtime_config: Config,
+        contract_runtime_config: &Config,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         let path = storage_config.with_dir(storage_config.value().path.clone());
         let environment = Arc::new(LmdbEnvironment::new(
             path.as_path(),
             contract_runtime_config.max_global_state_size(),
+            contract_runtime_config.max_readers(),
         )?);
 
         let trie_store = Arc::new(LmdbTrieStore::new(

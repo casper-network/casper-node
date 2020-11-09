@@ -1,8 +1,10 @@
-use crate::{
-    crypto::hash::Digest,
-    effect::requests::BlockExecutorRequest,
-    types::{json_compatibility::ExecutionResult, BlockHash, Deploy, DeployHash, FinalizedBlock},
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::Display,
 };
+
+use derive_more::From;
+
 use casper_execution_engine::{
     core::{
         engine_state,
@@ -10,10 +12,14 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
-use derive_more::From;
-use std::{
-    collections::{HashMap, VecDeque},
-    fmt::Display,
+
+use crate::{
+    crypto::hash::Digest,
+    effect::requests::BlockExecutorRequest,
+    types::{
+        json_compatibility::ExecutionResult, BlockHash, Deploy, DeployHash, DeployHeader,
+        FinalizedBlock,
+    },
 };
 
 /// Block executor component event.
@@ -44,6 +50,8 @@ pub enum Event {
         state: Box<State>,
         /// The ID of the deploy currently being executed.
         deploy_hash: DeployHash,
+        /// The header of the deploy currently being executed.
+        deploy_header: DeployHeader,
         /// Result of deploy execution.
         result: Result<ExecutionResults, RootNotFound>,
     },
@@ -90,25 +98,27 @@ impl Display for Event {
                 state,
                 deploy_hash,
                 result: Ok(_),
+                ..
             } => write!(
                 f,
                 "execution result for {} of finalized block with height {} with \
                 pre-state hash {}: success",
                 deploy_hash,
                 state.finalized_block.height(),
-                state.pre_state_hash
+                state.state_root_hash
             ),
             Event::DeployExecutionResult {
                 state,
                 deploy_hash,
                 result: Err(_),
+                ..
             } => write!(
                 f,
                 "execution result for {} of finalized block with height {} with \
                 pre-state hash {}: root not found",
                 deploy_hash,
                 state.finalized_block.height(),
-                state.pre_state_hash
+                state.state_root_hash
             ),
             Event::CommitExecutionEffects {
                 state,
@@ -118,7 +128,7 @@ impl Display for Event {
                 "commit execution effects of finalized block with height {} with \
                 pre-state hash {}: success with post-state hash {}",
                 state.finalized_block.height(),
-                state.pre_state_hash,
+                state.state_root_hash,
                 state_root,
             ),
             Event::CommitExecutionEffects {
@@ -129,7 +139,7 @@ impl Display for Event {
                 "commit execution effects of finalized block with height {} with \
                 pre-state hash {}: failed {:?}",
                 state.finalized_block.height(),
-                state.pre_state_hash,
+                state.state_root_hash,
                 commit_result,
             ),
             Event::RunStepResult { state, result } => write!(
@@ -137,7 +147,7 @@ impl Display for Event {
                 "result of running the step after finalized block with height {} \
                     with pre-state hash {}: {:?}",
                 state.finalized_block.height(),
-                state.pre_state_hash,
+                state.state_root_hash,
                 result
             ),
         }
@@ -151,8 +161,8 @@ pub struct State {
     /// Deploys which have still to be executed.
     pub remaining_deploys: VecDeque<Deploy>,
     /// A collection of results of executing the deploys.
-    pub execution_results: HashMap<DeployHash, ExecutionResult>,
-    /// Current pre-state hash of global storage.  Is initialized with the parent block's
-    /// post-state hash, and is updated after each commit.
-    pub pre_state_hash: Digest,
+    pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
+    /// Current state root hash of global storage.  Is initialized with the parent block's
+    /// state hash, and is updated after each commit.
+    pub state_root_hash: Digest,
 }

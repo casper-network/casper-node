@@ -5,19 +5,21 @@ mod deploy;
 mod item;
 pub mod json_compatibility;
 mod node_config;
+mod peers_map;
 mod status_feed;
 mod timestamp;
 
 use rand::{CryptoRng, RngCore};
 
-pub use block::{Block, BlockHash, BlockHeader};
+pub use block::{Block, BlockHash, BlockHeader, BlockValidationError};
 pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock, ProtoBlockHash};
 pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, Error as DeployError,
 };
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;
-pub use status_feed::StatusFeed;
+pub use peers_map::PeersMap;
+pub use status_feed::{GetStatusResult, StatusFeed};
 pub use timestamp::{TimeDiff, Timestamp};
 
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.

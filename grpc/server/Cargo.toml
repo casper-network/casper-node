@@ -23,7 +23,7 @@ casper-execution-engine = { version = "0.7.0", path = "../../execution_engine", 
 casper-types = { version = "0.6.0", path = "../../types", features = ["std", "gens"] }
 clap = "2"
 ctrlc = "3"
-dirs = "2"
+dirs = "3"
 grpc = "0.6.1"
 lmdb = "0.8"
 log = "0.4.8"
@@ -34,7 +34,7 @@ datasize = "0.2.0"
 protoc-rust-grpc = "0.6.1"
 
 [dev-dependencies]
-parity-wasm = "0.41.0"
+parity-wasm = "0.42.1"
 proptest = "0.10.0"
 rand = "0.7.2"
 

@@ -5,7 +5,7 @@ use casper_engine_test_support::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::CONV_RATE, shared::motes::Motes};
 use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
@@ -14,7 +14,7 @@ const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 
 lazy_static! {
-    static ref TRANSFER_1_AMOUNT: U512 = U512::from(250_000_000) + 1000;
+    static ref TRANSFER_1_AMOUNT: U512 = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000;
     static ref TRANSFER_2_AMOUNT: U512 = U512::from(750);
     static ref TRANSFER_2_AMOUNT_WITH_ADV: U512 = *DEFAULT_PAYMENT + *TRANSFER_2_AMOUNT;
     static ref TRANSFER_TOO_MUCH: U512 = U512::from(u64::max_value());
@@ -121,15 +121,14 @@ fn should_transfer_from_account_to_account() {
         .get_exec_response(0)
         .expect("should have exec response");
 
-    let genesis_balance = builder.get_purse_balance(default_account_purse);
+    let modified_balance = builder.get_purse_balance(default_account_purse);
 
     let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_1_response)[0], CONV_RATE)
         .expect("should convert");
 
-    assert_eq!(
-        genesis_balance,
-        initial_genesis_amount - gas_cost.value() - transfer_1_amount
-    );
+    let expected_balance = initial_genesis_amount - gas_cost.value() - transfer_1_amount;
+
+    assert_eq!(modified_balance, expected_balance);
 
     // Check account 1 balance
     let account_1 = builder

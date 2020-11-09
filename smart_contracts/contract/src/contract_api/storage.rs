@@ -104,18 +104,6 @@ pub fn add<T: CLTyped + ToBytes>(uref: URef, value: T) {
     }
 }
 
-/// Adds `value` to the one currently under `key` in the context-local partition of global state.
-pub fn add_local<K: ToBytes, V: CLTyped + ToBytes>(key: K, value: V) {
-    let (key_ptr, key_size, _bytes1) = contract_api::to_ptr(key);
-
-    let cl_value = CLValue::from_t(value).unwrap_or_revert();
-    let (cl_value_ptr, cl_value_size, _bytes) = contract_api::to_ptr(cl_value);
-
-    unsafe {
-        ext_ffi::add_local(key_ptr, key_size, cl_value_ptr, cl_value_size);
-    }
-}
-
 /// Returns a new unforgeable pointer, where the value is initialized to `init`.
 pub fn new_uref<T: CLTyped + ToBytes>(init: T) -> URef {
     let uref_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);

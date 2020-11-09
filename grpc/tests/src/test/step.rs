@@ -10,7 +10,7 @@ use casper_types::{
     account::AccountHash,
     auction::{
         BidPurses, Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BID_PURSES_KEY, BLOCK_REWARD,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_PURSE,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_PURSE_KEY,
     },
     ContractHash, Key, ProtocolVersion, PublicKey,
 };
@@ -80,7 +80,7 @@ fn should_step() {
 
     let auction_hash = builder.get_auction_contract_hash();
 
-    let reward_purse_key = get_named_key(&mut builder, auction_hash, VALIDATOR_REWARD_PURSE)
+    let reward_purse_key = get_named_key(&mut builder, auction_hash, VALIDATOR_REWARD_PURSE_KEY)
         .into_uref()
         .expect("should be uref");
 
