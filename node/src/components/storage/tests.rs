@@ -1,18 +1,7 @@
-use std::any::type_name;
-
-use futures::channel::oneshot;
-use tempfile::TempDir;
-use tokio::runtime::{self, Runtime};
-
 use super::{Config, Storage};
 use crate::{
-    components::Component,
-    crypto::hash::Digest,
-    effect::{requests::StorageRequest, EffectBuilder, Effects, Responder},
-    reactor::{EventQueueHandle, QueueKind, Scheduler},
-    testing::{ComponentHarness, TestRng},
-    types::BlockHash,
-    utils::WithDir,
+    crypto::hash::Digest, effect::requests::StorageRequest, testing::ComponentHarness,
+    types::BlockHash, utils::WithDir,
 };
 
 /// Storage component test fixture.
