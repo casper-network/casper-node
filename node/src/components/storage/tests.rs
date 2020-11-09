@@ -23,9 +23,12 @@ use crate::{
 ///
 /// Panics if setting up the storage fixture fails.
 fn storage_fixture(harness: &mut ComponentHarness<()>) -> Storage {
-    let (cfg, tmp) = Config::default_for_tests();
+    let cfg = Config {
+        path: harness.tmp.path().join("storage"),
+        ..Default::default()
+    };
 
-    Storage::new(&WithDir::new("/", cfg)).expect(
+    Storage::new(&WithDir::new(harness.tmp.path(), cfg)).expect(
         "could not create storage component
     fixture",
     )
