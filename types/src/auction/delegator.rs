@@ -26,6 +26,11 @@ impl Delegator {
         }
     }
 
+    /// Returns the staked amount
+    pub fn staked_amount(&self) -> &U512 {
+        &self.staked_amount
+    }
+
     /// Decreases the stake of the provided bid
     pub fn decrease_stake(&mut self, amount: U512) -> Result<U512, Error> {
         let updated_staked_amount = self

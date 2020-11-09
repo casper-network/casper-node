@@ -14,7 +14,7 @@ use crate::{
 pub struct Bid {
     /// The purse that was used for bonding.
     bonding_purse: URef,
-    /// The total amount of staked tokens.
+    /// The amount of tokens staked by a validator (not including delegators).
     staked_amount: U512,
     /// Delegation rate
     delegation_rate: DelegationRate,
@@ -135,6 +135,17 @@ impl Bid {
             Some(_) => false,
             None => false,
         }
+    }
+
+    /// Returns the total staked amount of validator + all delegators
+    pub fn total_staked_amount(&self) -> Result<U512, Error> {
+        self.delegators
+            .iter()
+            .fold(Some(U512::zero()), |maybe_a, (_, b)| {
+                maybe_a.and_then(|a| a.checked_add(*b.staked_amount()))
+            })
+            .and_then(|delegators_sum| delegators_sum.checked_add(*self.staked_amount()))
+            .ok_or_else(|| Error::InvalidAmount)
     }
 }
 

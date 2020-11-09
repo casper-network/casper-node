@@ -367,17 +367,20 @@ pub trait Auction:
             .iter()
             .filter(|(_validator_account_hash, founding_validator)| founding_validator.is_locked())
             .map(|(validator_account_hash, amount)| {
-                (*validator_account_hash, *amount.staked_amount())
+                let total_staked_amount = amount.total_staked_amount()?;
+                Ok((*validator_account_hash, total_staked_amount))
             })
-            .collect();
+            .collect::<Result<ValidatorWeights>>()?;
 
         // Non-winning validators are taken care of later
         let bid_scores = bids
             .iter()
             .filter(|(_validator_account_hash, founding_validator)| !founding_validator.is_locked())
             .map(|(validator_account_hash, amount)| {
-                (*validator_account_hash, *amount.staked_amount())
-            });
+                let total_staked_amount = amount.total_staked_amount()?;
+                Ok((*validator_account_hash, total_staked_amount))
+            })
+            .collect::<Result<ValidatorWeights>>()?;
 
         // Validator's entries from both maps as a single iterable.
         // let all_scores = founders_scores.chain(validators_scores);
@@ -385,7 +388,7 @@ pub trait Auction:
         // All the scores are then grouped by the account hash to calculate a sum of each
         // consecutive scores for each validator.
         let mut scores = BTreeMap::new();
-        for (account_hash, score) in bid_scores {
+        for (account_hash, score) in bid_scores.into_iter() {
             scores
                 .entry(account_hash)
                 .and_modify(|acc| *acc += score)
