@@ -1,3 +1,5 @@
+//! Unit tests for the storage component.
+
 use std::{collections::HashMap, sync::Arc};
 
 use semver::Version;
