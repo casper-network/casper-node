@@ -13,19 +13,16 @@ use casper_execution_engine::{
 use casper_types::auction::EraValidators;
 
 use crate::{
-    components::{small_network::NodeId, storage::DeployMetadata},
-    effect::{requests::ApiRequest, Responder},
+    components::storage::DeployMetadata,
+    effect::{requests::RpcRequest, Responder},
     rpcs::chain::BlockIdentifier,
-    types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-        DeployHeader, FinalizedBlock,
-    },
+    types::{Block, Deploy, DeployHash, NodeId},
 };
 
 #[derive(Debug, From)]
 pub enum Event {
     #[from]
-    ApiRequest(ApiRequest<NodeId>),
+    RpcRequest(RpcRequest<NodeId>),
     GetBlockResult {
         maybe_id: Option<BlockIdentifier>,
         result: Box<Option<Block>>,
@@ -60,23 +57,12 @@ pub enum Event {
         result: Result<BalanceResult, engine_state::Error>,
         main_responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
-    BlockFinalized(Box<FinalizedBlock>),
-    BlockAdded {
-        block_hash: BlockHash,
-        block_header: Box<BlockHeader>,
-    },
-    DeployProcessed {
-        deploy_hash: DeployHash,
-        deploy_header: Box<DeployHeader>,
-        block_hash: BlockHash,
-        execution_result: ExecutionResult,
-    },
 }
 
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            Event::ApiRequest(request) => write!(formatter, "{}", request),
+            Event::RpcRequest(request) => write!(formatter, "{}", request),
             Event::GetBlockResult {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),
                 result,
@@ -112,15 +98,6 @@ impl Display for Event {
                 Some(txt) => write!(formatter, "get metrics ({} bytes)", txt.len()),
                 None => write!(formatter, "get metrics (failed)"),
             },
-            Event::BlockFinalized(finalized_block) => write!(
-                formatter,
-                "block finalized {}",
-                finalized_block.proto_block().hash()
-            ),
-            Event::BlockAdded { block_hash, .. } => write!(formatter, "block added {}", block_hash),
-            Event::DeployProcessed { deploy_hash, .. } => {
-                write!(formatter, "deploy processed {}", deploy_hash)
-            }
         }
     }
 }

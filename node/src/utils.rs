@@ -189,7 +189,7 @@ impl<T> WithDir<T> {
 }
 
 /// The source of a piece of data.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Source<I> {
     /// A peer with the wrapped ID.
     Peer(I),
@@ -197,11 +197,11 @@ pub enum Source<I> {
     Client,
 }
 
-impl<I: Copy> Source<I> {
+impl<I: Clone> Source<I> {
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
     pub(crate) fn node_id(&self) -> Option<I> {
         match self {
-            Source::Peer(node_id) => Some(*node_id),
+            Source::Peer(node_id) => Some(node_id.clone()),
             Source::Client => None,
         }
     }

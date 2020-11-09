@@ -38,18 +38,22 @@ pub mod utils;
 
 use ansi_term::Color::Red;
 use lazy_static::lazy_static;
+#[cfg(not(test))]
+use rand::SeedableRng;
 
-pub(crate) use components::small_network;
 pub use components::{
-    api_server::{rpcs, Config as ApiServerConfig},
     chainspec_loader::{Chainspec, Error as ChainspecError},
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
+    event_stream_server::Config as EventStreamServerConfig,
     fetcher::Config as FetcherConfig,
     gossiper::{Config as GossipConfig, Error as GossipError},
+    rest_server::Config as RestServerConfig,
+    rpc_server::{rpcs, Config as RpcServerConfig},
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
     storage::{Config as StorageConfig, Error as StorageError},
 };
+pub use types::NodeRng;
 pub use utils::OS_PAGE_SIZE;
 
 /// The maximum thread count which should be spawned by the tokio runtime.
@@ -87,4 +91,16 @@ lazy_static! {
 
     /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
     pub static ref VERSION_STRING: String = version_string(false);
+}
+
+/// Constructs a new `NodeRng`.
+#[cfg(not(test))]
+pub fn new_rng() -> NodeRng {
+    NodeRng::from_entropy()
+}
+
+/// Constructs a new `NodeRng`.
+#[cfg(test)]
+pub fn new_rng() -> NodeRng {
+    NodeRng::new()
 }

@@ -41,6 +41,6 @@ node=${node:-1}
 #######################################
 
 $NCTL/assets/net-$net/bin/casper-client get-deploy \
-    --node-address $(get_node_address $net $node) \
+    --node-address $(get_node_address_rpc $net $node) \
     $deploy_hash \
     | jq '.result'

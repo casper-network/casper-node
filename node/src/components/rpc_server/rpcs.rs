@@ -20,7 +20,7 @@ use warp::{
 };
 use warp_json_rpc::{filters, Builder};
 
-use super::{ApiRequest, ReactorEventT};
+use super::{ReactorEventT, RpcRequest};
 use crate::effect::EffectBuilder;
 
 /// The URL path.

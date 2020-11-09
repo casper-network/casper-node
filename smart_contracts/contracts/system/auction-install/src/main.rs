@@ -60,7 +60,7 @@ pub extern "C" fn install() {
 
         for (validator_public_key, amount) in genesis_validators {
             let bonding_purse = create_purse(mint_package_hash, amount);
-            let founding_validator = Bid::new_locked(bonding_purse, amount, locked_funds_period);
+            let founding_validator = Bid::locked(bonding_purse, amount, locked_funds_period);
             validators.insert(validator_public_key, founding_validator);
             initial_validator_weights.insert(validator_public_key, amount);
             bid_purses.insert(validator_public_key, bonding_purse);

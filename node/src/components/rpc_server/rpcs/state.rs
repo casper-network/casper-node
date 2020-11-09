@@ -16,9 +16,9 @@ use casper_execution_engine::{
 };
 use casper_types::{bytesrepr::ToBytes, Key, ProtocolVersion, URef, U512};
 
-use super::{ApiRequest, Error, ErrorCode, ReactorEventT, RpcWithParams, RpcWithParamsExt};
+use super::{Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt};
 use crate::{
-    components::api_server::CLIENT_API_VERSION,
+    components::CLIENT_API_VERSION,
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
@@ -84,7 +84,7 @@ impl RpcWithParamsExt for GetItem {
             // Run the query.
             let query_result = effect_builder
                 .make_request(
-                    |responder| ApiRequest::QueryGlobalState {
+                    |responder| RpcRequest::QueryGlobalState {
                         state_root_hash: params.state_root_hash,
                         base_key,
                         path: params.path,
@@ -197,7 +197,7 @@ impl RpcWithParamsExt for GetBalance {
             // Get the balance.
             let balance_result = effect_builder
                 .make_request(
-                    |responder| ApiRequest::GetBalance {
+                    |responder| RpcRequest::GetBalance {
                         state_root_hash: params.state_root_hash,
                         purse_uref,
                         responder,
@@ -280,7 +280,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
             let block: Block = {
                 let maybe_block = effect_builder
                     .make_request(
-                        |responder| ApiRequest::GetBlock {
+                        |responder| RpcRequest::GetBlock {
                             maybe_id: None,
                             responder,
                         },
@@ -305,7 +305,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
             let protocol_version = ProtocolVersion::V1_0_0;
             let protocol_version_result = effect_builder
                 .make_request(
-                    |responder| ApiRequest::QueryProtocolData {
+                    |responder| RpcRequest::QueryProtocolData {
                         protocol_version,
                         responder,
                     },
@@ -332,7 +332,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
 
             let query_result = effect_builder
                 .make_request(
-                    |responder| ApiRequest::QueryGlobalState {
+                    |responder| RpcRequest::QueryGlobalState {
                         state_root_hash,
                         base_key,
                         path,
@@ -352,7 +352,7 @@ impl RpcWithoutParamsExt for GetAuctionInfo {
 
             let era_validators_result = effect_builder
                 .make_request(
-                    |responder| ApiRequest::QueryEraValidators {
+                    |responder| RpcRequest::QueryEraValidators {
                         state_root_hash,
                         protocol_version,
                         responder,

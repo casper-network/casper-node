@@ -112,8 +112,8 @@ use crate::{
     Chainspec,
 };
 use announcements::{
-    ApiServerAnnouncement, BlockExecutorAnnouncement, ConsensusAnnouncement,
-    DeployAcceptorAnnouncement, GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement,
+    BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
+    GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
 };
 use casper_types::auction::EraValidators;
 use requests::{
@@ -534,11 +534,11 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that the HTTP API server has received a deploy.
     pub(crate) async fn announce_deploy_received(self, deploy: Box<Deploy>)
     where
-        REv: From<ApiServerAnnouncement>,
+        REv: From<RpcServerAnnouncement>,
     {
         self.0
             .schedule(
-                ApiServerAnnouncement::DeployReceived { deploy },
+                RpcServerAnnouncement::DeployReceived { deploy },
                 QueueKind::Api,
             )
             .await;

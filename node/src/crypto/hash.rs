@@ -246,7 +246,7 @@ mod test {
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let hash = Digest::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&hash);
     }

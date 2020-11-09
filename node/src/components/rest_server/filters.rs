@@ -10,10 +10,12 @@ use warp::{
     Filter,
 };
 
-use super::{rpcs::info::GetStatusResult, ReactorEventT};
+use super::ReactorEventT;
 use crate::{
-    effect::{requests::ApiRequest, EffectBuilder},
+    components::CLIENT_API_VERSION,
+    effect::{requests::RestRequest, EffectBuilder},
     reactor::QueueKind,
+    types::GetStatusResult,
 };
 
 /// The status URL path.
@@ -30,11 +32,12 @@ pub(super) fn create_status_filter<REv: ReactorEventT>(
         .and_then(move || {
             effect_builder
                 .make_request(
-                    |responder| ApiRequest::GetStatus { responder },
+                    |responder| RestRequest::GetStatus { responder },
                     QueueKind::Api,
                 )
                 .map(|status_feed| {
-                    let body = GetStatusResult::from(status_feed);
+                    let mut body = GetStatusResult::from(status_feed);
+                    body.set_api_version(CLIENT_API_VERSION.clone());
                     Ok::<_, Rejection>(reply::json(&body).into_response())
                 })
         })
@@ -49,7 +52,7 @@ pub(super) fn create_metrics_filter<REv: ReactorEventT>(
         .and_then(move || {
             effect_builder
                 .make_request(
-                    |responder| ApiRequest::GetMetrics { responder },
+                    |responder| RestRequest::GetMetrics { responder },
                     QueueKind::Api,
                 )
                 .map(|maybe_metrics| match maybe_metrics {

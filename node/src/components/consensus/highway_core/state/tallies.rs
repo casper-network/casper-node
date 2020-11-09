@@ -201,7 +201,6 @@ mod tests {
         super::{tests::*, State},
         *,
     };
-    use crate::testing::TestRng;
 
     impl<'a> Tallies<'a, TestContext> {
         /// Returns the number of tallies.
@@ -213,7 +212,7 @@ mod tests {
     #[test]
     fn tallies() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         // Create blocks with scores as follows:
         //
