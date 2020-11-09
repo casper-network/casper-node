@@ -68,6 +68,7 @@ impl<REv: 'static> ComponentHarness<REv> {
             effect_builder,
             tmp: TempDir::new().expect("could not create temporary directory for test harness"),
             runtime: runtime::Builder::new()
+                .threaded_scheduler()
                 .enable_all()
                 .build()
                 .expect("could not build tokio runtime"),
@@ -127,15 +128,16 @@ fn get_block_of_non_existant_block_returns_none() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
 
-    let (sender, receiver) = oneshot::channel();
-    let responder = Responder::create(sender);
+    let block_hash = BlockHash::new(Digest::random(&mut harness.rng));
+    let response = harness.send_request(&mut storage, move |responder| {
+        StorageRequest::GetBlock {
+            block_hash,
+            responder,
+        }
+        .into()
+    });
 
-    let req = StorageRequest::GetBlock {
-        block_hash: BlockHash::new(Digest::random(&mut harness.rng)),
-        responder,
-    };
-
-    storage.handle_event(harness.effect_builder, &mut harness.rng, req.into());
+    assert!(response.is_none());
 }
 
 // #[test]
