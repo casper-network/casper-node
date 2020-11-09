@@ -134,6 +134,7 @@ resources/node-storage/*
 
 # CLion
 .idea/
+cmake-build-debug/
 
 # NCTL transient assets
 /utils/nctl/assets
