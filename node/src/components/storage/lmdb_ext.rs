@@ -104,16 +104,26 @@ impl WriteTransactionExt for RwTransaction<'_> {
         let buf = bincode::serialize(value)
             .expect("serialization of value failed. this is a serious bug");
 
+        // TODO: To accurately report whether or not a value already exists, we need to check
+        //       beforehand, as we are not using the `WriteFlags::NO_OVERWRITE` flag (see TODO
+        //       below). Once fixed, this step can be remove
+        //
+        let exists = self.get(db, key).is_ok();
+
         match self.put(
             db,
             key,
             &buf,
-            // TODO - this should be changed back to `WriteFlags::NO_OVERWRITE` once the mutable
-            //        data (i.e. blocks' proofs) are handled via metadata as per deploys'
-            //        execution results.
+            // TODO: this should be changed back to `WriteFlags::NO_OVERWRITE` once the mutable
+            //       data (i.e. blocks' proofs) are handled via metadata as per deploys'
+            //       execution results.
             WriteFlags::empty(),
+            // WriteFlags::NO_OVERWRITE
         ) {
-            Ok(()) => true,
+            Ok(()) => {
+                //true
+                !exists
+            }
             Err(lmdb::Error::KeyExist) => false,
             Err(err) => panic!(
                 "error storing value to database. this is a bug, or a misconfiguration: {:?}",
