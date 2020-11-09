@@ -1,3 +1,6 @@
+use std::{collections::HashMap, sync::Arc};
+
+use semver::Version;
 use smallvec::smallvec;
 
 use super::{Config, Storage};
@@ -5,8 +8,9 @@ use crate::{
     crypto::hash::Digest,
     effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng},
-    types::{Block, BlockHash, Deploy, DeployHash},
+    types::{json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash},
     utils::WithDir,
+    Chainspec,
 };
 
 /// Storage component test fixture.
@@ -65,6 +69,19 @@ fn get_block(
     response
 }
 
+/// Loads a block.
+fn get_chainspec(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    version: Version,
+) -> Option<Arc<Chainspec>> {
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::GetChainspec { version, responder }.into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
 /// Loads a deploy.
 fn get_deploys(
     harness: &mut ComponentHarness<()>,
@@ -98,6 +115,18 @@ fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: B
     });
     assert!(harness.is_idle());
     response
+}
+
+/// Stores a block.
+fn put_chainspec(harness: &mut ComponentHarness<()>, storage: &mut Storage, chainspec: Chainspec) {
+    harness.send_request(storage, move |responder| {
+        StorageRequest::PutChainspec {
+            chainspec: Arc::new(chainspec),
+            responder,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
 }
 
 /// Stores a deploy.
@@ -300,15 +329,76 @@ fn can_retrieve_store_and_load_deploys() {
         }
         .into()
     });
-
     assert_eq!(response, vec![Some(deploy.header().clone())]);
+
+    // Finally try to get the metadata as well.
+    let response = harness.send_request(&mut storage, move |responder| {
+        StorageRequest::GetDeployAndMetadata {
+            deploy_hash: deploy.id().clone(),
+            responder,
+        }
+        .into()
+    });
+
+    // TODO: Construct plausible deploy metadata.
+    // assert_eq!(response, (deploy, todo!()))
 }
 
-// fn STORAGE(s: StorageRequest) {
-//     match s {
-//         StorageRequest::PutExecutionResults { block_hash, execution_results, responder } => {}
-//         StorageRequest::GetDeployAndMetadata { deploy_hash, responder } => {}
-//         StorageRequest::PutChainspec { chainspec, responder } => {}
-//         StorageRequest::GetChainspec { version, responder } => {}
-//     }
-// }
+#[test]
+fn store_random_execution_results() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    let block_hash = BlockHash::new(Digest::random(&mut harness.rng));
+
+    // Create three random execution result values.
+    let mut execution_results = HashMap::new();
+    execution_results.insert(
+        Deploy::random(&mut harness.rng).id().clone(),
+        ExecutionResult::random(&mut harness.rng),
+    );
+    execution_results.insert(
+        Deploy::random(&mut harness.rng).id().clone(),
+        ExecutionResult::random(&mut harness.rng),
+    );
+    execution_results.insert(
+        Deploy::random(&mut harness.rng).id().clone(),
+        ExecutionResult::random(&mut harness.rng),
+    );
+
+    let response = harness.send_request(&mut storage, move |responder| {
+        StorageRequest::PutExecutionResults {
+            block_hash,
+            execution_results,
+            responder,
+        }
+        .into()
+    });
+
+    // We assume that there are 0 resuls already stored.
+    assert_eq!(response, 0);
+
+    // FIXME/TODO: How to retrieve these to verify?
+}
+
+#[test]
+fn store_and_load_chainspec() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    let version = Version::new(1, 2, 3);
+
+    // Initially expect a `None` value for the chainspec.
+    let response = get_chainspec(&mut harness, &mut storage, version.clone());
+    assert!(response.is_none());
+
+    // Store a random chainspec.
+    let chainspec = Chainspec::random(&mut harness.rng);
+    let response = put_chainspec(&mut harness, &mut storage, chainspec.clone());
+
+    // Compare returned chainspec.
+    let response = get_chainspec(&mut harness, &mut storage, version);
+    assert_eq!(response, Some(Arc::new(chainspec)));
+}
+
+// TODO: Test actual persistence on disk happens.
