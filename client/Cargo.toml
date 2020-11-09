@@ -57,3 +57,14 @@ Package for Casper Client to connect to Casper Node.
 
 For information on using package, see https://github.com/CasperLabs/casper-node
 """
+
+[dev-dependencies]
+anyhow = "1.0.28"
+casper-node = { path = "../node" }
+futures = "0.3.5"
+hyper = "0.13.7"
+lazy_static = "1.4"
+semver = "0.11"
+serde = "1"
+warp = "0.2.4"
+warp-json-rpc = "0.2"

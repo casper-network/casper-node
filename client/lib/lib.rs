@@ -310,6 +310,7 @@ pub fn get_auction_info(maybe_rpc_id: &str, node_address: &str, verbose: bool) -
 }
 
 /// Container for `Deploy` construction options.
+#[derive(Default)]
 pub struct DeployStrParams<'a> {
     /// Path to secret key file.
     pub secret_key: &'a str,
