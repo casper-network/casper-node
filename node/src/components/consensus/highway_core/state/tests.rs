@@ -225,7 +225,7 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
     //           /
     // Bob:   b0
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 0xB; N, N, N)?;
 
     // a1 does not violate LNC
     let wvote = WireVote {
@@ -251,8 +251,8 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
     // Carol:    c0
     let mut state = State::new_test(WEIGHTS, 0);
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; a0, N, N)?;
-    let _a0_prime = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 0xB; a0, N, N)?;
+    let _a0_prime = add_vote!(state, rng, ALICE, 0xA2; N, N, N)?;
     // c0 violates LNC b/c it naively cites Alice's equivocation.
     let mut c0 = WireVote {
         panorama: panorama!(F, b0, N),
@@ -298,9 +298,9 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
     let weights_dan = &[Weight(3), Weight(4), Weight(5), Weight(5)];
     let mut state = State::new_test(weights_dan, 0);
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N, N)?;
-    let a0_prime = add_vote!(state, rng, ALICE, 0xA; N, N, N, N)?;
-    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; a0, N, N, N)?;
-    let c0 = add_vote!(state, rng, CAROL, 48, 4u8, 0xB; a0_prime, N, N, N)?;
+    let a0_prime = add_vote!(state, rng, ALICE, 0xA2; N, N, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 0xB; a0, N, N, N)?;
+    let c0 = add_vote!(state, rng, CAROL, 0xB2; a0_prime, N, N, N)?;
     // d0 violates LNC b/c it naively cites Alice's equivocation.
     let mut d0 = WireVote {
         panorama: panorama!(F, b0, c0),
@@ -332,26 +332,26 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
     // Alice   a0<---------+
     //                     |
     //         a0'<--+     |
-    //               +     |
+    //               |     |
     // Bob          b0<-----------+
-    //               +     |      |
+    //               |     |      |
     // Carol   c0<---+     |      |
     //                     |      |
     //         c0'<--------+      |
     //                     |      |
     // Dan                 d0<----+
-    //                            +
+    //                            |
     // Eric                       e0
 
     let weights_dan_eric = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
     let mut state = State::new_test(weights_dan_eric, 0);
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N, N, N)?;
-    let a0_prime = add_vote!(state, rng, ALICE, 0xA; N, N, N, N, N)?;
-    let c0 = add_vote!(state, rng, CAROL, 48, 4u8, 0xB; N, N, N, N)?;
-    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; a0_prime, c0, N, N)?;
-    let c0_prime = add_vote!(state,rng, CAROL, 48,4u8, 0xC; N, N, N, N, N)?;
-    let d0 = add_vote!(state, rng, DAN, 51, 4u8, 0xD; a0, N, c0_prime, N, N)?;
-    // d0 violates LNC b/c it naively cites Alice's & Carol's equivocations.
+    let a0_prime = add_vote!(state, rng, ALICE, 0xA2; N, N, N, N, N)?;
+    let c0 = add_vote!(state, rng, CAROL, 0xB; N, N, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 0xB2; a0_prime, c0, N, N)?;
+    let c0_prime = add_vote!(state, rng, CAROL, 0xC; N, N, N, N, N)?;
+    let d0 = add_vote!(state, rng, DAN, 0xD; a0, N, c0_prime, N, N)?;
+    // e0 violates LNC b/c it naively cites Alice's & Carol's equivocations.
     let mut e0 = WireVote {
         panorama: panorama!(F, b0, F, d0, N),
         creator: ERIC,
