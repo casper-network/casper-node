@@ -207,13 +207,13 @@ impl Package {
                         }
                     };
 
-                    // if new_version < self.current_version {
-                    //     println!(
-                    //         "Updated version ({}) is lower than current version ({})",
-                    //         new_version, self.current_version
-                    //     );
-                    //     continue;
-                    // }
+                    if new_version < self.current_version {
+                        println!(
+                            "Updated version ({}) is lower than current version ({})",
+                            new_version, self.current_version
+                        );
+                        continue;
+                    }
 
                     return if new_version == self.current_version {
                         None
