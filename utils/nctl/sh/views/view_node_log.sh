@@ -41,4 +41,4 @@ typeof=${typeof:-stdout}
 # Main
 #######################################
 
-vi $NCTL/assets/net-$net/nodes/node-$node/logs/$typeof.log
+less $NCTL/assets/net-$net/nodes/node-$node/logs/$typeof.log

@@ -1,6 +1,7 @@
 use std::{fmt, iter};
 
 use datasize::DataSize;
+use num_rational::Ratio;
 use num_traits::Zero;
 use rand::{
     distributions::{Distribution, Standard},
@@ -9,7 +10,10 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    account::AccountHash, auction::EraId, bytesrepr, Key, ProtocolVersion, PublicKey, U512,
+    account::AccountHash,
+    auction::EraId,
+    bytesrepr::{self, FromBytes, ToBytes},
+    Key, ProtocolVersion, PublicKey, U512,
 };
 
 use super::SYSTEM_ACCOUNT_ADDR;
@@ -145,6 +149,40 @@ impl Distribution<GenesisAccount> for Standard {
     }
 }
 
+impl ToBytes for GenesisAccount {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.public_key.to_bytes()?);
+        buffer.extend(self.account_hash.to_bytes()?);
+        buffer.extend(self.balance.value().to_bytes()?);
+        buffer.extend(self.bonded_amount.value().to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.public_key.serialized_length()
+            + self.account_hash.serialized_length()
+            + self.balance.value().serialized_length()
+            + self.bonded_amount.value().serialized_length()
+    }
+}
+
+impl FromBytes for GenesisAccount {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (public_key, remainder) = Option::<PublicKey>::from_bytes(bytes)?;
+        let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
+        let (balance_value, remainder) = U512::from_bytes(remainder)?;
+        let (bonded_amount_value, remainder) = U512::from_bytes(remainder)?;
+        let genesis_account = GenesisAccount {
+            public_key,
+            account_hash,
+            balance: Motes::new(balance_value),
+            bonded_amount: Motes::new(bonded_amount_value),
+        };
+        Ok((genesis_account, remainder))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenesisConfig {
     name: String,
@@ -227,6 +265,7 @@ pub struct ExecConfig {
     validator_slots: u32,
     auction_delay: u64,
     locked_funds_period: EraId,
+    round_seigniorage_rate: Ratio<u64>,
 }
 
 impl ExecConfig {
@@ -241,6 +280,7 @@ impl ExecConfig {
         validator_slots: u32,
         auction_delay: u64,
         locked_funds_period: EraId,
+        round_seigniorage_rate: Ratio<u64>,
     ) -> ExecConfig {
         ExecConfig {
             mint_installer_bytes,
@@ -252,6 +292,7 @@ impl ExecConfig {
             validator_slots,
             auction_delay,
             locked_funds_period,
+            round_seigniorage_rate,
         }
     }
 
@@ -300,6 +341,10 @@ impl ExecConfig {
     pub fn locked_funds_period(&self) -> EraId {
         self.locked_funds_period
     }
+
+    pub fn round_seigniorage_rate(&self) -> Ratio<u64> {
+        self.round_seigniorage_rate
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -328,6 +373,11 @@ impl Distribution<ExecConfig> for Standard {
 
         let locked_funds_period: EraId = rng.gen();
 
+        let round_seigniorage_rate = Ratio::new(
+            rng.gen_range(1, 1_000_000_000),
+            rng.gen_range(1, 1_000_000_000),
+        );
+
         ExecConfig {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
@@ -338,6 +388,19 @@ impl Distribution<ExecConfig> for Standard {
             validator_slots,
             auction_delay,
             locked_funds_period,
+            round_seigniorage_rate,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let mut rng = rand::thread_rng();
+        let genesis_account: GenesisAccount = rng.gen();
+        bytesrepr::test_serialization_roundtrip(&genesis_account);
     }
 }

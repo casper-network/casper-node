@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 
 use super::{StorageType, Value};
-use crate::{effect::requests::StorageRequest, small_network::NodeId};
+use crate::{effect::requests::StorageRequest, types::NodeId};
 
 /// `Storage` events.
 #[derive(Debug, From)]

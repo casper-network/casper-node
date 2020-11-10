@@ -93,7 +93,7 @@ where
 
 /// Error reading a file.
 #[derive(Debug, Error)]
-#[error("could not read {0}: {error}", .path.display())]
+#[error("could not read '{0}': {error}", .path.display())]
 pub struct ReadFileError {
     /// Path that failed to be read.
     path: PathBuf,
@@ -104,7 +104,7 @@ pub struct ReadFileError {
 
 /// Error writing a file
 #[derive(Debug, Error)]
-#[error("could not write to {0}: {error}", .path.display())]
+#[error("could not write to '{0}': {error}", .path.display())]
 pub struct WriteFileError {
     /// Path that failed to be written to.
     path: PathBuf,
@@ -189,7 +189,7 @@ impl<T> WithDir<T> {
 }
 
 /// The source of a piece of data.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Source<I> {
     /// A peer with the wrapped ID.
     Peer(I),
@@ -197,11 +197,11 @@ pub enum Source<I> {
     Client,
 }
 
-impl<I: Copy> Source<I> {
+impl<I: Clone> Source<I> {
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
     pub(crate) fn node_id(&self) -> Option<I> {
         match self {
-            Source::Peer(node_id) => Some(*node_id),
+            Source::Peer(node_id) => Some(node_id.clone()),
             Source::Client => None,
         }
     }

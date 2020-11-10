@@ -119,7 +119,8 @@ impl RpcCall {
 
     pub(crate) fn get_balance(self, state_root_hash: &str, purse_uref: &str) -> Result<JsonRpc> {
         let state_root_hash = Digest::from_hex(state_root_hash)?;
-        let uref = URef::from_formatted_str(purse_uref)?;
+        let uref = URef::from_formatted_str(purse_uref)
+            .map_err(|error| Error::FailedToParseURef("purse_uref", error))?;
         let key = Key::from(uref);
 
         let params = GetBalanceParams {
@@ -202,7 +203,9 @@ impl RpcCall {
             let hash = Digest::from_hex(maybe_block_identifier)?;
             Ok(Some(BlockIdentifier::Hash(BlockHash::new(hash))))
         } else {
-            let height = maybe_block_identifier.parse()?;
+            let height = maybe_block_identifier
+                .parse()
+                .map_err(|error| Error::FailedToParseInt("block_identifier", error))?;
             Ok(Some(BlockIdentifier::Height(height)))
         }
     }

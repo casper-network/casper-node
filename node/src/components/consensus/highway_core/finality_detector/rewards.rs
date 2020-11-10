@@ -142,19 +142,16 @@ fn round_participation<'a, C: Context>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        components::consensus::highway_core::{
-            highway_testing::TEST_BLOCK_REWARD,
-            state::{tests::*, Params},
-            validators::ValidatorMap,
-        },
-        testing::TestRng,
+    use crate::components::consensus::highway_core::{
+        highway_testing::TEST_BLOCK_REWARD,
+        state::{tests::*, Params},
+        validators::ValidatorMap,
     };
 
     #[test]
     fn round_participation_test() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(&[Weight(5)], 0); // Alice is the only validator.
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         // Round ID 0, length 32: Alice participates.
         let p0 = add_vote!(state, rng, ALICE, 0, 5u8, 0x1; N)?; // Proposal
@@ -207,7 +204,7 @@ mod tests {
         let weights = &[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)];
         let mut state = State::new(weights, params, vec![]);
         let total_weight = state.total_weight().0;
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         // Round 0: Alice has round length 16, Bob and Carol 8.
         // Bob and Alice cite each other, creating a summit with quorum 9.

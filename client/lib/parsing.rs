@@ -36,15 +36,17 @@ fn timestamp(value: &str) -> Result<Timestamp> {
     if value.is_empty() {
         return Ok(Timestamp::now());
     }
-    Timestamp::from_str(value).map_err(Error::FailedToParseTimestamp)
+    Timestamp::from_str(value).map_err(|error| Error::FailedToParseTimestamp("timestamp", error))
 }
 
 fn ttl(value: &str) -> Result<TimeDiff> {
-    TimeDiff::from_str(value).map_err(Error::FailedToParseTimeDiff)
+    TimeDiff::from_str(value).map_err(|error| Error::FailedToParseTimeDiff("ttl", error))
 }
 
 fn gas_price(value: &str) -> Result<u64> {
-    Ok(value.parse::<u64>()?)
+    Ok(value
+        .parse::<u64>()
+        .map_err(|error| Error::FailedToParseInt("gas_price", error))?)
 }
 
 fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
@@ -171,7 +173,7 @@ mod args_complex {
 
         pub fn parse(path: &str) -> Result<RuntimeArgs> {
             if path.is_empty() {
-                return Err(Error::InvalidArgument(path.to_string()));
+                return Err(Error::InvalidArgument("session_path", path.to_string()));
             }
             get(path).map_err(|error| Error::IoError {
                 context: format!("error reading session file at '{}'", path),
@@ -185,7 +187,7 @@ mod args_complex {
 
         pub fn parse(path: &str) -> Result<RuntimeArgs> {
             if path.is_empty() {
-                return Err(Error::InvalidArgument(path.to_string()));
+                return Err(Error::InvalidArgument("payment_path", path.to_string()));
             }
             get(path).map_err(|error| Error::IoError {
                 context: format!("error reading payment file at '{}'", path),
@@ -210,7 +212,7 @@ mod args_complex {
 const STANDARD_PAYMENT_ARG_NAME: &str = "amount";
 fn standard_payment(value: &str) -> Result<RuntimeArgs> {
     let arg = U512::from_dec_str(value)
-        .map_err(|err| Error::FailedToParseUint(UIntParseError::FromDecStr(err)))?;
+        .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
     let mut runtime_args = RuntimeArgs::new();
     runtime_args.insert(STANDARD_PAYMENT_ARG_NAME, arg);
     Ok(runtime_args)
@@ -274,12 +276,12 @@ pub(super) fn parse_session_info(
         arg_simple::session::parse(session_args)?,
         args_complex::session::parse(session_args_complex).ok(),
     );
-
+    let invalid_entry_point =
+        || Error::InvalidArgument("session_entry_point", session_entry_point.to_string());
     if let Some(session_name) = name(session_name) {
         return ExecutableDeployItem::new_stored_contract_by_name(
             session_name,
-            entry_point(session_entry_point)
-                .ok_or_else(|| Error::InvalidArgument(session_entry_point.to_string()))?,
+            entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             session_args,
         );
     }
@@ -287,8 +289,7 @@ pub(super) fn parse_session_info(
     if let Ok(session_hash) = hash(session_hash) {
         return ExecutableDeployItem::new_stored_contract_by_hash(
             session_hash,
-            entry_point(session_entry_point)
-                .ok_or_else(|| Error::InvalidArgument(session_entry_point.to_string()))?,
+            entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             session_args,
         );
     }
@@ -298,8 +299,7 @@ pub(super) fn parse_session_info(
         return ExecutableDeployItem::new_stored_versioned_contract_by_name(
             package_name,
             version,
-            entry_point(session_entry_point)
-                .ok_or_else(|| Error::InvalidArgument(session_entry_point.to_string()))?,
+            entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             session_args,
         );
     }
@@ -308,8 +308,7 @@ pub(super) fn parse_session_info(
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
             package_hash,
             version,
-            entry_point(session_entry_point)
-                .ok_or_else(|| Error::InvalidArgument(session_entry_point.to_string()))?,
+            entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             session_args,
         );
     }
@@ -338,6 +337,9 @@ pub(super) fn parse_payment_info(
         return ExecutableDeployItem::new_module_bytes(vec![], payment_args);
     }
 
+    let invalid_entry_point =
+        || Error::InvalidArgument("payment_entry_point", payment_entry_point.to_string());
+
     let payment_args = args_from_simple_or_complex(
         arg_simple::payment::parse(payment_args)?,
         args_complex::payment::parse(payment_args_complex).ok(),
@@ -346,8 +348,7 @@ pub(super) fn parse_payment_info(
     if let Some(payment_name) = name(payment_name) {
         return ExecutableDeployItem::new_stored_contract_by_name(
             payment_name,
-            entry_point(payment_entry_point)
-                .ok_or_else(|| Error::InvalidArgument(payment_entry_point.to_string()))?,
+            entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
         );
     }
@@ -355,8 +356,7 @@ pub(super) fn parse_payment_info(
     if let Ok(payment_hash) = hash(payment_hash) {
         return ExecutableDeployItem::new_stored_contract_by_hash(
             payment_hash,
-            entry_point(payment_entry_point)
-                .ok_or_else(|| Error::InvalidArgument(payment_entry_point.to_string()))?,
+            entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
         );
     }
@@ -366,8 +366,7 @@ pub(super) fn parse_payment_info(
         return ExecutableDeployItem::new_stored_versioned_contract_by_name(
             package_name,
             version,
-            entry_point(payment_entry_point)
-                .ok_or_else(|| Error::InvalidArgument(payment_entry_point.to_string()))?,
+            entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
         );
     }
@@ -376,8 +375,7 @@ pub(super) fn parse_payment_info(
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
             package_hash,
             version,
-            entry_point(payment_entry_point)
-                .ok_or_else(|| Error::InvalidArgument(payment_entry_point.to_string()))?,
+            entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
         );
     }
@@ -401,6 +399,7 @@ pub(crate) fn get_transfer_target(
         Ok(TransferTarget::Account(account))
     } else {
         Err(Error::InvalidArgument(
+            "target_account | target_purse",
             "Invalid arguments to get_transfer_target - must provide either a target account or purse.".to_string()
         ))
     }
@@ -433,7 +432,9 @@ fn entry_point(value: &str) -> Option<String> {
 }
 
 fn version(value: &str) -> Result<u32> {
-    Ok(value.parse::<u32>()?)
+    Ok(value
+        .parse::<u32>()
+        .map_err(|error| Error::FailedToParseInt("version", error))?)
 }
 
 fn account(value: &str) -> Result<NodePublicKey> {
@@ -441,7 +442,10 @@ fn account(value: &str) -> Result<NodePublicKey> {
 }
 
 pub(crate) fn purse(value: &str) -> Result<URef> {
-    Ok(URef::from_formatted_str(value)?)
+    Ok(
+        URef::from_formatted_str(value)
+            .map_err(|error| Error::FailedToParseURef("purse", error))?,
+    )
 }
 
 #[cfg(test)]

@@ -10,8 +10,7 @@ use crate::{
         highway_core::{highway::Dependency, highway_testing::TEST_BLOCK_REWARD},
         traits::ValidatorSecret,
     },
-    testing::TestRng,
-    types::CryptoRngCore,
+    NodeRng,
 };
 
 pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
@@ -33,7 +32,7 @@ impl ValidatorSecret for TestSecret {
     type Hash = u64;
     type Signature = u64;
 
-    fn sign(&self, data: &Self::Hash, _rng: &mut dyn CryptoRngCore) -> Self::Signature {
+    fn sign(&self, data: &Self::Hash, _rng: &mut NodeRng) -> Self::Signature {
         data + u64::from(self.0)
     }
 }
@@ -134,7 +133,7 @@ impl State<TestContext> {
 #[test]
 fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     // Create votes as follows; a0, b0 are blocks:
     //
@@ -213,7 +212,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
 
 #[test]
 fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
     let params = Params::new(
         0,
         TEST_BLOCK_REWARD,
@@ -252,7 +251,7 @@ fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
 #[test]
 fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
     let mut a = vec![a0];
     for i in 1..10 {
@@ -279,7 +278,7 @@ fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
 #[test]
 fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     // Create blocks with scores as follows:
     //
@@ -314,7 +313,7 @@ fn test_log2() {
 
 #[test]
 fn test_leader_prng() {
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     // Repeat a few times to make it likely that the inner loop runs more than once.
     for _ in 0..10 {

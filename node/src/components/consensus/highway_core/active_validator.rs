@@ -16,7 +16,8 @@ use crate::{
         highway_core::highway::SignedWireVote,
         traits::{Context, ValidatorSecret},
     },
-    types::{CryptoRngCore, TimeDiff, Timestamp},
+    types::{TimeDiff, Timestamp},
+    NodeRng,
 };
 
 /// An action taken by a validator.
@@ -103,7 +104,7 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         if self.is_faulty(state) {
             warn!("Creator knows it's faulty. Won't create a message.");
@@ -137,7 +138,7 @@ impl<C: Context> ActiveValidator<C> {
         now: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         if let Some(evidence) = state.opt_evidence(self.vidx) {
             return vec![Effect::WeEquivocated(evidence.clone())];
@@ -165,7 +166,7 @@ impl<C: Context> ActiveValidator<C> {
         &mut self,
         evidence: &Evidence<C>,
         state: &State<C>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let vidx = evidence.perpetrator();
         state
@@ -189,7 +190,7 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         instance_id: C::InstanceId,
         timestamp: Timestamp,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Option<Effect<C>> {
         if let Some((prop_time, _)) = self.next_proposal {
             warn!(
@@ -218,7 +219,7 @@ impl<C: Context> ActiveValidator<C> {
         block_context: BlockContext,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
         if self.earliest_vote_time(state) > timestamp {
@@ -256,12 +257,18 @@ impl<C: Context> ActiveValidator<C> {
     ) -> bool {
         let earliest_vote_time = self.earliest_vote_time(state);
         if timestamp < earliest_vote_time {
-            warn!(%earliest_vote_time, %timestamp, "earliest_vote_time is greater than current time stamp");
+            warn!(
+                %earliest_vote_time, %timestamp,
+                "earliest_vote_time is greater than current time stamp"
+            );
             return false;
         }
         let vote = state.vote(vhash);
         if vote.timestamp > timestamp {
-            error!(%vote.timestamp, %timestamp, "added a vote with a future timestamp, should never happen");
+            error!(
+                %vote.timestamp, %timestamp,
+                "added a vote with a future timestamp, should never happen"
+            );
             return false;
         }
         // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
@@ -311,7 +318,7 @@ impl<C: Context> ActiveValidator<C> {
         value: Option<C::ConsensusValue>,
         state: &State<C>,
         instance_id: C::InstanceId,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> SignedWireVote<C> {
         if let Some((prop_time, _)) = self.next_proposal.take() {
             warn!(
@@ -425,7 +432,7 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Creates endorsement of the `vhash`.
-    fn endorse(&self, vhash: &C::Hash, rng: &mut dyn CryptoRngCore) -> Vertex<C> {
+    fn endorse(&self, vhash: &C::Hash, rng: &mut NodeRng) -> Vertex<C> {
         let endorsement = Endorsement::new(*vhash, self.vidx);
         let signature = self.secret.sign(&endorsement.hash(), rng);
         Vertex::Endorsements(Endorsements::new(vec![SignedEndorsement::new(
@@ -446,7 +453,6 @@ mod tests {
         },
         Vertex, *,
     };
-    use crate::testing::TestRng;
 
     type Eff = Effect<TestContext>;
 
@@ -473,7 +479,7 @@ mod tests {
     #[allow(clippy::unreadable_literal)] // 0xC0FFEE is more readable than 0x00C0_FFEE.
     fn active_validator() -> Result<(), AddVoteError<TestContext>> {
         let mut state = State::new_test(&[Weight(3), Weight(4)], 0);
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let mut fd = FinalityDetector::new(Weight(2));
         let instance_id = 1u64;
 

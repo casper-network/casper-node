@@ -29,6 +29,14 @@ auction_delay = 3
 # The delay for the payout of funds, in eras. If a withdraw request is included in a block in era N
 # (other than the last one), they are paid out in the last block of era N + locked_funds_period.
 locked_funds_period = 15
+# Round seigniorage rate represented as a fraction of the total supply.
+#
+# Annual issuance: 2%
+# Minimum round exponent: 17
+# Ticks per year: 31536000000
+#
+# (1+0.02)^((2^17)/31536000000)-1 is expressed as a fractional number below.
+round_seigniorage_rate = [16_837, 204_568_405_924]
 
 [highway]
 # Tick unit is milliseconds.

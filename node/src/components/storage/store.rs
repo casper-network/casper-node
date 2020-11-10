@@ -50,13 +50,10 @@ mod tests {
         super::{Config, DeployMetadata, InMemStore, LmdbStore},
         *,
     };
-    use crate::{
-        testing::TestRng,
-        types::{Block, Deploy},
-    };
+    use crate::types::{Block, Deploy};
 
     fn should_put_then_get<T: Store<Value = Deploy>>(store: &mut T) {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         let deploy = Deploy::random(&mut rng);
         let deploy_hash = *deploy.id();
@@ -90,7 +87,7 @@ mod tests {
     }
 
     fn second_put_should_return_false<T: Store<Value = Deploy>>(store: &mut T) {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let deploy = Deploy::random(&mut rng);
         assert!(store.put(deploy.clone()).unwrap());
         assert!(!store.put(deploy).unwrap());
