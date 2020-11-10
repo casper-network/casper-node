@@ -1,5 +1,7 @@
 use std::fmt;
 
+use num_rational::Ratio;
+
 use casper_types::{auction::EraId, bytesrepr, Key, ProtocolVersion};
 
 use crate::{
@@ -66,6 +68,7 @@ pub struct UpgradeConfig {
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_locked_funds_period: Option<EraId>,
+    new_round_seigniorage_rate: Option<Ratio<u64>>,
 }
 
 impl UpgradeConfig {
@@ -81,6 +84,7 @@ impl UpgradeConfig {
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
         new_locked_funds_period: Option<EraId>,
+        new_round_seigniorage_rate: Option<Ratio<u64>>,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -93,6 +97,7 @@ impl UpgradeConfig {
             new_validator_slots,
             new_auction_delay,
             new_locked_funds_period,
+            new_round_seigniorage_rate,
         }
     }
 
@@ -136,5 +141,9 @@ impl UpgradeConfig {
 
     pub fn new_locked_funds_period(&self) -> Option<EraId> {
         self.new_locked_funds_period
+    }
+
+    pub fn new_round_seigniorage_rate(&self) -> Option<Ratio<u64>> {
+        self.new_round_seigniorage_rate
     }
 }

@@ -20,6 +20,8 @@ source $NCTL/sh/utils/misc.sh
 # Unset to avoid parameter collisions.
 unset amount
 unset gas
+unset gas_payment
+unset gas_price
 unset interval
 unset net
 unset node
@@ -45,9 +47,9 @@ do
 done
 
 # Set defaults.
-amount=${amount:-1000000}
-gas_payment=${payment:-200000}
-gas_price=${gas:-10}
+amount=${amount:-$NCTL_DEFAULT_TRANSFER_AMOUNT}
+gas_payment=${gas_payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
 transfers=${transfers:-100}

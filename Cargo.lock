@@ -687,14 +687,17 @@ dependencies = [
 name = "casper-client"
 version = "1.5.0"
 dependencies = [
+ "anyhow",
  "base64 0.13.0",
  "casper-execution-engine",
  "casper-node",
  "casper-types",
+ "cbindgen",
  "clap",
  "futures 0.3.7",
  "hex",
  "humantime",
+ "hyper",
  "jsonrpc-lite",
  "lazy_static",
  "rand 0.7.3",
@@ -704,6 +707,8 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio 0.2.22",
+ "warp",
+ "warp-json-rpc",
 ]
 
 [[package]]
@@ -730,6 +735,8 @@ dependencies = [
  "grpc",
  "lmdb",
  "log 0.4.11",
+ "num",
+ "num-rational 0.3.1",
  "parity-wasm 0.42.1",
  "proptest",
  "protobuf",
@@ -749,6 +756,7 @@ dependencies = [
  "lazy_static",
  "lmdb",
  "log 0.4.11",
+ "num-rational 0.3.1",
  "num-traits",
  "protobuf",
  "rand 0.7.3",
@@ -808,6 +816,7 @@ dependencies = [
  "log 0.4.11",
  "num",
  "num-derive",
+ "num-rational 0.3.1",
  "num-traits",
  "parity-wasm 0.41.0",
  "proptest",
@@ -870,6 +879,7 @@ dependencies = [
  "multihash",
  "num",
  "num-derive",
+ "num-rational 0.3.1",
  "num-traits",
  "openssl",
  "parity-wasm 0.42.1",
@@ -967,6 +977,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b9434b9a5aa1450faa3f9cb14ea0e8c53bb5d2b3c1bfd1ab4fc03e9f33fbfb0"
 dependencies = [
  "rustc_version",
+]
+
+[[package]]
+name = "cbindgen"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1df6a11bba1d7cab86c166cecf4cf8acd7d02b7b65924d81b33d27197f22ee35"
+dependencies = [
+ "clap",
+ "heck",
+ "indexmap",
+ "log 0.4.11",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]
@@ -3821,6 +3850,7 @@ dependencies = [
  "num-bigint 0.3.1",
  "num-integer",
  "num-traits",
+ "serde",
 ]
 
 [[package]]

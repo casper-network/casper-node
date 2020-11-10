@@ -372,3 +372,21 @@ cargo run --release -- get-balance \
 Note that the system mint contract is required to retrieve the balance of any given purse. If you execute a
 `query-state` specifying a purse `URef` as the `--key` argument, you'll find that the actual value stored there is a
 unit value `()`. This makes the `get-balance` subcommand particularly useful. 
+
+---
+
+
+## Client library
+
+The `lib` directory contains source for the client library, which may be called directly rather than through the CLI
+binary. The CLI app `casper-client` makes use of this library to implement its functionality.
+
+
+## Client library C wrapper
+
+An optional feature of the client library is to use `cbindgen` to build a C wrapper for functions in the library. This
+can then be leveraged to build bindings for the library in any language that can access an `extern "C"` interface.
+
+The feature is named `ffi` and is enabled by default.
+
+See `examples/ffi/README.md` for more information.

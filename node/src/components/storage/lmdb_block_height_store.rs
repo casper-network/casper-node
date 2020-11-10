@@ -7,7 +7,8 @@ use std::{
 use lmdb::{
     self, Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
-use serde::{Deserialize, Serialize};
+
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use tracing::info;
 
 use super::{BlockHeightStore, Error, Result};
@@ -50,10 +51,10 @@ impl LmdbBlockHeightStore {
     }
 }
 
-impl<H: Serialize + for<'de> Deserialize<'de>> BlockHeightStore<H> for LmdbBlockHeightStore {
+impl<H: ToBytes + for<'de> FromBytes> BlockHeightStore<H> for LmdbBlockHeightStore {
     fn put(&self, height: u64, block_hash: H) -> Result<bool> {
         let serialized_value =
-            bincode::serialize(&block_hash).map_err(|error| Error::from_serialization(*error))?;
+            bytesrepr::serialize(block_hash).map_err(Error::from_serialization)?;
         let mut txn = self.env.begin_rw_txn().expect("should create rw txn");
         let result = match txn.put(
             self.db,
@@ -77,8 +78,8 @@ impl<H: Serialize + for<'de> Deserialize<'de>> BlockHeightStore<H> for LmdbBlock
             Err(lmdb::Error::NotFound) => return Ok(None),
             Err(error) => panic!("should get: {:?}", error),
         };
-        let block_hash = bincode::deserialize(serialized_value)
-            .map_err(|error| Error::from_deserialization(*error))?;
+        let block_hash = bytesrepr::deserialize(serialized_value.to_vec())
+            .map_err(Error::from_deserialization)?;
         txn.commit().expect("should commit txn");
         Ok(Some(block_hash))
     }

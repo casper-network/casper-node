@@ -12,20 +12,26 @@ mod lmdb_store;
 mod store;
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::{Debug, Display},
     fs,
     hash::Hash,
+    result::Result as StdResult,
     sync::Arc,
 };
 
 use datasize::DataSize;
 use futures::TryFutureExt;
 use semver::Version;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
 use smallvec::{smallvec, SmallVec};
 use tokio::task;
 use tracing::{debug, error, warn};
+
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+
+#[cfg(test)]
+use crate::testing::TestRng;
 
 use crate::{
     components::{block_proposer::BlockProposerState, chainspec_loader::Chainspec, Component},
@@ -69,8 +75,8 @@ const BLOCK_HEIGHT_STORE_FILENAME: &str = "block_height_store.db";
 const DEPLOY_STORE_FILENAME: &str = "deploy_store.db";
 const CHAINSPEC_STORE_FILENAME: &str = "chainspec_store.db";
 
-pub trait ValueT: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {}
-impl<T> ValueT for T where T: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {}
+pub trait ValueT: Clone + ToBytes + FromBytes + Send + Sync + Debug + Display {}
+impl<T> ValueT for T where T: Clone + ToBytes + FromBytes + Send + Sync + Debug + Display {}
 
 /// Trait defining the API for a value able to be held within the storage component.
 pub trait Value: ValueT {
@@ -83,8 +89,8 @@ pub trait Value: ValueT {
         + Hash
         + Debug
         + Display
-        + Serialize
-        + DeserializeOwned
+        + ToBytes
+        + FromBytes
         + Send
         + Sync;
     /// A relatively small portion of the value, representing header info or metadata.
@@ -96,8 +102,8 @@ pub trait Value: ValueT {
         + Hash
         + Debug
         + Display
-        + Serialize
-        + DeserializeOwned
+        + ToBytes
+        + FromBytes
         + Send
         + Sync;
 
@@ -111,24 +117,36 @@ pub trait WithBlockHeight: Value {
 }
 
 /// Metadata associated with a block.
-#[derive(Default, Clone, Serialize, Deserialize, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct BlockMetadata {
     /// The finalization signatures of a block.
     pub proofs: Vec<Signature>,
 }
 
 /// Metadata associated with a deploy.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeployMetadata<B: Value> {
     /// The block hashes of blocks containing the related deploy, along with the results of
     /// executing the related deploy.
-    pub execution_results: HashMap<B::Id, ExecutionResult>,
+    pub execution_results: BTreeMap<B::Id, ExecutionResult>,
 }
 
 impl<B: Value> DeployMetadata<B> {
     fn new(block_hash: B::Id, execution_result: ExecutionResult) -> Self {
-        let mut execution_results = HashMap::new();
+        let mut execution_results = BTreeMap::new();
         let _ = execution_results.insert(block_hash, execution_result);
+        DeployMetadata { execution_results }
+    }
+}
+
+#[cfg(test)]
+impl DeployMetadata<Block> {
+    fn random(rng: &mut TestRng) -> Self {
+        let block = Block::random(rng);
+        let id = Value::id(&block);
+        let mut execution_results = BTreeMap::new();
+        let execution_result = ExecutionResult::random(rng);
+        execution_results.insert(*id, execution_result);
         DeployMetadata { execution_results }
     }
 }
@@ -136,8 +154,28 @@ impl<B: Value> DeployMetadata<B> {
 impl<B: Value> Default for DeployMetadata<B> {
     fn default() -> Self {
         DeployMetadata {
-            execution_results: HashMap::new(),
+            execution_results: BTreeMap::new(),
         }
+    }
+}
+
+impl<B: Value> ToBytes for DeployMetadata<B> {
+    fn to_bytes(&self) -> StdResult<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.execution_results.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.execution_results.serialized_length()
+    }
+}
+
+impl<B: Value> FromBytes for DeployMetadata<B> {
+    fn from_bytes(bytes: &[u8]) -> StdResult<(Self, &[u8]), bytesrepr::Error> {
+        let (execution_results, remainder) = BTreeMap::<B::Id, ExecutionResult>::from_bytes(bytes)?;
+        let deploy_metadata = DeployMetadata { execution_results };
+        Ok((deploy_metadata, remainder))
     }
 }
 
@@ -805,5 +843,17 @@ where
 
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore> {
         Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_test_deploy_metadata() {
+        let mut rng = TestRng::new();
+        let deploy_metadata = DeployMetadata::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&deploy_metadata);
     }
 }

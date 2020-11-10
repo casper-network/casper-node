@@ -48,8 +48,11 @@ alias nctl-view-chain-auction-info='source $NCTL/sh/views/view_chain_auction_inf
 alias nctl-view-chain-block='source $NCTL/sh/views/view_chain_block.sh'
 alias nctl-view-chain-deploy='source $NCTL/sh/views/view_chain_deploy.sh'
 alias nctl-view-chain-state-root-hash='source $NCTL/sh/views/view_chain_state_root_hash.sh'
+alias nctl-view-chain-spec='source $NCTL/sh/views/view_chain_spec.sh'
+alias nctl-view-chain-spec-accounts='source $NCTL/sh/views/view_chain_spec_accounts.sh'
 
 # Views: node.
+alias nctl-view-node-config='source $NCTL/sh/views/view_node_config.sh'
 alias nctl-view-node-log='source $NCTL/sh/views/view_node_log.sh'
 alias nctl-view-node-peers='source $NCTL/sh/views/view_node_peers.sh'
 alias nctl-view-node-status='source $NCTL/sh/views/view_node_status.sh'

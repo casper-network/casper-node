@@ -3,8 +3,9 @@ use lazy_static::lazy_static;
 use casper_engine_test_support::{
     internal::{
         utils, InMemoryWasmTestBuilder, AUCTION_INSTALL_CONTRACT, DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
-        MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
+        DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_VALIDATOR_SLOTS,
+        DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
+        STANDARD_PAYMENT_INSTALL_CONTRACT,
     },
     AccountHash,
 };
@@ -70,6 +71,7 @@ fn should_run_genesis() {
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
+    let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
 
     let exec_config = ExecConfig::new(
         mint_installer_bytes,
@@ -81,6 +83,7 @@ fn should_run_genesis() {
         validator_slots,
         auction_delay,
         locked_funds_period,
+        round_seigniorage_rate,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config);
@@ -140,7 +143,7 @@ fn should_track_total_token_supply_in_mint() {
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
-
+    let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let ee_config = ExecConfig::new(
         mint_installer_bytes,
         proof_of_stake_installer_bytes,
@@ -151,6 +154,7 @@ fn should_track_total_token_supply_in_mint() {
         validator_slots,
         auction_delay,
         locked_funds_period,
+        round_seigniorage_rate,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);
@@ -198,6 +202,7 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
         let validator_slots = DEFAULT_VALIDATOR_SLOTS;
         let auction_delay = DEFAULT_AUCTION_DELAY;
         let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
+        let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
 
         let exec_config = ExecConfig::new(
             mint_installer_bytes,
@@ -209,6 +214,7 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
             validator_slots,
             auction_delay,
             locked_funds_period,
+            round_seigniorage_rate,
         );
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
     };
@@ -234,6 +240,7 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
         let validator_slots = DEFAULT_VALIDATOR_SLOTS;
         let auction_delay = DEFAULT_AUCTION_DELAY;
         let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
+        let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
 
         let exec_config = ExecConfig::new(
             mint_installer_bytes,
@@ -245,6 +252,7 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
             validator_slots,
             auction_delay,
             locked_funds_period,
+            round_seigniorage_rate,
         );
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
     };

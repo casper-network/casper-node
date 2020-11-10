@@ -2,6 +2,8 @@ use std::{error::Error as StdError, fmt::Debug, io, result::Result as StdResult}
 
 use thiserror::Error;
 
+use casper_types::bytesrepr;
+
 pub(crate) type Result<T> = StdResult<T, Error>;
 
 /// Error returned by the storage component.
@@ -18,11 +20,11 @@ pub enum Error {
 
     /// Failed to serialize data.
     #[error("serialization: {0}")]
-    Serialization(#[source] bincode::ErrorKind),
+    Serialization(String),
 
     /// Failed to deserialize data.
     #[error("deserialization: {0}")]
-    Deserialization(#[source] bincode::ErrorKind),
+    Deserialization(String),
 
     /// Internal storage component error.
     #[error("internal: {0}")]
@@ -30,12 +32,12 @@ pub enum Error {
 }
 
 impl Error {
-    pub(crate) fn from_serialization(error: bincode::ErrorKind) -> Self {
-        Error::Serialization(error)
+    pub(crate) fn from_serialization(error: bytesrepr::Error) -> Self {
+        Error::Serialization(error.to_string())
     }
 
-    pub(crate) fn from_deserialization(error: bincode::ErrorKind) -> Self {
-        Error::Deserialization(error)
+    pub(crate) fn from_deserialization(error: bytesrepr::Error) -> Self {
+        Error::Deserialization(error.to_string())
     }
 }
 
