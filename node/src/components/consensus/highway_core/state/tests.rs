@@ -19,6 +19,8 @@ pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
 pub(crate) const ALICE: ValidatorIndex = ValidatorIndex(0);
 pub(crate) const BOB: ValidatorIndex = ValidatorIndex(1);
 pub(crate) const CAROL: ValidatorIndex = ValidatorIndex(2);
+pub(crate) const DAN: ValidatorIndex = ValidatorIndex(3);
+pub(crate) const ERIC: ValidatorIndex = ValidatorIndex(4);
 
 pub(crate) const N: Observation<TestContext> = Observation::None;
 pub(crate) const F: Observation<TestContext> = Observation::Faulty;
@@ -208,6 +210,165 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
 
     // The state's own panorama has been updated correctly.
     assert_eq!(state.panorama, panorama!(F, b2, c1));
+    Ok(())
+}
+
+#[test]
+fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
+    let mut state = State::new_test(WEIGHTS, 0);
+    let mut rng = TestRng::new();
+
+    // 1. No equivocations – incoming votes doesn't violate LNC.
+    // Create votes as follows; a0, b0 are blocks:
+    //
+    // Alice: a0 — a1
+    //           /
+    // Bob:   b0
+    let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
+
+    // a1 does not violate LNC
+    let wvote = WireVote {
+        panorama: panorama!(a0, b0, N),
+        creator: ALICE,
+        instance_id: 1u64,
+        value: None,
+        seq_number: 1,
+        timestamp: 51.into(),
+        round_exp: 4u8,
+        endorsed: vec![],
+    };
+    assert_eq!(state.validate_lnc(&wvote), Ok(()));
+
+    // 2. Equivocation cited by one honest validator in the vote's panorama.
+    //
+    // Bob:      b0
+    //          / |
+    // Alice: a0  |
+    //            |
+    //        a0' |
+    //           \|
+    // Carol:    c0
+    let mut state = State::new_test(WEIGHTS, 0);
+    let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; a0, N, N)?;
+    let _a0_prime = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
+    // c0 violates LNC b/c it naively cites Alice's equivocation.
+    let mut c0 = WireVote {
+        panorama: panorama!(F, b0, N),
+        creator: CAROL,
+        instance_id: 1u64,
+        value: None,
+        seq_number: 0,
+        timestamp: 51.into(),
+        round_exp: 4u8,
+        endorsed: vec![],
+    };
+    assert_eq!(state.validate_lnc(&c0), Err(LncError::NaiveCitation(ALICE)));
+    // c0 claims that b0 is endorsed.
+    c0.endorsed = vec![b0];
+    // but we don't have these endorsements in the protocol state.
+    assert_eq!(
+        state.validate_lnc(&c0),
+        Err(LncError::MissingEndorsement(b0))
+    );
+    // Add endorsements for b0.
+    endorse!(state, rng, CAROL, b0);
+    assert_eq!(
+        state.validate_lnc(&c0),
+        Err(LncError::MissingEndorsement(b0))
+    );
+    endorse!(state, rng, BOB, b0);
+    // Now c0 cites ALICE's equivocations non-naively b/c b0 is endorsed.
+    assert_eq!(state.validate_lnc(&c0), Ok(()));
+
+    // 3. Equivocation cited by two honest validators in the vote's panorama – their votes need to
+    // be endorsed.
+    //
+    // Bob:      b0
+    //          / \
+    // Alice: a0   \
+    //              \
+    //        a0'    \
+    //           \   |
+    // Carol:    c0  |
+    //             \ |
+    // Dan:         d0
+
+    let weights_dan = &[Weight(3), Weight(4), Weight(5), Weight(5)];
+    let mut state = State::new_test(weights_dan, 0);
+    let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N, N)?;
+    let a0_prime = add_vote!(state, rng, ALICE, 0xA; N, N, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; a0, N, N, N)?;
+    let c0 = add_vote!(state, rng, CAROL, 48, 4u8, 0xB; a0_prime, N, N, N)?;
+    // d0 violates LNC b/c it naively cites Alice's equivocation.
+    let mut d0 = WireVote {
+        panorama: panorama!(F, b0, c0),
+        creator: DAN,
+        instance_id: 1u64,
+        value: None,
+        seq_number: 0,
+        timestamp: 51.into(),
+        round_exp: 4u8,
+        endorsed: vec![],
+    };
+    // None of the votes is marked as being endorsed – violates LNC.
+    assert_eq!(state.validate_lnc(&d0), Err(LncError::NaiveCitation(ALICE)));
+    d0.endorsed = vec![c0];
+    endorse!(state, rng, CAROL, c0);
+    // One endorsement isn't enough.
+    assert_eq!(
+        state.validate_lnc(&d0),
+        Err(LncError::MissingEndorsement(c0))
+    );
+    endorse!(state, rng, BOB, c0);
+    endorse!(state, rng, DAN, c0);
+    // Now d0 cites non-naively b/c c0 is endorsed.
+    assert_eq!(state.validate_lnc(&d0), Ok(()));
+
+    // 4. Multiple equivocators and indirect equivocations.
+    // Votes are seen as endorsed by `state` – does not violate LNC.
+    //
+    // Alice   a0<---------+
+    //                     |
+    //         a0'<--+     |
+    //               +     |
+    // Bob          b0<-----------+
+    //               +     |      |
+    // Carol   c0<---+     |      |
+    //                     |      |
+    //         c0'<--------+      |
+    //                     |      |
+    // Dan                 d0<----+
+    //                            +
+    // Eric                       e0
+
+    let weights_dan_eric = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
+    let mut state = State::new_test(weights_dan_eric, 0);
+    let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N, N, N)?;
+    let a0_prime = add_vote!(state, rng, ALICE, 0xA; N, N, N, N, N)?;
+    let c0 = add_vote!(state, rng, CAROL, 48, 4u8, 0xB; N, N, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; a0_prime, c0, N, N)?;
+    let c0_prime = add_vote!(state,rng, CAROL, 48,4u8, 0xC; N, N, N, N, N)?;
+    let d0 = add_vote!(state, rng, DAN, 51, 4u8, 0xD; a0, N, c0_prime, N, N)?;
+    // d0 violates LNC b/c it naively cites Alice's & Carol's equivocations.
+    let mut e0 = WireVote {
+        panorama: panorama!(F, b0, F, d0, N),
+        creator: ERIC,
+        instance_id: 1u64,
+        value: None,
+        seq_number: 0,
+        timestamp: 52.into(),
+        round_exp: 4u8,
+        endorsed: vec![],
+    };
+    assert_eq!(state.validate_lnc(&e0), Err(LncError::NaiveCitation(ALICE)));
+    e0.endorsed = vec![b0];
+    // Endorse b0.
+    endorse!(state, rng, BOB, b0);
+    endorse!(state, rng, DAN, b0);
+    endorse!(state, rng, ERIC, b0);
+    assert_eq!(state.validate_lnc(&e0), Ok(()));
     Ok(())
 }
 

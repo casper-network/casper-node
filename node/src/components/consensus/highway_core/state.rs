@@ -80,8 +80,12 @@ pub(crate) enum VoteError {
     Banned,
     #[error("The LNC rule was violated. Vote cited ({:?}) naively.", _0)]
     LncNaiveCitation(ValidatorIndex),
-    #[error("")]
-    LncMissingEndorsement,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum LncError<C: Context> {
+    NaiveCitation(ValidatorIndex),
+    MissingEndorsement(C::Hash),
 }
 
 /// A reason for a validator to be marked as faulty.
@@ -114,7 +118,7 @@ impl<C: Context> Fault<C> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct State<C: Context> {
     /// The fixed parameters.
     params: Params,
@@ -564,9 +568,13 @@ impl<C: Context> State<C> {
                 return Err(VoteError::ValueAfterTerminalBlock);
             }
         }
-        self.validate_lnc(wvote)
-            .map_err(|v| VoteError::LncViolated(self.vote(&v).creator))?;
-        Ok(())
+        match self.validate_lnc(wvote) {
+            Ok(_) => Ok(()),
+            Err(LncError::MissingEndorsement(vhash)) => {
+                panic!("Protocol state is missing endorsement for {:?}", &vhash)
+            }
+            Err(LncError::NaiveCitation(vidx)) => Err(VoteError::LncNaiveCitation(vidx)),
+        }
     }
 
     /// Validates whether `wvote` violates the LNC rule.
@@ -574,16 +582,8 @@ impl<C: Context> State<C> {
     ///
     /// Vote violates LNC rule if it cites naively an equivocation.
     /// If it cites equivocator then it needs to endorse votes that cite equivocating votes.
-    fn validate_lnc(&self, wvote: &WireVote<C>) -> Result<(), C::Hash> {
-        match wvote
-            .panorama
-            .need_endorsements(self)
-            .into_iter()
-            .find(|v| !wvote.is_endorsed(v))
-        {
-            Some(v) => Err(v),
-            None => Ok(()),
-        }
+    fn validate_lnc(&self, wvote: &WireVote<C>) -> Result<(), LncError<C>> {
+        todo!()
     }
 
     /// Returns `true` if the `bhash` is a block that can have no children.
