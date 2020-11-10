@@ -89,12 +89,14 @@ use crate::{
     },
 };
 
-// TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
-// TBD gas * CONV_RATE = motes
-pub const CONV_RATE: u64 = 10;
+/// Rate for motes/gas conversion.
+///
+/// gas * CONV_RATE = motes
+/// motes / CONV_RATE = gas
+pub const CONV_RATE: u64 = 1;
 
 lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(550_000_000 * CONV_RATE);
+    pub static ref MAX_PAYMENT: U512 = U512::from(2_500_000_000 * CONV_RATE);
 }
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
