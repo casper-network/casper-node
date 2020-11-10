@@ -13,8 +13,7 @@ use crate::{
         chainspec_loader::Chainspec,
         consensus::{
             consensus_protocol::{
-                BlockContext, ConsensusProtocol, ConsensusProtocolResult as CpResult,
-                FinalizedBlock,
+                BlockContext, ConsensusProtocol, FinalizedBlock, ProtocolOutcome,
             },
             traits::Context,
             ConsensusMessage, EraId, Event,
@@ -127,13 +126,17 @@ where
         msg: Vec<u8>,
         evidence_only: bool,
         _rng: &mut NodeRng,
-    ) -> Vec<CpResult<NodeId, C>> {
+    ) -> Vec<ProtocolOutcome<NodeId, C>> {
         match bincode::deserialize::<Message<C>>(msg.as_slice()) {
-            Err(err) => vec![CpResult::InvalidIncomingMessage(msg, sender, err.into())],
+            Err(err) => vec![ProtocolOutcome::InvalidIncomingMessage(
+                msg,
+                sender,
+                err.into(),
+            )],
             Ok(Message::Evidence(vid)) => {
                 if self.evidence.insert(vid.clone()) {
                     let msg = Message::Evidence::<C>(vid);
-                    vec![CpResult::CreatedGossipMessage(
+                    vec![ProtocolOutcome::CreatedGossipMessage(
                         bincode::serialize(&msg).expect("should serialize message"),
                     )]
                 } else {
@@ -150,7 +153,8 @@ where
                 timestamp,
                 proposer,
             }) => {
-                let result = CpResult::ValidateConsensusValue(sender, value.clone(), timestamp);
+                let result =
+                    ProtocolOutcome::ValidateConsensusValue(sender, value.clone(), timestamp);
                 self.pending_blocks.push_back(PendingBlock {
                     value,
                     timestamp,
@@ -176,7 +180,7 @@ where
                     proposer,
                 };
                 self.finalized_blocks.push(fb.clone());
-                let result = CpResult::FinalizedBlock(fb);
+                let result = ProtocolOutcome::FinalizedBlock(fb);
                 vec![result]
             }
         }
@@ -186,7 +190,7 @@ where
         &mut self,
         _timestamp: Timestamp,
         _rng: &mut NodeRng,
-    ) -> Vec<CpResult<NodeId, C>> {
+    ) -> Vec<ProtocolOutcome<NodeId, C>> {
         todo!("implement handle_timer")
     }
 
@@ -195,7 +199,7 @@ where
         _value: C::ConsensusValue,
         _block_context: BlockContext,
         _rng: &mut NodeRng,
-    ) -> Vec<CpResult<NodeId, C>> {
+    ) -> Vec<ProtocolOutcome<NodeId, C>> {
         todo!("implement propose")
     }
 
@@ -204,7 +208,7 @@ where
         _value: &C::ConsensusValue,
         _valid: bool,
         _rng: &mut NodeRng,
-    ) -> Vec<CpResult<NodeId, C>> {
+    ) -> Vec<ProtocolOutcome<NodeId, C>> {
         todo!("implement resolve_validity")
     }
 
@@ -213,7 +217,7 @@ where
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         _timestamp: Timestamp,
-    ) -> Vec<CpResult<NodeId, C>> {
+    ) -> Vec<ProtocolOutcome<NodeId, C>> {
         self.active_validator = Some((our_id, secret));
         vec![]
     }
@@ -232,11 +236,15 @@ where
         }
     }
 
-    fn request_evidence(&self, sender: NodeId, vid: &C::ValidatorId) -> Vec<CpResult<NodeId, C>> {
+    fn request_evidence(
+        &self,
+        sender: NodeId,
+        vid: &C::ValidatorId,
+    ) -> Vec<ProtocolOutcome<NodeId, C>> {
         if self.evidence.contains(vid) {
             let msg = Message::<C>::Evidence(vid.clone());
             let ser_msg = bincode::serialize(&msg).expect("should serialize message");
-            let result = CpResult::CreatedTargetedMessage(ser_msg, sender);
+            let result = ProtocolOutcome::CreatedTargetedMessage(ser_msg, sender);
             vec![result]
         } else {
             vec![]
