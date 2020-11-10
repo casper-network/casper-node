@@ -241,7 +241,7 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
     assert_eq!(state.validate_lnc(&wvote), Ok(()));
 
     // 2. Equivocation cited by one honest validator in the vote's panorama.
-    //
+    //    Does NOT violate LNC.
     // Bob:      b0
     //          / |
     // Alice: a0  |
@@ -264,22 +264,6 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
         round_exp: 4u8,
         endorsed: vec![],
     };
-    assert_eq!(state.validate_lnc(&c0), Err(LncError::NaiveCitation(ALICE)));
-    // c0 claims that b0 is endorsed.
-    c0.endorsed = vec![b0];
-    // but we don't have these endorsements in the protocol state.
-    assert_eq!(
-        state.validate_lnc(&c0),
-        Err(LncError::MissingEndorsement(b0))
-    );
-    // Add endorsements for b0.
-    endorse!(state, rng, CAROL, b0);
-    assert_eq!(
-        state.validate_lnc(&c0),
-        Err(LncError::MissingEndorsement(b0))
-    );
-    endorse!(state, rng, BOB, b0);
-    // Now c0 cites ALICE's equivocations non-naively b/c b0 is endorsed.
     assert_eq!(state.validate_lnc(&c0), Ok(()));
 
     // 3. Equivocation cited by two honest validators in the vote's panorama – their votes need to
