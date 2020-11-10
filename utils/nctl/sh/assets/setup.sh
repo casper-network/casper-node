@@ -29,13 +29,13 @@ function _set_bin() {
 	for contract in "${NCTL_CONTRACTS_SYSTEM[@]}"
 	do
         cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/$contract $1/bin
-	done  
+	done
 
     # Set client contracts.
 	for contract in "${NCTL_CONTRACTS_CLIENT[@]}"
 	do
         cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/$contract $1/bin
-	done  
+	done
 }
 
 #######################################
@@ -62,6 +62,15 @@ function _set_chainspec() {
     # Set config setting: genesis.timestamp.
     GENESIS_TIMESTAMP=$(get_genesis_timestamp $3)
     sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = \"${GENESIS_TIMESTAMP}\"/" $path_config > /dev/null 2>&1
+
+    # Set config settings:
+    #    genesis.mint_installer_path
+    #    genesis.pos_installer_path
+    #    genesis.standard_payment_installer_path
+    #    genesis.auction_installer_path
+    # These are paths to WASM smart contracts, and they still need to point
+    # relative to nctl's assets dir.
+    sed -i "s?\.\./\.\./target/wasm32-unknown-unknown/release/?../bin/?g" $path_config > /dev/null 2>&1
 
     # Set accounts.csv.
     touch $1/chainspec/accounts.csv
