@@ -44,7 +44,7 @@ pub struct EraEnd<VID> {
 /// A finalized block. All nodes are guaranteed to see the same sequence of blocks, and to agree
 /// about all the information contained in this type, as long as the total weight of faulty
 /// validators remains below the threshold.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct FinalizedBlock<C: Context> {
     /// The finalized value.
     pub(crate) value: C::ConsensusValue,

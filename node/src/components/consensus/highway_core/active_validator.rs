@@ -257,12 +257,18 @@ impl<C: Context> ActiveValidator<C> {
     ) -> bool {
         let earliest_vote_time = self.earliest_vote_time(state);
         if timestamp < earliest_vote_time {
-            warn!(%earliest_vote_time, %timestamp, "earliest_vote_time is greater than current time stamp");
+            warn!(
+                %earliest_vote_time, %timestamp,
+                "earliest_vote_time is greater than current time stamp"
+            );
             return false;
         }
         let vote = state.vote(vhash);
         if vote.timestamp > timestamp {
-            error!(%vote.timestamp, %timestamp, "added a vote with a future timestamp, should never happen");
+            error!(
+                %vote.timestamp, %timestamp,
+                "added a vote with a future timestamp, should never happen"
+            );
             return false;
         }
         // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.

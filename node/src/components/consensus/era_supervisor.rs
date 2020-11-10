@@ -59,6 +59,8 @@ pub use self::era::{Era, EraId};
 use crate::components::contract_runtime::ValidatorWeightsByEraIdRequest;
 
 mod era;
+#[cfg(test)]
+mod tests;
 
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID

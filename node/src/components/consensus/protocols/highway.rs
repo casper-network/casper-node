@@ -369,7 +369,6 @@ enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
     RequestDependency(Dependency<C>),
 }
-
 type CpResult<I, C> = ConsensusProtocolResult<I, C>;
 
 impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
