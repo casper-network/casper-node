@@ -3,16 +3,16 @@ use std::{
     str::FromStr,
 };
 
+use crate::rpcs::docs::DocExample;
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use libp2p::PeerId;
 #[cfg(test)]
 use rand::{Rng, RngCore};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
-use crate::rpcs::docs::DocExample;
 
 #[cfg(test)]
-use crate::{testing::TestRng};
+use crate::testing::TestRng;
 use crate::tls::KeyFingerprint;
 
 /// The network identifier for a node.
