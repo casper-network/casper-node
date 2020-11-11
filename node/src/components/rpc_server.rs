@@ -295,6 +295,10 @@ where
                 peers,
                 main_responder,
             } => main_responder.respond(peers).ignore(),
+            Event::GetRpcsResult {
+                rpcs,
+                main_responder,
+            } => main_responder.respond(rpcs).ignore(),
             Event::GetMetricsResult {
                 text,
                 main_responder,

@@ -24,6 +24,7 @@ pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: Effe
     let rpc_get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
     let rpc_get_status = rpcs::info::GetStatus::create_filter(effect_builder);
     let rpc_get_auction_info = rpcs::state::GetAuctionInfo::create_filter(effect_builder);
+    let rpc_get_rpcs = rpcs::docs::GetRpcs::create_filter(effect_builder);
 
     let service = warp_json_rpc::service(
         rpc_put_deploy
@@ -34,7 +35,8 @@ pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: Effe
             .or(rpc_get_deploy)
             .or(rpc_get_peers)
             .or(rpc_get_status)
-            .or(rpc_get_auction_info),
+            .or(rpc_get_auction_info)
+            .or(rpc_get_rpcs),
     );
 
     let mut server_address = match utils::resolve_address(&config.address) {
