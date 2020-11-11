@@ -1,5 +1,7 @@
 //! RPCs related to finding information about currently supported RPCs.
 
+use std::{collections::{HashMap}, net::{IpAddr, Ipv4Addr, SocketAddr}};
+
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
@@ -9,11 +11,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use warp_json_rpc::Builder;
 
-use super::{
-    info::{GetDeploy, GetDeployParams, GetDeployResult},
-    Error, ReactorEventT, RpcWithParams, RpcWithoutParams, RpcWithoutParamsExt,
-};
-use crate::{components::CLIENT_API_VERSION, effect::EffectBuilder, types::Deploy};
+use super::{Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RpcWithoutParamsExt, account::{PutDeploy, PutDeployParams, PutDeployResult}, chain::{
+        BlockIdentifier, GetBlock, GetBlockParams, GetBlockResult, GetStateRootHash,
+        GetStateRootHashParams, GetStateRootHashResult,
+    }, info::GetStatus, info::{GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult}};
+use crate::{components::{CLIENT_API_VERSION, chainspec_loader::ChainspecInfo}, effect::EffectBuilder, types::{Block, Deploy, GetStatusResult, NodeId, PeersMap, StatusFeed}};
 
 use casper_types::bytesrepr::FromBytes;
 
@@ -47,6 +49,11 @@ lazy_static! {
     ];
     static ref DEPLOY: Deploy = FromBytes::from_bytes(&DEPLOY_BYTES).unwrap().0;
 }
+/// A trait to generate static hardcode representations of data structures to present for RPC calls.
+pub trait DocExample {
+    /// Generate a hardcoded, possibly invalid representation of the requested data structure.
+    fn doc_example() -> Self;
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RequestParams {
@@ -69,7 +76,7 @@ pub struct RpcDocs {
     method: String,
     summary: String,
     notes: Option<String>,
-    request_params: RequestParams,
+    request_params: Option<RequestParams>,
     response_result: ResponseResult,
 }
 
@@ -112,7 +119,69 @@ impl GetRpcsResult {
             method: T::METHOD.to_string(),
             summary: summary.to_string(),
             notes: notes.map(|string| string.to_string()),
-            request_params,
+            request_params: Some(request_params),
+            response_result,
+        };
+
+        self.rpcs.push(docs);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn push_with_optional_params<T: RpcWithOptionalParams>(
+        &mut self,
+        summary: &str,
+        notes: Option<&str>,
+        request_params_docs_url: &str,
+        request_params_notes: Option<&str>,
+        request_params_example: T::OptionalRequestParams,
+        response_result_docs_url: &str,
+        response_result_notes: Option<&str>,
+        response_result_example: T::ResponseResult,
+    ) {
+        let request_params = RequestParams {
+            requirement: "params may or may not be neccessary".to_string(),
+            docs_url: Some(request_params_docs_url.to_string()),
+            notes: request_params_notes.map(|string| string.to_string()),
+            example: Some(json!(request_params_example)),
+        };
+
+        let response_result = ResponseResult {
+            docs_url: Some(response_result_docs_url.to_string()),
+            notes: response_result_notes.map(|string| string.to_string()),
+            example: json!(response_result_example),
+        };
+
+        let docs = RpcDocs {
+            method: T::METHOD.to_string(),
+            summary: summary.to_string(),
+            notes: notes.map(|string| string.to_string()),
+            request_params: Some(request_params),
+            response_result,
+        };
+
+        self.rpcs.push(docs);
+    }
+
+    #[allow(dead_code)]
+    fn push_without_params<T: RpcWithoutParams>(
+        &mut self,
+        summary: &str,
+        notes: Option<&str>,
+        response_result_docs_url: &str,
+        response_result_notes: Option<&str>,
+        response_result_example: T::ResponseResult,
+    ) {
+        let response_result = ResponseResult {
+            docs_url: Some(response_result_docs_url.to_string()),
+            notes: response_result_notes.map(|string| string.to_string()),
+            example: json!(response_result_example),
+        };
+
+        let docs = RpcDocs {
+            method: T::METHOD.to_string(),
+            summary: summary.to_string(),
+            notes: notes.map(|string| string.to_string()),
+            request_params: None,
             response_result,
         };
 
@@ -135,20 +204,89 @@ impl RpcWithoutParamsExt for GetRpcs {
         response_builder: Builder,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            let request_params = GetDeployParams {
-                deploy_hash: *DEPLOY.id(),
-            };
-
-            let response_result = GetDeployResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                deploy: DEPLOY.clone(),
-                execution_results: vec![]
-            };
-
+            // Create the RPC Result to populate. 
             let mut result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 rpcs: vec![]
             };
+
+            // Setup PutDeploy example. 
+            let deploy = Deploy::doc_example();
+            let response_result = PutDeployResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                deploy_hash: *deploy.id()
+            };
+            let request_params = PutDeployParams {
+                deploy
+            };
+            result.push_with_params::<PutDeploy>(
+                "Creates a Deploy and sends it to the network for execution.",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/account/struct.PutDeployParams.html",
+                None,
+                request_params,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/account/struct.PutDeployResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetBlock Example. 
+
+            let block = Block::doc_example();
+
+            let request_params = GetBlockParams {
+                block_identifier: BlockIdentifier::Height(0),
+            };
+
+            let response_result = GetBlockResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                block: Some(block)
+            };
+
+            result.push_with_optional_params::<GetBlock>(
+                "Retrieves a `Block` from the network.",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetBlockParams.html",
+                Some(r#"The request params can identify a Block by its height (as shown) or its hash (e.g. "Hash": 3c53f1b1c87d977222c6503832ef8592232c15109144ebbd9354f1eb344c0682"#),
+                request_params,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetBlockResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetStateRootHash example. 
+            let block = Block::doc_example();
+            let request_params = GetStateRootHashParams {
+                block_identifier: BlockIdentifier::Hash(*block.hash()),
+            };
+            let response_result = GetStateRootHashResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                state_root_hash: Some(*block.state_root_hash()),
+            };
+            result.push_with_optional_params::<GetStateRootHash>(
+                "Retrieves a state root hash at a given Block",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetStateRootHashParams.html",
+                Some(r#"The request params can identify a Block by its hash (as shown) or its height (e.g. "Height": 999"#),
+                request_params,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetStateRootHashResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetDeploy Example. 
+            let deploy = Deploy::doc_example();
+
+            let request_params = GetDeployParams {
+                deploy_hash: *deploy.id()
+            };
+
+            let response_result = GetDeployResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                deploy,
+                execution_results: vec![]
+            };
+
             result.push_with_params::<GetDeploy>(
                 "Retrieves a Deploy from the network",
                 None,
@@ -159,6 +297,48 @@ impl RpcWithoutParamsExt for GetRpcs {
                 None,
                 response_result,
             );
+
+            // Setup GetPeers.
+            let node_id = NodeId::doc_example();
+            let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127,0,0,1)),8888);
+            let mut peers_hashmap: HashMap<NodeId, SocketAddr> = HashMap::new();
+            peers_hashmap.insert(node_id, socket_addr);
+
+            let peers_for_status = peers_hashmap.clone();
+
+            let peers = PeersMap::from(peers_hashmap).into();
+            let response_result = GetPeersResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                peers
+            };
+
+            result.push_without_params::<GetPeers>(
+                "Get peers connected to this node",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetPeersResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetStatus.
+            let status_feed = StatusFeed::<NodeId> {
+                last_added_block: Some(Block::doc_example()),
+                peers: peers_for_status,
+                chainspec_info: ChainspecInfo::doc_example(),
+                version: crate::VERSION_STRING.as_str()
+            };
+
+            let mut response_result = GetStatusResult::from(status_feed);
+            response_result.set_api_version(CLIENT_API_VERSION.clone());
+
+            result.push_without_params::<GetStatus>(
+                "Get the current status of the node",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetStatusResult.html",
+                None,
+                response_result,
+            );
+
             Ok(response_builder.success(result)?)
         }
         .boxed()

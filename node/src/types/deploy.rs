@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
+use crate::rpcs::docs::DocExample;
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
@@ -448,6 +449,46 @@ impl Deploy {
             session,
             &secret_key,
             rng,
+        )
+    }
+}
+
+impl DocExample for ExecutableDeployItem {
+    fn doc_example() -> Self {
+        let name = String::from("example_contract");
+        let entry_point = String::from("example_entry_point");
+        let args = [0u8; 32].to_vec();
+        ExecutableDeployItem::StoredContractByName {
+            name,
+            entry_point,
+            args,
+        }
+    }
+}
+
+impl DocExample for Deploy {
+    fn doc_example() -> Self {
+        let mut rng = crate::new_rng();
+        let timestamp = Timestamp::zero();
+        let ttl = TimeDiff::from(60_000);
+        let gas_price: u64 = 66;
+        let dependencies = vec![DeployHash::new(Digest::doc_example())];
+        let chain_name = String::from("casper-example");
+        let payment = ExecutableDeployItem::doc_example();
+        let session = ExecutableDeployItem::doc_example();
+
+        let secret_key = SecretKey::doc_example();
+
+        Deploy::new(
+            timestamp,
+            ttl,
+            gas_price,
+            dependencies,
+            chain_name,
+            payment,
+            session,
+            &secret_key,
+            &mut rng,
         )
     }
 }

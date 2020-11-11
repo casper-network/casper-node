@@ -29,6 +29,7 @@ use crate::{
         requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    rpcs::docs::DocExample,
     NodeRng,
 };
 pub use chainspec::Chainspec;
@@ -82,6 +83,15 @@ impl ChainspecInfo {
 
     pub fn root_hash(&self) -> Option<Digest> {
         self.root_hash
+    }
+}
+
+impl DocExample for ChainspecInfo {
+    fn doc_example() -> Self {
+        ChainspecInfo {
+            name: String::from("casper-example"),
+            root_hash: Some(Digest::doc_example()),
+        }
     }
 }
 
