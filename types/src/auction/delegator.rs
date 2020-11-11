@@ -12,16 +12,16 @@ use crate::{
 #[derive(Debug, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Delegator {
     staked_amount: U512,
-    rewards_purse: URef,
+    bonding_purse: URef,
     delegatee: PublicKey,
 }
 
 impl Delegator {
     /// Creates a new [`Delegator`]
-    pub fn new(staked_amount: U512, rewards_purse: URef, delegatee: PublicKey) -> Self {
+    pub fn new(staked_amount: U512, bonding_purse: URef, delegatee: PublicKey) -> Self {
         Delegator {
             staked_amount,
-            rewards_purse,
+            bonding_purse,
             delegatee,
         }
     }
@@ -66,14 +66,14 @@ impl ToBytes for Delegator {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.staked_amount.to_bytes()?);
-        buffer.extend(self.rewards_purse.to_bytes()?);
+        buffer.extend(self.bonding_purse.to_bytes()?);
         buffer.extend(self.delegatee.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
         self.staked_amount.serialized_length()
-            + self.rewards_purse.serialized_length()
+            + self.bonding_purse.serialized_length()
             + self.delegatee.serialized_length()
     }
 }
@@ -81,12 +81,12 @@ impl ToBytes for Delegator {
 impl FromBytes for Delegator {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (staked_amount, bytes) = U512::from_bytes(bytes)?;
-        let (rewards_purse, bytes) = URef::from_bytes(bytes)?;
+        let (bonding_purse, bytes) = URef::from_bytes(bytes)?;
         let (delegatee, bytes) = PublicKey::from_bytes(bytes)?;
         Ok((
             Delegator {
                 staked_amount,
-                rewards_purse,
+                bonding_purse,
                 delegatee,
             },
             bytes,
