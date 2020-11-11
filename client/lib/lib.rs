@@ -313,6 +313,11 @@ pub fn get_auction_info(maybe_rpc_id: &str, node_address: &str, verbose: bool) -
     RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_auction_info()
 }
 
+/// Retrieves all currently supported RPCS.
+pub fn get_rpcs(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_rpcs()
+}
+
 /// Container for `Deploy` construction options.
 #[derive(Default)]
 pub struct DeployStrParams<'a> {

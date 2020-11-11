@@ -14,8 +14,8 @@ use casper_types::auction::EraValidators;
 
 use crate::{
     effect::{requests::RpcRequest, Responder},
-    rpcs::chain::BlockIdentifier,
-    types::{Block, Deploy, DeployHash, DeployMetadata, NodeId},
+    rpcs::{chain::BlockIdentifier, docs::RpcDocs},
+    types::{Block, Deploy, DeployHash, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -55,6 +55,10 @@ pub enum Event {
     GetBalanceResult {
         result: Result<BalanceResult, engine_state::Error>,
         main_responder: Responder<Result<BalanceResult, engine_state::Error>>,
+    },
+    GetRpcsResult {
+        rpcs: Vec<RpcDocs>,
+        main_responder: Responder<Vec<RpcDocs>>,
     },
 }
 
@@ -97,6 +101,7 @@ impl Display for Event {
                 Some(txt) => write!(formatter, "get metrics ({} bytes)", txt.len()),
                 None => write!(formatter, "get metrics (failed)"),
             },
+            Event::GetRpcsResult { rpcs, .. } => write!(formatter, "rpc docs: {:?}", rpcs),
         }
     }
 }

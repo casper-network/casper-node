@@ -4,6 +4,7 @@
 
 pub mod account;
 pub mod chain;
+pub mod docs;
 pub mod info;
 pub mod state;
 
