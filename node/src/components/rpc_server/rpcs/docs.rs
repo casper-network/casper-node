@@ -1,6 +1,9 @@
 //! RPCs related to finding information about currently supported RPCs.
 
-use std::{collections::{HashMap}, net::{IpAddr, Ipv4Addr, SocketAddr}};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+};
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -11,11 +14,21 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use warp_json_rpc::Builder;
 
-use super::{Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RpcWithoutParamsExt, account::{PutDeploy, PutDeployParams, PutDeployResult}, chain::{
+use super::{
+    account::{PutDeploy, PutDeployParams, PutDeployResult},
+    chain::{
         BlockIdentifier, GetBlock, GetBlockParams, GetBlockResult, GetStateRootHash,
         GetStateRootHashParams, GetStateRootHashResult,
-    }, info::GetStatus, info::{GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult}};
-use crate::{components::{CLIENT_API_VERSION, chainspec_loader::ChainspecInfo}, effect::EffectBuilder, types::{Block, Deploy, GetStatusResult, NodeId, PeersMap, StatusFeed}};
+    },
+    info::{GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult, GetStatus},
+    Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
+    RpcWithoutParamsExt,
+};
+use crate::{
+    components::{chainspec_loader::ChainspecInfo, CLIENT_API_VERSION},
+    effect::EffectBuilder,
+    types::{Block, Deploy, GetStatusResult, NodeId, PeersMap, StatusFeed},
+};
 
 use casper_types::bytesrepr::FromBytes;
 
