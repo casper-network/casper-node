@@ -26,7 +26,7 @@ use crate::{
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 pub const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum GenesisResult {
     RootNotFound,
     KeyNotFound(Key),
@@ -34,6 +34,7 @@ pub enum GenesisResult {
     Serialization(bytesrepr::Error),
     Success {
         post_state_hash: Blake2bHash,
+        #[serde(skip_serializing)]
         effect: ExecutionEffect,
     },
 }

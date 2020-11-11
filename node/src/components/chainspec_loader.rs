@@ -36,14 +36,14 @@ pub(crate) use chainspec::{DeployConfig, HighwayConfig};
 pub use error::Error;
 
 /// `ChainspecHandler` events.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 pub enum Event {
     #[from]
     Request(ChainspecLoaderRequest),
     /// The result of the `ChainspecHandler` putting a `Chainspec` to the storage component.
     PutToStorage { version: Version },
     /// The result of contract runtime running the genesis process.
-    CommitGenesisResult(Result<GenesisResult, engine_state::Error>),
+    CommitGenesisResult(#[serde(skip_serializing)] Result<GenesisResult, engine_state::Error>),
 }
 
 impl Display for Event {

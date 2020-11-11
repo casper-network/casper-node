@@ -32,15 +32,15 @@ use crate::{
 pub enum Event {
     /// Chainspec handler event.
     #[from]
-    Chainspec(#[serde(skip_serializing)] chainspec_loader::Event),
+    Chainspec(chainspec_loader::Event),
 
     /// Storage event.
     #[from]
-    Storage(#[serde(skip_serializing)] storage::Event<Storage>),
+    Storage(storage::Event<Storage>),
 
     /// Contract runtime event.
     #[from]
-    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
+    ContractRuntime(contract_runtime::Event),
 }
 
 impl From<StorageRequest<Storage>> for Event {
