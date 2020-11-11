@@ -580,7 +580,7 @@ pub(crate) mod tests {
         components::consensus::{
             highway_core::{
                 evidence::{Evidence, EvidenceError},
-                highway::{Highway, SignedWireUnit, Vertex, VertexError, UnitError, WireUnit},
+                highway::{Highway, SignedWireUnit, UnitError, Vertex, VertexError, WireUnit},
                 state::{
                     tests::{
                         TestContext, TestSecret, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
