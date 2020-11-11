@@ -418,7 +418,7 @@ where
                         if !is_faulty {
                             self.store_vertex_for_addition_later(timestamp, sender, pvv)
                         } else {
-                            return vec![];
+                            vec![]
                         }
                     }
                     _ => {
@@ -427,7 +427,7 @@ where
                         if self.vertex_deps.contains_key(&pvv.inner().id()) || !is_faulty {
                             self.add_vertices(vec![(sender, pvv)], rng)
                         } else {
-                            return vec![];
+                            vec![]
                         }
                     }
                 }
