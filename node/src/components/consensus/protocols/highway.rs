@@ -304,7 +304,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // register the proposal before the meter is aware that a new round has started, and it
         // will reject the proposal.
         if vv.is_proposal() {
-            // unwraps are safe, as if value is `Some`, this is already a vote
+            // unwraps are safe, as if value is `Some`, this is already a unit
             trace!(
                 now = Timestamp::now().millis(),
                 timestamp = vv.inner().timestamp().unwrap().millis(),
