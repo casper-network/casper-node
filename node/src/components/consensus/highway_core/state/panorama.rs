@@ -7,7 +7,7 @@ use crate::{
     components::consensus::{
         highway_core::{
             highway::Dependency,
-            state::{State, Vote, VoteError},
+            state::{State, Unit, UnitError},
             validators::{ValidatorIndex, ValidatorMap},
         },
         traits::Context,
@@ -22,9 +22,9 @@ use crate::{
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) enum Observation<C: Context> {
-    /// No vote by that validator was observed yet.
+    /// No unit by that validator was observed yet.
     None,
-    /// The validator's latest vote.
+    /// The validator's latest unit.
     Correct(C::Hash),
     /// The validator has been seen
     Faulty,
@@ -44,7 +44,7 @@ where
 }
 
 impl<C: Context> Observation<C> {
-    /// Returns the vote hash, if this is a correct observation.
+    /// Returns the unit hash, if this is a correct observation.
     pub(crate) fn correct(&self) -> Option<&C::Hash> {
         match self {
             Self::None | Self::Faulty => None,
@@ -71,7 +71,7 @@ impl<C: Context> Observation<C> {
         match (self, other) {
             (Observation::Faulty, _) | (_, Observation::None) => true,
             (Observation::Correct(hash0), Observation::Correct(hash1)) => {
-                hash0 == hash1 || state.vote(hash0).panorama.sees_correct(state, hash1)
+                hash0 == hash1 || state.unit(hash0).panorama.sees_correct(state, hash1)
             }
             (_, _) => false,
         }
@@ -81,7 +81,7 @@ impl<C: Context> Observation<C> {
     fn missing_dep(&self, state: &State<C>, idx: ValidatorIndex) -> Option<Dependency<C>> {
         match self {
             Observation::Faulty if !state.is_faulty(idx) => Some(Dependency::Evidence(idx)),
-            Observation::Correct(hash) if !state.has_vote(hash) => Some(Dependency::Vote(*hash)),
+            Observation::Correct(hash) if !state.has_unit(hash) => Some(Dependency::Unit(*hash)),
             _ => None,
         }
     }
@@ -101,33 +101,33 @@ impl<C: Context> Panorama<C> {
         self.iter().any(Observation::is_correct)
     }
 
-    /// Returns an iterator over all honest validators' latest votes.
+    /// Returns an iterator over all honest validators' latest units.
     pub(crate) fn iter_correct<'a>(
         &'a self,
         state: &'a State<C>,
-    ) -> impl Iterator<Item = &'a Vote<C>> {
-        let to_vote = move |vh: &C::Hash| state.vote(vh);
-        self.iter_correct_hashes().map(to_vote)
+    ) -> impl Iterator<Item = &'a Unit<C>> {
+        let to_unit = move |vh: &C::Hash| state.unit(vh);
+        self.iter_correct_hashes().map(to_unit)
     }
 
-    /// Returns an iterator over all honest validators' latest votes' hashes.
+    /// Returns an iterator over all honest validators' latest units' hashes.
     pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
         self.iter().filter_map(Observation::correct)
     }
 
-    /// Returns the correct sequence number for a new vote by `vidx` with this panorama.
+    /// Returns the correct sequence number for a new unit by `vidx` with this panorama.
     pub(crate) fn next_seq_num(&self, state: &State<C>, vidx: ValidatorIndex) -> u64 {
-        let add1 = |vh: &C::Hash| state.vote(vh).seq_number + 1;
+        let add1 = |vh: &C::Hash| state.unit(vh).seq_number + 1;
         self[vidx].correct().map_or(0, add1)
     }
 
-    /// Returns `true` if `self` sees the creator of `hash` as correct, and sees that vote.
+    /// Returns `true` if `self` sees the creator of `hash` as correct, and sees that unit.
     pub(crate) fn sees_correct(&self, state: &State<C>, hash: &C::Hash) -> bool {
-        let vote = state.vote(hash);
+        let unit = state.unit(hash);
         let can_see = |latest_hash: &C::Hash| {
-            Some(hash) == state.find_in_swimlane(latest_hash, vote.seq_number)
+            Some(hash) == state.find_in_swimlane(latest_hash, unit.seq_number)
         };
-        self.get(vote.creator).correct().map_or(false, can_see)
+        self.get(unit.creator).correct().map_or(false, can_see)
     }
 
     /// Merges two panoramas into a new one.
@@ -143,13 +143,13 @@ impl<C: Context> Panorama<C> {
         Panorama::from(observations)
     }
 
-    /// Returns the panorama seeing all votes seen by `self` with a timestamp no later than
+    /// Returns the panorama seeing all units seen by `self` with a timestamp no later than
     /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
     pub(crate) fn cutoff(&self, state: &State<C>, timestamp: Timestamp) -> Panorama<C> {
         let obs_cutoff = |obs: &Observation<C>| match obs {
             Observation::Correct(vhash) => state
                 .swimlane(vhash)
-                .find(|(_, vote)| vote.timestamp <= timestamp)
+                .find(|(_, unit)| unit.timestamp <= timestamp)
                 .map(|(vh, _)| *vh)
                 .map_or(Observation::None, Observation::Correct),
             obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
@@ -170,18 +170,18 @@ impl<C: Context> Panorama<C> {
         pairs_iter.all(|(obs_self, obs_other)| obs_self.geq(state, obs_other))
     }
 
-    /// Returns `Ok(())` if `self` is valid, i.e. it contains the latest votes of some substate.
+    /// Returns `Ok(())` if `self` is valid, i.e. it contains the latest units of some substate.
     ///
-    /// Panics if the vote has missing dependencies.
-    pub(super) fn validate(&self, state: &State<C>) -> Result<(), VoteError> {
+    /// Panics if the unit has missing dependencies.
+    pub(super) fn validate(&self, state: &State<C>) -> Result<(), UnitError> {
         for (idx, observation) in self.enumerate() {
             if let Some(hash) = observation.correct() {
-                let vote = state.vote(hash);
-                if vote.creator != idx {
-                    return Err(VoteError::PanoramaIndex(vote.creator, idx));
+                let unit = state.unit(hash);
+                if unit.creator != idx {
+                    return Err(UnitError::PanoramaIndex(unit.creator, idx));
                 }
-                if !self.geq(state, &vote.panorama) {
-                    return Err(VoteError::InconsistentPanorama(idx));
+                if !self.geq(state, &unit.panorama) {
+                    return Err(UnitError::InconsistentPanorama(idx));
                 }
             }
         }

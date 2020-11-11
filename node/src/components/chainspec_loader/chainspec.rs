@@ -92,7 +92,7 @@ pub(crate) struct HighwayConfig {
     pub(crate) booking_duration: TimeDiff,
     pub(crate) entropy_duration: TimeDiff,
     // TODO: Do we need this? When we see the switch block finalized it should suffice to keep
-    // gossiping, without producing new votes. Everyone else will eventually see the same finality.
+    // gossiping, without producing new units. Everyone else will eventually see the same finality.
     pub(crate) voting_period_duration: TimeDiff,
     pub(crate) finality_threshold_percent: u8,
     pub(crate) minimum_round_exponent: u8,

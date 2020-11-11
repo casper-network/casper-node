@@ -71,26 +71,26 @@ impl From<<TestContext as Context>::Hash> for Observation<TestContext> {
     }
 }
 
-/// Returns the cause of the error, dropping the `WireVote`.
-fn vote_err(err: AddVoteError<TestContext>) -> VoteError {
+/// Returns the cause of the error, dropping the `WireUnit`.
+fn unit_err(err: AddUnitError<TestContext>) -> UnitError {
     err.cause
 }
 
-/// An error that occurred when trying to add a vote.
+/// An error that occurred when trying to add a unit.
 #[derive(Debug, Error)]
 #[error("{:?}", .cause)]
-pub(crate) struct AddVoteError<C: Context> {
-    /// The invalid vote that was not added to the protocol state.
-    pub(crate) swvote: SignedWireVote<C>,
-    /// The reason the vote is invalid.
+pub(crate) struct AddUnitError<C: Context> {
+    /// The invalid unit that was not added to the protocol state.
+    pub(crate) swunit: SignedWireUnit<C>,
+    /// The reason the unit is invalid.
     #[source]
-    pub(crate) cause: VoteError,
+    pub(crate) cause: UnitError,
 }
 
-impl<C: Context> SignedWireVote<C> {
-    fn with_error(self, cause: VoteError) -> AddVoteError<C> {
-        AddVoteError {
-            swvote: self,
+impl<C: Context> SignedWireUnit<C> {
+    fn with_error(self, cause: UnitError) -> AddUnitError<C> {
+        AddUnitError {
+            swunit: self,
             cause,
         }
     }
@@ -113,43 +113,43 @@ impl State<TestContext> {
         State::new(weights, params, vec![])
     }
 
-    /// Adds the vote to the protocol state, or returns an error if it is invalid.
+    /// Adds the unit to the protocol state, or returns an error if it is invalid.
     /// Panics if dependencies are not satisfied.
-    pub(crate) fn add_vote(
+    pub(crate) fn add_unit(
         &mut self,
-        swvote: SignedWireVote<TestContext>,
-    ) -> Result<(), AddVoteError<TestContext>> {
+        swunit: SignedWireUnit<TestContext>,
+    ) -> Result<(), AddUnitError<TestContext>> {
         if let Err(err) = self
-            .pre_validate_vote(&swvote)
-            .and_then(|()| self.validate_vote(&swvote))
+            .pre_validate_unit(&swunit)
+            .and_then(|()| self.validate_unit(&swunit))
         {
-            return Err(swvote.with_error(err));
+            return Err(swunit.with_error(err));
         }
-        self.add_valid_vote(swvote);
+        self.add_valid_unit(swunit);
         Ok(())
     }
 }
 
 #[test]
-fn add_vote() -> Result<(), AddVoteError<TestContext>> {
+fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
     let mut rng = crate::new_rng();
 
-    // Create votes as follows; a0, b0 are blocks:
+    // Create units as follows; a0, b0 are blocks:
     //
     // Alice: a0 ————— a1
     //                /
     // Bob:   b0 —— b1
     //          \  /
     // Carol:    c0
-    let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
-    let c0 = add_vote!(state, rng, CAROL, 49, 4u8, None; N, b0, N)?;
-    let b1 = add_vote!(state, rng, BOB, 49, 4u8, None; N, b0, c0)?;
-    let _a1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 49, 4u8, None; N, b0, N)?;
+    let b1 = add_unit!(state, rng, BOB, 49, 4u8, None; N, b0, c0)?;
+    let _a1 = add_unit!(state, rng, ALICE, None; a0, b1, c0)?;
 
     // Wrong sequence number: Bob hasn't produced b2 yet.
-    let mut wvote = WireVote {
+    let mut wunit = WireUnit {
         panorama: panorama!(N, b1, c0),
         creator: BOB,
         instance_id: 1u64,
@@ -159,41 +159,41 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         round_exp: 4u8,
         endorsed: vec![],
     };
-    let vote = SignedWireVote::new(wvote.clone(), &BOB_SEC, &mut rng);
-    let opt_err = state.add_vote(vote).err().map(vote_err);
-    assert_eq!(Some(VoteError::SequenceNumber), opt_err);
-    // Still not valid: This would be the third vote in the first round.
-    wvote.seq_number = 2;
-    let vote = SignedWireVote::new(wvote, &BOB_SEC, &mut rng);
-    let opt_err = state.add_vote(vote).err().map(vote_err);
-    assert_eq!(Some(VoteError::ThreeVotesInRound), opt_err);
+    let unit = SignedWireUnit::new(wunit.clone(), &BOB_SEC, &mut rng);
+    let opt_err = state.add_unit(unit).err().map(unit_err);
+    assert_eq!(Some(UnitError::SequenceNumber), opt_err);
+    // Still not valid: This would be the third unit in the first round.
+    wunit.seq_number = 2;
+    let unit = SignedWireUnit::new(wunit, &BOB_SEC, &mut rng);
+    let opt_err = state.add_unit(unit).err().map(unit_err);
+    assert_eq!(Some(UnitError::ThreeUnitsInRound), opt_err);
 
     // Inconsistent panorama: If you see b1, you have to see c0, too.
-    let opt_err = add_vote!(state, rng, CAROL, None; N, b1, N)
+    let opt_err = add_unit!(state, rng, CAROL, None; N, b1, N)
         .err()
-        .map(vote_err);
-    assert_eq!(Some(VoteError::InconsistentPanorama(BOB)), opt_err);
+        .map(unit_err);
+    assert_eq!(Some(UnitError::InconsistentPanorama(BOB)), opt_err);
     // And you can't make the round exponent too small
-    let opt_err = add_vote!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
+    let opt_err = add_unit!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
         .err()
-        .map(vote_err);
-    assert_eq!(Some(VoteError::RoundLengthExpChangedWithinRound), opt_err);
+        .map(unit_err);
+    assert_eq!(Some(UnitError::RoundLengthExpChangedWithinRound), opt_err);
     // And you can't make the round exponent too big
-    let opt_err = add_vote!(state, rng, CAROL, 50, 40u8, None; N, b1, c0)
+    let opt_err = add_unit!(state, rng, CAROL, 50, 40u8, None; N, b1, c0)
         .err()
-        .map(vote_err);
-    assert_eq!(Some(VoteError::RoundLengthExpGreaterThanMaximum), opt_err);
+        .map(unit_err);
+    assert_eq!(Some(UnitError::RoundLengthExpGreaterThanMaximum), opt_err);
     // After the round from 48 to 64 has ended, the exponent can change.
-    let c1 = add_vote!(state, rng, CAROL, 65, 5u8, None; N, b1, c0)?;
+    let c1 = add_unit!(state, rng, CAROL, 65, 5u8, None; N, b1, c0)?;
 
     // Alice has not equivocated yet, and not produced message A1.
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
     assert_eq!(Some(Dependency::Evidence(ALICE)), missing);
     let missing = panorama!(42, b1, c0).missing_dependency(&state);
-    assert_eq!(Some(Dependency::Vote(42)), missing);
+    assert_eq!(Some(Dependency::Unit(42)), missing);
 
     // Alice equivocates: A1 doesn't see a1.
-    let ae1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
+    let ae1 = add_unit!(state, rng, ALICE, None; a0, b1, c0)?;
     assert!(state.has_evidence(ALICE));
     assert_eq!(panorama![F, b1, c1], *state.panorama());
 
@@ -203,7 +203,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     assert_eq!(None, missing);
 
     // Bob can see the equivocation.
-    let b2 = add_vote!(state, rng, BOB, None; F, b1, c0)?;
+    let b2 = add_unit!(state, rng, BOB, None; F, b1, c0)?;
 
     // The state's own panorama has been updated correctly.
     assert_eq!(state.panorama, panorama!(F, b2, c1));
@@ -211,7 +211,7 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
 }
 
 #[test]
-fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
+fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
     let mut rng = crate::new_rng();
     let params = Params::new(
         0,
@@ -229,14 +229,14 @@ fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
 
     assert_eq!(panorama![F, N, N], *state.panorama());
     assert_eq!(Some(&Fault::Banned), state.opt_fault(ALICE));
-    let err = vote_err(add_vote!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
-    assert_eq!(VoteError::Banned, err);
+    let err = unit_err(add_unit!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
+    assert_eq!(UnitError::Banned, err);
 
     state.mark_faulty(ALICE); // No change: Banned state is permanent.
     assert_eq!(panorama![F, N, N], *state.panorama());
     assert_eq!(Some(&Fault::Banned), state.opt_fault(ALICE));
-    let err = vote_err(add_vote!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
-    assert_eq!(VoteError::Banned, err);
+    let err = unit_err(add_unit!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
+    assert_eq!(UnitError::Banned, err);
 
     // Now we also received external evidence (i.e. not in this instance) that Bob is faulty.
     state.mark_faulty(BOB);
@@ -244,18 +244,18 @@ fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
     assert_eq!(Some(&Fault::Indirect), state.opt_fault(BOB));
 
     // However, we still accept messages from Bob, since he is not banned.
-    add_vote!(state, rng, BOB, 0xB; F, N, N)?;
+    add_unit!(state, rng, BOB, 0xB; F, N, N)?;
     Ok(())
 }
 
 #[test]
-fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
+fn find_in_swimlane() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
     let mut rng = crate::new_rng();
-    let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
     let mut a = vec![a0];
     for i in 1..10 {
-        let ai = add_vote!(state, rng, ALICE, None; a[i - 1], N, N)?;
+        let ai = add_unit!(state, rng, ALICE, None; a[i - 1], N, N)?;
         a.push(ai);
     }
 
@@ -267,16 +267,16 @@ fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
     }
 
     // The skip list index of a[k] includes a[k - 2^i] for each i such that 2^i divides k.
-    assert_eq!(&[a[8]], &state.vote(&a[9]).skip_idx.as_ref());
+    assert_eq!(&[a[8]], &state.unit(&a[9]).skip_idx.as_ref());
     assert_eq!(
         &[a[7], a[6], a[4], a[0]],
-        &state.vote(&a[8]).skip_idx.as_ref()
+        &state.unit(&a[8]).skip_idx.as_ref()
     );
     Ok(())
 }
 
 #[test]
-fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
+fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
     let mut rng = crate::new_rng();
 
@@ -287,16 +287,16 @@ fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
     // b0: 12           b2: 4
     //        \
     //          c0: 5 — c1: 5
-    let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
-    let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
-    let c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
-    let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
-    let b1 = add_vote!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
-    let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
-    let b2 = add_vote!(state, rng, BOB, 0xB2; a0, b1, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB0; N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 0xC0; N, b0, N)?;
+    let c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+    let a0 = add_unit!(state, rng, ALICE, 0xA0; N, b0, N)?;
+    let b1 = add_unit!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+    let a1 = add_unit!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
+    let b2 = add_unit!(state, rng, BOB, 0xB2; a0, b1, N)?;
 
     // Alice built `a1` on top of `a0`, which had already 7 points.
-    assert_eq!(Some(&a0), state.block(&state.vote(&a1).block).parent());
+    assert_eq!(Some(&a0), state.block(&state.unit(&a1).block).parent());
     // The fork choice is now `b2`: At height 1, `a0` wins against `c0`.
     // At height 2, `b2` wins against `a1`. `c1` has most points but is not a child of `a0`.
     assert_eq!(Some(&b2), state.fork_choice(&state.panorama));

@@ -17,7 +17,7 @@ use super::{
     finality_detector::{FinalityDetector, FttExceeded},
     highway::{
         Dependency, Endorsements, GetDepOutcome, Highway, Params, PreValidatedVertex,
-        SignedWireVote, ValidVertex, Vertex, VertexError,
+        SignedWireUnit, ValidVertex, Vertex, VertexError,
     },
     validators::Validators,
     Weight,
@@ -120,8 +120,8 @@ impl Ord for HighwayMessage {
             (HighwayMessage::Timer(t1), HighwayMessage::Timer(t2)) => t1.cmp(&t2),
             (HighwayMessage::NewVertex(v1), HighwayMessage::NewVertex(v2)) => {
                 match (&**v1, &**v2) {
-                    (Vertex::Vote(swv1), Vertex::Vote(swv2)) => swv1.hash().cmp(&swv2.hash()),
-                    (Vertex::Vote(_), _) => std::cmp::Ordering::Less,
+                    (Vertex::Unit(swv1), Vertex::Unit(swv2)) => swv1.hash().cmp(&swv2.hash()),
+                    (Vertex::Unit(_), _) => std::cmp::Ordering::Less,
                     (
                         Vertex::Evidence(Evidence::Equivocation(ev1_a, ev1_b)),
                         Vertex::Evidence(Evidence::Equivocation(ev2_a, ev2_b)),
@@ -132,11 +132,11 @@ impl Ord for HighwayMessage {
                     (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
                     (
                         Vertex::Endorsements(Endorsements {
-                            vote: l_hash,
+                            unit: l_hash,
                             endorsers: l_vid,
                         }),
                         Vertex::Endorsements(Endorsements {
-                            vote: r_hash,
+                            unit: r_hash,
                             endorsers: r_vid,
                         }),
                     ) => l_hash.cmp(r_hash).then_with(|| l_vid.cmp(r_vid)),
@@ -274,17 +274,17 @@ impl HighwayValidator {
                 match msg {
                     HighwayMessage::NewVertex(ref vertex) => {
                         match **vertex {
-                            Vertex::Vote(ref swvote) => {
+                            Vertex::Unit(ref swunit) => {
                                 // Create an equivocating message, with a different timestamp.
                                 // TODO: Don't send both messages to every peer. Add different
                                 // strategies.
-                                let mut wvote = swvote.wire_vote.clone();
-                                wvote.timestamp += 1.into();
-                                let secret = TestSecret(wvote.creator.0.into());
-                                let swvote2 = SignedWireVote::new(wvote, &secret, rng);
+                                let mut wunit = swunit.wire_unit.clone();
+                                wunit.timestamp += 1.into();
+                                let secret = TestSecret(wunit.creator.0.into());
+                                let swunit2 = SignedWireUnit::new(wunit, &secret, rng);
                                 vec![
                                     msg,
-                                    HighwayMessage::NewVertex(Box::new(Vertex::Vote(swvote2))),
+                                    HighwayMessage::NewVertex(Box::new(Vertex::Unit(swunit2))),
                                 ]
                             }
                             _ => vec![msg],
@@ -612,7 +612,7 @@ where
     //
     // If validator has missing dependencies then we have to add them first.
     // We don't want to test synchronization, and the Highway theory assumes
-    // that when votes are added then all their dependencies are satisfied.
+    // that when units are added then all their dependencies are satisfied.
     #[allow(clippy::type_complexity)]
     fn synchronize_dependency(
         &mut self,

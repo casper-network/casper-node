@@ -93,7 +93,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
     /// Typically called on a boxed trait object for downcasting afterwards.
     fn as_any(&self) -> &dyn Any;
 
-    /// Handles an incoming message (like NewVote, RequestDependency).
+    /// Handles an incoming message (like NewUnit, RequestDependency).
     fn handle_message(
         &mut self,
         sender: I,

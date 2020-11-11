@@ -1,7 +1,7 @@
 mod vertex;
 
 pub(crate) use crate::components::consensus::highway_core::state::Params;
-pub(crate) use vertex::{Dependency, Endorsements, SignedWireVote, Vertex, WireVote};
+pub(crate) use vertex::{Dependency, Endorsements, SignedWireUnit, Vertex, WireUnit};
 
 use thiserror::Error;
 use tracing::{debug, error, info};
@@ -12,7 +12,7 @@ use crate::{
         highway_core::{
             active_validator::{ActiveValidator, Effect},
             evidence::EvidenceError,
-            state::{Fault, State, VoteError},
+            state::{Fault, State, UnitError},
             validators::{Validator, Validators},
         },
         traits::Context,
@@ -29,8 +29,8 @@ use super::{
 /// An error due to an invalid vertex.
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum VertexError {
-    #[error("The vertex contains an invalid vote: `{0}`")]
-    Vote(#[from] VoteError),
+    #[error("The vertex contains an invalid unit: `{0}`")]
+    Unit(#[from] UnitError),
     #[error("The vertex contains invalid evidence.")]
     Evidence(#[from] EvidenceError),
     #[error("The endorsements contains invalid entry.")]
@@ -98,7 +98,7 @@ impl<C: Context> ValidVertex<C> {
     pub(crate) fn endorsements(&self) -> Option<&Endorsements<C>> {
         match &self.0 {
             Vertex::Endorsements(endorsements) => Some(endorsements),
-            Vertex::Evidence(_) | Vertex::Vote(_) => None,
+            Vertex::Evidence(_) | Vertex::Unit(_) => None,
         }
     }
 }
@@ -211,20 +211,20 @@ impl<C: Context> Highway<C> {
         match pvv.inner() {
             Vertex::Evidence(_) => None,
             Vertex::Endorsements(endorsements) => {
-                let vote = *endorsements.vote();
-                if !self.state.has_vote(&vote) {
-                    Some(Dependency::Vote(vote))
+                let unit = *endorsements.unit();
+                if !self.state.has_unit(&unit) {
+                    Some(Dependency::Unit(unit))
                 } else {
                     None
                 }
             }
-            Vertex::Vote(vote) => vote
-                .wire_vote
+            Vertex::Unit(unit) => unit
+                .wire_unit
                 .panorama
                 .missing_dependency(&self.state)
                 .or_else(|| {
                     self.state
-                        .needs_endorsements(vote)
+                        .needs_endorsements(unit)
                         .map(Dependency::Endorsement)
                 }),
         }
@@ -256,7 +256,7 @@ impl<C: Context> Highway<C> {
     ) -> Vec<Effect<C>> {
         if !self.has_vertex(&vertex) {
             match vertex {
-                Vertex::Vote(vote) => self.add_valid_vote(vote, now, rng),
+                Vertex::Unit(unit) => self.add_valid_unit(unit, now, rng),
                 Vertex::Evidence(evidence) => self.add_evidence(evidence, rng),
                 Vertex::Endorsements(endorsements) => {
                     self.state.add_endorsements(endorsements);
@@ -271,14 +271,14 @@ impl<C: Context> Highway<C> {
     /// Returns whether the vertex is already part of this protocol state.
     pub(crate) fn has_vertex(&self, vertex: &Vertex<C>) -> bool {
         match vertex {
-            Vertex::Vote(vote) => self.state.has_vote(&vote.hash()),
+            Vertex::Unit(unit) => self.state.has_unit(&unit.hash()),
             Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
             Vertex::Endorsements(endorsements) => {
-                let vote = endorsements.vote();
-                self.state.is_endorsed(vote)
+                let unit = endorsements.unit();
+                self.state.is_endorsed(unit)
                     || self
                         .state
-                        .has_all_endorsements(vote, endorsements.validator_ids())
+                        .has_all_endorsements(unit, endorsements.validator_ids())
             }
         }
     }
@@ -300,7 +300,7 @@ impl<C: Context> Highway<C> {
     /// Returns whether we have a vertex that satisfies the dependency.
     pub(crate) fn has_dependency(&self, dependency: &Dependency<C>) -> bool {
         match dependency {
-            Dependency::Vote(hash) => self.state.has_vote(hash),
+            Dependency::Unit(hash) => self.state.has_unit(hash),
             Dependency::Evidence(idx) => self.state.is_faulty(*idx),
             Dependency::Endorsement(hash) => self.state.is_endorsed(hash),
         }
@@ -312,9 +312,9 @@ impl<C: Context> Highway<C> {
     /// case, `get_dependency` will never return `None`, unless the peer is faulty.
     pub(crate) fn get_dependency(&self, dependency: &Dependency<C>) -> GetDepOutcome<C> {
         match dependency {
-            Dependency::Vote(hash) => match self.state.wire_vote(hash, self.instance_id) {
+            Dependency::Unit(hash) => match self.state.wire_unit(hash, self.instance_id) {
                 None => GetDepOutcome::None,
-                Some(vote) => GetDepOutcome::Vertex(ValidVertex(Vertex::Vote(vote))),
+                Some(unit) => GetDepOutcome::Vertex(ValidVertex(Vertex::Unit(unit))),
             },
             Dependency::Evidence(idx) => match self.state.opt_fault(*idx) {
                 None | Some(Fault::Banned) => GetDepOutcome::None,
@@ -344,7 +344,7 @@ impl<C: Context> Highway<C> {
 
         // Here we just use the timer's timestamp, and assume it's ~ Timestamp::now()
         //
-        // This is because proposal votes, i.e. new blocks, are
+        // This is because proposal units, i.e. new blocks, are
         // supposed to thave the exact timestamp that matches the
         // beginning of the round (which we use as the "round ID").
         //
@@ -416,7 +416,7 @@ impl<C: Context> Highway<C> {
         &self.state
     }
 
-    fn on_new_vote(
+    fn on_new_unit(
         &mut self,
         vhash: &C::Hash,
         timestamp: Timestamp,
@@ -424,7 +424,7 @@ impl<C: Context> Highway<C> {
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
         self.map_active_validator(
-            |av, state, rng| av.on_new_vote(vhash, timestamp, state, instance_id, rng),
+            |av, state, rng| av.on_new_unit(vhash, timestamp, state, instance_id, rng),
             timestamp,
             rng,
         )
@@ -486,16 +486,16 @@ impl<C: Context> Highway<C> {
     /// `PreValidatedVertex` and `validate_vertex`.)
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
-            Vertex::Vote(vote) => {
-                let creator = vote.wire_vote.creator;
-                let v_id = self.validators.id(creator).ok_or(VoteError::Creator)?;
-                if vote.wire_vote.instance_id != self.instance_id {
-                    return Err(VoteError::InstanceId.into());
+            Vertex::Unit(unit) => {
+                let creator = unit.wire_unit.creator;
+                let v_id = self.validators.id(creator).ok_or(UnitError::Creator)?;
+                if unit.wire_unit.instance_id != self.instance_id {
+                    return Err(UnitError::InstanceId.into());
                 }
-                if !C::verify_signature(&vote.hash(), v_id, &vote.signature) {
-                    return Err(VoteError::Signature.into());
+                if !C::verify_signature(&unit.hash(), v_id, &unit.signature) {
+                    return Err(UnitError::Signature.into());
                 }
-                Ok(self.state.pre_validate_vote(vote)?)
+                Ok(self.state.pre_validate_unit(unit)?)
             }
             Vertex::Evidence(evidence) => {
                 let v_id = self
@@ -505,10 +505,10 @@ impl<C: Context> Highway<C> {
                 Ok(evidence.validate(v_id, &self.instance_id)?)
             }
             Vertex::Endorsements(endorsements) => {
-                let vote = *endorsements.vote();
+                let unit = *endorsements.unit();
                 for (v_id, signature) in endorsements.endorsers.iter() {
                     let validator = self.validators.id(*v_id).ok_or(EndorsementError::Creator)?;
-                    let endorsement: Endorsement<C> = Endorsement::new(vote, *v_id);
+                    let endorsement: Endorsement<C> = Endorsement::new(unit, *v_id);
                     if !C::verify_signature(&endorsement.hash(), validator, &signature) {
                         return Err(EndorsementError::Signature.into());
                     }
@@ -522,7 +522,7 @@ impl<C: Context> Highway<C> {
     /// This requires all dependencies to be present.
     fn do_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
-            Vertex::Vote(vote) => Ok(self.state.validate_vote(vote)?),
+            Vertex::Unit(unit) => Ok(self.state.validate_unit(unit)?),
             Vertex::Evidence(_evidence) => Ok(()),
             Vertex::Endorsements(_endorsements) => {
                 // TODO: Validate against equivocations in endorsements.
@@ -541,20 +541,20 @@ impl<C: Context> Highway<C> {
         }
     }
 
-    /// Adds a valid vote to the protocol state.
+    /// Adds a valid unit to the protocol state.
     ///
-    /// Validity must be checked before calling this! Adding an invalid vote will result in a panic
+    /// Validity must be checked before calling this! Adding an invalid unit will result in a panic
     /// or an inconsistent state.
-    fn add_valid_vote(
+    fn add_valid_unit(
         &mut self,
-        swvote: SignedWireVote<C>,
+        swunit: SignedWireUnit<C>,
         now: Timestamp,
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
-        let vote_hash = swvote.hash();
-        let creator = swvote.wire_vote.creator;
+        let unit_hash = swunit.hash();
+        let creator = swunit.wire_unit.creator;
         let was_honest = !self.state.is_faulty(creator);
-        self.state.add_valid_vote(swvote);
+        self.state.add_valid_unit(swunit);
         let mut evidence_effects = self
             .state
             .opt_evidence(creator)
@@ -567,7 +567,7 @@ impl<C: Context> Highway<C> {
                 }
             })
             .unwrap_or_default();
-        evidence_effects.extend(self.on_new_vote(&vote_hash, now, rng));
+        evidence_effects.extend(self.on_new_unit(&unit_hash, now, rng));
         evidence_effects
     }
 }
@@ -580,7 +580,7 @@ pub(crate) mod tests {
         components::consensus::{
             highway_core::{
                 evidence::{Evidence, EvidenceError},
-                highway::{Highway, SignedWireVote, Vertex, VertexError, VoteError, WireVote},
+                highway::{Highway, SignedWireUnit, Vertex, VertexError, UnitError, WireUnit},
                 state::{
                     tests::{
                         TestContext, TestSecret, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
@@ -619,7 +619,7 @@ pub(crate) mod tests {
             state,
             active_validator: None,
         };
-        let wvote = WireVote {
+        let wunit = WireUnit {
             panorama: Panorama::new(WEIGHTS.len()),
             creator: CAROL,
             instance_id: highway.instance_id,
@@ -630,23 +630,23 @@ pub(crate) mod tests {
             endorsed: vec![],
         };
         let invalid_signature = 1u64;
-        let invalid_signature_vote = SignedWireVote {
-            wire_vote: wvote.clone(),
+        let invalid_signature_unit = SignedWireUnit {
+            wire_unit: wunit.clone(),
             signature: invalid_signature,
         };
-        let invalid_vertex = Vertex::Vote(invalid_signature_vote);
-        let err = VertexError::Vote(VoteError::Signature);
+        let invalid_vertex = Vertex::Unit(invalid_signature_unit);
+        let err = VertexError::Unit(UnitError::Signature);
         let expected = (invalid_vertex.clone(), err);
         assert_eq!(Err(expected), highway.pre_validate_vertex(invalid_vertex));
 
         // TODO: Also test the `missing_dependency` and `validate_vertex` steps.
 
-        let valid_signature = CAROL_SEC.sign(&wvote.hash(), &mut rng);
-        let correct_signature_vote = SignedWireVote {
-            wire_vote: wvote,
+        let valid_signature = CAROL_SEC.sign(&wunit.hash(), &mut rng);
+        let correct_signature_unit = SignedWireUnit {
+            wire_unit: wunit,
             signature: valid_signature,
         };
-        let valid_vertex = Vertex::Vote(correct_signature_vote);
+        let valid_vertex = Vertex::Unit(correct_signature_unit);
         let pvv = highway.pre_validate_vertex(valid_vertex).unwrap();
         assert_eq!(None, highway.missing_dependency(&pvv));
         let vv = highway.validate_vertex(pvv).unwrap();
@@ -665,13 +665,13 @@ pub(crate) mod tests {
             active_validator: None,
         };
 
-        let mut validate = |wvote0: &WireVote<TestContext>,
+        let mut validate = |wunit0: &WireUnit<TestContext>,
                             signer0: &TestSecret,
-                            wvote1: &WireVote<TestContext>,
+                            wunit1: &WireUnit<TestContext>,
                             signer1: &TestSecret| {
-            let swvote0 = SignedWireVote::new(wvote0.clone(), signer0, &mut rng);
-            let swvote1 = SignedWireVote::new(wvote1.clone(), signer1, &mut rng);
-            let evidence = Evidence::Equivocation(swvote0, swvote1);
+            let swunit0 = SignedWireUnit::new(wunit0.clone(), signer0, &mut rng);
+            let swunit1 = SignedWireUnit::new(wunit1.clone(), signer1, &mut rng);
+            let evidence = Evidence::Equivocation(swunit0, swunit1);
             let vertex = Vertex::Evidence(evidence);
             highway
                 .pre_validate_vertex(vertex.clone())
@@ -681,8 +681,8 @@ pub(crate) mod tests {
                 })
         };
 
-        // Two votes with different values and the same sequence number. Carol equivocated!
-        let mut wvote0 = WireVote {
+        // Two units with different values and the same sequence number. Carol equivocated!
+        let mut wunit0 = WireUnit {
             panorama: Panorama::new(WEIGHTS.len()),
             creator: CAROL,
             instance_id: highway.instance_id,
@@ -692,7 +692,7 @@ pub(crate) mod tests {
             round_exp: 4,
             endorsed: vec![],
         };
-        let wvote1 = WireVote {
+        let wunit1 = WireUnit {
             panorama: Panorama::new(WEIGHTS.len()),
             creator: CAROL,
             instance_id: highway.instance_id,
@@ -703,49 +703,49 @@ pub(crate) mod tests {
             endorsed: vec![],
         };
 
-        assert!(validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC,).is_ok());
+        assert!(validate(&wunit0, &CAROL_SEC, &wunit1, &CAROL_SEC,).is_ok());
 
-        // It's only an equivocation if the two votes are different.
+        // It's only an equivocation if the two units are different.
         assert_eq!(
-            Err(VertexError::Evidence(EvidenceError::EquivocationSameVote)),
-            validate(&wvote0, &CAROL_SEC, &wvote0, &CAROL_SEC)
+            Err(VertexError::Evidence(EvidenceError::EquivocationSameUnit)),
+            validate(&wunit0, &CAROL_SEC, &wunit0, &CAROL_SEC)
         );
 
-        // Both votes have Carol as their creator; Bob's signature would be invalid.
-        assert_eq!(
-            Err(VertexError::Evidence(EvidenceError::Signature)),
-            validate(&wvote0, &CAROL_SEC, &wvote1, &BOB_SEC)
-        );
+        // Both units have Carol as their creator; Bob's signature would be invalid.
         assert_eq!(
             Err(VertexError::Evidence(EvidenceError::Signature)),
-            validate(&wvote0, &BOB_SEC, &wvote1, &CAROL_SEC)
+            validate(&wunit0, &CAROL_SEC, &wunit1, &BOB_SEC)
+        );
+        assert_eq!(
+            Err(VertexError::Evidence(EvidenceError::Signature)),
+            validate(&wunit0, &BOB_SEC, &wunit1, &CAROL_SEC)
         );
 
-        // If the first vote was actually Bob's and the second Carol's, nobody equivocated.
-        wvote0.creator = BOB;
+        // If the first unit was actually Bob's and the second Carol's, nobody equivocated.
+        wunit0.creator = BOB;
         assert_eq!(
             Err(VertexError::Evidence(
                 EvidenceError::EquivocationDifferentCreators
             )),
-            validate(&wvote0, &BOB_SEC, &wvote1, &CAROL_SEC)
+            validate(&wunit0, &BOB_SEC, &wunit1, &CAROL_SEC)
         );
-        wvote0.creator = CAROL;
+        wunit0.creator = CAROL;
 
-        // If the votes have different sequence numbers they might belong to the same fork.
-        wvote0.seq_number = 1;
+        // If the units have different sequence numbers they might belong to the same fork.
+        wunit0.seq_number = 1;
         assert_eq!(
             Err(VertexError::Evidence(
                 EvidenceError::EquivocationDifferentSeqNumbers
             )),
-            validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC)
+            validate(&wunit0, &CAROL_SEC, &wunit1, &CAROL_SEC)
         );
-        wvote0.seq_number = 0;
+        wunit0.seq_number = 0;
 
-        // If the votes are from a different network or era we don't accept the evidence.
-        wvote0.instance_id = 2;
+        // If the units are from a different network or era we don't accept the evidence.
+        wunit0.instance_id = 2;
         assert_eq!(
             Err(VertexError::Evidence(EvidenceError::EquivocationInstanceId)),
-            validate(&wvote0, &CAROL_SEC, &wvote1, &CAROL_SEC)
+            validate(&wunit0, &CAROL_SEC, &wunit1, &CAROL_SEC)
         );
     }
 }
