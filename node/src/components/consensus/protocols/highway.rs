@@ -304,7 +304,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // register the proposal before the meter is aware that a new round has started, and it
         // will reject the proposal.
         if vv.is_proposal() {
-            // unwraps are safe, as if value is `Some`, this is already a unit
+            // unwraps are safe, as if value is `Some`, this is already a vote
             trace!(
                 now = Timestamp::now().millis(),
                 timestamp = vv.inner().timestamp().unwrap().millis(),
@@ -392,6 +392,7 @@ where
                 vec![]
             }
             Ok(HighwayMessage::NewVertex(v)) => {
+                // Keep track of whether the prevalidated vertex was from an equivocator
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
@@ -403,11 +404,32 @@ where
                         )];
                     }
                 };
+                let is_faulty = match pvv.inner().signed_wire_unit() {
+                    Some(signed_wire_unit) => self
+                        .highway
+                        .state()
+                        .is_faulty(signed_wire_unit.wire_unit.creator),
+                    None => false,
+                };
+
                 match pvv.timestamp() {
                     Some(timestamp) if timestamp > Timestamp::now() => {
-                        self.store_vertex_for_addition_later(timestamp, sender, pvv)
+                        // If it's not from an equivocator and from the future, add to queue
+                        if !is_faulty {
+                            self.store_vertex_for_addition_later(timestamp, sender, pvv)
+                        } else {
+                            return vec![];
+                        }
                     }
-                    _ => self.add_vertices(vec![(sender, pvv)], rng),
+                    _ => {
+                        // If it's a transitive dependency or not from an equivocator, add the
+                        // vertex
+                        if self.vertex_deps.contains_key(&pvv.inner().id()) || !is_faulty {
+                            self.add_vertices(vec![(sender, pvv)], rng)
+                        } else {
+                            return vec![];
+                        }
+                    }
                 }
             }
             Ok(HighwayMessage::RequestDependency(dep)) => match self.highway.get_dependency(&dep) {
