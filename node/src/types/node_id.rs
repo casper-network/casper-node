@@ -9,9 +9,10 @@ use libp2p::PeerId;
 #[cfg(test)]
 use rand::{Rng, RngCore};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+use crate::rpcs::docs::DocExample;
 
 #[cfg(test)]
-use crate::testing::TestRng;
+use crate::{testing::TestRng};
 use crate::tls::KeyFingerprint;
 
 /// The network identifier for a node.
@@ -117,6 +118,12 @@ impl<'de> Deserialize<'de> for NodeId {
     }
 }
 
+impl DocExample for NodeId {
+    fn doc_example() -> Self {
+        NodeId::Tls(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH]))
+    }
+}
+
 impl Debug for NodeId {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -205,6 +212,7 @@ mod test {
     fn json_roundtrip_p2p() {
         let mut rng = crate::new_rng();
         let node_id = NodeId::random_p2p(&mut rng);
+        println!("{:?}", node_id);
         let json_string = serde_json::to_string_pretty(&node_id).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(node_id, decoded);

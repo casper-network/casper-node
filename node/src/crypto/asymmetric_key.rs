@@ -28,6 +28,7 @@ use signature::{RandomizedSigner, Signature as Sig, Verifier};
 use tracing::info;
 use untrusted::Input;
 
+use crate::rpcs::docs::DocExample;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 use super::{Error, Result};
@@ -372,6 +373,13 @@ impl Debug for SecretKey {
             SecretKey::Ed25519(_) => write!(formatter, "SecretKey::{}(...)", ED25519),
             SecretKey::Secp256k1(_) => write!(formatter, "SecretKey::{}(...)", SECP256K1),
         }
+    }
+}
+
+impl DocExample for SecretKey {
+    fn doc_example() -> Self {
+        let bytes = [0u8; Self::ED25519_LENGTH];
+        SecretKey::new_ed25519(bytes)
     }
 }
 

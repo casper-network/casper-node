@@ -27,22 +27,20 @@ use casper_types::auction::BLOCK_REWARD;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::{Item, Tag, Timestamp};
+#[cfg(test)]
+use crate::testing::TestRng;
 use crate::{
     components::{
         consensus::{self, EraId},
         storage::{Value, WithBlockHeight},
     },
     crypto::{
-        asymmetric_key::{PublicKey, Signature},
+        asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
     },
+    rpcs::docs::DocExample,
     types::DeployHash,
     utils::DisplayIter,
-};
-#[cfg(test)]
-use crate::{
-    crypto::asymmetric_key::{self, SecretKey},
-    testing::TestRng,
 };
 
 /// Error returned from constructing or validating a `Block`.
@@ -237,6 +235,20 @@ impl FromBytes for EraEnd {
     }
 }
 
+impl DocExample for EraEnd {
+    fn doc_example() -> Self {
+        let secret_key = SecretKey::doc_example();
+        let public_key = PublicKey::from(&secret_key);
+        let equivocators = vec![public_key];
+        let mut rewards = BTreeMap::new();
+        rewards.insert(public_key, 1);
+        EraEnd {
+            equivocators,
+            rewards,
+        }
+    }
+}
+
 /// The piece of information that will become the content of a future block after it was finalized
 /// and before execution happened yet.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -346,6 +358,28 @@ impl FinalizedBlock {
             era_end,
             EraId(era),
             era * 10 + rng.gen_range(0, 10),
+            public_key,
+        )
+    }
+}
+
+impl DocExample for FinalizedBlock {
+    fn doc_example() -> Self {
+        let deploy_hashes = vec![DeployHash::new(Digest::doc_example())];
+        let random_bit = true;
+        let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
+        let timestamp = Timestamp::zero();
+        let era_end = Some(EraEnd::doc_example());
+        let era: u64 = 1;
+        let secret_key = SecretKey::doc_example();
+        let public_key = PublicKey::from(&secret_key);
+
+        FinalizedBlock::new(
+            proto_block,
+            timestamp,
+            era_end,
+            EraId(era),
+            era * 10,
             public_key,
         )
     }
@@ -792,6 +826,27 @@ impl Block {
             let signature = asymmetric_key::sign(block.hash.inner(), &secret_key, &public_key, rng);
             block.append_proof(signature);
         }
+
+        block
+    }
+}
+
+impl DocExample for Block {
+    fn doc_example() -> Self {
+        let mut rng = crate::new_rng();
+        let parent_hash = BlockHash::new(Digest::doc_example());
+        let state_root_hash = Digest::doc_example();
+        let finalized_block = FinalizedBlock::doc_example();
+        let parent_seed = Digest::doc_example();
+
+        let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
+
+        let secret_key = SecretKey::doc_example();
+        let public_key = PublicKey::from(&secret_key);
+        let signature =
+            asymmetric_key::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
+
+        block.append_proof(signature);
 
         block
     }

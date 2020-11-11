@@ -17,6 +17,7 @@ use hex_fmt::HexFmt;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use crate::rpcs::docs::DocExample;
 use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
@@ -106,6 +107,12 @@ impl UpperHex for Digest {
         } else {
             write!(formatter, "{:X}", HexFmt(&self.0))
         }
+    }
+}
+
+impl DocExample for Digest {
+    fn doc_example() -> Self {
+        Digest([0u8; Digest::LENGTH])
     }
 }
 

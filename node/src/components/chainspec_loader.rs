@@ -22,15 +22,10 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::core::engine_state::{self, genesis::GenesisResult};
 
-use crate::{
-    components::{storage::Storage, Component},
-    crypto::hash::Digest,
-    effect::{
+use crate::{NodeRng, components::{storage::Storage, Component}, crypto::hash::Digest, rpcs::docs::DocExample, effect::{
         requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
-    },
-    NodeRng,
-};
+    }};
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{DeployConfig, HighwayConfig};
 pub use error::Error;
@@ -82,6 +77,15 @@ impl ChainspecInfo {
 
     pub fn root_hash(&self) -> Option<Digest> {
         self.root_hash
+    }
+}
+
+impl DocExample for ChainspecInfo {
+    fn doc_example() -> Self {
+        ChainspecInfo {
+            name: String::from("casper-example"),
+            root_hash: Some(Digest::doc_example()),
+        }
     }
 }
 
