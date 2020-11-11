@@ -1,9 +1,9 @@
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
 
 use crate::{
-    auction::{Bid, DelegatedAmounts, DelegationRate},
+    auction::{Bid, DelegationRate, Delegator},
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, U512,
+    CLType, CLTyped, PublicKey, U512,
 };
 
 /// The seigniorage recipient details.
@@ -15,7 +15,7 @@ pub struct SeigniorageRecipient {
     /// Delegation rate of a seigniorage recipient.
     pub delegation_rate: DelegationRate,
     /// List of delegators and their accumulated bids.
-    pub delegators: DelegatedAmounts,
+    pub delegators: BTreeMap<PublicKey, Delegator>,
 }
 
 impl SeigniorageRecipient {
@@ -26,7 +26,11 @@ impl SeigniorageRecipient {
 
     /// Caculates total stake for all delegators
     pub fn delegator_total_stake(&self) -> U512 {
-        self.delegators.values().cloned().sum()
+        self.delegators
+            .values()
+            .map(Delegator::staked_amount)
+            .cloned()
+            .sum()
     }
 }
 
@@ -83,18 +87,30 @@ mod tests {
     use alloc::collections::BTreeMap;
     use core::iter::FromIterator;
 
-    use super::SeigniorageRecipient;
-    use crate::{auction::DelegationRate, bytesrepr, PublicKey, U512};
+    use crate::{
+        auction::{DelegationRate, Delegator, SeigniorageRecipient},
+        bytesrepr, AccessRights, PublicKey, URef, U512,
+    };
 
     #[test]
     fn serialization_roundtrip() {
+        let uref = URef::new([0; 32], AccessRights::READ_ADD_WRITE);
         let seigniorage_recipient = SeigniorageRecipient {
             stake: U512::max_value(),
             delegation_rate: DelegationRate::max_value(),
             delegators: BTreeMap::from_iter(vec![
-                (PublicKey::Ed25519([42; 32]), U512::one()),
-                (PublicKey::Ed25519([43; 32]), U512::max_value()),
-                (PublicKey::Ed25519([44; 32]), U512::zero()),
+                (
+                    PublicKey::Ed25519([1; 32]),
+                    Delegator::new(U512::max_value(), uref, PublicKey::Ed25519([42; 32])),
+                ),
+                (
+                    PublicKey::Ed25519([1; 32]),
+                    Delegator::new(U512::max_value(), uref, PublicKey::Ed25519([43; 32])),
+                ),
+                (
+                    PublicKey::Ed25519([1; 32]),
+                    Delegator::new(U512::zero(), uref, PublicKey::Ed25519([44; 32])),
+                ),
             ]),
         };
         bytesrepr::test_serialization_roundtrip(&seigniorage_recipient);

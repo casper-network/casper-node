@@ -5,9 +5,9 @@ use num_rational::Ratio;
 
 use crate::{
     auction::{
-        constants::*, Auction, BidPurses, Bids, DelegatorRewardMap, Delegators, EraId,
-        EraValidators, MintProvider, RuntimeProvider, SeigniorageRecipientsSnapshot,
-        StorageProvider, SystemProvider, UnbondingPurse, UnbondingPurses, ValidatorRewardMap,
+        constants::*, Auction, BidPurses, Bids, DelegatorRewardMap, EraId, EraValidators,
+        MintProvider, RuntimeProvider, SeigniorageRecipientsSnapshot, StorageProvider,
+        SystemProvider, UnbondingPurse, UnbondingPurses, ValidatorRewardMap,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
@@ -48,20 +48,6 @@ where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     write_to(provider, BIDS_KEY, validators)
-}
-
-pub fn get_delegators<P>(provider: &mut P) -> Result<Delegators>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    read_from(provider, DELEGATORS_KEY)
-}
-
-pub fn set_delegators<P>(provider: &mut P, delegators: Delegators) -> Result<()>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    write_to(provider, DELEGATORS_KEY, delegators)
 }
 
 pub fn get_delegator_reward_map<P>(provider: &mut P) -> Result<DelegatorRewardMap>
@@ -310,27 +296,6 @@ pub(crate) fn unbond<P: Auction + ?Sized>(
     // Remaining motes in the validator's bid purse
     let remaining_bond = provider.get_balance(bid_purse)?.unwrap_or_default();
     Ok(remaining_bond)
-}
-
-/// Update delegators entry. Initialize if it doesn't exist.
-pub fn update_delegators<P>(
-    provider: &mut P,
-    validator_public_key: PublicKey,
-    delegator_public_key: PublicKey,
-    delegation_amount: U512,
-) -> Result<U512>
-where
-    P: RuntimeProvider + StorageProvider + ?Sized,
-{
-    let mut delegators = get_delegators(provider)?;
-    let new_quantity = *delegators
-        .entry(validator_public_key)
-        .or_default()
-        .entry(delegator_public_key)
-        .and_modify(|delegation| *delegation += delegation_amount)
-        .or_insert_with(|| delegation_amount);
-    set_delegators(provider, delegators)?;
-    Ok(new_quantity)
 }
 
 /// Update validator reward map.
