@@ -13,14 +13,19 @@ use crate::storage::{
     },
     trie::Trie,
     trie_store::{in_memory::InMemoryTrieStore, lmdb::LmdbTrieStore},
-    DEFAULT_TEST_MAX_DB_SIZE,
+    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 
 #[test]
 fn lmdb_writer_mutex_does_not_collide_with_readers() {
     let dir = tempdir().unwrap();
     let env = Arc::new(
-        LmdbEnvironment::new(&dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap(),
+        LmdbEnvironment::new(
+            &dir.path().to_path_buf(),
+            DEFAULT_TEST_MAX_DB_SIZE,
+            DEFAULT_TEST_MAX_READERS,
+        )
+        .unwrap(),
     );
     let store = Arc::new(LmdbTrieStore::new(&env, None, Default::default()).unwrap());
     let num_threads = 10;

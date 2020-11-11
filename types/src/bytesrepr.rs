@@ -8,7 +8,7 @@ use alloc::alloc::{alloc, Layout};
 #[cfg(not(feature = "no-unstable-features"))]
 use alloc::collections::TryReserveError;
 use alloc::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     string::String,
     vec::Vec,
 };
@@ -17,6 +17,9 @@ use core::mem::{self, MaybeUninit};
 use core::ptr::NonNull;
 
 use failure::Fail;
+use num_integer::Integer;
+use num_rational::Ratio;
+use serde::{Deserialize, Serialize};
 
 /// The number of bytes in a serialized `()`.
 pub const UNIT_SERIALIZED_LENGTH: usize = 0;
@@ -86,7 +89,7 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 }
 
 /// Serialization and deserialization errors.
-#[derive(Debug, Fail, PartialEq, Eq, Clone)]
+#[derive(Debug, Fail, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum Error {
     /// Early end of stream while deserializing.
@@ -330,8 +333,8 @@ fn vec_into_bytes<T: ToBytes>(vec: Vec<T>) -> Result<Vec<u8>, Error> {
     Ok(result)
 }
 
-fn vec_serialized_length<T: ToBytes>(vec: &[T]) -> usize {
-    U32_SERIALIZED_LENGTH + vec.iter().map(ToBytes::serialized_length).sum::<usize>()
+fn iterator_serialized_length<'a, T: 'a + ToBytes>(ts: impl Iterator<Item = &'a T>) -> usize {
+    U32_SERIALIZED_LENGTH + ts.map(ToBytes::serialized_length).sum::<usize>()
 }
 
 #[cfg(feature = "no-unstable-features")]
@@ -345,7 +348,7 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     }
 
     fn serialized_length(&self) -> usize {
-        vec_serialized_length(self)
+        iterator_serialized_length(self.iter())
     }
 }
 
@@ -360,7 +363,7 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     }
 
     default fn serialized_length(&self) -> usize {
-        vec_serialized_length(self)
+        iterator_serialized_length(self.iter())
     }
 }
 
@@ -427,6 +430,110 @@ impl<T: FromBytes> FromBytes for Vec<T> {
 
     default fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
         vec_from_vec(bytes)
+    }
+}
+
+#[allow(clippy::ptr_arg)]
+fn vec_deque_to_bytes<T: ToBytes>(vec: &VecDeque<T>) -> Result<Vec<u8>, Error> {
+    let mut result = allocate_buffer(vec)?;
+    result.append(&mut (vec.len() as u32).to_bytes()?);
+
+    for item in vec.iter() {
+        result.append(&mut item.to_bytes()?);
+    }
+
+    Ok(result)
+}
+
+fn vec_deque_into_bytes<T: ToBytes>(vec: VecDeque<T>) -> Result<Vec<u8>, Error> {
+    let mut result = allocate_buffer(&vec)?;
+    result.append(&mut (vec.len() as u32).to_bytes()?);
+
+    for item in vec {
+        result.append(&mut item.into_bytes()?);
+    }
+
+    Ok(result)
+}
+
+#[cfg(feature = "no-unstable-features")]
+impl<T: ToBytes> ToBytes for VecDeque<T> {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        vec_deque_to_bytes(self)
+    }
+
+    fn into_bytes(self) -> Result<Vec<u8>, Error> {
+        vec_deque_into_bytes(self)
+    }
+
+    fn serialized_length(&self) -> usize {
+        iterator_serialized_length(self.iter())
+    }
+}
+
+#[cfg(not(feature = "no-unstable-features"))]
+impl<T: ToBytes> ToBytes for VecDeque<T> {
+    default fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        vec_deque_to_bytes(self)
+    }
+
+    default fn into_bytes(self) -> Result<Vec<u8>, Error> {
+        vec_deque_into_bytes(self)
+    }
+
+    default fn serialized_length(&self) -> usize {
+        iterator_serialized_length(self.iter())
+    }
+}
+
+#[cfg(feature = "no-unstable-features")]
+fn try_vec_deque_with_capacity<T>(capacity: usize) -> Result<VecDeque<T>, Error> {
+    Ok(VecDeque::with_capacity(capacity))
+}
+
+#[cfg(not(feature = "no-unstable-features"))]
+fn try_vec_deque_with_capacity<T>(capacity: usize) -> Result<VecDeque<T>, Error> {
+    let mut result: VecDeque<T> = VecDeque::new();
+    result.try_reserve_exact(capacity)?;
+    Ok(result)
+}
+
+fn vec_deque_from_bytes<T: FromBytes>(bytes: &[u8]) -> Result<(VecDeque<T>, &[u8]), Error> {
+    let (count, mut stream) = u32::from_bytes(bytes)?;
+
+    let mut result = try_vec_deque_with_capacity(count as usize)?;
+    for _ in 0..count {
+        let (value, remainder) = T::from_bytes(stream)?;
+        result.push_back(value);
+        stream = remainder;
+    }
+
+    Ok((result, stream))
+}
+
+fn vec_deque_from_vec<T: FromBytes>(bytes: Vec<u8>) -> Result<(VecDeque<T>, Vec<u8>), Error> {
+    VecDeque::<T>::from_bytes(bytes.as_slice()).map(|(x, remainder)| (x, Vec::from(remainder)))
+}
+
+#[cfg(feature = "no-unstable-features")]
+impl<T: FromBytes> FromBytes for VecDeque<T> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        vec_deque_from_bytes(bytes)
+    }
+
+    fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
+        vec_deque_from_vec(bytes)
+    }
+}
+
+#[cfg(not(feature = "no-unstable-features"))]
+impl<T: FromBytes> FromBytes for VecDeque<T> {
+    default fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        vec_deque_from_bytes(bytes)
+    }
+
+    default fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
+        vec_deque_from_vec(bytes)
     }
 }
 
@@ -1181,6 +1288,35 @@ impl ToBytes for &str {
     }
 }
 
+impl<T> ToBytes for Ratio<T>
+where
+    T: Clone + Integer + ToBytes,
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        if self.denom().is_zero() {
+            return Err(Error::Formatting);
+        }
+        (self.numer().clone(), self.denom().clone()).into_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        (self.numer().clone(), self.denom().clone()).serialized_length()
+    }
+}
+
+impl<T> FromBytes for Ratio<T>
+where
+    T: Clone + FromBytes + Integer,
+{
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let ((numer, denom), rem): ((T, T), &[u8]) = FromBytes::from_bytes(bytes)?;
+        if denom.is_zero() {
+            return Err(Error::Formatting);
+        }
+        Ok((Ratio::new(numer, denom), rem))
+    }
+}
+
 // This test helper is not intended to be used by third party crates.
 #[doc(hidden)]
 /// Returns `true` if a we can serialize and then deserialize a value
@@ -1259,12 +1395,15 @@ mod tests {
 mod proptests {
     use std::vec::Vec;
 
+    use num_rational::Ratio;
     use proptest::{collection::vec, prelude::*};
 
     use crate::{
         bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
         gens::*,
     };
+
+    use super::Error;
 
     proptest! {
         #[test]
@@ -1450,6 +1589,10 @@ mod proptests {
         fn test_tuple10(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
             bytesrepr::test_serialization_roundtrip(&t);
         }
+        #[test]
+        fn test_ratio_u64(t in (any::<u64>(), 1..u64::max_value())) {
+            bytesrepr::test_serialization_roundtrip(&t);
+        }
     }
 
     #[test]
@@ -1459,5 +1602,18 @@ mod proptests {
         assert!(Vec::<u8>::from_bytes(&data_bytes[..U32_SERIALIZED_LENGTH / 2]).is_err());
         assert!(Vec::<u8>::from_bytes(&data_bytes[..U32_SERIALIZED_LENGTH]).is_err());
         assert!(Vec::<u8>::from_bytes(&data_bytes[..U32_SERIALIZED_LENGTH + 2]).is_err());
+    }
+
+    #[test]
+    fn should_not_serialize_zero_denominator() {
+        let malicious = Ratio::new_raw(1, 0);
+        assert_eq!(malicious.to_bytes().unwrap_err(), Error::Formatting);
+    }
+
+    #[test]
+    fn should_not_deserialize_zero_denominator() {
+        let malicious_bytes = (1u64, 0u64).to_bytes().unwrap();
+        let result: Result<Ratio<u64>, Error> = super::deserialize(malicious_bytes);
+        assert_eq!(result.unwrap_err(), Error::Formatting);
     }
 }

@@ -1,7 +1,7 @@
 mod event;
 // mod tests;
 
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, convert::Infallible, fmt::Debug};
 
 use semver::Version;
 use tracing::{debug, error, warn};
@@ -12,9 +12,9 @@ use crate::{
         announcements::DeployAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
         EffectExt, Effects,
     },
-    small_network::NodeId,
-    types::{CryptoRngCore, Deploy},
+    types::{Deploy, NodeId},
     utils::Source,
+    NodeRng,
 };
 
 pub use event::Event;
@@ -150,11 +150,12 @@ impl DeployAcceptor {
 
 impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     type Event = Event;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");

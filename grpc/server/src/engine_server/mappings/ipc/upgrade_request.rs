@@ -1,7 +1,9 @@
 use std::convert::{TryFrom, TryInto};
 
+use num_rational::Ratio;
+
 use casper_execution_engine::core::engine_state::upgrade::UpgradeConfig;
-use casper_types::ProtocolVersion;
+use casper_types::{auction::EraId, ProtocolVersion};
 
 use crate::engine_server::{ipc::UpgradeRequest, mappings::MappingError};
 
@@ -38,7 +40,7 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
         let activation_point = if !upgrade_point.has_activation_point() {
             None
         } else {
-            Some(upgrade_point.get_activation_point().rank)
+            Some(upgrade_point.get_activation_point().height)
         };
 
         let new_validator_slots: Option<u32> = if !upgrade_point.has_new_validator_slots() {
@@ -51,6 +53,33 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             )
         };
 
+        let new_auction_delay: Option<u64> = if !upgrade_point.has_new_auction_delay() {
+            None
+        } else {
+            Some(
+                upgrade_point
+                    .take_new_auction_delay()
+                    .get_new_auction_delay(),
+            )
+        };
+
+        let new_locked_funds_period: Option<EraId> = if !upgrade_point.has_new_locked_funds_period()
+        {
+            None
+        } else {
+            Some(
+                upgrade_point
+                    .take_new_locked_funds_period()
+                    .get_new_locked_funds_period(),
+            )
+        };
+
+        let new_round_seigniorage_rate: Option<Ratio<u64>> = upgrade_point
+            .new_round_seigniorage_rate
+            .as_ref()
+            .cloned()
+            .map(Into::into);
+
         Ok(UpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
@@ -60,6 +89,9 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             wasm_config,
             activation_point,
             new_validator_slots,
+            new_auction_delay,
+            new_locked_funds_period,
+            new_round_seigniorage_rate,
         ))
     }
 }

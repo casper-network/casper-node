@@ -16,6 +16,7 @@ use prometheus::Registry;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
+use super::{Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork};
 use crate::{
     components::{
         gossiper::{self, Gossiper},
@@ -29,21 +30,21 @@ use crate::{
     },
     protocol,
     reactor::{self, EventQueueHandle, Finalize, Reactor, Runner},
-    small_network::{self, Config, GossipedAddress, NodeId, SmallNetwork},
     testing::{
         self, init_logging,
         network::{Network, NetworkedReactor},
-        ConditionCheckReactor, TestRng,
+        ConditionCheckReactor,
     },
-    types::CryptoRngCore,
+    types::NodeId,
     utils::Source,
+    NodeRng,
 };
 
 /// Test-reactor event.
 #[derive(Debug, From, Serialize)]
 enum Event {
     #[from]
-    SmallNet(#[serde(skip_serializing)] small_network::Event<Message>),
+    SmallNet(#[serde(skip_serializing)] SmallNetworkEvent<Message>),
     #[from]
     AddressGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedAddress>),
     #[from]
@@ -108,7 +109,7 @@ impl Reactor for TestReactor {
         cfg: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
         let (net, effects) = SmallNetwork::new(event_queue, cfg, false)?;
         let gossiper_config = gossiper::Config::default();
@@ -127,7 +128,7 @@ impl Reactor for TestReactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -143,7 +144,7 @@ impl Reactor for TestReactor {
             Event::NetworkRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
-                Event::SmallNet(small_network::Event::from(req)),
+                Event::SmallNet(SmallNetworkEvent::from(req)),
             ),
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
@@ -170,7 +171,7 @@ impl Reactor for TestReactor {
             Event::AddressGossiperAnnouncement(ann) => {
                 let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
                 let reactor_event =
-                    Event::SmallNet(small_network::Event::PeerAddressReceived(gossiped_address));
+                    Event::SmallNet(SmallNetworkEvent::PeerAddressReceived(gossiped_address));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
         }
@@ -247,7 +248,7 @@ fn network_started(net: &Network<TestReactor>) -> bool {
 /// Ensures that network cleanup and basic networking works.
 #[tokio::test]
 async fn run_two_node_network_five_times() {
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     // The networking port used by the tests for the root node.
     let first_node_port = testing::unused_port_on_localhost();
@@ -308,7 +309,7 @@ async fn run_two_node_network_five_times() {
 async fn network_with_unhealthy_nodes_settles_without_them() {
     init_logging();
 
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
     for (healthy, unhealthy) in &[(1u64, 1u64), (1, 2), (1, 4), (2, 2), (4, 4), (4, 1)] {
         let port = testing::unused_port_on_localhost();
 
@@ -359,7 +360,7 @@ async fn network_with_unhealthy_nodes_settles_without_them() {
 async fn bind_to_real_network_interface() {
     init_logging();
 
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     let iface = datalink::interfaces()
         .into_iter()
@@ -399,7 +400,7 @@ async fn bind_to_real_network_interface() {
 async fn check_varying_size_network_connects() {
     init_logging();
 
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     // Try with a few predefined sets of network sizes.
     for &number_of_nodes in &[2u16, 3, 5, 9, 15] {

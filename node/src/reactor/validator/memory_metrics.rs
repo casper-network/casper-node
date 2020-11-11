@@ -20,8 +20,12 @@ pub(super) struct MemoryMetrics {
     mem_storage: IntGauge,
     /// Estimated heap memory usage of contract runtime component.
     mem_contract_runtime: IntGauge,
-    /// Estimated heap memory usage of api server component.
-    mem_api_server: IntGauge,
+    /// Estimated heap memory usage of rpc server component.
+    mem_rpc_server: IntGauge,
+    /// Estimated heap memory usage of rest server component.
+    mem_rest_server: IntGauge,
+    /// Estimated heap memory usage of event stream server component.
+    mem_event_stream_server: IntGauge,
     /// Estimated heap memory usage of chainspec loader component.
     mem_chainspec_loader: IntGauge,
     /// Estimated heap memory usage of consensus component.
@@ -30,8 +34,8 @@ pub(super) struct MemoryMetrics {
     mem_deploy_fetcher: IntGauge,
     /// Estimated heap memory usage of deploy gossiper component.
     mem_deploy_gossiper: IntGauge,
-    /// Estimated heap memory usage of deploy buffer component.
-    mem_deploy_buffer: IntGauge,
+    /// Estimated heap memory usage of block_proposer component.
+    mem_block_proposer: IntGauge,
     /// Estimated heap memory usage of block executor component.
     mem_block_executor: IntGauge,
     /// Estimated heap memory usage of block validator component.
@@ -61,7 +65,13 @@ impl MemoryMetrics {
             "mem_contract_runtime",
             "contract_runtime memory usage in bytes",
         )?;
-        let mem_api_server = IntGauge::new("mem_api_server", "api_server memory usage in bytes")?;
+        let mem_rpc_server = IntGauge::new("mem_rpc_server", "rpc_server memory usage in bytes")?;
+        let mem_rest_server =
+            IntGauge::new("mem_rest_server", "mem_rest_server memory usage in bytes")?;
+        let mem_event_stream_server = IntGauge::new(
+            "mem_event_stream_server",
+            "mem_event_stream_server memory usage in bytes",
+        )?;
         let mem_chainspec_loader = IntGauge::new(
             "mem_chainspec_loader",
             "chainspec_loader memory usage in bytes",
@@ -73,8 +83,8 @@ impl MemoryMetrics {
             "mem_deploy_gossiper",
             "deploy_gossiper memory usage in bytes",
         )?;
-        let mem_deploy_buffer =
-            IntGauge::new("mem_deploy_buffer", "deploy_buffer memory usage in bytes")?;
+        let mem_block_proposer =
+            IntGauge::new("mem_block_proposer", "block_proposer memory usage in bytes")?;
         let mem_block_executor =
             IntGauge::new("mem_block_executor", "block_executor memory usage in bytes")?;
         let mem_proto_block_validator = IntGauge::new(
@@ -99,12 +109,14 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_address_gossiper.clone()))?;
         registry.register(Box::new(mem_storage.clone()))?;
         registry.register(Box::new(mem_contract_runtime.clone()))?;
-        registry.register(Box::new(mem_api_server.clone()))?;
+        registry.register(Box::new(mem_rpc_server.clone()))?;
+        registry.register(Box::new(mem_rest_server.clone()))?;
+        registry.register(Box::new(mem_event_stream_server.clone()))?;
         registry.register(Box::new(mem_chainspec_loader.clone()))?;
         registry.register(Box::new(mem_consensus.clone()))?;
         registry.register(Box::new(mem_deploy_fetcher.clone()))?;
         registry.register(Box::new(mem_deploy_gossiper.clone()))?;
-        registry.register(Box::new(mem_deploy_buffer.clone()))?;
+        registry.register(Box::new(mem_block_proposer.clone()))?;
         registry.register(Box::new(mem_block_executor.clone()))?;
         registry.register(Box::new(mem_proto_block_validator.clone()))?;
         registry.register(Box::new(mem_linear_chain.clone()))?;
@@ -117,12 +129,14 @@ impl MemoryMetrics {
             mem_address_gossiper,
             mem_storage,
             mem_contract_runtime,
-            mem_api_server,
+            mem_rpc_server,
+            mem_rest_server,
+            mem_event_stream_server,
             mem_chainspec_loader,
             mem_consensus,
             mem_deploy_fetcher,
             mem_deploy_gossiper,
-            mem_deploy_buffer,
+            mem_block_proposer,
             mem_block_executor,
             mem_proto_block_validator,
             mem_linear_chain,
@@ -140,12 +154,14 @@ impl MemoryMetrics {
         let address_gossiper = reactor.address_gossiper.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;
-        let api_server = reactor.api_server.estimate_heap_size() as i64;
+        let rpc_server = reactor.rpc_server.estimate_heap_size() as i64;
+        let rest_server = reactor.rest_server.estimate_heap_size() as i64;
+        let event_stream_server = reactor.event_stream_server.estimate_heap_size() as i64;
         let chainspec_loader = reactor.chainspec_loader.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
         let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
         let deploy_gossiper = reactor.deploy_gossiper.estimate_heap_size() as i64;
-        let deploy_buffer = reactor.deploy_buffer.estimate_heap_size() as i64;
+        let block_proposer = reactor.block_proposer.estimate_heap_size() as i64;
         let block_executor = reactor.block_executor.estimate_heap_size() as i64;
         let proto_block_validator = reactor.proto_block_validator.estimate_heap_size() as i64;
 
@@ -156,12 +172,14 @@ impl MemoryMetrics {
             + address_gossiper
             + storage
             + contract_runtime
-            + api_server
+            + rpc_server
+            + rest_server
+            + event_stream_server
             + chainspec_loader
             + consensus
             + deploy_fetcher
             + deploy_gossiper
-            + deploy_buffer
+            + block_proposer
             + block_executor
             + proto_block_validator
             + linear_chain;
@@ -172,12 +190,14 @@ impl MemoryMetrics {
         self.mem_address_gossiper.set(address_gossiper);
         self.mem_storage.set(storage);
         self.mem_contract_runtime.set(contract_runtime);
-        self.mem_api_server.set(api_server);
+        self.mem_rpc_server.set(rpc_server);
+        self.mem_rest_server.set(rest_server);
+        self.mem_event_stream_server.set(event_stream_server);
         self.mem_chainspec_loader.set(chainspec_loader);
         self.mem_consensus.set(consensus);
         self.mem_deploy_fetcher.set(deploy_fetcher);
         self.mem_deploy_gossiper.set(deploy_gossiper);
-        self.mem_deploy_buffer.set(deploy_buffer);
+        self.mem_block_proposer.set(block_proposer);
         self.mem_block_executor.set(block_executor);
         self.mem_proto_block_validator.set(proto_block_validator);
         self.mem_linear_chain.set(linear_chain);
@@ -192,12 +212,14 @@ impl MemoryMetrics {
                %address_gossiper,
                %storage,
                %contract_runtime,
-               %api_server,
+               %rpc_server,
+               %rest_server,
+               %event_stream_server,
                %chainspec_loader,
                %consensus,
                %deploy_fetcher,
                %deploy_gossiper,
-               %deploy_buffer,
+               %block_proposer,
                %block_executor,
                %proto_block_validator,
                %linear_chain,
@@ -226,8 +248,14 @@ impl Drop for MemoryMetrics {
             .unregister(Box::new(self.mem_contract_runtime.clone()))
             .expect("did not expect deregistering mem_contract_runtime, to fail");
         self.registry
-            .unregister(Box::new(self.mem_api_server.clone()))
-            .expect("did not expect deregistering mem_api_server, to fail");
+            .unregister(Box::new(self.mem_rpc_server.clone()))
+            .expect("did not expect deregistering mem_rpc_server, to fail");
+        self.registry
+            .unregister(Box::new(self.mem_rest_server.clone()))
+            .expect("did not expect deregistering mem_rest_server, to fail");
+        self.registry
+            .unregister(Box::new(self.mem_event_stream_server.clone()))
+            .expect("did not expect deregistering mem_event_stream_server, to fail");
         self.registry
             .unregister(Box::new(self.mem_chainspec_loader.clone()))
             .expect("did not expect deregistering mem_chainspec_loader, to fail");
@@ -241,8 +269,8 @@ impl Drop for MemoryMetrics {
             .unregister(Box::new(self.mem_deploy_gossiper.clone()))
             .expect("did not expect deregistering mem_deploy_gossiper, to fail");
         self.registry
-            .unregister(Box::new(self.mem_deploy_buffer.clone()))
-            .expect("did not expect deregistering mem_deploy_buffer, to fail");
+            .unregister(Box::new(self.mem_block_proposer.clone()))
+            .expect("did not expect deregistering mem_block_proposer, to fail");
         self.registry
             .unregister(Box::new(self.mem_block_executor.clone()))
             .expect("did not expect deregistering mem_block_executor, to fail");

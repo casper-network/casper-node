@@ -16,3 +16,4 @@ std = ["casper-contract/std"]
 
 [dependencies]
 casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

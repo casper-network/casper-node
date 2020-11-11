@@ -2,16 +2,9 @@ use std::str;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-use casper_node::{
-    crypto::hash::Digest,
-    rpcs::{
-        info::{GetDeploy, GetDeployParams},
-        RpcWithParams,
-    },
-    types::DeployHash,
-};
+use casper_node::rpcs::info::GetDeploy;
 
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {
@@ -37,23 +30,16 @@ mod deploy_hash {
             .display_order(DisplayOrder::DeployHash as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> DeployHash {
-        let hex_str = matches
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
-        let hash = Digest::from_hex(hex_str)
-            .unwrap_or_else(|error| panic!("cannot parse as a deploy hash: {}", error));
-        DeployHash::new(hash)
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
-}
-
-impl RpcClient for GetDeploy {
-    const RPC_METHOD: &'static str = Self::METHOD;
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
     const NAME: &'static str = "get-deploy";
-    const ABOUT: &'static str = "Retrieves a stored deploy";
+    const ABOUT: &'static str = "Retrieves a deploy from the network";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
@@ -68,13 +54,13 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetDeploy {
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let verbose = common::verbose::get(matches);
+        let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+        let verbose = common::verbose::get(matches);
         let deploy_hash = deploy_hash::get(matches);
-        let params = GetDeployParams { deploy_hash };
 
-        let response = Self::request_with_map_params(verbose, &node_address, rpc_id, params);
+        let response = casper_client::get_deploy(maybe_rpc_id, node_address, verbose, deploy_hash)
+            .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")

@@ -2,6 +2,7 @@
 //! being factored out into standalone crates.
 
 mod external;
+mod median;
 pub mod milliseconds;
 mod round_robin;
 
@@ -13,6 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use datasize::DataSize;
 use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 use serde::Serialize;
@@ -21,6 +23,7 @@ use thiserror::Error;
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
 pub use external::{External, LoadError, Loadable};
+pub(crate) use median::weighted_median;
 pub(crate) use round_robin::WeightedRoundRobin;
 
 /// Sensible default for many if not all systems.
@@ -91,7 +94,7 @@ where
 
 /// Error reading a file.
 #[derive(Debug, Error)]
-#[error("could not read {0}: {error}", .path.display())]
+#[error("could not read '{0}': {error}", .path.display())]
 pub struct ReadFileError {
     /// Path that failed to be read.
     path: PathBuf,
@@ -102,7 +105,7 @@ pub struct ReadFileError {
 
 /// Error writing a file
 #[derive(Debug, Error)]
-#[error("could not write to {0}: {error}", .path.display())]
+#[error("could not write to '{0}': {error}", .path.display())]
 pub struct WriteFileError {
     /// Path that failed to be written to.
     path: PathBuf,
@@ -139,7 +142,7 @@ pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
 /// With-directory context.
 ///
 /// Associates a type with a "working directory".
-#[derive(Clone, Debug)]
+#[derive(Clone, DataSize, Debug)]
 pub struct WithDir<T> {
     dir: PathBuf,
     value: T,
@@ -154,11 +157,24 @@ impl<T> WithDir<T> {
         }
     }
 
+    /// Returns a reference to the inner path.
+    pub(crate) fn dir(&self) -> &Path {
+        self.dir.as_ref()
+    }
+
     /// Deconstructs a with-directory context.
     pub(crate) fn into_parts(self) -> (PathBuf, T) {
         (self.dir, self.value)
     }
 
+    pub(crate) fn map_ref<U, F: FnOnce(&T) -> U>(&self, f: F) -> WithDir<U> {
+        WithDir {
+            dir: self.dir.clone(),
+            value: f(&self.value),
+        }
+    }
+
+    /// Get a reference to the inner value.
     pub(crate) fn value(&self) -> &T {
         &self.value
     }
@@ -174,7 +190,7 @@ impl<T> WithDir<T> {
 }
 
 /// The source of a piece of data.
-#[derive(Copy, Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub enum Source<I> {
     /// A peer with the wrapped ID.
     Peer(I),
@@ -182,11 +198,11 @@ pub enum Source<I> {
     Client,
 }
 
-impl<I: Copy> Source<I> {
+impl<I: Clone> Source<I> {
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
     pub(crate) fn node_id(&self) -> Option<I> {
         match self {
-            Source::Peer(node_id) => Some(*node_id),
+            Source::Peer(node_id) => Some(node_id.clone()),
             Source::Client => None,
         }
     }

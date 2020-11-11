@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    convert::Infallible,
     fmt::{self, Display, Formatter},
     marker::PhantomData,
 };
@@ -18,10 +19,8 @@ use crate::{
         EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{
-        json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, CryptoRngCore,
-        DeployHash,
-    },
+    types::{json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, DeployHash},
+    NodeRng,
 };
 
 #[derive(Debug, From)]
@@ -122,11 +121,12 @@ where
     I: Display + Send + 'static,
 {
     type Event = Event<I>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
         effect_builder: crate::effect::EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -183,7 +183,7 @@ where
                     }
                 }
             }
-            Event::LinearChainBlock{ block, execution_results } => {
+            Event::LinearChainBlock { block, execution_results } => {
                 effect_builder
                 .put_block_to_storage(block.clone())
                 .event(move |_| Event::PutBlockResult{ block, execution_results })

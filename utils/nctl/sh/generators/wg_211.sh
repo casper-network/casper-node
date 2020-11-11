@@ -44,9 +44,9 @@ do
 done
 
 # Set defaults.
-amount=${amount:-1000000}
-gas_payment=${gas_payment:-200000}
-gas_price=${gas_price:-10}
+amount=${amount:-$NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT}
+gas_payment=${gas_payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
 user=${user:-1}
@@ -58,8 +58,10 @@ validator=${validator:-1}
 
 # Set vars.
 contract_name="undelegate.wasm"
+delegator_public_key=$(cat $path_net/users/user-$user/public_key_hex)
 delegator_secret_key=$path_net/users/user-$user/secret_key.pem
-node_address=$(get_node_address $net $node)
+delegator_purse_uref="TODO"
+node_address=$(get_node_address_rpc $net $node)
 path_net=$NCTL/assets/net-$net
 path_client=$path_net/bin/casper-client
 path_contract=$path_net/bin/$contract_name
@@ -84,10 +86,13 @@ deploy_hash=$(
         --payment-amount $gas_payment \
         --secret-key $delegator_secret_key \
         --session-arg "amount:u512='$amount'" \
+        --session-arg "delegator:public_key='$delegator_public_key'" \
         --session-arg "validator:public_key='$validator_public_key'" \
+        --session-arg "unbond_purse:uref-='$user_purse_uref'" \
         --session-path $path_contract \
-        --ttl "1day" | \
-        python3 -c "import sys, json; print(json.load(sys.stdin)['deploy_hash'])"
+        --ttl "1day" \
+        | jq '.result.deploy_hash' \
+        | sed -e 's/^"//' -e 's/"$//'
     )
 
 # Display deploy hash.

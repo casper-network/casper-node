@@ -1,6 +1,7 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
 mod candidate_block;
+mod cl_context;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
@@ -11,8 +12,16 @@ mod protocols;
 mod tests;
 mod traits;
 
+use std::{
+    convert::Infallible,
+    fmt::{self, Debug, Display, Formatter},
+};
+
 use datasize::DataSize;
-use std::fmt::{self, Debug, Display, Formatter};
+use derive_more::From;
+use hex_fmt::HexFmt;
+use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
 use casper_types::auction::ValidatorWeights;
@@ -23,25 +32,23 @@ use crate::{
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
-            DeployBufferRequest, NetworkRequest, StorageRequest,
+            self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{BlockHash, BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, ProtoBlock, Timestamp},
+    NodeRng,
 };
 
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraEnd};
-use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
-use hex_fmt::HexFmt;
-use serde::{Deserialize, Serialize};
-use tracing::error;
+pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
 
-#[derive(Debug, DataSize, Clone, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Serialize, Deserialize)]
 pub enum ConsensusMessage {
     /// A protocol message, to be handled by the instance in the specified era.
     Protocol { era_id: EraId, payload: Vec<u8> },
@@ -65,16 +72,12 @@ pub enum Event<I> {
     },
     #[from]
     ConsensusRequest(requests::ConsensusRequest),
-    /// The proto-block has been validated and can now be added to the protocol state
-    AcceptProtoBlock {
-        era_id: EraId,
-        proto_block: ProtoBlock,
-    },
-    /// The proto-block turned out to be invalid, we might want to accuse/punish/... the sender
-    InvalidProtoBlock {
+    /// The proto-block has been validated
+    ResolveValidity {
         era_id: EraId,
         sender: I,
         proto_block: ProtoBlock,
+        valid: bool,
     },
     /// Event raised when a new era should be created: once we get the set of validators, the
     /// booking block hash and the seed from the key block
@@ -87,6 +90,23 @@ pub enum Event<I> {
         key_block_seed: Result<Digest, u64>,
         get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
+    /// An event instructing us to shutdown if the latest era received no votes
+    Shutdown,
+}
+
+impl Debug for ConsensusMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConsensusMessage::Protocol { era_id, payload: _ } => {
+                write!(f, "Protocol {{ era_id.0: {}, .. }}", era_id.0)
+            }
+            ConsensusMessage::EvidenceRequest { era_id, pub_key } => f
+                .debug_struct("EvidenceRequest")
+                .field("era_id.0", &era_id.0)
+                .field("pub_key", pub_key)
+                .finish(),
+        }
+    }
 }
 
 impl Display for ConsensusMessage {
@@ -127,22 +147,18 @@ impl<I: Debug> Display for Event<I> {
                 "A request for consensus component hash been receieved: {:?}",
                 request
             ),
-            Event::AcceptProtoBlock {
-                era_id,
-                proto_block,
-            } => write!(
-                f,
-                "A proto-block has been validated for era {:?}: {:?}",
-                era_id, proto_block
-            ),
-            Event::InvalidProtoBlock {
+            Event::ResolveValidity {
                 era_id,
                 sender,
                 proto_block,
+                valid,
             } => write!(
                 f,
-                "A proto-block received from {:?} turned out to be invalid for era {:?}: {:?}",
-                sender, era_id, proto_block
+                "Proto-block received from {:?} for {} is {}: {:?}",
+                sender,
+                era_id,
+                if *valid { "valid" } else { "invalid" },
+                proto_block
             ),
             Event::CreateNewEra {
                 booking_block_hash,
@@ -155,6 +171,7 @@ impl<I: Debug> Display for Event<I> {
                 response to get_validators from the contract runtime: {:?}",
                 booking_block_hash, key_block_seed, get_validators_result
             ),
+            Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
         }
     }
 }
@@ -165,7 +182,7 @@ pub trait ReactorEventT<I>:
     From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
-    + From<DeployBufferRequest>
+    + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
@@ -178,7 +195,7 @@ impl<REv, I> ReactorEventT<I> for REv where
     REv: From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
-        + From<DeployBufferRequest>
+        + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
@@ -193,11 +210,12 @@ where
     REv: ReactorEventT<I>,
 {
     type Event = Event<I>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        mut rng: &mut dyn CryptoRngCore,
+        mut rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
@@ -213,15 +231,12 @@ where
                 block_header,
                 responder,
             )) => handling_es.handle_linear_chain_block(*block_header, responder),
-            Event::AcceptProtoBlock {
-                era_id,
-                proto_block,
-            } => handling_es.handle_accept_proto_block(era_id, proto_block),
-            Event::InvalidProtoBlock {
+            Event::ResolveValidity {
                 era_id,
                 sender,
                 proto_block,
-            } => handling_es.handle_invalid_proto_block(era_id, sender, proto_block),
+                valid,
+            } => handling_es.resolve_validity(era_id, sender, proto_block, valid),
             Event::CreateNewEra {
                 block_header,
                 booking_block_hash,
@@ -263,6 +278,7 @@ where
                     validators,
                 )
             }
+            Event::Shutdown => handling_es.shutdown_if_necessary(),
         }
     }
 }

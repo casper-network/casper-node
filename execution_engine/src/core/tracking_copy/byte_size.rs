@@ -52,6 +52,8 @@ impl ByteSize for StoredValue {
                 StoredValue::ContractPackage(contract_package) => {
                     contract_package.serialized_length()
                 }
+                StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
+                StoredValue::Transfer(transfer) => transfer.serialized_length(),
             }
     }
 }

@@ -4,21 +4,21 @@
 
 set -eu
 
-BASEDIR=$(readlink -f $(dirname $0))
-CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
-TRUSTED_HASH="${TRUSTED_HASH:-}"
-
-# Generate a genesis timestamp 30 seconds into the future, unless explicity given a different one.
-TIMESTAMP=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() + timedelta(seconds=20)).isoformat("T") + "Z")')
-TIMESTAMP=${GENESIS_TIMESTAMP:-$TIMESTAMP}
-
-echo "GENESIS_TIMESTAMP=${TIMESTAMP}"
-
 # Build the contracts
 make build-contracts-rs
 
 # Build the node first, so that `sleep` in the loop has an effect.
 cargo build -p casper-node
+
+BASEDIR=$(readlink -f $(dirname $0))
+CHAINSPEC=$(mktemp -t chainspec_XXXXXXXX --suffix .toml)
+TRUSTED_HASH="${TRUSTED_HASH:-}"
+
+# Generate a genesis timestamp 30 seconds into the future, unless explicity given a different one.
+TIMESTAMP=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() + timedelta(seconds=30)).isoformat("T") + "Z")')
+TIMESTAMP=${GENESIS_TIMESTAMP:-$TIMESTAMP}
+
+echo "GENESIS_TIMESTAMP=${TIMESTAMP}"
 
 # Update the chainspec to use the current time as the genesis timestamp.
 cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
@@ -95,6 +95,4 @@ done;
 
 echo "Test network starting."
 echo
-echo "To stop all nodes, run"
-echo "  systemctl --user stop node-\\*"
-echo "  systemctl --user reset-failed"
+echo "To stop all nodes, run stop-dev.sh"

@@ -106,7 +106,7 @@
 //!
 //!     fn handle_event(&mut self,
 //!         effect_builder: EffectBuilder<REv>,
-//!         _rng: &mut dyn CryptoRngCore,
+//!         _rng: &mut NodeRng,
 //!         event: Self::Event
 //!     ) -> Effects<Self::Event> {
 //!         match event {
@@ -181,7 +181,7 @@
 //!            _cfg: Self::Config,
 //!            _registry: &Registry,
 //!            event_queue: EventQueueHandle<Self::Event>,
-//!            rng: &mut dyn CryptoRngCore,
+//!            rng: &mut NodeRng,
 //!     ) -> Result<(Self, Effects<Self::Event>), anyhow::Error> {
 //!         let effect_builder = EffectBuilder::new(event_queue);
 //!         let (shouter, shouter_effect) = Shouter::new(effect_builder);
@@ -194,7 +194,7 @@
 //!
 //!     fn dispatch_event<R: Rng + ?Sized>(&mut self,
 //!                       effect_builder: EffectBuilder<Event>,
-//!                       rng: &mut dyn CryptoRngCore,
+//!                       rng: &mut NodeRng,
 //!                       event: Event
 //!     ) -> Effects<Event> {
 //!          match event {
@@ -283,11 +283,12 @@ use std::{
     any::Any,
     cell::RefCell,
     collections::{HashMap, HashSet},
+    convert::Infallible,
     fmt::Display,
     sync::{Arc, RwLock},
 };
 
-use rand::{seq::IteratorRandom, Rng};
+use rand::seq::IteratorRandom;
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
 
@@ -299,12 +300,10 @@ use crate::{
     },
     logging,
     reactor::{EventQueueHandle, QueueKind},
-    tls::KeyFingerprint,
-    types::CryptoRngCore,
+    testing::TestRng,
+    types::NodeId,
+    NodeRng,
 };
-
-/// The node ID type used by the in-memory network.
-pub type NodeId = KeyFingerprint;
 
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
 
@@ -372,7 +371,7 @@ where
     /// network is not of the correct message type.
     pub fn create_node<REv>(
         event_queue: EventQueueHandle<REv>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut TestRng,
     ) -> InMemoryNetwork<P>
     where
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
@@ -415,12 +414,12 @@ where
     pub(crate) fn create_node_local<REv>(
         &self,
         event_queue: EventQueueHandle<REv>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut TestRng,
     ) -> InMemoryNetwork<P>
     where
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
-        InMemoryNetwork::new(event_queue, rng.gen(), self.nodes.clone())
+        InMemoryNetwork::new(event_queue, NodeId::random(rng), self.nodes.clone())
     }
 }
 
@@ -448,7 +447,7 @@ where
         {
             let mut nodes_write = nodes.write().expect("network lock poisoned");
             assert!(!nodes_write.contains_key(&node_id));
-            nodes_write.insert(node_id, sender);
+            nodes_write.insert(node_id.clone(), sender);
         }
 
         tokio::spawn(receiver_task(event_queue, receiver));
@@ -459,7 +458,7 @@ where
     /// Returns this node's ID.
     #[inline]
     pub fn node_id(&self) -> NodeId {
-        self.node_id
+        self.node_id.clone()
     }
 }
 
@@ -480,7 +479,7 @@ where
 
         match nodes.get(&dest) {
             Some(sender) => {
-                if let Err(SendError((_, msg))) = sender.send((self.node_id, payload)) {
+                if let Err(SendError((_, msg))) = sender.send((self.node_id.clone(), payload)) {
                     warn!(%dest, %msg, "could not send message (send error)");
 
                     // We do nothing else, the message is just dropped.
@@ -496,11 +495,12 @@ where
     P: Display + Clone,
 {
     type Event = NetworkRequest<NodeId, P>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -524,7 +524,7 @@ where
             NetworkRequest::Broadcast { payload, responder } => {
                 if let Ok(guard) = self.nodes.read() {
                     for dest in guard.keys().filter(|&node_id| node_id != &self.node_id) {
-                        self.send(&guard, *dest, payload.clone());
+                        self.send(&guard, dest.clone(), payload.clone());
                     }
                 } else {
                     error!("network lock has been poisoned")
@@ -547,8 +547,8 @@ where
                         .into_iter()
                         .collect();
                     // Not terribly efficient, but will always get us the maximum amount of nodes.
-                    for &dest in chosen.iter() {
-                        self.send(&guard, dest, payload.clone());
+                    for dest in chosen.iter() {
+                        self.send(&guard, dest.clone(), payload.clone());
                     }
                     responder.respond(chosen).ignore()
                 } else {

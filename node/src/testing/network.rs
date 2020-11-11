@@ -18,7 +18,7 @@ use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner},
     testing::TestRng,
-    types::CryptoRngCore,
+    NodeRng,
 };
 
 /// Type alias for set of nodes inside a network.
@@ -102,7 +102,7 @@ where
     pub async fn add_node_with_config(
         &mut self,
         cfg: R::Config,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Result<(R::NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
         let runner: Runner<ConditionCheckReactor<R>> = Runner::new(cfg, rng).await?;
 

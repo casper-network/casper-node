@@ -1,8 +1,8 @@
 //! Contains implementation of a Mint contract functionality.
 mod constants;
-mod round_reward;
 mod runtime_provider;
 mod storage_provider;
+mod system_provider;
 
 use core::convert::TryFrom;
 use num_rational::Ratio;
@@ -10,14 +10,14 @@ use num_rational::Ratio;
 use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
 
 pub use crate::mint::{
-    constants::*, round_reward::*, runtime_provider::RuntimeProvider,
-    storage_provider::StorageProvider,
+    constants::*, runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    system_provider::SystemProvider,
 };
 
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
 
 /// Mint trait.
-pub trait Mint: RuntimeProvider + StorageProvider {
+pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// Mint new token with given `initial_balance` balance. Returns new purse on success, otherwise
     /// an error.
     fn mint(&mut self, initial_balance: U512) -> Result<URef, Error> {
@@ -90,6 +90,7 @@ pub trait Mint: RuntimeProvider + StorageProvider {
         };
         self.write(source_balance, source_value - amount)?;
         self.add(target_balance, amount)?;
+        self.record_transfer(source, target, amount)?;
         Ok(())
     }
 
@@ -104,7 +105,14 @@ pub trait Mint: RuntimeProvider + StorageProvider {
             .read(total_supply_uref)?
             .ok_or(Error::TotalSupplyNotFound)?;
 
-        let round_seigniorage_rate = round_reward::round_seigniorage_rate();
+        let round_seigniorage_rate_uref = match self.get_key(ROUND_SEIGNIORAGE_RATE_KEY) {
+            Some(Key::URef(uref)) => uref,
+            Some(_) => return Err(Error::MissingKey), // TODO
+            None => return Err(Error::MissingKey),
+        };
+        let round_seigniorage_rate: Ratio<U512> = self
+            .read(round_seigniorage_rate_uref)?
+            .ok_or(Error::TotalSupplyNotFound)?;
 
         let ret = (round_seigniorage_rate * Ratio::from(total_supply)).to_integer();
 

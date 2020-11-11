@@ -3,15 +3,16 @@ use casper_engine_test_support::{
         ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_POS_GET_PAYMENT_PURSE: &str = "pos_get_payment_purse.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
-const ACCOUNT_1_INITIAL_BALANCE: u64 = 100_000_000 + 100;
+const ACCOUNT_1_INITIAL_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ARG_AMOUNT: &str = "amount";
+const ARG_TARGET: &str = "target";
 
 #[ignore]
 #[test]
@@ -37,7 +38,7 @@ fn should_run_get_payment_purse_contract_account_1() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
        *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { "target" =>ACCOUNT_1_ADDR, "amount" => U512::from(ACCOUNT_1_INITIAL_BALANCE) },
+        runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => U512::from(ACCOUNT_1_INITIAL_BALANCE) },
     )
         .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(

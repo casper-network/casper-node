@@ -45,10 +45,10 @@ do
 done
 
 # Set defaults.
-amount=${amount:-1000000}
+amount=${amount:-$NCTL_DEFAULT_AUCTION_BID_AMOUNT}
 delegation_rate=${delegation_rate:-125}
-gas_payment=${gas_payment:-200000}
-gas_price=${gas_price:-10}
+gas_payment=${gas_payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
 user=${user:-1}
@@ -59,8 +59,9 @@ user=${user:-1}
 
 # Set vars.
 bidder_secret_key=$path_net/users/user-$user/secret_key.pem
+bidder_public_key=$(cat $path_net/users/user-$user/public_key_hex)
 contract_name="add_bid.wasm"
-node_address=$(get_node_address $net $node)
+node_address=$(get_node_address_rpc $net $node)
 path_net=$NCTL/assets/net-$net
 path_client=$path_net/bin/casper-client
 path_contract=$path_net/bin/$contract_name
@@ -84,11 +85,13 @@ deploy_hash=$(
         --node-address $node_address \
         --payment-amount $gas_payment \
         --secret-key $bidder_secret_key \
+        --session-arg="public_key:public_key='$bidder_public_key'" \
         --session-arg "amount:u512='$amount'" \
         --session-arg "delegation_rate:u64='$delegation_rate'" \
         --session-path $path_contract \
-        --ttl "1day" | \
-        python3 -c "import sys, json; print(json.load(sys.stdin)['deploy_hash'])"
+        --ttl "1day" \
+        | jq '.result.deploy_hash' \
+        | sed -e 's/^"//' -e 's/"$//'
     )
 
 # Display deploy hash.

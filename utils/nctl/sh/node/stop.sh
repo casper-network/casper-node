@@ -37,13 +37,15 @@ node=${node:-"all"}
 # Main
 #######################################
 
-log "network #$net: stopping node(s) ... please wait"
-
+# Set daemon handler.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    source $NCTL/sh/daemon/supervisord/node_stop.sh $net $node
+    daemon_mgr=$NCTL/sh/daemon/supervisord/node_stop.sh
 fi
+
+# Stop node(s).
+log "network #$net: stopping node(s) ... please wait"
+source $daemon_mgr $net $node
 
 # Display status.
 sleep 1.0
-source $NCTL/sh/node/status.sh $net
-
+source $NCTL/sh/node/status.sh net=$net

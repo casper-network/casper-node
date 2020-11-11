@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 use casper_contract::{
-    contract_api::{runtime, storage},
+    contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
@@ -14,8 +14,9 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     contracts::Parameters,
     mint::{
-        Mint, RuntimeProvider, StorageProvider, ARG_AMOUNT, ARG_PURSE, ARG_SOURCE, ARG_TARGET,
-        METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD, METHOD_TRANSFER,
+        Mint, RuntimeProvider, StorageProvider, SystemProvider, ARG_AMOUNT, ARG_PURSE, ARG_SOURCE,
+        ARG_TARGET, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
+        METHOD_TRANSFER,
     },
     system_contract_errors::mint::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
@@ -66,6 +67,12 @@ impl StorageProvider for MintContract {
     fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         storage::add(uref, value);
         Ok(())
+    }
+}
+
+impl SystemProvider for MintContract {
+    fn record_transfer(&mut self, source: URef, target: URef, amount: U512) -> Result<(), Error> {
+        system::record_transfer(source, target, amount).map_err(|_| Error::RecordTransferFailure)
     }
 }
 

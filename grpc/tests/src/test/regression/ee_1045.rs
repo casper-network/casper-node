@@ -1,15 +1,16 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
 use casper_engine_test_support::{
-    internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
-    DEFAULT_ACCOUNT_ADDR,
+    internal::{
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+        DEFAULT_AUCTION_DELAY,
+    },
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::AccountHash,
-    auction::{
-        ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
-    },
+    auction::{ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH},
     runtime_args, PublicKey, RuntimeArgs, U512,
 };
 
@@ -19,26 +20,26 @@ const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 const ARG_AMOUNT: &str = "amount";
 const ARG_ENTRY_POINT: &str = "entry_point";
 
-const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
+const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
 const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([200; 32]);
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([201; 32]);
-const ACCOUNT_1_BALANCE: u64 = 10_000_000;
+const ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_1_BOND: u64 = 100_000;
 
 const ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([202; 32]);
 const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([203; 32]);
-const ACCOUNT_2_BALANCE: u64 = 25_000_000;
+const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
 const ACCOUNT_3_PK: PublicKey = PublicKey::Ed25519([150; 32]);
 const ACCOUNT_3_ADDR: AccountHash = AccountHash::new([151; 32]);
-const ACCOUNT_3_BALANCE: u64 = 25_000_000;
+const ACCOUNT_3_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_3_BOND: u64 = 200_000;
 
 const ACCOUNT_4_PK: PublicKey = PublicKey::Ed25519([170; 32]);
 const ACCOUNT_4_ADDR: AccountHash = AccountHash::new([171; 32]);
-const ACCOUNT_4_BALANCE: u64 = 25_000_000;
+const ACCOUNT_4_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_4_BOND: u64 = 200_000;
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -99,12 +100,12 @@ fn should_run_ee_1045_squash_validators() {
     builder.run_genesis(&run_genesis_request);
 
     let genesis_validator_weights = builder
-        .get_era_validators(INITIAL_ERA_ID)
+        .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have genesis validator weights");
 
-    let mut new_era_id = INITIAL_ERA_ID + AUCTION_DELAY + 1;
-    assert!(builder.get_era_validators(new_era_id).is_none());
-    assert!(builder.get_era_validators(new_era_id - 1).is_some());
+    let mut new_era_id = INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
+    assert!(builder.get_validator_weights(new_era_id).is_none());
+    assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
     builder.exec(transfer_request_1).expect_success().commit();
 
@@ -160,8 +161,8 @@ fn should_run_ee_1045_squash_validators() {
     builder.exec(squash_request_1).expect_success().commit();
 
     // new_era_id += 1;
-    assert!(builder.get_era_validators(new_era_id).is_none());
-    assert!(builder.get_era_validators(new_era_id - 1).is_some());
+    assert!(builder.get_validator_weights(new_era_id).is_none());
+    assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
     builder
         .exec(run_auction_request_1)
@@ -169,7 +170,7 @@ fn should_run_ee_1045_squash_validators() {
         .expect_success();
 
     let post_round_1_auction_weights = builder
-        .get_era_validators(new_era_id)
+        .get_validator_weights(new_era_id)
         .expect("should have new era validator weights computed");
 
     assert_ne!(genesis_validator_weights, post_round_1_auction_weights);
@@ -186,8 +187,8 @@ fn should_run_ee_1045_squash_validators() {
     //
     builder.exec(squash_request_2).expect_success().commit();
     new_era_id += 1;
-    assert!(builder.get_era_validators(new_era_id).is_none());
-    assert!(builder.get_era_validators(new_era_id - 1).is_some());
+    assert!(builder.get_validator_weights(new_era_id).is_none());
+    assert!(builder.get_validator_weights(new_era_id - 1).is_some());
 
     builder
         .exec(run_auction_request_2)
@@ -195,7 +196,7 @@ fn should_run_ee_1045_squash_validators() {
         .expect_success();
 
     let post_round_2_auction_weights = builder
-        .get_era_validators(new_era_id)
+        .get_validator_weights(new_era_id)
         .expect("should have new era validator weights computed");
 
     assert_ne!(genesis_validator_weights, post_round_2_auction_weights);

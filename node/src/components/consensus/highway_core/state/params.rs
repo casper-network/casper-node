@@ -1,14 +1,16 @@
-use super::{TimeDiff, Timestamp};
+use super::Timestamp;
 
 /// Protocol parameters for Highway.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct Params {
     seed: u64,
     block_reward: u64,
     reduced_block_reward: u64,
     min_round_exp: u8,
+    max_round_exp: u8,
     init_round_exp: u8,
     end_height: u64,
+    start_timestamp: Timestamp,
     end_timestamp: Timestamp,
 }
 
@@ -26,15 +28,21 @@ impl Params {
     ///   summit does not exceed half the total weight.
     /// * `min_round_exp`: The minimum round exponent. `1 << min_round_exp` milliseconds is the
     ///   minimum round length.
+    /// * `max_round_exp`: The maximum round exponent. `1 << max_round_exp` milliseconds is the
+    ///   maximum round length.
     /// * `end_height`, `end_timestamp`: The last block will be the first one that has at least the
     ///   specified height _and_ is no earlier than the specified timestamp. No children of this
     ///   block can be proposed.
+    #[allow(clippy::too_many_arguments)] // FIXME
     pub(crate) fn new(
         seed: u64,
         block_reward: u64,
         reduced_block_reward: u64,
         min_round_exp: u8,
+        max_round_exp: u8,
+        init_round_exp: u8,
         end_height: u64,
+        start_timestamp: Timestamp,
         end_timestamp: Timestamp,
     ) -> Params {
         assert!(
@@ -46,8 +54,10 @@ impl Params {
             block_reward,
             reduced_block_reward,
             min_round_exp,
-            init_round_exp: min_round_exp, // TODO: The median seen by previous era's switch block?
+            max_round_exp,
+            init_round_exp,
             end_height,
+            start_timestamp,
             end_timestamp,
         }
     }
@@ -74,19 +84,25 @@ impl Params {
         self.min_round_exp
     }
 
+    /// Returns the maximum round exponent. `1 << self.max_round_exp()` milliseconds is the maximum
+    /// round length.
+    pub(crate) fn max_round_exp(&self) -> u8 {
+        self.max_round_exp
+    }
+
     /// Returns the initial round exponent.
     pub(crate) fn init_round_exp(&self) -> u8 {
         self.init_round_exp
     }
 
-    /// Returns the minimum round length, i.e. `1 << self.min_round_exp()` milliseconds.
-    pub(crate) fn min_round_len(&self) -> TimeDiff {
-        super::round_len(self.min_round_exp)
-    }
-
     /// Returns the minimum height of the last block.
     pub(crate) fn end_height(&self) -> u64 {
         self.end_height
+    }
+
+    /// Returns the start timestamp of the era.
+    pub(crate) fn start_timestamp(&self) -> Timestamp {
+        self.start_timestamp
     }
 
     /// Returns the minimum timestamp of the last block.

@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use casper_types::bytesrepr;
 
-use super::in_memory;
+use crate::storage::error::in_memory;
 
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum Error {

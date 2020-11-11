@@ -8,6 +8,10 @@ standard_payment_installer_path = 'standard_payment.wasm'
 auction_installer_path = 'auction_install.wasm'
 accounts_path = 'accounts.csv'
 validator_slots = 5
+auction_delay = 3
+locked_funds_period = 0
+# (1+0.02)^((2^14)/31536000000)-1 is expressed as a fractional number below.
+round_seigniorage_rate = [6_414, 623_437_335_209]
 
 [highway]
 genesis_era_start_timestamp = '2020-09-18T18:45:00Z'
@@ -17,7 +21,8 @@ booking_duration = '4hours'
 entropy_duration = '5days'
 voting_period_duration = '6weeks'
 finality_threshold_percent = 8
-minimum_round_exponent = 13
+minimum_round_exponent = 14
+maximum_round_exponent = 19
 
 [deploys]
 max_payment_cost = '9'
@@ -73,9 +78,9 @@ gas_per_byte = 101
 # Host function declarations are located in smart_contracts/contract/src/ext_ffi.rs
 [wasm_config.host_function_costs]
 add = { cost = 100, arguments = [0, 1, 2, 3] }
-add_associated_key = { cost = 101, arguments = [0, 1, 2, 3] }
+add_associated_key = { cost = 101, arguments = [0, 1, 2] }
 add_contract_version = { cost = 102, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] } # Not instrumented yet, assuming a sufficiently large number
-add_local = { cost = 103, arguments = [0, 1, 2, 3] }
+blake2b = { cost = 133, arguments = [0, 1, 2, 3] }
 call_contract = { cost = 104, arguments = [0, 1, 2, 3, 4, 5, 6] }
 call_versioned_contract = { cost = 105, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8] } # Not instrumented yet, assuming the same as call_contract
 create_contract_package_at_hash = { cost = 106, arguments = [0, 1] } # Not instrumented yet, assuming a sufficiently large number
@@ -97,7 +102,7 @@ load_named_keys = { cost = 121, arguments = [0, 1] }
 new_uref = { cost = 122, arguments = [0, 1, 2] }
 print = { cost = 123, arguments = [0, 1] }
 provision_contract_user_group_uref = { cost = 124, arguments = [0,1,2,3,4] } # Not instrumented yet, assuming a sufficiently large number
-put_key = { cost = 125, arguments = [0, 1] }
+put_key = { cost = 125, arguments = [0, 1, 2, 3] }
 read_host_buffer = { cost = 126, arguments = [0, 1, 2] }
 read_value = { cost = 127, arguments = [0, 1, 0] }
 read_value_local = { cost = 128,  arguments = [0, 1, 0] }
@@ -120,7 +125,7 @@ protocol_version = '0.2.0'
 upgrade_installer_path = 'upgrade.wasm'
 
 [upgrade.activation_point]
-rank = 23
+height = 23
 
 [upgrade.new_wasm_config]
 initial_memory = 17
@@ -167,9 +172,9 @@ gas_per_byte = 101
 
 [upgrade.new_wasm_config.host_function_costs]
 add = { cost = 1000, arguments = [0, 1, 2, 3] }
-add_associated_key = { cost = 1001, arguments = [0, 1, 2, 3] }
+add_associated_key = { cost = 1001, arguments = [0, 1, 2] }
 add_contract_version = { cost = 1002, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] } # Not instrumented yet, assuming a sufficiently large number
-add_local = { cost = 1003, arguments = [0, 1, 2, 3] }
+blake2b = { cost = 1043, arguments = [0, 1, 2, 3] }
 call_contract = { cost = 1004, arguments = [0, 1, 2, 3, 4, 5, 6] }
 call_versioned_contract = { cost = 1005, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8] } # Not instrumented yet, assuming the same as call_contract
 create_contract_package_at_hash = { cost = 1006, arguments = [0, 1] } # Not instrumented yet, assuming a sufficiently large number
@@ -191,7 +196,7 @@ load_named_keys = { cost = 1021, arguments = [0, 1] }
 new_uref = { cost = 1022, arguments = [0, 1, 2] }
 print = { cost = 1023, arguments = [0, 1] }
 provision_contract_user_group_uref = { cost = 1024, arguments = [0,1,2,3,4] } # Not instrumented yet, assuming a sufficiently large number
-put_key = { cost = 1025, arguments = [0, 1] }
+put_key = { cost = 1025, arguments = [0, 1, 2, 3] }
 read_host_buffer = { cost = 1026, arguments = [0, 1, 2] }
 read_value = { cost = 1027, arguments = [0, 1, 0] }
 read_value_local = { cost = 1028,  arguments = [0, 1, 0] }
@@ -221,4 +226,4 @@ block_gas_limit = 38
 protocol_version = '0.3.0'
 
 [upgrade.activation_point]
-rank = 39
+height = 39

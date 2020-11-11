@@ -1,13 +1,13 @@
 use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, WasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_MINT_PURSE: &str = "mint_purse.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
-const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
+const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
 #[ignore]
 #[test]

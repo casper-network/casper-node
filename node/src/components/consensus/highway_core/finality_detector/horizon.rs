@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::components::consensus::{
     highway_core::{
-        state::{State, Vote, Weight},
+        state::{State, Unit, Weight},
         validators::{ValidatorIndex, ValidatorMap},
     },
     traits::Context,
@@ -13,9 +13,9 @@ type Committee = Vec<ValidatorIndex>;
 /// A list containing the earliest level-n messages of each member of some committee, for some n.
 ///
 /// A summit is a sequence of committees of validators, where each member of the level-n committee
-/// has produced a vote that can see level-(n-1) votes by a quorum of the level-n committe.
+/// has produced a unit that can see level-(n-1) units by a quorum of the level-n committe.
 ///
-/// The level-n horizon maps each validator of a level-n committee to their earliest level-n vote.
+/// The level-n horizon maps each validator of a level-n committee to their earliest level-n unit.
 /// From a level-n horizon, the level-(n+1) committee and horizon can be computed.
 #[derive(Debug)]
 pub(super) struct Horizon<'a, C: Context> {
@@ -24,35 +24,35 @@ pub(super) struct Horizon<'a, C: Context> {
     sequence_numbers: ValidatorMap<Option<u64>>,
     /// A reference to the protocol state this horizon belongs to.
     state: &'a State<C>,
-    // The latest votes that are eligible for the summit.
+    // The latest units that are eligible for the summit.
     latest: &'a ValidatorMap<Option<&'a C::Hash>>,
 }
 
 impl<'a, C: Context> Horizon<'a, C> {
-    /// Creates a horizon assigning to each validator their level-0 vote, i.e. the oldest vote in
-    /// their current streak of votes for `candidate` (and descendants), or `None` if their latest
-    /// vote is not for `candidate`.
+    /// Creates a horizon assigning to each validator their level-0 unit, i.e. the oldest unit in
+    /// their current streak of units for `candidate` (and descendants), or `None` if their latest
+    /// unit is not for `candidate`.
     pub(super) fn level0(
         candidate: &'a C::Hash,
         state: &'a State<C>,
         latest: &'a ValidatorMap<Option<&'a C::Hash>>,
     ) -> Self {
         let height = state.block(candidate).height;
-        let to_lvl0vote = |&opt_vhash: &Option<&'a C::Hash>| {
+        let to_lvl0unit = |&opt_vhash: &Option<&'a C::Hash>| {
             state
                 .swimlane(opt_vhash?)
-                .take_while(|(_, vote)| state.find_ancestor(&vote.block, height) == Some(candidate))
+                .take_while(|(_, unit)| state.find_ancestor(&unit.block, height) == Some(candidate))
                 .last()
-                .map(|(_, vote)| vote.seq_number)
+                .map(|(_, unit)| unit.seq_number)
         };
         Horizon {
-            sequence_numbers: latest.iter().map(to_lvl0vote).collect(),
+            sequence_numbers: latest.iter().map(to_lvl0unit).collect(),
             state,
             latest,
         }
     }
 
-    /// Returns a horizon `s` of votes each of which can see a quorum of votes in `self` by
+    /// Returns a horizon `s` of units each of which can see a quorum of units in `self` by
     /// validators that are part of `s`.
     pub(super) fn next(&self, quorum: Weight) -> Option<Self> {
         let (committee, _pruned) =
@@ -64,8 +64,8 @@ impl<'a, C: Context> Horizon<'a, C> {
         }
     }
 
-    /// Returns the greatest subset of the `committee` of validators whose latest votes can see a
-    /// quorum of votes by the subset in `self`.
+    /// Returns the greatest subset of the `committee` of validators whose latest units can see a
+    /// quorum of units by the subset in `self`.
     ///
     /// The first returned value is the pruned committee, the second one are the validators that
     /// were pruned.
@@ -80,7 +80,7 @@ impl<'a, C: Context> Horizon<'a, C> {
         let mut pruned = BTreeSet::new();
         loop {
             let sees_quorum = |idx: &ValidatorIndex| {
-                self.seen_weight(self.state.vote(self.latest[*idx].unwrap()), &committee) >= quorum
+                self.seen_weight(self.state.unit(self.latest[*idx].unwrap()), &committee) >= quorum
             };
             let (new_committee, new_pruned): (Vec<_>, Vec<_>) =
                 committee.iter().cloned().partition(sees_quorum);
@@ -99,20 +99,20 @@ impl<'a, C: Context> Horizon<'a, C> {
     /// committee was computed from a `Horizon` that originated from the same `level0` as this one.
     pub(super) fn committee_quorum(&self, committee: &[ValidatorIndex]) -> Option<Weight> {
         let seen_weight = |idx: &ValidatorIndex| {
-            self.seen_weight(self.state.vote(self.latest[*idx].unwrap()), committee)
+            self.seen_weight(self.state.unit(self.latest[*idx].unwrap()), committee)
         };
         committee.iter().map(seen_weight).min()
     }
 
-    /// Returns the horizon containing the earliest vote of each of the `committee` members that
-    /// can see a quorum of votes by `committee` members in `self`.
+    /// Returns the horizon containing the earliest unit of each of the `committee` members that
+    /// can see a quorum of units by `committee` members in `self`.
     fn next_from_committee(&self, quorum: Weight, committee: &[ValidatorIndex]) -> Self {
         let find_first_lvl_n = |idx: &ValidatorIndex| {
             self.state
                 .swimlane(self.latest[*idx]?)
-                .take_while(|(_, vote)| self.seen_weight(vote, &committee) >= quorum)
+                .take_while(|(_, unit)| self.seen_weight(unit, &committee) >= quorum)
                 .last()
-                .map(|(_, vote)| (*idx, vote.seq_number))
+                .map(|(_, unit)| (*idx, unit.seq_number))
         };
         let mut sequence_numbers = ValidatorMap::from(vec![None; self.latest.len()]);
         for (vidx, sn) in committee.iter().flat_map(find_first_lvl_n) {
@@ -126,22 +126,22 @@ impl<'a, C: Context> Horizon<'a, C> {
     }
 
     /// Returns the total weight of the `committee`'s members whose message in this horizon is seen
-    /// by `vote`.
-    fn seen_weight(&self, vote: &Vote<C>, committee: &[ValidatorIndex]) -> Weight {
+    /// by `unit`.
+    fn seen_weight(&self, unit: &Unit<C>, committee: &[ValidatorIndex]) -> Weight {
         let to_weight = |&idx: &ValidatorIndex| self.state.weight(idx);
-        let is_seen = |&&idx: &&ValidatorIndex| self.can_see(vote, idx);
+        let is_seen = |&&idx: &&ValidatorIndex| self.can_see(unit, idx);
         committee.iter().filter(is_seen).map(to_weight).sum()
     }
 
-    /// Returns whether `vote` can see `idx`'s vote in `self`, where `vote` is considered to see
+    /// Returns whether `unit` can see `idx`'s unit in `self`, where `unit` is considered to see
     /// itself.
-    fn can_see(&self, vote: &Vote<C>, idx: ValidatorIndex) -> bool {
+    fn can_see(&self, unit: &Unit<C>, idx: ValidatorIndex) -> bool {
         self.sequence_numbers[idx].map_or(false, |self_sn| {
-            if vote.creator == idx {
-                vote.seq_number >= self_sn
+            if unit.creator == idx {
+                unit.seq_number >= self_sn
             } else {
-                let sees_self_sn = |vhash| self.state.vote(vhash).seq_number >= self_sn;
-                vote.panorama.get(idx).correct().map_or(false, sees_self_sn)
+                let sees_self_sn = |vhash| self.state.unit(vhash).seq_number >= self_sn;
+                unit.panorama.get(idx).correct().map_or(false, sees_self_sn)
             }
         })
     }

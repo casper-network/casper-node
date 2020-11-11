@@ -1,6 +1,6 @@
 [package]
 name = "casper-client"
-version = "1.5.0"
+version = "0.2.0"
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "A client for interacting with the Casper network"
@@ -10,14 +10,25 @@ homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/client"
 license-file = "../LICENSE"
 
+[lib]
+name = "casper_client"
+crate-type = ["rlib", "cdylib"]
+path = "lib/lib.rs"
+
+[[bin]]
+name = "casper-client"
+path = "src/main.rs"
+doc = false
+
 [dependencies]
-base64 = "0.12.3"
-casper-execution-engine = { version = "0.7.0", path = "../execution_engine" }
-casper-node = { version = "1.5.0", path = "../node" }
-casper-types = { version = "0.6.0", path = "../types", features = ["std"] }
+base64 = "0.13.0"
+casper-execution-engine = { version = "0.2.0", path = "../execution_engine" }
+casper-node = { version = "0.2.0", path = "../node" }
+casper-types = { version = "0.2.0", path = "../types", features = ["std"] }
 clap = "2.33.1"
 futures = "0.3.5"
 hex = { version = "0.4.2", features = ["serde"] }
+humantime = "2.0.1"
 jsonrpc-lite = "0.5.0"
 lazy_static = "1.4.0"
 rand = "0.7.3"
@@ -27,6 +38,13 @@ serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = "1.0.55"
 thiserror = "1.0.20"
 tokio = { version = "0.2.20", features = ["macros", "rt-threaded", "sync", "tcp", "time", "blocking"] }
+
+[build-dependencies]
+cbindgen = { version = "0.15", optional = true }
+
+[features]
+default = ["ffi"]
+ffi = ["cbindgen"]
 
 [package.metadata.deb]
 features = ["vendored-openssl"]
@@ -39,3 +57,14 @@ Package for Casper Client to connect to Casper Node.
 
 For information on using package, see https://github.com/CasperLabs/casper-node
 """
+
+[dev-dependencies]
+anyhow = "1.0.28"
+casper-node = { path = "../node" }
+futures = "0.3.5"
+hyper = "0.13.7"
+lazy_static = "1.4"
+semver = "0.11"
+serde = "1"
+warp = "0.2.4"
+warp-json-rpc = "0.2"

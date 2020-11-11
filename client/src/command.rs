@@ -6,5 +6,5 @@ pub trait ClientCommand<'a, 'b> {
     /// Constructs the clap `SubCommand` and returns the clap `App`.
     fn build(display_order: usize) -> App<'a, 'b>;
     /// Parses the arg matches and runs the subcommand.
-    fn run(matches: &ArgMatches<'_>); // TODO(dwerner)-> anyhow::Result<()>;
+    fn run(matches: &ArgMatches<'_>);
 }

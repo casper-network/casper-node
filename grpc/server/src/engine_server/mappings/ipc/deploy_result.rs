@@ -14,11 +14,14 @@ use crate::engine_server::ipc::{DeployError_OutOfGasError, DeployResult};
 impl From<ExecutionResult> for DeployResult {
     fn from(execution_result: ExecutionResult) -> DeployResult {
         match execution_result {
-            ExecutionResult::Success { effect, cost } => detail::execution_success(effect, cost),
+            ExecutionResult::Success { effect, cost, .. } => {
+                detail::execution_success(effect, cost)
+            }
             ExecutionResult::Failure {
                 error,
                 effect,
                 cost,
+                ..
             } => (error, effect, cost).into(),
         }
     }
@@ -168,9 +171,11 @@ mod tests {
             tmp_map
         };
         let execution_effect = ExecutionEffect::new(AdditiveMap::new(), input_transforms.clone());
+        let transfers = Vec::default();
         let cost = Gas::new(U512::from(123));
         let execution_result = ExecutionResult::Success {
             effect: execution_effect,
+            transfers,
             cost,
         };
         let mut ipc_deploy_result: DeployResult = execution_result.into();
@@ -196,6 +201,7 @@ mod tests {
         let execution_failure = ExecutionResult::Failure {
             error: error.into(),
             effect: Default::default(),
+            transfers: Vec::default(),
             cost: expected_cost,
         };
         let mut ipc_deploy_result: DeployResult = execution_failure.into();
@@ -241,6 +247,7 @@ mod tests {
         let exec_result = ExecutionResult::Failure {
             error: EngineStateError::Exec(revert_error),
             effect: Default::default(),
+            transfers: Vec::default(),
             cost: Gas::new(amount),
         };
         let mut ipc_result: DeployResult = exec_result.into();

@@ -6,7 +6,7 @@ This usage guide focusses upon the former use case, i.e. testing a single networ
 
 ## Step 0: Compile network binaries.
 
-Prior to testing a network we need to ensure that the binary sets are available:
+Prior to testing a network ensure that the binary sets are available:
 
 ```
 nctl-compile
@@ -14,7 +14,7 @@ nctl-compile
 
 ## Step 1: Create network assets.
 
-- Once network binaries are available we proceed to setup test network assets.  The following command instantiates the full set of assets required to run a 5 node local network with 5 users.  The assets are copied to `$NCTL/assets/net-1`, where $NCTL is the nctl home directory.
+- Once network binaries are available proceed to setup test network assets.  The following command instantiates the full set of assets required to run a 5 node local network with 5 users.  The assets are copied to `$NCTL/assets/net-1`, where $NCTL is the nctl home directory.
 
 ```
 nctl-assets-setup
@@ -40,17 +40,19 @@ nctl-assets-setup
 /storage
 ```
 
+- Examining the contents of `$NCTL/assets/net-1/users/user-1`, i.e. user 1, you will find both cryptographic keys & account public key (hex) files. 
+
 - Once assets have been created you are advised to review contents of toml files, i.e. `/chainspec/chainspec.toml` & the various `/nodes/node-X/config/node-config.toml` files.
 
-- If we wish to test a modification to the node software, we can make the code modification, recompile the binary set, create a new set of network assets by incrementing the network identifier to 2.  At this point we will have 2 test networks ready to be run side by side.
+- If you wish to test a modification to the node software, you can make the code modification, recompile the binary set, create a new set of network assets by incrementing the network identifier to 2.  At this point we will have 2 test networks ready to be run side by side.
 
-- If we wish to test modifications to a network's chainspec, we can:
+- If you wish to test modifications to a network's chainspec, you can:
 
 ```
 vi $NCTL/assets/net-1/chainspec/chainspec.toml
 ```
 
-- If we wish to test modifications to a node's config, e.g. node 3, we can:
+- If you wish to test modifications to a node's config, e.g. node 3, you can:
 
 ```
 vi $NCTL/assets/net-1/nodes/node-3/config/node-config.toml
@@ -58,19 +60,15 @@ vi $NCTL/assets/net-1/nodes/node-3/config/node-config.toml
 
 ## Step 2: Start a node in interactive mode.
 
-We can start a node interactively - this is useful to verify that the network assets have been correctly established and that the network is ready for testing.
+- Starting a node interactively is useful to verify that the network assets have been correctly established and that the network is ready for testing.  
 
 ```
-# Start node 1 interactively.
 nctl-interactive
-
-# Start node 4 interactively.
-nctl-interactive node-4
 ```
 
 ## Step 3: Start a network in daemon mode.
 
-- We can start either all nodes or a single nodes within a network in daemon mode.  This is the preferred modus operandi.
+- To start with all or a single node in daemonised mode (this is the preferred modus operandi):
 
 ```
 # Start all nodes in daemon mode.
@@ -80,13 +78,13 @@ nctl-start
 nctl-start node=1
 ```
 
-- We can observe the status of all daemonised nodes within a network as follows:
+- To view process status of all daemonised nodes:
 
 ```
 nctl-status
 ```
 
-- We can restart either a single or all daemonised nodes within a network as follows:
+- To restart either a single or all daemonised nodes:
 
 ```
 # Restart all nodes.
@@ -96,7 +94,7 @@ nctl-restart
 nctl-restart node=1
 ```
 
-- We can stop either a single or all daemonised nodes within a network as follows:
+- To stop either a single or all daemonised nodes:
 
 ```
 # Stop all nodes.
@@ -108,23 +106,25 @@ nctl-stop node=1
 
 ## Step 4: Dump logs & other files.
 
-If having observed a network behavioural anomaly we can dump relevant files such as logs and configurationas follows:
+Upon observation of a network behavioural anomaly you can dump relevant assets such as logs & configuration as follows:
 
 ```
+# Writes dumped files -> $NCTL/dumps/net-1
 nctl-assets-dump
 ```
 
-- This writes dumped files -> $NCTL/dumps/net-1
+## Step 5: Viewing information.
 
-## Step 5: End testing session.
+You can view chain, faucet, node & user information using the set of `nctl-view-*` commands.  See [here](commands.md) for further information.
 
-Once a network testing session is complete we can teardown the network as follows:
+## Step 6: End testing session.
+
+To teardown a network once a testing session is complete:
 
 ```
+# Delete previously created assets and stops all running nodes.
 nctl-assets-teardown
 ```
-
-Not only does this delete all previously created assets, it also stops any nodes still running in daemon mode.
 
 ## Summary
 

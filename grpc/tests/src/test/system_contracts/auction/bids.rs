@@ -5,9 +5,9 @@ use lazy_static::lazy_static;
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_AUCTION_DELAY, DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
@@ -16,9 +16,8 @@ use casper_types::{
     auction::{
         Bids, DelegationRate, Delegators, EraId, EraValidators, SeigniorageRecipients,
         UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_PUBLIC_KEY, ARG_UNBOND_PURSE, ARG_VALIDATOR, AUCTION_DELAY, BIDS_KEY,
-        DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_UNBONDING_DELAY, DELEGATORS_KEY, ERA_ID_KEY,
-        ERA_VALIDATORS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, SNAPSHOT_SIZE,
+        ARG_PUBLIC_KEY, ARG_UNBOND_PURSE, ARG_VALIDATOR, BIDS_KEY, DEFAULT_UNBONDING_DELAY,
+        DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION,
         UNBONDING_PURSES_KEY,
     },
     runtime_args, PublicKey, RuntimeArgs, URef, U512,
@@ -34,7 +33,7 @@ const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";
 
-const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
+const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 const ADD_BID_AMOUNT_1: u64 = 95_000;
@@ -55,21 +54,21 @@ const NON_FOUNDER_VALIDATOR_1_PK: PublicKey = PublicKey::Ed25519([3; 32]);
 const NON_FOUNDER_VALIDATOR_2_PK: PublicKey = PublicKey::Ed25519([4; 32]);
 
 const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([200; 32]);
-const ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
+const ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_1_BOND: u64 = 100_000;
 const ACCOUNT_1_WITHDRAW_1: u64 = 55_000;
 const ACCOUNT_1_WITHDRAW_2: u64 = 45_000;
 
 const ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([202; 32]);
-const ACCOUNT_2_BALANCE: u64 = 1_000_000_000;
+const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
 
 const BID_ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([204; 32]);
-const BID_ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
+const BID_ACCOUNT_1_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const BID_ACCOUNT_1_BOND: u64 = 0;
 
 const BID_ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([206; 32]);
-const BID_ACCOUNT_2_BALANCE: u64 = 1_000_000_000;
+const BID_ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const BID_ACCOUNT_2_BOND: u64 = 0;
 
 lazy_static! {
@@ -126,11 +125,11 @@ fn should_run_add_bid() {
 
     let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
-        builder.get_purse_balance(active_bid.bonding_purse),
+        builder.get_purse_balance(*active_bid.bonding_purse()),
         U512::from(ADD_BID_AMOUNT_1)
     );
-    assert_eq!(active_bid.delegation_rate, ADD_BID_DELEGATION_RATE_1);
-    assert_eq!(active_bid.funds_locked, None);
+    assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
+    assert!(!active_bid.is_locked());
 
     // 2nd bid top-up
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -152,10 +151,10 @@ fn should_run_add_bid() {
 
     let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
-        builder.get_purse_balance(active_bid.bonding_purse),
+        builder.get_purse_balance(*active_bid.bonding_purse()),
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
-    assert_eq!(active_bid.delegation_rate, ADD_BID_DELEGATION_RATE_2);
+    assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_2);
 
     // 3a. create purse for unbonding purposes
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -196,7 +195,7 @@ fn should_run_add_bid() {
 
     let active_bid = bids.get(&BID_ACCOUNT_1_PK.clone()).unwrap();
     assert_eq!(
-        builder.get_purse_balance(active_bid.bonding_purse),
+        builder.get_purse_balance(*active_bid.bonding_purse()),
         // Since we don't pay out immediately `WITHDRAW_BID_AMOUNT_2` is locked in unbonding queue
         U512::from(ADD_BID_AMOUNT_1 + BID_AMOUNT_2)
     );
@@ -283,10 +282,10 @@ fn should_run_delegate_and_undelegate() {
     assert_eq!(bids.len(), 1);
     let active_bid = bids.get(&NON_FOUNDER_VALIDATOR_1_PK).unwrap();
     assert_eq!(
-        builder.get_purse_balance(active_bid.bonding_purse),
+        builder.get_purse_balance(*active_bid.bonding_purse()),
         U512::from(ADD_BID_AMOUNT_1)
     );
-    assert_eq!(active_bid.delegation_rate, ADD_BID_DELEGATION_RATE_1);
+    assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
 
     let auction_stored_value = builder
         .query(None, auction_hash.into(), &[])
@@ -448,7 +447,7 @@ fn should_calculate_era_validators() {
 
     // Verify first era validators
     let first_validator_weights: ValidatorWeights = builder
-        .get_era_validators(INITIAL_ERA_ID)
+        .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have first era validator weights");
     assert_eq!(
         first_validator_weights
@@ -502,18 +501,19 @@ fn should_calculate_era_validators() {
     // elements are
     let eras = Vec::from_iter(era_validators.keys().copied());
     assert!(!era_validators.is_empty());
-    assert!(era_validators.len() >= AUCTION_DELAY as usize); // definetely more than 1 element
+    assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definetely more than 1 element
     let (first_era, _) = era_validators.iter().min().unwrap();
     let (last_era, _) = era_validators.iter().max().unwrap();
     let expected_eras: Vec<EraId> = (*first_era..=*last_era).collect();
     assert_eq!(eras, expected_eras, "Eras {:?}", eras);
 
     assert!(post_era_id > 0);
-    let consensus_next_era_id: EraId = AUCTION_DELAY + 1 + post_era_id;
+    let consensus_next_era_id: EraId = DEFAULT_AUCTION_DELAY + 1 + post_era_id;
 
+    let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
     assert_eq!(
         era_validators.len(),
-        SNAPSHOT_SIZE,
+        snapshot_size,
         "era_id={} {:?}",
         consensus_next_era_id,
         era_validators
@@ -545,7 +545,7 @@ fn should_calculate_era_validators() {
 
     // Check validator weights using the API
     let era_validators_result = builder
-        .get_era_validators(lookup_era_id)
+        .get_validator_weights(lookup_era_id)
         .expect("should have validator weights");
     assert_eq!(era_validators_result, *validator_weights);
 
@@ -597,13 +597,13 @@ fn should_get_first_seigniorage_recipients() {
 
     let founding_validator_1 = bids.get(&ACCOUNT_1_PK).expect("should have account 1 pk");
     assert_eq!(
-        founding_validator_1.funds_locked,
+        founding_validator_1.release_era(),
         Some(DEFAULT_LOCKED_FUNDS_PERIOD)
     );
 
     let founding_validator_2 = bids.get(&ACCOUNT_2_PK).expect("should have account 2 pk");
     assert_eq!(
-        founding_validator_2.funds_locked,
+        founding_validator_2.release_era(),
         Some(DEFAULT_LOCKED_FUNDS_PERIOD)
     );
 
@@ -649,11 +649,13 @@ fn should_get_first_seigniorage_recipients() {
     assert_eq!(seigniorage_recipients.len(), 2);
 
     let mut era_validators: EraValidators = builder.get_value(auction_hash, "era_validators");
-    assert_eq!(era_validators.len(), SNAPSHOT_SIZE, "{:?}", era_validators); // eraindex==1 - ran once
+    let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
 
-    assert!(era_validators.contains_key(&(AUCTION_DELAY as u64 + 1)));
+    assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators); // eraindex==1 - ran once
 
-    let era_id = AUCTION_DELAY - 1;
+    assert!(era_validators.contains_key(&(DEFAULT_AUCTION_DELAY as u64 + 1)));
+
+    let era_id = DEFAULT_AUCTION_DELAY - 1;
 
     let validator_weights = era_validators.remove(&era_id).unwrap_or_else(|| {
         panic!(
@@ -673,7 +675,7 @@ fn should_get_first_seigniorage_recipients() {
     );
 
     let first_validator_weights = builder
-        .get_era_validators(era_id)
+        .get_validator_weights(era_id)
         .expect("should have validator weights");
     assert_eq!(first_validator_weights, validator_weights);
 }
@@ -754,7 +756,7 @@ fn should_release_founder_stake() {
     let genesis_bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(genesis_bids.len(), 1);
     let entry = genesis_bids.get(&ACCOUNT_1_PK).unwrap();
-    assert_eq!(entry.funds_locked, Some(DEFAULT_LOCKED_FUNDS_PERIOD));
+    assert_eq!(entry.release_era(), Some(DEFAULT_LOCKED_FUNDS_PERIOD));
 
     builder.exec(transfer_request_1).commit().expect_success();
 
@@ -773,9 +775,9 @@ fn should_release_founder_stake() {
     let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_eq!(bids.len(), 1);
     let (founding_validator, entry) = bids.into_iter().next().unwrap();
-    assert_eq!(entry.funds_locked, None);
+    assert_eq!(entry.release_era(), None);
     assert_eq!(
-        builder.get_purse_balance(entry.bonding_purse),
+        builder.get_purse_balance(*entry.bonding_purse()),
         ACCOUNT_1_BOND.into()
     );
     assert_eq!(founding_validator, ACCOUNT_1_PK);
@@ -817,7 +819,7 @@ fn should_release_founder_stake() {
     let post_bids_1: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert_ne!(post_bids_1, genesis_bids);
     assert_eq!(
-        post_bids_1[&ACCOUNT_1_PK].staked_amount,
+        *post_bids_1[&ACCOUNT_1_PK].staked_amount(),
         U512::from(ACCOUNT_1_BOND - ACCOUNT_1_WITHDRAW_1)
     );
 
@@ -851,7 +853,7 @@ fn should_release_founder_stake() {
 
     // original bonding purse is not updated (yet)
     assert_eq!(
-        builder.get_purse_balance(entry.bonding_purse),
+        builder.get_purse_balance(*entry.bonding_purse()),
         ACCOUNT_1_BOND.into()
     );
 
@@ -959,7 +961,7 @@ fn should_fail_to_get_era_validators() {
     builder.run_genesis(&run_genesis_request);
 
     assert_eq!(
-        builder.get_era_validators(u64::max_value()),
+        builder.get_validator_weights(u64::max_value()),
         None,
         "should not have era validators for invalid era"
     );
@@ -988,7 +990,7 @@ fn should_use_era_validators_endpoint_for_first_era() {
     builder.run_genesis(&run_genesis_request);
 
     let validator_weights = builder
-        .get_era_validators(INITIAL_ERA_ID)
+        .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have validator weights for era 0");
 
     assert_eq!(validator_weights.len(), 1);
@@ -1045,15 +1047,15 @@ fn should_calculate_era_validators_multiple_new_bids() {
     builder.run_genesis(&run_genesis_request);
 
     let genesis_validator_weights = builder
-        .get_era_validators(INITIAL_ERA_ID)
+        .get_validator_weights(INITIAL_ERA_ID)
         .expect("should have genesis validators for initial era");
 
     // new_era is the first era in the future where new era validator weights will be calculated
-    let new_era = INITIAL_ERA_ID + AUCTION_DELAY + 1;
-    assert!(builder.get_era_validators(new_era).is_none());
+    let new_era = INITIAL_ERA_ID + DEFAULT_AUCTION_DELAY + 1;
+    assert!(builder.get_validator_weights(new_era).is_none());
     assert_eq!(
-        builder.get_era_validators(new_era - 1).unwrap(),
-        builder.get_era_validators(INITIAL_ERA_ID).unwrap()
+        builder.get_validator_weights(new_era - 1).unwrap(),
+        builder.get_validator_weights(INITIAL_ERA_ID).unwrap()
     );
 
     assert_eq!(
@@ -1124,7 +1126,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
 
     // Verify first era validators
     let new_validator_weights: ValidatorWeights = builder
-        .get_era_validators(new_era)
+        .get_validator_weights(new_era)
         .expect("should have first era validator weights");
 
     // check that the new computed era has exactly the state we expect
@@ -1156,7 +1158,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
 #[ignore]
 #[test]
 fn undelegated_funds_should_be_released() {
-    const SYSTEM_TRANSFER_AMOUNT: u64 = 1_000_000_000;
+    const SYSTEM_TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1287,7 +1289,7 @@ fn undelegated_funds_should_be_released() {
 #[ignore]
 #[test]
 fn fully_undelegated_funds_should_be_released() {
-    const SYSTEM_TRANSFER_AMOUNT: u64 = 1_000_000_000;
+    const SYSTEM_TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

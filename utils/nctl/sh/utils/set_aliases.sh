@@ -41,12 +41,45 @@ alias nctl-stop='source $NCTL/sh/node/stop.sh'
 alias nctl-toggle='source $NCTL/sh/node/toggle.sh'
 alias nctl-up='source $NCTL/sh/node/start.sh'
 
-# State views.
-# alias nctl-view-account='source $NCTL/sh/views/view_account.sh'
-# alias nctl-view-deploy='source $NCTL/sh/views/view_deploy.sh'
+# Views: chain.
+alias nctl-view-chain-account='source $NCTL/sh/views/view_chain_account.sh'
+alias nctl-view-chain-account-balance='source $NCTL/sh/views/view_chain_account_balance.sh'
+alias nctl-view-chain-auction-info='source $NCTL/sh/views/view_chain_auction_info.sh'
+alias nctl-view-chain-block='source $NCTL/sh/views/view_chain_block.sh'
+alias nctl-view-chain-deploy='source $NCTL/sh/views/view_chain_deploy.sh'
+alias nctl-view-chain-state-root-hash='source $NCTL/sh/views/view_chain_state_root_hash.sh'
+alias nctl-view-chain-spec='source $NCTL/sh/views/view_chain_spec.sh'
+alias nctl-view-chain-spec-accounts='source $NCTL/sh/views/view_chain_spec_accounts.sh'
 
+# Views: node.
+alias nctl-view-node-config='source $NCTL/sh/views/view_node_config.sh'
 alias nctl-view-node-log='source $NCTL/sh/views/view_node_log.sh'
-alias nctl-view-node-metrics='source $NCTL/sh/views/view_node_metrics.sh'
 alias nctl-view-node-peers='source $NCTL/sh/views/view_node_peers.sh'
 alias nctl-view-node-status='source $NCTL/sh/views/view_node_status.sh'
 alias nctl-view-node-storage='source $NCTL/sh/views/view_node_storage.sh'
+
+# Views: node metrcs.
+alias nctl-view-node-metrics='source $NCTL/sh/views/view_node_metrics.sh'
+alias nctl-view-node-metric-pending-deploy='source $NCTL/sh/views/view_node_metrics.sh metric=pending_deploy'
+alias nctl-view-node-metric-finalised-block-count='source $NCTL/sh/views/view_node_metrics.sh metric=amount_of_blocks'
+
+# Views: network.
+alias nctl-view-faucet-account='source $NCTL/sh/views/view_faucet_account.sh'
+alias nctl-view-faucet-account-balance='source $NCTL/sh/views/view_faucet_account_balance.sh'
+alias nctl-view-faucet-account-hash='source $NCTL/sh/views/view_faucet_account_hash.sh'
+alias nctl-view-faucet-account-key='source $NCTL/sh/views/view_faucet_account_key.sh'
+alias nctl-view-faucet-secret-key-path='source $NCTL/sh/views/view_faucet_secret_key_path.sh'
+
+# Views: user.
+alias nctl-view-user-account='source $NCTL/sh/views/view_user_account.sh'
+alias nctl-view-user-account-balance='source $NCTL/sh/views/view_user_account_balance.sh'
+alias nctl-view-user-account-hash='source $NCTL/sh/views/view_user_account_hash.sh'
+alias nctl-view-user-account-key='source $NCTL/sh/views/view_user_account_key.sh'
+alias nctl-view-user-secret-key-path='source $NCTL/sh/views/view_user_secret_key_path.sh'
+
+# Views: validator.
+alias nctl-view-validator-account='source $NCTL/sh/views/view_validator_account.sh'
+alias nctl-view-validator-account-balance='source $NCTL/sh/views/view_validator_account_balance.sh'
+alias nctl-view-validator-account-hash='source $NCTL/sh/views/view_validator_account_hash.sh'
+alias nctl-view-validator-account-key='source $NCTL/sh/views/view_validator_account_key.sh'
+alias nctl-view-validator-secret-key-path='source $NCTL/sh/views/view_validator_secret_key_path.sh'

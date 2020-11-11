@@ -12,7 +12,6 @@ use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime},
-        small_network::NodeId,
         storage::{self, Storage, StorageType},
         Component,
     },
@@ -22,8 +21,9 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, validator, EventQueueHandle},
-    types::CryptoRngCore,
+    types::NodeId,
     utils::WithDir,
+    NodeRng,
 };
 
 /// Top-level event for the reactor.
@@ -98,7 +98,7 @@ pub enum Error {
 /// Initializer node reactor.
 #[derive(DataSize, Debug)]
 pub struct Reactor {
-    pub(super) config: validator::Config,
+    pub(super) config: WithDir<validator::Config>,
     pub(super) chainspec_loader: ChainspecLoader,
     pub(super) storage: Storage,
     pub(super) contract_runtime: ContractRuntime,
@@ -120,25 +120,25 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
-        let (root, config) = config.into_parts();
-
         let chainspec = config
+            .value()
             .node
             .chainspec_config_path
             .clone()
-            .load(root.clone())
+            .load(config.dir())
             .map_err(|err| Error::ConfigError(err.to_string()))?;
 
         chainspec.validate_config();
 
         let effect_builder = EffectBuilder::new(event_queue);
 
-        let storage_config = WithDir::new(&root, config.storage.clone());
+        let storage_config = config.map_ref(|cfg| cfg.storage.clone());
         let storage = Storage::new(storage_config.clone())?;
+
         let contract_runtime =
-            ContractRuntime::new(storage_config, config.contract_runtime, registry)?;
+            ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
         let (chainspec_loader, chainspec_effects) =
             ChainspecLoader::new(chainspec, effect_builder)?;
 
@@ -158,7 +158,7 @@ impl reactor::Reactor for Reactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {

@@ -3,9 +3,10 @@ use std::{
     hash::Hash,
 };
 
-use crate::types::CryptoRngCore;
 use datasize::DataSize;
 use serde::{de::DeserializeOwned, Serialize};
+
+use crate::NodeRng;
 
 pub trait NodeIdT: Clone + Display + Debug + Send + Eq + Hash + 'static {}
 impl<I> NodeIdT for I where I: Clone + Display + Debug + Send + Eq + Hash + 'static {}
@@ -21,13 +22,15 @@ pub(crate) trait ConsensusValueT:
 }
 impl<T> ConsensusValueT for T where T: Eq + Clone + Debug + Hash + Serialize + DeserializeOwned {}
 
-/// A hash, as an identifier for a block or vote.
+/// A hash, as an identifier for a block or unit.
 pub(crate) trait HashT:
-    Eq + Ord + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
+    Eq + Ord + Copy + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
 {
 }
-impl<H> HashT for H where H: Eq + Ord + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
-{}
+impl<H> HashT for H where
+    H: Eq + Ord + Copy + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
+{
+}
 
 /// A validator's secret signing key.
 pub(crate) trait ValidatorSecret {
@@ -35,7 +38,7 @@ pub(crate) trait ValidatorSecret {
 
     type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned;
 
-    fn sign(&self, hash: &Self::Hash, rng: &mut dyn CryptoRngCore) -> Self::Signature;
+    fn sign(&self, hash: &Self::Hash, rng: &mut NodeRng) -> Self::Signature;
 }
 
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.
@@ -49,8 +52,8 @@ pub(crate) trait Context: Clone + Debug + Eq + Ord + Hash {
     /// A validator's secret signing key.
     type ValidatorSecret: ValidatorSecret<Hash = Self::Hash, Signature = Self::Signature>;
     /// A signature type.
-    type Signature: Clone + Debug + Eq + Hash + Serialize + DeserializeOwned;
-    /// Unique identifiers for votes.
+    type Signature: Copy + Clone + Debug + Eq + Hash + Serialize + DeserializeOwned;
+    /// Unique identifiers for units.
     type Hash: HashT;
     /// The ID of a consensus protocol instance.
     type InstanceId: HashT;

@@ -1,7 +1,8 @@
+mod config;
 mod event;
 mod tests;
 
-use std::{collections::HashMap, fmt::Debug, time::Duration};
+use std::{collections::HashMap, convert::Infallible, fmt::Debug, time::Duration};
 
 use datasize::DataSize;
 use smallvec::smallvec;
@@ -14,12 +15,12 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
-    small_network::NodeId,
-    types::{Block, BlockByHeight, BlockHash, CryptoRngCore, Deploy, DeployHash, Item},
+    types::{Block, BlockByHeight, BlockHash, Deploy, DeployHash, Item, NodeId},
     utils::Source,
-    GossipConfig,
+    NodeRng,
 };
 
+pub use config::Config;
 pub use event::{Event, FetchResult};
 
 /// A helper trait constraining `Fetcher` compatible reactor events.
@@ -70,7 +71,7 @@ pub trait ItemFetcher<T: Item + 'static> {
         responders
             .entry(id)
             .or_default()
-            .entry(peer)
+            .entry(peer.clone())
             .or_default()
             .push(responder);
 
@@ -106,7 +107,7 @@ pub trait ItemFetcher<T: Item + 'static> {
     ) -> Effects<Event<T>> {
         match Message::new_get_request::<T>(&id) {
             Ok(message) => {
-                let mut effects = effect_builder.send_message(peer, message).ignore();
+                let mut effects = effect_builder.send_message(peer.clone(), message).ignore();
 
                 effects.extend(
                     effect_builder
@@ -168,9 +169,9 @@ where
 }
 
 impl<T: Item> Fetcher<T> {
-    pub(crate) fn new(config: GossipConfig) -> Self {
+    pub(crate) fn new(config: Config) -> Self {
         Fetcher {
-            get_from_peer_timeout: Duration::from_secs(config.get_remainder_timeout_secs()),
+            get_from_peer_timeout: Duration::from_secs(config.get_from_peer_timeout()),
             responders: HashMap::new(),
         }
     }
@@ -265,11 +266,12 @@ where
     REv: ReactorEventT<T>,
 {
     type Event = Event<T>;
+    type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
@@ -289,9 +291,11 @@ where
             },
             Event::GotRemotely { item, source } => {
                 match source {
-                    Source::Peer(peer) => {
-                        self.signal(item.id(), Some(FetchResult::FromPeer(item, peer)), peer)
-                    }
+                    Source::Peer(peer) => self.signal(
+                        item.id(),
+                        Some(FetchResult::FromPeer(item, peer.clone())),
+                        peer,
+                    ),
                     Source::Client => {
                         // TODO - we could possibly also handle this case
                         Effects::new()

@@ -30,11 +30,25 @@ The Casper Testnet is live.
 
 This is the core application for the Casper blockchain.
 
-## Running a validator node
+## Running a validator node from Source
+
+### Pre-Requisites for Building
+
+cmake 3.1.4 or greater
+
+[Rust](https://www.rust-lang.org/tools/install)
+
+libssl-dev
+
+pkg-config
+
+gcc
+
+g++
 
 ### Setup
 
-Before running a node, prepare your Rust build environment, and build the required system smart contracts:
+Before building a node, prepare your Rust build environment, and build the required system smart contracts:
 
 ```
 make setup-rs
@@ -84,7 +98,7 @@ The nodes can take quite a long time to become fully interconnected.  This is de
 `network.gossip_interval` value (in milliseconds).  Nodes gossip their own listening addresses at
 this frequency.
 
-There is a [shell script](run-dev.sh) which automates the process of running multiple nodes on a single machine.
+There is a [tool](https://github.com/CasperLabs/casper-node/tree/master/utils/nctl) which automates the process of running multiple nodes on a single machine.
 
 Note that running multiple nodes on a single machine is normally only recommended for test purposes.
 
@@ -150,7 +164,7 @@ If the environment variable is unset, it is equivalent to setting `RUST_LOG=erro
 A typical log message will look like:
 
 ```
-Jun 09 01:40:17.315 INFO  [casper_node::components::api_server api_server.rs:127] starting HTTP server; server_addr=127.0.0.1:7777
+Jun 09 01:40:17.315 INFO  [casper_node::components::rpc_server rpc_server.rs:127] starting HTTP server; server_addr=127.0.0.1:7777
 ```
 
 This is comprised of the following parts:
@@ -175,3 +189,7 @@ RUST_LOG=casper_node::components::small=trace,casper_node::comp=info,warn
 ## Running a client
 
 See [the client README](client/README.md).
+
+## Running a local network
+
+See [the nctl utility README](utils/nctl/README.md).

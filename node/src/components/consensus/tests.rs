@@ -1,4 +1,6 @@
-/// Module containing basic building blocks for the Discrete Event Simulator (DES).
+/// Basic building blocks for the Discrete Event Simulator (DES).
 pub(crate) mod consensus_des_testing;
-/// Module containing message queue.
+/// A mock consensus protocol for testing.
+pub(crate) mod mock_proto;
+/// Message queue.
 pub(crate) mod queue;

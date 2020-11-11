@@ -12,7 +12,7 @@ use crate::{
     components::small_network::GossipedAddress,
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-        FinalizedBlock, Item, ProtoBlock,
+        DeployHeader, FinalizedBlock, Item, ProtoBlock,
     },
     utils::Source,
 };
@@ -56,10 +56,10 @@ where
     }
 }
 
-/// An HTTP API server announcement.
+/// An RPC API server announcement.
 #[derive(Debug)]
 #[must_use]
-pub enum ApiServerAnnouncement {
+pub enum RpcServerAnnouncement {
     /// A new deploy received.
     DeployReceived {
         /// The received deploy.
@@ -67,10 +67,10 @@ pub enum ApiServerAnnouncement {
     },
 }
 
-impl Display for ApiServerAnnouncement {
+impl Display for RpcServerAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ApiServerAnnouncement::DeployReceived { deploy } => {
+            RpcServerAnnouncement::DeployReceived { deploy } => {
                 write!(formatter, "api server received {}", deploy.id())
             }
         }
@@ -156,7 +156,7 @@ pub enum BlockExecutorAnnouncement {
         /// The block.
         block: Block,
         /// The results of executing the deploys in this block.
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     },
 }
 

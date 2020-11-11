@@ -40,10 +40,13 @@ node=${node:-1}
 # Set net vars.
 source $NCTL/assets/net-$net/vars
 
-# Pass through to daemon specific handler.
+# Set daemon handler.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    source $NCTL/sh/daemon/supervisord/node_toggle.sh $net $node
+    daemon_mgr=$NCTL/sh/daemon/supervisord/node_toggle.sh
 fi
+
+# Pass through to daemon handler.
+source $daemon_mgr $net $node
 
 # Display status.
 sleep 1.0

@@ -4,30 +4,101 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-/// Representation of a host function cost as ingredients of polynomials.
+use super::gas::Gas;
+
+/// Representation of argument's cost.
+pub type Cost = u32;
+
+/// An identifier that represents an unused argument.
+const NOT_USED: Cost = 0;
+
+/// An arbitrary default fixed cost for host functions that were not researched yet.
+const DEFAULT_FIXED_COST: Cost = 200;
+
+const DEFAULT_ADD_ASSOCIATED_KEY_COST: u32 = 9_000;
+const DEFAULT_ADD_COST: u32 = 5_800;
+
+const DEFAULT_CALL_CONTRACT_COST: u32 = 4_500;
+const DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT: u32 = 420;
+
+const DEFAULT_CREATE_PURSE_COST: u32 = 170_000;
+const DEFAULT_GET_BALANCE_COST: u32 = 3_800;
+const DEFAULT_GET_BLOCKTIME_COST: u32 = 330;
+const DEFAULT_GET_CALLER_COST: u32 = 380;
+const DEFAULT_GET_KEY_COST: u32 = 2_000;
+const DEFAULT_GET_KEY_NAME_SIZE_WEIGHT: u32 = 440;
+const DEFAULT_GET_MAIN_PURSE_COST: u32 = 1_300;
+const DEFAULT_GET_PHASE_COST: u32 = 710;
+const DEFAULT_GET_SYSTEM_CONTRACT_COST: u32 = 1_100;
+const DEFAULT_HAS_KEY_COST: u32 = 1_500;
+const DEFAULT_HAS_KEY_NAME_SIZE_WEIGHT: u32 = 840;
+const DEFAULT_IS_VALID_UREF_COST: u32 = 760;
+const DEFAULT_LOAD_NAMED_KEYS_COST: u32 = 42_000;
+const DEFAULT_NEW_UREF_COST: u32 = 17_000;
+const DEFAULT_NEW_UREF_VALUE_SIZE_WEIGHT: u32 = 590;
+
+const DEFAULT_PRINT_COST: u32 = 20_000;
+const DEFAULT_PRINT_TEXT_SIZE_WEIGHT: u32 = 4_600;
+
+const DEFAULT_PUT_KEY_COST: u32 = 38_000;
+const DEFAULT_PUT_KEY_NAME_SIZE_WEIGHT: u32 = 1_100;
+
+const DEFAULT_READ_HOST_BUFFER_COST: u32 = 3_500;
+const DEFAULT_READ_HOST_BUFFER_DEST_SIZE_WEIGHT: u32 = 310;
+
+const DEFAULT_READ_VALUE_COST: u32 = 6_000;
+const DEFAULT_READ_VALUE_LOCAL_COST: u32 = 5_500;
+const DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT: u32 = 590;
+
+const DEFAULT_REMOVE_ASSOCIATED_KEY_COST: u32 = 4_200;
+
+const DEFAULT_REMOVE_KEY_COST: u32 = 61_000;
+const DEFAULT_REMOVE_KEY_NAME_SIZE_WEIGHT: u32 = 3_200;
+
+const DEFAULT_RET_COST: u32 = 23_000;
+const DEFAULT_RET_VALUE_SIZE_WEIGHT: u32 = 420;
+
+const DEFAULT_REVERT_COST: u32 = 500;
+const DEFAULT_SET_ACTION_THRESHOLD_COST: u32 = 74_000;
+const DEFAULT_TRANSFER_FROM_PURSE_TO_ACCOUNT_COST: u32 = 160_000;
+const DEFAULT_TRANSFER_FROM_PURSE_TO_PURSE_COST: u32 = 82_000;
+const DEFAULT_TRANSFER_TO_ACCOUNT_COST: u32 = 24_000;
+const DEFAULT_UPDATE_ASSOCIATED_KEY_COST: u32 = 4_200;
+
+const DEFAULT_WRITE_COST: u32 = 14_000;
+const DEFAULT_WRITE_VALUE_SIZE_WEIGHT: u32 = 980;
+
+const DEFAULT_WRITE_LOCAL_COST: u32 = 9_500;
+const DEFAULT_WRITE_LOCAL_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
+const DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT: u32 = 520;
+
+/// Representation of a host function cost
 ///
 /// Total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size of
 /// the data.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug, Default)]
-pub struct HostFunction<T>
-where
-    T: Default,
-{
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug, DataSize)]
+pub struct HostFunction<T> {
     /// How much user is charged for cost only
-    pub cost: u32,
-    pub arguments: T,
+    cost: Cost,
+    arguments: T,
 }
 
-impl<T> DataSize for HostFunction<T>
+impl<T> Default for HostFunction<T>
 where
     T: Default,
 {
-    const IS_DYNAMIC: bool = false;
+    fn default() -> Self {
+        HostFunction::new(DEFAULT_FIXED_COST, Default::default())
+    }
+}
 
-    const STATIC_HEAP_SIZE: usize = 0;
+impl<T> HostFunction<T> {
+    pub fn new(cost: Cost, arguments: T) -> Self {
+        Self { cost, arguments }
+    }
 
-    fn estimate_heap_size(&self) -> usize {
-        0
+    pub fn cost(&self) -> Cost {
+        self.cost
     }
 }
 
@@ -35,32 +106,49 @@ impl<T> HostFunction<T>
 where
     T: Default,
 {
-    pub fn new(cost: u32, arguments: T) -> Self {
-        Self { cost, arguments }
+    pub fn fixed(cost: Cost) -> Self {
+        Self {
+            cost,
+            ..Default::default()
+        }
     }
 }
 
-impl HostFunction<()> {
-    pub fn fixed(cost: u32) -> Self {
-        Self::new(cost, ())
+impl<T> HostFunction<T>
+where
+    T: AsRef<[Cost]>,
+{
+    pub fn arguments(&self) -> &[Cost] {
+        self.arguments.as_ref()
+    }
+
+    /// Calculate gas cost for a host function
+    pub fn calculate_gas_cost(&self, weights: T) -> Gas {
+        let mut gas = Gas::new(self.cost.into());
+        for (argument, weight) in self.arguments.as_ref().iter().zip(weights.as_ref()) {
+            let lhs = Gas::new((*argument).into());
+            let rhs = Gas::new((*weight).into());
+            gas += lhs * rhs;
+        }
+        gas
     }
 }
 
 impl<T> Distribution<HostFunction<T>> for Standard
 where
     Standard: Distribution<T>,
-    T: Default,
+    T: AsRef<[Cost]>,
 {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunction<T> {
-        let cost = rng.gen::<u32>();
+        let cost = rng.gen::<Cost>();
         let arguments = rng.gen();
-        HostFunction::<T> { cost, arguments }
+        HostFunction::new(cost, arguments)
     }
 }
 
 impl<T> ToBytes for HostFunction<T>
 where
-    T: ToBytes + Default,
+    T: ToBytes + AsRef<[Cost]>,
 {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
@@ -85,51 +173,169 @@ where
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize, Default)]
-#[allow(clippy::type_complexity)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct HostFunctionCosts {
-    pub read_value: HostFunction<(u32, u32, u32)>,
-    pub read_value_local: HostFunction<(u32, u32, u32)>,
-    pub write: HostFunction<(u32, u32, u32, u32)>,
-    pub write_local: HostFunction<(u32, u32, u32, u32)>,
-    pub add: HostFunction<(u32, u32, u32, u32)>,
-    pub add_local: HostFunction<(u32, u32, u32, u32)>,
-    pub new_uref: HostFunction<(u32, u32, u32)>,
-    pub load_named_keys: HostFunction<(u32, u32)>,
-    pub ret: HostFunction<(u32, u32)>,
-    pub get_key: HostFunction<(u32, u32, u32, u32, u32)>,
-    pub has_key: HostFunction<(u32, u32)>,
-    pub put_key: HostFunction<(u32, u32)>,
-    pub remove_key: HostFunction<(u32, u32)>,
-    pub revert: HostFunction<(u32,)>,
-    pub is_valid_uref: HostFunction<(u32, u32)>,
-    pub add_associated_key: HostFunction<(u32, u32, u32, u32)>,
-    pub remove_associated_key: HostFunction<(u32, u32)>,
-    pub update_associated_key: HostFunction<(u32, u32, u32)>,
-    pub set_action_threshold: HostFunction<(u32, u32)>,
-    pub get_caller: HostFunction<(u32,)>,
-    pub get_blocktime: HostFunction<(u32,)>,
-    pub create_purse: HostFunction<(u32, u32)>,
-    pub transfer_to_account: HostFunction<(u32, u32, u32, u32)>,
-    pub transfer_from_purse_to_account: HostFunction<(u32, u32, u32, u32, u32, u32)>,
-    pub transfer_from_purse_to_purse: HostFunction<(u32, u32, u32, u32, u32, u32)>,
-    pub get_balance: HostFunction<(u32, u32, u32)>,
-    pub get_phase: HostFunction<(u32,)>,
-    pub get_system_contract: HostFunction<(u32, u32, u32)>,
-    pub get_main_purse: HostFunction<(u32,)>,
-    pub read_host_buffer: HostFunction<(u32, u32, u32)>,
-    pub create_contract_package_at_hash: HostFunction<(u32, u32)>,
-    pub create_contract_user_group: HostFunction<(u32, u32, u32, u32, u32, u32, u32, u32)>,
-    pub add_contract_version: HostFunction<(u32, u32, u32, u32, u32, u32, u32, u32, u32, u32)>,
-    pub disable_contract_version: HostFunction<(u32, u32, u32, u32)>,
-    pub call_contract: HostFunction<(u32, u32, u32, u32, u32, u32, u32)>,
-    pub call_versioned_contract: HostFunction<(u32, u32, u32, u32, u32, u32, u32, u32, u32)>,
-    pub get_named_arg_size: HostFunction<(u32, u32, u32)>,
-    pub get_named_arg: HostFunction<(u32, u32, u32, u32)>,
-    pub remove_contract_user_group: HostFunction<(u32, u32, u32, u32)>,
-    pub provision_contract_user_group_uref: HostFunction<(u32, u32, u32, u32, u32)>,
-    pub remove_contract_user_group_urefs: HostFunction<(u32, u32, u32, u32, u32, u32)>,
-    pub print: HostFunction<(u32, u32)>,
+    pub read_value: HostFunction<[Cost; 3]>,
+    pub read_value_local: HostFunction<[Cost; 3]>,
+    pub write: HostFunction<[Cost; 4]>,
+    pub write_local: HostFunction<[Cost; 4]>,
+    pub add: HostFunction<[Cost; 4]>,
+    pub new_uref: HostFunction<[Cost; 3]>,
+    pub load_named_keys: HostFunction<[Cost; 2]>,
+    pub ret: HostFunction<[Cost; 2]>,
+    pub get_key: HostFunction<[Cost; 5]>,
+    pub has_key: HostFunction<[Cost; 2]>,
+    pub put_key: HostFunction<[Cost; 4]>,
+    pub remove_key: HostFunction<[Cost; 2]>,
+    pub revert: HostFunction<[Cost; 1]>,
+    pub is_valid_uref: HostFunction<[Cost; 2]>,
+    pub add_associated_key: HostFunction<[Cost; 3]>,
+    pub remove_associated_key: HostFunction<[Cost; 2]>,
+    pub update_associated_key: HostFunction<[Cost; 3]>,
+    pub set_action_threshold: HostFunction<[Cost; 2]>,
+    pub get_caller: HostFunction<[Cost; 1]>,
+    pub get_blocktime: HostFunction<[Cost; 1]>,
+    pub create_purse: HostFunction<[Cost; 2]>,
+    pub transfer_to_account: HostFunction<[Cost; 4]>,
+    pub transfer_from_purse_to_account: HostFunction<[Cost; 6]>,
+    pub transfer_from_purse_to_purse: HostFunction<[Cost; 6]>,
+    pub get_balance: HostFunction<[Cost; 3]>,
+    pub get_phase: HostFunction<[Cost; 1]>,
+    pub get_system_contract: HostFunction<[Cost; 3]>,
+    pub get_main_purse: HostFunction<[Cost; 1]>,
+    pub read_host_buffer: HostFunction<[Cost; 3]>,
+    pub create_contract_package_at_hash: HostFunction<[Cost; 2]>,
+    pub create_contract_user_group: HostFunction<[Cost; 8]>,
+    pub add_contract_version: HostFunction<[Cost; 10]>,
+    pub disable_contract_version: HostFunction<[Cost; 4]>,
+    pub call_contract: HostFunction<[Cost; 7]>,
+    pub call_versioned_contract: HostFunction<[Cost; 9]>,
+    pub get_named_arg_size: HostFunction<[Cost; 3]>,
+    pub get_named_arg: HostFunction<[Cost; 4]>,
+    pub remove_contract_user_group: HostFunction<[Cost; 4]>,
+    pub provision_contract_user_group_uref: HostFunction<[Cost; 5]>,
+    pub remove_contract_user_group_urefs: HostFunction<[Cost; 6]>,
+    pub print: HostFunction<[Cost; 2]>,
+    pub blake2b: HostFunction<[Cost; 4]>,
+}
+
+impl Default for HostFunctionCosts {
+    fn default() -> Self {
+        Self {
+            read_value: HostFunction::fixed(DEFAULT_READ_VALUE_COST),
+            read_value_local: HostFunction::new(
+                DEFAULT_READ_VALUE_LOCAL_COST,
+                [NOT_USED, DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT, NOT_USED],
+            ),
+            write: HostFunction::new(
+                DEFAULT_WRITE_COST,
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_WRITE_VALUE_SIZE_WEIGHT,
+                ],
+            ),
+            write_local: HostFunction::new(
+                DEFAULT_WRITE_LOCAL_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_WRITE_LOCAL_KEY_BYTES_SIZE_WEIGHT,
+                    NOT_USED,
+                    DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT,
+                ],
+            ),
+            add: HostFunction::fixed(DEFAULT_ADD_COST),
+            new_uref: HostFunction::new(
+                DEFAULT_NEW_UREF_COST,
+                [NOT_USED, NOT_USED, DEFAULT_NEW_UREF_VALUE_SIZE_WEIGHT],
+            ),
+            load_named_keys: HostFunction::fixed(DEFAULT_LOAD_NAMED_KEYS_COST),
+            ret: HostFunction::new(DEFAULT_RET_COST, [NOT_USED, DEFAULT_RET_VALUE_SIZE_WEIGHT]),
+            get_key: HostFunction::new(
+                DEFAULT_GET_KEY_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_GET_KEY_NAME_SIZE_WEIGHT,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
+            has_key: HostFunction::new(
+                DEFAULT_HAS_KEY_COST,
+                [NOT_USED, DEFAULT_HAS_KEY_NAME_SIZE_WEIGHT],
+            ),
+            put_key: HostFunction::new(
+                DEFAULT_PUT_KEY_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_PUT_KEY_NAME_SIZE_WEIGHT,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
+            remove_key: HostFunction::new(
+                DEFAULT_REMOVE_KEY_COST,
+                [NOT_USED, DEFAULT_REMOVE_KEY_NAME_SIZE_WEIGHT],
+            ),
+            revert: HostFunction::fixed(DEFAULT_REVERT_COST),
+            is_valid_uref: HostFunction::fixed(DEFAULT_IS_VALID_UREF_COST),
+            add_associated_key: HostFunction::fixed(DEFAULT_ADD_ASSOCIATED_KEY_COST),
+            remove_associated_key: HostFunction::fixed(DEFAULT_REMOVE_ASSOCIATED_KEY_COST),
+            update_associated_key: HostFunction::fixed(DEFAULT_UPDATE_ASSOCIATED_KEY_COST),
+            set_action_threshold: HostFunction::fixed(DEFAULT_SET_ACTION_THRESHOLD_COST),
+            get_caller: HostFunction::fixed(DEFAULT_GET_CALLER_COST),
+            get_blocktime: HostFunction::fixed(DEFAULT_GET_BLOCKTIME_COST),
+            create_purse: HostFunction::fixed(DEFAULT_CREATE_PURSE_COST),
+            transfer_to_account: HostFunction::fixed(DEFAULT_TRANSFER_TO_ACCOUNT_COST),
+            transfer_from_purse_to_account: HostFunction::fixed(
+                DEFAULT_TRANSFER_FROM_PURSE_TO_ACCOUNT_COST,
+            ),
+            transfer_from_purse_to_purse: HostFunction::fixed(
+                DEFAULT_TRANSFER_FROM_PURSE_TO_PURSE_COST,
+            ),
+            get_balance: HostFunction::fixed(DEFAULT_GET_BALANCE_COST),
+            get_phase: HostFunction::fixed(DEFAULT_GET_PHASE_COST),
+            get_system_contract: HostFunction::fixed(DEFAULT_GET_SYSTEM_CONTRACT_COST),
+            get_main_purse: HostFunction::fixed(DEFAULT_GET_MAIN_PURSE_COST),
+            read_host_buffer: HostFunction::new(
+                DEFAULT_READ_HOST_BUFFER_COST,
+                [
+                    NOT_USED,
+                    DEFAULT_READ_HOST_BUFFER_DEST_SIZE_WEIGHT,
+                    NOT_USED,
+                ],
+            ),
+            create_contract_package_at_hash: HostFunction::default(),
+            create_contract_user_group: HostFunction::default(),
+            add_contract_version: HostFunction::default(),
+            disable_contract_version: HostFunction::default(),
+            call_contract: HostFunction::new(
+                DEFAULT_CALL_CONTRACT_COST,
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT,
+                    NOT_USED,
+                ],
+            ),
+            call_versioned_contract: HostFunction::default(),
+            get_named_arg_size: HostFunction::default(),
+            get_named_arg: HostFunction::default(),
+            remove_contract_user_group: HostFunction::default(),
+            provision_contract_user_group_uref: HostFunction::default(),
+            remove_contract_user_group_urefs: HostFunction::default(),
+            print: HostFunction::new(
+                DEFAULT_PRINT_COST,
+                [NOT_USED, DEFAULT_PRINT_TEXT_SIZE_WEIGHT],
+            ),
+            blake2b: HostFunction::default(),
+        }
+    }
 }
 
 impl ToBytes for HostFunctionCosts {
@@ -140,7 +346,6 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.write.to_bytes()?);
         ret.append(&mut self.write_local.to_bytes()?);
         ret.append(&mut self.add.to_bytes()?);
-        ret.append(&mut self.add_local.to_bytes()?);
         ret.append(&mut self.new_uref.to_bytes()?);
         ret.append(&mut self.load_named_keys.to_bytes()?);
         ret.append(&mut self.ret.to_bytes()?);
@@ -177,6 +382,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.provision_contract_user_group_uref.to_bytes()?);
         ret.append(&mut self.remove_contract_user_group_urefs.to_bytes()?);
         ret.append(&mut self.print.to_bytes()?);
+        ret.append(&mut self.blake2b.to_bytes()?);
         Ok(ret)
     }
 
@@ -186,7 +392,6 @@ impl ToBytes for HostFunctionCosts {
             + self.write.serialized_length()
             + self.write_local.serialized_length()
             + self.add.serialized_length()
-            + self.add_local.serialized_length()
             + self.new_uref.serialized_length()
             + self.load_named_keys.serialized_length()
             + self.ret.serialized_length()
@@ -223,6 +428,7 @@ impl ToBytes for HostFunctionCosts {
             + self.provision_contract_user_group_uref.serialized_length()
             + self.remove_contract_user_group_urefs.serialized_length()
             + self.print.serialized_length()
+            + self.blake2b.serialized_length()
     }
 }
 
@@ -233,7 +439,6 @@ impl FromBytes for HostFunctionCosts {
         let (write, rem) = FromBytes::from_bytes(rem)?;
         let (write_local, rem) = FromBytes::from_bytes(rem)?;
         let (add, rem) = FromBytes::from_bytes(rem)?;
-        let (add_local, rem) = FromBytes::from_bytes(rem)?;
         let (new_uref, rem) = FromBytes::from_bytes(rem)?;
         let (load_named_keys, rem) = FromBytes::from_bytes(rem)?;
         let (ret, rem) = FromBytes::from_bytes(rem)?;
@@ -270,6 +475,7 @@ impl FromBytes for HostFunctionCosts {
         let (provision_contract_user_group_uref, rem) = FromBytes::from_bytes(rem)?;
         let (remove_contract_user_group_urefs, rem) = FromBytes::from_bytes(rem)?;
         let (print, rem) = FromBytes::from_bytes(rem)?;
+        let (blake2b, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -277,7 +483,6 @@ impl FromBytes for HostFunctionCosts {
                 write,
                 write_local,
                 add,
-                add_local,
                 new_uref,
                 load_named_keys,
                 ret,
@@ -314,6 +519,7 @@ impl FromBytes for HostFunctionCosts {
                 provision_contract_user_group_uref,
                 remove_contract_user_group_urefs,
                 print,
+                blake2b,
             },
             rem,
         ))
@@ -328,7 +534,6 @@ impl Distribution<HostFunctionCosts> for Standard {
             write: rng.gen(),
             write_local: rng.gen(),
             add: rng.gen(),
-            add_local: rng.gen(),
             new_uref: rng.gen(),
             load_named_keys: rng.gen(),
             ret: rng.gen(),
@@ -365,6 +570,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             provision_contract_user_group_uref: rng.gen(),
             remove_contract_user_group_urefs: rng.gen(),
             print: rng.gen(),
+            blake2b: rng.gen(),
         }
     }
 }
@@ -372,13 +578,11 @@ impl Distribution<HostFunctionCosts> for Standard {
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::prelude::*;
-    use std::fmt::Debug;
 
-    use super::{HostFunction, HostFunctionCosts};
+    use super::{Cost, HostFunction, HostFunctionCosts};
 
-    pub fn host_function_cost_arb<T: Debug + Default + Arbitrary>(
-    ) -> impl Strategy<Value = HostFunction<T>> {
-        (any::<u32>(), any::<T>()).prop_map(|(cost, arguments)| HostFunction::new(cost, arguments))
+    pub fn host_function_cost_arb<T: Copy + Arbitrary>() -> impl Strategy<Value = HostFunction<T>> {
+        (any::<Cost>(), any::<T>()).prop_map(|(cost, arguments)| HostFunction::new(cost, arguments))
     }
 
     prop_compose! {
@@ -388,7 +592,6 @@ pub mod gens {
             write in host_function_cost_arb(),
             write_local in host_function_cost_arb(),
             add in host_function_cost_arb(),
-            add_local in host_function_cost_arb(),
             new_uref in host_function_cost_arb(),
             load_named_keys in host_function_cost_arb(),
             ret in host_function_cost_arb(),
@@ -425,6 +628,7 @@ pub mod gens {
             provision_contract_user_group_uref in host_function_cost_arb(),
             remove_contract_user_group_urefs in host_function_cost_arb(),
             print in host_function_cost_arb(),
+            blake2b in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -432,7 +636,6 @@ pub mod gens {
                 write,
                 write_local,
                 add,
-                add_local,
                 new_uref,
                 load_named_keys,
                 ret,
@@ -469,8 +672,51 @@ pub mod gens {
                 provision_contract_user_group_uref,
                 remove_contract_user_group_urefs,
                 print,
+                blake2b,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use casper_types::U512;
+
+    use super::*;
+
+    const COST: Cost = 42;
+    const ARGUMENT_COSTS: [Cost; 3] = [123, 456, 789];
+    const WEIGHTS: [Cost; 3] = [1000, 1100, 1200];
+
+    #[test]
+    fn calculate_gas_cost_for_host_function() {
+        let host_function = HostFunction::new(COST, ARGUMENT_COSTS);
+        let expected_cost = COST
+            + (ARGUMENT_COSTS[0] * WEIGHTS[0])
+            + (ARGUMENT_COSTS[1] * WEIGHTS[1])
+            + (ARGUMENT_COSTS[2] * WEIGHTS[2]);
+        assert_eq!(
+            host_function.calculate_gas_cost(WEIGHTS),
+            Gas::new(expected_cost.into())
+        );
+    }
+
+    #[test]
+    fn calculate_gas_cost_would_overflow() {
+        let large_value = Cost::max_value();
+
+        let host_function = HostFunction::new(
+            large_value,
+            [large_value, large_value, large_value, large_value],
+        );
+
+        let lhs =
+            host_function.calculate_gas_cost([large_value, large_value, large_value, large_value]);
+
+        let large_value = U512::from(large_value);
+        let rhs = large_value + (U512::from(4) * large_value * large_value);
+
+        assert_eq!(lhs, Gas::new(rhs));
     }
 }
 
@@ -482,7 +728,7 @@ mod proptests {
 
     use super::*;
 
-    type Signature = (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
+    type Signature = [Cost; 10];
 
     proptest! {
         #[test]

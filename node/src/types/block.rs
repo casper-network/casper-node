@@ -2,15 +2,17 @@
 use std::iter;
 use std::{
     array::TryFromSliceError,
+    collections::BTreeMap,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     hash::Hash,
 };
 
 use blake2::{
-    digest::{Input, VariableOutput},
+    digest::{Update, VariableOutput},
     VarBlake2b,
 };
+
 use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::{HexFmt, HexList};
@@ -21,6 +23,8 @@ use thiserror::Error;
 
 #[cfg(test)]
 use casper_types::auction::BLOCK_REWARD;
+
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::{Item, Tag, Timestamp};
 use crate::{
@@ -208,6 +212,31 @@ impl Display for EraEnd {
     }
 }
 
+impl ToBytes for EraEnd {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.equivocators.to_bytes()?);
+        buffer.extend(self.rewards.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.equivocators.serialized_length() + self.rewards.serialized_length()
+    }
+}
+
+impl FromBytes for EraEnd {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (equivocators, remainder) = Vec::<PublicKey>::from_bytes(bytes)?;
+        let (rewards, remainder) = BTreeMap::<PublicKey, u64>::from_bytes(remainder)?;
+        let era_end = EraEnd {
+            equivocators,
+            rewards,
+        };
+        Ok((era_end, remainder))
+    }
+}
+
 /// The piece of information that will become the content of a future block after it was finalized
 /// and before execution happened yet.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -269,6 +298,10 @@ impl FinalizedBlock {
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
         self.era_id() == EraId(0) && self.height() == 0
+    }
+
+    pub(crate) fn proposer(&self) -> PublicKey {
+        self.proposer
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -369,6 +402,12 @@ impl BlockHash {
     pub fn inner(&self) -> &Digest {
         &self.0
     }
+
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let hash = Digest::random(rng);
+        BlockHash(hash)
+    }
 }
 
 impl Display for BlockHash {
@@ -386,6 +425,24 @@ impl From<Digest> for BlockHash {
 impl AsRef<[u8]> for BlockHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
+    }
+}
+
+impl ToBytes for BlockHash {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for BlockHash {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (hash, remainder) = Digest::from_bytes(bytes)?;
+        let block_hash = BlockHash(hash);
+        Ok((block_hash, remainder))
     }
 }
 
@@ -473,8 +530,8 @@ impl BlockHeader {
     }
 
     // Serialize the block header.
-    fn serialize(&self) -> Result<Vec<u8>, bincode::Error> {
-        bincode::serialize(self)
+    fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.to_bytes()
     }
 
     /// Hash of the block header.
@@ -506,6 +563,103 @@ impl Display for BlockHeader {
     }
 }
 
+impl ToBytes for BlockHeader {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.parent_hash.to_bytes()?);
+        buffer.extend(self.state_root_hash.to_bytes()?);
+        buffer.extend(self.body_hash.to_bytes()?);
+        buffer.extend(self.deploy_hashes.to_bytes()?);
+        buffer.extend(self.random_bit.to_bytes()?);
+        buffer.extend(self.accumulated_seed.to_bytes()?);
+        buffer.extend(self.era_end.to_bytes()?);
+        buffer.extend(self.timestamp.to_bytes()?);
+        buffer.extend(self.era_id.to_bytes()?);
+        buffer.extend(self.height.to_bytes()?);
+        buffer.extend(self.proposer.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.parent_hash.serialized_length()
+            + self.state_root_hash.serialized_length()
+            + self.body_hash.serialized_length()
+            + self.deploy_hashes.serialized_length()
+            + self.random_bit.serialized_length()
+            + self.accumulated_seed.serialized_length()
+            + self.era_end.serialized_length()
+            + self.timestamp.serialized_length()
+            + self.era_id.serialized_length()
+            + self.height.serialized_length()
+            + self.proposer.serialized_length()
+    }
+}
+
+impl FromBytes for BlockHeader {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (parent_hash, remainder) = BlockHash::from_bytes(bytes)?;
+        let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
+        let (body_hash, remainder) = Digest::from_bytes(remainder)?;
+        let (deploy_hashes, remainder) = Vec::<DeployHash>::from_bytes(remainder)?;
+        let (random_bit, remainder) = bool::from_bytes(remainder)?;
+        let (accumulated_seed, remainder) = Digest::from_bytes(remainder)?;
+        let (era_end, remainder) = Option::<EraEnd>::from_bytes(remainder)?;
+        let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
+        let (era_id, remainder) = EraId::from_bytes(remainder)?;
+        let (height, remainder) = u64::from_bytes(remainder)?;
+        let (proposer, remainder) = PublicKey::from_bytes(remainder)?;
+        let block_header = BlockHeader {
+            parent_hash,
+            state_root_hash,
+            body_hash,
+            deploy_hashes,
+            random_bit,
+            accumulated_seed,
+            era_end,
+            timestamp,
+            era_id,
+            height,
+            proposer,
+        };
+        Ok((block_header, remainder))
+    }
+}
+
+/// An error that can arise when validating a block's cryptographic integrity using its hashes
+#[derive(Debug)]
+pub enum BlockValidationError {
+    /// Problem serializing some of a block's data into bytes
+    SerializationError(bytesrepr::Error),
+
+    /// The body hash in the header is not the same as the hash of the body of the block
+    UnexpectedBodyHash {
+        /// The block body hash specified in the header that is apparently incorrect
+        expected_by_block_header: Digest,
+        /// The actual hash of the block's body
+        actual: Digest,
+    },
+
+    /// The block's hash is not the same as the header's hash
+    UnexpectedBlockHash {
+        /// The hash specified by the block
+        expected_by_block: BlockHash,
+        /// The actual hash of the block
+        actual: BlockHash,
+    },
+}
+
+impl Display for BlockValidationError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(formatter, "{:?}", self)
+    }
+}
+
+impl From<bytesrepr::Error> for BlockValidationError {
+    fn from(err: bytesrepr::Error) -> Self {
+        BlockValidationError::SerializationError(err)
+    }
+}
+
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
 #[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -534,9 +688,9 @@ impl Block {
         let mut accumulated_seed = [0; Digest::LENGTH];
 
         let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
-        hasher.input(parent_seed);
-        hasher.input([finalized_block.proto_block.random_bit as u8]);
-        hasher.variable_result(|slice| {
+        hasher.update(parent_seed);
+        hasher.update([finalized_block.proto_block.random_bit as u8]);
+        hasher.finalize_variable(|slice| {
             accumulated_seed.copy_from_slice(slice);
         });
 
@@ -572,7 +726,8 @@ impl Block {
         self.header
     }
 
-    pub(crate) fn hash(&self) -> &BlockHash {
+    /// The hash of this block's header.
+    pub fn hash(&self) -> &BlockHash {
         &self.hash
     }
 
@@ -585,7 +740,8 @@ impl Block {
         self.header.deploy_hashes()
     }
 
-    pub(crate) fn height(&self) -> u64 {
+    /// The height of a block.
+    pub fn height(&self) -> u64 {
         self.header.height()
     }
 
@@ -595,8 +751,28 @@ impl Block {
         self.proofs.push(proof)
     }
 
-    fn serialize_body(body: &()) -> Result<Vec<u8>, bincode::Error> {
-        bincode::serialize(body)
+    fn serialize_body(body: &()) -> Result<Vec<u8>, bytesrepr::Error> {
+        body.to_bytes()
+    }
+
+    /// Check the integrity of a block by hashing its body and header
+    pub fn verify(&self) -> Result<(), BlockValidationError> {
+        let serialized_body = Block::serialize_body(&self.body)?;
+        let actual_body_hash = hash::hash(&serialized_body);
+        if self.header.body_hash != actual_body_hash {
+            return Err(BlockValidationError::UnexpectedBodyHash {
+                expected_by_block_header: self.header.body_hash,
+                actual: actual_body_hash,
+            });
+        }
+        let actual_header_hash = self.header.hash();
+        if self.hash != actual_header_hash {
+            return Err(BlockValidationError::UnexpectedBlockHash {
+                expected_by_block: self.hash,
+                actual: actual_header_hash,
+            });
+        }
+        Ok(())
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -642,6 +818,37 @@ impl Display for Block {
             write!(formatter, ", era_end: {}", ee)?;
         }
         Ok(())
+    }
+}
+
+impl ToBytes for Block {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.hash.to_bytes()?);
+        buffer.extend(self.header.to_bytes()?);
+        buffer.extend(self.proofs.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.hash.serialized_length()
+            + self.header.serialized_length()
+            + self.proofs.serialized_length()
+    }
+}
+
+impl FromBytes for Block {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (hash, remainder) = BlockHash::from_bytes(bytes)?;
+        let (header, remainder) = BlockHeader::from_bytes(remainder)?;
+        let (proofs, remainder) = Vec::<Signature>::from_bytes(remainder)?;
+        let block = Block {
+            hash,
+            header,
+            body: (),
+            proofs,
+        };
+        Ok((block, remainder))
     }
 }
 
@@ -743,12 +950,14 @@ impl Item for BlockByHeight {
 
 #[cfg(test)]
 mod tests {
+    use casper_types::bytesrepr;
+
     use super::*;
     use crate::testing::TestRng;
 
     #[test]
     fn json_block_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let block = Block::random(&mut rng);
         let json_string = serde_json::to_string_pretty(&block).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
@@ -757,10 +966,82 @@ mod tests {
 
     #[test]
     fn json_finalized_block_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let finalized_block = FinalizedBlock::random(&mut rng);
         let json_string = serde_json::to_string_pretty(&finalized_block).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(finalized_block, decoded);
+    }
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let block = Block::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&block);
+    }
+
+    #[test]
+    fn bytesrepr_roundtrip_era_end() {
+        let mut rng = TestRng::new();
+        let loop_iterations = 50;
+        for _ in 0..loop_iterations {
+            let finalized_block = FinalizedBlock::random(&mut rng);
+            if let Some(era_end) = finalized_block.era_end() {
+                bytesrepr::test_serialization_roundtrip(era_end);
+            }
+        }
+    }
+
+    #[test]
+    fn random_block_check() {
+        let mut rng = TestRng::from_seed([1u8; 16]);
+        let loop_iterations = 50;
+        for _ in 0..loop_iterations {
+            Block::random(&mut rng)
+                .verify()
+                .expect("block hash should check");
+        }
+    }
+
+    #[test]
+    fn block_check_bad_body_hash_sad_path() {
+        let mut rng = TestRng::from_seed([2u8; 16]);
+        let mut block = Block::random(&mut rng);
+
+        let bogus_block_hash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]);
+        block.header.body_hash = bogus_block_hash;
+
+        let serialized_body =
+            Block::serialize_body(&block.body).expect("Could not serialize block body");
+        let actual_body_hash = hash::hash(&serialized_body);
+
+        // No Eq trait for BlockValidationError, so pattern match
+        match block.verify() {
+            Err(BlockValidationError::UnexpectedBodyHash {
+                expected_by_block_header,
+                actual,
+            }) if expected_by_block_header == bogus_block_hash && actual == actual_body_hash => {}
+            unexpected => panic!("Bad check response: {:?}", unexpected),
+        }
+    }
+
+    #[test]
+    fn block_check_bad_block_hash_sad_path() {
+        let mut rng = TestRng::from_seed([3u8; 16]);
+        let mut block = Block::random(&mut rng);
+
+        let bogus_block_hash: BlockHash = hash::hash(&[0xde, 0xad, 0xbe, 0xef]).into();
+        block.hash = bogus_block_hash;
+
+        let actual_block_hash = block.header.hash();
+
+        // No Eq trait for BlockValidationError, so pattern match
+        match block.verify() {
+            Err(BlockValidationError::UnexpectedBlockHash {
+                expected_by_block,
+                actual,
+            }) if expected_by_block == bogus_block_hash && actual == actual_block_hash => {}
+            unexpected => panic!("Bad check response: {:?}", unexpected),
+        }
     }
 }

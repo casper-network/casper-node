@@ -1,46 +1,126 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 
-use super::{types::DelegationRate, EraId};
+use serde::{Deserialize, Serialize};
+
 use crate::{
+    auction::{types::DelegationRate, EraId},
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, PublicKey, URef, U512,
+    system_contract_errors::auction::Error,
+    CLType, CLTyped, URef, U512,
 };
 
 /// An entry in a founding validator map.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub struct Bid {
     /// The purse that was used for bonding.
-    pub bonding_purse: URef,
+    bonding_purse: URef,
     /// The total amount of staked tokens.
-    pub staked_amount: U512,
+    staked_amount: U512,
     /// Delegation rate
-    pub delegation_rate: DelegationRate,
+    delegation_rate: DelegationRate,
     /// A flag that represents a winning entry.
     ///
     /// `Some` indicates locked funds for a specific era and an autowin status, and `None` case
     /// means that funds are unlocked and autowin status is removed.
-    pub funds_locked: Option<EraId>,
+    release_era: Option<EraId>,
 }
 
 impl Bid {
     /// Creates new instance of a bid with locked funds.
-    pub fn new_locked(bonding_purse: URef, staked_amount: U512, funds_locked: EraId) -> Self {
+    pub fn locked(bonding_purse: URef, staked_amount: U512, release_era: EraId) -> Self {
         Self {
             bonding_purse,
             staked_amount,
             delegation_rate: 0,
-            funds_locked: Some(funds_locked),
+            release_era: Some(release_era),
         }
     }
 
-    /// Checks if a given founding validator can release its funds.
-    pub fn can_release_funds(&self) -> bool {
-        self.funds_locked.is_some()
+    /// Creates new instance of a bid with unlocked funds.
+    pub fn unlocked(
+        bonding_purse: URef,
+        staked_amount: U512,
+        delegation_rate: DelegationRate,
+    ) -> Self {
+        Self {
+            bonding_purse,
+            staked_amount,
+            delegation_rate,
+            release_era: None,
+        }
     }
 
-    /// Checks if a given founding validator can withdraw its funds.
-    pub fn can_withdraw_funds(&self) -> bool {
-        self.funds_locked.is_none()
+    /// Gets the bonding purse of the provided bid
+    pub fn bonding_purse(&self) -> &URef {
+        &self.bonding_purse
+    }
+
+    /// Gets the staked amount of the provided bid
+    pub fn staked_amount(&self) -> &U512 {
+        &self.staked_amount
+    }
+
+    /// Gets the delegation rate of the provided bid
+    pub fn delegation_rate(&self) -> &DelegationRate {
+        &self.delegation_rate
+    }
+
+    /// Returns `true` if the provided bid is locked.
+    pub fn is_locked(&self) -> bool {
+        self.release_era.is_some()
+    }
+
+    /// Returns the release era of the provided bid, if it is locked.
+    pub fn release_era(&self) -> Option<EraId> {
+        self.release_era
+    }
+
+    /// Decreases the stake of the provided bid
+    pub fn decrease_stake(&mut self, amount: U512) -> Result<U512, Error> {
+        if self.is_locked() {
+            return Err(Error::ValidatorFundsLocked);
+        }
+
+        let updated_staked_amount = self
+            .staked_amount
+            .checked_sub(amount)
+            .ok_or(Error::InvalidAmount)?;
+
+        self.staked_amount = updated_staked_amount;
+
+        Ok(updated_staked_amount)
+    }
+
+    /// Increases the stake of the provided bid
+    pub fn increase_stake(&mut self, amount: U512) -> Result<U512, Error> {
+        let updated_staked_amount = self
+            .staked_amount
+            .checked_add(amount)
+            .ok_or(Error::InvalidAmount)?;
+
+        self.staked_amount = updated_staked_amount;
+
+        Ok(updated_staked_amount)
+    }
+
+    /// Updates the delegation rate of the provided bid
+    pub fn with_delegation_rate(&mut self, delegation_rate: DelegationRate) -> &mut Self {
+        self.delegation_rate = delegation_rate;
+        self
+    }
+
+    /// Unlocks the provided bid if the provided era is greater than the bid's release era.  
+    ///
+    /// Returns `true` if the provided bid was unlocked.
+    pub fn unlock(&mut self, era: EraId) -> bool {
+        match self.release_era {
+            Some(release_era) if era >= release_era => {
+                self.release_era = None;
+                true
+            }
+            Some(_) => false,
+            None => false,
+        }
     }
 }
 
@@ -56,7 +136,7 @@ impl ToBytes for Bid {
         result.extend(self.bonding_purse.to_bytes()?);
         result.extend(self.staked_amount.to_bytes()?);
         result.extend(self.delegation_rate.to_bytes()?);
-        result.extend(self.funds_locked.to_bytes()?);
+        result.extend(self.release_era.to_bytes()?);
         Ok(result)
     }
 
@@ -64,7 +144,7 @@ impl ToBytes for Bid {
         self.bonding_purse.serialized_length()
             + self.staked_amount.serialized_length()
             + self.delegation_rate.serialized_length()
-            + self.funds_locked.serialized_length()
+            + self.release_era.serialized_length()
     }
 }
 
@@ -73,35 +153,23 @@ impl FromBytes for Bid {
         let (bonding_purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (staked_amount, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
-        let (funds_locked, bytes) = FromBytes::from_bytes(bytes)?;
+        let (release_era, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             Bid {
                 bonding_purse,
                 staked_amount,
                 delegation_rate,
-                funds_locked,
+                release_era,
             },
             bytes,
         ))
     }
 }
 
-/// Founding validators' public keys mapped to their staked
-/// amount, bid purse held by the mint contract, delegation rate and
-/// whether they are to be considered for the auction, or automatically
-/// entered as “winners” (this also locks them out of unbonding), taking
-/// some slots out of the auction. The autowin status is controlled by
-/// node software and would, presumably, expire after a fixed number of eras.
-///
-/// This structure also contains bids, and founding validator and a bid is
-/// differentiated by the `is_founding_validator` attribute.
-pub type Bids = BTreeMap<PublicKey, Bid>;
-
 #[cfg(test)]
 mod tests {
-    use super::Bid;
     use crate::{
-        auction::{DelegationRate, EraId},
+        auction::{Bid, DelegationRate, EraId},
         bytesrepr, AccessRights, URef, U512,
     };
 
@@ -111,7 +179,7 @@ mod tests {
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
             delegation_rate: DelegationRate::max_value(),
-            funds_locked: Some(EraId::max_value() - 1),
+            release_era: Some(EraId::max_value() - 1),
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }

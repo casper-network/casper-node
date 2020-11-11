@@ -8,7 +8,8 @@ pub struct SignDeploy;
 impl<'a, 'b> ClientCommand<'a, 'b> for SignDeploy {
     const NAME: &'static str = "sign-deploy";
     const ABOUT: &'static str =
-        "Cryptographically signs a deploy and appends signature to existing approvals";
+        "Reads a previously-saved deploy from a file, cryptographically signs it, and outputs it \
+        to a file or stdout";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
@@ -23,10 +24,11 @@ impl<'a, 'b> ClientCommand<'a, 'b> for SignDeploy {
 
     fn run(matches: &ArgMatches<'_>) {
         let input_path = creation_common::input::get(matches);
-        let mut deploy = creation_common::input::read_deploy(&input_path);
         let secret_key = common::secret_key::get(matches);
-        let mut rng = rand::thread_rng();
-        deploy.sign(&secret_key, &mut rng);
-        creation_common::output::write_deploy(&deploy, creation_common::output::get(matches));
+        let maybe_output = creation_common::output::get(matches);
+        casper_client::sign_deploy_file(&input_path, secret_key, maybe_output.unwrap_or_default())
+            .unwrap_or_else(move |err| {
+                panic!("error writing deploy to {:?}: {}", maybe_output, err)
+            });
     }
 }

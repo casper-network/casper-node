@@ -47,7 +47,7 @@ impl<'a, C: Context> Tally<'a, C> {
         }
     }
 
-    /// Creates a tally from a list of votes. Returns `None` if the iterator is empty.
+    /// Creates a tally from a list of units. Returns `None` if the iterator is empty.
     fn try_from_iter<T: IntoIterator<Item = (&'a C::Hash, Weight)>>(iter: T) -> Option<Self> {
         let mut iter = iter.into_iter();
         let (bhash, w) = iter.next()?;
@@ -102,7 +102,7 @@ impl<'a, C: Context> Tally<'a, C> {
     }
 }
 
-/// A list of tallies by block height. The tally at each height contains only the votes that point
+/// A list of tallies by block height. The tally at each height contains only the units that point
 /// directly to a block at that height, not at a descendant.
 ///
 /// Each validator must contribute their weight to at most one entry: The height of the block that
@@ -143,7 +143,7 @@ impl<'a, C: Context> Tallies<'a, C> {
         let mut prev_tally = self[max_height].clone();
         // Start from `max_height - 1` and find the greatest height where a decision can be made.
         for height in (0..max_height).rev() {
-            // The tally at `height` is the sum of the parents of `height + 1` and the votes that
+            // The tally at `height` is the sum of the parents of `height + 1` and the units that
             // point directly to blocks at `height`.
             let mut h_tally = prev_tally.parents(state);
             if let Some(tally) = self.0.get(&height) {
@@ -201,7 +201,6 @@ mod tests {
         super::{tests::*, State},
         *,
     };
-    use crate::testing::TestRng;
 
     impl<'a> Tallies<'a, TestContext> {
         /// Returns the number of tallies.
@@ -211,9 +210,9 @@ mod tests {
     }
 
     #[test]
-    fn tallies() -> Result<(), AddVoteError<TestContext>> {
+    fn tallies() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(WEIGHTS, 0);
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
 
         // Create blocks with scores as follows:
         //
@@ -222,13 +221,13 @@ mod tests {
         // b0: 12           b2: 4
         //        \
         //          c0: 5 — c1: 5
-        let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
-        let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
-        let c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
-        let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
-        let b1 = add_vote!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
-        let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
-        let b2 = add_vote!(state, rng, BOB, 0xB2; a0, b1, N)?;
+        let b0 = add_unit!(state, rng, BOB, 0xB0; N, N, N)?;
+        let c0 = add_unit!(state, rng, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_unit!(state, rng, ALICE, 0xA0; N, b0, N)?;
+        let b1 = add_unit!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+        let a1 = add_unit!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
+        let b2 = add_unit!(state, rng, BOB, 0xB2; a0, b1, N)?;
 
         // These are the entries of a panorama seeing `a1`, `b2` and `c0`.
         let vote_entries = vec![
@@ -238,12 +237,12 @@ mod tests {
         ];
         let tallies: Tallies<TestContext> = vote_entries.into_iter().collect();
         assert_eq!(2, tallies.len());
-        assert_eq!(Weight(5), tallies[1].weight()); // Carol's vote is on height 1.
-        assert_eq!(Weight(7), tallies[2].weight()); // Alice's and Bob's votes are on height 2.
+        assert_eq!(Weight(5), tallies[1].weight()); // Carol's unit is on height 1.
+        assert_eq!(Weight(7), tallies[2].weight()); // Alice's and Bob's units are on height 2.
 
         // Compute the tally at height 1: Take the parents of the blocks Alice and Bob vote for...
         let mut h1_tally = tallies[2].parents(&state);
-        // (Their votes have the same parent: `a0`.)
+        // (Their units have the same parent: `a0`.)
         assert_eq!(1, h1_tally.votes.len());
         assert_eq!(Weight(7), h1_tally.votes[&a0]);
         // ...and adding Carol's vote.

@@ -17,11 +17,11 @@ use crate::{
     components::{
         chainspec_loader::Chainspec,
         deploy_acceptor::{self, DeployAcceptor},
-        in_memory_network::{InMemoryNetwork, NetworkController, NodeId},
+        in_memory_network::{InMemoryNetwork, NetworkController},
         storage::{self, Storage, StorageType},
     },
     effect::{
-        announcements::{ApiServerAnnouncement, DeployAcceptorAnnouncement, NetworkAnnouncement},
+        announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement, RpcServerAnnouncement},
         requests::FetcherRequest,
     },
     protocol::Message,
@@ -30,8 +30,9 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::{Deploy, DeployHash, Tag},
+    types::{Deploy, DeployHash, NodeId, Tag},
     utils::{Loadable, WithDir},
+    FetcherConfig, NodeRng,
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -55,7 +56,7 @@ enum Event {
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     #[from]
-    ApiServerAnnouncement(#[serde(skip_serializing)] ApiServerAnnouncement),
+    RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
 }
@@ -75,7 +76,7 @@ impl Display for Event {
             Event::NetworkRequest(req) => write!(formatter, "network request: {}", req),
             Event::DeployFetcherRequest(req) => write!(formatter, "fetcher request: {}", req),
             Event::NetworkAnnouncement(ann) => write!(formatter, "network announcement: {}", ann),
-            Event::ApiServerAnnouncement(ann) => {
+            Event::RpcServerAnnouncement(ann) => {
                 write!(formatter, "api server announcement: {}", ann)
             }
             Event::DeployAcceptorAnnouncement(ann) => {
@@ -109,14 +110,14 @@ impl Drop for Reactor {
 
 impl reactor::Reactor for Reactor {
     type Event = Event;
-    type Config = GossipConfig;
+    type Config = Config;
     type Error = Error;
 
     fn new(
         config: Self::Config,
         _registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
@@ -142,7 +143,7 @@ impl reactor::Reactor for Reactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -222,7 +223,7 @@ impl reactor::Reactor for Reactor {
             Event::NetworkAnnouncement(ann) => {
                 unreachable!("should not receive announcements of type {:?}", ann);
             }
-            Event::ApiServerAnnouncement(ApiServerAnnouncement::DeployReceived { deploy }) => {
+            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
@@ -349,7 +350,7 @@ async fn should_fetch_from_local() {
     NetworkController::<Message>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
         (network, rng, node_ids)
     };
@@ -368,7 +369,7 @@ async fn should_fetch_from_local() {
     network
         .process_injected_effect_on(
             node_id,
-            fetch_deploy(deploy_hash, *node_id, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, node_id.clone(), Arc::clone(&fetched)),
         )
         .await;
 
@@ -394,7 +395,7 @@ async fn should_fetch_from_peer() {
     NetworkController::<Message>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
         (network, rng, node_ids)
     };
@@ -414,11 +415,14 @@ async fn should_fetch_from_peer() {
     network
         .process_injected_effect_on(
             node_without_deploy,
-            fetch_deploy(deploy_hash, *node_with_deploy, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, node_with_deploy.clone(), Arc::clone(&fetched)),
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromPeer(Box::new(deploy), *node_with_deploy));
+    let expected_result = Some(FetchResult::FromPeer(
+        Box::new(deploy),
+        node_with_deploy.clone(),
+    ));
     assert_settled(
         node_without_deploy,
         deploy_hash,
@@ -440,7 +444,7 @@ async fn should_timeout_fetch_from_peer() {
     NetworkController::<Message>::create_active();
     let (mut network, mut rng, node_ids) = {
         let mut network = Network::<Reactor>::new();
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
         (network, rng, node_ids)
     };
@@ -449,8 +453,8 @@ async fn should_timeout_fetch_from_peer() {
     let deploy = Deploy::random(&mut rng);
     let deploy_hash = *deploy.id();
 
-    let holding_node = node_ids[0];
-    let requesting_node = node_ids[1];
+    let holding_node = node_ids[0].clone();
+    let requesting_node = node_ids[1].clone();
 
     // Store deploy on holding node.
     store_deploy(&deploy, &holding_node, &mut network, &mut rng).await;
@@ -460,7 +464,7 @@ async fn should_timeout_fetch_from_peer() {
     network
         .process_injected_effect_on(
             &requesting_node,
-            fetch_deploy(deploy_hash, holding_node, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, holding_node.clone(), Arc::clone(&fetched)),
         )
         .await;
 
@@ -505,7 +509,7 @@ async fn should_timeout_fetch_from_peer() {
         .await;
 
     // Advance time.
-    let secs_to_advance = GossipConfig::default().get_remainder_timeout_secs();
+    let secs_to_advance = FetcherConfig::default().get_from_peer_timeout();
     time::pause();
     time::advance(Duration::from_secs(secs_to_advance + 10)).await;
     time::resume();

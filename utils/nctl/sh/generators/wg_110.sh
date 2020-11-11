@@ -20,6 +20,8 @@ source $NCTL/sh/utils/misc.sh
 # Unset to avoid parameter collisions.
 unset amount
 unset gas
+unset gas_payment
+unset gas_price
 unset interval
 unset net
 unset node
@@ -45,9 +47,9 @@ do
 done
 
 # Set defaults.
-amount=${amount:-1000000}
-gas_payment=${gas_payment:-200000}
-gas_price=${gas_price:-10}
+amount=${amount:-$NCTL_DEFAULT_TRANSFER_AMOUNT}
+gas_payment=${gas_payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
 transfers=${transfers:-100}
@@ -66,7 +68,7 @@ path_contract=$path_net/bin/transfer_to_account_u512.wasm
 cp1_secret_key=$path_net/faucet/secret_key.pem
 cp1_public_key=`cat $path_net/faucet/public_key_hex`
 cp2_public_key=`cat $path_net/users/user-$user/public_key_hex`
-cp2_account_hash=$(get_hash $cp2_public_key)
+cp2_account_hash=$(get_account_hash $cp2_public_key)
 
 # Inform.
 log "dispatching $transfers wasm transfers"
@@ -78,6 +80,27 @@ log "... transfer interval=$transfer_interval (s)"
 log "... counter-party 1 public key=$cp1_public_key"
 log "... counter-party 2 public key=$cp2_public_key"
 log "... counter-party 2 account hash=$cp2_account_hash"
+if [ $transfers -le 10 ]; then
+    log "... dispatched deploys:"
+fi
+
+# Deploy dispatcher.
+function _dispatch_deploy() {
+    echo $(
+        $path_net/bin/casper-client put-deploy \
+            --chain-name casper-net-$net \
+            --gas-price $gas_price \
+            --node-address $node_address \
+            --payment-amount $gas_payment \
+            --secret-key $cp1_secret_key \
+            --session-arg "amount:u512='$amount'" \
+            --session-arg "target:account_hash='account-hash-$cp2_account_hash'" \
+            --session-path $path_contract \
+            --ttl "1day" \
+            | jq '.result.deploy_hash' \
+            | sed -e 's/^"//' -e 's/"$//'
+        )
+}
 
 # Dispatch transfers to each node in round-robin fashion.
 if [ $node = "all" ]; then
@@ -87,43 +110,28 @@ if [ $node = "all" ]; then
         source $NCTL/assets/net-$net/vars
         for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
         do
-            $path_net/bin/casper-client put-deploy \
-                --chain-name casper-net-$net \
-                --gas-price $gas_price \
-                --node-address $(get_node_address $net $node_idx) \
-                --payment-amount $gas_payment \
-                --secret-key $cp1_secret_key \
-                --session-arg "amount:u512='$amount'" \
-                --session-arg "target:account_hash='account-hash-$cp2_account_hash'" \
-                --session-path $path_contract \
-                --ttl "1day" \
-                > /dev/null 2>&1
-
+            node_address=$(get_node_address_rpc $net $node_idx)
+            deploy_hash=$(_dispatch_deploy)
+            if [ $transfers -le 10 ]; then
+                log "... ... "$deploy_hash
+            fi
             transferred=$((transferred + 1))
             if [[ $transferred -eq $transfers ]]; then
                 break
             fi
-
             sleep $transfer_interval
         done
     done
 
 # Dispatch transfers to user specified node.
 else
-    node_address=$(get_node_address $net $node)
+    node_address=$(get_node_address_rpc $net $node)
     for transfer_id in $(seq 1 $transfers)
     do
-        $path_net/bin/casper-client put-deploy \
-            --chain-name casper-net-$net \
-            --gas-price $gas_price \
-            --node-address $(get_node_address $net $node_idx) \
-            --payment-amount $gas_payment \
-            --secret-key $cp1_secret_key \
-            --session-arg "amount:u512='$amount'" \
-            --session-arg "target:account_hash='account-hash-$cp2_account_hash'" \
-            --session-path $path_contract \
-            --ttl "1day" \
-            > /dev/null 2>&1
+        deploy_hash=$(_dispatch_deploy)
+        if [ $transfers -le 10 ]; then
+            log "... ... "$deploy_hash
+        fi
         sleep $transfer_interval
     done
 fi

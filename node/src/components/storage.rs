@@ -12,26 +12,29 @@ mod lmdb_store;
 mod store;
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::{Debug, Display},
     fs,
     hash::Hash,
+    result::Result as StdResult,
     sync::Arc,
 };
 
 use datasize::DataSize;
 use futures::TryFutureExt;
 use semver::Version;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
 use smallvec::{smallvec, SmallVec};
 use tokio::task;
 use tracing::{debug, error, warn};
 
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+
+#[cfg(test)]
+use crate::testing::TestRng;
+
 use crate::{
-    components::{
-        chainspec_loader::Chainspec, deploy_buffer::ProtoBlockCollection, small_network::NodeId,
-        Component,
-    },
+    components::{block_proposer::BlockProposerState, chainspec_loader::Chainspec, Component},
     crypto::asymmetric_key::Signature,
     effect::{
         requests::{NetworkRequest, StorageRequest},
@@ -39,9 +42,11 @@ use crate::{
     },
     protocol::Message,
     types::{
-        json_compatibility::ExecutionResult, Block, CryptoRngCore, Deploy, Item, ProtoBlockHash,
+        json_compatibility::ExecutionResult, Block, Deploy, DeployHash, DeployHeader, Item, NodeId,
+        ProtoBlockHash, Timestamp,
     },
     utils::WithDir,
+    NodeRng,
 };
 use block_height_store::BlockHeightStore;
 use chainspec_store::ChainspecStore;
@@ -70,8 +75,8 @@ const BLOCK_HEIGHT_STORE_FILENAME: &str = "block_height_store.db";
 const DEPLOY_STORE_FILENAME: &str = "deploy_store.db";
 const CHAINSPEC_STORE_FILENAME: &str = "chainspec_store.db";
 
-pub trait ValueT: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {}
-impl<T> ValueT for T where T: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Display {}
+pub trait ValueT: Clone + ToBytes + FromBytes + Send + Sync + Debug + Display {}
+impl<T> ValueT for T where T: Clone + ToBytes + FromBytes + Send + Sync + Debug + Display {}
 
 /// Trait defining the API for a value able to be held within the storage component.
 pub trait Value: ValueT {
@@ -84,8 +89,8 @@ pub trait Value: ValueT {
         + Hash
         + Debug
         + Display
-        + Serialize
-        + DeserializeOwned
+        + ToBytes
+        + FromBytes
         + Send
         + Sync;
     /// A relatively small portion of the value, representing header info or metadata.
@@ -97,8 +102,8 @@ pub trait Value: ValueT {
         + Hash
         + Debug
         + Display
-        + Serialize
-        + DeserializeOwned
+        + ToBytes
+        + FromBytes
         + Send
         + Sync;
 
@@ -112,24 +117,36 @@ pub trait WithBlockHeight: Value {
 }
 
 /// Metadata associated with a block.
-#[derive(Default, Clone, Serialize, Deserialize, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct BlockMetadata {
     /// The finalization signatures of a block.
     pub proofs: Vec<Signature>,
 }
 
 /// Metadata associated with a deploy.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeployMetadata<B: Value> {
     /// The block hashes of blocks containing the related deploy, along with the results of
     /// executing the related deploy.
-    pub execution_results: HashMap<B::Id, ExecutionResult>,
+    pub execution_results: BTreeMap<B::Id, ExecutionResult>,
 }
 
 impl<B: Value> DeployMetadata<B> {
     fn new(block_hash: B::Id, execution_result: ExecutionResult) -> Self {
-        let mut execution_results = HashMap::new();
+        let mut execution_results = BTreeMap::new();
         let _ = execution_results.insert(block_hash, execution_result);
+        DeployMetadata { execution_results }
+    }
+}
+
+#[cfg(test)]
+impl DeployMetadata<Block> {
+    fn random(rng: &mut TestRng) -> Self {
+        let block = Block::random(rng);
+        let id = Value::id(&block);
+        let mut execution_results = BTreeMap::new();
+        let execution_result = ExecutionResult::random(rng);
+        execution_results.insert(*id, execution_result);
         DeployMetadata { execution_results }
     }
 }
@@ -137,38 +154,143 @@ impl<B: Value> DeployMetadata<B> {
 impl<B: Value> Default for DeployMetadata<B> {
     fn default() -> Self {
         DeployMetadata {
-            execution_results: HashMap::new(),
+            execution_results: BTreeMap::new(),
         }
     }
 }
 
+impl<B: Value> ToBytes for DeployMetadata<B> {
+    fn to_bytes(&self) -> StdResult<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.execution_results.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.execution_results.serialized_length()
+    }
+}
+
+impl<B: Value> FromBytes for DeployMetadata<B> {
+    fn from_bytes(bytes: &[u8]) -> StdResult<(Self, &[u8]), bytesrepr::Error> {
+        let (execution_results, remainder) = BTreeMap::<B::Id, ExecutionResult>::from_bytes(bytes)?;
+        let deploy_metadata = DeployMetadata { execution_results };
+        Ok((deploy_metadata, remainder))
+    }
+}
+
 impl LmdbStorage<Block, Deploy> {
+    async fn load_block_deploys(&self, block: &Block) -> (ProtoBlockHash, Vec<Deploy>) {
+        let deploy_store = self.deploy_store();
+        let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
+        let block_hash = ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
+        let deploys = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+            .await
+            .expect("should run")
+            .into_iter()
+            .map(|result| result.unwrap_or_else(|error| panic!("failed to get deploy: {}", error)))
+            .flatten()
+            .collect::<Vec<_>>();
+        (block_hash, deploys)
+    }
+
+    fn load_pending_deploys(
+        &self,
+        finalized: &HashSet<DeployHash>,
+        current_instant: Timestamp,
+    ) -> Result<HashMap<DeployHash, DeployHeader>> {
+        let ids = self.deploy_store().ids()?;
+        let mut pending = HashMap::new();
+        for id in ids {
+            let deploy = self
+                .deploy_store()
+                .get(smallvec![id])
+                .pop()
+                .expect("should pop")
+                .expect("should load")
+                .expect("should be some");
+
+            let header = deploy.header();
+            if header.expired(current_instant) {
+                break;
+            }
+            if !finalized.contains(deploy.id()) {
+                pending.insert(*deploy.id(), header.clone());
+            }
+        }
+        Ok(pending)
+    }
+
     /// This method is intended to only be used by the joiner when transitioning to the validator
     /// state.
-    pub(crate) async fn get_finalized_deploys(
+    pub(crate) async fn load_block_proposer_state(
         &self,
-        linear_chain: &[Block],
-    ) -> ProtoBlockCollection {
-        let mut finalized = HashMap::new();
-        let deploy_store = self.deploy_store();
-        for block in linear_chain.iter() {
-            let deploy_store = deploy_store.clone();
-            let deploy_hashes = SmallVec::from(block.deploy_hashes().clone());
-            let block_hash =
-                ProtoBlockHash::from_parts(&deploy_hashes, block.header().random_bit());
-            let deploys = task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+        latest_block_height: u64,
+        chainspec_version: Version,
+        current_instant: Timestamp,
+    ) -> BlockProposerState {
+        let max_ttl = {
+            let chainspec_store = self.chainspec_store();
+            let chainspec = task::spawn_blocking(move || chainspec_store.get(chainspec_version))
                 .await
-                .expect("should run")
-                .into_iter()
-                .map(|result| {
-                    result.unwrap_or_else(|error| panic!("failed to get deploy: {}", error))
-                })
-                .flatten()
+                .expect("should run blocking");
+            let chainspec = match chainspec {
+                Ok(Some(chainspec)) => chainspec,
+                // If we can't get our hands on a chainspec, then we can't get a max_ttl to compare
+                // blocks and deploys against.
+                _ => panic!("unable to load chainspec"),
+            };
+            chainspec.genesis.deploy_config.max_ttl
+        };
+
+        // deploys, organized by ProtoBlockHash, which have been finalized
+        let mut finalized = HashMap::new();
+        let mut finalized_hashes = HashSet::new();
+
+        'iterate_ancestry: for height in (0..=latest_block_height).rev() {
+            let block = {
+                let block_store = self.block_store();
+                let block_by_height_store = self.block_height_store();
+
+                let ancestor_hash = task::spawn_blocking(move || block_by_height_store.get(height))
+                    .await
+                    .expect("should spawn_blocking");
+
+                let ancestor_hash = match ancestor_hash {
+                    Ok(Some(hash)) => hash,
+                    _ => break 'iterate_ancestry,
+                };
+
+                task::spawn_blocking(move || block_store.get(smallvec![ancestor_hash]))
+                    .await
+                    .expect("should spawn_blocking")
+                    .pop()
+                    .expect("should pop")
+                    .expect("should load")
+                    .unwrap_or_else(|| panic!("block at height {} should exist", height))
+            };
+
+            if block.header().timestamp() < current_instant - max_ttl {
+                break 'iterate_ancestry;
+            }
+
+            let (block_hash, deploys) = self.load_block_deploys(&block).await;
+            let deploys = deploys
+                .iter()
                 .map(|deploy| (*deploy.id(), deploy.header().clone()))
                 .collect::<HashMap<_, _>>();
+
+            finalized_hashes.extend(deploys.iter().map(|(hash, _)| hash));
             finalized.insert(block_hash, deploys);
         }
-        finalized
+
+        // Once finalized block's deploys are loaded, iterate over Deploy store to find 'pending'
+        // deploys.
+        let pending = self
+            .load_pending_deploys(&finalized_hashes, current_instant)
+            .expect("should load pending deploys");
+
+        BlockProposerState::with_pending_and_finalized(pending, finalized)
     }
 }
 
@@ -206,6 +328,7 @@ pub trait StorageType {
     {
         let deploy_store = self.deploy_store();
         let deploy_hashes = smallvec![deploy_hash];
+        let cloned_peer = peer.clone();
         async move {
             task::spawn_blocking(move || deploy_store.get(deploy_hashes))
                 .await
@@ -213,7 +336,12 @@ pub trait StorageType {
                 .pop()
                 .expect("can only contain one result")
         }
-        .map_err(move |error| debug!("failed to get {} for {}: {}", deploy_hash, peer, error))
+        .map_err(move |error| {
+            debug!(
+                "failed to get {} for {}: {}",
+                deploy_hash, cloned_peer, error
+            )
+        })
         .and_then(move |maybe_deploy| async move {
             match maybe_deploy {
                 Some(deploy) => match Message::new_get_response(&deploy) {
@@ -543,11 +671,12 @@ where
     Self: Sized + 'static,
 {
     type Event = Event<S>;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -714,5 +843,17 @@ where
 
     fn chainspec_store(&self) -> Arc<dyn ChainspecStore> {
         Arc::clone(&self.chainspec_store) as Arc<dyn ChainspecStore>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_test_deploy_metadata() {
+        let mut rng = TestRng::new();
+        let deploy_metadata = DeployMetadata::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&deploy_metadata);
     }
 }

@@ -29,7 +29,7 @@ use crate::{
         requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::CryptoRngCore,
+    NodeRng,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{DeployConfig, HighwayConfig};
@@ -95,7 +95,7 @@ impl From<ChainspecLoader> for ChainspecInfo {
 }
 
 #[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
-pub(crate) struct ChainspecLoader {
+pub struct ChainspecLoader {
     chainspec: Chainspec,
     // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
     completed_successfully: Option<bool>,
@@ -147,11 +147,12 @@ where
     REv: From<Event> + From<StorageRequest<Storage>> + From<ContractRuntimeRequest> + Send,
 {
     type Event = Event;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

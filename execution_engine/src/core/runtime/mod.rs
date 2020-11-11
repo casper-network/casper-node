@@ -30,9 +30,9 @@ use casper_types::{
     runtime_args, standard_payment,
     standard_payment::StandardPayment,
     system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasm, EntryPointType, Key, ProtocolVersion,
-    PublicKey, RuntimeArgs, SystemContractType, TransferResult, TransferredTo, URef, U128, U256,
-    U512,
+    ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, SystemContractType, Transfer, TransferResult,
+    TransferredTo, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -43,7 +43,12 @@ use crate::{
         runtime_context::{self, RuntimeContext},
         Address,
     },
-    shared::{account::Account, gas::Gas, stored_value::StoredValue},
+    shared::{
+        account::Account,
+        gas::Gas,
+        host_function_costs::{Cost, HostFunction},
+        stored_value::StoredValue,
+    },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
 use scoped_instrumenter::ScopedInstrumenter;
@@ -99,6 +104,8 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::URef(uref) => Some((uref.addr(), uref.access_rights())),
         Key::Account(_) => None,
         Key::Hash(_) => None,
+        Key::Transfer(_) => None,
+        Key::DeployInfo(_) => None,
     }
 }
 
@@ -1395,30 +1402,8 @@ where
         self.context.protocol_data()
     }
 
-    /// Charge specified amount of gas
-    ///
-    /// Returns false if gas limit exceeded and true if not.
-    /// Intuition about the return value sense is to answer the question 'are we
-    /// allowed to continue?'
-    fn charge_gas(&mut self, amount: Gas) -> bool {
-        let prev = self.context.gas_counter();
-        match prev.checked_add(amount) {
-            // gas charge overflow protection
-            None => false,
-            Some(val) if val > self.context.gas_limit() => false,
-            Some(val) => {
-                self.context.set_gas_counter(val);
-                true
-            }
-        }
-    }
-
-    fn gas(&mut self, amount: Gas) -> Result<(), Trap> {
-        if self.charge_gas(amount) {
-            Ok(())
-        } else {
-            Err(Error::GasLimit.into())
-        }
+    fn gas(&mut self, amount: Gas) -> Result<(), Error> {
+        self.context.charge_gas(amount)
     }
 
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
@@ -1689,7 +1674,6 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1706,12 +1690,14 @@ where
         let gas_counter = self.context.gas_counter();
         let hash_address_generator = self.context.hash_address_generator();
         let uref_address_generator = self.context.uref_address_generator();
+        let transfer_address_generator = self.context.transfer_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let protocol_data = self.context.protocol_data();
+        let transfers = self.context.transfers().to_owned();
 
         let mint_context = RuntimeContext::new(
-            state,
+            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -1725,10 +1711,12 @@ where
             gas_counter,
             hash_address_generator,
             uref_address_generator,
+            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
             *protocol_data,
+            transfers,
         );
 
         let mut mint_runtime = Runtime::new(
@@ -1780,6 +1768,10 @@ where
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
         self.context.access_rights_extend(access_rights);
+        {
+            let transfers = self.context.transfers_mut();
+            *transfers = mint_runtime.context.transfers().to_owned();
+        }
         Ok(ret)
     }
 
@@ -1791,7 +1783,6 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1808,12 +1799,14 @@ where
         let gas_counter = self.context.gas_counter();
         let fn_store_id = self.context.hash_address_generator();
         let address_generator = self.context.uref_address_generator();
+        let transfer_address_generator = self.context.transfer_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let protocol_data = self.context.protocol_data();
+        let transfers = self.context.transfers().to_owned();
 
         let runtime_context = RuntimeContext::new(
-            state,
+            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -1827,10 +1820,12 @@ where
             gas_counter,
             fn_store_id,
             address_generator,
+            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
             *protocol_data,
+            transfers,
         );
 
         let mut runtime = Runtime::new(
@@ -1862,8 +1857,10 @@ where
                     Self::get_named_argument(&runtime_args, proof_of_stake::ARG_AMOUNT)?;
                 let account: AccountHash =
                     Self::get_named_argument(&runtime_args, proof_of_stake::ARG_ACCOUNT)?;
+                let target: URef =
+                    Self::get_named_argument(&runtime_args, proof_of_stake::ARG_TARGET)?;
                 runtime
-                    .finalize_payment(amount_spent, account)
+                    .finalize_payment(amount_spent, account, target)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)?
             }
@@ -1872,6 +1869,10 @@ where
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
         self.context.access_rights_extend(access_rights);
+        {
+            let transfers = self.context.transfers_mut();
+            *transfers = runtime.context.transfers().to_owned();
+        }
         Ok(ret)
     }
 
@@ -1889,7 +1890,6 @@ where
         runtime_args: &RuntimeArgs,
         extra_keys: &[Key],
     ) -> Result<CLValue, Error> {
-        let state = self.context.state();
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
             keys.extend(extra_keys);
@@ -1906,12 +1906,14 @@ where
         let gas_counter = self.context.gas_counter();
         let fn_store_id = self.context.hash_address_generator();
         let address_generator = self.context.uref_address_generator();
+        let transfer_address_generator = self.context.transfer_address_generator();
         let correlation_id = self.context.correlation_id();
         let phase = self.context.phase();
         let protocol_data = self.context.protocol_data();
+        let transfers = self.context.transfers().to_owned();
 
         let runtime_context = RuntimeContext::new(
-            state,
+            self.context.state(),
             EntryPointType::Contract,
             named_keys,
             access_rights,
@@ -1925,10 +1927,12 @@ where
             gas_counter,
             fn_store_id,
             address_generator,
+            transfer_address_generator,
             protocol_version,
             correlation_id,
             phase,
             *protocol_data,
+            transfers,
         );
 
         let mut runtime = Runtime::new(
@@ -1941,9 +1945,7 @@ where
 
         let ret: CLValue = match entry_point_name {
             auction::METHOD_GET_ERA_VALIDATORS => {
-                let era_id = Self::get_named_argument(&runtime_args, auction::ARG_ERA_ID)?;
-
-                let result = runtime.get_era_validators(era_id).map_err(Self::reverter)?;
+                let result = runtime.get_era_validators().map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
@@ -2075,6 +2077,10 @@ where
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
         self.context.access_rights_extend(access_rights);
+        {
+            let transfers = self.context.transfers_mut();
+            *transfers = runtime.context.transfers().to_owned();
+        }
         Ok(ret)
     }
 
@@ -2351,10 +2357,12 @@ where
             self.context.gas_counter(),
             self.context.hash_address_generator(),
             self.context.uref_address_generator(),
+            self.context.transfer_address_generator(),
             protocol_version,
             self.context.correlation_id(),
             self.context.phase(),
             *self.context.protocol_data(),
+            self.context.transfers().to_owned(),
         );
 
         let mut runtime = Runtime {
@@ -2372,6 +2380,11 @@ where
         // charged by the sub-call was added to its counter - so let's copy the correct value of the
         // counter from there to our counter
         self.context.set_gas_counter(runtime.context.gas_counter());
+
+        {
+            let transfers = self.context.transfers_mut();
+            *transfers = runtime.context.transfers().to_owned();
+        }
 
         let error = match result {
             Err(error) => error,
@@ -2540,7 +2553,7 @@ where
         Ok(Ok(()))
     }
 
-    fn create_contract_value(&mut self) -> Result<(StoredValue, URef), Error> {
+    fn create_contract_package(&mut self) -> Result<(ContractPackage, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = ContractPackage::new(
             access_key,
@@ -2549,17 +2562,14 @@ where
             Groups::default(),
         );
 
-        let value = StoredValue::ContractPackage(contract_package);
-
-        Ok((value, access_key))
+        Ok((contract_package, access_key))
     }
 
     fn create_contract_package_at_hash(&mut self) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
-        let key = Key::Hash(addr);
-        let (stored_value, access_key) = self.create_contract_value()?;
-
-        self.context.state().borrow_mut().write(key, stored_value);
+        let (contract_package, access_key) = self.create_contract_package()?;
+        self.context
+            .metered_write_gs_unsafe(addr, contract_package)?;
         Ok((addr, access_key.addr()))
     }
 
@@ -2571,8 +2581,6 @@ where
         mut existing_urefs: BTreeSet<URef>,
         output_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        let contract_package_key = contract_package_hash.into();
-
         let mut contract_package: ContractPackage = self
             .context
             .get_validated_contract_package(contract_package_hash)?;
@@ -2629,10 +2637,8 @@ where
         }
 
         // Write updated package to the global state
-        self.context.state().borrow_mut().write(
-            contract_package_key,
-            StoredValue::ContractPackage(contract_package),
-        );
+        self.context
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         Ok(Ok(()))
     }
@@ -2648,22 +2654,20 @@ where
         bytes_written_ptr: u32,
         version_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        let contract_package_key = contract_package_hash.into();
-        self.context.validate_key(&contract_package_key)?;
+        self.context
+            .validate_key(&Key::from(contract_package_hash))?;
 
         let mut contract_package: ContractPackage = self
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
         let contract_wasm_hash = self.context.new_hash_address()?;
-        let contract_wasm_key = Key::Hash(contract_wasm_hash);
         let contract_wasm = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
             ContractWasm::new(module_bytes)
         };
 
         let contract_hash = self.context.new_hash_address()?;
-        let contract_key = Key::Hash(contract_hash);
 
         let protocol_version = self.context.protocol_version();
         let major = protocol_version.value().major;
@@ -2688,19 +2692,11 @@ where
         let insert_contract_result = contract_package.insert_contract_version(major, contract_hash);
 
         self.context
-            .state()
-            .borrow_mut()
-            .write(contract_wasm_key, StoredValue::ContractWasm(contract_wasm));
-
+            .metered_write_gs_unsafe(contract_wasm_hash, contract_wasm)?;
         self.context
-            .state()
-            .borrow_mut()
-            .write(contract_key, StoredValue::Contract(contract));
-
-        self.context.state().borrow_mut().write(
-            contract_package_key,
-            StoredValue::ContractPackage(contract_package),
-        );
+            .metered_write_gs_unsafe(contract_hash, contract)?;
+        self.context
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         // return contract key to caller
         {
@@ -2752,10 +2748,8 @@ where
             return Ok(Err(err.into()));
         }
 
-        self.context.state().borrow_mut().write(
-            contract_package_key,
-            StoredValue::ContractPackage(contract_package),
-        );
+        self.context
+            .metered_write_gs_unsafe(contract_package_key, contract_package)?;
 
         Ok(Ok(()))
     }
@@ -2789,7 +2783,7 @@ where
         let key = self.key_from_mem(key_ptr, key_size)?;
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
         self.context
-            .write_gs(key, StoredValue::CLValue(cl_value))
+            .metered_write_gs(key, cl_value)
             .map_err(Into::into)
     }
 
@@ -2809,6 +2803,32 @@ where
             .map_err(Into::into)
     }
 
+    /// Records a transfer.
+    fn record_transfer(&mut self, source: URef, target: URef, amount: U512) -> Result<(), Error> {
+        if self.context.base_key() != Key::from(self.protocol_data().mint()) {
+            return Err(Error::InvalidContext);
+        }
+
+        if self.context.phase() != Phase::Session {
+            return Ok(());
+        }
+
+        let transfer_addr = self.context.new_transfer_addr()?;
+        let transfer = {
+            let deploy_hash: DeployHash = self.context.get_deploy_hash();
+            let from: AccountHash = self.context.account().account_hash();
+            let fee: U512 = U512::zero(); // TODO
+            Transfer::new(deploy_hash, from, source, target, amount, fee)
+        };
+        {
+            let transfers = self.context.transfers_mut();
+            transfers.push(transfer_addr);
+        }
+        self.context
+            .write_transfer(Key::Transfer(transfer_addr), transfer);
+        Ok(())
+    }
+
     /// Adds `value` to the cell that `key` points at.
     fn add(
         &mut self,
@@ -2820,7 +2840,7 @@ where
         let key = self.key_from_mem(key_ptr, key_size)?;
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
         self.context
-            .add_gs(key, StoredValue::CLValue(cl_value))
+            .metered_add_gs(key, cl_value)
             .map_err(Into::into)
     }
 
@@ -3106,7 +3126,12 @@ where
             return Ok(Err(ApiError::Transfer));
         }
 
-        match self.mint_transfer(mint_contract_hash, source, target_purse, amount) {
+        match self.mint_transfer(
+            mint_contract_hash,
+            source,
+            target_purse.with_access_rights(AccessRights::ADD),
+            amount,
+        ) {
             Ok(_) => {
                 let account = Account::create(target, Default::default(), target_purse);
                 self.context.write_account(target_key, account)?;
@@ -3480,10 +3505,7 @@ where
         }
 
         // Write updated package to the global state
-        self.context.state().borrow_mut().write(
-            Key::from(package_key),
-            StoredValue::ContractPackage(package),
-        );
+        self.context.metered_write_gs_unsafe(package_key, package)?;
         Ok(Ok(()))
     }
 
@@ -3546,10 +3568,8 @@ where
         }
 
         // Write updated package to the global state
-        self.context.state().borrow_mut().write(
-            Key::from(contract_package_hash),
-            StoredValue::ContractPackage(contract_package),
-        );
+        self.context
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         Ok(Ok(()))
     }
@@ -3591,12 +3611,24 @@ where
             }
         }
         // Write updated package to the global state
-        self.context.state().borrow_mut().write(
-            Key::from(contract_package_hash),
-            StoredValue::ContractPackage(contract_package),
-        );
+        self.context
+            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
 
         Ok(Ok(()))
+    }
+
+    /// Calculate gas cost for a host function
+    fn charge_host_function_call<T>(
+        &mut self,
+        host_function: &HostFunction<T>,
+        weights: T,
+    ) -> Result<(), Trap>
+    where
+        T: AsRef<[Cost]> + Copy,
+    {
+        let cost = host_function.calculate_gas_cost(weights);
+        self.gas(cost)?;
+        Ok(())
     }
 }
 
