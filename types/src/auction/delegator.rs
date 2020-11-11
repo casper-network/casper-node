@@ -31,6 +31,11 @@ impl Delegator {
         &self.staked_amount
     }
 
+    /// Returns the bonding purse
+    pub fn bonding_purse(&self) -> &URef {
+        &self.bonding_purse
+    }
+
     /// Decreases the stake of the provided bid
     pub fn decrease_stake(&mut self, amount: U512) -> Result<U512, Error> {
         let updated_staked_amount = self

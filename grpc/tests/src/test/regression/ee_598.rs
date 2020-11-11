@@ -91,11 +91,11 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         .to_owned();
     let error_message = utils::get_error_message(response);
 
-    // Error::UnbondTooLarge => 7,
+    // Error::UnbondTooLarge,
     assert!(
         error_message.contains(&format!(
             "{:?}",
-            ApiError::from(auction::Error::InvalidAmount)
+            ApiError::from(auction::Error::UnbondTooLarge)
         )),
         error_message
     );

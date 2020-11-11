@@ -15,7 +15,7 @@ use num_rational::Ratio;
 use crate::{
     account::AccountHash,
     system_contract_errors::auction::{Error, Result},
-    Key, PublicKey, URef, U512,
+    PublicKey, URef, U512,
 };
 
 pub use bid::Bid;
@@ -69,21 +69,24 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        // Creates new purse with desired amount taken from `source_purse`
-        // Bonds whole amount from the newly created purse
-        let (bonding_purse, _total_amount) = detail::bond(self, public_key, source, amount)?;
+        if amount.is_zero() {
+            return Err(Error::BondTooSmall);
+        }
 
         // Update bids or stakes
         let mut validators = detail::get_bids(self)?;
         let new_amount = match validators.get_mut(&public_key) {
-            Some(bid) => bid
-                .with_delegation_rate(delegation_rate)
-                .increase_stake(amount)?,
+            Some(bid) => {
+                self.transfer_purse_to_purse(source, *bid.bonding_purse(), amount)?;
+                bid.with_delegation_rate(delegation_rate)
+                    .increase_stake(amount)?
+            }
             None => {
-                let staked_amount = amount;
+                let bonding_purse = self.create_purse();
+                self.transfer_purse_to_purse(source, bonding_purse, amount)?;
                 let bid = Bid::unlocked(bonding_purse, amount, delegation_rate);
                 validators.insert(public_key, bid);
-                staked_amount
+                amount
             }
         };
         detail::set_bids(self, validators)?;
@@ -103,7 +106,7 @@ pub trait Auction:
         &mut self,
         public_key: PublicKey,
         amount: U512,
-        unbond_purse: URef,
+        unbonding_purse: URef,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
@@ -115,6 +118,14 @@ pub trait Auction:
 
         let bid = bids.get_mut(&public_key).ok_or(Error::ValidatorNotFound)?;
 
+        detail::create_unbonding_purse(
+            self,
+            public_key,
+            *bid.bonding_purse(),
+            unbonding_purse,
+            amount,
+        )?;
+
         let new_amount = bid.decrease_stake(amount)?;
 
         if new_amount.is_zero() {
@@ -122,8 +133,6 @@ pub trait Auction:
         }
 
         detail::set_bids(self, bids)?;
-
-        let _total_amount = detail::unbond(self, public_key, amount, unbond_purse)?;
 
         Ok(new_amount)
     }
@@ -145,6 +154,10 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
+        if amount.is_zero() {
+            return Err(Error::BondTooSmall);
+        }
+
         let mut bids = detail::get_bids(self)?;
 
         let delegators = match bids.get_mut(&validator_public_key) {
@@ -155,16 +168,16 @@ pub trait Auction:
             }
         };
 
-        let (rewards_purse, _updated_amount) =
-            detail::bond(self, delegator_public_key, source, amount)?;
-
         let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
             Some(delegator) => {
+                self.transfer_purse_to_purse(source, *delegator.bonding_purse(), amount)?;
                 delegator.increase_stake(amount)?;
                 *delegator.staked_amount()
             }
             None => {
-                let delegator = Delegator::new(amount, rewards_purse, validator_public_key);
+                let bonding_purse = self.create_purse();
+                self.transfer_purse_to_purse(source, bonding_purse, amount)?;
+                let delegator = Delegator::new(amount, bonding_purse, validator_public_key);
                 delegators.insert(delegator_public_key, delegator);
                 amount
             }
@@ -214,17 +227,20 @@ pub trait Auction:
             }
         };
 
-        let _unbonding_purse_balance =
-            detail::unbond(self, delegator_public_key, amount, unbonding_purse)?;
-
         let new_amount = match delegators.get_mut(&delegator_public_key) {
             Some(delegator) => {
-                if delegator.decrease_stake(amount)? == U512::zero() {
+                detail::create_unbonding_purse(
+                    self,
+                    delegator_public_key,
+                    *delegator.bonding_purse(),
+                    unbonding_purse,
+                    amount,
+                )?;
+                let updated_stake = delegator.decrease_stake(amount)?;
+                if updated_stake == U512::zero() {
                     delegators.remove(&delegator_public_key);
-                    U512::zero()
-                } else {
-                    *delegator.staked_amount()
-                }
+                };
+                updated_stake
             }
             None => {
                 return Err(Error::DelegatorNotFound);
@@ -232,8 +248,6 @@ pub trait Auction:
         };
 
         detail::set_bids(self, bids)?;
-
-        debug_assert!(_unbonding_purse_balance > new_amount);
 
         if new_amount.is_zero() {
             let mut outer = detail::get_delegator_reward_map(self)?;
@@ -262,42 +276,21 @@ pub trait Auction:
 
         detail::quash_bid(self, &validator_public_keys)?;
 
-        let bid_purses_uref = self
-            .get_key(BID_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
+        let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
 
-        let mut bid_purses: BidPurses = self.read(bid_purses_uref)?.ok_or(Error::Storage)?;
-
-        let unbonding_purses_uref = self
-            .get_key(UNBONDING_PURSES_KEY)
-            .and_then(Key::into_uref)
-            .ok_or(Error::MissingKey)?;
-        let mut unbonding_purses: UnbondingPurses =
-            self.read(unbonding_purses_uref)?.ok_or(Error::Storage)?;
-
-        let mut bid_purses_modified = false;
         let mut unbonding_purses_modified = false;
-        for validator_account_hash in validator_public_keys {
-            if let Some(_bid_purse) = bid_purses.remove(&validator_account_hash) {
-                bid_purses_modified = true;
-            }
-
-            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_account_hash) {
+        for validator_public_key in validator_public_keys {
+            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
                 let size_before = unbonding_list.len();
 
-                unbonding_list.retain(|element| element.origin != validator_account_hash);
+                unbonding_list.retain(|element| element.public_key != validator_public_key);
 
                 unbonding_purses_modified = size_before != unbonding_list.len();
             }
         }
 
-        if bid_purses_modified {
-            self.write(bid_purses_uref, bid_purses)?;
-        }
-
         if unbonding_purses_modified {
-            self.write(unbonding_purses_uref, unbonding_purses)?;
+            detail::set_unbonding_purses(self, unbonding_purses)?;
         }
 
         Ok(())
