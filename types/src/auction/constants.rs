@@ -90,8 +90,6 @@ pub const BID_PURSES_KEY: &str = "bid_purses";
 pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 /// Storage for `Bids`.
 pub const BIDS_KEY: &str = "bids";
-/// Storage for `Delegators`.
-pub const DELEGATORS_KEY: &str = "delegators";
 /// Storage for `EraValidators`.
 pub const ERA_VALIDATORS_KEY: &str = "era_validators";
 /// Storage for `EraId`.

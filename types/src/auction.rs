@@ -158,20 +158,19 @@ pub trait Auction:
         let (rewards_purse, _updated_amount) =
             detail::bond(self, delegator_public_key, source, amount)?;
 
-        match delegators.get_mut(&delegator_public_key) {
+        let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
             Some(delegator) => {
                 delegator.increase_stake(amount)?;
+                *delegator.staked_amount()
             }
             None => {
                 let delegator = Delegator::new(amount, rewards_purse, validator_public_key);
                 delegators.insert(delegator_public_key, delegator);
+                amount
             }
-        }
+        };
 
         detail::set_bids(self, bids)?;
-
-        let new_delegation_amount =
-            detail::update_delegators(self, validator_public_key, delegator_public_key, amount)?;
 
         // Initialize delegator_reward_pool_map entry if it doesn't exist.
         {
@@ -218,45 +217,25 @@ pub trait Auction:
         let _unbonding_purse_balance =
             detail::unbond(self, delegator_public_key, amount, unbonding_purse)?;
 
-        match delegators.get_mut(&delegator_public_key) {
+        let new_amount = match delegators.get_mut(&delegator_public_key) {
             Some(delegator) => {
                 if delegator.decrease_stake(amount)? == U512::zero() {
                     delegators.remove(&delegator_public_key);
+                    U512::zero()
+                } else {
+                    *delegator.staked_amount()
                 }
             }
             None => {
                 return Err(Error::DelegatorNotFound);
             }
-        }
+        };
 
         detail::set_bids(self, bids)?;
-
-        let mut delegators = detail::get_delegators(self)?;
-        let delegators_map = delegators
-            .get_mut(&validator_public_key)
-            .ok_or(Error::ValidatorNotFound)?;
-
-        let new_amount = {
-            let delegators_amount = delegators_map
-                .get_mut(&delegator_public_key)
-                .ok_or(Error::DelegatorNotFound)?;
-
-            let new_amount = delegators_amount
-                .checked_sub(amount)
-                .ok_or(Error::InvalidAmount)?;
-
-            *delegators_amount = new_amount;
-            new_amount
-        };
 
         debug_assert!(_unbonding_purse_balance > new_amount);
 
         if new_amount.is_zero() {
-            let _value = delegators_map
-                .remove(&delegator_public_key)
-                .ok_or(Error::DelegatorNotFound)?;
-            debug_assert!(_value.is_zero());
-
             let mut outer = detail::get_delegator_reward_map(self)?;
             let mut inner = outer
                 .remove(&validator_public_key)
@@ -269,8 +248,6 @@ pub trait Auction:
             };
             detail::set_delegator_reward_map(self, outer)?;
         }
-
-        detail::set_delegators(self, delegators)?;
 
         Ok(new_amount)
     }
@@ -414,7 +391,6 @@ pub trait Auction:
         //
         // Compute seiginiorage recipients for current era
         //
-        let mut delegators = detail::get_delegators(self)?;
         let mut seigniorage_recipients_snapshot =
             detail::get_seigniorage_recipients_snapshot(self)?;
         let mut seigniorage_recipients = SeigniorageRecipients::new();
@@ -428,8 +404,8 @@ pub trait Auction:
                 seigniorage_recipient.delegation_rate = *founding_validator.delegation_rate();
             }
 
-            if let Some(delegator_map) = delegators.remove(era_validator) {
-                seigniorage_recipient.delegators = delegator_map;
+            if let Some(bid) = bids.get(&era_validator) {
+                seigniorage_recipient.delegators = bid.delegators().clone();
             }
 
             seigniorage_recipients.insert(*era_validator, seigniorage_recipient);
@@ -513,7 +489,8 @@ pub trait Auction:
                 recipient
                     .delegators
                     .iter()
-                    .map(|(delegator_key, delegator_stake)| {
+                    .map(|(delegator_key, delegator)| {
+                        let delegator_stake = delegator.staked_amount();
                         let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
                         let reward = delegators_part * reward_multiplier;
                         (*delegator_key, reward)

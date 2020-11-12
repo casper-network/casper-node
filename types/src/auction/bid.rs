@@ -84,6 +84,11 @@ impl Bid {
         self.release_era
     }
 
+    /// Returns a reference to the delegators of the provided bid
+    pub fn delegators(&self) -> &BTreeMap<PublicKey, Delegator> {
+        &self.delegators
+    }
+
     /// Returns a mutable reference to the delegators of the provided bid
     pub fn delegators_mut(&mut self) -> &mut BTreeMap<PublicKey, Delegator> {
         &mut self.delegators

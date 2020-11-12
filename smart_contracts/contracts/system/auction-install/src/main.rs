@@ -10,15 +10,14 @@ use casper_contract::{
 };
 use casper_types::{
     auction::{
-        Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraId, EraValidators,
-        SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
-        UnbondingPurses, ValidatorRewardMap, ValidatorWeights, ARG_AUCTION_DELAY,
-        ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY,
-        DELEGATOR_REWARD_MAP_KEY, DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY,
-        INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP_KEY, VALIDATOR_REWARD_PURSE_KEY,
-        VALIDATOR_SLOTS_KEY,
+        Bid, BidPurses, Bids, DelegatorRewardMap, EraId, EraValidators, SeigniorageRecipient,
+        SeigniorageRecipients, SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorRewardMap,
+        ValidatorWeights, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
+        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY,
+        BID_PURSES_KEY, DELEGATOR_REWARD_MAP_KEY, DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY,
+        ERA_VALIDATORS_KEY, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP_KEY,
+        VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
@@ -88,10 +87,6 @@ pub extern "C" fn install() {
             storage::new_uref(initial_seigniorage_recipients).into(),
         );
         named_keys.insert(BIDS_KEY.into(), storage::new_uref(validators).into());
-        named_keys.insert(
-            DELEGATORS_KEY.into(),
-            storage::new_uref(Delegators::new()).into(),
-        );
         named_keys.insert(
             ERA_VALIDATORS_KEY.into(),
             storage::new_uref(era_validators).into(),

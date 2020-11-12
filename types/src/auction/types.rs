@@ -8,12 +8,6 @@ use crate::{
 /// Representation of delegation rate of tokens. Fraction of 1 in trillionths (12 decimal places).
 pub type DelegationRate = u64;
 
-/// Delegators mapped to their bids.
-pub type DelegatedAmounts = BTreeMap<PublicKey, U512>;
-
-/// Validators mapped to their delegators mapped to their bids.
-pub type Delegators = BTreeMap<PublicKey, DelegatedAmounts>;
-
 /// Validators mapped to their delegators mapped to their reward amounts.
 pub type DelegatorRewardMap = BTreeMap<PublicKey, BTreeMap<PublicKey, U512>>;
 

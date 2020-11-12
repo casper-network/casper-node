@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// Represents a party delegating their stake to a validator (or "delegatee")
-#[derive(Debug, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Delegator {
     staked_amount: U512,
     bonding_purse: URef,
