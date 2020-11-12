@@ -1,3 +1,5 @@
+use parity_wasm::{self, builder};
+
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
@@ -5,26 +7,41 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_types::{runtime_args, RuntimeArgs};
+use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs};
 
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 
 // NOTE: Apparently rustc does not emit "start" when targeting wasm32
 // Ref: https://github.com/rustwasm/team/issues/108
-const CONTRACT_WAT_WITH_START: &str = r#"
-(module
-    (memory (;0;) 1)
-    (export "memory" (memory 0))
-    (type (;0;) (func))
-    (func (;0;) (type 0)
-      nop)
-    (start 0))
-"#;
+
+/// Creates minimal session code that does nothing but has start node
+fn make_do_nothing_with_start() -> Vec<u8> {
+    let module = builder::module()
+        .function()
+        // A signature with 0 params and no return type
+        .signature()
+        .build()
+        // main() marks given function as a start() node
+        .main()
+        .body()
+        .build()
+        .build()
+        // Export above function
+        .export()
+        .field(DEFAULT_ENTRY_POINT_NAME)
+        .build()
+        // Memory section is mandatory
+        .memory()
+        .build()
+        .build();
+
+    parity_wasm::serialize(module).expect("should serialize")
+}
 
 #[ignore]
 #[test]
 fn should_run_ee_890_gracefully_reject_start_node_in_session() {
-    let wasm_binary = wabt::wat2wasm(CONTRACT_WAT_WITH_START).expect("should parse");
+    let wasm_binary = make_do_nothing_with_start();
 
     let deploy_1 = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
@@ -52,7 +69,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
 #[ignore]
 #[test]
 fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
-    let wasm_binary = wabt::wat2wasm(CONTRACT_WAT_WITH_START).expect("should parse");
+    let wasm_binary = make_do_nothing_with_start();
 
     let deploy_1 = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
