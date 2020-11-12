@@ -185,7 +185,7 @@ lazy_static! {
             let response_result = GetBalanceResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 balance_value: U512::from(1234567),
-                merkle_proof: MERKLE_PROOF.clone().to_string(),
+                merkle_proof: MERKLE_PROOF.clone(),
             };
 
             result.push_with_params::<GetBalance> (
