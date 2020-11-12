@@ -1,4 +1,6 @@
 mod round_success_meter;
+#[cfg(test)]
+mod tests;
 
 use std::{
     any::Any,
