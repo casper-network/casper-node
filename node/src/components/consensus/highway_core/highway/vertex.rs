@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{collections::BTreeSet, fmt::Debug};
 
 use serde::{Deserialize, Serialize};
 
@@ -124,7 +124,7 @@ pub(crate) struct WireUnit<C: Context> {
     pub(crate) seq_number: u64,
     pub(crate) timestamp: Timestamp,
     pub(crate) round_exp: u8,
-    pub(crate) endorsed: Vec<C::Hash>,
+    pub(crate) endorsed: BTreeSet<C::Hash>,
 }
 
 impl<C: Context> Debug for WireUnit<C> {

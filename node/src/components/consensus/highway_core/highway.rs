@@ -574,7 +574,7 @@ impl<C: Context> Highway<C> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::iter::FromIterator;
+    use std::{collections::BTreeSet, iter::FromIterator};
 
     use crate::{
         components::consensus::{
@@ -627,7 +627,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
-            endorsed: vec![],
+            endorsed: BTreeSet::new(),
         };
         let invalid_signature = 1u64;
         let invalid_signature_unit = SignedWireUnit {
@@ -690,7 +690,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
-            endorsed: vec![],
+            endorsed: BTreeSet::new(),
         };
         let wunit1 = WireUnit {
             panorama: Panorama::new(WEIGHTS.len()),
@@ -700,7 +700,7 @@ pub(crate) mod tests {
             seq_number: 0,
             timestamp: Timestamp::zero(),
             round_exp: 4,
-            endorsed: vec![],
+            endorsed: BTreeSet::new(),
         };
 
         assert!(validate(&wunit0, &CAROL_SEC, &wunit1, &CAROL_SEC,).is_ok());

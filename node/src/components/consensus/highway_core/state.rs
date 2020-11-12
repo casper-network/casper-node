@@ -15,7 +15,13 @@ pub(crate) use weight::Weight;
 pub(super) use panorama::{Observation, Panorama};
 pub(super) use unit::Unit;
 
-use std::{borrow::Borrow, cmp::Ordering, collections::HashMap, convert::identity, iter};
+use std::{
+    borrow::Borrow,
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+    convert::identity,
+    iter,
+};
 
 use itertools::Itertools;
 use rand::{Rng, SeedableRng};
@@ -78,6 +84,8 @@ pub(crate) enum UnitError {
     ValueAfterTerminalBlock,
     #[error("The unit's creator is banned.")]
     Banned,
+    #[error("The unit's endorsed votes were not a superset of its justifications.")]
+    EndorsementsNotMonotonic,
 }
 
 /// A reason for a validator to be marked as faulty.
@@ -421,8 +429,7 @@ impl<C: Context> State<C> {
         let unit = self.opt_unit(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
-        // TODO: After LNC we won't always need all known endorsements.
-        let endorsed = self.endorsements().collect();
+        let endorsed = unit.claims_endorsed().cloned().collect();
         let wunit = WireUnit {
             panorama: unit.panorama.clone(),
             creator: unit.creator,
@@ -550,6 +557,17 @@ impl<C: Context> State<C> {
                     return Err(UnitError::ThreeUnitsInRound);
                 }
             }
+        }
+        // All endorsed units from the panorama of this wunit.
+        let endorsements_in_panorama = panorama
+            .iter_correct_hashes()
+            .flat_map(|hash| self.unit(hash).claims_endorsed())
+            .collect::<HashSet<_>>();
+        if endorsements_in_panorama
+            .iter()
+            .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
+        {
+            return Err(UnitError::EndorsementsNotMonotonic);
         }
         if wunit.value.is_some() {
             // If this unit is a block, it must be the first unit in this round, its timestamp must
