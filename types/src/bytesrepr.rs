@@ -1166,6 +1166,7 @@ mod tests {
     use std::cell::RefCell;
 
     use super::*;
+    use crate::bytesrepr;
 
     #[test]
     fn check_array_from_bytes_doesnt_leak() {
@@ -1212,21 +1213,105 @@ mod tests {
         // Assert the `INSTANCE_COUNT` has dropped to zero again.
         INSTANCE_COUNT.with(|count| assert_eq!(0, *count.borrow()));
     }
+
+    #[test]
+    fn vec_u8_from_bytes() {
+        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
+        let data_bytes = data.to_bytes().unwrap();
+        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH / 2]).is_err());
+        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH]).is_err());
+        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH + 2]).is_err());
+    }
+
+    #[test]
+    fn should_serialize_deserialize_bytes() {
+        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
+        let serialized = super::serialize_bytes(&data).expect("should serialize data");
+        let (deserialized, rem): (Vec<u8>, &[u8]) =
+            super::deserialize_bytes(&serialized).expect("should deserialize data");
+        assert_eq!(data, deserialized);
+        assert!(rem.is_empty());
+    }
+
+    #[test]
+    fn should_fail_to_serialize_deserialize_malicious_bytes() {
+        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
+        let mut serialized = super::serialize_bytes(&data).expect("should serialize data");
+        serialized = serialized[..serialized.len() - 1].to_vec();
+        let res: Result<(_, &[u8]), Error> = super::deserialize_bytes(&serialized);
+        assert_eq!(res.unwrap_err(), Error::EarlyEndOfStream);
+    }
+
+    #[test]
+    fn should_serialize_deserialize_bytes_and_keep_rem() {
+        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
+        let expected_rem: Vec<u8> = vec![6, 7, 8, 9, 10];
+        let mut serialized = super::serialize_bytes(&data).expect("should serialize data");
+        serialized.extend(&expected_rem);
+        let (deserialized, rem): (Vec<u8>, &[u8]) =
+            super::deserialize_bytes(&serialized).expect("should deserialize data");
+        assert_eq!(data, deserialized);
+        assert_eq!(&rem, &expected_rem);
+    }
+
+    #[test]
+    fn should_serialize_deserialize_array() {
+        type Arr = [u8; 5];
+        let data: Arr = [1, 2, 3, 4, 5];
+        let serialized = super::serialize_array(&data).expect("should serialize data");
+        let (deserialized, rem): (Arr, &[u8]) =
+            super::deserialize_array(&serialized).expect("should deserialize data");
+        assert_eq!(data, deserialized);
+        assert!(rem.is_empty());
+    }
+
+    #[test]
+    fn should_fail_serialize_deserialize_array_incomaptible_size() {
+        let data = [1, 2, 3, 4, 5];
+        let serialized = super::serialize_array(&data).expect("should serialize data");
+
+        let result_1: Result<([u8; 6], &[u8]), Error> = super::deserialize_array(&serialized);
+        assert_eq!(
+            result_1.expect_err("should have error"),
+            Error::EarlyEndOfStream
+        );
+    }
+
+    #[test]
+    fn should_serialize_deserialize_array_and_keep_rem() {
+        type Arr = [u8; 5];
+
+        let data: Arr = [1, 2, 3, 4, 5];
+        let expected_rem: Vec<u8> = vec![6, 7, 8, 9, 10];
+        let mut serialized = super::serialize_array(&data).expect("should serialize data");
+        serialized.extend(&expected_rem);
+        let (deserialized, rem): (Arr, &[u8]) =
+            super::deserialize_array(&serialized).expect("should deserialize data");
+        assert_eq!(data, deserialized);
+        assert_eq!(&rem, &expected_rem);
+    }
+
+    #[test]
+    fn should_not_serialize_zero_denominator() {
+        let malicious = Ratio::new_raw(1, 0);
+        assert_eq!(malicious.to_bytes().unwrap_err(), Error::Formatting);
+    }
+
+    #[test]
+    fn should_not_deserialize_zero_denominator() {
+        let malicious_bytes = (1u64, 0u64).to_bytes().unwrap();
+        let result: Result<Ratio<u64>, Error> = super::deserialize(malicious_bytes);
+        assert_eq!(result.unwrap_err(), Error::Formatting);
+    }
 }
 
 #[cfg(test)]
 mod proptests {
-    use std::{collections::VecDeque, vec::Vec};
+    use std::collections::VecDeque;
 
-    use num_rational::Ratio;
     use proptest::{collection::vec, prelude::*};
 
-    use crate::{
-        bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
-        gens::*,
-    };
-
-    use super::Error;
+    use crate::{bytesrepr, gens::*};
 
     proptest! {
         #[test]
@@ -1428,95 +1513,5 @@ mod proptests {
         fn test_ratio_u64(t in (any::<u64>(), 1..u64::max_value())) {
             bytesrepr::test_serialization_roundtrip(&t);
         }
-    }
-
-    #[test]
-    fn vec_u8_from_bytes() {
-        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
-        let data_bytes = data.to_bytes().unwrap();
-        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH / 2]).is_err());
-        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH]).is_err());
-        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH + 2]).is_err());
-    }
-
-    #[test]
-    fn should_serialize_deserialize_bytes() {
-        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
-        let serialized = super::serialize_bytes(&data).expect("should serialize data");
-        let (deserialized, rem): (Vec<u8>, &[u8]) =
-            super::deserialize_bytes(&serialized).expect("should deserialize data");
-        assert_eq!(data, deserialized);
-        assert!(rem.is_empty());
-    }
-
-    #[test]
-    fn should_fail_to_serialize_deserialize_malicious_bytes() {
-        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
-        let mut serialized = super::serialize_bytes(&data).expect("should serialize data");
-        serialized = serialized[..serialized.len() - 1].to_vec();
-        let res: Result<(_, &[u8]), Error> = super::deserialize_bytes(&serialized);
-        assert_eq!(res.unwrap_err(), Error::EarlyEndOfStream);
-    }
-
-    #[test]
-    fn should_serialize_deserialize_bytes_and_keep_rem() {
-        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
-        let expected_rem: Vec<u8> = vec![6, 7, 8, 9, 10];
-        let mut serialized = super::serialize_bytes(&data).expect("should serialize data");
-        serialized.extend(&expected_rem);
-        let (deserialized, rem): (Vec<u8>, &[u8]) =
-            super::deserialize_bytes(&serialized).expect("should deserialize data");
-        assert_eq!(data, deserialized);
-        assert_eq!(&rem, &expected_rem);
-    }
-
-    #[test]
-    fn should_serialize_deserialize_array() {
-        type Arr = [u8; 5];
-        let data: Arr = [1, 2, 3, 4, 5];
-        let serialized = super::serialize_array(&data).expect("should serialize data");
-        let (deserialized, rem): (Arr, &[u8]) =
-            super::deserialize_array(&serialized).expect("should deserialize data");
-        assert_eq!(data, deserialized);
-        assert!(rem.is_empty());
-    }
-
-    #[test]
-    fn should_fail_serialize_deserialize_array_incomaptible_size() {
-        let data = [1, 2, 3, 4, 5];
-        let serialized = super::serialize_array(&data).expect("should serialize data");
-
-        let result_1: Result<([u8; 6], &[u8]), Error> = super::deserialize_array(&serialized);
-        assert_eq!(
-            result_1.expect_err("should have error"),
-            Error::EarlyEndOfStream
-        );
-    }
-
-    #[test]
-    fn should_serialize_deserialize_array_and_keep_rem() {
-        type Arr = [u8; 5];
-
-        let data: Arr = [1, 2, 3, 4, 5];
-        let expected_rem: Vec<u8> = vec![6, 7, 8, 9, 10];
-        let mut serialized = super::serialize_array(&data).expect("should serialize data");
-        serialized.extend(&expected_rem);
-        let (deserialized, rem): (Arr, &[u8]) =
-            super::deserialize_array(&serialized).expect("should deserialize data");
-        assert_eq!(data, deserialized);
-        assert_eq!(&rem, &expected_rem);
-    }
-
-    #[test]
-    fn should_not_serialize_zero_denominator() {
-        let malicious = Ratio::new_raw(1, 0);
-        assert_eq!(malicious.to_bytes().unwrap_err(), Error::Formatting);
-    }
-
-    #[test]
-    fn should_not_deserialize_zero_denominator() {
-        let malicious_bytes = (1u64, 0u64).to_bytes().unwrap();
-        let result: Result<Ratio<u64>, Error> = super::deserialize(malicious_bytes);
-        assert_eq!(result.unwrap_err(), Error::Formatting);
     }
 }
