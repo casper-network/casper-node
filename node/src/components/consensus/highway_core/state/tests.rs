@@ -309,7 +309,6 @@ fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
     let mut rng = crate::new_rng();
@@ -339,7 +338,6 @@ fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
     // Equivocation cited by one honest validator in the vote's panorama.
     // Does NOT violate LNC.
@@ -372,6 +370,7 @@ fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
+#[ignore]
 fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
     // Equivocation cited by two honest validators in the vote's panorama – their votes need to
     // be endorsed.
@@ -418,6 +417,7 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
+#[ignore]
 fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
     // Multiple equivocators and indirect equivocations.
     // Votes are seen as endorsed by `state` – does not violate LNC.
