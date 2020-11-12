@@ -593,7 +593,7 @@ impl<C: Context> State<C> {
     }
 
     /// Validates whether `wvote` violates the LNC rule.
-    /// Returns index of the first equivocator that should have been endorsed but wasn't.
+    /// Returns index of the first equivocator that was cited naively.
     ///
     /// Vote violates LNC rule if it cites naively an equivocation.
     /// If it cites equivocator then it needs to endorse votes that cite equivocating votes.
