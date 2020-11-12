@@ -16,7 +16,7 @@ use failure::Fail;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
 
@@ -190,9 +190,6 @@ impl CLTyped for Weight {
 /// The length in bytes of a [`AccountHash`].
 pub const ACCOUNT_HASH_LENGTH: usize = 32;
 
-/// The number of bytes in a serialized [`AccountHash`].
-pub const ACCOUNT_HASH_SERIALIZED_LENGTH: usize = 32;
-
 /// A type alias for the raw bytes of an Account Hash.
 pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 
@@ -343,17 +340,17 @@ impl CLTyped for AccountHash {
 
 impl ToBytes for AccountHash {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        self.0.to_bytes()
+        bytesrepr::serialize_array(&self.0)
     }
 
     fn serialized_length(&self) -> usize {
-        ACCOUNT_HASH_SERIALIZED_LENGTH
+        bytesrepr::array_serialized_length(&self.0)
     }
 }
 
 impl FromBytes for AccountHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (bytes, rem) = <[u8; 32]>::from_bytes(bytes)?;
+        let (bytes, rem) = bytesrepr::deserialize_array(bytes)?;
         Ok((AccountHash::new(bytes), rem))
     }
 }

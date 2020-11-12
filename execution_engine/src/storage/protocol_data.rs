@@ -139,19 +139,19 @@ impl ToBytes for ProtocolData {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.wasm_config.to_bytes()?);
-        ret.append(&mut self.mint.to_bytes()?);
-        ret.append(&mut self.proof_of_stake.to_bytes()?);
-        ret.append(&mut self.standard_payment.to_bytes()?);
-        ret.append(&mut self.auction.to_bytes()?);
+        ret.append(&mut bytesrepr::serialize_array(&self.mint)?);
+        ret.append(&mut bytesrepr::serialize_array(&self.proof_of_stake)?);
+        ret.append(&mut bytesrepr::serialize_array(&self.standard_payment)?);
+        ret.append(&mut bytesrepr::serialize_array(&self.auction)?);
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
         self.wasm_config.serialized_length()
-            + self.mint.serialized_length()
-            + self.proof_of_stake.serialized_length()
-            + self.standard_payment.serialized_length()
-            + self.auction.serialized_length()
+            + bytesrepr::array_serialized_length(&self.mint)
+            + bytesrepr::array_serialized_length(&self.proof_of_stake)
+            + bytesrepr::array_serialized_length(&self.standard_payment)
+            + bytesrepr::array_serialized_length(&self.auction)
     }
 }
 

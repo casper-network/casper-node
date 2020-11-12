@@ -1,6 +1,7 @@
-use crate::bytesrepr::{Error, FromBytes, ToBytes};
 use alloc::vec::Vec;
 use core::fmt::Debug;
+
+use crate::bytesrepr::{self, Error, FromBytes, ToBytes};
 
 const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
 
@@ -43,17 +44,17 @@ impl ContractWasm {
 
 impl ToBytes for ContractWasm {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        self.bytes.to_bytes()
+        bytesrepr::serialize_bytes(&self.bytes)
     }
 
     fn serialized_length(&self) -> usize {
-        self.bytes.serialized_length()
+        bytesrepr::bytes_serialized_length(&self.bytes)
     }
 }
 
 impl FromBytes for ContractWasm {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (bytes, rem1) = Vec::<u8>::from_bytes(bytes)?;
+        let (bytes, rem1) = bytesrepr::deserialize_bytes(bytes)?;
         Ok((ContractWasm { bytes }, rem1))
     }
 }

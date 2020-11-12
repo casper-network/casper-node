@@ -44,7 +44,7 @@ fn serialize_vector_of_u8(b: &mut Bencher) {
     b.iter(|| data.to_bytes());
 }
 
-fn deserialize_vector_of_u8(b: &mut Bencher) {
+fn deserialize_vector_of_u8_slow(b: &mut Bencher) {
     // 0, 1, ... 254, 255, 0, 1, ...
     let data: Vec<u8> = prepare_vector(BATCH)
         .into_iter()
@@ -53,6 +53,17 @@ fn deserialize_vector_of_u8(b: &mut Bencher) {
         .to_bytes()
         .unwrap();
     b.iter(|| Vec::<u8>::from_bytes(&data))
+}
+
+fn deserialize_vector_of_u8(b: &mut Bencher) {
+    // 0, 1, ... 254, 255, 0, 1, ...
+    let data: Vec<u8> = prepare_vector(BATCH)
+        .into_iter()
+        .map(|value| value as u8)
+        .collect::<Vec<_>>()
+        .to_bytes()
+        .unwrap();
+    b.iter(|| bytesrepr::deserialize_bytes(&data))
 }
 
 fn serialize_u8(b: &mut Bencher) {
@@ -440,6 +451,10 @@ fn bytesrepr_bench(c: &mut Criterion) {
     c.bench_function("serialize_vector_of_i32s", serialize_vector_of_i32s);
     c.bench_function("deserialize_vector_of_i32s", deserialize_vector_of_i32s);
     c.bench_function("serialize_vector_of_u8", serialize_vector_of_u8);
+    c.bench_function(
+        "deserialize_vector_of_u8_slow",
+        deserialize_vector_of_u8_slow,
+    );
     c.bench_function("deserialize_vector_of_u8", deserialize_vector_of_u8);
     c.bench_function("serialize_u8", serialize_u8);
     c.bench_function("deserialize_u8", deserialize_u8);
