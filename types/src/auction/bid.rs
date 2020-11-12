@@ -23,7 +23,7 @@ pub struct Bid {
     /// `Some` indicates locked funds for a specific era and an autowin status, and `None` case
     /// means that funds are unlocked and autowin status is removed.
     release_era: Option<EraId>,
-    /// Delegators
+    /// This validator's delegators, indexed by their public keys
     delegators: BTreeMap<PublicKey, Delegator>,
 }
 

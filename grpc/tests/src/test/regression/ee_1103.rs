@@ -27,6 +27,8 @@ const DELEGATOR_1: PublicKey = PublicKey::Ed25519([204; 32]);
 const DELEGATOR_2: PublicKey = PublicKey::Ed25519([206; 32]);
 const DELEGATOR_3: PublicKey = PublicKey::Ed25519([208; 32]);
 
+// These values were chosen to correspond to the values in accounts.csv
+// at the time of their introduction.
 lazy_static! {
     static ref FAUCET_ADDR: AccountHash = FAUCET.into();
     static ref VALIDATOR_1_ADDR: AccountHash = VALIDATOR_1.into();
