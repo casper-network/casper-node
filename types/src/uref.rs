@@ -155,7 +155,7 @@ impl URef {
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
             .strip_prefix(FORMATTED_STRING_PREFIX)
-            .ok_or_else(|| FromStrError::InvalidPrefix)?;
+            .ok_or(FromStrError::InvalidPrefix)?;
         let parts = remainder.splitn(2, '-').collect::<Vec<_>>();
         if parts.len() != 2 {
             return Err(FromStrError::MissingSuffix);
@@ -163,7 +163,7 @@ impl URef {
         let addr = URefAddr::try_from(base16::decode(parts[0])?.as_ref())?;
         let access_rights_value = u8::from_str_radix(parts[1], 8)?;
         let access_rights = AccessRights::from_bits(access_rights_value)
-            .ok_or_else(|| FromStrError::InvalidAccessRights)?;
+            .ok_or(FromStrError::InvalidAccessRights)?;
         Ok(URef(addr, access_rights))
     }
 }

@@ -382,11 +382,7 @@ impl<REv> EffectBuilder<REv> {
     /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
-    pub fn immediately(self) -> impl Future<Output = ()> + Send {
-        // Note: This function is implemented manually without `async` sugar because the `Send`
-        // inferrence seems to not work in all cases otherwise.
-        async {}
-    }
+    pub async fn immediately(self) {}
 
     /// Reports a fatal error.
     ///

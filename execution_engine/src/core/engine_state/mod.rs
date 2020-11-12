@@ -981,11 +981,9 @@ where
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| contract_package.current_contract_version())
-                    .ok_or_else(|| {
-                        error::Error::Exec(execution::Error::NoActiveContractVersions(
-                            contract_package_hash,
-                        ))
-                    })?;
+                    .ok_or(error::Error::Exec(
+                        execution::Error::NoActiveContractVersions(contract_package_hash),
+                    ))?;
 
                 if !contract_package.is_version_enabled(contract_version_key) {
                     return Err(error::Error::Exec(
@@ -995,11 +993,9 @@ where
 
                 let contract_hash = *contract_package
                     .lookup_contract_hash(contract_version_key)
-                    .ok_or_else(|| {
-                        error::Error::Exec(execution::Error::InvalidContractVersion(
-                            contract_version_key,
-                        ))
-                    })?;
+                    .ok_or(error::Error::Exec(
+                        execution::Error::InvalidContractVersion(contract_version_key),
+                    ))?;
 
                 let contract = tracking_copy
                     .borrow_mut()

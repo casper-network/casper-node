@@ -384,10 +384,7 @@ async fn should_get_from_alternate_source() {
 
     // Run node 0 until it has sent the gossip request then remove it from the network.
     let made_gossip_request = |event: &Event| -> bool {
-        match event {
-            Event::NetworkRequest(NetworkRequest::Gossip { .. }) => true,
-            _ => false,
-        }
+        matches!(event, Event::NetworkRequest(NetworkRequest::Gossip { .. }))
     };
     network
         .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)
@@ -465,10 +462,10 @@ async fn should_timeout_gossip_response() {
 
     // Run node 0 until it has sent the gossip requests.
     let made_gossip_request = |event: &Event| -> bool {
-        match event {
-            Event::DeployGossiper(super::Event::GossipedTo { .. }) => true,
-            _ => false,
-        }
+        matches!(
+            event,
+            Event::DeployGossiper(super::Event::GossipedTo { .. })
+        )
     };
     network
         .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)

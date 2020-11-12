@@ -88,10 +88,7 @@ impl HighwayMessage {
     }
 
     fn is_new_vertex(&self) -> bool {
-        match self {
-            HighwayMessage::NewVertex(_) => true,
-            _ => false,
-        }
+        matches!(self, HighwayMessage::NewVertex(_))
     }
 }
 
@@ -584,7 +581,7 @@ where
             let validator = self
                 .virtual_net
                 .validator(&recipient)
-                .ok_or_else(|| TestRunError::MissingValidator(recipient))?
+                .ok_or(TestRunError::MissingValidator(recipient))?
                 .validator();
 
             let mut messages = vec![];
@@ -867,10 +864,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 .map(|(i, weight)| (ValidatorId(i as u64), *weight)),
         );
 
-        trace!(
-            "Weights: {:?}",
-            validators.iter().map(|v| v).collect::<Vec<_>>()
-        );
+        trace!("Weights: {:?}", validators.iter().collect::<Vec<_>>());
 
         let mut secrets = validators
             .iter()

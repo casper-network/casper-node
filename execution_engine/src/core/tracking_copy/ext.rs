@@ -145,7 +145,7 @@ where
     ) -> Result<Key, Self::Error> {
         let balance_key: Key = purse_key
             .uref_to_hash()
-            .ok_or_else(|| execution::Error::KeyIsNotAURef(purse_key))?;
+            .ok_or(execution::Error::KeyIsNotAURef(purse_key))?;
         let stored_value: StoredValue = self
             .read(correlation_id, &balance_key)
             .map_err(Into::into)?
@@ -180,7 +180,7 @@ where
     ) -> Result<(Key, TrieMerkleProof<Key, StoredValue>), Self::Error> {
         let balance_key: Key = purse_key
             .uref_to_hash()
-            .ok_or_else(|| execution::Error::KeyIsNotAURef(purse_key))?;
+            .ok_or(execution::Error::KeyIsNotAURef(purse_key))?;
         let proof: TrieMerkleProof<Key, StoredValue> = self
             .read_with_proof(correlation_id, &balance_key) // Key::Hash, so no need to normalize
             .map_err(Into::into)?

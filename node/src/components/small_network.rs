@@ -92,7 +92,6 @@ use crate::{
     types::NodeId,
     utils, NodeRng,
 };
-
 pub use config::Config;
 pub use error::Error;
 
@@ -700,7 +699,6 @@ where
     type Event = Event<P>;
     type ConstructionError = Infallible;
 
-    #[allow(clippy::cognitive_complexity)]
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -900,7 +898,7 @@ async fn setup_tls(
     let peer_cert = tls_stream
         .ssl()
         .peer_certificate()
-        .ok_or_else(|| Error::NoClientCertificate)?;
+        .ok_or(Error::NoClientCertificate)?;
 
     Ok((
         NodeId::from(tls::validate_cert(peer_cert)?.public_key_fingerprint()),
@@ -1026,7 +1024,7 @@ async fn connect_outgoing(
     let peer_cert = tls_stream
         .ssl()
         .peer_certificate()
-        .ok_or_else(|| Error::NoServerCertificate)?;
+        .ok_or(Error::NoServerCertificate)?;
 
     let peer_id = tls::validate_cert(peer_cert)?.public_key_fingerprint();
 

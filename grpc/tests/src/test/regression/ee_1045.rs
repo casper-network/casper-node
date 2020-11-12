@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, iter::FromIterator};
+use std::collections::BTreeSet;
 
 use casper_engine_test_support::{
     internal::{
@@ -175,11 +175,11 @@ fn should_run_ee_1045_squash_validators() {
 
     assert_ne!(genesis_validator_weights, post_round_1_auction_weights);
 
-    let lhs = BTreeSet::from_iter(genesis_validator_weights.keys().copied());
-    let rhs = BTreeSet::from_iter(post_round_1_auction_weights.keys().copied());
+    let lhs: BTreeSet<_> = genesis_validator_weights.keys().copied().collect();
+    let rhs: BTreeSet<_> = post_round_1_auction_weights.keys().copied().collect();
     assert_eq!(
         lhs.difference(&rhs).copied().collect::<BTreeSet<_>>(),
-        BTreeSet::from_iter(round_1_validator_squash)
+        round_1_validator_squash.into_iter().collect()
     );
 
     //
@@ -201,11 +201,11 @@ fn should_run_ee_1045_squash_validators() {
 
     assert_ne!(genesis_validator_weights, post_round_2_auction_weights);
 
-    let lhs = BTreeSet::from_iter(post_round_1_auction_weights.keys().copied());
-    let rhs = BTreeSet::from_iter(post_round_2_auction_weights.keys().copied());
+    let lhs: BTreeSet<_> = post_round_1_auction_weights.keys().copied().collect();
+    let rhs: BTreeSet<_> = post_round_2_auction_weights.keys().copied().collect();
     assert_eq!(
         lhs.difference(&rhs).copied().collect::<BTreeSet<_>>(),
-        BTreeSet::from_iter(round_2_validator_squash)
+        round_2_validator_squash.into_iter().collect()
     );
 
     assert!(post_round_2_auction_weights.is_empty()); // all validators are squashed

@@ -477,7 +477,7 @@ fn should_calculate_era_validators() {
 
     // Check if there are no missing eras after the calculation, but we don't care about what the
     // elements are
-    let eras = Vec::from_iter(era_validators.keys().copied());
+    let eras: Vec<_> = era_validators.keys().copied().collect();
     assert!(!era_validators.is_empty());
     assert!(era_validators.len() >= DEFAULT_AUCTION_DELAY as usize); // definetely more than 1 element
     let (first_era, _) = era_validators.iter().min().unwrap();
