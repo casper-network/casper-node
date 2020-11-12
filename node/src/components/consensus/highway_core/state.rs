@@ -429,8 +429,7 @@ impl<C: Context> State<C> {
         let unit = self.opt_unit(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
-        // TODO: After LNC we won't always need all known endorsements.
-        let endorsed = self.endorsements().collect();
+        let endorsed = unit.claims_endorsed().cloned().collect();
         let wunit = WireUnit {
             panorama: unit.panorama.clone(),
             creator: unit.creator,
