@@ -14,11 +14,10 @@ use casper_types::{
     self,
     account::AccountHash,
     auction::{
-        Bids, DelegationRate, Delegators, EraId, EraValidators, SeigniorageRecipients,
-        UnbondingPurses, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_PUBLIC_KEY, ARG_UNBOND_PURSE, ARG_VALIDATOR, BIDS_KEY, DEFAULT_UNBONDING_DELAY,
-        DELEGATORS_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION,
-        UNBONDING_PURSES_KEY,
+        Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
+        ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
+        ARG_UNBOND_PURSE, ARG_VALIDATOR, BIDS_KEY, DEFAULT_UNBONDING_DELAY, ERA_ID_KEY,
+        ERA_VALIDATORS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, UNBONDING_PURSES_KEY,
     },
     runtime_args, PublicKey, RuntimeArgs, URef, U512,
 };
@@ -307,20 +306,13 @@ fn should_run_delegate_and_undelegate() {
     .build();
 
     builder.exec(exec_request_1).commit().expect_success();
-    let delegators: Delegators = builder.get_value(auction_hash, DELEGATORS_KEY);
-    assert_eq!(delegators.len(), 1);
 
-    let delegated_amount_1 = delegators
-        .get(&NON_FOUNDER_VALIDATOR_1_PK.clone())
-        .and_then(|map| map.get(&BID_ACCOUNT_1_PK.clone()))
-        .cloned()
-        .unwrap_or_default();
-    assert_eq!(
-        delegated_amount_1,
-        U512::from(DELEGATE_AMOUNT_1),
-        "{:?}",
-        delegators
-    );
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    assert_eq!(bids.len(), 1);
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
+    assert_eq!(delegators.len(), 1);
+    let delegated_amount_1 = *delegators[&BID_ACCOUNT_1_PK].staked_amount();
+    assert_eq!(delegated_amount_1, U512::from(DELEGATE_AMOUNT_1));
 
     // 2nd bid top-up
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -336,19 +328,14 @@ fn should_run_delegate_and_undelegate() {
 
     builder.exec(exec_request_2).commit().expect_success();
 
-    let delegators: Delegators = builder.get_value(auction_hash, DELEGATORS_KEY);
+    let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
+    assert_eq!(bids.len(), 1);
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
     assert_eq!(delegators.len(), 1);
-
-    let delegated_amount_2 = delegators
-        .get(&NON_FOUNDER_VALIDATOR_1_PK)
-        .and_then(|map| map.get(&BID_ACCOUNT_1_PK.clone()))
-        .cloned()
-        .unwrap_or_default();
+    let delegated_amount_1 = *delegators[&BID_ACCOUNT_1_PK].staked_amount();
     assert_eq!(
-        delegated_amount_2,
-        U512::from(DELEGATE_AMOUNT_1 + DELEGATE_AMOUNT_2),
-        "{:?}",
-        delegators
+        delegated_amount_1,
+        U512::from(DELEGATE_AMOUNT_1 + DELEGATE_AMOUNT_2)
     );
 
     let exec_request_3 = ExecuteRequestBuilder::standard(
@@ -365,22 +352,13 @@ fn should_run_delegate_and_undelegate() {
     builder.exec(exec_request_3).commit().expect_success();
 
     let bids: Bids = builder.get_value(auction_hash, BIDS_KEY);
-
     assert_eq!(bids.len(), 1);
-
-    let delegators: Delegators = builder.get_value(auction_hash, DELEGATORS_KEY);
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
     assert_eq!(delegators.len(), 1);
-
-    let delegated_amount_3 = delegators
-        .get(&NON_FOUNDER_VALIDATOR_1_PK.clone())
-        .and_then(|map| map.get(&BID_ACCOUNT_1_PK.clone()))
-        .cloned()
-        .unwrap_or_default();
+    let delegated_amount_1 = *delegators[&BID_ACCOUNT_1_PK].staked_amount();
     assert_eq!(
-        delegated_amount_3,
-        U512::from(DELEGATE_AMOUNT_1 + DELEGATE_AMOUNT_2 - UNDELEGATE_AMOUNT_1),
-        "{:?}",
-        delegators
+        delegated_amount_1,
+        U512::from(DELEGATE_AMOUNT_1 + DELEGATE_AMOUNT_2 - UNDELEGATE_AMOUNT_1)
     );
 }
 
