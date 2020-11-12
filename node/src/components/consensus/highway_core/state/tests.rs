@@ -214,11 +214,11 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
 }
 
 #[test]
-fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
+fn validate_lnc_no_equivocation() -> Result<(), AddVoteError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
     let mut rng = TestRng::new();
 
-    // 1. No equivocations – incoming votes doesn't violate LNC.
+    // No equivocations – incoming vote doesn't violate LNC.
     // Create votes as follows; a0, b0 are blocks:
     //
     // Alice: a0 — a1
@@ -239,9 +239,14 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
         endorsed: vec![],
     };
     assert_eq!(state.validate_lnc(&wvote), Ok(()));
+    Ok(())
+}
 
-    // 2. Equivocation cited by one honest validator in the vote's panorama.
-    //    Does NOT violate LNC.
+#[test]
+fn validate_lnc_fault_seen_directly() -> Result<(), AddVoteError<TestContext>> {
+    // Equivocation cited by one honest validator in the vote's panorama.
+    // Does NOT violate LNC.
+    //
     // Bob:      b0
     //          / |
     // Alice: a0  |
@@ -250,11 +255,12 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
     //           \|
     // Carol:    c0
     let mut state = State::new_test(WEIGHTS, 0);
+    let mut rng = TestRng::new();
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
     let b0 = add_vote!(state, rng, BOB, 0xB; a0, N, N)?;
     let _a0_prime = add_vote!(state, rng, ALICE, 0xA2; N, N, N)?;
-    // c0 violates LNC b/c it naively cites Alice's equivocation.
-    let mut c0 = WireVote {
+    // c0 does not violate LNC b/c it sees Alice as faulty.
+    let c0 = WireVote {
         panorama: panorama!(F, b0, N),
         creator: CAROL,
         instance_id: 1u64,
@@ -265,8 +271,12 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
         endorsed: vec![],
     };
     assert_eq!(state.validate_lnc(&c0), Ok(()));
+    Ok(())
+}
 
-    // 3. Equivocation cited by two honest validators in the vote's panorama – their votes need to
+#[test]
+fn validate_lnc_one_equivocator() -> Result<(), AddVoteError<TestContext>> {
+    // Equivocation cited by two honest validators in the vote's panorama – their votes need to
     // be endorsed.
     //
     // Bob:      b0
@@ -281,13 +291,14 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
 
     let weights_dan = &[Weight(3), Weight(4), Weight(5), Weight(5)];
     let mut state = State::new_test(weights_dan, 0);
+    let mut rng = TestRng::new();
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N, N)?;
     let a0_prime = add_vote!(state, rng, ALICE, 0xA2; N, N, N, N)?;
     let b0 = add_vote!(state, rng, BOB, 0xB; a0, N, N, N)?;
     let c0 = add_vote!(state, rng, CAROL, 0xB2; a0_prime, N, N, N)?;
     // d0 violates LNC b/c it naively cites Alice's equivocation.
     let mut d0 = WireVote {
-        panorama: panorama!(F, b0, c0),
+        panorama: panorama!(F, b0, c0, N),
         creator: DAN,
         instance_id: 1u64,
         value: None,
@@ -309,8 +320,12 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
     endorse!(state, rng, DAN, c0);
     // Now d0 cites non-naively b/c c0 is endorsed.
     assert_eq!(state.validate_lnc(&d0), Ok(()));
+    Ok(())
+}
 
-    // 4. Multiple equivocators and indirect equivocations.
+#[test]
+fn validate_lnc_two_equivocators() -> Result<(), AddVoteError<TestContext>> {
+    // Multiple equivocators and indirect equivocations.
     // Votes are seen as endorsed by `state` – does not violate LNC.
     //
     // Alice   a0<---------+
@@ -329,11 +344,12 @@ fn validate_lnc() -> Result<(), AddVoteError<TestContext>> {
 
     let weights_dan_eric = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
     let mut state = State::new_test(weights_dan_eric, 0);
+    let mut rng = TestRng::new();
     let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N, N, N)?;
     let a0_prime = add_vote!(state, rng, ALICE, 0xA2; N, N, N, N, N)?;
-    let c0 = add_vote!(state, rng, CAROL, 0xB; N, N, N, N)?;
-    let b0 = add_vote!(state, rng, BOB, 0xB2; a0_prime, c0, N, N)?;
-    let c0_prime = add_vote!(state, rng, CAROL, 0xC; N, N, N, N, N)?;
+    let c0 = add_vote!(state, rng, CAROL, 0xC; N, N, N, N, N)?;
+    let b0 = add_vote!(state, rng, BOB, 0xB; a0_prime, N, c0, N, N)?;
+    let c0_prime = add_vote!(state, rng, CAROL, 0xC2; N, N, N, N, N)?;
     let d0 = add_vote!(state, rng, DAN, 0xD; a0, N, c0_prime, N, N)?;
     // e0 violates LNC b/c it naively cites Alice's & Carol's equivocations.
     let mut e0 = WireVote {
