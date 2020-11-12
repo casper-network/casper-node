@@ -166,7 +166,7 @@ impl<C: Context> WireVote<C> {
     }
 
     /// Returns whether vote claims that `vhash` is endorsed.
-    pub(crate) fn is_endorsed(&self, vhash: &C::Hash) -> bool {
+    pub(crate) fn claims_endorsed(&self, vhash: &C::Hash) -> bool {
         self.endorsed.iter().any(|v| v == vhash)
     }
 }

@@ -1199,6 +1199,11 @@ mod test_harness {
             .ok()
             .expect("Construction was successful");
 
+        println!(
+            "Validators count: {}",
+            highway_test_harness.mutable_handle().validators().count()
+        );
+
         crank_until(&mut highway_test_harness, &mut rng, |hth| {
             // Stop the test when each node finalized expected number of consensus values.
             // Note that we're not testing the order of finalization here.

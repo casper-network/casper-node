@@ -238,7 +238,7 @@ fn validate_lnc_no_equivocation() -> Result<(), AddVoteError<TestContext>> {
         round_exp: 4u8,
         endorsed: vec![],
     };
-    assert_eq!(state.validate_lnc(&wvote), Ok(()));
+    assert_eq!(state.validate_lnc(&wvote), None);
     Ok(())
 }
 
@@ -270,7 +270,7 @@ fn validate_lnc_fault_seen_directly() -> Result<(), AddVoteError<TestContext>> {
         round_exp: 4u8,
         endorsed: vec![],
     };
-    assert_eq!(state.validate_lnc(&c0), Ok(()));
+    assert_eq!(state.validate_lnc(&c0), None);
     Ok(())
 }
 
@@ -308,18 +308,15 @@ fn validate_lnc_one_equivocator() -> Result<(), AddVoteError<TestContext>> {
         endorsed: vec![],
     };
     // None of the votes is marked as being endorsed – violates LNC.
-    assert_eq!(state.validate_lnc(&d0), Err(LncError::NaiveCitation(ALICE)));
+    assert_eq!(state.validate_lnc(&d0), Some(ALICE));
     d0.endorsed = vec![c0];
     endorse!(state, rng, CAROL, c0);
     // One endorsement isn't enough.
-    assert_eq!(
-        state.validate_lnc(&d0),
-        Err(LncError::MissingEndorsement(c0))
-    );
+    assert_eq!(state.validate_lnc(&d0), Some(ALICE));
     endorse!(state, rng, BOB, c0);
     endorse!(state, rng, DAN, c0);
     // Now d0 cites non-naively b/c c0 is endorsed.
-    assert_eq!(state.validate_lnc(&d0), Ok(()));
+    assert_eq!(state.validate_lnc(&d0), None);
     Ok(())
 }
 
@@ -362,13 +359,13 @@ fn validate_lnc_two_equivocators() -> Result<(), AddVoteError<TestContext>> {
         round_exp: 4u8,
         endorsed: vec![],
     };
-    assert_eq!(state.validate_lnc(&e0), Err(LncError::NaiveCitation(ALICE)));
+    assert_eq!(state.validate_lnc(&e0), Some(ALICE));
     e0.endorsed = vec![b0];
     // Endorse b0.
     endorse!(state, rng, BOB, b0);
     endorse!(state, rng, DAN, b0);
     endorse!(state, rng, ERIC, b0);
-    assert_eq!(state.validate_lnc(&e0), Ok(()));
+    assert_eq!(state.validate_lnc(&e0), None);
     Ok(())
 }
 

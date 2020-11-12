@@ -8,12 +8,13 @@ use super::{Panorama, State};
 pub(crate) struct EndorsementTracker<'a, C: Context> {
     /// Validators that are known to be equivocators by the initial panorama.
     known_equivocators: Vec<ValidatorIndex>,
-    /// Visited units. Used for avoding visitng the same unit twice.
+    /// Visited units. Used for avoding visiting the same unit twice.
     visited_nodes: Vec<C::Hash>,
     /// Collection from a unit hash to indexes of equivocators that this unit cites as honest.
     equiv_citations: HashMap<C::Hash, Vec<ValidatorIndex>>,
     /// Read-only state.
     state: &'a State<C>,
+    iter: u64,
 }
 
 impl<'a, C: Context> EndorsementTracker<'a, C> {
@@ -23,6 +24,7 @@ impl<'a, C: Context> EndorsementTracker<'a, C> {
             visited_nodes: Vec::new(),
             equiv_citations: HashMap::new(),
             state,
+            iter: 0,
         }
     }
 
@@ -35,18 +37,20 @@ impl<'a, C: Context> EndorsementTracker<'a, C> {
         for v in panorama.iter_correct_hashes() {
             self.find_equivocations(&v)
         }
+        println!("Iterations done: {}", self.iter);
         self.equiv_citations
     }
 
-    /// Looks for equivocations in a downward set of vote.
+    /// Looks for equivocations in a downward set of unit.
     fn find_equivocations(&mut self, vhash: &C::Hash) {
+        self.iter += 1;
         self.visited_nodes.push(*vhash);
         let cited = self.cited_equivocators(vhash);
         if !cited.is_empty() {
             self.equiv_citations.insert(*vhash, cited);
         }
 
-        // Units seen as correcy by panorama of `vhash`.
+        // Units seen as correct by panorama of `vhash`.
         let to_visit: Vec<C::Hash> = self
             .state
             .vote(vhash)
@@ -55,7 +59,7 @@ impl<'a, C: Context> EndorsementTracker<'a, C> {
             .filter(|&v| {
                 // Do not follow units that are created by known equivocators,
                 // have already been seen as endorsed by this node's state
-                // or has already been visited.
+                // or have already been visited.
                 !self.by_equivocator(v) || !self.state.is_endorsed(v) || !self.already_visited(v)
             })
             .cloned()

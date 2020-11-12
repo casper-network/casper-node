@@ -83,12 +83,6 @@ pub(crate) enum VoteError {
     LncNaiveCitation(ValidatorIndex),
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum LncError<C: Context> {
-    NaiveCitation(ValidatorIndex),
-    MissingEndorsement(C::Hash),
-}
-
 /// A reason for a validator to be marked as faulty.
 ///
 /// The `Banned` state is fixed from the beginning and can't be replaced. However, `Indirect` can
@@ -575,30 +569,24 @@ impl<C: Context> State<C> {
                 return Err(VoteError::ValueAfterTerminalBlock);
             }
         }
+
         match self.validate_lnc(wvote) {
-            Ok(_) => Ok(()),
-            Err(LncError::MissingEndorsement(vhash)) => {
-                panic!("Protocol state is missing endorsement for {:?}", &vhash)
-            }
-            Err(LncError::NaiveCitation(vidx)) => Err(VoteError::LncNaiveCitation(vidx)),
+            None => Ok(()),
+            Some(vidx) => Err(VoteError::LncNaiveCitation(vidx)),
         }
     }
 
     /// Validates whether `wvote` violates the LNC rule.
-    /// Returns the first vote's hash that should have been endorsed but wasn't.
+    /// Returns index of the first equivocator that should have been endorsed but wasn't.
     ///
     /// Vote violates LNC rule if it cites naively an equivocation.
     /// If it cites equivocator then it needs to endorse votes that cite equivocating votes.
-    fn validate_lnc(&self, wvote: &WireVote<C>) -> Result<(), LncError<C>> {
+    fn validate_lnc(&self, wvote: &WireVote<C>) -> Option<ValidatorIndex> {
         let mut need_endorsement = wvote.panorama.need_endorsements(self);
         let key_hashes: Vec<C::Hash> = need_endorsement.keys().cloned().collect();
         // Remove keys this vote claims are endorsed.
         for v in key_hashes {
-            if wvote.is_endorsed(&v) {
-                if !self.is_endorsed(&v) {
-                    // Node does not see this vote as endorsed.
-                    return Err(LncError::MissingEndorsement(v));
-                }
+            if wvote.claims_endorsed(&v) && self.is_endorsed(&v) {
                 need_endorsement.remove(&v);
             }
         }
@@ -615,14 +603,11 @@ impl<C: Context> State<C> {
         };
         // Find first equivocating validator that is naively cited by more then two different
         // validators.
-        match transposed
+        transposed
             .into_iter()
             .sorted()
             .find(|(_, hashes)| hashes.len() > 1)
-        {
-            Some((vidx, _)) => Err(LncError::NaiveCitation(vidx)),
-            None => Ok(()),
-        }
+            .map(|(vidx, _)| vidx)
     }
 
     /// Returns `true` if the `bhash` is a block that can have no children.
