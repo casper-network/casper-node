@@ -5,12 +5,13 @@ use std::{
 };
 
 use derive_more::From;
+use serde::Serialize;
 use tokio::net::TcpStream;
 
 use super::{Error, GossipedAddress, Message, NodeId, Transport};
 use crate::effect::requests::{NetworkInfoRequest, NetworkRequest};
 
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 pub enum Event<P> {
     /// Connection to the known node failed.
     BootstrappingFailed {

@@ -335,7 +335,7 @@ fn set_context_options(
 }
 
 /// Error during certificate validation.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize)]
 pub enum ValidationError {
     /// Failed to read public key from certificate.
     #[error("error reading public key from certificate: {0:?}")]

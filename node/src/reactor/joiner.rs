@@ -65,7 +65,7 @@ use crate::{
 pub enum Event {
     /// Network event.
     #[from]
-    Network(#[serde(skip_serializing)] small_network::Event<Message>),
+    Network(small_network::Event<Message>),
 
     /// Storage event.
     #[from]

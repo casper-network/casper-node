@@ -1,6 +1,7 @@
 use std::{io, net::SocketAddr, result, time::SystemTimeError};
 
 use openssl::error::ErrorStack;
+use serde::Serialize;
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_openssl::HandshakeError;
@@ -10,7 +11,7 @@ use crate::tls::ValidationError;
 pub(super) type Result<T> = result::Result<T, Error>;
 
 /// Error type returned by the `SmallNetwork` component.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize)]
 pub enum Error {
     /// Server failed to present certificate.
     #[error("no server certificate presented")]
