@@ -86,6 +86,8 @@ pub(crate) enum UnitError {
     Banned,
     #[error("The unit's endorsed votes were not a superset of its justifications.")]
     EndorsementsNotMonotonic,
+    #[error("The LNC rule was violated. Vote cited ({:?}) naively.", _0)]
+    LncNaiveCitation(ValidatorIndex),
 }
 
 /// A reason for a validator to be marked as faulty.
@@ -584,8 +586,20 @@ impl<C: Context> State<C> {
                 return Err(UnitError::ValueAfterTerminalBlock);
             }
         }
-        // TODO: Validate against LNC.
-        Ok(())
+        match self.validate_lnc(wunit) {
+            None => Ok(()),
+            Some(vidx) => Err(UnitError::LncNaiveCitation(vidx)),
+        }
+    }
+
+    /// Validates whether `wvote` violates the LNC rule.
+    /// Returns index of the first equivocator that should have been endorsed but wasn't.
+    ///
+    /// Vote violates LNC rule if it cites naively an equivocation.
+    /// If it cites equivocator then it needs to endorse votes that cite equivocating votes.
+    fn validate_lnc(&self, _wvote: &WireUnit<C>) -> Option<ValidatorIndex> {
+        // TODO
+        None
     }
 
     /// Returns `true` if the `bhash` is a block that can have no children.
