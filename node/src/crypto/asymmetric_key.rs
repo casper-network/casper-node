@@ -381,7 +381,6 @@ lazy_static! {
     static ref ED25519_KEY: SecretKey = SecretKey::generate_ed25519();
 }
 
-
 impl DocExample for SecretKey {
     fn doc_example() -> &'static Self {
         &*ED25519_KEY

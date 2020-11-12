@@ -15,11 +15,26 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use warp_json_rpc::Builder;
 
-use super::{Error, state::GetBalance, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RpcWithoutParamsExt, account::{PutDeploy, PutDeployParams, PutDeployResult}, chain::{
+use super::{
+    account::{PutDeploy, PutDeployParams, PutDeployResult},
+    chain::{
         BlockIdentifier, GetBlock, GetBlockParams, GetBlockResult, GetStateRootHash,
         GetStateRootHashParams, GetStateRootHashResult,
-    }, info::{GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult, GetStatus}, state::GetAuctionInfo, state::GetAuctionInfoResult, state::GetBalanceParams, state::GetBalanceResult};
-use crate::{components::{chainspec_loader::ChainspecInfo, CLIENT_API_VERSION}, effect::EffectBuilder, types::json_compatibility::AuctionState, crypto::hash::Digest, types::{Block, Deploy, GetStatusResult, NodeId, PeersMap, StatusFeed}};
+    },
+    info::{GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult, GetStatus},
+    state::{GetAuctionInfo, GetAuctionInfoResult, GetBalance, GetBalanceParams, GetBalanceResult},
+    Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
+    RpcWithoutParamsExt,
+};
+use crate::{
+    components::{chainspec_loader::ChainspecInfo, CLIENT_API_VERSION},
+    crypto::hash::Digest,
+    effect::EffectBuilder,
+    types::{
+        json_compatibility::AuctionState, Block, Deploy, GetStatusResult, NodeId, PeersMap,
+        StatusFeed,
+    },
+};
 
 lazy_static! {
     static ref DOCS_RPC_RESULT: GetRpcsResult = {
@@ -28,7 +43,7 @@ lazy_static! {
             rpcs:  vec![],
         };
 
-        // Setup PutDeploy example. 
+        // Setup PutDeploy example.
            let deploy = Deploy::doc_example();
            let response_result = PutDeployResult {
                 api_version: CLIENT_API_VERSION.clone(),
@@ -48,7 +63,7 @@ lazy_static! {
                 response_result,
             );
 
-            // Setup GetBlock Example. 
+            // Setup GetBlock Example.
 
             let block = Block::doc_example();
 
@@ -72,7 +87,7 @@ lazy_static! {
                 response_result,
             );
 
-            // Setup GetStateRootHash example. 
+            // Setup GetStateRootHash example.
             let block = Block::doc_example();
             let request_params = GetStateRootHashParams {
                 block_identifier: BlockIdentifier::Hash(*block.hash()),
@@ -92,7 +107,7 @@ lazy_static! {
                 response_result,
             );
 
-            // Setup GetDeploy Example. 
+            // Setup GetDeploy Example.
             let deploy = Deploy::doc_example();
 
             let request_params = GetDeployParams {
@@ -158,7 +173,7 @@ lazy_static! {
                 response_result,
             );
 
-            // Setup GetBalance. 
+            // Setup GetBalance.
             let request_params = GetBalanceParams {
                 state_root_hash: Digest::doc_example(),
                 purse_uref: String::from("uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007")
@@ -167,7 +182,7 @@ lazy_static! {
             let response_result = GetBalanceResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 balance_value: U512::from(1234567),
-                // TODO! Find a concrete example of proof. 
+                // TODO! Find a concrete example of proof.
                 merkle_proof: String::from("Proof"),
             };
 
@@ -182,7 +197,7 @@ lazy_static! {
                 response_result,
             );
 
-            // Setup GetAuctionInfo. 
+            // Setup GetAuctionInfo.
             let auction_info = AuctionState::doc_example().clone();
             let response_result = GetAuctionInfoResult {
                 api_version: CLIENT_API_VERSION.clone(),
@@ -211,8 +226,6 @@ impl DocExample for GetRpcsResult {
         &*DOCS_RPC_RESULT
     }
 }
-
-
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RequestParams {

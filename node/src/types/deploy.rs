@@ -461,29 +461,26 @@ lazy_static! {
             args,
         }
     };
-
     static ref MODULEBYTES: ExecutableDeployItem = {
         let args = Digest::doc_example().to_vec();
-        ExecutableDeployItem::Transfer {
-            args
-        }
+        ExecutableDeployItem::Transfer { args }
     };
 }
 
 lazy_static! {
-    static ref DEPLOY: Deploy =  {
+    static ref DEPLOY: Deploy = {
         let mut rng = crate::new_rng();
         let timestamp = Timestamp::now();
         let ttl = TimeDiff::from(60_000);
         let gas_price: u64 = 66;
         let dependencies = vec![DeployHash::new(Digest::doc_example())];
         let chain_name = String::from("casper-example");
-        let payment = ExecutableDeployItem::StoredContractByName{
+        let payment = ExecutableDeployItem::StoredContractByName {
             name: String::from("casper-example"),
             entry_point: String::from("example-entry-point"),
             args: Digest::doc_example().to_bytes().unwrap(),
         };
-        let session = ExecutableDeployItem::Transfer{
+        let session = ExecutableDeployItem::Transfer {
             args: Digest::doc_example().to_bytes().unwrap(),
         };
         let secret_key = SecretKey::doc_example();
@@ -501,9 +498,6 @@ lazy_static! {
         )
     };
 }
-
-
-
 
 impl DocExample for Deploy {
     fn doc_example() -> &'static Self {
