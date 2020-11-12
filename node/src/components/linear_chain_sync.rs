@@ -205,10 +205,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
-        match self.state {
-            State::None | State::Done => true,
-            _ => false,
-        }
+        matches!(self.state, State::None | State::Done)
     }
 
     fn block_downloaded<REv>(

@@ -1656,7 +1656,7 @@ where
         let arg: CLValue = args
             .get(name)
             .cloned()
-            .ok_or_else(|| Error::Revert(ApiError::MissingArgument))?;
+            .ok_or(Error::Revert(ApiError::MissingArgument))?;
         arg.into_t()
             .map_err(|_| Error::Revert(ApiError::InvalidArgument))
     }
@@ -2157,7 +2157,7 @@ where
         let contract_hash = contract_package
             .lookup_contract_hash(contract_version_key)
             .cloned()
-            .ok_or_else(|| Error::InvalidContractVersion(contract_version_key))?;
+            .ok_or(Error::InvalidContractVersion(contract_version_key))?;
 
         // Get contract data
         let contract = match self.context.read_gs(&contract_hash.into())? {

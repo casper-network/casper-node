@@ -108,10 +108,7 @@ impl Debug for TestRng {
 impl Drop for TestRng {
     fn drop(&mut self) {
         if thread::panicking() {
-            let line_1 = format!(
-                "Thread: {}",
-                thread::current().name().unwrap_or_else(|| "unnamed")
-            );
+            let line_1 = format!("Thread: {}", thread::current().name().unwrap_or("unnamed"));
             let line_2 = "To reproduce failure, try running with env var:";
             let line_3 = format!("{}={}", CL_TEST_SEED, HexFmt(&self.seed));
             let max_length = cmp::max(line_1.len(), line_2.len());

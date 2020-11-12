@@ -325,12 +325,12 @@ async fn store_deploy(
             node_id,
             &mut rng,
             move |event: &Event| -> bool {
-                match event {
+                matches!(
+                    event,
                     Event::DeployAcceptorAnnouncement(
                         DeployAcceptorAnnouncement::AcceptedNewDeploy { .. },
-                    ) => true,
-                    _ => false,
-                }
+                    )
+                )
             },
             TIMEOUT,
         )
@@ -496,15 +496,13 @@ async fn should_timeout_fetch_from_peer() {
             &requesting_node,
             &mut rng,
             move |event: &Event| -> bool {
-                if let Event::NetworkRequest(NetworkRequest::SendMessage {
-                    payload: Message::GetRequest { .. },
-                    ..
-                }) = event
-                {
-                    true
-                } else {
-                    false
-                }
+                matches!(
+                    event,
+                    Event::NetworkRequest(NetworkRequest::SendMessage {
+                        payload: Message::GetRequest { .. },
+                        ..
+                    })
+                )
             },
             TIMEOUT,
         )
@@ -516,15 +514,13 @@ async fn should_timeout_fetch_from_peer() {
             &holding_node,
             &mut rng,
             move |event: &Event| -> bool {
-                if let Event::NetworkRequest(NetworkRequest::SendMessage {
-                    payload: Message::GetResponse { .. },
-                    ..
-                }) = event
-                {
-                    true
-                } else {
-                    false
-                }
+                matches!(
+                    event,
+                    Event::NetworkRequest(NetworkRequest::SendMessage {
+                        payload: Message::GetResponse { .. },
+                        ..
+                    })
+                )
             },
             TIMEOUT,
         )

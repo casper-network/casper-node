@@ -156,7 +156,7 @@ impl Bid {
         self
     }
 
-    /// Unlocks the provided bid if the provided era is greater than the bid's release era.  
+    /// Unlocks the provided bid if the provided era is greater than the bid's release era.
     ///
     /// Returns `true` if the provided bid was unlocked.
     pub fn unlock(&mut self, era: EraId) -> bool {
@@ -178,7 +178,7 @@ impl Bid {
                 maybe_a.and_then(|a| a.checked_add(*b.staked_amount()))
             })
             .and_then(|delegators_sum| delegators_sum.checked_add(*self.staked_amount()))
-            .ok_or_else(|| Error::InvalidAmount)
+            .ok_or(Error::InvalidAmount)
     }
 }
 
