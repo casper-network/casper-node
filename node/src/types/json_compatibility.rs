@@ -7,13 +7,11 @@ use casper_types::Key;
 mod auction_state;
 mod deploy_info;
 mod execution_result;
-mod public_key;
 mod stored_value;
 
 pub use auction_state::AuctionState;
 pub use deploy_info::DeployInfo;
 pub use execution_result::ExecutionResult;
-pub use public_key::PublicKey;
 pub use stored_value::StoredValue;
 
 fn convert_named_keys(named_keys: &BTreeMap<String, Key>) -> BTreeMap<String, String> {

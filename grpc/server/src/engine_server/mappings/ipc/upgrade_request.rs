@@ -1,5 +1,7 @@
 use std::convert::{TryFrom, TryInto};
 
+use num_rational::Ratio;
+
 use casper_execution_engine::core::engine_state::upgrade::UpgradeConfig;
 use casper_types::{auction::EraId, ProtocolVersion};
 
@@ -72,6 +74,12 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             )
         };
 
+        let new_round_seigniorage_rate: Option<Ratio<u64>> = upgrade_point
+            .new_round_seigniorage_rate
+            .as_ref()
+            .cloned()
+            .map(Into::into);
+
         Ok(UpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
@@ -83,6 +91,7 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             new_validator_slots,
             new_auction_delay,
             new_locked_funds_period,
+            new_round_seigniorage_rate,
         ))
     }
 }

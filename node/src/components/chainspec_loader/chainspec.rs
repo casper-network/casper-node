@@ -7,6 +7,7 @@ use std::{
 
 use csv::ReaderBuilder;
 use datasize::DataSize;
+use num::rational::Ratio;
 use num_traits::Zero;
 #[cfg(test)]
 use rand::Rng;
@@ -91,7 +92,7 @@ pub(crate) struct HighwayConfig {
     pub(crate) booking_duration: TimeDiff,
     pub(crate) entropy_duration: TimeDiff,
     // TODO: Do we need this? When we see the switch block finalized it should suffice to keep
-    // gossiping, without producing new votes. Everyone else will eventually see the same finality.
+    // gossiping, without producing new units. Everyone else will eventually see the same finality.
     pub(crate) voting_period_duration: TimeDiff,
     pub(crate) finality_threshold_percent: u8,
     pub(crate) minimum_round_exponent: u8,
@@ -201,6 +202,9 @@ pub struct GenesisConfig {
     /// era N (other than the last one), they are paid out in the last block of era N +
     /// locked_funds_period.
     pub(crate) locked_funds_period: EraId,
+    /// Round seigniorage rate represented as a fractional number.
+    #[data_size(skip)]
+    pub(crate) round_seigniorage_rate: Ratio<u64>,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -283,6 +287,10 @@ impl GenesisConfig {
         let validator_slots = rng.gen::<u32>();
         let auction_delay = rng.gen::<u64>();
         let locked_funds_period: EraId = rng.gen::<u64>();
+        let round_seigniorage_rate = Ratio::new(
+            rng.gen_range(1, 1_000_000_000),
+            rng.gen_range(1, 1_000_000_000),
+        );
         let protocol_version = Version::new(
             rng.gen_range(0, 10),
             rng.gen::<u8>() as u64,
@@ -303,6 +311,7 @@ impl GenesisConfig {
             validator_slots,
             auction_delay,
             locked_funds_period,
+            round_seigniorage_rate,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
@@ -420,6 +429,7 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.validator_slots,
             self.genesis.auction_delay,
             self.genesis.locked_funds_period,
+            self.genesis.round_seigniorage_rate,
         )
     }
 }
@@ -583,7 +593,7 @@ mod tests {
             TimeDiff::from(3628800000)
         );
         assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
-        assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 13);
+        assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 14);
         assert_eq!(spec.genesis.highway_config.maximum_round_exponent, 19);
 
         assert_eq!(

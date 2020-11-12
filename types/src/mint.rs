@@ -1,6 +1,5 @@
 //! Contains implementation of a Mint contract functionality.
 mod constants;
-mod round_reward;
 mod runtime_provider;
 mod storage_provider;
 mod system_provider;
@@ -11,8 +10,8 @@ use num_rational::Ratio;
 use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
 
 pub use crate::mint::{
-    constants::*, round_reward::*, runtime_provider::RuntimeProvider,
-    storage_provider::StorageProvider, system_provider::SystemProvider,
+    constants::*, runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    system_provider::SystemProvider,
 };
 
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
@@ -106,7 +105,14 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .read(total_supply_uref)?
             .ok_or(Error::TotalSupplyNotFound)?;
 
-        let round_seigniorage_rate = round_reward::round_seigniorage_rate();
+        let round_seigniorage_rate_uref = match self.get_key(ROUND_SEIGNIORAGE_RATE_KEY) {
+            Some(Key::URef(uref)) => uref,
+            Some(_) => return Err(Error::MissingKey), // TODO
+            None => return Err(Error::MissingKey),
+        };
+        let round_seigniorage_rate: Ratio<U512> = self
+            .read(round_seigniorage_rate_uref)?
+            .ok_or(Error::TotalSupplyNotFound)?;
 
         let ret = (round_seigniorage_rate * Ratio::from(total_supply)).to_integer();
 

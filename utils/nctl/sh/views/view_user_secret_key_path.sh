@@ -15,8 +15,8 @@ source $NCTL/sh/utils/misc.sh
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifer.
-#   User ordinal identifer.
+#   Network ordinal identifier.
+#   User ordinal identifier.
 #######################################
 function _view_user_secret_key() {
     declare path_key=$NCTL/assets/net-$1/users/user-$2/secret_key.pem

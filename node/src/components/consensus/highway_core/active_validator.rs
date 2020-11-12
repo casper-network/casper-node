@@ -5,15 +5,15 @@ use tracing::{error, trace, warn};
 use super::{
     endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
-    highway::{Endorsements, ValidVertex, Vertex, WireVote},
-    state::{self, Observation, Panorama, State, Vote},
+    highway::{Endorsements, ValidVertex, Vertex, WireUnit},
+    state::{self, Observation, Panorama, State, Unit},
     validators::ValidatorIndex,
 };
 
 use crate::{
     components::consensus::{
         consensus_protocol::BlockContext,
-        highway_core::highway::SignedWireVote,
+        highway_core::highway::SignedWireUnit,
         traits::{Context, ValidatorSecret},
     },
     types::{TimeDiff, Timestamp},
@@ -40,16 +40,16 @@ pub(crate) enum Effect<C: Context> {
 ///
 /// It implements the Highway schedule. The protocol proceeds in rounds, and in each round one
 /// validator is the _leader_.
-/// * In the beginning of the round, the leader sends a _proposal_ vote, containing a consensus
+/// * In the beginning of the round, the leader sends a _proposal_ unit, containing a consensus
 ///   value (i.e. a block).
-/// * Upon receiving the proposal, all the other validators send a _confirmation_ vote, citing only
+/// * Upon receiving the proposal, all the other validators send a _confirmation_ unit, citing only
 ///   the proposal, their own previous message, and resulting transitive justifications.
-/// * At a fixed point in time later in the round, everyone unconditionally sends a _witness_ vote,
-///   citing every vote they have received so far.
+/// * At a fixed point in time later in the round, everyone unconditionally sends a _witness_ unit,
+///   citing every unit they have received so far.
 ///
 /// If the rounds are long enough (i.e. message delivery is fast enough) and there are enough
 /// honest validators, there will be a lot of confirmations for the proposal, and enough witness
-/// votes citing all those confirmations, to create a summit and finalize the proposal.
+/// units citing all those confirmations, to create a summit and finalize the proposal.
 pub(crate) struct ActiveValidator<C: Context> {
     /// Our own validator index.
     vidx: ValidatorIndex,
@@ -111,7 +111,7 @@ impl<C: Context> ActiveValidator<C> {
             return vec![];
         }
         let mut effects = self.schedule_timer(timestamp, state);
-        if self.earliest_vote_time(state) > timestamp {
+        if self.earliest_unit_time(state) > timestamp {
             warn!(%timestamp, "skipping outdated timer event");
             return effects;
         }
@@ -123,16 +123,16 @@ impl<C: Context> ActiveValidator<C> {
         } else if timestamp == r_id + self.witness_offset(r_len) {
             let panorama = state.panorama().cutoff(state, timestamp);
             if panorama.has_correct() {
-                let witness_vote =
-                    self.new_vote(panorama, timestamp, None, state, instance_id, rng);
-                effects.push(Effect::NewVertex(ValidVertex(Vertex::Vote(witness_vote))))
+                let witness_unit =
+                    self.new_unit(panorama, timestamp, None, state, instance_id, rng);
+                effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))))
             }
         }
         effects
     }
 
-    /// Returns actions a validator needs to take upon receiving a new vote.
-    pub(crate) fn on_new_vote(
+    /// Returns actions a validator needs to take upon receiving a new unit.
+    pub(crate) fn on_new_unit(
         &mut self,
         vhash: &C::Hash,
         now: Timestamp,
@@ -147,8 +147,8 @@ impl<C: Context> ActiveValidator<C> {
         if self.should_send_confirmation(vhash, now, state) {
             let panorama = self.confirmation_panorama(vhash, state);
             if panorama.has_correct() {
-                let confirmation_vote = self.new_vote(panorama, now, None, state, instance_id, rng);
-                let vv = ValidVertex(Vertex::Vote(confirmation_vote));
+                let confirmation_unit = self.new_unit(panorama, now, None, state, instance_id, rng);
+                let vv = ValidVertex(Vertex::Unit(confirmation_unit));
                 effects.extend(vec![Effect::NewVertex(vv)])
             }
         };
@@ -160,7 +160,7 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns actions validator needs to take upon receiving a new evidence.
-    /// Endorses all latest votes by honest validators that do not mark new perpetrator as faulty
+    /// Endorses all latest units by honest validators that do not mark new perpetrator as faulty
     /// and cite some new message by that validator.
     pub(crate) fn on_new_evidence(
         &mut self,
@@ -172,8 +172,8 @@ impl<C: Context> ActiveValidator<C> {
         state
             .iter_correct_hashes()
             .filter(|&v| {
-                let vote = state.vote(v);
-                vote.new_hash_obs(state, vidx)
+                let unit = state.unit(v);
+                unit.new_hash_obs(state, vidx)
             })
             .map(|v| self.endorse(v, rng))
             .map(|endorsement| Effect::NewVertex(ValidVertex(endorsement)))
@@ -202,8 +202,8 @@ impl<C: Context> ActiveValidator<C> {
         let panorama = state.panorama().cutoff(state, timestamp);
         let opt_parent_hash = state.fork_choice(&panorama);
         if opt_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
-            let proposal_vote = self.new_vote(panorama, timestamp, None, state, instance_id, rng);
-            return Some(Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote))));
+            let proposal_unit = self.new_unit(panorama, timestamp, None, state, instance_id, rng);
+            return Some(Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))));
         }
         let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
         let height = opt_parent.map_or(0, |block| block.height);
@@ -222,7 +222,7 @@ impl<C: Context> ActiveValidator<C> {
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
-        if self.earliest_vote_time(state) > timestamp {
+        if self.earliest_unit_time(state) > timestamp {
             warn!(?block_context, "skipping outdated proposal");
             return vec![];
         }
@@ -243,9 +243,9 @@ impl<C: Context> ActiveValidator<C> {
             warn!("unexpected proposal value");
             return vec![];
         };
-        let proposal_vote =
-            self.new_vote(panorama, timestamp, Some(value), state, instance_id, rng);
-        vec![Effect::NewVertex(ValidVertex(Vertex::Vote(proposal_vote)))]
+        let proposal_unit =
+            self.new_unit(panorama, timestamp, Some(value), state, instance_id, rng);
+        vec![Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit)))]
     }
 
     /// Returns whether the incoming message is a proposal that we need to send a confirmation for.
@@ -255,30 +255,36 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> bool {
-        let earliest_vote_time = self.earliest_vote_time(state);
-        if timestamp < earliest_vote_time {
-            warn!(%earliest_vote_time, %timestamp, "earliest_vote_time is greater than current time stamp");
+        let earliest_unit_time = self.earliest_unit_time(state);
+        if timestamp < earliest_unit_time {
+            warn!(
+                %earliest_unit_time, %timestamp,
+                "earliest_unit_time is greater than current time stamp"
+            );
             return false;
         }
-        let vote = state.vote(vhash);
-        if vote.timestamp > timestamp {
-            error!(%vote.timestamp, %timestamp, "added a vote with a future timestamp, should never happen");
+        let unit = state.unit(vhash);
+        if unit.timestamp > timestamp {
+            error!(
+                %unit.timestamp, %timestamp,
+                "added a unit with a future timestamp, should never happen"
+            );
             return false;
         }
         // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
-        if vote.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(vote) {
+        if unit.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(unit) {
             return false;
         }
-        if let Some(vote) = self.latest_vote(state) {
-            if vote.panorama.sees_correct(state, vhash) {
-                error!(%vhash, "called on_new_vote with already confirmed proposal");
+        if let Some(unit) = self.latest_unit(state) {
+            if unit.panorama.sees_correct(state, vhash) {
+                error!(%vhash, "called on_new_unit with already confirmed proposal");
                 return false; // We already sent a confirmation.
             }
         }
         let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
-        if vote.timestamp != r_id {
+        if unit.timestamp != r_id {
             trace!(
-                %vote.timestamp, %r_id,
+                %unit.timestamp, %r_id,
                 "not confirming proposal: wrong round",
             );
             return false;
@@ -286,26 +292,26 @@ impl<C: Context> ActiveValidator<C> {
         true
     }
 
-    /// Returns the panorama of the confirmation for the leader vote `vhash`.
+    /// Returns the panorama of the confirmation for the leader unit `vhash`.
     fn confirmation_panorama(&self, vhash: &C::Hash, state: &State<C>) -> Panorama<C> {
-        let vote = state.vote(vhash);
+        let unit = state.unit(vhash);
         let mut panorama;
         if let Some(prev_hash) = state.panorama().get(self.vidx).correct().cloned() {
-            let own_vote = state.vote(&prev_hash);
-            panorama = vote.panorama.merge(state, &own_vote.panorama);
+            let own_unit = state.unit(&prev_hash);
+            panorama = unit.panorama.merge(state, &own_unit.panorama);
             panorama[self.vidx] = Observation::Correct(prev_hash);
         } else {
-            panorama = vote.panorama.clone();
+            panorama = unit.panorama.clone();
         }
-        panorama[vote.creator] = Observation::Correct(*vhash);
+        panorama[unit.creator] = Observation::Correct(*vhash);
         for faulty_v in state.faulty_validators() {
             panorama[faulty_v] = Observation::Faulty;
         }
         panorama
     }
 
-    /// Returns a new vote with the given data, and the correct sequence number.
-    fn new_vote(
+    /// Returns a new unit with the given data, and the correct sequence number.
+    fn new_unit(
         &mut self,
         mut panorama: Panorama<C>,
         timestamp: Timestamp,
@@ -313,21 +319,21 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
-    ) -> SignedWireVote<C> {
+    ) -> SignedWireUnit<C> {
         if let Some((prop_time, _)) = self.next_proposal.take() {
             warn!(
                 ?timestamp,
-                "canceling proposal for {} due to vote", prop_time
+                "canceling proposal for {} due to unit", prop_time
             );
         }
         if panorama[self.vidx] != state.panorama()[self.vidx] {
-            error!("replacing vote panorama to avoid equivocation");
+            error!("replacing unit panorama to avoid equivocation");
             panorama = state.panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         // TODO: After LNC we won't always need all known endorsements.
         let endorsed = state.endorsements().collect();
-        let wvote = WireVote {
+        let wunit = WireUnit {
             panorama,
             creator: self.vidx,
             instance_id,
@@ -337,14 +343,14 @@ impl<C: Context> ActiveValidator<C> {
             round_exp: self.round_exp(state, timestamp),
             endorsed,
         };
-        SignedWireVote::new(wvote, &self.secret, rng)
+        SignedWireUnit::new(wunit, &self.secret, rng)
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.
     ///
-    /// If the time is before the current round's witness vote, schedule the witness vote.
-    /// Otherwise, if we are the next round's leader, schedule the proposal vote.
-    /// Otherwise schedule the next round's witness vote.
+    /// If the time is before the current round's witness unit, schedule the witness unit.
+    /// Otherwise, if we are the next round's leader, schedule the proposal unit.
+    /// Otherwise schedule the next round's witness unit.
     fn schedule_timer(&mut self, timestamp: Timestamp, state: &State<C>) -> Vec<Effect<C>> {
         if self.next_timer > timestamp {
             return Vec::new(); // We already scheduled the next call; nothing to do.
@@ -366,25 +372,25 @@ impl<C: Context> ActiveValidator<C> {
         vec![Effect::ScheduleTimer(self.next_timer)]
     }
 
-    /// Returns the earliest timestamp where we can cast our next vote: It can't be earlier than
-    /// our previous vote, and it can't be the third vote in a single round.
-    fn earliest_vote_time(&self, state: &State<C>) -> Timestamp {
-        self.latest_vote(state)
-            .map_or_else(Timestamp::zero, |vote| {
-                vote.previous().map_or(vote.timestamp, |vh2| {
-                    let vote2 = state.vote(vh2);
-                    vote.timestamp.max(vote2.round_id() + vote2.round_len())
+    /// Returns the earliest timestamp where we can cast our next unit: It can't be earlier than
+    /// our previous unit, and it can't be the third unit in a single round.
+    fn earliest_unit_time(&self, state: &State<C>) -> Timestamp {
+        self.latest_unit(state)
+            .map_or_else(Timestamp::zero, |unit| {
+                unit.previous().map_or(unit.timestamp, |vh2| {
+                    let unit2 = state.unit(vh2);
+                    unit.timestamp.max(unit2.round_id() + unit2.round_len())
                 })
             })
     }
 
-    /// Returns the most recent vote by this validator.
-    fn latest_vote<'a>(&self, state: &'a State<C>) -> Option<&'a Vote<C>> {
+    /// Returns the most recent unit by this validator.
+    fn latest_unit<'a>(&self, state: &'a State<C>) -> Option<&'a Unit<C>> {
         state
             .panorama()
             .get(self.vidx)
             .correct()
-            .map(|vh| state.vote(vh))
+            .map(|vh| state.unit(vh))
     }
 
     /// Checks if validator knows it's faulty.
@@ -392,37 +398,37 @@ impl<C: Context> ActiveValidator<C> {
         state.panorama().get(self.vidx).is_faulty()
     }
 
-    /// Returns the duration after the beginning of a round when the witness votes are sent.
+    /// Returns the duration after the beginning of a round when the witness units are sent.
     fn witness_offset(&self, round_len: TimeDiff) -> TimeDiff {
         round_len * 2 / 3
     }
 
     /// The round exponent of the round containing `timestamp`.
     ///
-    /// This returns `self.next_round_exp`, if that is a valid round exponent for a vote cast at
-    /// `timestamp`. Otherwise it returns the round exponent of our latest vote.
+    /// This returns `self.next_round_exp`, if that is a valid round exponent for a unit cast at
+    /// `timestamp`. Otherwise it returns the round exponent of our latest unit.
     fn round_exp(&self, state: &State<C>, timestamp: Timestamp) -> u8 {
-        self.latest_vote(state).map_or(self.next_round_exp, |vote| {
-            let max_re = self.next_round_exp.max(vote.round_exp);
-            if vote.timestamp < state::round_id(timestamp, max_re) {
+        self.latest_unit(state).map_or(self.next_round_exp, |unit| {
+            let max_re = self.next_round_exp.max(unit.round_exp);
+            if unit.timestamp < state::round_id(timestamp, max_re) {
                 self.next_round_exp
             } else {
-                vote.round_exp
+                unit.round_exp
             }
         })
     }
 
     /// Returns whether we should endorse the `vhash`.
     ///
-    /// We should endorse vote from honest validator that cites _an_ equivocator
+    /// We should endorse unit from honest validator that cites _an_ equivocator
     /// as honest and it cites some new message by that validator.
     fn should_endorse(&self, vhash: &C::Hash, state: &State<C>) -> bool {
-        let vote = state.vote(vhash);
-        !state.is_faulty(vote.creator)
-            && vote
+        let unit = state.unit(vhash);
+        !state.is_faulty(unit.creator)
+            && unit
                 .panorama
                 .enumerate()
-                .any(|(vidx, _)| state.is_faulty(vidx) && vote.new_hash_obs(state, vidx))
+                .any(|(vidx, _)| state.is_faulty(vidx) && unit.new_hash_obs(state, vidx))
     }
 
     /// Creates endorsement of the `vhash`.
@@ -451,9 +457,9 @@ mod tests {
     type Eff = Effect<TestContext>;
 
     impl Eff {
-        fn unwrap_vote(self) -> SignedWireVote<TestContext> {
-            if let Eff::NewVertex(ValidVertex(Vertex::Vote(swvote))) = self {
-                swvote
+        fn unwrap_unit(self) -> SignedWireUnit<TestContext> {
+            if let Eff::NewVertex(ValidVertex(Vertex::Unit(swunit))) = self {
+                swunit
             } else {
                 panic!("Unexpected effect: {:?}", self);
             }
@@ -471,7 +477,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::unreadable_literal)] // 0xC0FFEE is more readable than 0x00C0_FFEE.
-    fn active_validator() -> Result<(), AddVoteError<TestContext>> {
+    fn active_validator() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(&[Weight(3), Weight(4)], 0);
         let mut rng = crate::new_rng();
         let mut fd = FinalityDetector::new(Weight(2));
@@ -491,7 +497,7 @@ mod tests {
             .handle_timer(415.into(), &state, instance_id, &mut rng)
             .is_empty()); // Too early: No new effects.
 
-        // Alice wants to propose a block, and also make her witness vote at 426.
+        // Alice wants to propose a block, and also make her witness unit at 426.
         let bctx = match &*alice_av.handle_timer(416.into(), &state, instance_id, &mut rng) {
             [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
                 if *timestamp == 426.into() =>
@@ -504,34 +510,34 @@ mod tests {
 
         // She has a pending deploy from Colin who wants to pay for a hot beverage.
         let effects = alice_av.propose(0xC0FFEE, bctx, &state, instance_id, &mut rng);
-        let proposal_wvote = unwrap_single(effects).unwrap_vote();
-        let prop_hash = proposal_wvote.hash();
-        state.add_vote(proposal_wvote)?;
+        let proposal_wunit = unwrap_single(effects).unwrap_unit();
+        let prop_hash = proposal_wunit.hash();
+        state.add_unit(proposal_wunit)?;
         assert!(alice_av
-            .on_new_vote(&prop_hash, 417.into(), &state, instance_id, &mut rng)
+            .on_new_unit(&prop_hash, 417.into(), &state, instance_id, &mut rng)
             .is_empty());
 
-        // Bob creates a confirmation vote for Alice's proposal.
-        let effects = bob_av.on_new_vote(&prop_hash, 419.into(), &state, instance_id, &mut rng);
-        state.add_vote(unwrap_single(effects).unwrap_vote())?;
+        // Bob creates a confirmation unit for Alice's proposal.
+        let effects = bob_av.on_new_unit(&prop_hash, 419.into(), &state, instance_id, &mut rng);
+        state.add_unit(unwrap_single(effects).unwrap_unit())?;
 
         // Bob creates his witness message 2/3 through the round.
         let mut effects = bob_av
             .handle_timer(426.into(), &state, instance_id, &mut rng)
             .into_iter();
         assert_eq!(Some(Eff::ScheduleTimer(432.into())), effects.next()); // Bob is the next leader.
-        state.add_vote(effects.next().unwrap().unwrap_vote())?;
+        state.add_unit(effects.next().unwrap().unwrap_unit())?;
         assert_eq!(None, effects.next());
 
-        // Alice has not witnessed Bob's vote yet.
+        // Alice has not witnessed Bob's unit yet.
         assert_eq!(None, fd.next_finalized(&state));
 
         // Alice also sends her own witness message, completing the summit for her proposal.
         let mut effects = alice_av
             .handle_timer(426.into(), &state, instance_id, &mut rng)
             .into_iter();
-        assert_eq!(Some(Eff::ScheduleTimer(442.into())), effects.next()); // Timer for witness vote.
-        state.add_vote(effects.next().unwrap().unwrap_vote())?;
+        assert_eq!(Some(Eff::ScheduleTimer(442.into())), effects.next()); // Timer for witness unit.
+        state.add_unit(effects.next().unwrap().unwrap_unit())?;
         assert_eq!(None, effects.next());
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"

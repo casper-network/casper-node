@@ -2,7 +2,7 @@
 #
 # Sets assets required to run an N node network.
 # Arguments:
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of nodes to setup.
 #   Count of nodes that will be bootstraps.
 #   Count of users to setup.
@@ -25,26 +25,24 @@ function _set_bin() {
     cp $NCTL_CASPER_HOME/target/release/casper-client $1/bin
     cp $NCTL_CASPER_HOME/target/release/casper-node $1/bin
 
-    # Set wasm:
-    # ... system contracts;
-    cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/auction_install.wasm $1/bin
-    cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/mint_install.wasm $1/bin
-    cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/pos_install.wasm $1/bin
-    cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/standard_payment_install.wasm $1/bin
-    # ... client contracts.
-    cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/add_bid.wasm $1/bin
-    cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/delegate.wasm $1/bin
-    cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/transfer_to_account_u512.wasm $1/bin
-    cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/transfer_to_account_u512_stored.wasm $1/bin
-    cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/undelegate.wasm $1/bin
-    cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/withdraw_bid.wasm $1/bin
+    # Set system contracts.
+	for contract in "${NCTL_CONTRACTS_SYSTEM[@]}"
+	do
+        cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/$contract $1/bin
+	done
+
+    # Set client contracts.
+	for contract in "${NCTL_CONTRACTS_CLIENT[@]}"
+	do
+        cp $NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/$contract $1/bin
+	done
 }
 
 #######################################
 # Sets assets pertaining to network chainspec.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Delay in seconds to apply to genesis timestamp.
 #######################################
 function _set_chainspec() {
@@ -53,17 +51,26 @@ function _set_chainspec() {
     # Set directory.
     mkdir $1/chainspec
 
-    # Set config params.
-    GENESIS_NAME=casper-net-$2
-    GENESIS_TIMESTAMP=$(get_genesis_timestamp $3)
-    HIGHWAY_GENESIS_ERA_START_TIMESTAMP=$(get_genesis_timestamp $3)
-
     # Set config.
     path_config=$1/chainspec/chainspec.toml
-    cp $NCTL/templates/chainspec.toml $path_config
-    sed -i "s/{GENESIS_NAME}/$GENESIS_NAME/g" $path_config > /dev/null 2>&1
-    sed -i "s/{GENESIS_TIMESTAMP}/$GENESIS_TIMESTAMP/g" $path_config > /dev/null 2>&1
-    sed -i "s/{HIGHWAY_GENESIS_ERA_START_TIMESTAMP}/$HIGHWAY_GENESIS_ERA_START_TIMESTAMP/g" $path_config > /dev/null 2>&1
+    cp $NCTL_CASPER_HOME/resources/local/chainspec.toml $path_config
+
+    # Set config setting: genesis.name.
+    GENESIS_NAME=casper-net-$2
+    sed -i "s/casper-example/$GENESIS_NAME/g" $path_config > /dev/null 2>&1
+
+    # Set config setting: genesis.timestamp.
+    GENESIS_TIMESTAMP=$(get_genesis_timestamp $3)
+    sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = \"${GENESIS_TIMESTAMP}\"/" $path_config > /dev/null 2>&1
+
+    # Set config settings:
+    #    genesis.mint_installer_path
+    #    genesis.pos_installer_path
+    #    genesis.standard_payment_installer_path
+    #    genesis.auction_installer_path
+    # These are paths to WASM smart contracts, and they still need to point
+    # relative to nctl's assets dir.
+    sed -i "s?\.\./\.\./target/wasm32-unknown-unknown/release/?../bin/?g" $path_config > /dev/null 2>&1
 
     # Set accounts.csv.
     touch $1/chainspec/accounts.csv
@@ -90,8 +97,9 @@ function _set_chainspec_account() {
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Nodeset count.
+#   Boostrap count.
 #######################################
 function _set_daemon() {
     log "... daemon"
@@ -104,7 +112,7 @@ function _set_daemon() {
 
     # Set daemon specific artefacts.
     if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-        source $NCTL/sh/assets/setup_supervisord.sh $1 $2 $3
+        source $NCTL/sh/assets/setup_supervisord.sh $1 $2 $3 $4
     fi
 }
 
@@ -134,7 +142,7 @@ function _set_faucet() {
 # Sets assets pertaining to all nodes within network.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of nodes to setup.
 #   Count of bootstraps to setup.
 #######################################
@@ -152,8 +160,8 @@ function _set_nodes() {
 # Sets assets pertaining to a single node.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
-#   Node ordinal identifer.
+#   Network ordinal identifier.
+#   Node ordinal identifier.
 #   Count of bootstraps to setup.
 #######################################
 function _set_node ()
@@ -165,30 +173,12 @@ function _set_node ()
     mkdir $1/nodes/node-$3/logs
     mkdir $1/nodes/node-$3/storage
 
-    # Set keys.
-    $1/bin/casper-client keygen -f $1/nodes/node-$3/keys > /dev/null 2>&1
-
-    # Set config params.
-    NETWORK_BIND_PORT=0
-    if [ $3 -le $4 ]; then
-        NETWORK_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_NETWORK $2 $node_id)
-        NETWORK_KNOWN_ADDRESSES=""
-    else
-        NETWORK_BIND_PORT=0
-        NETWORK_KNOWN_ADDRESSES="$(get_bootstrap_known_addresses $2 $4)"
-    fi
-    RPC_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_RPC $2 $node_id)
-    JSON_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_JSON $2 $node_id)
-    EVENT_SERVER_BIND_PORT=$(calculate_node_port $NCTL_BASE_PORT_EVENT $2 $node_id)
-
     # Set config.
     path_config=$1/nodes/node-$3/config/node-config.toml
-    cp $NCTL/templates/node-config.toml $path_config
-    sed -i "s/{NETWORK_BIND_PORT}/$NETWORK_BIND_PORT/g" $path_config > /dev/null 2>&1
-    sed -i "s/{NETWORK_KNOWN_ADDRESSES}/$NETWORK_KNOWN_ADDRESSES/g" $path_config > /dev/null 2>&1
-    sed -i "s/{RPC_SERVER_BIND_PORT}/$RPC_SERVER_BIND_PORT/g" $path_config > /dev/null 2>&1
-    sed -i "s/{JSON_SERVER_BIND_PORT}/$JSON_SERVER_BIND_PORT/g" $path_config > /dev/null 2>&1
-    sed -i "s/{EVENT_SERVER_BIND_PORT}/$EVENT_SERVER_BIND_PORT/g" $path_config > /dev/null 2>&1
+    cp $NCTL_CASPER_HOME/resources/local/config.toml $path_config
+
+    # Set keys.
+    $1/bin/casper-client keygen -f $1/nodes/node-$3/keys > /dev/null 2>&1
 
     # Set chainspec account.
     _set_chainspec_account \
@@ -196,37 +186,6 @@ function _set_node ()
         $1/nodes/node-$3/keys/public_key_hex \
         $NCTL_INITIAL_BALANCE_VALIDATOR \
         $(($NCTL_VALIDATOR_BASE_WEIGHT * $3))
-}
-
-#######################################
-# Get network known addresses - i.e. those of bootstrap nodes.
-# Arguments:
-#   Network ordinal identifer.
-#   Count of bootstraps to setup.
-#######################################
-function get_bootstrap_known_addresses() {
-    result=""
-
-    for bootstrap_idx in $(seq 1 $2)
-    do
-        address=$(get_bootstrap_known_address $1 $bootstrap_idx)
-        result=$result"'"$address"',"
-    done
-
-    echo $result
-}
-
-#######################################
-# Get a network known addresses - i.e. those of bootstrap nodes.
-# Arguments:
-#   Network ordinal identifer.
-#   Node ordinal identifer.
-#######################################
-function get_bootstrap_known_address() {
-    port=$(($NCTL_BASE_PORT_NETWORK + ($1 * 100) + $2))
-    address="127.0.0.1:"$port
-
-    echo $address
 }
 
 #######################################
@@ -259,7 +218,7 @@ function _set_user() {
 # Sets assets pertaining to network variables.
 # Arguments:
 #   Path to network directory.
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of nodes to setup.
 #   Count of bootstraps to setup.
 #   Count of users to setup.
@@ -286,7 +245,7 @@ export NCTL_NET_USER_COUNT=$5
 #######################################
 # Main
 # Arguments:
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of nodes to setup.
 #   Count of bootstraps to setup.
 #   Count of users to setup.
@@ -294,27 +253,27 @@ export NCTL_NET_USER_COUNT=$5
 #######################################
 function _main() {
     # Set directory.
-    net_path=$NCTL/assets/net-$1
+    path_net=$NCTL/assets/net-$1
 
     # Teardown existing.
-    if [ -d $net_path ]; then
+    if [ -d $path_net ]; then
         source $NCTL/sh/assets/teardown.sh net=$1
     fi
 
     log "network #$1: setting up assets ... please wait"
 
     # Make directory.
-    mkdir -p $net_path
+    mkdir -p $path_net
 
     # Set artefacts.
     log "setting network artefacts:"
-    _set_bin $net_path
-    _set_chainspec $net_path $1 $5
-    _set_daemon $net_path $1 $2
-    _set_faucet $net_path
-    _set_nodes $net_path $1 $2 $3
-    _set_users $net_path $4
-    _set_vars $net_path $1 $2 $3 $4
+    _set_bin $path_net
+    _set_chainspec $path_net $1 $5
+    _set_daemon $path_net $1 $2 $3
+    _set_faucet $path_net
+    _set_nodes $path_net $1 $2 $3
+    _set_users $path_net $4
+    _set_vars $path_net $1 $2 $3 $4
 
     log "network #$1: assets set up"
 }
@@ -322,7 +281,7 @@ function _main() {
 #######################################
 # CLI entry point
 # Arguments:
-#   Network ordinal identifer.
+#   Network ordinal identifier.
 #   Count of nodes to setup.
 #   Count of users to setup.
 #######################################

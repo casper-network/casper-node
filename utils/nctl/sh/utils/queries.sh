@@ -3,9 +3,9 @@
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifer.
-#   Node ordinal identifer.
-#   Block identifer.
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#   Block identifier.
 #######################################
 function get_main_purse_uref() {
 echo $(
@@ -20,9 +20,9 @@ echo $(
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifer.
-#   Node ordinal identifer.
-#   Block identifer.
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#   Block identifier.
 #######################################
 function get_state_root_hash() {
     node_address=$(get_node_address_rpc $1 $2)

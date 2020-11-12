@@ -36,8 +36,8 @@ use crate::{
             candidate_block::CandidateBlock,
             cl_context::{ClContext, Keypair},
             consensus_protocol::{
-                BlockContext, ConsensusProtocol, ConsensusProtocolResult, EraEnd,
-                FinalizedBlock as CpFinalizedBlock,
+                BlockContext, ConsensusProtocol, EraEnd, FinalizedBlock as CpFinalizedBlock,
+                ProtocolOutcome,
             },
             metrics::ConsensusMetrics,
             traits::NodeIdT,
@@ -59,6 +59,8 @@ pub use self::era::{Era, EraId};
 use crate::components::contract_runtime::ValidatorWeightsByEraIdRequest;
 
 mod era;
+#[cfg(test)]
+mod tests;
 
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
@@ -216,7 +218,7 @@ where
         start_time: Timestamp,
         start_height: u64,
         state_root_hash: Digest,
-    ) -> Vec<ConsensusProtocolResult<I, ClContext>> {
+    ) -> Vec<ProtocolOutcome<I, ClContext>> {
         if self.active_eras.contains_key(&era_id) {
             panic!("{} already exists", era_id);
         }
@@ -330,7 +332,7 @@ where
         F: FnOnce(
             &mut dyn ConsensusProtocol<I, ClContext>,
             &mut NodeRng,
-        ) -> Vec<ConsensusProtocolResult<I, ClContext>>,
+        ) -> Vec<ProtocolOutcome<I, ClContext>>,
     {
         match self.era_supervisor.active_eras.get_mut(&era_id) {
             None => {
@@ -537,20 +539,20 @@ where
             effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
                 consensus.resolve_validity(&candidate_block, valid, rng)
             }));
-        }
-        if valid {
-            effects.extend(
-                self.effect_builder
-                    .announce_proposed_proto_block(proto_block)
-                    .ignore(),
-            );
+            if valid {
+                effects.extend(
+                    self.effect_builder
+                        .announce_proposed_proto_block(candidate_block.into())
+                        .ignore(),
+                );
+            }
         }
         effects
     }
 
     fn handle_consensus_results<T>(&mut self, era_id: EraId, results: T) -> Effects<Event<I>>
     where
-        T: IntoIterator<Item = ConsensusProtocolResult<I, ClContext>>,
+        T: IntoIterator<Item = ProtocolOutcome<I, ClContext>>,
     {
         results
             .into_iter()
@@ -579,10 +581,10 @@ where
     fn handle_consensus_result(
         &mut self,
         era_id: EraId,
-        consensus_result: ConsensusProtocolResult<I, ClContext>,
+        consensus_result: ProtocolOutcome<I, ClContext>,
     ) -> Effects<Event<I>> {
         match consensus_result {
-            ConsensusProtocolResult::InvalidIncomingMessage(_, sender, error) => {
+            ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => {
                 // TODO: we will probably want to disconnect from the sender here
                 error!(
                     %sender,
@@ -591,23 +593,23 @@ where
                 );
                 Default::default()
             }
-            ConsensusProtocolResult::CreatedGossipMessage(out_msg) => {
+            ProtocolOutcome::CreatedGossipMessage(out_msg) => {
                 // TODO: we'll want to gossip instead of broadcast here
                 self.effect_builder
                     .broadcast_message(era_id.message(out_msg).into())
                     .ignore()
             }
-            ConsensusProtocolResult::CreatedTargetedMessage(out_msg, to) => self
+            ProtocolOutcome::CreatedTargetedMessage(out_msg, to) => self
                 .effect_builder
                 .send_message(to, era_id.message(out_msg).into())
                 .ignore(),
-            ConsensusProtocolResult::ScheduleTimer(timestamp) => {
+            ProtocolOutcome::ScheduleTimer(timestamp) => {
                 let timediff = timestamp.saturating_sub(Timestamp::now());
                 self.effect_builder
                     .set_timeout(timediff.into())
                     .event(move |_| Event::Timer { era_id, timestamp })
             }
-            ConsensusProtocolResult::CreateNewBlock { block_context } => self
+            ProtocolOutcome::CreateNewBlock { block_context } => self
                 .effect_builder
                 .request_proto_block(block_context, self.rng.gen())
                 .event(move |(proto_block, block_context)| Event::NewProtoBlock {
@@ -615,7 +617,7 @@ where
                     proto_block,
                     block_context,
                 }),
-            ConsensusProtocolResult::FinalizedBlock(CpFinalizedBlock {
+            ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
                 value,
                 timestamp,
                 height,
@@ -651,7 +653,7 @@ where
                 effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects
             }
-            ConsensusProtocolResult::ValidateConsensusValue(sender, candidate_block, timestamp) => {
+            ProtocolOutcome::ValidateConsensusValue(sender, candidate_block, timestamp) => {
                 if !self.era_supervisor.is_bonded(era_id) {
                     return Effects::new();
                 }
@@ -685,7 +687,7 @@ where
                 );
                 effects
             }
-            ConsensusProtocolResult::NewEvidence(pub_key) => {
+            ProtocolOutcome::NewEvidence(pub_key) => {
                 info!(%pub_key, era = era_id.0, "validator equivocated");
                 let mut effects = Effects::new();
                 for e_id in (era_id.0..=(era_id.0 + self.era_supervisor.bonded_eras)).map(EraId) {
@@ -699,11 +701,16 @@ where
                         effects.extend(self.delegate_to_era(e_id, |consensus, rng| {
                             consensus.resolve_validity(&candidate_block, true, rng)
                         }));
+                        effects.extend(
+                            self.effect_builder
+                                .announce_proposed_proto_block(candidate_block.into())
+                                .ignore(),
+                        );
                     }
                 }
                 effects
             }
-            ConsensusProtocolResult::SendEvidence(sender, pub_key) => era_id
+            ProtocolOutcome::SendEvidence(sender, pub_key) => era_id
                 .iter_other(self.era_supervisor.bonded_eras)
                 .flat_map(|e_id| {
                     self.delegate_to_era(e_id, |consensus, _| {

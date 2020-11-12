@@ -13,12 +13,12 @@ pub(crate) enum EndorsementError {
     Signature,
 }
 
-/// Testimony that creator of `vote` was seen honest
+/// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Endorsement<C: Context> {
-    /// Vote being endorsed.
-    vote: C::Hash,
+    /// Unit being endorsed.
+    unit: C::Hash,
     /// The validator who created and sent this endorsement.
     creator: ValidatorIndex,
 }
@@ -26,19 +26,19 @@ pub(crate) struct Endorsement<C: Context> {
 impl<C: Context> Endorsement<C> {
     pub(crate) fn new(vhash: C::Hash, creator: ValidatorIndex) -> Self {
         Endorsement {
-            vote: vhash,
+            unit: vhash,
             creator,
         }
     }
 
     pub(crate) fn hash(&self) -> C::Hash {
         <C as Context>::hash(
-            &bincode::serialize(&(self.vote, self.creator)).expect("serialize endorsement"),
+            &bincode::serialize(&(self.unit, self.creator)).expect("serialize endorsement"),
         )
     }
 }
 
-/// Testimony that creator of `vote` was seen honest
+/// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SignedEndorsement<C: Context> {
@@ -56,8 +56,8 @@ impl<C: Context> SignedEndorsement<C> {
         }
     }
 
-    pub(crate) fn vote(&self) -> &C::Hash {
-        &self.endorsement.vote
+    pub(crate) fn unit(&self) -> &C::Hash {
+        &self.endorsement.unit
     }
 
     pub(crate) fn validator_idx(&self) -> ValidatorIndex {

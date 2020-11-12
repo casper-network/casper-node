@@ -44,9 +44,9 @@ do
 done
 
 # Set defaults.
-amount=${amount:-1000000}
-gas_payment=${gas_payment:-200000}
-gas_price=${gas_price:-10}
+amount=${amount:-$NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT}
+gas_payment=${gas_payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
 user=${user:-1}
