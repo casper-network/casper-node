@@ -1,6 +1,7 @@
 //! Contains implementation of a Auction contract functionality.
 mod bid;
 mod constants;
+mod delegator;
 mod detail;
 mod providers;
 mod seigniorage_recipient;
@@ -19,6 +20,7 @@ use crate::{
 
 pub use bid::Bid;
 pub use constants::*;
+pub use delegator::Delegator;
 pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider};
 pub use seigniorage_recipient::SeigniorageRecipient;
 pub use types::*;
@@ -143,14 +145,30 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let bids = detail::get_bids(self)?;
-        if !bids.contains_key(&validator_public_key) {
-            // Return early if target validator is not in `bids`
-            return Err(Error::ValidatorNotFound);
+        let mut bids = detail::get_bids(self)?;
+
+        let delegators = match bids.get_mut(&validator_public_key) {
+            Some(bid) => bid.delegators_mut(),
+            None => {
+                // Return early if target validator is not in `bids`
+                return Err(Error::ValidatorNotFound);
+            }
+        };
+
+        let (rewards_purse, _updated_amount) =
+            detail::bond(self, delegator_public_key, source, amount)?;
+
+        match delegators.get_mut(&delegator_public_key) {
+            Some(delegator) => {
+                delegator.increase_stake(amount)?;
+            }
+            None => {
+                let delegator = Delegator::new(amount, rewards_purse, validator_public_key);
+                delegators.insert(delegator_public_key, delegator);
+            }
         }
 
-        let (_bonding_purse, _total_amount) =
-            detail::bond(self, delegator_public_key, source, amount)?;
+        detail::set_bids(self, bids)?;
 
         let new_delegation_amount =
             detail::update_delegators(self, validator_public_key, delegator_public_key, amount)?;
@@ -187,15 +205,31 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let bids = detail::get_bids(self)?;
+        let mut bids = detail::get_bids(self)?;
 
-        // Return early if target validator is not in `bids`
-        if !bids.contains_key(&validator_public_key) {
-            return Err(Error::ValidatorNotFound);
-        }
+        let delegators = match bids.get_mut(&validator_public_key) {
+            Some(bid) => bid.delegators_mut(),
+            None => {
+                // Return early if target validator is not in `bids`
+                return Err(Error::ValidatorNotFound);
+            }
+        };
 
         let _unbonding_purse_balance =
             detail::unbond(self, delegator_public_key, amount, unbonding_purse)?;
+
+        match delegators.get_mut(&delegator_public_key) {
+            Some(delegator) => {
+                if delegator.decrease_stake(amount)? == U512::zero() {
+                    delegators.remove(&delegator_public_key);
+                }
+            }
+            None => {
+                return Err(Error::DelegatorNotFound);
+            }
+        }
+
+        detail::set_bids(self, bids)?;
 
         let mut delegators = detail::get_delegators(self)?;
         let delegators_map = delegators
@@ -333,17 +367,20 @@ pub trait Auction:
             .iter()
             .filter(|(_validator_account_hash, founding_validator)| founding_validator.is_locked())
             .map(|(validator_account_hash, amount)| {
-                (*validator_account_hash, *amount.staked_amount())
+                let total_staked_amount = amount.total_staked_amount()?;
+                Ok((*validator_account_hash, total_staked_amount))
             })
-            .collect();
+            .collect::<Result<ValidatorWeights>>()?;
 
         // Non-winning validators are taken care of later
         let bid_scores = bids
             .iter()
             .filter(|(_validator_account_hash, founding_validator)| !founding_validator.is_locked())
             .map(|(validator_account_hash, amount)| {
-                (*validator_account_hash, *amount.staked_amount())
-            });
+                let total_staked_amount = amount.total_staked_amount()?;
+                Ok((*validator_account_hash, total_staked_amount))
+            })
+            .collect::<Result<ValidatorWeights>>()?;
 
         // Validator's entries from both maps as a single iterable.
         // let all_scores = founders_scores.chain(validators_scores);
@@ -351,7 +388,7 @@ pub trait Auction:
         // All the scores are then grouped by the account hash to calculate a sum of each
         // consecutive scores for each validator.
         let mut scores = BTreeMap::new();
-        for (account_hash, score) in bid_scores {
+        for (account_hash, score) in bid_scores.into_iter() {
             scores
                 .entry(account_hash)
                 .and_modify(|acc| *acc += score)

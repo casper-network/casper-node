@@ -1,12 +1,12 @@
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auction::{types::DelegationRate, EraId},
+    auction::{types::DelegationRate, Delegator, EraId},
     bytesrepr::{self, FromBytes, ToBytes},
     system_contract_errors::auction::Error,
-    CLType, CLTyped, URef, U512,
+    CLType, CLTyped, PublicKey, URef, U512,
 };
 
 /// An entry in a founding validator map.
@@ -14,7 +14,7 @@ use crate::{
 pub struct Bid {
     /// The purse that was used for bonding.
     bonding_purse: URef,
-    /// The total amount of staked tokens.
+    /// The amount of tokens staked by a validator (not including delegators).
     staked_amount: U512,
     /// Delegation rate
     delegation_rate: DelegationRate,
@@ -23,16 +23,22 @@ pub struct Bid {
     /// `Some` indicates locked funds for a specific era and an autowin status, and `None` case
     /// means that funds are unlocked and autowin status is removed.
     release_era: Option<EraId>,
+    /// This validator's delegators, indexed by their public keys
+    delegators: BTreeMap<PublicKey, Delegator>,
 }
 
 impl Bid {
     /// Creates new instance of a bid with locked funds.
     pub fn locked(bonding_purse: URef, staked_amount: U512, release_era: EraId) -> Self {
+        let delegation_rate = 0;
+        let release_era = Some(release_era);
+        let delegators = BTreeMap::new();
         Self {
             bonding_purse,
             staked_amount,
-            delegation_rate: 0,
-            release_era: Some(release_era),
+            delegation_rate,
+            release_era,
+            delegators,
         }
     }
 
@@ -42,11 +48,14 @@ impl Bid {
         staked_amount: U512,
         delegation_rate: DelegationRate,
     ) -> Self {
+        let release_era = None;
+        let delegators = BTreeMap::new();
         Self {
             bonding_purse,
             staked_amount,
             delegation_rate,
-            release_era: None,
+            release_era,
+            delegators,
         }
     }
 
@@ -73,6 +82,11 @@ impl Bid {
     /// Returns the release era of the provided bid, if it is locked.
     pub fn release_era(&self) -> Option<EraId> {
         self.release_era
+    }
+
+    /// Returns a mutable reference to the delegators of the provided bid
+    pub fn delegators_mut(&mut self) -> &mut BTreeMap<PublicKey, Delegator> {
+        &mut self.delegators
     }
 
     /// Decreases the stake of the provided bid
@@ -122,6 +136,17 @@ impl Bid {
             None => false,
         }
     }
+
+    /// Returns the total staked amount of validator + all delegators
+    pub fn total_staked_amount(&self) -> Result<U512, Error> {
+        self.delegators
+            .iter()
+            .fold(Some(U512::zero()), |maybe_a, (_, b)| {
+                maybe_a.and_then(|a| a.checked_add(*b.staked_amount()))
+            })
+            .and_then(|delegators_sum| delegators_sum.checked_add(*self.staked_amount()))
+            .ok_or_else(|| Error::InvalidAmount)
+    }
 }
 
 impl CLTyped for Bid {
@@ -137,6 +162,7 @@ impl ToBytes for Bid {
         result.extend(self.staked_amount.to_bytes()?);
         result.extend(self.delegation_rate.to_bytes()?);
         result.extend(self.release_era.to_bytes()?);
+        result.extend(self.delegators.to_bytes()?);
         Ok(result)
     }
 
@@ -145,6 +171,7 @@ impl ToBytes for Bid {
             + self.staked_amount.serialized_length()
             + self.delegation_rate.serialized_length()
             + self.release_era.serialized_length()
+            + self.delegators.serialized_length()
     }
 }
 
@@ -154,12 +181,14 @@ impl FromBytes for Bid {
         let (staked_amount, bytes) = FromBytes::from_bytes(bytes)?;
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
         let (release_era, bytes) = FromBytes::from_bytes(bytes)?;
+        let (delegators, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             Bid {
                 bonding_purse,
                 staked_amount,
                 delegation_rate,
                 release_era,
+                delegators,
             },
             bytes,
         ))
@@ -168,6 +197,8 @@ impl FromBytes for Bid {
 
 #[cfg(test)]
 mod tests {
+    use alloc::collections::BTreeMap;
+
     use crate::{
         auction::{Bid, DelegationRate, EraId},
         bytesrepr, AccessRights, URef, U512,
@@ -180,6 +211,7 @@ mod tests {
             staked_amount: U512::one(),
             delegation_rate: DelegationRate::max_value(),
             release_era: Some(EraId::max_value() - 1),
+            delegators: BTreeMap::default(),
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
