@@ -84,7 +84,7 @@ pub(crate) enum UnitError {
     ValueAfterTerminalBlock,
     #[error("The unit's creator is banned.")]
     Banned,
-    #[error("The unit's endorsed votes were not a superset of its justifications'.")]
+    #[error("The unit's endorsed votes were not a superset of its justifications.")]
     EndorsementsNotMonotonic,
 }
 
@@ -559,7 +559,7 @@ impl<C: Context> State<C> {
                 }
             }
         }
-        // All endorsed units from the panorama of this vote.s
+        // All endorsed units from the panorama of this wunit.
         let endorsements_in_panorama: Vec<C::Hash> =
             panorama
                 .iter_correct_hashes()
