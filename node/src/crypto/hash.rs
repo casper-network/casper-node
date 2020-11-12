@@ -51,10 +51,10 @@ impl Digest {
         Ok(Digest(inner))
     }
 
-    ///Return a random instance for generation of documentation examples. 
+    ///Return a random instance for generation of documentation examples.
     pub fn doc_example() -> Self {
         let mut rng = crate::new_rng();
-        Digest(rng.gen::<[u8;Digest::LENGTH]>())
+        Digest(rng.gen::<[u8; Digest::LENGTH]>())
     }
 
     /// Generates a random instance using a `TestRng`.
@@ -114,7 +114,6 @@ impl UpperHex for Digest {
         }
     }
 }
-
 
 impl ToBytes for Digest {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {

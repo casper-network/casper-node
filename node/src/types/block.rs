@@ -210,15 +210,13 @@ impl FromBytes for EraEnd {
     }
 }
 
-
 lazy_static! {
     static ref ERAEND: EraEnd = {
-        let secret_key_1 = SecretKey::new_ed25519([0;32]);
+        let secret_key_1 = SecretKey::new_ed25519([0; 32]);
         let public_key_1 = PublicKey::from(&secret_key_1);
         let equivocators = vec![public_key_1];
 
-
-        let secret_key_2 = SecretKey::new_ed25519([1;32]);
+        let secret_key_2 = SecretKey::new_ed25519([1; 32]);
         let public_key_2 = PublicKey::from(&secret_key_2);
         let mut rewards = BTreeMap::new();
         rewards.insert(public_key_2, 1000);
@@ -371,7 +369,6 @@ lazy_static! {
         )
     };
 }
-
 
 impl DocExample for FinalizedBlock {
     fn doc_example() -> &'static Self {
@@ -833,7 +830,6 @@ impl Block {
     }
 }
 
-
 lazy_static! {
     static ref BLOCK: Block = {
         let mut rng = crate::new_rng();
@@ -841,7 +837,7 @@ lazy_static! {
         let state_root_hash = Digest::doc_example();
         let finalized_block = FinalizedBlock::doc_example().clone();
         let parent_seed = Digest::doc_example();
-        
+
         let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
         let secret_key = SecretKey::doc_example();
         let public_key = PublicKey::from(secret_key);
@@ -850,8 +846,6 @@ lazy_static! {
         block
     };
 }
-
-
 
 impl DocExample for Block {
     fn doc_example() -> &'static Self {
