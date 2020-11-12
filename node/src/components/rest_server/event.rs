@@ -3,8 +3,8 @@ use std::fmt::{self, Display, Formatter};
 use derive_more::From;
 
 use crate::{
-    components::small_network::NodeId,
     effect::{requests::RestRequest, Responder},
+    types::NodeId,
 };
 
 #[derive(Debug, From)]

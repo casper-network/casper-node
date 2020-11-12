@@ -33,11 +33,11 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    small_network::NodeId,
     types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, CryptoRngCore, Deploy, DeployHash,
-        DeployHeader, FinalizedBlock,
+        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, DeployHeader,
+        FinalizedBlock, NodeId,
     },
+    NodeRng,
 };
 pub(crate) use event::Event;
 
@@ -394,7 +394,7 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

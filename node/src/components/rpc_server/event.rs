@@ -13,10 +13,10 @@ use casper_execution_engine::{
 use casper_types::auction::EraValidators;
 
 use crate::{
-    components::small_network::NodeId,
+    components::{small_network::NodeId, storage::DeployMetadata},
     effect::{requests::RpcRequest, Responder},
     rpcs::chain::BlockIdentifier,
-    types::{Block, Deploy, DeployHash, DeployMetadata},
+    types::{Block, Deploy, DeployHash, DeployMetadata, NodeId},
 };
 
 #[derive(Debug, From)]

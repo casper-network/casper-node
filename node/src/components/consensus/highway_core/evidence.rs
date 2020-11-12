@@ -2,18 +2,18 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::validators::ValidatorIndex;
-use crate::components::consensus::{highway_core::highway::SignedWireVote, traits::Context};
+use crate::components::consensus::{highway_core::highway::SignedWireUnit, traits::Context};
 
 /// An error due to invalid evidence.
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum EvidenceError {
-    #[error("The creators in the equivocating votes are different.")]
+    #[error("The creators in the equivocating units are different.")]
     EquivocationDifferentCreators,
-    #[error("The sequence numbers in the equivocating votes are different.")]
+    #[error("The sequence numbers in the equivocating units are different.")]
     EquivocationDifferentSeqNumbers,
-    #[error("The two votes are equal.")]
-    EquivocationSameVote,
-    #[error("The votes were created for a different instance ID.")]
+    #[error("The two units are equal.")]
+    EquivocationSameUnit,
+    #[error("The units were created for a different instance ID.")]
     EquivocationInstanceId,
     #[error("The perpetrator is not a validator.")]
     UnknownPerpetrator,
@@ -28,8 +28,8 @@ pub(crate) enum EvidenceError {
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) enum Evidence<C: Context> {
-    /// The validator produced two votes with the same sequence number.
-    Equivocation(SignedWireVote<C>, SignedWireVote<C>),
+    /// The validator produced two units with the same sequence number.
+    Equivocation(SignedWireUnit<C>, SignedWireUnit<C>),
 }
 
 impl<C: Context> Evidence<C> {
@@ -38,7 +38,7 @@ impl<C: Context> Evidence<C> {
     /// Returns the ID of the faulty validator.
     pub(crate) fn perpetrator(&self) -> ValidatorIndex {
         match self {
-            Evidence::Equivocation(vote0, _) => vote0.wire_vote.creator,
+            Evidence::Equivocation(unit0, _) => unit0.wire_unit.creator,
         }
     }
 
@@ -46,30 +46,30 @@ impl<C: Context> Evidence<C> {
     /// "Validation" can mean different things for different type of evidence.
     ///
     /// - For an equivocation, it checks whether the creators, sequence numbers and instance IDs of
-    /// the two votes are the same.
+    /// the two units are the same.
     pub(crate) fn validate(
         &self,
         v_id: &C::ValidatorId,
         instance_id: &C::InstanceId,
     ) -> Result<(), EvidenceError> {
         match self {
-            Evidence::Equivocation(vote1, vote2) => {
-                if vote1.wire_vote.creator != vote2.wire_vote.creator {
+            Evidence::Equivocation(unit1, unit2) => {
+                if unit1.wire_unit.creator != unit2.wire_unit.creator {
                     return Err(EvidenceError::EquivocationDifferentCreators);
                 }
-                if vote1.wire_vote.seq_number != vote2.wire_vote.seq_number {
+                if unit1.wire_unit.seq_number != unit2.wire_unit.seq_number {
                     return Err(EvidenceError::EquivocationDifferentSeqNumbers);
                 }
-                if vote1.wire_vote.instance_id != *instance_id
-                    || vote2.wire_vote.instance_id != *instance_id
+                if unit1.wire_unit.instance_id != *instance_id
+                    || unit2.wire_unit.instance_id != *instance_id
                 {
                     return Err(EvidenceError::EquivocationInstanceId);
                 }
-                if vote1 == vote2 {
-                    return Err(EvidenceError::EquivocationSameVote);
+                if unit1 == unit2 {
+                    return Err(EvidenceError::EquivocationSameUnit);
                 }
-                if !C::verify_signature(&vote1.hash(), v_id, &vote1.signature)
-                    || !C::verify_signature(&vote2.hash(), v_id, &vote2.signature)
+                if !C::verify_signature(&unit1.hash(), v_id, &unit1.signature)
+                    || !C::verify_signature(&unit2.hash(), v_id, &unit2.signature)
                 {
                     return Err(EvidenceError::Signature);
                 }

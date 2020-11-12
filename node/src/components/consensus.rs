@@ -18,6 +18,10 @@ use std::{
 };
 
 use datasize::DataSize;
+use derive_more::From;
+use hex_fmt::HexFmt;
+use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
 use casper_types::auction::ValidatorWeights;
@@ -34,20 +38,17 @@ use crate::{
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{BlockHash, BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, ProtoBlock, Timestamp},
+    NodeRng,
 };
 
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraEnd};
-use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
-use hex_fmt::HexFmt;
 pub(crate) use protocols::highway::HighwayProtocol;
-use serde::{Deserialize, Serialize};
-use tracing::error;
 use traits::NodeIdT;
 
-#[derive(Debug, DataSize, Clone, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Serialize, Deserialize)]
 pub enum ConsensusMessage {
     /// A protocol message, to be handled by the instance in the specified era.
     Protocol { era_id: EraId, payload: Vec<u8> },
@@ -91,6 +92,21 @@ pub enum Event<I> {
     },
     /// An event instructing us to shutdown if the latest era received no votes
     Shutdown,
+}
+
+impl Debug for ConsensusMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConsensusMessage::Protocol { era_id, payload: _ } => {
+                write!(f, "Protocol {{ era_id.0: {}, .. }}", era_id.0)
+            }
+            ConsensusMessage::EvidenceRequest { era_id, pub_key } => f
+                .debug_struct("EvidenceRequest")
+                .field("era_id.0", &era_id.0)
+                .field("pub_key", pub_key)
+                .finish(),
+        }
+    }
 }
 
 impl Display for ConsensusMessage {
@@ -199,7 +215,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        mut rng: &mut dyn CryptoRngCore,
+        mut rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);

@@ -30,3 +30,9 @@ impl CandidateBlock {
         &self.accusations
     }
 }
+
+impl From<CandidateBlock> for ProtoBlock {
+    fn from(cb: CandidateBlock) -> ProtoBlock {
+        cb.proto_block
+    }
+}

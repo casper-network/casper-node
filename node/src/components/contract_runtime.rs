@@ -36,9 +36,8 @@ use crate::{
     components::Component,
     crypto::hash,
     effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
-    types::CryptoRngCore,
     utils::WithDir,
-    Chainspec, StorageConfig,
+    Chainspec, NodeRng, StorageConfig,
 };
 
 /// The contract runtime components.
@@ -154,7 +153,7 @@ where
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

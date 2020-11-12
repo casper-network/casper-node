@@ -17,6 +17,8 @@ use core::mem::{self, MaybeUninit};
 use core::ptr::NonNull;
 
 use failure::Fail;
+use num_integer::Integer;
+use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 
 /// The number of bytes in a serialized `()`.
@@ -1286,6 +1288,35 @@ impl ToBytes for &str {
     }
 }
 
+impl<T> ToBytes for Ratio<T>
+where
+    T: Clone + Integer + ToBytes,
+{
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        if self.denom().is_zero() {
+            return Err(Error::Formatting);
+        }
+        (self.numer().clone(), self.denom().clone()).into_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        (self.numer().clone(), self.denom().clone()).serialized_length()
+    }
+}
+
+impl<T> FromBytes for Ratio<T>
+where
+    T: Clone + FromBytes + Integer,
+{
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let ((numer, denom), rem): ((T, T), &[u8]) = FromBytes::from_bytes(bytes)?;
+        if denom.is_zero() {
+            return Err(Error::Formatting);
+        }
+        Ok((Ratio::new(numer, denom), rem))
+    }
+}
+
 // This test helper is not intended to be used by third party crates.
 #[doc(hidden)]
 /// Returns `true` if a we can serialize and then deserialize a value
@@ -1364,12 +1395,15 @@ mod tests {
 mod proptests {
     use std::vec::Vec;
 
+    use num_rational::Ratio;
     use proptest::{collection::vec, prelude::*};
 
     use crate::{
         bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
         gens::*,
     };
+
+    use super::Error;
 
     proptest! {
         #[test]
@@ -1555,6 +1589,10 @@ mod proptests {
         fn test_tuple10(t in (any::<u8>(),any::<u32>(),any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>(), any::<i32>())) {
             bytesrepr::test_serialization_roundtrip(&t);
         }
+        #[test]
+        fn test_ratio_u64(t in (any::<u64>(), 1..u64::max_value())) {
+            bytesrepr::test_serialization_roundtrip(&t);
+        }
     }
 
     #[test]
@@ -1564,5 +1602,18 @@ mod proptests {
         assert!(Vec::<u8>::from_bytes(&data_bytes[..U32_SERIALIZED_LENGTH / 2]).is_err());
         assert!(Vec::<u8>::from_bytes(&data_bytes[..U32_SERIALIZED_LENGTH]).is_err());
         assert!(Vec::<u8>::from_bytes(&data_bytes[..U32_SERIALIZED_LENGTH + 2]).is_err());
+    }
+
+    #[test]
+    fn should_not_serialize_zero_denominator() {
+        let malicious = Ratio::new_raw(1, 0);
+        assert_eq!(malicious.to_bytes().unwrap_err(), Error::Formatting);
+    }
+
+    #[test]
+    fn should_not_deserialize_zero_denominator() {
+        let malicious_bytes = (1u64, 0u64).to_bytes().unwrap();
+        let result: Result<Ratio<u64>, Error> = super::deserialize(malicious_bytes);
+        assert_eq!(result.unwrap_err(), Error::Formatting);
     }
 }

@@ -39,7 +39,7 @@ use crate::{
         metrics::Metrics,
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
-        small_network::{self, GossipedAddress, NodeId, SmallNetwork},
+        small_network::{self, GossipedAddress, SmallNetwork},
         storage::{self, Storage},
         Component,
     },
@@ -59,8 +59,9 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, event_queue_metrics::EventQueueMetrics, EventQueueHandle},
-    types::{Block, CryptoRngCore, Deploy, ProtoBlock, Tag, TimeDiff, Timestamp},
+    types::{Block, Deploy, NodeId, ProtoBlock, Tag, TimeDiff, Timestamp},
     utils::Source,
+    NodeRng,
 };
 pub use config::Config;
 pub use error::Error;
@@ -339,7 +340,7 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         // We don't need `rng` b/c consensus component was the only one using it,
         // and now it's being passed on from the `joiner` reactor via `config`.
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event>), Error> {
         let ValidatorInitConfig {
             config,
@@ -442,7 +443,7 @@ impl reactor::Reactor for Reactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -679,7 +680,7 @@ impl reactor::Reactor for Reactor {
 
                 let event = gossiper::Event::ItemReceived {
                     item_id: *deploy.id(),
-                    source,
+                    source: source.clone(),
                 };
                 effects.extend(self.dispatch_event(
                     effect_builder,

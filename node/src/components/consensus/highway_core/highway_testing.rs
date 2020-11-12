@@ -17,7 +17,7 @@ use super::{
     finality_detector::{FinalityDetector, FttExceeded},
     highway::{
         Dependency, Endorsements, GetDepOutcome, Highway, Params, PreValidatedVertex,
-        SignedWireVote, ValidVertex, Vertex, VertexError,
+        SignedWireUnit, ValidVertex, Vertex, VertexError,
     },
     validators::Validators,
     Weight,
@@ -35,7 +35,8 @@ use crate::{
         traits::{Context, ValidatorSecret},
         BlockContext,
     },
-    types::{CryptoRngCore, Timestamp},
+    types::Timestamp,
+    NodeRng,
 };
 
 type ConsensusValue = Vec<u32>;
@@ -119,8 +120,8 @@ impl Ord for HighwayMessage {
             (HighwayMessage::Timer(t1), HighwayMessage::Timer(t2)) => t1.cmp(&t2),
             (HighwayMessage::NewVertex(v1), HighwayMessage::NewVertex(v2)) => {
                 match (&**v1, &**v2) {
-                    (Vertex::Vote(swv1), Vertex::Vote(swv2)) => swv1.hash().cmp(&swv2.hash()),
-                    (Vertex::Vote(_), _) => std::cmp::Ordering::Less,
+                    (Vertex::Unit(swv1), Vertex::Unit(swv2)) => swv1.hash().cmp(&swv2.hash()),
+                    (Vertex::Unit(_), _) => std::cmp::Ordering::Less,
                     (
                         Vertex::Evidence(Evidence::Equivocation(ev1_a, ev1_b)),
                         Vertex::Evidence(Evidence::Equivocation(ev2_a, ev2_b)),
@@ -131,11 +132,11 @@ impl Ord for HighwayMessage {
                     (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
                     (
                         Vertex::Endorsements(Endorsements {
-                            vote: l_hash,
+                            unit: l_hash,
                             endorsers: l_vid,
                         }),
                         Vertex::Endorsements(Endorsements {
-                            vote: r_hash,
+                            unit: r_hash,
                             endorsers: r_vid,
                         }),
                     ) => l_hash.cmp(r_hash).then_with(|| l_vid.cmp(r_vid)),
@@ -195,13 +196,7 @@ enum Distribution {
 
 impl Distribution {
     /// Returns vector of `count` elements of random values between `lower` and `uppwer`.
-    fn gen_range_vec(
-        &self,
-        rng: &mut dyn CryptoRngCore,
-        lower: u64,
-        upper: u64,
-        count: u8,
-    ) -> Vec<u64> {
+    fn gen_range_vec(&self, rng: &mut NodeRng, lower: u64, upper: u64, count: u8) -> Vec<u64> {
         match self {
             Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower, upper)).collect(),
         }
@@ -211,7 +206,7 @@ impl Distribution {
 trait DeliveryStrategy {
     fn gen_delay(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         message: &HighwayMessage,
         distributon: &Distribution,
         base_delivery_timestamp: Timestamp,
@@ -249,11 +244,7 @@ impl HighwayValidator {
         Ok(self.finality_detector.run(&self.highway)?.collect())
     }
 
-    fn post_hook(
-        &mut self,
-        rng: &mut dyn CryptoRngCore,
-        msg: HighwayMessage,
-    ) -> Vec<HighwayMessage> {
+    fn post_hook(&mut self, rng: &mut NodeRng, msg: HighwayMessage) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
             None => {
                 // Honest validator.
@@ -283,17 +274,17 @@ impl HighwayValidator {
                 match msg {
                     HighwayMessage::NewVertex(ref vertex) => {
                         match **vertex {
-                            Vertex::Vote(ref swvote) => {
+                            Vertex::Unit(ref swunit) => {
                                 // Create an equivocating message, with a different timestamp.
                                 // TODO: Don't send both messages to every peer. Add different
                                 // strategies.
-                                let mut wvote = swvote.wire_vote.clone();
-                                wvote.timestamp += 1.into();
-                                let secret = TestSecret(wvote.creator.0.into());
-                                let swvote2 = SignedWireVote::new(wvote, &secret, rng);
+                                let mut wunit = swunit.wire_unit.clone();
+                                wunit.timestamp += 1.into();
+                                let secret = TestSecret(wunit.creator.0.into());
+                                let swunit2 = SignedWireUnit::new(wunit, &secret, rng);
                                 vec![
                                     msg,
-                                    HighwayMessage::NewVertex(Box::new(Vertex::Vote(swvote2))),
+                                    HighwayMessage::NewVertex(Box::new(Vertex::Unit(swunit2))),
                                 ]
                             }
                             _ => vec![msg],
@@ -341,7 +332,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank(&mut self, rng: &mut dyn CryptoRngCore) -> TestResult<()> {
+    pub(crate) fn crank(&mut self, rng: &mut NodeRng) -> TestResult<()> {
         let QueueEntry {
             delivery_time,
             recipient,
@@ -402,12 +393,12 @@ where
 
     fn call_validator<F>(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         validator_id: &ValidatorId,
         f: F,
     ) -> TestResult<Vec<HighwayMessage>>
     where
-        F: FnOnce(&mut HighwayValidator, &mut dyn CryptoRngCore) -> Vec<Effect<TestContext>>,
+        F: FnOnce(&mut HighwayValidator, &mut NodeRng) -> Vec<Effect<TestContext>>,
     {
         let validator_node = self.node_mut(validator_id)?;
         let res = f(validator_node.validator_mut(), rng);
@@ -427,7 +418,7 @@ where
     /// message.
     fn process_message(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         validator_id: ValidatorId,
         message: Message<HighwayMessage>,
         delivery_time: Timestamp,
@@ -528,7 +519,7 @@ where
     // From the POV of the test system, synchronization is immediate.
     fn add_vertex(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         recipient: ValidatorId,
         sender: ValidatorId,
         vertex: Vertex<TestContext>,
@@ -582,7 +573,7 @@ where
     /// it's returned and the original vertex mustn't be added to the state.
     fn synchronize_validator(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         recipient: ValidatorId,
         sender: ValidatorId,
         pvv: PreValidatedVertex<TestContext>,
@@ -621,11 +612,11 @@ where
     //
     // If validator has missing dependencies then we have to add them first.
     // We don't want to test synchronization, and the Highway theory assumes
-    // that when votes are added then all their dependencies are satisfied.
+    // that when units are added then all their dependencies are satisfied.
     #[allow(clippy::type_complexity)]
     fn synchronize_dependency(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         missing_dependency: Dependency<TestContext>,
         recipient: ValidatorId,
         sender: ValidatorId,
@@ -655,7 +646,7 @@ where
 
 fn crank_until<F, DS: DeliveryStrategy>(
     htt: &mut HighwayTestHarness<DS>,
-    rng: &mut dyn CryptoRngCore,
+    rng: &mut NodeRng,
     f: F,
 ) -> TestResult<()>
 where
@@ -722,7 +713,7 @@ struct InstantDeliveryNoDropping;
 impl DeliveryStrategy for InstantDeliveryNoDropping {
     fn gen_delay(
         &mut self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         message: &HighwayMessage,
         _distributon: &Distribution,
         base_delivery_timestamp: Timestamp,
@@ -791,7 +782,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
-    fn build(self, rng: &mut dyn CryptoRngCore) -> Result<HighwayTestHarness<DS>, BuilderError> {
+    fn build(self, rng: &mut NodeRng) -> Result<HighwayTestHarness<DS>, BuilderError> {
         let consensus_values = (0..self.consensus_values_count as u32)
             .map(|el| vec![el])
             .collect::<VecDeque<ConsensusValue>>();
@@ -1005,7 +996,7 @@ impl ValidatorSecret for TestSecret {
     type Hash = HashWrapper;
     type Signature = SignatureWrapper;
 
-    fn sign(&self, data: &Self::Hash, _rng: &mut dyn CryptoRngCore) -> Self::Signature {
+    fn sign(&self, data: &Self::Hash, _rng: &mut NodeRng) -> Self::Signature {
         SignatureWrapper(data.0 + self.0)
     }
 }
@@ -1044,13 +1035,12 @@ mod test_harness {
     use crate::{
         components::consensus::tests::consensus_des_testing::{Fault, ValidatorId},
         logging,
-        testing::TestRng,
     };
     use logging::{LoggingConfig, LoggingFormat};
 
     #[test]
     fn on_empty_queue_error() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
                 .consensus_values_count(1)
@@ -1080,7 +1070,7 @@ mod test_harness {
     fn liveness_test_no_faults() {
         let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let cv_count = 10;
 
         let mut highway_test_harness = HighwayTestHarnessBuilder::new()
@@ -1144,7 +1134,7 @@ mod test_harness {
     fn liveness_test_some_mute() {
         let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let cv_count = 10;
         let fault_perc = 30;
 
@@ -1185,7 +1175,7 @@ mod test_harness {
     fn liveness_test_some_equivocate() {
         let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let cv_count = 10;
         let fault_perc = 10;
 

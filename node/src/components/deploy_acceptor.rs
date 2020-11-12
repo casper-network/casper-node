@@ -12,9 +12,9 @@ use crate::{
         announcements::DeployAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
         EffectExt, Effects,
     },
-    small_network::NodeId,
-    types::{CryptoRngCore, Deploy},
+    types::{Deploy, NodeId},
     utils::Source,
+    NodeRng,
 };
 
 pub use event::Event;
@@ -152,7 +152,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");

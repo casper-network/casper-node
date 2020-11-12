@@ -19,10 +19,8 @@ use crate::{
         EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{
-        json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, CryptoRngCore,
-        DeployHash,
-    },
+    types::{json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, DeployHash},
+    NodeRng,
 };
 
 #[derive(Debug, From)]
@@ -128,7 +126,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: crate::effect::EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

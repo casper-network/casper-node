@@ -8,7 +8,7 @@
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
 //! its core event loop is found inside the [reactor](reactor/index.html).
 
-#![doc(html_root_url = "https://docs.rs/casper-node/1.5.0")]
+#![doc(html_root_url = "https://docs.rs/casper-node/0.2.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -38,8 +38,9 @@ pub mod utils;
 
 use ansi_term::Color::Red;
 use lazy_static::lazy_static;
+#[cfg(not(test))]
+use rand::SeedableRng;
 
-pub(crate) use components::small_network;
 pub use components::{
     chainspec_loader::{Chainspec, Error as ChainspecError},
     consensus::Config as ConsensusConfig,
@@ -52,6 +53,7 @@ pub use components::{
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
     storage::{Config as StorageConfig, Error as StorageError},
 };
+pub use types::NodeRng;
 pub use utils::OS_PAGE_SIZE;
 
 /// The maximum thread count which should be spawned by the tokio runtime.
@@ -89,4 +91,16 @@ lazy_static! {
 
     /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
     pub static ref VERSION_STRING: String = version_string(false);
+}
+
+/// Constructs a new `NodeRng`.
+#[cfg(not(test))]
+pub fn new_rng() -> NodeRng {
+    NodeRng::from_entropy()
+}
+
+/// Constructs a new `NodeRng`.
+#[cfg(test)]
+pub fn new_rng() -> NodeRng {
+    NodeRng::new()
 }

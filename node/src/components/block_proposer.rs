@@ -22,7 +22,8 @@ use crate::{
         requests::{BlockProposerRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{CryptoRngCore, DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
+    types::{DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
+    NodeRng,
 };
 
 const PRUNE_INTERVAL: Duration = Duration::from_secs(10);
@@ -399,7 +400,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         self.metrics
@@ -548,7 +549,7 @@ mod tests {
 
         let no_blocks = HashSet::new();
         let (mut buffer, _effects) = create_test_buffer();
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
         let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
         let (hash3, deploy3) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
@@ -643,7 +644,7 @@ mod tests {
         let test_time = Timestamp::from(120);
         let ttl = TimeDiff::from(100);
 
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
         let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
         let (hash3, deploy3) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
@@ -699,7 +700,7 @@ mod tests {
         let ttl = TimeDiff::from(100);
         let block_time = Timestamp::from(120);
 
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
         // let deploy2 depend on deploy1
         let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![hash1]);

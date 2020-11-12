@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use super::Item;
 use crate::{
     effect::{requests::FetcherRequest, Responder},
-    small_network::NodeId,
+    types::NodeId,
     utils::Source,
 };
 use datasize::DataSize;
