@@ -560,22 +560,13 @@ impl<C: Context> State<C> {
             }
         }
         // All endorsed units from the panorama of this wunit.
-        let endorsements_in_panorama: Vec<C::Hash> =
-            panorama
-                .iter_correct_hashes()
-                .fold(Vec::new(), |mut acc, hash| {
-                    acc.extend(
-                        self.opt_endorsements(hash)
-                            .unwrap_or_default()
-                            .into_iter()
-                            .map(|e| *e.unit())
-                            .collect::<HashSet<_>>(),
-                    );
-                    acc
-                });
+        let endorsements_in_panorama = panorama
+            .iter_correct_hashes()
+            .flat_map(|hash| self.unit(hash).claims_endorsed())
+            .collect::<HashSet<_>>();
         if endorsements_in_panorama
             .iter()
-            .any(|e| !wunit.endorsed.iter().any(|h| h == e))
+            .any(|&e| !wunit.endorsed.iter().any(|h| h == e))
         {
             return Err(UnitError::EndorsementsNotMonotonic);
         }
