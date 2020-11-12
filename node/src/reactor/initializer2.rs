@@ -2,13 +2,7 @@
 
 use casper_node_macros::reactor;
 
-use crate::{
-    components::{small_network::NodeId, storage::Storage},
-    protocol::Message,
-    reactor::validator,
-    types::NodeId,
-    utils::WithDir,
-};
+use crate::{protocol::Message, reactor::validator, types::NodeId, utils::WithDir};
 
 reactor!(Initializer {
   type Config = WithDir<validator::Config>;

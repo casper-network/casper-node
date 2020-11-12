@@ -19,7 +19,7 @@ use std::{
 use tracing::{debug, error};
 
 use crate::{
-    components::{small_network::NodeId, storage::Storage, Component},
+    components::Component,
     effect::{
         announcements::GossiperAnnouncement,
         requests::{NetworkRequest, StorageRequest},

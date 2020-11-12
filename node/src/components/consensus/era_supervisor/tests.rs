@@ -10,7 +10,6 @@ use crate::{
             tests::mock_proto::{self, MockProto, NodeId},
             Config,
         },
-        storage::Storage,
         Component,
     },
     crypto::asymmetric_key::{PublicKey, SecretKey},
@@ -45,7 +44,7 @@ enum Event {
     #[from]
     BlockValidator(BlockValidationRequest<ProtoBlock, NodeId>),
     #[from]
-    Storage(StorageRequest<Storage>),
+    Storage(StorageRequest),
     #[from]
     ContractRuntime(ContractRuntimeRequest),
 }

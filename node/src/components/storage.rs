@@ -34,7 +34,7 @@ use crate::{
     effect::{requests::StorageRequest, EffectExt, Effects},
     types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, Timestamp},
     utils::WithDir,
-    Chainspec,
+    Chainspec, NodeRng,
 };
 use lmdb_ext::{EnvironmentExt, TransactionExt, WriteTransactionExt};
 use serialization::{deser, ser};
@@ -100,7 +100,7 @@ impl<REv> Component<REv> for Storage {
     fn handle_event(
         &mut self,
         _effect_builder: crate::effect::EffectBuilder<REv>,
-        _rng: &mut dyn crate::types::CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {

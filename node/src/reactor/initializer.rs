@@ -11,7 +11,6 @@ use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime},
-        small_network::NodeId,
         storage::{self, Storage},
         Component,
     },

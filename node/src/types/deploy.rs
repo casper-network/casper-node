@@ -20,9 +20,7 @@ use casper_execution_engine::core::engine_state::{
 };
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use super::{
-    json_compatibility::ExecutionResult, BlockHash, CryptoRngCore, Item, Tag, TimeDiff, Timestamp,
-};
+use super::{json_compatibility::ExecutionResult, BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
