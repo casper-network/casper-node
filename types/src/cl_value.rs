@@ -230,13 +230,13 @@ impl ToBytes for CLValue {
     }
 
     fn serialized_length(&self) -> usize {
-        self.bytes.serialized_length() + self.cl_type.serialized_length()
+        bytesrepr::bytes_serialized_length(&self.bytes) + self.cl_type.serialized_length()
     }
 }
 
 impl FromBytes for CLValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (bytes, remainder) = Vec::<u8>::from_bytes(bytes)?;
+        let (bytes, remainder) = bytesrepr::deserialize_bytes(bytes)?;
         let (cl_type, remainder) = CLType::from_bytes(remainder)?;
         let cl_value = CLValue { cl_type, bytes };
         Ok((cl_value, remainder))

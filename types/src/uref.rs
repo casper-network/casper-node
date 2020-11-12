@@ -185,7 +185,7 @@ impl Debug for URef {
 impl bytesrepr::ToBytes for URef {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::unchecked_allocate_buffer(self);
-        result.append(&mut self.0.to_bytes()?);
+        result.append(&mut bytesrepr::serialize_array(&self.0)?);
         result.append(&mut self.1.to_bytes()?);
         Ok(result)
     }
@@ -197,8 +197,8 @@ impl bytesrepr::ToBytes for URef {
 
 impl bytesrepr::FromBytes for URef {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (id, rem): ([u8; 32], &[u8]) = bytesrepr::FromBytes::from_bytes(bytes)?;
-        let (access_rights, rem): (AccessRights, &[u8]) = bytesrepr::FromBytes::from_bytes(rem)?;
+        let (id, rem) = bytesrepr::deserialize_array(bytes)?;
+        let (access_rights, rem) = bytesrepr::FromBytes::from_bytes(rem)?;
         Ok((URef(id, access_rights), rem))
     }
 }

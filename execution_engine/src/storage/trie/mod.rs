@@ -312,7 +312,7 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
                 ))
             }
             2 => {
-                let (affix, rem) = Vec::<u8>::from_bytes(rem)?;
+                let (affix, rem) = bytesrepr::deserialize_bytes(rem)?;
                 let (pointer, rem) = Pointer::from_bytes(rem)?;
                 Ok((Trie::Extension { affix, pointer }, rem))
             }

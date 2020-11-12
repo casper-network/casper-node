@@ -3,18 +3,17 @@
 // Can be removed once https://github.com/rust-lang/rustfmt/issues/3362 is resolved.
 #[rustfmt::skip]
 use alloc::vec;
-#[cfg(feature = "no-unstable-features")]
-use alloc::alloc::{alloc, Layout};
-#[cfg(not(feature = "no-unstable-features"))]
-use alloc::collections::TryReserveError;
 use alloc::{
+    alloc::{alloc, Layout},
     collections::{BTreeMap, BTreeSet, VecDeque},
     string::String,
     vec::Vec,
 };
-use core::mem::{self, MaybeUninit};
-#[cfg(feature = "no-unstable-features")]
-use core::ptr::NonNull;
+use core::{
+    mem::{self, MaybeUninit},
+    ptr::NonNull,
+};
+use generic_array::{ArrayLength, GenericArray};
 
 use failure::Fail;
 use num_integer::Integer;
@@ -106,13 +105,6 @@ pub enum Error {
     OutOfMemory,
 }
 
-#[cfg(not(feature = "no-unstable-features"))]
-impl From<TryReserveError> for Error {
-    fn from(_: TryReserveError) -> Error {
-        Error::OutOfMemory
-    }
-}
-
 /// Deserializes `bytes` into an instance of `T`.
 ///
 /// Returns an error if the bytes cannot be deserialized into `T` or if not all of the input bytes
@@ -131,7 +123,7 @@ pub fn serialize(t: impl ToBytes) -> Result<Vec<u8>, Error> {
     t.into_bytes()
 }
 
-pub(crate) fn safe_split_at(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]), Error> {
+fn safe_split_at(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]), Error> {
     if n > bytes.len() {
         Err(Error::EarlyEndOfStream)
     } else {
@@ -294,25 +286,26 @@ impl FromBytes for u64 {
 
 impl ToBytes for String {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        self.as_str().to_bytes()
+        let bytes = self.as_bytes();
+        serialize_bytes(bytes)
     }
 
     fn serialized_length(&self) -> usize {
-        self.as_str().serialized_length()
+        bytes_serialized_length(self.as_bytes())
     }
 }
 
 impl FromBytes for String {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (str_bytes, rem): (Vec<u8>, &[u8]) = FromBytes::from_bytes(bytes)?;
+        let (str_bytes, rem): (Vec<u8>, &[u8]) = deserialize_bytes(bytes)?;
         let result = String::from_utf8(str_bytes).map_err(|_| Error::Formatting)?;
         Ok((result, rem))
     }
 }
 
 #[allow(clippy::ptr_arg)]
-fn vec_to_bytes<T: ToBytes>(vec: &Vec<T>) -> Result<Vec<u8>, Error> {
-    let mut result = allocate_buffer(vec)?;
+fn slice_to_bytes<T: ToBytes>(vec: &[T]) -> Result<Vec<u8>, Error> {
+    let mut result = try_vec_with_capacity(iterator_serialized_length(vec.iter()))?;
     result.append(&mut (vec.len() as u32).to_bytes()?);
 
     for item in vec.iter() {
@@ -337,10 +330,9 @@ fn iterator_serialized_length<'a, T: 'a + ToBytes>(ts: impl Iterator<Item = &'a 
     U32_SERIALIZED_LENGTH + ts.map(ToBytes::serialized_length).sum::<usize>()
 }
 
-#[cfg(feature = "no-unstable-features")]
 impl<T: ToBytes> ToBytes for Vec<T> {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        vec_to_bytes(self)
+        slice_to_bytes(self)
     }
 
     fn into_bytes(self) -> Result<Vec<u8>, Error> {
@@ -352,22 +344,6 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     }
 }
 
-#[cfg(not(feature = "no-unstable-features"))]
-impl<T: ToBytes> ToBytes for Vec<T> {
-    default fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        vec_to_bytes(self)
-    }
-
-    default fn into_bytes(self) -> Result<Vec<u8>, Error> {
-        vec_into_bytes(self)
-    }
-
-    default fn serialized_length(&self) -> usize {
-        iterator_serialized_length(self.iter())
-    }
-}
-
-#[cfg(feature = "no-unstable-features")]
 fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
     // see https://doc.rust-lang.org/src/alloc/raw_vec.rs.html#75-98
     let elem_size = mem::size_of::<T>();
@@ -387,13 +363,6 @@ fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
     unsafe { Ok(Vec::from_raw_parts(ptr.as_ptr(), 0, capacity)) }
 }
 
-#[cfg(not(feature = "no-unstable-features"))]
-fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
-    let mut result: Vec<T> = Vec::new();
-    result.try_reserve_exact(capacity)?;
-    Ok(result)
-}
-
 fn vec_from_bytes<T: FromBytes>(bytes: &[u8]) -> Result<(Vec<T>, &[u8]), Error> {
     let (count, mut stream) = u32::from_bytes(bytes)?;
 
@@ -411,7 +380,6 @@ fn vec_from_vec<T: FromBytes>(bytes: Vec<u8>) -> Result<(Vec<T>, Vec<u8>), Error
     Vec::<T>::from_bytes(bytes.as_slice()).map(|(x, remainder)| (x, Vec::from(remainder)))
 }
 
-#[cfg(feature = "no-unstable-features")]
 impl<T: FromBytes> FromBytes for Vec<T> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         vec_from_bytes(bytes)
@@ -422,166 +390,43 @@ impl<T: FromBytes> FromBytes for Vec<T> {
     }
 }
 
-#[cfg(not(feature = "no-unstable-features"))]
-impl<T: FromBytes> FromBytes for Vec<T> {
-    default fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        vec_from_bytes(bytes)
-    }
-
-    default fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
-        vec_from_vec(bytes)
-    }
-}
-
-#[allow(clippy::ptr_arg)]
-fn vec_deque_to_bytes<T: ToBytes>(vec: &VecDeque<T>) -> Result<Vec<u8>, Error> {
-    let mut result = allocate_buffer(vec)?;
-    result.append(&mut (vec.len() as u32).to_bytes()?);
-
-    for item in vec.iter() {
-        result.append(&mut item.to_bytes()?);
-    }
-
-    Ok(result)
-}
-
-fn vec_deque_into_bytes<T: ToBytes>(vec: VecDeque<T>) -> Result<Vec<u8>, Error> {
-    let mut result = allocate_buffer(&vec)?;
-    result.append(&mut (vec.len() as u32).to_bytes()?);
-
-    for item in vec {
-        result.append(&mut item.into_bytes()?);
-    }
-
-    Ok(result)
-}
-
-#[cfg(feature = "no-unstable-features")]
 impl<T: ToBytes> ToBytes for VecDeque<T> {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        vec_deque_to_bytes(self)
+        let (slice1, slice2) = self.as_slices();
+        let mut result = allocate_buffer(self)?;
+        result.append(&mut (self.len() as u32).to_bytes()?);
+        for item in slice1.iter().chain(slice2.iter()) {
+            result.extend(item.to_bytes()?);
+        }
+        Ok(result)
     }
 
     fn into_bytes(self) -> Result<Vec<u8>, Error> {
-        vec_deque_into_bytes(self)
+        let vec: Vec<T> = self.into();
+        vec.to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
-        iterator_serialized_length(self.iter())
+        let (slice1, slice2) = self.as_slices();
+        iterator_serialized_length(slice1.iter().chain(slice2.iter()))
     }
 }
 
-#[cfg(not(feature = "no-unstable-features"))]
-impl<T: ToBytes> ToBytes for VecDeque<T> {
-    default fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        vec_deque_to_bytes(self)
-    }
-
-    default fn into_bytes(self) -> Result<Vec<u8>, Error> {
-        vec_deque_into_bytes(self)
-    }
-
-    default fn serialized_length(&self) -> usize {
-        iterator_serialized_length(self.iter())
-    }
-}
-
-#[cfg(feature = "no-unstable-features")]
-fn try_vec_deque_with_capacity<T>(capacity: usize) -> Result<VecDeque<T>, Error> {
-    Ok(VecDeque::with_capacity(capacity))
-}
-
-#[cfg(not(feature = "no-unstable-features"))]
-fn try_vec_deque_with_capacity<T>(capacity: usize) -> Result<VecDeque<T>, Error> {
-    let mut result: VecDeque<T> = VecDeque::new();
-    result.try_reserve_exact(capacity)?;
-    Ok(result)
-}
-
-fn vec_deque_from_bytes<T: FromBytes>(bytes: &[u8]) -> Result<(VecDeque<T>, &[u8]), Error> {
-    let (count, mut stream) = u32::from_bytes(bytes)?;
-
-    let mut result = try_vec_deque_with_capacity(count as usize)?;
-    for _ in 0..count {
-        let (value, remainder) = T::from_bytes(stream)?;
-        result.push_back(value);
-        stream = remainder;
-    }
-
-    Ok((result, stream))
-}
-
-fn vec_deque_from_vec<T: FromBytes>(bytes: Vec<u8>) -> Result<(VecDeque<T>, Vec<u8>), Error> {
-    VecDeque::<T>::from_bytes(bytes.as_slice()).map(|(x, remainder)| (x, Vec::from(remainder)))
-}
-
-#[cfg(feature = "no-unstable-features")]
 impl<T: FromBytes> FromBytes for VecDeque<T> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        vec_deque_from_bytes(bytes)
+        let (vec, bytes) = Vec::from_bytes(bytes)?;
+        Ok((VecDeque::from(vec), bytes))
     }
 
     fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
-        vec_deque_from_vec(bytes)
-    }
-}
-
-#[cfg(not(feature = "no-unstable-features"))]
-impl<T: FromBytes> FromBytes for VecDeque<T> {
-    default fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        vec_deque_from_bytes(bytes)
-    }
-
-    default fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
-        vec_deque_from_vec(bytes)
-    }
-}
-
-#[cfg(not(feature = "no-unstable-features"))]
-impl ToBytes for Vec<u8> {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        let mut result = allocate_buffer(self)?;
-        result.append(&mut (self.len() as u32).to_bytes()?);
-        result.extend(self);
-        Ok(result)
-    }
-
-    fn into_bytes(mut self) -> Result<Vec<u8>, Error> {
-        let mut result = allocate_buffer(&self)?;
-        result.append(&mut (self.len() as u32).to_bytes()?);
-        result.append(&mut self);
-        Ok(result)
-    }
-
-    fn serialized_length(&self) -> usize {
-        U32_SERIALIZED_LENGTH + self.len()
-    }
-}
-
-#[cfg(not(feature = "no-unstable-features"))]
-impl FromBytes for Vec<u8> {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (size, remainder) = u32::from_bytes(bytes)?;
-        let (result, remainder) = safe_split_at(remainder, size as usize)?;
-        Ok((result.to_vec(), remainder))
-    }
-
-    fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
-        let (size, mut stream) = u32::from_vec(bytes)?;
-
-        if size as usize > stream.len() {
-            Err(Error::EarlyEndOfStream)
-        } else {
-            let remainder = stream.split_off(size as usize);
-            Ok((stream, remainder))
-        }
+        let (vec, bytes) = vec_from_vec(bytes)?;
+        Ok((VecDeque::from(vec), bytes))
     }
 }
 
 macro_rules! impl_to_from_bytes_for_array {
     ($($N:literal)+) => {
         $(
-            #[cfg(feature = "no-unstable-features")]
             impl<T: ToBytes> ToBytes for [T; $N] {
                 fn to_bytes(&self) -> Result<Vec<u8>, Error> {
                     let mut result = allocate_buffer(self)?;
@@ -592,53 +437,12 @@ macro_rules! impl_to_from_bytes_for_array {
                 }
 
                 fn serialized_length(&self) -> usize {
-                    self.iter().map(ToBytes::serialized_length).sum::<usize>()
+                    self.iter().map(ToBytes::serialized_length).sum()
                 }
             }
 
-            #[cfg(feature = "no-unstable-features")]
             impl<T: FromBytes> FromBytes for [T; $N] {
-                #[allow(clippy::reversed_empty_ranges)]
                 fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-                    let mut result: MaybeUninit<[T; $N]> = MaybeUninit::uninit();
-                    let result_ptr = result.as_mut_ptr() as *mut T;
-                    unsafe {
-                        for i in 0..$N {
-                            let (t, remainder) = match T::from_bytes(bytes) {
-                                Ok(success) => success,
-                                Err(error) => {
-                                    for j in 0..i {
-                                        result_ptr.add(j).drop_in_place();
-                                    }
-                                    return Err(error);
-                                }
-                            };
-                            result_ptr.add(i).write(t);
-                            bytes = remainder;
-                        }
-                        Ok((result.assume_init(), bytes))
-                    }
-                }
-            }
-
-            #[cfg(not(feature = "no-unstable-features"))]
-            impl<T: ToBytes> ToBytes for [T; $N] {
-                default fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-                    let mut result = allocate_buffer(self)?;
-                    for item in self.iter() {
-                        result.append(&mut item.to_bytes()?);
-                    }
-                    Ok(result)
-                }
-
-                default fn serialized_length(&self) -> usize {
-                    self.iter().map(ToBytes::serialized_length).sum::<usize>()
-                }
-            }
-
-            #[cfg(not(feature = "no-unstable-features"))]
-            impl<T: FromBytes> FromBytes for [T; $N] {
-                default fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
                     let mut result: MaybeUninit<[T; $N]> = MaybeUninit::uninit();
                     let result_ptr = result.as_mut_ptr() as *mut T;
                     unsafe {
@@ -665,39 +469,6 @@ macro_rules! impl_to_from_bytes_for_array {
 }
 
 impl_to_from_bytes_for_array! {
-     0  1  2  3  4  5  6  7  8  9
-    10 11 12 13 14 15 16 17 18 19
-    20 21 22 23 24 25 26 27 28 29
-    30 31 32
-    64 128 256 512
-}
-
-#[cfg(not(feature = "no-unstable-features"))]
-macro_rules! impl_to_from_bytes_for_byte_array {
-    ($($len:expr)+) => {
-        $(
-            impl ToBytes for [u8; $len] {
-                fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-                    Ok(self.to_vec())
-                }
-
-                fn serialized_length(&self) -> usize { $len }
-            }
-
-            impl FromBytes for [u8; $len] {
-                fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-                    let (bytes, rem) = safe_split_at(bytes, $len)?;
-                    let mut result = [0u8; $len];
-                    result.copy_from_slice(bytes);
-                    Ok((result, rem))
-                }
-            }
-        )+
-    }
-}
-
-#[cfg(not(feature = "no-unstable-features"))]
-impl_to_from_bytes_for_byte_array! {
      0  1  2  3  4  5  6  7  8  9
     10 11 12 13 14 15 16 17 18 19
     20 21 22 23 24 25 26 27 28 29
@@ -1317,6 +1088,58 @@ where
     }
 }
 
+/// Serializes dynamic bytes array.
+pub fn serialize_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
+    let serialized_length = bytes_serialized_length(bytes);
+    let mut vec = try_vec_with_capacity(serialized_length)?;
+    let length_prefix = bytes.len() as u32;
+    let length_prefix_bytes = length_prefix.to_le_bytes();
+    vec.extend(&length_prefix_bytes);
+    vec.extend(bytes);
+    Ok(vec)
+}
+
+/// Estimates serialized length of serialized bytes.
+pub fn bytes_serialized_length(bytes: &[u8]) -> usize {
+    U32_SERIALIZED_LENGTH + bytes.len()
+}
+
+/// Deserializes dynamic bytes array.
+pub fn deserialize_bytes(bytes: &[u8]) -> Result<(Vec<u8>, &[u8]), Error> {
+    let (size, remainder) = u32::from_bytes(bytes)?;
+    let (result, remainder) = safe_split_at(remainder, size as usize)?;
+    Ok((result.to_vec(), remainder))
+}
+
+/// Serializes array.
+pub fn serialize_array(bytes: &[u8]) -> Result<Vec<u8>, Error> {
+    Ok(bytes.to_vec())
+}
+
+/// Safely deserializes array of specified length into a slice.
+///
+/// Once const generics are stabilized we can get rid of this helper function.
+pub fn deserialize_array_slice(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]), Error> {
+    safe_split_at(bytes, n)
+}
+
+/// Deserializes a generic array.
+pub fn deserialize_array<T, N>(bytes: &[u8]) -> Result<(T, &[u8]), Error>
+where
+    N: ArrayLength<u8>,
+    T: From<GenericArray<u8, N>>,
+{
+    let mut result = GenericArray::default();
+    let (bytes, rem) = deserialize_array_slice(bytes, result.len())?;
+    result.copy_from_slice(bytes);
+    Ok((result.into(), rem))
+}
+
+/// Calculate serialized length of an array.
+pub fn array_serialized_length(bytes: &[u8]) -> usize {
+    bytes.len()
+}
+
 // This test helper is not intended to be used by third party crates.
 #[doc(hidden)]
 /// Returns `true` if a we can serialize and then deserialize a value
@@ -1393,13 +1216,13 @@ mod tests {
 
 #[cfg(test)]
 mod proptests {
-    use std::vec::Vec;
+    use std::{collections::VecDeque, vec::Vec};
 
     use num_rational::Ratio;
     use proptest::{collection::vec, prelude::*};
 
     use crate::{
-        bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
+        bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
         gens::*,
     };
 
@@ -1454,6 +1277,18 @@ mod proptests {
         #[test]
         fn test_vec_i32(u in vec(any::<i32>(), 1..100)) {
             bytesrepr::test_serialization_roundtrip(&u);
+        }
+
+        #[test]
+        fn test_vecdeque_i32((front, back) in (vec(any::<i32>(), 1..100), vec(any::<i32>(), 1..100))) {
+            let mut vec_deque = VecDeque::new();
+            for f in front {
+                vec_deque.push_front(f);
+            }
+            for f in back {
+                vec_deque.push_back(f);
+            }
+            bytesrepr::test_serialization_roundtrip(&vec_deque);
         }
 
         #[test]
@@ -1599,9 +1434,77 @@ mod proptests {
     fn vec_u8_from_bytes() {
         let data: Vec<u8> = vec![1, 2, 3, 4, 5];
         let data_bytes = data.to_bytes().unwrap();
-        assert!(Vec::<u8>::from_bytes(&data_bytes[..U32_SERIALIZED_LENGTH / 2]).is_err());
-        assert!(Vec::<u8>::from_bytes(&data_bytes[..U32_SERIALIZED_LENGTH]).is_err());
-        assert!(Vec::<u8>::from_bytes(&data_bytes[..U32_SERIALIZED_LENGTH + 2]).is_err());
+        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH / 2]).is_err());
+        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH]).is_err());
+        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH + 2]).is_err());
+    }
+
+    #[test]
+    fn should_serialize_deserialize_bytes() {
+        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
+        let serialized = super::serialize_bytes(&data).expect("should serialize data");
+        let (deserialized, rem): (Vec<u8>, &[u8]) =
+            super::deserialize_bytes(&serialized).expect("should deserialize data");
+        assert_eq!(data, deserialized);
+        assert!(rem.is_empty());
+    }
+
+    #[test]
+    fn should_fail_to_serialize_deserialize_malicious_bytes() {
+        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
+        let mut serialized = super::serialize_bytes(&data).expect("should serialize data");
+        serialized = serialized[..serialized.len() - 1].to_vec();
+        let res: Result<(_, &[u8]), Error> = super::deserialize_bytes(&serialized);
+        assert_eq!(res.unwrap_err(), Error::EarlyEndOfStream);
+    }
+
+    #[test]
+    fn should_serialize_deserialize_bytes_and_keep_rem() {
+        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
+        let expected_rem: Vec<u8> = vec![6, 7, 8, 9, 10];
+        let mut serialized = super::serialize_bytes(&data).expect("should serialize data");
+        serialized.extend(&expected_rem);
+        let (deserialized, rem): (Vec<u8>, &[u8]) =
+            super::deserialize_bytes(&serialized).expect("should deserialize data");
+        assert_eq!(data, deserialized);
+        assert_eq!(&rem, &expected_rem);
+    }
+
+    #[test]
+    fn should_serialize_deserialize_array() {
+        type Arr = [u8; 5];
+        let data: Arr = [1, 2, 3, 4, 5];
+        let serialized = super::serialize_array(&data).expect("should serialize data");
+        let (deserialized, rem): (Arr, &[u8]) =
+            super::deserialize_array(&serialized).expect("should deserialize data");
+        assert_eq!(data, deserialized);
+        assert!(rem.is_empty());
+    }
+
+    #[test]
+    fn should_fail_serialize_deserialize_array_incomaptible_size() {
+        let data = [1, 2, 3, 4, 5];
+        let serialized = super::serialize_array(&data).expect("should serialize data");
+
+        let result_1: Result<([u8; 6], &[u8]), Error> = super::deserialize_array(&serialized);
+        assert_eq!(
+            result_1.expect_err("should have error"),
+            Error::EarlyEndOfStream
+        );
+    }
+
+    #[test]
+    fn should_serialize_deserialize_array_and_keep_rem() {
+        type Arr = [u8; 5];
+
+        let data: Arr = [1, 2, 3, 4, 5];
+        let expected_rem: Vec<u8> = vec![6, 7, 8, 9, 10];
+        let mut serialized = super::serialize_array(&data).expect("should serialize data");
+        serialized.extend(&expected_rem);
+        let (deserialized, rem): (Arr, &[u8]) =
+            super::deserialize_array(&serialized).expect("should deserialize data");
+        assert_eq!(data, deserialized);
+        assert_eq!(&rem, &expected_rem);
     }
 
     #[test]

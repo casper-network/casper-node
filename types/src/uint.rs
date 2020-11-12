@@ -179,7 +179,7 @@ macro_rules! impl_traits_for_uint {
                 if num_bytes > $total_bytes {
                     Err(Error::Formatting)
                 } else {
-                    let (value, rem) = bytesrepr::safe_split_at(rem, num_bytes as usize)?;
+                    let (value, rem) = bytesrepr::deserialize_array_slice(rem, num_bytes as usize)?;
                     let result = $type::from_little_endian(value);
                     Ok((result, rem))
                 }
