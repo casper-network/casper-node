@@ -306,21 +306,16 @@ pub trait Auction:
             return Err(Error::InvalidCaller);
         }
 
-        detail::process_unbond_requests(self)?;
-
-        // get allowed validator slots total
         let validator_slots = detail::get_validator_slots(self)?;
-
         let auction_delay = detail::get_auction_delay(self)?;
         let snapshot_size = auction_delay as usize + 1;
-
         let mut era_id = detail::get_era_id(self)?;
-
         let mut bids = detail::get_bids(self)?;
 
-        //
+        // Process unbond requests
+        detail::process_unbond_requests(self)?;
+
         // Process locked bids
-        //
         let mut bids_modified = false;
         for bid in bids.values_mut() {
             if bid.unlock(era_id) {
@@ -328,105 +323,83 @@ pub trait Auction:
             }
         }
 
-        //
-        // Compute next auction slots
-        //
+        // Compute next auction winners
+        let winners: ValidatorWeights = {
+            let founder_weights: ValidatorWeights = bids
+                .iter()
+                .filter(|(_public_key, bid)| bid.is_locked())
+                .map(|(public_key, bid)| {
+                    let total_staked_amount = bid.total_staked_amount()?;
+                    Ok((*public_key, total_staked_amount))
+                })
+                .collect::<Result<ValidatorWeights>>()?;
 
-        // Take winning validators and add them to validator_weights right away.
-        let mut bid_weights: ValidatorWeights = bids
-            .iter()
-            .filter(|(_validator_account_hash, founding_validator)| founding_validator.is_locked())
-            .map(|(validator_account_hash, amount)| {
-                let total_staked_amount = amount.total_staked_amount()?;
-                Ok((*validator_account_hash, total_staked_amount))
-            })
-            .collect::<Result<ValidatorWeights>>()?;
+            // We collect these into a vec for sorting
+            let mut non_founder_weights: Vec<(PublicKey, U512)> = bids
+                .iter()
+                .filter(|(_public_key, bid)| !bid.is_locked())
+                .map(|(public_key, bid)| {
+                    let total_staked_amount = bid.total_staked_amount()?;
+                    Ok((*public_key, total_staked_amount))
+                })
+                .collect::<Result<Vec<(PublicKey, U512)>>>()?;
 
-        // Non-winning validators are taken care of later
-        let bid_scores = bids
-            .iter()
-            .filter(|(_validator_account_hash, founding_validator)| !founding_validator.is_locked())
-            .map(|(validator_account_hash, amount)| {
-                let total_staked_amount = amount.total_staked_amount()?;
-                Ok((*validator_account_hash, total_staked_amount))
-            })
-            .collect::<Result<ValidatorWeights>>()?;
+            non_founder_weights.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
 
-        // Validator's entries from both maps as a single iterable.
-        // let all_scores = founders_scores.chain(validators_scores);
+            let remaining_auction_slots = validator_slots.saturating_sub(founder_weights.len());
 
-        // All the scores are then grouped by the account hash to calculate a sum of each
-        // consecutive scores for each validator.
-        let mut scores = BTreeMap::new();
-        for (account_hash, score) in bid_scores.into_iter() {
-            scores
-                .entry(account_hash)
-                .and_modify(|acc| *acc += score)
-                .or_insert_with(|| score);
-        }
+            founder_weights
+                .into_iter()
+                .chain(
+                    non_founder_weights
+                        .into_iter()
+                        .take(remaining_auction_slots),
+                )
+                .collect()
+        };
 
-        // Compute new winning validators.
-        let mut scores: Vec<_> = scores.into_iter().collect();
-        // Sort the results in descending order
-        scores.sort_by(|(_, lhs), (_, rhs)| rhs.cmp(lhs));
-
-        // Fill in remaining validators
-        let remaining_auction_slots = validator_slots.saturating_sub(bid_weights.len());
-        bid_weights.extend(scores.into_iter().take(remaining_auction_slots));
-
-        let mut era_validators = detail::get_era_validators(self)?;
-
-        // Era index is assumed to be equal to era id on the consensus side.
+        // Increment era
         era_id += 1;
 
-        let next_era_id = era_id + auction_delay;
+        let delayed_era = era_id + auction_delay;
 
-        //
-        // Compute seiginiorage recipients for current era
-        //
-        let mut seigniorage_recipients_snapshot =
-            detail::get_seigniorage_recipients_snapshot(self)?;
-        let mut seigniorage_recipients = SeigniorageRecipients::new();
+        // Update seigniorage recipients for current era
+        {
+            let mut snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
 
-        // for each validator...
-        for era_validator in bid_weights.keys() {
-            let mut seigniorage_recipient = SeigniorageRecipient::default();
-            // ... mapped to their bids
-            if let Some(founding_validator) = bids.get(era_validator) {
-                seigniorage_recipient.stake = *founding_validator.staked_amount();
-                seigniorage_recipient.delegation_rate = *founding_validator.delegation_rate();
+            let mut recipients = SeigniorageRecipients::new();
+
+            for era_validator in winners.keys() {
+                let seigniorage_recipient = match bids.get(era_validator) {
+                    Some(bid) => bid.into(),
+                    None => return Err(Error::BidNotFound),
+                };
+                recipients.insert(*era_validator, seigniorage_recipient);
             }
 
-            if let Some(bid) = bids.get(&era_validator) {
-                seigniorage_recipient.delegators = bid.delegators().clone();
-            }
+            let previous_recipients = snapshot.insert(delayed_era, recipients);
+            assert!(previous_recipients.is_none());
 
-            seigniorage_recipients.insert(*era_validator, seigniorage_recipient);
+            let snapshot = snapshot.into_iter().rev().take(snapshot_size).collect();
+            detail::set_seigniorage_recipients_snapshot(self, snapshot)?;
         }
-        let previous_seigniorage_recipients =
-            seigniorage_recipients_snapshot.insert(next_era_id, seigniorage_recipients);
-        assert!(previous_seigniorage_recipients.is_none());
 
-        let seigniorage_recipients_snapshot = seigniorage_recipients_snapshot
-            .into_iter()
-            .rev()
-            .take(snapshot_size)
-            .collect();
-        detail::set_seigniorage_recipients_snapshot(self, seigniorage_recipients_snapshot)?;
+        // Update era validators
+        {
+            let mut era_validators = detail::get_era_validators(self)?;
 
-        // Index for next set of validators: `era_id + AUCTION_DELAY`
-        let previous_era_validators = era_validators.insert(era_id + auction_delay, bid_weights);
-        assert!(previous_era_validators.is_none());
+            let previous_era_validators = era_validators.insert(delayed_era, winners);
+            assert!(previous_era_validators.is_none());
+
+            let era_validators = era_validators
+                .into_iter()
+                .rev()
+                .take(snapshot_size)
+                .collect();
+            detail::set_era_validators(self, era_validators)?;
+        }
 
         detail::set_era_id(self, era_id)?;
-        // Keep maximum of `AUCTION_DELAY + 1` elements
-        let era_validators = era_validators
-            .into_iter()
-            .rev()
-            .take(snapshot_size)
-            .collect();
-
-        detail::set_era_validators(self, era_validators)?;
 
         if bids_modified {
             detail::set_bids(self, bids)?;
@@ -469,7 +442,7 @@ pub trait Auction:
 
             let delegators_part: Ratio<U512> = {
                 let commission_rate = Ratio::new(
-                    U512::from(recipient.delegation_rate),
+                    U512::from(*recipient.delegation_rate()),
                     U512::from(DELEGATION_RATE_DENOMINATOR),
                 );
                 let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
@@ -480,7 +453,7 @@ pub trait Auction:
 
             let delegator_rewards =
                 recipient
-                    .delegators
+                    .delegators()
                     .iter()
                     .map(|(delegator_key, delegator)| {
                         let delegator_stake = delegator.staked_amount();
