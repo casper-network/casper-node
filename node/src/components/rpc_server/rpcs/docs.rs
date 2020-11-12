@@ -5,6 +5,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
 };
 
+use casper_types::U512;
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
@@ -14,59 +15,204 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use warp_json_rpc::Builder;
 
-use super::{
-    account::{PutDeploy, PutDeployParams, PutDeployResult},
-    chain::{
+use super::{Error, state::GetBalance, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RpcWithoutParamsExt, account::{PutDeploy, PutDeployParams, PutDeployResult}, chain::{
         BlockIdentifier, GetBlock, GetBlockParams, GetBlockResult, GetStateRootHash,
         GetStateRootHashParams, GetStateRootHashResult,
-    },
-    info::{GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult, GetStatus},
-    Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
-    RpcWithoutParamsExt,
-};
-use crate::{
-    components::{chainspec_loader::ChainspecInfo, CLIENT_API_VERSION},
-    effect::EffectBuilder,
-    types::{Block, Deploy, GetStatusResult, NodeId, PeersMap, StatusFeed},
-};
-
-use casper_types::bytesrepr::FromBytes;
+    }, info::{GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult, GetStatus}, state::GetAuctionInfo, state::GetAuctionInfoResult, state::GetBalanceParams, state::GetBalanceResult};
+use crate::{components::{chainspec_loader::ChainspecInfo, CLIENT_API_VERSION}, effect::EffectBuilder, types::json_compatibility::AuctionState, crypto::hash::Digest, types::{Block, Deploy, GetStatusResult, NodeId, PeersMap, StatusFeed}};
 
 lazy_static! {
-    static ref DEPLOY_BYTES: Vec<u8> = vec![
-        2, 33, 0, 0, 0, 3, 194, 2, 147, 167, 80, 25, 150, 126, 210, 95, 197, 200, 155, 136, 58,
-        251, 207, 109, 87, 4, 58, 5, 55, 52, 133, 174, 163, 89, 73, 165, 174, 214, 238, 89, 104,
-        179, 117, 1, 0, 0, 73, 203, 21, 0, 0, 0, 0, 0, 66, 0, 0, 0, 0, 0, 0, 0, 184, 111, 11, 218,
-        103, 81, 155, 251, 84, 17, 21, 104, 10, 111, 184, 149, 217, 228, 207, 244, 89, 125, 161,
-        179, 89, 68, 0, 136, 4, 10, 66, 245, 3, 0, 0, 0, 0, 221, 195, 95, 161, 210, 98, 101, 41,
-        150, 69, 99, 239, 39, 107, 153, 30, 233, 145, 208, 38, 85, 43, 0, 117, 63, 108, 91, 191,
-        54, 15, 168, 93, 76, 161, 91, 164, 18, 144, 142, 230, 83, 79, 126, 202, 40, 3, 46, 135,
-        209, 130, 16, 207, 126, 52, 83, 85, 119, 217, 26, 114, 84, 65, 181, 127, 101, 58, 90, 126,
-        218, 165, 210, 35, 37, 23, 86, 131, 157, 214, 156, 32, 82, 33, 32, 85, 105, 104, 161, 67,
-        174, 255, 116, 222, 25, 0, 137, 14, 0, 0, 0, 99, 97, 115, 112, 101, 114, 45, 101, 120, 97,
-        109, 112, 108, 101, 149, 12, 122, 40, 178, 90, 55, 251, 131, 194, 207, 248, 81, 166, 229,
-        99, 149, 142, 153, 203, 251, 74, 65, 137, 117, 22, 200, 221, 160, 93, 250, 230, 5, 14, 0,
-        0, 0, 200, 225, 125, 28, 20, 197, 81, 14, 201, 111, 255, 63, 176, 126, 0, 81, 0, 0, 0, 62,
-        52, 123, 252, 248, 153, 62, 203, 67, 47, 96, 67, 226, 110, 224, 173, 178, 1, 101, 153, 174,
-        203, 249, 91, 114, 178, 106, 41, 19, 108, 159, 228, 142, 120, 17, 171, 148, 187, 84, 194,
-        31, 222, 200, 52, 50, 63, 178, 221, 197, 20, 100, 251, 8, 19, 168, 97, 254, 81, 99, 145,
-        207, 211, 52, 67, 205, 141, 215, 207, 247, 66, 39, 22, 27, 201, 106, 154, 18, 186, 75, 47,
-        234, 46, 0, 0, 0, 227, 55, 119, 100, 99, 177, 78, 23, 153, 57, 28, 30, 186, 16, 212, 231,
-        110, 239, 117, 220, 116, 2, 157, 226, 220, 227, 148, 48, 141, 117, 134, 23, 19, 104, 169,
-        64, 146, 214, 255, 241, 67, 106, 26, 89, 150, 212, 1, 0, 0, 0, 2, 33, 0, 0, 0, 3, 194, 2,
-        147, 167, 80, 25, 150, 126, 210, 95, 197, 200, 155, 136, 58, 251, 207, 109, 87, 4, 58, 5,
-        55, 52, 133, 174, 163, 89, 73, 165, 174, 214, 2, 64, 0, 0, 0, 60, 152, 32, 42, 96, 198, 19,
-        131, 2, 61, 89, 43, 12, 5, 116, 70, 45, 228, 207, 174, 205, 211, 193, 63, 20, 138, 219, 77,
-        218, 62, 226, 65, 93, 162, 107, 117, 154, 213, 27, 227, 102, 245, 175, 196, 230, 141, 120,
-        198, 255, 250, 94, 158, 103, 60, 76, 245, 150, 22, 96, 36, 69, 43, 118, 146
-    ];
-    static ref DEPLOY: Deploy = FromBytes::from_bytes(&DEPLOY_BYTES).unwrap().0;
+    static ref DOCS_RPC_RESULT: GetRpcsResult = {
+        let mut result = GetRpcsResult {
+            api_version: CLIENT_API_VERSION.clone(),
+            rpcs:  vec![],
+        };
+
+        // Setup PutDeploy example. 
+           let deploy = Deploy::doc_example();
+           let response_result = PutDeployResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                deploy_hash: *deploy.id()
+            };
+            let request_params = PutDeployParams {
+                deploy: deploy.clone()
+            };
+            result.push_with_params::<PutDeploy>(
+                "Creates a Deploy and sends it to the network for execution.",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/account/struct.PutDeployParams.html",
+                None,
+                request_params,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/account/struct.PutDeployResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetBlock Example. 
+
+            let block = Block::doc_example();
+
+            let request_params = GetBlockParams {
+                block_identifier: BlockIdentifier::Height(0),
+            };
+
+            let response_result = GetBlockResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                block: Some(block.clone())
+            };
+
+            result.push_with_optional_params::<GetBlock>(
+                "Retrieves a `Block` from the network.",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetBlockParams.html",
+                Some(r#"The request params can identify a Block by its height (as shown) or its hash (e.g. "Hash": 3c53f1b1c87d977222c6503832ef8592232c15109144ebbd9354f1eb344c0682"#),
+                request_params,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetBlockResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetStateRootHash example. 
+            let block = Block::doc_example();
+            let request_params = GetStateRootHashParams {
+                block_identifier: BlockIdentifier::Hash(*block.hash()),
+            };
+            let response_result = GetStateRootHashResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                state_root_hash: Some(*block.state_root_hash()),
+            };
+            result.push_with_optional_params::<GetStateRootHash>(
+                "Retrieves a state root hash at a given Block",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetStateRootHashParams.html",
+                Some(r#"The request params can identify a Block by its hash (as shown) or its height (e.g. "Height": 999"#),
+                request_params,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetStateRootHashResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetDeploy Example. 
+            let deploy = Deploy::doc_example();
+
+            let request_params = GetDeployParams {
+                deploy_hash: *deploy.id()
+            };
+
+            let response_result = GetDeployResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                deploy: deploy.clone(),
+                execution_results: vec![]
+            };
+
+            result.push_with_params::<GetDeploy>(
+                "Retrieves a Deploy from the network",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetDeployParams.html",
+                None,
+                request_params,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetDeployResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetPeers.
+            let node_id = NodeId::doc_example();
+            let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127,0,0,1)),8888);
+            let mut peers_hashmap: HashMap<NodeId, SocketAddr> = HashMap::new();
+            peers_hashmap.insert(node_id.clone(), socket_addr);
+
+            let peers_for_status = peers_hashmap.clone();
+
+            let peers = PeersMap::from(peers_hashmap).into();
+            let response_result = GetPeersResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                peers
+            };
+
+            result.push_without_params::<GetPeers>(
+                "Get peers connected to this node",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetPeersResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetStatus.
+            let chainspec_info = ChainspecInfo::doc_example().clone();
+            let status_feed = StatusFeed::<NodeId> {
+                last_added_block: Some(Block::doc_example().clone()),
+                peers: peers_for_status,
+                chainspec_info,
+                version: crate::VERSION_STRING.as_str()
+            };
+
+            let mut response_result = GetStatusResult::from(status_feed);
+            response_result.set_api_version(CLIENT_API_VERSION.clone());
+
+            result.push_without_params::<GetStatus>(
+                "Get the current status of the node",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetStatusResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetBalance. 
+            let request_params = GetBalanceParams {
+                state_root_hash: Digest::doc_example(),
+                purse_uref: String::from("uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007")
+            };
+
+            let response_result = GetBalanceResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                balance_value: U512::from(1234567),
+                // TODO! Find a concrete example of proof. 
+                merkle_proof: String::from("Proof"),
+            };
+
+            result.push_with_params::<GetBalance> (
+                "Retrieves a purse's balance from the network.",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/state/struct.GetBalanceParams.html",
+                None,
+                request_params,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/state/struct.GetBalanceResult.html",
+                None,
+                response_result,
+            );
+
+            // Setup GetAuctionInfo. 
+            let auction_info = AuctionState::doc_example().clone();
+            let response_result = GetAuctionInfoResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                auction_state: auction_info
+            };
+
+            result.push_without_params::<GetAuctionInfo> (
+                "Retrieves the bids and validators as of the most recently added Block",
+                None,
+                "https://docs.rs/casper-node/latest/casper_node/rpcs/state/struct.GetAuctionInfoResult.html",
+                None,
+                response_result,
+            );
+
+        result
+    };
 }
 /// A trait to generate static hardcode representations of data structures to present for RPC calls.
 pub trait DocExample {
     /// Generate a hardcoded, possibly invalid representation of the requested data structure.
-    fn doc_example() -> Self;
+    fn doc_example() -> &'static Self;
 }
+
+impl DocExample for GetRpcsResult {
+    fn doc_example() -> &'static Self {
+        &*DOCS_RPC_RESULT
+    }
+}
+
+
 
 #[derive(Debug, Serialize, Deserialize)]
 struct RequestParams {
@@ -217,141 +363,7 @@ impl RpcWithoutParamsExt for GetRpcs {
         response_builder: Builder,
     ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
         async move {
-            // Create the RPC Result to populate. 
-            let mut result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                rpcs: vec![]
-            };
-
-            // Setup PutDeploy example. 
-            let deploy = Deploy::doc_example();
-            let response_result = PutDeployResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                deploy_hash: *deploy.id()
-            };
-            let request_params = PutDeployParams {
-                deploy
-            };
-            result.push_with_params::<PutDeploy>(
-                "Creates a Deploy and sends it to the network for execution.",
-                None,
-                "https://docs.rs/casper-node/latest/casper_node/rpcs/account/struct.PutDeployParams.html",
-                None,
-                request_params,
-                "https://docs.rs/casper-node/latest/casper_node/rpcs/account/struct.PutDeployResult.html",
-                None,
-                response_result,
-            );
-
-            // Setup GetBlock Example. 
-
-            let block = Block::doc_example();
-
-            let request_params = GetBlockParams {
-                block_identifier: BlockIdentifier::Height(0),
-            };
-
-            let response_result = GetBlockResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                block: Some(block)
-            };
-
-            result.push_with_optional_params::<GetBlock>(
-                "Retrieves a `Block` from the network.",
-                None,
-                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetBlockParams.html",
-                Some(r#"The request params can identify a Block by its height (as shown) or its hash (e.g. "Hash": 3c53f1b1c87d977222c6503832ef8592232c15109144ebbd9354f1eb344c0682"#),
-                request_params,
-                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetBlockResult.html",
-                None,
-                response_result,
-            );
-
-            // Setup GetStateRootHash example. 
-            let block = Block::doc_example();
-            let request_params = GetStateRootHashParams {
-                block_identifier: BlockIdentifier::Hash(*block.hash()),
-            };
-            let response_result = GetStateRootHashResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                state_root_hash: Some(*block.state_root_hash()),
-            };
-            result.push_with_optional_params::<GetStateRootHash>(
-                "Retrieves a state root hash at a given Block",
-                None,
-                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetStateRootHashParams.html",
-                Some(r#"The request params can identify a Block by its hash (as shown) or its height (e.g. "Height": 999"#),
-                request_params,
-                "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetStateRootHashResult.html",
-                None,
-                response_result,
-            );
-
-            // Setup GetDeploy Example. 
-            let deploy = Deploy::doc_example();
-
-            let request_params = GetDeployParams {
-                deploy_hash: *deploy.id()
-            };
-
-            let response_result = GetDeployResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                deploy,
-                execution_results: vec![]
-            };
-
-            result.push_with_params::<GetDeploy>(
-                "Retrieves a Deploy from the network",
-                None,
-                "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetDeployParams.html",
-                None,
-                request_params,
-                "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetDeployResult.html",
-                None,
-                response_result,
-            );
-
-            // Setup GetPeers.
-            let node_id = NodeId::doc_example();
-            let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127,0,0,1)),8888);
-            let mut peers_hashmap: HashMap<NodeId, SocketAddr> = HashMap::new();
-            peers_hashmap.insert(node_id, socket_addr);
-
-            let peers_for_status = peers_hashmap.clone();
-
-            let peers = PeersMap::from(peers_hashmap).into();
-            let response_result = GetPeersResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                peers
-            };
-
-            result.push_without_params::<GetPeers>(
-                "Get peers connected to this node",
-                None,
-                "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetPeersResult.html",
-                None,
-                response_result,
-            );
-
-            // Setup GetStatus.
-            let status_feed = StatusFeed::<NodeId> {
-                last_added_block: Some(Block::doc_example()),
-                peers: peers_for_status,
-                chainspec_info: ChainspecInfo::doc_example(),
-                version: crate::VERSION_STRING.as_str()
-            };
-
-            let mut response_result = GetStatusResult::from(status_feed);
-            response_result.set_api_version(CLIENT_API_VERSION.clone());
-
-            result.push_without_params::<GetStatus>(
-                "Get the current status of the node",
-                None,
-                "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetStatusResult.html",
-                None,
-                response_result,
-            );
-
+            let result = GetRpcsResult::doc_example();
             Ok(response_builder.success(result)?)
         }
         .boxed()

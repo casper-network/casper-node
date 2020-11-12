@@ -16,6 +16,7 @@ use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
+use lazy_static::lazy_static;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace};
@@ -64,7 +65,7 @@ impl Display for Event {
     }
 }
 
-#[derive(DataSize, Debug, Serialize, Deserialize)]
+#[derive(DataSize, Debug, Serialize, Deserialize, Clone)]
 pub struct ChainspecInfo {
     // Name of the chainspec.
     name: String,
@@ -86,12 +87,16 @@ impl ChainspecInfo {
     }
 }
 
+lazy_static! {
+    static ref CHAINSPECINFO: ChainspecInfo = ChainspecInfo {
+        name: String::from("casper-example"),
+        root_hash: Some(Digest::doc_example()),
+    };
+}
+
 impl DocExample for ChainspecInfo {
-    fn doc_example() -> Self {
-        ChainspecInfo {
-            name: String::from("casper-example"),
-            root_hash: Some(Digest::doc_example()),
-        }
+    fn doc_example() -> &'static Self {
+        &*CHAINSPECINFO
     }
 }
 

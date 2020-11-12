@@ -17,6 +17,7 @@ use hex_fmt::HexFmt;
 use k256::ecdsa::{
     Signature as Secp256k1Signature, Signer as Secp256k1Signer, Verifier as Secp256k1Verifier,
 };
+use lazy_static::lazy_static;
 use pem::Pem;
 #[cfg(test)]
 use rand::{Rng, RngCore};
@@ -376,10 +377,14 @@ impl Debug for SecretKey {
     }
 }
 
+lazy_static! {
+    static ref ED25519_KEY: SecretKey = SecretKey::generate_ed25519();
+}
+
+
 impl DocExample for SecretKey {
-    fn doc_example() -> Self {
-        let bytes = [0u8; Self::ED25519_LENGTH];
-        SecretKey::new_ed25519(bytes)
+    fn doc_example() -> &'static Self {
+        &*ED25519_KEY
     }
 }
 
