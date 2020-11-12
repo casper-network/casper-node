@@ -35,6 +35,8 @@ pub(crate) struct Unit<C: Context> {
     /// The current round consists of all timestamps that agree with this one in all but the last
     /// `round_exp` bits.
     pub(crate) round_exp: u8,
+    /// Units that this one claims are endorsed.
+    pub(crate) endorsed: Vec<C::Hash>,
 }
 
 impl<C: Context> Unit<C> {
@@ -75,6 +77,7 @@ impl<C: Context> Unit<C> {
             timestamp: wunit.timestamp,
             signature,
             round_exp: wunit.round_exp,
+            endorsed: wunit.endorsed,
         };
         (unit, wunit.value)
     }
@@ -108,5 +111,10 @@ impl<C: Context> Unit<C> {
             (Some(latest_hash), Some(penultimate_hash)) => latest_hash != penultimate_hash,
             _ => false,
         }
+    }
+
+    /// Returns an iterator over units this one claims are endorsed.
+    pub(crate) fn claims_endorsed(&self) -> impl Iterator<Item = &C::Hash> {
+        self.endorsed.iter()
     }
 }
