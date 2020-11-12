@@ -59,7 +59,7 @@ impl TerminalLogger {
                     "{timestamp} {level} [{file}:{line}] {msg}{space}{formatted_properties}",
                     timestamp = TimestampRfc3999::default(),
                     level = level_to_str(&record).to_uppercase(),
-                    file = record.file().unwrap_or_else(|| "unknown-file"),
+                    file = record.file().unwrap_or("unknown-file"),
                     line = record.line().unwrap_or_default(),
                     msg = msg,
                     space = if formatted_properties.is_empty() || msg.is_empty() {

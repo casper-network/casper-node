@@ -140,10 +140,12 @@ impl ExecuteRequestBuilder {
 
 impl Default for ExecuteRequestBuilder {
     fn default() -> Self {
-        let mut execute_request: ExecuteRequest = Default::default();
-        execute_request.block_time = DEFAULT_BLOCK_TIME;
-        execute_request.protocol_version = ProtocolVersion::V1_0_0;
-        execute_request.proposer = *DEFAULT_PROPOSER_PUBLIC_KEY;
+        let execute_request = ExecuteRequest {
+            block_time: DEFAULT_BLOCK_TIME,
+            protocol_version: ProtocolVersion::V1_0_0,
+            proposer: *DEFAULT_PROPOSER_PUBLIC_KEY,
+            ..Default::default()
+        };
         ExecuteRequestBuilder { execute_request }
     }
 }

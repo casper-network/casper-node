@@ -46,10 +46,7 @@ mod output_dir {
     }
 
     pub(super) fn get(matches: &ArgMatches) -> String {
-        matches
-            .value_of(ARG_NAME)
-            .unwrap_or_else(|| ".")
-            .to_string()
+        matches.value_of(ARG_NAME).unwrap_or(".").to_string()
     }
 }
 

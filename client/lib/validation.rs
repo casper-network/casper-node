@@ -186,7 +186,7 @@ pub(crate) fn validate_get_block_response(
     let maybe_result = response.get_result();
     let block_value = maybe_result
         .and_then(|value| value.get("block"))
-        .ok_or_else(|| ValidateResponseError::NoBlockInResponse)?;
+        .ok_or(ValidateResponseError::NoBlockInResponse)?;
     let maybe_block: Option<Block> = serde_json::from_value(block_value.to_owned())?;
     let block = if let Some(block) = maybe_block {
         block

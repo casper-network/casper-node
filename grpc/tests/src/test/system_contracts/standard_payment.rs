@@ -732,13 +732,13 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
 
     // confirm the two deploys have no overlapping writes
     let common_write_keys = transforms_from_genesis.keys().filter(|k| {
-        match (
-            transforms_from_genesis.get(k),
-            transforms_from_account_1.get(k),
-        ) {
-            (Some(Transform::Write(_)), Some(Transform::Write(_))) => true,
-            _ => false,
-        }
+        matches!(
+            (
+                transforms_from_genesis.get(k),
+                transforms_from_account_1.get(k),
+            ),
+            (Some(Transform::Write(_)), Some(Transform::Write(_)))
+        )
     });
 
     assert_eq!(common_write_keys.count(), 0);
