@@ -1,4 +1,5 @@
 mod block;
+mod endorsement_tracker;
 mod panorama;
 mod params;
 mod tallies;
@@ -424,7 +425,13 @@ impl<C: Context> State<C> {
         let vote = self.opt_vote(hash)?.clone();
         let opt_block = self.opt_block(hash);
         let value = opt_block.map(|block| block.value.clone());
-        let endorsed = vote.panorama.need_endorsements(self);
+        // TODO
+        let endorsed = vote
+            .panorama
+            .need_endorsements(self)
+            .keys()
+            .cloned()
+            .collect();
         let wvote = WireVote {
             panorama: vote.panorama.clone(),
             creator: vote.creator,
@@ -583,7 +590,39 @@ impl<C: Context> State<C> {
     /// Vote violates LNC rule if it cites naively an equivocation.
     /// If it cites equivocator then it needs to endorse votes that cite equivocating votes.
     fn validate_lnc(&self, wvote: &WireVote<C>) -> Result<(), LncError<C>> {
-        todo!()
+        let mut need_endorsement = wvote.panorama.need_endorsements(self);
+        let key_hashes: Vec<C::Hash> = need_endorsement.keys().cloned().collect();
+        // Remove keys this vote claims are endorsed.
+        for v in key_hashes {
+            if wvote.is_endorsed(&v) {
+                if !self.is_endorsed(&v) {
+                    // Node does not see this vote as endorsed.
+                    return Err(LncError::MissingEndorsement(v));
+                }
+                need_endorsement.remove(&v);
+            }
+        }
+        // Reverse mapping, from `hash -> Vec<ValidatorIndex>` to `ValidatorIndex -> Vec<hash>`.
+        let transposed = {
+            let mut tmp: HashMap<ValidatorIndex, Vec<C::Hash>> = HashMap::new();
+            for (hash, validators) in need_endorsement {
+                for v in validators {
+                    let entry = tmp.entry(v).or_default();
+                    entry.push(hash);
+                }
+            }
+            tmp
+        };
+        // Find first equivocating validator that is naively cited by more then two different
+        // validators.
+        match transposed
+            .into_iter()
+            .sorted()
+            .find(|(_, hashes)| hashes.len() > 1)
+        {
+            Some((vidx, _)) => Err(LncError::NaiveCitation(vidx)),
+            None => Ok(()),
+        }
     }
 
     /// Returns `true` if the `bhash` is a block that can have no children.

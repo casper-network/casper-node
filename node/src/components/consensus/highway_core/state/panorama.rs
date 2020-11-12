@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,8 @@ use crate::{
     },
     types::Timestamp,
 };
+
+use super::endorsement_tracker::EndorsementTracker;
 
 /// The observed behavior of a validator at some point in time.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -195,18 +197,12 @@ impl<C: Context> Panorama<C> {
         Ok(())
     }
 
-    /// Returns votes' hashes from this panorama that cite naively equivocator's vote.
-    pub(crate) fn need_endorsements(&self, state: &State<C>) -> Vec<C::Hash> {
-        let faulty_local: Vec<ValidatorIndex> = self.iter_faulty_validators().collect();
-        self.iter_correct_hashes()
-            .filter(|&v| {
-                state
-                    .vote(v)
-                    .panorama
-                    .iter_faulty_validators()
-                    .ne(faulty_local.iter().cloned())
-            })
-            .cloned()
-            .collect()
+    /// Returns a mapping, between hash and a index of a validator that unit sees as
+    /// correct even though it's a known equivocator.
+    pub(crate) fn need_endorsements(
+        &self,
+        state: &State<C>,
+    ) -> HashMap<C::Hash, Vec<ValidatorIndex>> {
+        EndorsementTracker::new(state).run(self)
     }
 }
