@@ -539,13 +539,13 @@ where
             effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
                 consensus.resolve_validity(&candidate_block, valid, rng)
             }));
-        }
-        if valid {
-            effects.extend(
-                self.effect_builder
-                    .announce_proposed_proto_block(proto_block)
-                    .ignore(),
-            );
+            if valid {
+                effects.extend(
+                    self.effect_builder
+                        .announce_proposed_proto_block(candidate_block.into())
+                        .ignore(),
+                );
+            }
         }
         effects
     }
@@ -701,6 +701,11 @@ where
                         effects.extend(self.delegate_to_era(e_id, |consensus, rng| {
                             consensus.resolve_validity(&candidate_block, true, rng)
                         }));
+                        effects.extend(
+                            self.effect_builder
+                                .announce_proposed_proto_block(candidate_block.into())
+                                .ignore(),
+                        );
                     }
                 }
                 effects
