@@ -9,6 +9,7 @@ use std::{
 use datasize::DataSize;
 use hex::FromHexError;
 use itertools::Itertools;
+use lazy_static::lazy_static;
 #[cfg(test)]
 use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -453,30 +454,43 @@ impl Deploy {
     }
 }
 
-impl DocExample for ExecutableDeployItem {
-    fn doc_example() -> Self {
+lazy_static! {
+    static ref STORECONTRACTNAME: ExecutableDeployItem = {
         let name = String::from("example_contract");
         let entry_point = String::from("example_entry_point");
-        let args = [0u8; 32].to_vec();
+        let args = Digest::doc_example().to_vec();
+
         ExecutableDeployItem::StoredContractByName {
             name,
             entry_point,
             args,
         }
-    }
+    };
+
+    static ref MODULEBYTES: ExecutableDeployItem = {
+        let args = Digest::doc_example().to_vec();
+        ExecutableDeployItem::Transfer {
+            args
+        }
+    };
 }
 
-impl DocExample for Deploy {
-    fn doc_example() -> Self {
+lazy_static! {
+    static ref DEPLOY: Deploy =  {
         let mut rng = crate::new_rng();
-        let timestamp = Timestamp::zero();
+        let timestamp = Timestamp::now();
         let ttl = TimeDiff::from(60_000);
         let gas_price: u64 = 66;
         let dependencies = vec![DeployHash::new(Digest::doc_example())];
         let chain_name = String::from("casper-example");
-        let payment = ExecutableDeployItem::doc_example();
-        let session = ExecutableDeployItem::doc_example();
-
+        let payment = ExecutableDeployItem::StoredContractByName{
+            name: String::from("casper-example"),
+            entry_point: String::from("example-entry-point"),
+            args: Digest::doc_example().to_bytes().unwrap(),
+        };
+        let session = ExecutableDeployItem::Transfer{
+            args: Digest::doc_example().to_bytes().unwrap(),
+        };
         let secret_key = SecretKey::doc_example();
 
         Deploy::new(
@@ -487,9 +501,18 @@ impl DocExample for Deploy {
             chain_name,
             payment,
             session,
-            &secret_key,
+            secret_key,
             &mut rng,
         )
+    };
+}
+
+
+
+
+impl DocExample for Deploy {
+    fn doc_example() -> &'static Self {
+        &*DEPLOY
     }
 }
 

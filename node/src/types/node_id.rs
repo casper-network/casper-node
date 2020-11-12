@@ -6,6 +6,7 @@ use std::{
 use crate::rpcs::docs::DocExample;
 use datasize::DataSize;
 use hex_fmt::HexFmt;
+use lazy_static::lazy_static;
 use libp2p::PeerId;
 #[cfg(test)]
 use rand::{Rng, RngCore};
@@ -117,10 +118,14 @@ impl<'de> Deserialize<'de> for NodeId {
         }
     }
 }
+lazy_static! {
+    static ref NODEID: NodeId = NodeId::Tls(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH]));
+}
+
 
 impl DocExample for NodeId {
-    fn doc_example() -> Self {
-        NodeId::Tls(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH]))
+    fn doc_example() -> &'static Self {
+        &*NODEID
     }
 }
 

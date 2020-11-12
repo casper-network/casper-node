@@ -16,6 +16,7 @@ use blake2::{
 use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::{HexFmt, HexList};
+use lazy_static::lazy_static;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -209,17 +210,29 @@ impl FromBytes for EraEnd {
     }
 }
 
-impl DocExample for EraEnd {
-    fn doc_example() -> Self {
-        let secret_key = SecretKey::doc_example();
-        let public_key = PublicKey::from(&secret_key);
-        let equivocators = vec![public_key];
+
+lazy_static! {
+    static ref ERAEND: EraEnd = {
+        let secret_key_1 = SecretKey::new_ed25519([0;32]);
+        let public_key_1 = PublicKey::from(&secret_key_1);
+        let equivocators = vec![public_key_1];
+
+
+        let secret_key_2 = SecretKey::new_ed25519([1;32]);
+        let public_key_2 = PublicKey::from(&secret_key_2);
         let mut rewards = BTreeMap::new();
-        rewards.insert(public_key, 1);
+        rewards.insert(public_key_2, 1000);
+
         EraEnd {
             equivocators,
             rewards,
         }
+    };
+}
+
+impl DocExample for EraEnd {
+    fn doc_example() -> &'static Self {
+        &*ERAEND
     }
 }
 
@@ -337,16 +350,16 @@ impl FinalizedBlock {
     }
 }
 
-impl DocExample for FinalizedBlock {
-    fn doc_example() -> Self {
+lazy_static! {
+    static ref FINALIZEDBLOCK: FinalizedBlock = {
         let deploy_hashes = vec![DeployHash::new(Digest::doc_example())];
         let random_bit = true;
         let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
         let timestamp = Timestamp::zero();
-        let era_end = Some(EraEnd::doc_example());
+        let era_end = Some(EraEnd::doc_example().clone());
         let era: u64 = 1;
         let secret_key = SecretKey::doc_example();
-        let public_key = PublicKey::from(&secret_key);
+        let public_key = PublicKey::from(secret_key);
 
         FinalizedBlock::new(
             proto_block,
@@ -356,6 +369,13 @@ impl DocExample for FinalizedBlock {
             era * 10,
             public_key,
         )
+    };
+}
+
+
+impl DocExample for FinalizedBlock {
+    fn doc_example() -> &'static Self {
+        &*FINALIZEDBLOCK
     }
 }
 
@@ -813,24 +833,29 @@ impl Block {
     }
 }
 
-impl DocExample for Block {
-    fn doc_example() -> Self {
+
+lazy_static! {
+    static ref BLOCK: Block = {
         let mut rng = crate::new_rng();
         let parent_hash = BlockHash::new(Digest::doc_example());
         let state_root_hash = Digest::doc_example();
-        let finalized_block = FinalizedBlock::doc_example();
+        let finalized_block = FinalizedBlock::doc_example().clone();
         let parent_seed = Digest::doc_example();
-
+        
         let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
-
         let secret_key = SecretKey::doc_example();
-        let public_key = PublicKey::from(&secret_key);
-        let signature =
-            asymmetric_key::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
-
+        let public_key = PublicKey::from(secret_key);
+        let signature = asymmetric_key::sign(block.hash.inner(), secret_key, &public_key, &mut rng);
         block.append_proof(signature);
-
         block
+    };
+}
+
+
+
+impl DocExample for Block {
+    fn doc_example() -> &'static Self {
+        &*BLOCK
     }
 }
 
