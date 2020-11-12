@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use crate::{
     components::consensus::{
         highway_core::{
@@ -36,7 +38,7 @@ pub(crate) struct Unit<C: Context> {
     /// `round_exp` bits.
     pub(crate) round_exp: u8,
     /// Units that this one claims are endorsed.
-    pub(crate) endorsed: Vec<C::Hash>,
+    pub(crate) endorsed: BTreeSet<C::Hash>,
 }
 
 impl<C: Context> Unit<C> {

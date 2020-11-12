@@ -1,6 +1,9 @@
 #![allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 
-use std::{collections::hash_map::DefaultHasher, hash::Hasher};
+use std::{
+    collections::{hash_map::DefaultHasher, BTreeSet},
+    hash::Hasher,
+};
 
 use rand::{Rng, RngCore};
 
@@ -157,7 +160,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
         seq_number: 3,
         timestamp: 51.into(),
         round_exp: 4u8,
-        endorsed: vec![],
+        endorsed: BTreeSet::new(),
     };
     let unit = SignedWireUnit::new(wunit.clone(), &BOB_SEC, &mut rng);
     let opt_err = state.add_unit(unit).err().map(unit_err);

@@ -64,14 +64,14 @@ macro_rules! add_unit {
             seq_number,
             timestamp,
             round_exp,
-            endorsed: vec![],
+            endorsed: std::collections::BTreeSet::new(),
         };
         let hash = wunit.hash();
         let swunit = SignedWireUnit::new(wunit, &TestSecret(($creator).0), &mut $rng);
         $state.add_unit(swunit).map(|()| hash)
     }};
     ($state: ident, $rng: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
-        add_unit!($state, $rng, $creator, $time, $round_exp, $val; $($obs),*; vec![])
+        add_unit!($state, $rng, $creator, $time, $round_exp, $val; $($obs),*; std::collections::BTreeSet::new())
     }};
     ($state: ident, $rng: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*; $($ends:expr),*) => {{
         use crate::components::consensus::highway_core::{
