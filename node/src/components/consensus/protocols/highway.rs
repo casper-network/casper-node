@@ -422,9 +422,9 @@ where
                         }
                     }
                     _ => {
-                        // If it's a transitive dependency or not from an equivocator, add the
+                        // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
-                        if self.vertex_deps.contains_key(&pvv.inner().id()) || !is_faulty {
+                        if !is_faulty || self.vertex_deps.contains_key(&pvv.inner().id()) {
                             self.add_vertices(vec![(sender, pvv)], rng)
                         } else {
                             vec![]
