@@ -15,7 +15,13 @@ pub(crate) use weight::Weight;
 pub(super) use panorama::{Observation, Panorama};
 pub(super) use unit::Unit;
 
-use std::{borrow::Borrow, cmp::Ordering, collections::HashMap, convert::identity, iter};
+use std::{
+    borrow::Borrow,
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
+    convert::identity,
+    iter,
+};
 
 use itertools::Itertools;
 use rand::{Rng, SeedableRng};
@@ -78,6 +84,8 @@ pub(crate) enum UnitError {
     ValueAfterTerminalBlock,
     #[error("The unit's creator is banned.")]
     Banned,
+    #[error("The unit's endorsed votes were not a superset of its justifications'.")]
+    EndorsementsNotMonotonic,
 }
 
 /// A reason for a validator to be marked as faulty.
@@ -550,6 +558,26 @@ impl<C: Context> State<C> {
                     return Err(UnitError::ThreeUnitsInRound);
                 }
             }
+        }
+        // All endorsed units from the panorama of this vote.s
+        let endorsements_in_panorama: Vec<C::Hash> =
+            panorama
+                .iter_correct_hashes()
+                .fold(Vec::new(), |mut acc, hash| {
+                    acc.extend(
+                        self.opt_endorsements(hash)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|e| *e.unit())
+                            .collect::<HashSet<_>>(),
+                    );
+                    acc
+                });
+        if endorsements_in_panorama
+            .iter()
+            .any(|e| !wunit.endorsed.iter().any(|h| h == e))
+        {
+            return Err(UnitError::EndorsementsNotMonotonic);
         }
         if wunit.value.is_some() {
             // If this unit is a block, it must be the first unit in this round, its timestamp must
