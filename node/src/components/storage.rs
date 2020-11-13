@@ -42,7 +42,7 @@ use crate::{
     Chainspec, NodeRng,
 };
 use lmdb_ext::{EnvironmentExt, TransactionExt, WriteTransactionExt};
-use serialization::{deser, ser};
+use serialization::deser;
 
 #[cfg(test)]
 use tempfile::TempDir;
@@ -65,8 +65,8 @@ pub enum Error {
     /// Failure to create the root database directory.
     #[error("failed to create database directory `{}`: {}", .0.display(), .1)]
     CreateDatabaseDirectory(PathBuf, io::Error),
-    #[error("failed to initialize lmdb: {}", .0)]
     /// LMDB initialization failure.
+    #[error("failed to initialize lmdb: {}", .0)]
     LmdbInit(lmdb::Error),
 }
 
