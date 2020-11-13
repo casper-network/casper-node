@@ -35,7 +35,17 @@ pub trait Auction:
     /// Publicly accessible, but intended for periodic use by the PoS contract to update its own
     /// internal data structures recording current and past winners.
     fn get_era_validators(&mut self) -> Result<EraValidators> {
-        let era_validators = detail::get_era_validators(self)?;
+        let snapshot = detail::get_seigniorage_recipients_snapshot(self)?;
+        let era_validators = snapshot
+            .into_iter()
+            .map(|(era_id, recipients)| {
+                let validator_weights = recipients
+                    .into_iter()
+                    .map(|(public_key, bid)| (public_key, bid.total_stake()))
+                    .collect::<ValidatorWeights>();
+                (era_id, validator_weights)
+            })
+            .collect::<BTreeMap<EraId, ValidatorWeights>>();
         Ok(era_validators)
     }
 
@@ -382,21 +392,6 @@ pub trait Auction:
 
             let snapshot = snapshot.into_iter().rev().take(snapshot_size).collect();
             detail::set_seigniorage_recipients_snapshot(self, snapshot)?;
-        }
-
-        // Update era validators
-        {
-            let mut era_validators = detail::get_era_validators(self)?;
-
-            let previous_era_validators = era_validators.insert(delayed_era, winners);
-            assert!(previous_era_validators.is_none());
-
-            let era_validators = era_validators
-                .into_iter()
-                .rev()
-                .take(snapshot_size)
-                .collect();
-            detail::set_era_validators(self, era_validators)?;
         }
 
         detail::set_era_id(self, era_id)?;
