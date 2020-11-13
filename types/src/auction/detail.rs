@@ -5,9 +5,9 @@ use num_rational::Ratio;
 
 use crate::{
     auction::{
-        constants::*, Auction, Bids, DelegatorRewardMap, EraId, MintProvider, RuntimeProvider,
+        constants::*, Auction, Bids, EraId, MintProvider, RuntimeProvider,
         SeigniorageRecipientsSnapshot, StorageProvider, SystemProvider, UnbondingPurse,
-        UnbondingPurses, ValidatorRewardMap,
+        UnbondingPurses,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
@@ -62,40 +62,6 @@ where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     write_to(provider, UNBONDING_PURSES_KEY, unbonding_purses)
-}
-
-pub fn get_delegator_reward_map<P>(provider: &mut P) -> Result<DelegatorRewardMap>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    read_from(provider, DELEGATOR_REWARD_MAP_KEY)
-}
-
-pub fn set_delegator_reward_map<P>(
-    provider: &mut P,
-    delegator_reward_map: DelegatorRewardMap,
-) -> Result<()>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    write_to(provider, DELEGATOR_REWARD_MAP_KEY, delegator_reward_map)
-}
-
-pub fn get_validator_reward_map<P>(provider: &mut P) -> Result<ValidatorRewardMap>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    read_from(provider, VALIDATOR_REWARD_MAP_KEY)
-}
-
-pub fn set_validator_reward_map<P>(
-    provider: &mut P,
-    validator_reward_map: ValidatorRewardMap,
-) -> Result<()>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    write_to(provider, VALIDATOR_REWARD_MAP_KEY, validator_reward_map)
 }
 
 pub fn get_era_id<P>(provider: &mut P) -> Result<EraId>
@@ -238,20 +204,34 @@ where
     P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
 {
     let mut total_delegator_payout = U512::zero();
-    let mut outer = get_delegator_reward_map(provider)?;
-    let mut inner = outer.remove(&validator_public_key).unwrap_or_default();
+
+    let mut bids = get_bids(provider)?;
+
+    let bid = match bids.get_mut(&validator_public_key) {
+        Some(bid) => bid,
+        None => {
+            // Validator has been slashed
+            return Ok(total_delegator_payout);
+        }
+    };
+
+    let delegators = bid.delegators_mut();
 
     for (delegator_key, delegator_reward) in rewards {
         let delegator_reward_trunc = delegator_reward.to_integer();
-        inner
-            .entry(delegator_key)
-            .and_modify(|sum| *sum += delegator_reward_trunc)
-            .or_insert_with(|| delegator_reward_trunc);
+
+        let delegator = match delegators.get_mut(&delegator_key) {
+            Some(delegator) => delegator,
+            None => return Err(Error::DelegatorNotFound),
+        };
+
+        delegator.increase_reward(delegator_reward_trunc)?;
+
         total_delegator_payout += delegator_reward_trunc;
     }
 
-    outer.insert(validator_public_key, inner);
-    set_delegator_reward_map(provider, outer)?;
+    set_bids(provider, bids)?;
+
     Ok(total_delegator_payout)
 }
 
@@ -260,17 +240,25 @@ pub fn update_validator_reward<P>(
     provider: &mut P,
     validator_public_key: PublicKey,
     amount: U512,
-) -> Result<()>
+) -> Result<U512>
 where
     P: MintProvider + RuntimeProvider + StorageProvider + SystemProvider + ?Sized,
 {
-    let mut validator_reward_map = get_validator_reward_map(provider)?;
-    validator_reward_map
-        .entry(validator_public_key)
-        .and_modify(|sum| *sum += amount)
-        .or_insert_with(|| amount);
-    set_validator_reward_map(provider, validator_reward_map)?;
-    Ok(())
+    let mut bids: Bids = get_bids(provider)?;
+
+    let bid = match bids.get_mut(&validator_public_key) {
+        Some(bid) => bid,
+        None => {
+            // Validator has been slashed
+            return Ok(U512::zero());
+        }
+    };
+
+    bid.increase_reward(amount)?;
+
+    set_bids(provider, bids)?;
+
+    Ok(amount)
 }
 
 /// Removes validator entries from either founders or validators, wherever they
