@@ -421,38 +421,94 @@ fn store_random_execution_results() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
 
-    let block_hash = BlockHash::random(&mut harness.rng);
+    // We store results for two different blocks. Each block will have five deploys executed in it,
+    // with two of these deploys being shared by both blocks, while the remaining three are unique
+    // per block.
+    let block_hash_a = BlockHash::random(&mut harness.rng);
+    let block_hash_b = BlockHash::random(&mut harness.rng);
 
-    let num_fixtures = 1;
+    // Create the shared deploys.
+    let shared_deploys = vec![
+        Deploy::random(&mut harness.rng),
+        Deploy::random(&mut harness.rng),
+    ];
 
-    let mut expected = Vec::new();
-    for _ in 0..num_fixtures {
-        let deploy = Deploy::random(&mut harness.rng);
-        let execution_result = ExecutionResult::random(&mut harness.rng);
-        expected.push((deploy, execution_result));
+    // We collect the expected result per deploy in parallel to adding them.
+    let mut expected = HashMap::new();
+
+    // TODO: Store twice.
+    // TODO: Store invalid.
+
+    fn setup_block(
+        harness: &mut ComponentHarness<()>,
+        storage: &mut Storage,
+        expected: &mut HashMap<DeployHash, HashMap<BlockHash, ExecutionResult>>,
+        block_hash: &BlockHash,
+        shared_deploys: &Vec<Deploy>,
+    ) {
+        let unique_count = 3;
+
+        // Results for a single block.
+        let mut block_results = HashMap::new();
+
+        // Add three unique deploys to block.
+        for _ in 0..unique_count {
+            let deploy = Deploy::random(&mut harness.rng);
+            let execution_result = ExecutionResult::random(&mut harness.rng);
+
+            let mut map = HashMap::new();
+            map.insert(block_hash.clone(), execution_result.clone());
+
+            expected.insert(deploy.id().clone(), map);
+
+            block_results.insert(deploy.id().clone(), execution_result);
+        }
+
+        // Insert the shared deploys as well.
+        for shared_deploy in shared_deploys {
+            let deploy_results = expected.entry(shared_deploy.id().clone()).or_default();
+            let execution_result = ExecutionResult::random(&mut harness.rng);
+
+            let result = deploy_results.insert(block_hash.clone(), execution_result.clone());
+            assert!(result.is_none());
+
+            let deploy_expected = expected
+                .get_mut(shared_deploy.id())
+                .expect("did not expect to be missing entry for deploy");
+            let result = deploy_expected.insert(block_hash.clone(), execution_result.clone());
+            assert!(result.is_none());
+        }
+
+        assert_eq!(block_results.len(), unique_count + shared_deploys.len());
+
+        // Now we can submit the blocks execution results.
+        put_execution_results(harness, storage, block_hash.clone(), block_results);
     }
 
-    // Create three random execution result values.
-    let execution_results = expected
-        .iter()
-        .map(|(deploy, execution_result)| (deploy.id().clone(), execution_result.clone()))
-        .collect();
+    setup_block(
+        &mut harness,
+        &mut storage,
+        &mut expected,
+        &block_hash_a,
+        &shared_deploys,
+    );
 
-    put_execution_results(&mut harness, &mut storage, block_hash, execution_results);
+    setup_block(
+        &mut harness,
+        &mut storage,
+        &mut expected,
+        &block_hash_b,
+        &shared_deploys,
+    );
 
-    // Retrieve all and ensure execution results are the same we put in.
-    for (deploy, execution_result) in expected {
-        let (actual_deploy, deploy_metadata) =
-            get_deploy_and_metadata(&mut harness, &mut storage, deploy.id().clone())
-                .expect("deploy and metadata not found, even though they were added");
+    // At this point, we are all set up and ready to receive results. Iterate over every deploy and
+    // see if its execution-data-per-block matches our expectations.
+    for (deploy_hash, raw_meta) in expected.iter() {
+        let (_deploy, metadata) =
+            get_deploy_and_metadata(&mut harness, &mut storage, deploy_hash.clone())
+                .expect("missing deploy");
 
-        // We expect execution results for precisely one block.
-        assert_eq!(actual_deploy, deploy);
-        assert_eq!(deploy_metadata.execution_results.len(), 1);
-        assert_eq!(
-            deploy_metadata.execution_results[&block_hash],
-            execution_result
-        );
+        assert_eq!(raw_meta, &metadata.execution_results);
     }
 }
 
