@@ -2,6 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use rand::prelude::SliceRandom;
 use semver::Version;
 use smallvec::smallvec;
 
@@ -289,7 +290,7 @@ fn can_retrieve_block_by_era_id() {
 }
 
 #[test]
-fn get_block_of_non_existing_deploy_returns_nones() {
+fn get_vec_of_non_existing_deploy_returns_nones() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
 
@@ -348,6 +349,38 @@ fn can_retrieve_store_and_load_deploys() {
 
     assert_eq!(deploy_response, *deploy);
     assert_eq!(metadata_response, DeployMetadata::default());
+}
+
+#[test]
+fn store_and_load_a_lot_of_deploys() {
+    // There is a quite a bit confusion about whether or not `commit()` must be called after
+    // read-only transactions
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    let total = 1000;
+    let batch_size = 25;
+
+    let mut deploy_hashes = Vec::new();
+
+    for _ in 0..total {
+        let deploy = Box::new(Deploy::random(&mut harness.rng));
+        deploy_hashes.push(deploy.id().clone());
+        put_deploy(&mut harness, &mut storage, deploy);
+    }
+
+    // Shuffle deploy hashes around to get a random order.
+    deploy_hashes.as_mut_slice().shuffle(&mut harness.rng);
+
+    // Retrieve all from storage, ensuring they are found.
+    for chunk in deploy_hashes.chunks(batch_size) {
+        let result = get_deploys(
+            &mut harness,
+            &mut storage,
+            chunk.into_iter().cloned().collect(),
+        );
+        assert!(result.iter().all(Option::is_some));
+    }
 }
 
 #[test]
