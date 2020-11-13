@@ -463,7 +463,7 @@ fn store_and_load_chainspec() {
 
     // Store a random chainspec.
     let chainspec = Chainspec::random(&mut harness.rng);
-    let response = put_chainspec(&mut harness, &mut storage, chainspec.clone());
+    put_chainspec(&mut harness, &mut storage, chainspec.clone());
 
     // Compare returned chainspec.
     let response = get_chainspec(&mut harness, &mut storage, version);
