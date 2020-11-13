@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::rpcs::docs::DocExample;
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
@@ -32,6 +31,7 @@ use crate::{
         hash::{self, Digest},
         Error as CryptoError,
     },
+    rpcs::docs::DocExample,
     utils::DisplayIter,
     NodeRng,
 };
@@ -471,7 +471,7 @@ lazy_static! {
     static ref DEPLOY: Deploy = {
         let mut rng = crate::new_rng();
         let timestamp = Timestamp::now();
-        let ttl = TimeDiff::from(60_000);
+        let ttl = TimeDiff::from(3_600_000);
         let gas_price: u64 = 66;
         let dependencies = vec![DeployHash::new(Digest::doc_example())];
         let chain_name = String::from("casper-example");

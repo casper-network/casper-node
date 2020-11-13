@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 
 use datasize::DataSize;
+use lazy_static::lazy_static;
 use log::info;
 #[cfg(test)]
 use rand::{seq::SliceRandom, Rng};
@@ -23,6 +24,8 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     CLValue, U128, U256, U512,
 };
+
+use crate::rpcs::docs::DocExample;
 
 #[cfg(test)]
 use crate::testing::TestRng;
@@ -146,6 +149,43 @@ impl FromBytes for ExecutionResult {
             error_message,
         };
         Ok((execution_result, remainder))
+    }
+}
+
+lazy_static! {
+    static ref EXECUTION_RESULT: ExecutionResult = {
+        let mut effect = ExecutionEffect::default();
+        effect.operations.insert(
+            "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
+                .to_string(),
+            Operation::Write,
+        );
+        effect.operations.insert(
+            "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+            Operation::Read,
+        );
+
+        effect.transforms.insert(
+            "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
+                .to_string(),
+            Transform::AddUInt64(8u64),
+        );
+        effect.transforms.insert(
+            "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+            Transform::Identity,
+        );
+
+        ExecutionResult {
+            effect,
+            cost: U512::from(0),
+            error_message: None,
+        }
+    };
+}
+
+impl DocExample for ExecutionResult {
+    fn doc_example() -> &'static Self {
+        &*EXECUTION_RESULT
     }
 }
 

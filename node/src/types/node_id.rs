@@ -3,7 +3,6 @@ use std::{
     str::FromStr,
 };
 
-use crate::rpcs::docs::DocExample;
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use lazy_static::lazy_static;
@@ -14,7 +13,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::tls::KeyFingerprint;
+use crate::{rpcs::docs::DocExample, tls::KeyFingerprint};
 
 /// The network identifier for a node.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, DataSize)]
