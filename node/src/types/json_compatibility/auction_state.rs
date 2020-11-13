@@ -3,9 +3,12 @@ use std::collections::BTreeMap;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{AccessRights, PublicKey, U512, URef, auction::Delegator, auction::{Bid, Bids, EraValidators}};
+use casper_types::{
+    auction::{Bid, Bids, Delegator, EraValidators},
+    AccessRights, PublicKey, URef, U512,
+};
 
-use crate::{rpcs::docs::DocExample, crypto::{hash::Digest}};
+use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
 
 /// Data structure summarizing auction contract data.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -56,12 +59,12 @@ lazy_static! {
 
         let delegator = Delegator::new(U512::from(10), bonding_purse, PublicKey::Ed25519([43; 32]));
         let mut delegators = BTreeMap::new();
-        delegators.insert(PublicKey::Ed25519([44;32]), delegator);
+        delegators.insert(PublicKey::Ed25519([44; 32]), delegator);
 
         let bid = Bid::locked(bonding_purse, staked_amount, release_era);
 
         let public_key_1 = PublicKey::Ed25519([42; 32]);
-        
+
         let mut bids = BTreeMap::new();
         bids.insert(public_key_1, bid);
 
