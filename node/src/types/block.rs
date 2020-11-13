@@ -400,6 +400,7 @@ impl BlockHash {
         &self.0
     }
 
+    /// Creates a random block hash.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let hash = Digest::random(rng);

@@ -97,6 +97,13 @@ impl DeployHash {
     pub fn inner(&self) -> &Digest {
         &self.0
     }
+
+    /// Creates a random deploy hash.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let hash = Digest::random(rng);
+        DeployHash(hash)
+    }
 }
 
 impl Display for DeployHash {

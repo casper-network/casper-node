@@ -7,7 +7,6 @@ use smallvec::smallvec;
 
 use super::{Config, Storage};
 use crate::{
-    crypto::hash::Digest,
     effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng},
     types::{json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash},
@@ -149,7 +148,7 @@ fn get_block_of_non_existing_block_returns_none() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
 
-    let block_hash = BlockHash::new(Digest::random(&mut harness.rng));
+    let block_hash = BlockHash::random(&mut harness.rng);
     let response = get_block(&mut harness, &mut storage, block_hash);
 
     assert!(response.is_none());
@@ -292,7 +291,7 @@ fn get_block_of_non_existing_deploy_returns_nones() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
 
-    let deploy_id = DeployHash::new(Digest::random(&mut harness.rng));
+    let deploy_id = DeployHash::random(&mut harness.rng);
     let response = get_deploys(&mut harness, &mut storage, smallvec![deploy_id]);
     assert_eq!(response, vec![None]);
 
@@ -351,7 +350,7 @@ fn store_random_execution_results() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
 
-    let block_hash = BlockHash::new(Digest::random(&mut harness.rng));
+    let block_hash = BlockHash::random(&mut harness.rng);
 
     // Create three random execution result values.
     let mut execution_results = HashMap::new();
