@@ -88,8 +88,6 @@ pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 /// Storage for `Bids`.
 pub const BIDS_KEY: &str = "bids";
-/// Storage for `EraValidators`.
-pub const ERA_VALIDATORS_KEY: &str = "era_validators";
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";
 /// Storage for `SeigniorageRecipientsSnapshot`.

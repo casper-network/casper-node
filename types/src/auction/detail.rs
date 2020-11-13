@@ -5,9 +5,9 @@ use num_rational::Ratio;
 
 use crate::{
     auction::{
-        constants::*, Auction, Bids, DelegatorRewardMap, EraId, EraValidators, MintProvider,
-        RuntimeProvider, SeigniorageRecipientsSnapshot, StorageProvider, SystemProvider,
-        UnbondingPurse, UnbondingPurses, ValidatorRewardMap,
+        constants::*, Auction, Bids, DelegatorRewardMap, EraId, MintProvider, RuntimeProvider,
+        SeigniorageRecipientsSnapshot, StorageProvider, SystemProvider, UnbondingPurse,
+        UnbondingPurses, ValidatorRewardMap,
     },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::{Error, Result},
@@ -96,20 +96,6 @@ where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     write_to(provider, VALIDATOR_REWARD_MAP_KEY, validator_reward_map)
-}
-
-pub fn get_era_validators<P>(provider: &mut P) -> Result<EraValidators>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    Ok(read_from(provider, ERA_VALIDATORS_KEY)?)
-}
-
-pub fn set_era_validators<P>(provider: &mut P, era_validators: EraValidators) -> Result<()>
-where
-    P: StorageProvider + RuntimeProvider + ?Sized,
-{
-    write_to(provider, ERA_VALIDATORS_KEY, era_validators)
 }
 
 pub fn get_era_id<P>(provider: &mut P) -> Result<EraId>
