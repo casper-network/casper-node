@@ -405,7 +405,7 @@ impl<C: Context> State<C> {
             }
         }
         // Stake required to consider unit to be endorsed.
-        let threshold = self.total_weight() / 3 * 2;
+        let threshold = self.total_weight() / 2;
         let endorsed: Weight = self
             .incomplete_endorsements
             .get(&unit)
