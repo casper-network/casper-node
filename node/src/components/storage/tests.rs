@@ -43,18 +43,14 @@ fn random_block_at_height(rng: &mut TestRng, height: u64) -> Box<Block> {
     block
 }
 
-/// Requests block at a specific era from a storage component.
+/// Requests block at a specific height from a storage component.
 fn get_block_at_height(
     harness: &mut ComponentHarness<()>,
     storage: &mut Storage,
-    era_id: u64,
+    height: u64,
 ) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetBlockAtHeight {
-            height: era_id,
-            responder,
-        }
-        .into()
+        StorageRequest::GetBlockAtHeight { height, responder }.into()
     });
     assert!(harness.is_idle());
     response
@@ -232,13 +228,12 @@ fn can_put_and_get_block() {
 }
 
 #[test]
-fn can_retrieve_block_by_era_id() {
+fn can_retrieve_block_by_height() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
 
     // Create a random block, load and store it.
-    let block_33_a = random_block_at_height(&mut harness.rng, 33);
-    let block_33_b = random_block_at_height(&mut harness.rng, 33);
+    let block_33 = random_block_at_height(&mut harness.rng, 33);
     let block_14 = random_block_at_height(&mut harness.rng, 14);
     let block_99 = random_block_at_height(&mut harness.rng, 99);
 
@@ -249,19 +244,19 @@ fn can_retrieve_block_by_era_id() {
     assert!(get_block_at_height(&mut harness, &mut storage, 33).is_none());
     assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
 
-    // Inserting 33A changes this.
-    let was_new = put_block(&mut harness, &mut storage, block_33_a.clone());
+    // Inserting 33 changes this.
+    let was_new = put_block(&mut harness, &mut storage, block_33.clone());
     assert!(was_new);
 
     assert_eq!(
         get_highest_block(&mut harness, &mut storage).as_ref(),
-        Some(&*block_33_a)
+        Some(&*block_33)
     );
     assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
     assert!(get_block_at_height(&mut harness, &mut storage, 14).is_none());
     assert_eq!(
         get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
-        Some(&*block_33_a)
+        Some(&*block_33)
     );
     assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
 
@@ -271,7 +266,7 @@ fn can_retrieve_block_by_era_id() {
 
     assert_eq!(
         get_highest_block(&mut harness, &mut storage).as_ref(),
-        Some(&*block_33_a)
+        Some(&*block_33)
     );
     assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
     assert_eq!(
@@ -280,7 +275,7 @@ fn can_retrieve_block_by_era_id() {
     );
     assert_eq!(
         get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
-        Some(&*block_33_a)
+        Some(&*block_33)
     );
     assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
 
@@ -299,34 +294,32 @@ fn can_retrieve_block_by_era_id() {
     );
     assert_eq!(
         get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
-        Some(&*block_33_a)
+        Some(&*block_33)
     );
     assert_eq!(
         get_block_at_height(&mut harness, &mut storage, 99).as_ref(),
         Some(&*block_99)
     );
+}
 
-    // Finally updating 33B should not change highest, but block at height 33.
-    let was_new = put_block(&mut harness, &mut storage, block_33_b.clone());
+#[test]
+#[should_panic(expected = "already known")]
+fn different_block_at_height_is_fatal() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    // Create two different blocks at the same height.
+    let block_44_a = random_block_at_height(&mut harness.rng, 44);
+    let block_44_b = random_block_at_height(&mut harness.rng, 44);
+
+    let was_new = put_block(&mut harness, &mut storage, block_44_a.clone());
     assert!(was_new);
 
-    assert_eq!(
-        get_highest_block(&mut harness, &mut storage).as_ref(),
-        Some(&*block_99)
-    );
-    assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
-    assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 14).as_ref(),
-        Some(&*block_14)
-    );
-    assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
-        Some(&*block_33_b)
-    );
-    assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 99).as_ref(),
-        Some(&*block_99)
-    );
+    let was_new = put_block(&mut harness, &mut storage, block_44_a);
+    assert!(!was_new);
+
+    // Putting a different block with the same height should now crash.
+    put_block(&mut harness, &mut storage, block_44_b);
 }
 
 #[test]
