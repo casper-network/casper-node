@@ -2205,8 +2205,10 @@ where
             SystemContractCache::clone(&self.system_contract_cache),
         );
 
-        if execution_result.has_precondition_failure() {
-            return Ok(StepResult::PreconditionError);
+        if execution_result.is_failure() {
+            return Ok(StepResult::SlashingError(
+                execution_result.take_error().unwrap(),
+            ));
         }
 
         if step_request.run_auction {
@@ -2233,8 +2235,10 @@ where
                     SystemContractCache::clone(&self.system_contract_cache),
                 );
 
-            if execution_result.has_precondition_failure() {
-                return Ok(StepResult::PreconditionError);
+            if execution_result.is_failure() {
+                return Ok(StepResult::AuctionError(
+                    execution_result.take_error().unwrap(),
+                ));
             }
         }
 
@@ -2271,8 +2275,10 @@ where
             SystemContractCache::clone(&self.system_contract_cache),
         );
 
-        if execution_result.has_precondition_failure() {
-            return Ok(StepResult::PreconditionError);
+        if execution_result.is_failure() {
+            return Ok(StepResult::DistributeError(
+                execution_result.take_error().unwrap(),
+            ));
         }
 
         let effects = tracking_copy.borrow().effect();
