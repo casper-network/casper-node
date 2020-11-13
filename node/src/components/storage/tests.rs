@@ -1,6 +1,6 @@
 //! Unit tests for the storage component.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use rand::prelude::SliceRandom;
 use semver::Version;
@@ -129,7 +129,7 @@ fn get_highest_block(harness: &mut ComponentHarness<()>, storage: &mut Storage) 
     response
 }
 
-/// Stores a block on a storage component.
+/// Stores a block in a storage component.
 fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: Box<Block>) -> bool {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutBlock { block, responder }.into()
@@ -138,7 +138,7 @@ fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: B
     response
 }
 
-/// Stores the chainspec on a storage component.
+/// Stores the chainspec in a storage component.
 fn put_chainspec(harness: &mut ComponentHarness<()>, storage: &mut Storage, chainspec: Chainspec) {
     harness.send_request(storage, move |responder| {
         StorageRequest::PutChainspec {
@@ -150,7 +150,7 @@ fn put_chainspec(harness: &mut ComponentHarness<()>, storage: &mut Storage, chai
     assert!(harness.is_idle());
 }
 
-/// Stores a deploy on the storage component.
+/// Stores a deploy in a storage component.
 fn put_deploy(
     harness: &mut ComponentHarness<()>,
     storage: &mut Storage,
@@ -158,6 +158,25 @@ fn put_deploy(
 ) -> bool {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutDeploy { deploy, responder }.into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
+/// Stores execution results in a storage component.
+fn put_execution_results(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    block_hash: BlockHash,
+    execution_results: HashMap<DeployHash, ExecutionResult>,
+) -> usize {
+    let response = harness.send_request(storage, move |responder| {
+        StorageRequest::PutExecutionResults {
+            block_hash,
+            execution_results,
+            responder,
+        }
+        .into()
     });
     assert!(harness.is_idle());
     response
@@ -422,14 +441,7 @@ fn store_random_execution_results() {
         .map(|(deploy, execution_result)| (deploy.id().clone(), execution_result.clone()))
         .collect();
 
-    let response = harness.send_request(&mut storage, move |responder| {
-        StorageRequest::PutExecutionResults {
-            block_hash,
-            execution_results,
-            responder,
-        }
-        .into()
-    });
+    let response = put_execution_results(&mut harness, &mut storage, block_hash, execution_results);
 
     // We assume that there are 0 resuls already stored.
     assert_eq!(response, 0);
@@ -489,4 +501,45 @@ fn test_legacy_interface() {
         .is_none())
 }
 
-// TODO: Test actual persistence on disk happens.
+#[test]
+fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    // Create some sample data.
+    let deploy = Deploy::random(&mut harness.rng);
+    let block = Box::new(Block::random(&mut harness.rng));
+    let execution_result = ExecutionResult::random(&mut harness.rng);
+
+    put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
+    put_block(&mut harness, &mut storage, block.clone());
+    let mut execution_results = HashMap::new();
+    execution_results.insert(deploy.id().clone(), execution_result.clone());
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        block.hash().clone(),
+        execution_results,
+    );
+
+    // After storing everything, destroy the harness and component, then rebuild using the same
+    // directory as backing.
+    let on_disk = harness.into_on_disk_state();
+    let mut harness = ComponentHarness::with_on_disk_state(on_disk);
+    let mut storage = storage_fixture(&mut harness);
+
+    let actual_block = get_block(&mut harness, &mut storage, block.hash().clone())
+        .expect("missing block we stored earlier");
+    assert_eq!(actual_block, *block);
+
+    let actual_deploys = get_deploys(&mut harness, &mut storage, smallvec![deploy.id().clone()]);
+    assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
+
+    let (_, deploy_metadata) =
+        get_deploy_and_metadata(&mut harness, &mut storage, deploy.id().clone())
+            .expect("missing deploy we stored earlier");
+
+    let execution_results = deploy_metadata.execution_results;
+    assert_eq!(execution_results.len(), 1);
+    assert_eq!(execution_results[block.hash()], execution_result);
+}
