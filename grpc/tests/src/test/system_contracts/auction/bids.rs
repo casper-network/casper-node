@@ -203,11 +203,11 @@ fn should_run_add_bid() {
         .get(&BID_ACCOUNT_1_PK)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].origin, BID_ACCOUNT_1_PK);
+    assert_eq!(unbond_list[0].public_key, BID_ACCOUNT_1_PK);
     // `WITHDRAW_BID_AMOUNT_2` is in unbonding list
 
     assert_eq!(
-        unbonding_purse, unbond_list[0].purse,
+        unbonding_purse, unbond_list[0].unbonding_purse,
         "unbonding queue should have account's unbonding purse"
     );
     assert_eq!(unbond_list[0].amount, U512::from(WITHDRAW_BID_AMOUNT_2),);
@@ -841,18 +841,18 @@ fn should_release_founder_stake() {
         .get(&ACCOUNT_1_PK)
         .expect("should have unbond");
     assert_eq!(pre_unbond_list.len(), 2);
-    assert_eq!(pre_unbond_list[0].origin, ACCOUNT_1_PK);
+    assert_eq!(pre_unbond_list[0].public_key, ACCOUNT_1_PK);
     assert_eq!(pre_unbond_list[0].amount, ACCOUNT_1_WITHDRAW_1.into());
-    assert_eq!(pre_unbond_list[1].origin, ACCOUNT_1_PK);
+    assert_eq!(pre_unbond_list[1].public_key, ACCOUNT_1_PK);
     assert_eq!(pre_unbond_list[1].amount, ACCOUNT_1_WITHDRAW_2.into());
 
     // Funds are not transferred yet from the original bonding purse
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[0].purse),
+        builder.get_purse_balance(pre_unbond_list[0].unbonding_purse),
         U512::zero(),
     );
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[1].purse),
+        builder.get_purse_balance(pre_unbond_list[1].unbonding_purse),
         U512::zero(),
     );
     // check that bids are updated for given validator
@@ -879,11 +879,11 @@ fn should_release_founder_stake() {
     // Funds are transferred from the original bonding purse to the unbonding purses
     //
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[0].purse), // still valid
+        builder.get_purse_balance(pre_unbond_list[0].unbonding_purse), // still valid
         ACCOUNT_1_WITHDRAW_1.into(),
     );
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[1].purse), // still valid
+        builder.get_purse_balance(pre_unbond_list[1].unbonding_purse), // still valid
         U512::zero(),
     );
 
@@ -901,11 +901,11 @@ fn should_release_founder_stake() {
     builder.exec(exec_request_4).expect_success().commit();
 
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[0].purse), // still valid ref
+        builder.get_purse_balance(pre_unbond_list[0].unbonding_purse), // still valid ref
         ACCOUNT_1_WITHDRAW_1.into(),
     );
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[1].purse), // still valid ref
+        builder.get_purse_balance(pre_unbond_list[1].unbonding_purse), // still valid ref
         ACCOUNT_1_WITHDRAW_2.into(),
     );
 

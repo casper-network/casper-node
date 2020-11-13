@@ -84,8 +84,6 @@ pub const METHOD_WITHDRAW_VALIDATOR_REWARD: &str = "withdraw_validator_reward";
 /// Named constant for method `read_era_id`.
 pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 
-/// Storage for `BidPurses`.
-pub const BID_PURSES_KEY: &str = "bid_purses";
 /// Storage for `UnbondingPurses`
 pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 /// Storage for `Bids`.
