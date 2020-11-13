@@ -402,4 +402,23 @@ fn store_and_load_chainspec() {
     assert_eq!(response, Some(Arc::new(chainspec)));
 }
 
+#[test]
+fn test_legacy_interface() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    let deploy = Box::new(Deploy::random(&mut harness.rng));
+    let was_new = put_deploy(&mut harness, &mut storage, deploy.clone());
+    assert!(was_new);
+
+    // Ensure we get the deploy we expect.
+    let result = storage.handle_legacy_direct_deploy_request(deploy.id().clone());
+    assert_eq!(result, Some(*deploy));
+
+    // A non-existant deploy should simply return `None`.
+    assert!(storage
+        .handle_legacy_direct_deploy_request(DeployHash::random(&mut harness.rng))
+        .is_none())
+}
+
 // TODO: Test actual persistence on disk happens.
