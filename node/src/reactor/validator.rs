@@ -586,21 +586,26 @@ impl reactor::Reactor for Reactor {
                                 .storage
                                 .handle_legacy_direct_deploy_request(deploy_hash)
                             {
-                                Some(deploy) => todo!(),
-                                None => todo!(),
+                                // This functionality was moved out of the storage component and
+                                // should be refactored ASAP.
+                                Some(deploy) => {
+                                    let effects = match Message::new_get_response(&deploy) {
+                                        Ok(message) => {
+                                            return effect_builder
+                                                .send_message(sender, message)
+                                                .ignore();
+                                        }
+                                        Err(error) => {
+                                            error!("failed to create get-response: {}", error);
+                                            return Effects::new();
+                                        }
+                                    };
+                                }
+                                None => {
+                                    debug!("failed to get {} for {}", deploy_hash, sender);
+                                    return Effects::new();
+                                }
                             }
-                            //         Some(deploy) => match Message::new_get_response(&deploy) {
-                            //             Ok(message) => effect_builder.send_message(peer,
-                            // message).await,             Err(error) =>
-                            // error!("failed to create get-response: {}", error),
-                            //         },
-                            //         None => debug!("failed to get {} for {}", deploy_hash, peer),
-                            //     }
-                            // WTF?
-                            // Event::Storage(storage::Event::GetDeployForPeer {
-                            //     deploy_hash,
-                            //     peer: sender,
-                            // })
                         }
                         Tag::Block => {
                             let block_hash = match bincode::deserialize(&serialized_id) {
