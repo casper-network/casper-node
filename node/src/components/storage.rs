@@ -37,6 +37,7 @@ use thiserror::Error;
 use super::{block_proposer::BlockProposerState, Component};
 use crate::{
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
+    fatal,
     types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, Timestamp},
     utils::WithDir,
     Chainspec, NodeRng,
@@ -46,7 +47,7 @@ use serialization::deser;
 
 #[cfg(test)]
 use tempfile::TempDir;
-use tracing::{info, warn};
+use tracing::info;
 
 /// We can set this very low, as there is only a single reader/writer accessing the component at any
 /// one time.
@@ -68,6 +69,16 @@ pub enum Error {
     /// LMDB initialization failure.
     #[error("failed to initialize lmdb: {}", .0)]
     LmdbInit(lmdb::Error),
+    /// Found a duplicate block-at-height index entry.
+    #[error("storage is corrupt, contains duplicate entries for block at height {height}: {first} / {second}")]
+    DuplicateBlockIndex {
+        /// Height at which duplication was found.
+        height: u64,
+        /// First block hash encountered at `height`.
+        first: BlockHash,
+        /// Second block hash encountered at `height`.
+        second: BlockHash,
+    },
 }
 
 #[derive(DataSize, Debug)]
@@ -98,12 +109,12 @@ impl<REv> Component<REv> for Storage {
 
     fn handle_event(
         &mut self,
-        _effect_builder: EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::StorageRequest(req) => self.handle_storage_request::<REv>(req),
+            Event::StorageRequest(req) => self.handle_storage_request::<REv>(effect_builder, req),
         }
     }
 }
@@ -115,7 +126,6 @@ impl Storage {
 
         // Create the database directory.
         let root = cfg.with_dir(config.path.clone());
-
         if !root.exists() {
             fs::create_dir_all(&root)
                 .map_err(|err| Error::CreateDatabaseDirectory(root.clone(), err))?;
@@ -170,12 +180,12 @@ impl Storage {
             );
             let header = block.header();
             if let Some(duplicate) = block_height_index.insert(header.height(), *block.hash()) {
-                warn!(
-                    height = %header.height(),
-                    hash_a = %header.hash(),
-                    hash_b = %duplicate,
-                    "found duplicate height in block database",
-                );
+                // A duplicated block in our backing store causes us to exit early.
+                return Err(Error::DuplicateBlockIndex {
+                    height: header.height(),
+                    first: header.hash(),
+                    second: duplicate,
+                });
             }
         }
         info!("block store reindexing complete");
@@ -196,8 +206,9 @@ impl Storage {
     /// Handles a storage request.
     fn handle_storage_request<REv>(
         &mut self,
+        effect_builder: EffectBuilder<REv>,
         req: StorageRequest,
-    ) -> Effects<<Self as Component<REv>>::Event>
+    ) -> Effects<Event>
     where
         Self: Component<REv>,
     {
@@ -215,10 +226,20 @@ impl Storage {
                         .block_height_index
                         .insert(block.height(), *block.hash())
                     {
-                        warn!(height = %block.height(),
-                              new=%block.hash(),
-                              %prev,
-                              "duplicate block for height inserted")
+                        let msg = format!(
+                            "attempted to insert block {new} at height {height} while {prev} is already known",
+                            height=block.height(),
+                            new=block.hash(),
+                            prev=prev,
+                        );
+
+                        let mut effects = Effects::new();
+                        effects.extend(fatal!(effect_builder, msg).into_iter());
+
+                        // Avoid dropping the responder, to not panic before we have a chance to
+                        // handle the `fatal` effect.
+                        effects.extend(responder.respond(false).ignore().into_iter());
+                        return effects;
                     }
                 }
 
