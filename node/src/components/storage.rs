@@ -306,25 +306,17 @@ impl Storage {
                     .get_value(self.deploy_metadata_db, &block_hash)
                     .unwrap_or_default();
 
-                // If we already have this execution result, return false.
-                let mut total_new = execution_results.len();
                 for (_deploy_hash, execution_result) in execution_results {
-                    if metadata
+                    metadata
                         .execution_results
-                        .insert(block_hash, execution_result)
-                        .is_some()
-                    {
-                        total_new -= 1;
-                    }
+                        .insert(block_hash, execution_result);
                 }
 
                 // Store the updated metadata.
-                if total_new > 0 {
-                    tx.put_value(self.deploy_metadata_db, &block_hash, &metadata);
-                    tx.commit_ok();
-                }
+                tx.put_value(self.deploy_metadata_db, &block_hash, &metadata);
+                tx.commit_ok();
 
-                responder.respond(total_new).ignore()
+                responder.respond(()).ignore()
             }
             StorageRequest::GetDeployAndMetadata {
                 deploy_hash,

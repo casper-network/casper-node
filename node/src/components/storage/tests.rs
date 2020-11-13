@@ -169,7 +169,7 @@ fn put_execution_results(
     storage: &mut Storage,
     block_hash: BlockHash,
     execution_results: HashMap<DeployHash, ExecutionResult>,
-) -> usize {
+) {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutExecutionResults {
             block_hash,
@@ -438,10 +438,7 @@ fn store_random_execution_results() {
         .map(|(deploy, execution_result)| (deploy.id().clone(), execution_result.clone()))
         .collect();
 
-    let response = put_execution_results(&mut harness, &mut storage, block_hash, execution_results);
-
-    // We assume that there are 0 resuls already stored.
-    assert_eq!(response, 0);
+    put_execution_results(&mut harness, &mut storage, block_hash, execution_results);
 
     // Retrieve all and ensure execution results are the same we put in.
     for (deploy, execution_result) in expected {

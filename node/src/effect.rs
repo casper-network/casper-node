@@ -707,8 +707,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_hash: BlockHash,
         execution_results: HashMap<DeployHash, ExecutionResult>,
-    ) -> usize
-    where
+    ) where
         REv: From<StorageRequest>,
     {
         self.make_request(

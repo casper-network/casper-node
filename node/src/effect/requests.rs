@@ -243,15 +243,16 @@ pub enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Vec<Option<DeployHeader>>>,
     },
-    /// Store the given execution results for the deploys in the given block.
+    /// Store the given execution for a specific block.
+    ///
+    /// If there are already execution results known
     PutExecutionResults {
         /// Hash of block.
         block_hash: BlockHash,
         /// Execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
-        /// Responder to call with the result.  Returns the number of already stored execution
-        /// results.
-        responder: Responder<usize>,
+        /// Responder to call when done storing.
+        responder: Responder<()>,
     },
     /// Retrieve deploy and its metadata.
     GetDeployAndMetadata {
