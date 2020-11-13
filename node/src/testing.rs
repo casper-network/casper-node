@@ -105,6 +105,13 @@ impl<REv: 'static> ComponentHarness<REv> {
     ///
     /// Panics if a temporary directory cannot be created.
     pub(crate) fn new() -> Self {
+        Self::with_on_disk_state(
+            TempDir::new().expect("could not create temporary directory for test harness"),
+        )
+    }
+
+    /// Creates a new component test harness from a on-disk state temporary directory.
+    pub(crate) fn with_on_disk_state(tmp: TempDir) -> Self {
         let rng = TestRng::new();
         let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights())));
         let event_queue_handle = EventQueueHandle::new(scheduler);
@@ -115,13 +122,18 @@ impl<REv: 'static> ComponentHarness<REv> {
             scheduler,
             event_queue_handle,
             effect_builder,
-            tmp: TempDir::new().expect("could not create temporary directory for test harness"),
+            tmp,
             runtime: runtime::Builder::new()
                 .threaded_scheduler()
                 .enable_all()
                 .build()
                 .expect("could not build tokio runtime"),
         }
+    }
+
+    /// Deconstructs the harness, keeping the on-disk state around.
+    pub(crate) fn into_on_disk_state(self) -> TempDir {
+        self.tmp
     }
 
     /// Returns whether or not there are pending events on the event queue.
