@@ -216,7 +216,6 @@ mod test {
     fn json_roundtrip_p2p() {
         let mut rng = crate::new_rng();
         let node_id = NodeId::random_p2p(&mut rng);
-        println!("{:?}", node_id);
         let json_string = serde_json::to_string_pretty(&node_id).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(node_id, decoded);

@@ -379,7 +379,7 @@ lazy_static! {
         let deploy_hashes = vec![DeployHash::new(Digest::doc_example())];
         let random_bit = true;
         let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
-        let timestamp = Timestamp::zero();
+        let timestamp = Timestamp::now();
         let era_end = Some(EraEnd::doc_example().clone());
         let era: u64 = 1;
         let secret_key = SecretKey::doc_example();

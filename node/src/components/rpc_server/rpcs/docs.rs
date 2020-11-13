@@ -83,7 +83,7 @@ lazy_static! {
                 "Retrieves a `Block` from the network.",
                 None,
                 "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetBlockParams.html",
-                Some(r#"The request params can identify a Block by its height (as shown) or its hash (e.g. "Hash": 3c53f1b1c87d977222c6503832ef8592232c15109144ebbd9354f1eb344c0682"#),
+                Some(r#"The request params can identify a Block by its height (as shown) or its hash (e.g. "Hash": 3c53f1b1c87d977222c6503832ef8592232c15109144ebbd9354f1eb344c0682)"#),
                 request_params,
                 "https://docs.rs/casper-node/latest/casper_node/rpcs/chain/struct.GetBlockResult.html",
                 None,
@@ -149,7 +149,7 @@ lazy_static! {
             };
 
             result.push_without_params::<GetPeers>(
-                "Get peers connected to this node",
+                "Retrieves a list of peers connected to this node",
                 None,
                 "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetPeersResult.html",
                 None,
@@ -169,7 +169,7 @@ lazy_static! {
             response_result.set_api_version(CLIENT_API_VERSION.clone());
 
             result.push_without_params::<GetStatus>(
-                "Get the current status of the node",
+                "Retrieves the current status of the node",
                 None,
                 "https://docs.rs/casper-node/latest/casper_node/rpcs/info/struct.GetStatusResult.html",
                 None,
@@ -219,7 +219,7 @@ lazy_static! {
 }
 /// A trait to generate static hardcode representations of data structures to present for RPC calls.
 pub trait DocExample {
-    /// Generate a hardcoded, possibly invalid representation of the requested data structure.
+    /// Generate a hardcoded, possibly invalid example of the requested data structure.
     fn doc_example() -> &'static Self;
 }
 
