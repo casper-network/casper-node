@@ -371,13 +371,26 @@ impl<REv> EffectBuilder<REv> {
     /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
-    pub async fn immediately(self) {}
+    pub fn immediately(self) -> impl Future<Output = ()> + Send {
+        // Note: This function is implemented manually without `async` sugar because the `Send`
+        // inferrence seems to not work in all cases otherwise.
+        async {}
+    }
 
     /// Reports a fatal error.
     ///
     /// Usually causes the node to cease operations quickly and exit/crash.
-    pub async fn fatal<M: Display + ?Sized>(self, file: &str, line: u32, msg: &M) {
+    pub fn fatal<M: Display + ?Sized>(
+        self,
+        file: &str,
+        line: u32,
+        msg: &M,
+    ) -> impl Future<Output = ()> + Send {
+        // Note: This function is implemented manually without `async` sugar because the `Send`
+        // inferrence seems to not work in all cases otherwise.
         panic!("fatal error [{}:{}]: {}", file, line, msg);
+        #[allow(unreachable_code)]
+        async {} // The compiler will complain about an incorrect return value otherwise.
     }
 
     /// Sets a timeout.
