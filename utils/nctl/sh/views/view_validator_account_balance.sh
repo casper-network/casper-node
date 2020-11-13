@@ -15,8 +15,8 @@ source $NCTL/sh/utils/queries.sh
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifer.
-#   Node ordinal identifer.
+#   Network ordinal identifier.
+#   Node ordinal identifier.
 #######################################
 function _view_validator_account_balance() {
     state_root_hash=$(get_state_root_hash $1 $2)

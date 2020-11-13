@@ -45,7 +45,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for MakeDeploy {
                 secret_key,
                 timestamp,
                 ttl,
-                dependencies: &dependencies,
+                dependencies,
                 gas_price,
                 chain_name,
             },

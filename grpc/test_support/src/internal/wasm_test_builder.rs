@@ -50,14 +50,16 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    auction::{EraId, ValidatorWeights},
+    auction::{EraId, ValidatorWeights, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION},
     bytesrepr::{self},
     mint::TOTAL_SUPPLY_KEY,
-    CLTyped, CLValue, Contract, ContractHash, ContractWasm, DeployHash, DeployInfo, Key, Transfer,
-    TransferAddr, URef, U512,
+    runtime_args, CLTyped, CLValue, Contract, ContractHash, ContractWasm, DeployHash, DeployInfo,
+    Key, RuntimeArgs, Transfer, TransferAddr, URef, U512,
 };
 
-use crate::internal::{utils, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION};
+use crate::internal::{
+    utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
+};
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
@@ -552,6 +554,21 @@ where
         self
     }
 
+    pub fn run_auction(&mut self) -> &mut Self {
+        const ARG_ENTRY_POINT: &str = "entry_point";
+        const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
+        const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
+        let run_request = ExecuteRequestBuilder::standard(
+            SYSTEM_ADDR,
+            CONTRACT_AUCTION_BIDS,
+            runtime_args! {
+                ARG_ENTRY_POINT => METHOD_RUN_AUCTION
+            },
+        )
+        .build();
+        self.exec(run_request).commit().expect_success()
+    }
+
     pub fn step(&mut self, step_request: StepRequest) -> &mut Self {
         let response = self
             .engine_state
@@ -832,6 +849,16 @@ where
             .expect("should be cl value");
         let result: T = cl_value.into_t().expect("should convert");
         result
+    }
+
+    pub fn get_era(&mut self) -> EraId {
+        let auction_contract = self.get_auction_contract_hash();
+        self.get_value(auction_contract, ERA_ID_KEY)
+    }
+
+    pub fn get_auction_delay(&mut self) -> u64 {
+        let auction_contract = self.get_auction_contract_hash();
+        self.get_value(auction_contract, AUCTION_DELAY_KEY)
     }
 }
 

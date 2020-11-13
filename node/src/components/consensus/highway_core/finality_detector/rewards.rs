@@ -14,11 +14,11 @@ use crate::{
 ///
 /// This is the sum of all rewards for finalization of ancestors of `bhash`, as seen from `bhash`.
 pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> ValidatorMap<u64> {
-    // The vote that introduced the payout block.
-    let payout_vote = state.vote(bhash);
+    // The unit that introduced the payout block.
+    let payout_unit = state.unit(bhash);
     // The panorama of the payout block: Rewards must only use this panorama, since it defines
     // what everyone who has the block can already see.
-    let panorama = &payout_vote.panorama;
+    let panorama = &payout_unit.panorama;
     let mut rewards = ValidatorMap::from(vec![0u64; panorama.len()]);
     for proposal_hash in state.ancestor_hashes(bhash) {
         for (vidx, r) in compute_rewards_for(state, panorama, proposal_hash).enumerate() {
@@ -42,8 +42,8 @@ fn compute_rewards_for<C: Context>(
     panorama: &Panorama<C>,
     proposal_h: &C::Hash,
 ) -> ValidatorMap<u64> {
-    let proposal_vote = state.vote(proposal_h);
-    let r_id = proposal_vote.round_id();
+    let proposal_unit = state.unit(proposal_h);
+    let r_id = proposal_unit.round_id();
 
     // Only consider messages in round `r_id` for the summit. To compute the assigned weight, we
     // also include validators who didn't send a message in that round, but were supposed to.
@@ -117,20 +117,20 @@ fn round_participation<'a, C: Context>(
     obs: &'a Observation<C>,
     r_id: Timestamp,
 ) -> RoundParticipation<'a, C> {
-    // Find the validator's latest vote in or before round `r_id`.
-    let opt_vote = match obs {
+    // Find the validator's latest unit in or before round `r_id`.
+    let opt_unit = match obs {
         Observation::Faulty => return RoundParticipation::Unassigned,
         Observation::None => return RoundParticipation::No,
         Observation::Correct(latest_vh) => state
             .swimlane(latest_vh)
-            .find(|&(_, vote)| vote.round_id() <= r_id),
+            .find(|&(_, unit)| unit.round_id() <= r_id),
     };
-    opt_vote.map_or(RoundParticipation::No, |(vh, vote)| {
-        if vote.round_exp > r_id.trailing_zeros() {
+    opt_unit.map_or(RoundParticipation::No, |(vh, unit)| {
+        if unit.round_exp > r_id.trailing_zeros() {
             // Round length doesn't divide `r_id`, so the validator was not assigned to that round.
             RoundParticipation::Unassigned
-        } else if vote.timestamp < r_id {
-            // The latest vote in or before `r_id` was before `r_id`, so they didn't participate.
+        } else if unit.timestamp < r_id {
+            // The latest unit in or before `r_id` was before `r_id`, so they didn't participate.
             RoundParticipation::No
         } else {
             RoundParticipation::Yes(vh)
@@ -149,22 +149,22 @@ mod tests {
     };
 
     #[test]
-    fn round_participation_test() -> Result<(), AddVoteError<TestContext>> {
+    fn round_participation_test() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(&[Weight(5)], 0); // Alice is the only validator.
         let mut rng = crate::new_rng();
 
         // Round ID 0, length 32: Alice participates.
-        let p0 = add_vote!(state, rng, ALICE, 0, 5u8, 0x1; N)?; // Proposal
-        let w0 = add_vote!(state, rng, ALICE, 20, 5u8, None; p0)?; // Witness
+        let p0 = add_unit!(state, rng, ALICE, 0, 5u8, 0x1; N)?; // Proposal
+        let w0 = add_unit!(state, rng, ALICE, 20, 5u8, None; p0)?; // Witness
 
         // Round ID 32, length 32: Alice partially participates.
-        let w32 = add_vote!(state, rng, ALICE, 52, 5u8, None; w0)?; // Witness
+        let w32 = add_unit!(state, rng, ALICE, 52, 5u8, None; w0)?; // Witness
 
         // Round ID 64, length 32: Alice doesn't participate.
 
         // Round ID 96, length 16: Alice participates.
-        let p96 = add_vote!(state, rng, ALICE, 96, 4u8, 0x2; w32)?;
-        let w96 = add_vote!(state, rng, ALICE, 106, 4u8, None; p96)?;
+        let p96 = add_unit!(state, rng, ALICE, 96, 4u8, 0x2; w32)?;
+        let w96 = add_unit!(state, rng, ALICE, 106, 4u8, None; p96)?;
 
         let obs = Observation::Correct(w96);
         let rp = |time: u64| round_participation(&state, &obs, Timestamp::from(time));
@@ -182,7 +182,7 @@ mod tests {
     // To keep the form of the reward formula, we spell out Carol's weight 1.
     #[allow(clippy::identity_op)]
     #[test]
-    fn compute_rewards_test() -> Result<(), AddVoteError<TestContext>> {
+    fn compute_rewards_test() -> Result<(), AddUnitError<TestContext>> {
         const ALICE_W: u64 = 4;
         const BOB_W: u64 = 5;
         const CAROL_W: u64 = 1;
@@ -210,12 +210,12 @@ mod tests {
         // Bob and Alice cite each other, creating a summit with quorum 9.
         // Carol only cites Bob, so she's only part of a quorum-6 summit.
         assert_eq!(BOB, state.leader(0.into()));
-        let bp0 = add_vote!(state, rng, BOB, 0, 3u8, 0xB00; N, N, N)?;
-        let ac0 = add_vote!(state, rng, ALICE, 1, 4u8, None; N, bp0, N)?;
-        let cc0 = add_vote!(state, rng, CAROL, 1, 3u8, None; N, bp0, N)?;
-        let bw0 = add_vote!(state, rng, BOB, 5, 3u8, None; ac0, bp0, cc0)?;
-        let cw0 = add_vote!(state, rng, CAROL, 5, 3u8, None; N, bp0, cc0)?;
-        let aw0 = add_vote!(state, rng, ALICE, 10, 4u8, None; ac0, bp0, N)?;
+        let bp0 = add_unit!(state, rng, BOB, 0, 3u8, 0xB00; N, N, N)?;
+        let ac0 = add_unit!(state, rng, ALICE, 1, 4u8, None; N, bp0, N)?;
+        let cc0 = add_unit!(state, rng, CAROL, 1, 3u8, None; N, bp0, N)?;
+        let bw0 = add_unit!(state, rng, BOB, 5, 3u8, None; ac0, bp0, cc0)?;
+        let cw0 = add_unit!(state, rng, CAROL, 5, 3u8, None; N, bp0, cc0)?;
+        let aw0 = add_unit!(state, rng, ALICE, 10, 4u8, None; ac0, bp0, N)?;
 
         let assigned = total_weight; // Everyone is assigned to round 0.
         let rewards0 = ValidatorMap::from(vec![
@@ -226,10 +226,10 @@ mod tests {
 
         // Round 8: Alice is not assigned (length 16). Bob and Carol make a summit.
         assert_eq!(BOB, state.leader(8.into()));
-        let bp8 = add_vote!(state, rng, BOB, 8, 3u8, 0xB08; ac0, bw0, cw0)?;
-        let cc8 = add_vote!(state, rng, CAROL, 9, 3u8, None; ac0, bp8, cw0)?;
-        let bw8 = add_vote!(state, rng, BOB, 13, 3u8, None; aw0, bp8, cc8)?;
-        let cw8 = add_vote!(state, rng, CAROL, 13, 3u8, None; aw0, bp8, cc8)?;
+        let bp8 = add_unit!(state, rng, BOB, 8, 3u8, 0xB08; ac0, bw0, cw0)?;
+        let cc8 = add_unit!(state, rng, CAROL, 9, 3u8, None; ac0, bp8, cw0)?;
+        let bw8 = add_unit!(state, rng, BOB, 13, 3u8, None; aw0, bp8, cc8)?;
+        let cw8 = add_unit!(state, rng, CAROL, 13, 3u8, None; aw0, bp8, cc8)?;
 
         let assigned = BOB_CAROL_W; // Alice has round length 16, so she's not in round 8.
         let rewards8 = ValidatorMap::from(vec![
@@ -241,12 +241,12 @@ mod tests {
         // Round 16: Carol slows down (length 16). Alice and Bob finalize with quorum 9.
         // Carol cites only Alice and herself, so she's only in the non-finalizing quorum-5 summit.
         assert_eq!(ALICE, state.leader(16.into()));
-        let ap16 = add_vote!(state, rng, ALICE, 16, 4u8, 0xA16; aw0, bw8, cw8)?;
-        let bc16 = add_vote!(state, rng, BOB, 17, 3u8, None; ap16, bw8, cw8)?;
-        let cc16 = add_vote!(state, rng, CAROL, 17, 4u8, None; ap16, bw8, cw8)?;
-        let bw16 = add_vote!(state, rng, BOB, 19, 3u8, None; ap16, bc16, cw8)?;
-        let aw16 = add_vote!(state, rng, ALICE, 26, 4u8, None; ap16, bc16, cc16)?;
-        let cw16 = add_vote!(state, rng, CAROL, 26, 4u8, None; ap16, bw8, cc16)?;
+        let ap16 = add_unit!(state, rng, ALICE, 16, 4u8, 0xA16; aw0, bw8, cw8)?;
+        let bc16 = add_unit!(state, rng, BOB, 17, 3u8, None; ap16, bw8, cw8)?;
+        let cc16 = add_unit!(state, rng, CAROL, 17, 4u8, None; ap16, bw8, cw8)?;
+        let bw16 = add_unit!(state, rng, BOB, 19, 3u8, None; ap16, bc16, cw8)?;
+        let aw16 = add_unit!(state, rng, ALICE, 26, 4u8, None; ap16, bc16, cc16)?;
+        let cw16 = add_unit!(state, rng, CAROL, 26, 4u8, None; ap16, bw8, cc16)?;
 
         let assigned = total_weight; // Everyone is assigned.
         let reduced_reward = state.params().reduced_block_reward();
@@ -257,7 +257,7 @@ mod tests {
         ]);
 
         // Produce a block that can see all three rounds but doesn't see Carol equivocate.
-        let ap_last = add_vote!(state, rng, ALICE, 0x0; aw16, bw16, cw16)?;
+        let ap_last = add_unit!(state, rng, ALICE, 0x0; aw16, bw16, cw16)?;
 
         // Alice's round-16 block can see the first two rounds.
         let expected = ValidatorMap::from(vec![
@@ -273,15 +273,15 @@ mod tests {
             rewards0[BOB] + rewards8[BOB] + rewards16[BOB],
             rewards0[CAROL] + rewards8[CAROL] + rewards16[CAROL],
         ]);
-        let pan = &state.vote(&ap_last).panorama;
+        let pan = &state.unit(&ap_last).panorama;
         assert_eq!(rewards0, compute_rewards_for(&state, &pan, &bp0));
         assert_eq!(rewards8, compute_rewards_for(&state, &pan, &bp8));
         assert_eq!(rewards16, compute_rewards_for(&state, &pan, &ap16));
         assert_eq!(expected, compute_rewards(&state, &ap_last));
 
         // However, Carol also equivocated in round 16. And Bob saw her!
-        let _cw16e = add_vote!(state, rng, CAROL, 26, 4u8, None; ap16, bc16, cc16)?;
-        let bp_last = add_vote!(state, rng, ALICE, 0x0; aw16, bw16, F)?;
+        let _cw16e = add_unit!(state, rng, CAROL, 26, 4u8, None; ap16, bc16, cc16)?;
+        let bp_last = add_unit!(state, rng, ALICE, 0x0; aw16, bw16, F)?;
 
         let assigned = ALICE_BOB_W; // Carol is unassigned if she is seen as faulty.
         let rewards0f = ValidatorMap::from(vec![
@@ -311,7 +311,7 @@ mod tests {
             rewards0f[BOB] + rewards8f[BOB] + rewards16f[BOB],
             rewards0f[CAROL] + rewards8f[CAROL] + rewards16f[CAROL],
         ]);
-        let pan = &state.vote(&bp_last).panorama;
+        let pan = &state.unit(&bp_last).panorama;
         assert_eq!(rewards0f, compute_rewards_for(&state, &pan, &bp0));
         assert_eq!(rewards8f, compute_rewards_for(&state, &pan, &bp8));
         assert_eq!(rewards16f, compute_rewards_for(&state, &pan, &ap16));

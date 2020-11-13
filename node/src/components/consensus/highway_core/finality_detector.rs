@@ -57,10 +57,10 @@ impl<C: Context> FinalityDetector<C> {
         }
         Ok(iter::from_fn(move || {
             let bhash = self.next_finalized(state)?;
-            // Index exists, since we have votes from them.
+            // Index exists, since we have units from them.
             let to_id = |vidx: ValidatorIndex| highway.validators().id(vidx).unwrap().clone();
             let block = state.block(bhash);
-            let vote = state.vote(bhash);
+            let unit = state.unit(bhash);
             let rewards = if state.is_terminal_block(bhash) {
                 let rewards = rewards::compute_rewards(state, bhash);
                 let rewards_iter = rewards.enumerate();
@@ -68,15 +68,15 @@ impl<C: Context> FinalityDetector<C> {
             } else {
                 None
             };
-            let faulty_iter = vote.panorama.enumerate().filter(|(_, obs)| obs.is_faulty());
+            let faulty_iter = unit.panorama.enumerate().filter(|(_, obs)| obs.is_faulty());
 
             Some(FinalizedBlock {
                 value: block.value.clone(),
-                timestamp: vote.timestamp,
+                timestamp: unit.timestamp,
                 height: block.height,
                 rewards,
                 equivocators: faulty_iter.map(|(vidx, _)| to_id(vidx)).collect(),
-                proposer: to_id(vote.creator),
+                proposer: to_id(unit.creator),
             })
         }))
     }
@@ -163,7 +163,7 @@ mod tests {
     };
 
     #[test]
-    fn finality_detector() -> Result<(), AddVoteError<TestContext>> {
+    fn finality_detector() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut rng = crate::new_rng();
 
@@ -174,12 +174,12 @@ mod tests {
         // b0: 10           b1: 4
         //        \
         //          c0: 1 — c1: 1
-        let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
-        let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
-        let c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
-        let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
-        let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b0, c1)?;
-        let b1 = add_vote!(state, rng, BOB, 0xB1; a0, b0, N)?;
+        let b0 = add_unit!(state, rng, BOB, 0xB0; N, N, N)?;
+        let c0 = add_unit!(state, rng, CAROL, 0xC0; N, b0, N)?;
+        let c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+        let a0 = add_unit!(state, rng, ALICE, 0xA0; N, b0, N)?;
+        let a1 = add_unit!(state, rng, ALICE, 0xA1; a0, b0, c1)?;
+        let b1 = add_unit!(state, rng, BOB, 0xB1; a0, b0, N)?;
 
         let mut fd4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
         let mut fd6 = FinalityDetector::new(Weight(6)); // Fault tolerance 6.
@@ -194,15 +194,15 @@ mod tests {
         assert_eq!(None, fd4.next_finalized(&state));
 
         // Adding another level to the summit increases `B0`'s fault tolerance to 6.
-        let _a2 = add_vote!(state, rng, ALICE, None; a1, b1, c1)?;
-        let _b2 = add_vote!(state, rng, BOB, None; a1, b1, c1)?;
+        let _a2 = add_unit!(state, rng, ALICE, None; a1, b1, c1)?;
+        let _b2 = add_unit!(state, rng, BOB, None; a1, b1, c1)?;
         assert_eq!(Some(&b0), fd6.next_finalized(&state));
         assert_eq!(None, fd6.next_finalized(&state));
         Ok(())
     }
 
     #[test]
-    fn equivocators() -> Result<(), AddVoteError<TestContext>> {
+    fn equivocators() -> Result<(), AddUnitError<TestContext>> {
         let mut state = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fd4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
         let mut rng = crate::new_rng();
@@ -215,33 +215,33 @@ mod tests {
         //        \
         //          c0: 1 — c1: 1
         //               \ c1': 1
-        let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
-        let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
-        let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
-        let _c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+        let b0 = add_unit!(state, rng, BOB, 0xB0; N, N, N)?;
+        let a0 = add_unit!(state, rng, ALICE, 0xA0; N, b0, N)?;
+        let c0 = add_unit!(state, rng, CAROL, 0xC0; N, b0, N)?;
+        let _c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0, c0)?;
         assert_eq!(Weight(0), state.faulty_weight());
-        let _c1_prime = add_vote!(state, rng, CAROL, None; N, b0, c0)?;
+        let _c1_prime = add_unit!(state, rng, CAROL, None; N, b0, c0)?;
         assert_eq!(Weight(1), state.faulty_weight());
-        let b1 = add_vote!(state, rng, BOB, 0xB1; a0, b0, N)?;
+        let b1 = add_unit!(state, rng, BOB, 0xB1; a0, b0, N)?;
         assert_eq!(Some(&b0), fd4.next_finalized(&state));
-        let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b0, F)?;
-        let b2 = add_vote!(state, rng, BOB, None; a1, b1, F)?;
-        let a2 = add_vote!(state, rng, ALICE, 0xA2; a1, b2, F)?;
+        let a1 = add_unit!(state, rng, ALICE, 0xA1; a0, b0, F)?;
+        let b2 = add_unit!(state, rng, BOB, None; a1, b1, F)?;
+        let a2 = add_unit!(state, rng, ALICE, 0xA2; a1, b2, F)?;
         assert_eq!(Some(&a0), fd4.next_finalized(&state));
         assert_eq!(Some(&a1), fd4.next_finalized(&state));
         // Finalize A2.
-        let b3 = add_vote!(state, rng, BOB, None; a2, b2, F)?;
-        let _a3 = add_vote!(state, rng, ALICE, None; a2, b3, F)?;
+        let b3 = add_unit!(state, rng, BOB, None; a2, b2, F)?;
+        let _a3 = add_unit!(state, rng, ALICE, None; a2, b3, F)?;
         assert_eq!(Some(&a2), fd4.next_finalized(&state));
 
         // Test that an initial block reports equivocators as well.
         let mut bstate: State<TestContext> = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fde4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
-        let _c0 = add_vote!(bstate, rng, CAROL, 0xB0; N, N, N)?;
-        let _c0_prime = add_vote!(bstate, rng, CAROL, 0xB0; N, N, N)?;
-        let a0 = add_vote!(bstate, rng, ALICE, 0xA0; N, N, F)?;
-        let b0 = add_vote!(bstate, rng, BOB, None; a0, N, F)?;
-        let _a1 = add_vote!(bstate, rng, ALICE, None; a0, b0, F)?;
+        let _c0 = add_unit!(bstate, rng, CAROL, 0xB0; N, N, N)?;
+        let _c0_prime = add_unit!(bstate, rng, CAROL, 0xB0; N, N, N)?;
+        let a0 = add_unit!(bstate, rng, ALICE, 0xA0; N, N, F)?;
+        let b0 = add_unit!(bstate, rng, BOB, None; a0, N, F)?;
+        let _a1 = add_unit!(bstate, rng, ALICE, None; a0, b0, F)?;
         assert_eq!(Some(&a0), fde4.next_finalized(&bstate));
         Ok(())
     }

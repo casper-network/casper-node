@@ -22,24 +22,24 @@ pub enum Error {
     FailedToParseKey,
 
     /// Failed to parse a `URef` from a formatted string.
-    #[error("failed to parse as a uref: {0:?}")]
-    FailedToParseURef(URefFromStrError),
+    #[error("failed to parse '{0}' as a uref: {1:?}")]
+    FailedToParseURef(&'static str, URefFromStrError),
 
     /// Failed to parse an integer from a string.
-    #[error("failed to parse as an integer: {0:?}")]
-    FailedToParseInt(#[from] ParseIntError),
+    #[error("failed to parse '{0}' as an integer: {1:?}")]
+    FailedToParseInt(&'static str, ParseIntError),
 
     /// Failed to parse a `TimeDiff` from a formatted string.
-    #[error("failed to parse as a time diff: {0:?}")]
-    FailedToParseTimeDiff(DurationError),
+    #[error("failed to parse '{0}' as a time diff: {1:?}")]
+    FailedToParseTimeDiff(&'static str, DurationError),
 
     /// Failed to parse a `Timestamp` from a formatted string.
-    #[error("failed to parse as a timestamp: {0:?}")]
-    FailedToParseTimestamp(TimestampError),
+    #[error("failed to parse '{0}' as a timestamp: {1:?}")]
+    FailedToParseTimestamp(&'static str, TimestampError),
 
     /// Failed to parse a `U128`, `U256` or `U512` from a string.
-    #[error("failed to parse as U128, U256, or U512: {0:?}")]
-    FailedToParseUint(UIntParseError),
+    #[error("failed to parse '{0}' as U128, U256, or U512: {1:?}")]
+    FailedToParseUint(&'static str, UIntParseError),
 
     /// Failed to get a response from the node.
     #[error("failed to get rpc response: {0}")]
@@ -88,7 +88,7 @@ pub enum Error {
     ToBytesError(ToBytesError),
 
     /// Cryptographic error.
-    #[error("crypto error {0}")]
+    #[error("Crypto error: {0}")]
     CryptoError(#[from] CryptoError),
 
     /// Invalid `CLValue`.
@@ -96,18 +96,22 @@ pub enum Error {
     InvalidCLValue(String),
 
     /// Invalid argument.
-    #[error("Invalid argument {0}")]
-    InvalidArgument(String),
+    #[error("Invalid argument '{0}' {1}")]
+    InvalidArgument(&'static str, String),
 
     /// Failed to validate response.
     #[error("Invalid response {0}")]
     InvalidResponse(#[from] ValidateResponseError),
-}
 
-impl From<URefFromStrError> for Error {
-    fn from(error: URefFromStrError) -> Self {
-        Error::FailedToParseURef(error)
-    }
+    /// Must call FFI's setup function prior to making ffi calls.
+    #[cfg(feature = "ffi")]
+    #[error("casper_setup_client() has not been called")]
+    FFISetupNotCalled,
+
+    /// Must pass valid pointer values to FFI calls.
+    #[cfg(feature = "ffi")]
+    #[error("Required argument '{0}' was null")]
+    FFIPtrNullButRequired(&'static str),
 }
 
 impl From<ToBytesError> for Error {

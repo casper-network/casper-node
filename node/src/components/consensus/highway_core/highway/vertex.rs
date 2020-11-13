@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{collections::BTreeSet, fmt::Debug};
 
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +23,7 @@ use crate::{
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) enum Dependency<C: Context> {
-    Vote(C::Hash),
+    Unit(C::Hash),
     Evidence(ValidatorIndex),
     Endorsement(C::Hash),
 }
@@ -37,7 +37,7 @@ pub(crate) enum Dependency<C: Context> {
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) enum Vertex<C: Context> {
-    Vote(SignedWireVote<C>),
+    Unit(SignedWireUnit<C>),
     Evidence(Evidence<C>),
     Endorsements(Endorsements<C>),
 }
@@ -51,15 +51,15 @@ impl<C: Context> Vertex<C> {
     /// obtained _and_ validated. Only after that, the vertex can be considered valid.
     pub(crate) fn value(&self) -> Option<&C::ConsensusValue> {
         match self {
-            Vertex::Vote(swvote) => swvote.wire_vote.value.as_ref(),
+            Vertex::Unit(swunit) => swunit.wire_unit.value.as_ref(),
             Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
         }
     }
 
-    /// Returns the vote hash of this vertex (if it is a vote).
-    pub(crate) fn vote_hash(&self) -> Option<C::Hash> {
+    /// Returns the unit hash of this vertex (if it is a unit).
+    pub(crate) fn unit_hash(&self) -> Option<C::Hash> {
         match self {
-            Vertex::Vote(swvote) => Some(swvote.hash()),
+            Vertex::Unit(swunit) => Some(swunit.hash()),
             Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
         }
     }
@@ -67,17 +67,32 @@ impl<C: Context> Vertex<C> {
     /// Returns whether this is evidence, as opposed to other types of vertices.
     pub(crate) fn is_evidence(&self) -> bool {
         match self {
-            Vertex::Vote(_) | Vertex::Endorsements(_) => false,
+            Vertex::Unit(_) | Vertex::Endorsements(_) => false,
             Vertex::Evidence(_) => true,
         }
     }
 
-    /// Returns a `Timestamp` provided the vertex is a `Vertex::Vote`
+    /// Returns a `Timestamp` provided the vertex is a `Vertex::Unit`
     pub(crate) fn timestamp(&self) -> Option<Timestamp> {
         match self {
-            Vertex::Vote(signed_wire_vote) => Some(signed_wire_vote.wire_vote.timestamp),
+            Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit.wire_unit.timestamp),
             Vertex::Evidence(_) => None,
             Vertex::Endorsements(_) => None,
+        }
+    }
+
+    pub(crate) fn signed_wire_unit(&self) -> Option<&SignedWireUnit<C>> {
+        match self {
+            Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn id(&self) -> Dependency<C> {
+        match self {
+            Vertex::Unit(signed_wire_unit) => Dependency::Unit(signed_wire_unit.wire_unit.hash()),
+            Vertex::Evidence(evidence) => Dependency::Evidence(evidence.perpetrator()),
+            Vertex::Endorsements(endorsement) => Dependency::Endorsement(endorsement.unit),
         }
     }
 }
@@ -87,36 +102,36 @@ impl<C: Context> Vertex<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct SignedWireVote<C: Context> {
-    pub(crate) wire_vote: WireVote<C>,
+pub(crate) struct SignedWireUnit<C: Context> {
+    pub(crate) wire_unit: WireUnit<C>,
     pub(crate) signature: C::Signature,
 }
 
-impl<C: Context> SignedWireVote<C> {
+impl<C: Context> SignedWireUnit<C> {
     pub(crate) fn new(
-        wire_vote: WireVote<C>,
+        wire_unit: WireUnit<C>,
         secret_key: &C::ValidatorSecret,
         rng: &mut NodeRng,
     ) -> Self {
-        let signature = secret_key.sign(&wire_vote.hash(), rng);
-        SignedWireVote {
-            wire_vote,
+        let signature = secret_key.sign(&wire_unit.hash(), rng);
+        SignedWireUnit {
+            wire_unit,
             signature,
         }
     }
 
     pub(crate) fn hash(&self) -> C::Hash {
-        self.wire_vote.hash()
+        self.wire_unit.hash()
     }
 }
 
-/// A vote as it is sent over the wire, possibly containing a new block.
+/// A unit as it is sent over the wire, possibly containing a new block.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct WireVote<C: Context> {
+pub(crate) struct WireUnit<C: Context> {
     pub(crate) panorama: Panorama<C>,
     pub(crate) creator: ValidatorIndex,
     pub(crate) instance_id: C::InstanceId,
@@ -124,10 +139,10 @@ pub(crate) struct WireVote<C: Context> {
     pub(crate) seq_number: u64,
     pub(crate) timestamp: Timestamp,
     pub(crate) round_exp: u8,
-    pub(crate) endorsed: Vec<C::Hash>,
+    pub(crate) endorsed: BTreeSet<C::Hash>,
 }
 
-impl<C: Context> Debug for WireVote<C> {
+impl<C: Context> Debug for WireUnit<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         /// A type whose debug implementation prints ".." (without the quotes).
         struct Ellipsis;
@@ -138,7 +153,7 @@ impl<C: Context> Debug for WireVote<C> {
             }
         }
 
-        f.debug_struct("WireVote")
+        f.debug_struct("WireUnit")
             .field("hash()", &self.hash())
             .field("value", &self.value.as_ref().map(|_| Ellipsis))
             .field("creator.0", &self.creator.0)
@@ -153,15 +168,15 @@ impl<C: Context> Debug for WireVote<C> {
     }
 }
 
-impl<C: Context> WireVote<C> {
-    /// Returns the vote's hash, which is used as a vote identifier.
+impl<C: Context> WireUnit<C> {
+    /// Returns the unit's hash, which is used as a unit identifier.
     // TODO: This involves serializing and hashing. Memoize?
     pub(crate) fn hash(&self) -> C::Hash {
         // TODO: Use serialize_into to avoid allocation?
-        <C as Context>::hash(&bincode::serialize(self).expect("serialize WireVote"))
+        <C as Context>::hash(&bincode::serialize(self).expect("serialize WireUnit"))
     }
 
-    /// Returns the time at which the round containing this vote began.
+    /// Returns the time at which the round containing this unit began.
     pub(crate) fn round_id(&self) -> Timestamp {
         state::round_id(self.timestamp, self.round_exp)
     }
@@ -173,29 +188,29 @@ impl<C: Context> WireVote<C> {
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) struct Endorsements<C: Context> {
-    pub(crate) vote: C::Hash,
+    pub(crate) unit: C::Hash,
     pub(crate) endorsers: Vec<(ValidatorIndex, C::Signature)>,
 }
 
 impl<C: Context> Endorsements<C> {
     pub fn new<I: IntoIterator<Item = SignedEndorsement<C>>>(endorsements: I) -> Self {
         let mut iter = endorsements.into_iter().peekable();
-        let vote = *iter.peek().expect("non-empty iter").vote();
+        let unit = *iter.peek().expect("non-empty iter").unit();
         let endorsers = iter
             .map(|e| {
-                assert_eq!(e.vote(), &vote, "endorsements for different votes.");
+                assert_eq!(e.unit(), &unit, "endorsements for different units.");
                 (e.validator_idx(), *e.signature())
             })
             .collect();
-        Endorsements { vote, endorsers }
+        Endorsements { unit, endorsers }
     }
 
     /// Returns hash of the endorsed vode.
-    pub fn vote(&self) -> &C::Hash {
-        &self.vote
+    pub fn unit(&self) -> &C::Hash {
+        &self.unit
     }
 
-    /// Returns an iterator over validator indexes that endorsed the `vote`.
+    /// Returns an iterator over validator indexes that endorsed the `unit`.
     pub fn validator_ids(&self) -> impl Iterator<Item = &ValidatorIndex> {
         self.endorsers.iter().map(|(v, _)| v)
     }

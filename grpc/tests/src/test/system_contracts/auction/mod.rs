@@ -10,14 +10,17 @@ const ARG_ENTRY_POINT: &str = "entry_point";
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 
-fn run_auction(builder: &mut InMemoryWasmTestBuilder) {
-    let run_request = ExecuteRequestBuilder::standard(
+fn make_run_auction_request() -> ExecuteRequestBuilder {
+    ExecuteRequestBuilder::standard(
         SYSTEM_ADDR,
         CONTRACT_AUCTION_BIDS,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_RUN_AUCTION
         },
     )
-    .build();
+}
+
+fn run_auction(builder: &mut InMemoryWasmTestBuilder) {
+    let run_request = make_run_auction_request().build();
     builder.exec(run_request).commit().expect_success();
 }
