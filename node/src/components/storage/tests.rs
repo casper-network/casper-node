@@ -9,7 +9,9 @@ use super::{Config, Storage};
 use crate::{
     effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng},
-    types::{json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash},
+    types::{
+        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, DeployMetadata,
+    },
     utils::WithDir,
     Chainspec,
 };
@@ -332,17 +334,20 @@ fn can_retrieve_store_and_load_deploys() {
     });
     assert_eq!(response, vec![Some(deploy.header().clone())]);
 
-    // Finally try to get the metadata as well.
-    let response = harness.send_request(&mut storage, move |responder| {
-        StorageRequest::GetDeployAndMetadata {
-            deploy_hash: deploy.id().clone(),
-            responder,
-        }
-        .into()
-    });
+    // Finally try to get the metadata as well. Since we did not store any, we expect empty default
+    // metadata to present.
+    let (deploy_response, metadata_response) = harness
+        .send_request(&mut storage, |responder| {
+            StorageRequest::GetDeployAndMetadata {
+                deploy_hash: deploy.id().clone(),
+                responder,
+            }
+            .into()
+        })
+        .expect("no deploy with metadata returned");
 
-    // TODO: Construct plausible deploy metadata.
-    // assert_eq!(response, (deploy, todo!()))
+    assert_eq!(deploy_response, *deploy);
+    assert_eq!(metadata_response, DeployMetadata::default());
 }
 
 #[test]
