@@ -51,7 +51,7 @@ use tracing::info;
 
 /// We can set this very low, as there is only a single reader/writer accessing the component at any
 /// one time.
-const MAX_TRANSACTIONS: u32 = 4;
+const MAX_TRANSACTIONS: u32 = 1;
 
 #[derive(Debug, From)]
 pub enum Event {
