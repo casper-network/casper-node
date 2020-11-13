@@ -44,7 +44,11 @@ fn random_block_at_height(rng: &mut TestRng, height: u64) -> Box<Block> {
 }
 
 /// Requests block at a specific era from a storage component.
-fn at_era(harness: &mut ComponentHarness<()>, storage: &mut Storage, era_id: u64) -> Option<Block> {
+fn get_block_at_height(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    era_id: u64,
+) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
         StorageRequest::GetBlockAtHeight {
             height: era_id,
@@ -239,11 +243,11 @@ fn can_retrieve_block_by_era_id() {
     let block_99 = random_block_at_height(&mut harness.rng, 99);
 
     // Both block at ID and highest block should return `None` initially.
-    assert!(at_era(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
     assert!(get_highest_block(&mut harness, &mut storage).is_none());
-    assert!(at_era(&mut harness, &mut storage, 14).is_none());
-    assert!(at_era(&mut harness, &mut storage, 33).is_none());
-    assert!(at_era(&mut harness, &mut storage, 99).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 14).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 33).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
 
     // Inserting 33A changes this.
     let was_new = put_block(&mut harness, &mut storage, block_33_a.clone());
@@ -253,13 +257,13 @@ fn can_retrieve_block_by_era_id() {
         get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33_a)
     );
-    assert!(at_era(&mut harness, &mut storage, 0).is_none());
-    assert!(at_era(&mut harness, &mut storage, 14).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 14).is_none());
     assert_eq!(
-        at_era(&mut harness, &mut storage, 33).as_ref(),
+        get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
         Some(&*block_33_a)
     );
-    assert!(at_era(&mut harness, &mut storage, 99).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
 
     // Inserting block with height 14, no change in highest.
     let was_new = put_block(&mut harness, &mut storage, block_14.clone());
@@ -269,16 +273,16 @@ fn can_retrieve_block_by_era_id() {
         get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33_a)
     );
-    assert!(at_era(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
     assert_eq!(
-        at_era(&mut harness, &mut storage, 14).as_ref(),
+        get_block_at_height(&mut harness, &mut storage, 14).as_ref(),
         Some(&*block_14)
     );
     assert_eq!(
-        at_era(&mut harness, &mut storage, 33).as_ref(),
+        get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
         Some(&*block_33_a)
     );
-    assert!(at_era(&mut harness, &mut storage, 99).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 99).is_none());
 
     // Inserting block with height 99, changes highest.
     let was_new = put_block(&mut harness, &mut storage, block_99.clone());
@@ -288,17 +292,17 @@ fn can_retrieve_block_by_era_id() {
         get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_99)
     );
-    assert!(at_era(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
     assert_eq!(
-        at_era(&mut harness, &mut storage, 14).as_ref(),
+        get_block_at_height(&mut harness, &mut storage, 14).as_ref(),
         Some(&*block_14)
     );
     assert_eq!(
-        at_era(&mut harness, &mut storage, 33).as_ref(),
+        get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
         Some(&*block_33_a)
     );
     assert_eq!(
-        at_era(&mut harness, &mut storage, 99).as_ref(),
+        get_block_at_height(&mut harness, &mut storage, 99).as_ref(),
         Some(&*block_99)
     );
 
@@ -310,17 +314,17 @@ fn can_retrieve_block_by_era_id() {
         get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_99)
     );
-    assert!(at_era(&mut harness, &mut storage, 0).is_none());
+    assert!(get_block_at_height(&mut harness, &mut storage, 0).is_none());
     assert_eq!(
-        at_era(&mut harness, &mut storage, 14).as_ref(),
+        get_block_at_height(&mut harness, &mut storage, 14).as_ref(),
         Some(&*block_14)
     );
     assert_eq!(
-        at_era(&mut harness, &mut storage, 33).as_ref(),
+        get_block_at_height(&mut harness, &mut storage, 33).as_ref(),
         Some(&*block_33_b)
     );
     assert_eq!(
-        at_era(&mut harness, &mut storage, 99).as_ref(),
+        get_block_at_height(&mut harness, &mut storage, 99).as_ref(),
         Some(&*block_99)
     );
 }
@@ -508,8 +512,13 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
 
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
-    let block = Box::new(Block::random(&mut harness.rng));
+    let block = random_block_at_height(&mut harness.rng, 42);
     let execution_result = ExecutionResult::random(&mut harness.rng);
+
+    assert_eq!(
+        get_block_at_height(&mut harness, &mut storage, 42).expect("block not indexed properly"),
+        *block
+    );
 
     put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
     put_block(&mut harness, &mut storage, block.clone());
@@ -542,4 +551,9 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let execution_results = deploy_metadata.execution_results;
     assert_eq!(execution_results.len(), 1);
     assert_eq!(execution_results[block.hash()], execution_result);
+
+    assert_eq!(
+        get_block_at_height(&mut harness, &mut storage, 42).expect("block index was not restored"),
+        *block
+    );
 }
