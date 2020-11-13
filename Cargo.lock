@@ -945,7 +945,6 @@ dependencies = [
  "criterion",
  "datasize",
  "failure",
- "generic-array 0.14.4",
  "hex_fmt",
  "num-derive",
  "num-integer",
