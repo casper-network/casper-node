@@ -571,7 +571,7 @@ impl reactor::Reactor for Reactor {
                     }
                     Message::GetRequest { tag, serialized_id } => match tag {
                         Tag::Deploy => {
-                            let _deploy_hash = match bincode::deserialize(&serialized_id) {
+                            let deploy_hash = match bincode::deserialize(&serialized_id) {
                                 Ok(hash) => hash,
                                 Err(error) => {
                                     error!(
@@ -581,11 +581,26 @@ impl reactor::Reactor for Reactor {
                                     return Effects::new();
                                 }
                             };
-                            todo!() // WTF?
-                                    // Event::Storage(storage::Event::GetDeployForPeer {
-                                    //     deploy_hash,
-                                    //     peer: sender,
-                                    // })
+
+                            match self
+                                .storage
+                                .handle_legacy_direct_deploy_request(deploy_hash)
+                            {
+                                Some(deploy) => todo!(),
+                                None => todo!(),
+                            }
+                            //         Some(deploy) => match Message::new_get_response(&deploy) {
+                            //             Ok(message) => effect_builder.send_message(peer,
+                            // message).await,             Err(error) =>
+                            // error!("failed to create get-response: {}", error),
+                            //         },
+                            //         None => debug!("failed to get {} for {}", deploy_hash, peer),
+                            //     }
+                            // WTF?
+                            // Event::Storage(storage::Event::GetDeployForPeer {
+                            //     deploy_hash,
+                            //     peer: sender,
+                            // })
                         }
                         Tag::Block => {
                             let block_hash = match bincode::deserialize(&serialized_id) {

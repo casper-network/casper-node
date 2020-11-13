@@ -31,8 +31,12 @@ use thiserror::Error;
 
 use super::{block_proposer::BlockProposerState, Component};
 use crate::{
-    effect::{requests::StorageRequest, EffectExt, Effects},
-    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, Timestamp},
+    effect::{
+        requests::{NetworkRequest, StorageRequest},
+        EffectBuilder, EffectExt, Effects,
+    },
+    protocol::Message,
+    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, NodeId, Timestamp},
     utils::WithDir,
     Chainspec, NodeRng,
 };
@@ -99,7 +103,7 @@ impl<REv> Component<REv> for Storage {
 
     fn handle_event(
         &mut self,
-        _effect_builder: crate::effect::EffectBuilder<REv>,
+        _effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
@@ -438,5 +442,51 @@ impl Display for Event {
         match self {
             Event::StorageRequest(req) => req.fmt(f),
         }
+    }
+}
+
+// Legacy code follows below.
+//
+// The functionality about for requests directly from the incoming network should *not* be present
+// in the validator reactor's routing code. Until it can be cleaned up, this legacy implementation
+// block provides a backwards-compatible interface for this functionality. DO NOT EXPAND, RELY ON OR
+// BUILD UPON THIS CODE.
+
+impl Storage {
+    // Retrieve a deploy from the deploy store to handle a legacy network request.
+    pub fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
+        // NOTE: This function was formerly called `get_deploy_for_peer` and used to create an event
+        // directly. This caused a dependency of the storage component on networking functionality,
+        // which is highly problematic. For this reason, the code to send a reply has been moved to
+        // the dispatching code (which should be removed anyway) as to not taint the interface.
+
+        // In reality, this function is just a deploy retrieval method that should not exist.
+
+        todo!()
+        // let deploy_store = self.deploy_store();
+        // let deploy_hashes = smallvec![deploy_hash];
+        // let cloned_peer = peer.clone();
+        // async move {
+        //     task::spawn_blocking(move || deploy_store.get(deploy_hashes))
+        //         .await
+        //         .expect("should run")
+        //         .pop()
+        //         .expect("can only contain one result")
+        // }
+        // .map_err(move |error| {
+        //     debug!(
+        //         "failed to get {} for {}: {}",
+        //         deploy_hash, cloned_peer, error
+        //     )
+        // })
+        // .and_then(move |maybe_deploy| async move {
+        //     match maybe_deploy {
+        //         Some(deploy) => match Message::new_get_response(&deploy) {
+        //             Ok(message) => effect_builder.send_message(peer, message).await,
+        //             Err(error) => error!("failed to create get-response: {}", error),
+        //         },
+        //         None => debug!("failed to get {} for {}", deploy_hash, peer),
+        //     }
+        //     Ok(())
     }
 }
