@@ -13,7 +13,6 @@ use core::{
     mem::{self, MaybeUninit},
     ptr::NonNull,
 };
-use generic_array::{ArrayLength, GenericArray};
 
 use failure::Fail;
 use num_integer::Integer;
@@ -1122,15 +1121,15 @@ pub fn deserialize_array_slice(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]),
 }
 
 /// Deserializes a generic array.
-pub fn deserialize_array<T, N>(bytes: &[u8]) -> Result<(T, &[u8]), Error>
+pub fn deserialize_array<T>(bytes: &[u8]) -> Result<(T, &[u8]), Error>
 where
-    N: ArrayLength<u8>,
-    T: From<GenericArray<u8, N>>,
+    T: AsMut<[u8]> + Default,
 {
-    let mut result = GenericArray::default();
-    let (bytes, rem) = deserialize_array_slice(bytes, result.len())?;
-    result.copy_from_slice(bytes);
-    Ok((result.into(), rem))
+    let mut output = T::default();
+    let as_mut_ref = output.as_mut();
+    let (bytes, rem) = deserialize_array_slice(bytes, as_mut_ref.len())?;
+    as_mut_ref.copy_from_slice(bytes);
+    Ok((output, rem))
 }
 
 /// Calculate serialized length of an array.
@@ -1254,8 +1253,8 @@ mod tests {
 
     #[test]
     fn should_serialize_deserialize_array() {
-        type Arr = [u8; 5];
-        let data: Arr = [1, 2, 3, 4, 5];
+        type Arr = [u8; 32];
+        let data: Arr = [255; 32];
         let serialized = super::serialize_array(&data).expect("should serialize data");
         let (deserialized, rem): (Arr, &[u8]) =
             super::deserialize_array(&serialized).expect("should deserialize data");
