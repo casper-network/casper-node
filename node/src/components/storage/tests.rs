@@ -1,6 +1,6 @@
 //! Unit tests for the storage component.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use rand::prelude::SliceRandom;
 use semver::Version;
@@ -95,6 +95,23 @@ fn get_deploys(
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::GetDeploys {
             deploy_hashes,
+            responder,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
+    response
+}
+
+/// Loads a deploy with associated metadata from the storage component.
+fn get_deploy_and_metadata(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    deploy_hash: DeployHash,
+) -> Option<(Deploy, DeployMetadata)> {
+    let response = harness.send_request(storage, |responder| {
+        StorageRequest::GetDeployAndMetadata {
+            deploy_hash,
             responder,
         }
         .into()
@@ -390,20 +407,20 @@ fn store_random_execution_results() {
 
     let block_hash = BlockHash::random(&mut harness.rng);
 
+    let num_fixtures = 1;
+
+    let mut expected = Vec::new();
+    for _ in 0..num_fixtures {
+        let deploy = Deploy::random(&mut harness.rng);
+        let execution_result = ExecutionResult::random(&mut harness.rng);
+        expected.push((deploy, execution_result));
+    }
+
     // Create three random execution result values.
-    let mut execution_results = HashMap::new();
-    execution_results.insert(
-        Deploy::random(&mut harness.rng).id().clone(),
-        ExecutionResult::random(&mut harness.rng),
-    );
-    execution_results.insert(
-        Deploy::random(&mut harness.rng).id().clone(),
-        ExecutionResult::random(&mut harness.rng),
-    );
-    execution_results.insert(
-        Deploy::random(&mut harness.rng).id().clone(),
-        ExecutionResult::random(&mut harness.rng),
-    );
+    let execution_results = expected
+        .iter()
+        .map(|(deploy, execution_result)| (deploy.id().clone(), execution_result.clone()))
+        .collect();
 
     let response = harness.send_request(&mut storage, move |responder| {
         StorageRequest::PutExecutionResults {
@@ -417,7 +434,20 @@ fn store_random_execution_results() {
     // We assume that there are 0 resuls already stored.
     assert_eq!(response, 0);
 
-    // FIXME/TODO: How to retrieve these to verify?
+    // Retrieve all and ensure execution results are the same we put in.
+    for (deploy, execution_result) in expected {
+        let (actual_deploy, deploy_metadata) =
+            get_deploy_and_metadata(&mut harness, &mut storage, deploy.id().clone())
+                .expect("deploy and metadata not found, even though they were added");
+
+        // We expect execution results for precisely one block.
+        assert_eq!(actual_deploy, deploy);
+        assert_eq!(deploy_metadata.execution_results.len(), 1);
+        assert_eq!(
+            deploy_metadata.execution_results[&block_hash],
+            execution_result
+        );
+    }
 }
 
 #[test]
