@@ -2,58 +2,12 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::{
-    crypto::{
-        asymmetric_key::{PublicKey, SecretKey},
-        hash::Digest,
-    },
-    rpcs::docs::DocExample,
-    types::json_compatibility,
-};
 use casper_types::{
-    auction::{Bid as AuctionBid, Bids as AuctionBids, EraValidators as AuctionEraValidators},
-    bytesrepr::{FromBytes, ToBytes},
-    U512,
+    auction::{Bid, Bids, Delegator, EraValidators},
+    AccessRights, PublicKey, URef, U512,
 };
 
-/// Bids table.
-pub type Bids = BTreeMap<json_compatibility::PublicKey, Bid>;
-/// Validator weights by validator key.
-pub type ValidatorWeights = BTreeMap<json_compatibility::PublicKey, U512>;
-/// List of era validators
-pub type EraValidators = BTreeMap<u64, ValidatorWeights>;
-
-/// An entry in a founding validator map.
-#[derive(PartialEq, Debug, Deserialize, Serialize, Clone)]
-pub struct Bid {
-    /// The purse that was used for bonding.
-    pub bonding_purse: String,
-    /// The total amount of staked tokens.
-    pub staked_amount: U512,
-    /// Delegation rate.
-    pub delegation_rate: u64,
-    /// A flag that represents a winning entry.
-    ///
-    /// `Some` indicates locked funds for a specific era and an autowin status, and `None` case
-    /// means that funds are unlocked and autowin status is removed.
-    pub release_era: Option<u64>,
-}
-
-use crate::{
-    crypto::{
-        asymmetric_key::{PublicKey, SecretKey},
-        hash::Digest,
-    },
-    rpcs::docs::DocExample,
-    types::json_compatibility,
-};
-use casper_types::{
-    auction::{Bid as AuctionBid, Bids as AuctionBids, EraValidators as AuctionEraValidators},
-    bytesrepr::{FromBytes, ToBytes},
-    U512,
-};
-
-use crate::crypto::hash::Digest;
+use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
 
 /// Data structure summarizing auction contract data.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -106,21 +60,15 @@ lazy_static! {
             "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
         );
         let staked_amount = U512::from(10);
-        let delegation_rate = 10;
-        let release_era = Some(43);
+        let release_era: u64 = 42;
 
-        let bid = Bid {
-            bonding_purse,
-            staked_amount,
-            delegation_rate,
-            release_era,
-        };
+        let delegator = Delegator::new(U512::from(10), bonding_purse, PublicKey::Ed25519([43; 32]));
+        let mut delegators = BTreeMap::new();
+        delegators.insert(PublicKey::Ed25519([44; 32]), delegator);
 
-        let secret_key_1 = SecretKey::doc_example();
-        let public_key_1 = PublicKey::from(secret_key_1);
-        let asm_bytes = public_key_1.to_bytes().unwrap();
-        let (casper_key, _) = casper_types::PublicKey::from_bytes(&asm_bytes).unwrap();
-        let json_key = json_compatibility::PublicKey::from(casper_key);
+        let bid = Bid::locked(bonding_purse, staked_amount, release_era);
+
+        let public_key_1 = PublicKey::Ed25519([42; 32]);
 
         let mut bids = BTreeMap::new();
         bids.insert(json_key, bid);
