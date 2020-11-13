@@ -34,14 +34,14 @@ fn storage_fixture(harness: &mut ComponentHarness<()>) -> Storage {
     )
 }
 
-/// Creates a random block with a specific era.
+/// Creates a random block with a specific block height.
 fn random_block_at_height(rng: &mut TestRng, height: u64) -> Box<Block> {
     let mut block = Box::new(Block::random(rng));
     block.set_height(height);
     block
 }
 
-/// Requests block at a specific era.
+/// Requests block at a specific era from a storage component.
 fn at_era(harness: &mut ComponentHarness<()>, storage: &mut Storage, era_id: u64) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
         StorageRequest::GetBlockAtHeight {
@@ -54,7 +54,7 @@ fn at_era(harness: &mut ComponentHarness<()>, storage: &mut Storage, era_id: u64
     response
 }
 
-/// Loads a block.
+/// Loads a block from a storage component.
 fn get_block(
     harness: &mut ComponentHarness<()>,
     storage: &mut Storage,
@@ -71,7 +71,7 @@ fn get_block(
     response
 }
 
-/// Loads a block.
+/// Loads the chainspec from a storage component.
 fn get_chainspec(
     harness: &mut ComponentHarness<()>,
     storage: &mut Storage,
@@ -84,7 +84,7 @@ fn get_chainspec(
     response
 }
 
-/// Loads a deploy.
+/// Loads a set of deploys from a storage component.
 fn get_deploys(
     harness: &mut ComponentHarness<()>,
     storage: &mut Storage,
@@ -101,7 +101,7 @@ fn get_deploys(
     response
 }
 
-/// Requests the highest block.
+/// Requests the highest block from a storage component.
 fn highest(harness: &mut ComponentHarness<()>, storage: &mut Storage) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
         StorageRequest::GetHighestBlock { responder }.into()
@@ -110,7 +110,7 @@ fn highest(harness: &mut ComponentHarness<()>, storage: &mut Storage) -> Option<
     response
 }
 
-/// Stores a block.
+/// Stores a block on a storage component.
 fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: Box<Block>) -> bool {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutBlock { block, responder }.into()
@@ -119,7 +119,7 @@ fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: B
     response
 }
 
-/// Stores a block.
+/// Stores the chainspec on a storage component.
 fn put_chainspec(harness: &mut ComponentHarness<()>, storage: &mut Storage, chainspec: Chainspec) {
     harness.send_request(storage, move |responder| {
         StorageRequest::PutChainspec {
@@ -131,7 +131,7 @@ fn put_chainspec(harness: &mut ComponentHarness<()>, storage: &mut Storage, chai
     assert!(harness.is_idle());
 }
 
-/// Stores a deploy.
+/// Stores a deploy on the storage component.
 fn put_deploy(
     harness: &mut ComponentHarness<()>,
     storage: &mut Storage,
