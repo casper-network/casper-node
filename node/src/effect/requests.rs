@@ -243,13 +243,17 @@ pub enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Vec<Option<DeployHeader>>>,
     },
-    /// Store the given execution for a specific block.
+    /// Store a set of execution result for multiple deploys of a single block.
     ///
-    /// If there are already execution results known
+    /// Will return a fatal error if there are already execution results known for a specific
+    /// deploy/block combination and a different result is inserted.
+    ///
+    /// Inserting the same block/deploy combination multiple times with the same execution results
+    /// is not an error and will silently be ignored.
     PutExecutionResults {
         /// Hash of block.
         block_hash: BlockHash,
-        /// Execution results.
+        /// Mapping of deploys to execution results of the block.
         execution_results: HashMap<DeployHash, ExecutionResult>,
         /// Responder to call when done storing.
         responder: Responder<()>,

@@ -546,7 +546,7 @@ impl From<Deploy> for DeployItem {
 #[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq)]
 pub struct DeployMetadata {
     /// The block hashes of blocks containing the related deploy, along with the results of
-    /// executing the related deploy.
+    /// executing the related deploy in the context of one or more blocks.
     pub execution_results: HashMap<BlockHash, ExecutionResult>,
 }
 
