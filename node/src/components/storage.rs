@@ -457,32 +457,8 @@ impl Storage {
         // the dispatching code (which should be removed anyway) as to not taint the interface.
 
         // In reality, this function is just a deploy retrieval method that should not exist.
+        let mut tx = self.env.ro_transaction();
 
-        todo!()
-        // let deploy_store = self.deploy_store();
-        // let deploy_hashes = smallvec![deploy_hash];
-        // let cloned_peer = peer.clone();
-        // async move {
-        //     task::spawn_blocking(move || deploy_store.get(deploy_hashes))
-        //         .await
-        //         .expect("should run")
-        //         .pop()
-        //         .expect("can only contain one result")
-        // }
-        // .map_err(move |error| {
-        //     debug!(
-        //         "failed to get {} for {}: {}",
-        //         deploy_hash, cloned_peer, error
-        //     )
-        // })
-        // .and_then(move |maybe_deploy| async move {
-        //     match maybe_deploy {
-        //         Some(deploy) => match Message::new_get_response(&deploy) {
-        //             Ok(message) => effect_builder.send_message(peer, message).await,
-        //             Err(error) => error!("failed to create get-response: {}", error),
-        //         },
-        //         None => debug!("failed to get {} for {}", deploy_hash, peer),
-        //     }
-        //     Ok(())
+        tx.get_value(self.deploy_db, &deploy_hash)
     }
 }
