@@ -121,7 +121,7 @@ fn get_deploy_and_metadata(
 }
 
 /// Requests the highest block from a storage component.
-fn highest(harness: &mut ComponentHarness<()>, storage: &mut Storage) -> Option<Block> {
+fn get_highest_block(harness: &mut ComponentHarness<()>, storage: &mut Storage) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
         StorageRequest::GetHighestBlock { responder }.into()
     });
@@ -221,7 +221,7 @@ fn can_retrieve_block_by_era_id() {
 
     // Both block at ID and highest block should return `None` initially.
     assert!(at_era(&mut harness, &mut storage, 0).is_none());
-    assert!(highest(&mut harness, &mut storage).is_none());
+    assert!(get_highest_block(&mut harness, &mut storage).is_none());
     assert!(at_era(&mut harness, &mut storage, 14).is_none());
     assert!(at_era(&mut harness, &mut storage, 33).is_none());
     assert!(at_era(&mut harness, &mut storage, 99).is_none());
@@ -231,7 +231,7 @@ fn can_retrieve_block_by_era_id() {
     assert!(was_new);
 
     assert_eq!(
-        highest(&mut harness, &mut storage).as_ref(),
+        get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33_a)
     );
     assert!(at_era(&mut harness, &mut storage, 0).is_none());
@@ -247,7 +247,7 @@ fn can_retrieve_block_by_era_id() {
     assert!(was_new);
 
     assert_eq!(
-        highest(&mut harness, &mut storage).as_ref(),
+        get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_33_a)
     );
     assert!(at_era(&mut harness, &mut storage, 0).is_none());
@@ -266,7 +266,7 @@ fn can_retrieve_block_by_era_id() {
     assert!(was_new);
 
     assert_eq!(
-        highest(&mut harness, &mut storage).as_ref(),
+        get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_99)
     );
     assert!(at_era(&mut harness, &mut storage, 0).is_none());
@@ -288,7 +288,7 @@ fn can_retrieve_block_by_era_id() {
     assert!(was_new);
 
     assert_eq!(
-        highest(&mut harness, &mut storage).as_ref(),
+        get_highest_block(&mut harness, &mut storage).as_ref(),
         Some(&*block_99)
     );
     assert!(at_era(&mut harness, &mut storage, 0).is_none());
