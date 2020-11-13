@@ -589,7 +589,7 @@ impl reactor::Reactor for Reactor {
                                 // This functionality was moved out of the storage component and
                                 // should be refactored ASAP.
                                 Some(deploy) => {
-                                    let effects = match Message::new_get_response(&deploy) {
+                                    match Message::new_get_response(&deploy) {
                                         Ok(message) => {
                                             return effect_builder
                                                 .send_message(sender, message)
