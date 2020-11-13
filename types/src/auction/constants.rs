@@ -96,10 +96,6 @@ pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_sn
 pub const DELEGATOR_REWARD_PURSE_KEY: &str = "delegator_reward_purse";
 /// Storage for validator reward purse
 pub const VALIDATOR_REWARD_PURSE_KEY: &str = "validator_reward_purse";
-/// Storage for `DelegatorRewardMap`.
-pub const DELEGATOR_REWARD_MAP_KEY: &str = "delegator_reward_map";
-/// Storage for `ValidatorRewardMap`.
-pub const VALIDATOR_REWARD_MAP_KEY: &str = "validator_reward_map";
 /// Total validator slots allowed.
 pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
 /// Amount of auction delay.

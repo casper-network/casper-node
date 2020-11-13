@@ -10,13 +10,12 @@ use casper_contract::{
 };
 use casper_types::{
     auction::{
-        Bid, Bids, DelegatorRewardMap, EraId, SeigniorageRecipient, SeigniorageRecipients,
-        SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorRewardMap, ValidatorWeights,
-        ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
-        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY,
-        DELEGATOR_REWARD_MAP_KEY, DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, INITIAL_ERA_ID,
-        LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
-        VALIDATOR_REWARD_MAP_KEY, VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
+        Bid, Bids, EraId, SeigniorageRecipient, SeigniorageRecipients,
+        SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_AUCTION_DELAY,
+        ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD, ARG_MINT_CONTRACT_PACKAGE_HASH,
+        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY, DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY,
+        INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
@@ -88,14 +87,6 @@ pub extern "C" fn install() {
         named_keys.insert(
             VALIDATOR_REWARD_PURSE_KEY.into(),
             create_purse(mint_package_hash, U512::zero()).into(),
-        );
-        named_keys.insert(
-            DELEGATOR_REWARD_MAP_KEY.into(),
-            storage::new_uref(DelegatorRewardMap::new()).into(),
-        );
-        named_keys.insert(
-            VALIDATOR_REWARD_MAP_KEY.into(),
-            storage::new_uref(ValidatorRewardMap::new()).into(),
         );
         named_keys.insert(
             VALIDATOR_SLOTS_KEY.into(),

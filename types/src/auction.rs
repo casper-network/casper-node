@@ -195,17 +195,6 @@ pub trait Auction:
 
         detail::set_bids(self, bids)?;
 
-        // Initialize delegator_reward_pool_map entry if it doesn't exist.
-        {
-            let mut delegator_reward_map = detail::get_delegator_reward_map(self)?;
-            delegator_reward_map
-                .entry(validator_public_key)
-                .or_default()
-                .entry(delegator_public_key)
-                .or_insert_with(U512::zero);
-            detail::set_delegator_reward_map(self, delegator_reward_map)?;
-        }
-
         Ok(new_delegation_amount)
     }
 
@@ -258,20 +247,6 @@ pub trait Auction:
         };
 
         detail::set_bids(self, bids)?;
-
-        if new_amount.is_zero() {
-            let mut outer = detail::get_delegator_reward_map(self)?;
-            let mut inner = outer
-                .remove(&validator_public_key)
-                .ok_or(Error::ValidatorNotFound)?;
-            inner
-                .remove(&delegator_public_key)
-                .ok_or(Error::DelegatorNotFound)?;
-            if !inner.is_empty() {
-                outer.insert(validator_public_key, inner);
-            };
-            detail::set_delegator_reward_map(self, outer)?;
-        }
 
         Ok(new_amount)
     }
@@ -461,7 +436,8 @@ pub trait Auction:
 
             let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
             let validator_reward = validators_part.to_integer();
-            detail::update_validator_reward(self, public_key, validator_reward)?;
+            let validator_payout =
+                detail::update_validator_reward(self, public_key, validator_reward)?;
 
             // TODO: add "mint into existing purse" facility
             let validator_reward_purse = self
@@ -470,11 +446,11 @@ pub trait Auction:
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
             let tmp_validator_reward_purse =
-                self.mint(validator_reward).map_err(|_| Error::MintReward)?;
+                self.mint(validator_payout).map_err(|_| Error::MintReward)?;
             self.transfer_purse_to_purse(
                 tmp_validator_reward_purse,
                 validator_reward_purse,
-                validator_reward,
+                validator_payout,
             )
             .map_err(|_| Error::Transfer)?;
 
@@ -510,33 +486,38 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let mut outer: DelegatorRewardMap = detail::get_delegator_reward_map(self)?;
-        let mut inner = outer
-            .remove(&validator_public_key)
-            .ok_or(Error::ValidatorNotFound)?;
+        let mut bids = detail::get_bids(self)?;
 
-        let reward_amount: &mut U512 = inner
-            .get_mut(&delegator_public_key)
-            .ok_or(Error::DelegatorNotFound)?;
+        let bid = match bids.get_mut(&validator_public_key) {
+            Some(bid) => bid,
+            None => return Err(Error::ValidatorNotFound),
+        };
 
-        let ret = *reward_amount;
+        let delegator = match bid.delegators_mut().get_mut(&delegator_public_key) {
+            Some(delegator) => delegator,
+            None => return Err(Error::DelegatorNotFound),
+        };
 
-        if !ret.is_zero() {
-            let source_purse = self
-                .get_key(DELEGATOR_REWARD_PURSE_KEY)
-                .ok_or(Error::MissingKey)?
-                .into_uref()
-                .ok_or(Error::InvalidKeyVariant)?;
+        let reward_amount = *delegator.reward();
 
-            self.transfer_purse_to_purse(source_purse, target_purse, *reward_amount)
-                .map_err(|_| Error::Transfer)?;
-
-            *reward_amount = U512::zero();
+        if reward_amount.is_zero() {
+            return Ok(reward_amount);
         }
 
-        outer.insert(validator_public_key, inner);
-        detail::set_delegator_reward_map(self, outer)?;
-        Ok(ret)
+        let source_purse = self
+            .get_key(DELEGATOR_REWARD_PURSE_KEY)
+            .ok_or(Error::MissingKey)?
+            .into_uref()
+            .ok_or(Error::InvalidKeyVariant)?;
+
+        self.transfer_purse_to_purse(source_purse, target_purse, reward_amount)
+            .map_err(|_| Error::Transfer)?;
+
+        delegator.zero_reward();
+
+        detail::set_bids(self, bids)?;
+
+        Ok(reward_amount)
     }
 
     /// Allows validators to withdraw the seigniorage rewards they have earned.
@@ -551,29 +532,33 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let mut validator_reward_map = detail::get_validator_reward_map(self)?;
+        let mut bids = detail::get_bids(self)?;
 
-        let reward_amount: &mut U512 = validator_reward_map
-            .get_mut(&validator_public_key)
-            .ok_or(Error::ValidatorNotFound)?;
+        let bid = match bids.get_mut(&validator_public_key) {
+            Some(bid) => bid,
+            None => return Err(Error::ValidatorNotFound),
+        };
 
-        let ret = *reward_amount;
+        let reward_amount = *bid.reward();
 
-        if !ret.is_zero() {
-            let source_purse = self
-                .get_key(VALIDATOR_REWARD_PURSE_KEY)
-                .ok_or(Error::MissingKey)?
-                .into_uref()
-                .ok_or(Error::InvalidKeyVariant)?;
-
-            self.transfer_purse_to_purse(source_purse, target_purse, *reward_amount)
-                .map_err(|_| Error::Transfer)?;
-
-            *reward_amount = U512::zero();
+        if reward_amount.is_zero() {
+            return Ok(reward_amount);
         }
 
-        detail::set_validator_reward_map(self, validator_reward_map)?;
-        Ok(ret)
+        let source_purse = self
+            .get_key(VALIDATOR_REWARD_PURSE_KEY)
+            .ok_or(Error::MissingKey)?
+            .into_uref()
+            .ok_or(Error::InvalidKeyVariant)?;
+
+        self.transfer_purse_to_purse(source_purse, target_purse, reward_amount)
+            .map_err(|_| Error::Transfer)?;
+
+        bid.zero_reward();
+
+        detail::set_bids(self, bids)?;
+
+        Ok(reward_amount)
     }
 
     /// Reads current era id.
