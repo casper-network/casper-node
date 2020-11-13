@@ -73,7 +73,6 @@ pub enum Error {
 #[derive(DataSize, Debug)]
 pub struct Storage {
     /// Storage location.
-    #[data_size(skip)]
     root: PathBuf,
     /// Environment holding LMDB databases.
     #[data_size(skip)]
@@ -88,10 +87,8 @@ pub struct Storage {
     #[data_size(skip)]
     deploy_metadata_db: Database,
     /// Block height index.
-    #[data_size(skip)]
     block_height_index: BTreeMap<u64, BlockHash>,
     /// Chainspec chache.
-    #[data_size(skip)]
     chainspec_cache: Option<Arc<Chainspec>>,
 }
 
