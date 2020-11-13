@@ -100,6 +100,12 @@ macro_rules! add_unit {
 
 /// Creates an endorsement of `vote` by `creator` and adds it to the state.
 macro_rules! endorse {
+    ($state: ident, $rng: ident, $vote: expr; $($creators: expr),*) => {
+        let creators = vec![$($creators.into()),*];
+        for creator in creators.into_iter() {
+            endorse!($state, $rng, creator, $vote);
+        }
+    };
     ($state: ident, $rng: ident, $creator: expr, $vote: expr) => {
         let endorsement: Endorsement<TestContext> = Endorsement::new($vote, ($creator));
         let signature = TestSecret(($creator).0).sign(&endorsement.hash(), &mut $rng);

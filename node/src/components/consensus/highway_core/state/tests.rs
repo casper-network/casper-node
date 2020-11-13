@@ -370,7 +370,7 @@ fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
+#[ignore = "stubbed validate_lnc"]
 fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
     // Equivocation cited by two honest validators in the vote's panorama – their votes need to
     // be endorsed.
@@ -417,7 +417,7 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
+#[ignore = "stubbed validate_lnc"]
 fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
     // Multiple equivocators and indirect equivocations.
     // Votes are seen as endorsed by `state` – does not violate LNC.
@@ -459,9 +459,7 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
     assert_eq!(state.validate_lnc(&e0), Some(ALICE));
     e0.endorsed.insert(b0);
     // Endorse b0.
-    endorse!(state, rng, BOB, b0);
-    endorse!(state, rng, DAN, b0);
-    endorse!(state, rng, ERIC, b0);
+    endorse!(state, rng, b0; BOB, DAN, ERIC);
     assert_eq!(state.validate_lnc(&e0), None);
     Ok(())
 }
