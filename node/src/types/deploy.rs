@@ -532,7 +532,10 @@ impl From<Deploy> for DeployItem {
     }
 }
 
-/// TODO: What is this, exactly?
+/// The deploy mutable metadata.
+///
+/// Currently a stop-gap measure to associate an immutable deploy with additional metadata. Holds
+/// execution results.
 #[derive(Clone, Default, Serialize, Deserialize, Debug)]
 pub struct DeployMetadata {
     /// The block hashes of blocks containing the related deploy, along with the results of
