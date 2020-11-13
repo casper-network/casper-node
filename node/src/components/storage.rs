@@ -5,9 +5,14 @@
 //!
 //! * storing and loading blocks,
 //! * storing and loading deploys,
+//! * [temporary until refactored] holding `DeployMetadata` for each deploy,
 //! * holding a read-only copy of the chainspec,
 //! * keeping an index of blocks by height and
 //! * [unimplemented] managing disk usage by pruning blocks and deploys from storage.
+//!
+//! Any I/O performed by the component is done on the event handling thread, this is on purpose as
+//! the assumption is that caching by LMDB will offset any gains from offloading it onto a separate
+//! thread, while keeping the maximum event processing time reasonable.
 
 mod lmdb_ext;
 mod serialization;
