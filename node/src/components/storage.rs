@@ -52,9 +52,6 @@ use tracing::{info, warn};
 /// one time.
 const MAX_TRANSACTIONS: u32 = 4;
 
-/// Where to store the chainspec in.
-const CHAINSPEC_CACHE_FILENAME: &str = "chainspec_cache";
-
 #[derive(Debug, From)]
 pub enum Event {
     /// Incoming storage request.
@@ -156,13 +153,6 @@ impl Storage {
             .create_db(Some("deploy_metadata"), DatabaseFlags::empty())
             .map_err(Error::LmdbInit)?;
 
-        // Load chainspec from file. A corrupt chainspec will lead to a panic.
-        let chainspec_cache = if let Ok(raw) = fs::read(root.join(CHAINSPEC_CACHE_FILENAME)) {
-            Some(deser(&raw))
-        } else {
-            None
-        };
-
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
@@ -202,7 +192,7 @@ impl Storage {
             deploy_db,
             deploy_metadata_db,
             block_height_index,
-            chainspec_cache,
+            chainspec_cache: None,
         })
     }
 
@@ -338,10 +328,6 @@ impl Storage {
                 chainspec,
                 responder,
             } => {
-                // Commit to storage first, then update cache.
-                let chainspec_file = fs::File::create(self.root.join(CHAINSPEC_CACHE_FILENAME))
-                    .expect("could not create chainspec cache file");
-                ser(chainspec_file, &*chainspec).expect("could not update chainspec cache");
                 self.chainspec_cache = Some(chainspec);
 
                 responder.respond(()).ignore()
