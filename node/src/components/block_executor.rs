@@ -185,7 +185,7 @@ impl BlockExecutor {
         let next_deploy = match state.remaining_deploys.pop_front() {
             Some(deploy) => deploy,
             None => {
-                let era_end = match state.finalized_block.era_end().as_ref() {
+                let era_end = match state.finalized_block.era_end() {
                     Some(era_end) => era_end,
                     None => return self.finalize_block_execution(effect_builder, state),
                 };
