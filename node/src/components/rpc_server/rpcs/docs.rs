@@ -21,18 +21,22 @@ use super::{
         BlockIdentifier, GetBlock, GetBlockParams, GetBlockResult, GetStateRootHash,
         GetStateRootHashParams, GetStateRootHashResult,
     },
-    info::{GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult, GetStatus},
+    info::{
+        GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult, GetStatus,
+        JsonExecutionResult,
+    },
     state::{GetAuctionInfo, GetAuctionInfoResult, GetBalance, GetBalanceParams, GetBalanceResult},
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     RpcWithoutParamsExt,
 };
+
 use crate::{
     components::{chainspec_loader::ChainspecInfo, CLIENT_API_VERSION},
     crypto::hash::Digest,
     effect::EffectBuilder,
     types::{
-        json_compatibility::AuctionState, Block, Deploy, GetStatusResult, NodeId, PeersMap,
-        StatusFeed,
+        json_compatibility::{AuctionState, ExecutionResult},
+        Block, BlockHash, Deploy, GetStatusResult, NodeId, PeersMap, StatusFeed,
     },
 };
 
@@ -117,10 +121,15 @@ lazy_static! {
                 deploy_hash: *deploy.id()
             };
 
+            let execution_results = JsonExecutionResult {
+                block_hash: BlockHash::new(Digest::doc_example()),
+                result: ExecutionResult::doc_example().clone()
+            };
+
             let response_result = GetDeployResult {
                 api_version: CLIENT_API_VERSION.clone(),
                 deploy: deploy.clone(),
-                execution_results: vec![]
+                execution_results: vec![execution_results]
             };
 
             result.push_with_params::<GetDeploy>(

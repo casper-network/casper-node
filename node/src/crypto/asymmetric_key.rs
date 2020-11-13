@@ -29,7 +29,6 @@ use signature::{RandomizedSigner, Signature as Sig, Verifier};
 use tracing::info;
 use untrusted::Input;
 
-use crate::rpcs::docs::DocExample;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 use super::{Error, Result};
@@ -37,6 +36,7 @@ use super::{Error, Result};
 use crate::testing::TestRng;
 use crate::{
     crypto::hash::hash,
+    rpcs::docs::DocExample,
     utils::{read_file, write_file},
     NodeRng,
 };
