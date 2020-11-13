@@ -88,6 +88,7 @@ pub(crate) struct ComponentHarness<REv: 'static> {
     /// Scheduler for events. Only explicitly polled by the harness.
     pub(crate) scheduler: &'static Scheduler<REv>,
     /// An event queue handle to the scheduler.
+    #[allow(unused)] // TODO: Remove once in use.
     pub(crate) event_queue_handle: EventQueueHandle<REv>,
     /// Effect builder pointing at the scheduler.
     pub(crate) effect_builder: EffectBuilder<REv>,

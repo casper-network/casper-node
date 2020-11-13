@@ -31,12 +31,8 @@ use thiserror::Error;
 
 use super::{block_proposer::BlockProposerState, Component};
 use crate::{
-    effect::{
-        requests::{NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects,
-    },
-    protocol::Message,
-    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, NodeId, Timestamp},
+    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
+    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, Timestamp},
     utils::WithDir,
     Chainspec, NodeRng,
 };
