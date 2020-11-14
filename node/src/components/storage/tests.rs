@@ -486,13 +486,18 @@ fn store_random_execution_results() {
         Deploy::random(&mut harness.rng),
     ];
 
+    // Store shared deploys.
+    for deploy in &shared_deploys {
+        put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
+    }
+
     // We collect the expected result per deploy in parallel to adding them.
-    let mut expected = HashMap::new();
+    let mut expected_outcome = HashMap::new();
 
     fn setup_block(
         harness: &mut ComponentHarness<()>,
         storage: &mut Storage,
-        expected: &mut HashMap<DeployHash, HashMap<BlockHash, ExecutionResult>>,
+        expected_outcome: &mut HashMap<DeployHash, HashMap<BlockHash, ExecutionResult>>,
         block_hash: &BlockHash,
         shared_deploys: &Vec<Deploy>,
     ) {
@@ -504,31 +509,39 @@ fn store_random_execution_results() {
         // Add three unique deploys to block.
         for _ in 0..unique_count {
             let deploy = Deploy::random(&mut harness.rng);
+
+            // Store unique deploy.
+            put_deploy(harness, storage, Box::new(deploy.clone()));
+
             let execution_result = ExecutionResult::random(&mut harness.rng);
 
+            // Insert deploy results for the unique block-deploy combination.
             let mut map = HashMap::new();
             map.insert(block_hash.clone(), execution_result.clone());
+            expected_outcome.insert(deploy.id().clone(), map);
 
-            expected.insert(deploy.id().clone(), map);
-
+            // Add to our expected outcome.
             block_results.insert(deploy.id().clone(), execution_result);
         }
 
         // Insert the shared deploys as well.
         for shared_deploy in shared_deploys {
-            let deploy_results = expected.entry(shared_deploy.id().clone()).or_default();
             let execution_result = ExecutionResult::random(&mut harness.rng);
 
-            let result = deploy_results.insert(block_hash.clone(), execution_result.clone());
+            // Insert out new result and ensure it is not present yet.
+            let result = block_results.insert(shared_deploy.id().clone(), execution_result.clone());
             assert!(result.is_none());
 
-            let deploy_expected = expected
-                .get_mut(shared_deploy.id())
-                .expect("did not expect to be missing entry for deploy");
-            let result = deploy_expected.insert(block_hash.clone(), execution_result.clone());
-            assert!(result.is_none());
+            // Insert into expected outcome.
+            let deploy_expected = expected_outcome
+                .entry(shared_deploy.id().clone())
+                .or_default();
+            let prev = deploy_expected.insert(block_hash.clone(), execution_result.clone());
+            // Ensure we are not replacing something.
+            assert!(prev.is_none());
         }
 
+        // We should have all results for our block collected for the input.
         assert_eq!(block_results.len(), unique_count + shared_deploys.len());
 
         // Now we can submit the blocks execution results.
@@ -538,7 +551,7 @@ fn store_random_execution_results() {
     setup_block(
         &mut harness,
         &mut storage,
-        &mut expected,
+        &mut expected_outcome,
         &block_hash_a,
         &shared_deploys,
     );
@@ -546,17 +559,19 @@ fn store_random_execution_results() {
     setup_block(
         &mut harness,
         &mut storage,
-        &mut expected,
+        &mut expected_outcome,
         &block_hash_b,
         &shared_deploys,
     );
 
     // At this point, we are all set up and ready to receive results. Iterate over every deploy and
     // see if its execution-data-per-block matches our expectations.
-    for (deploy_hash, raw_meta) in expected.iter() {
-        let (_deploy, metadata) =
+    for (deploy_hash, raw_meta) in expected_outcome.iter() {
+        let (deploy, metadata) =
             get_deploy_and_metadata(&mut harness, &mut storage, deploy_hash.clone())
                 .expect("missing deploy");
+
+        assert_eq!(deploy_hash, deploy.id());
 
         assert_eq!(raw_meta, &metadata.execution_results);
     }
