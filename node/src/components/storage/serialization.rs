@@ -1,43 +1,24 @@
 //! Storage serialization.
 //!
 //! Centralizes settings and methods for serialization for all parts of storage.
+//!
+//! Errors are unified into a generic, type erased `std` error to allow for easy interchange of the
+//! serialization format if desired.
 
-use std::{error, io};
+use std::error;
 
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Deserializes from a buffer.
 #[inline(always)]
-pub(crate) fn deser<T: DeserializeOwned>(raw: &[u8]) -> Result<T, Box<dyn error::Error>> {
+pub(crate) fn deser<T: DeserializeOwned>(
+    raw: &[u8],
+) -> Result<T, Box<dyn error::Error + Send + Sync>> {
     Ok(bincode::deserialize(raw)?)
-}
-
-/// Serialization helper
-///
-/// # Panics
-///
-/// Panics if serialization fails, for reasons other than IO errors.
-#[inline]
-pub(crate) fn ser<T: Serialize, W: io::Write>(writer: W, value: &T) -> Result<(), io::Error> {
-    match bincode::serialize_into(writer, value) {
-        Ok(_) => Ok(()),
-        Err(err) => {
-            if let bincode::ErrorKind::Io(io_err) = *err {
-                Err(io_err)
-            } else {
-                panic!("serialization error. this is a bug: {}", err)
-            }
-        }
-    }
 }
 
 /// Serializes into a buffer.
 #[inline(always)]
-pub(crate) fn ser_to_bytes<T: Serialize>(value: &T) -> Vec<u8> {
-    let mut buffer = Vec::new();
-    ser(&mut buffer, value).expect(
-        "serialization for type failed. this should never happen (add more test coverage!)",
-    );
-
-    buffer
+pub(crate) fn ser<T: Serialize>(value: &T) -> Result<Vec<u8>, Box<dyn error::Error + Send + Sync>> {
+    Ok(bincode::serialize(value)?)
 }

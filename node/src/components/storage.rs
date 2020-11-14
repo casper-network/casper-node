@@ -30,6 +30,11 @@
 //!
 //! The current implementation keeps only in-memory indices, which are not persisted, based upon the
 //! estimate that they are reasonably quick to rebuild on start-up and do not take up much memory.
+//!
+//! ## Errors
+//!
+//! The storage component itself is panic free and in general reports three classes of errors:
+//! Corruption, temporary resource exhaustion and potential bugs.
 
 mod lmdb_ext;
 mod serialization;
@@ -59,7 +64,7 @@ use crate::{
     utils::WithDir,
     Chainspec, NodeRng,
 };
-use lmdb_ext::{EnvironmentExt, TransactionExt, WriteTransactionExt};
+use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use serialization::deser;
 
 #[cfg(test)]
@@ -96,6 +101,9 @@ pub enum Error {
         /// Second block hash encountered at `height`.
         second: BlockHash,
     },
+    /// LMDB error while operating.
+    #[error("internal database error: {0}")]
+    InternalStorage(LmdbExtError),
 }
 
 #[derive(DataSize, Debug)]
@@ -130,8 +138,14 @@ impl<REv> Component<REv> for Storage {
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        match event {
+        let result = match event {
             Event::StorageRequest(req) => self.handle_storage_request::<REv>(effect_builder, req),
+        };
+
+        // Any error is turned into a fatal effect, the component itself does not panic.
+        match result {
+            Ok(effects) => effects,
+            Err(err) => fatal!(effect_builder, format!("storage error: {}", err)),
         }
     }
 }
@@ -180,7 +194,7 @@ impl Storage {
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
-        let block_tx = env.ro_transaction();
+        let block_tx = env.begin_ro_txn().expect("TODO");
         let mut cursor = block_tx
             .open_ro_cursor(block_db)
             .expect("could not create read-only cursor on block store");
@@ -225,18 +239,20 @@ impl Storage {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         req: StorageRequest,
-    ) -> Effects<Event>
+    ) -> Result<Effects<Event>, LmdbExtError>
     where
         Self: Component<REv>,
     {
         // Note: Database IO is handled in a blocking fashion on purpose throughout this function.
         // The rationale behind is that long IO operations are very rare and cache misses
         // frequent, so on average the actual execution time will be very low.
-        match req {
+        Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
-                let mut tx = self.env.rw_transaction();
-                let outcome = tx.put_value(self.block_db, block.hash(), &block);
-                tx.commit_ok();
+                let mut tx = self.env.begin_rw_txn()?;
+                let outcome = tx
+                    .put_value(self.block_db, block.hash(), &block)
+                    .expect("TODO");
+                tx.commit()?;
 
                 if outcome {
                     if let Some(prev) = self
@@ -256,7 +272,7 @@ impl Storage {
                         // Avoid dropping the responder, to not panic before we have a chance to
                         // handle the `fatal` effect.
                         effects.extend(responder.respond(false).ignore().into_iter());
-                        return effects;
+                        return Ok(effects);
                     }
                 }
 
@@ -266,17 +282,18 @@ impl Storage {
                 block_hash,
                 responder,
             } => responder
-                .respond(self.get_single_block(&block_hash))
+                .respond(self.get_single_block(&block_hash)?)
                 .ignore(),
-            StorageRequest::GetBlockAtHeight { height, responder } => {
-                responder.respond(self.get_block_by_height(height)).ignore()
-            }
+            StorageRequest::GetBlockAtHeight { height, responder } => responder
+                .respond(self.get_block_by_height(height)?)
+                .ignore(),
             StorageRequest::GetHighestBlock { responder } => responder
                 .respond(
                     self.block_height_index
                         .keys()
                         .last()
-                        .and_then(|&height| self.get_block_by_height(height)),
+                        .and_then(|&height| self.get_block_by_height(height).transpose())
+                        .transpose()?,
                 )
                 .ignore(),
             StorageRequest::GetBlockHeader {
@@ -284,28 +301,28 @@ impl Storage {
                 responder,
             } => responder
                 .respond(
-                    self.get_single_block(&block_hash)
+                    self.get_single_block(&block_hash)?
                         .map(|block| block.header().clone()),
                 )
                 .ignore(),
             StorageRequest::PutDeploy { deploy, responder } => {
-                let mut tx = self.env.rw_transaction();
+                let mut tx = self.env.begin_rw_txn()?;
                 let outcome = tx.put_value(self.deploy_db, deploy.id(), &deploy);
-                tx.commit_ok();
-                responder.respond(outcome).ignore()
+                tx.commit()?;
+                responder.respond(outcome.expect("TODO")).ignore()
             }
             StorageRequest::GetDeploys {
                 deploy_hashes,
                 responder,
             } => responder
-                .respond(self.get_deploys(deploy_hashes.as_slice()))
+                .respond(self.get_deploys(deploy_hashes.as_slice())?)
                 .ignore(),
             StorageRequest::GetDeployHeaders {
                 deploy_hashes,
                 responder,
             } => responder
                 .respond(
-                    self.get_deploys(deploy_hashes.as_slice())
+                    self.get_deploys(deploy_hashes.as_slice())?
                         .into_iter() // TODO: Ineffecient, a dedicated function can avoid reallocation.
                         .map(|opt| opt.map(|deploy| deploy.header().clone()))
                         .collect(),
@@ -317,10 +334,11 @@ impl Storage {
                 responder,
             } => {
                 // TODO: Verify this code is working as intended.
-                let mut tx = self.env.rw_transaction();
+                let mut tx = self.env.begin_rw_txn()?;
 
                 let mut metadata: DeployMetadata = tx
                     .get_value(self.deploy_metadata_db, &block_hash)
+                    .expect("TODO")
                     .unwrap_or_default();
 
                 for (_deploy_hash, execution_result) in execution_results {
@@ -330,8 +348,8 @@ impl Storage {
                 }
 
                 // Store the updated metadata.
-                tx.put_value(self.deploy_metadata_db, &block_hash, &metadata);
-                tx.commit_ok();
+                tx.put_value(self.deploy_metadata_db, &block_hash, &metadata)?;
+                tx.commit()?;
 
                 responder.respond(()).ignore()
             }
@@ -339,16 +357,19 @@ impl Storage {
                 deploy_hash,
                 responder,
             } => {
-                let mut tx = self.env.ro_transaction();
-
-                let value = tx.get_value(self.deploy_db, &deploy_hash).map(|deploy| {
-                    (
-                        deploy,
-                        tx.get_value(self.deploy_metadata_db, &deploy_hash)
-                            .unwrap_or_default(),
-                    )
-                });
-                responder.respond(value).ignore()
+                let mut tx = self.env.begin_ro_txn()?;
+                todo!()
+                // let value = tx
+                //     .get_value(self.deploy_db, &deploy_hash)
+                //     .expect("TODO")
+                //     .map(|deploy| {
+                //         (
+                //             deploy,
+                //             tx.get_value(self.deploy_metadata_db, &deploy_hash)
+                //                 .unwrap_or_default(),
+                //         )
+                //     });
+                // responder.respond(value).ignore()
             }
 
             StorageRequest::PutChainspec {
@@ -363,25 +384,29 @@ impl Storage {
                 version: _version,
                 responder,
             } => responder.respond(self.chainspec_cache.clone()).ignore(),
-        }
+        })
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
-    fn get_block_by_height(&self, height: u64) -> Option<Block> {
+    fn get_block_by_height(&self, height: u64) -> Result<Option<Block>, LmdbExtError> {
         self.block_height_index
             .get(&height)
-            .and_then(|block_hash| self.get_single_block(block_hash))
+            .and_then(|block_hash| self.get_single_block(block_hash).transpose())
+            .transpose()
     }
 
     /// Retrieves a single block in a separate transaction from storage.
-    fn get_single_block(&self, block_hash: &BlockHash) -> Option<Block> {
-        let mut tx = self.env.ro_transaction();
+    fn get_single_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, LmdbExtError> {
+        let mut tx = self.env.begin_ro_txn()?;
         tx.get_value(self.block_db, &block_hash)
     }
 
     /// Retrieves a set of deploys from storage.
-    fn get_deploys(&self, deploy_hashes: &[DeployHash]) -> Vec<Option<Deploy>> {
-        let mut tx = self.env.ro_transaction();
+    fn get_deploys(
+        &self,
+        deploy_hashes: &[DeployHash],
+    ) -> Result<Vec<Option<Deploy>>, LmdbExtError> {
+        let mut tx = self.env.begin_ro_txn()?;
 
         deploy_hashes
             .iter()
@@ -475,8 +500,10 @@ impl Storage {
         // the dispatching code (which should be removed anyway) as to not taint the interface.
 
         // In reality, this function is just a deploy retrieval method that should not exist.
-        let mut tx = self.env.ro_transaction();
-
-        tx.get_value(self.deploy_db, &deploy_hash)
+        self.env
+            .begin_ro_txn()
+            .map_err(Into::into)
+            .and_then(|mut tx| tx.get_value(self.deploy_db, &deploy_hash))
+            .expect("legacy direct deploy request failed")
     }
 }

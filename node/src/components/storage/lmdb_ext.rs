@@ -1,53 +1,79 @@
 //! LMDB extensions.
 //!
-//! Various traits and helper functions to extend the lower levele LMDB functions.
+//! Various traits and helper functions to extend the lower levele LMDB functions. Unifies
+//! lower-level storage errors from lmdb and serialization issues.
 
-use lmdb::{Database, Environment, RoTransaction, RwTransaction, Transaction, WriteFlags};
+use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
+use thiserror::Error;
 
-use super::serialization::{deser, ser_to_bytes};
+use super::serialization::{deser, ser};
 
-/// Additional methods on `Environment`.
-pub(super) trait EnvironmentExt {
-    /// Creates a new read-only transaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics if creating the transaction fails.
-    fn ro_transaction(&self) -> RoTransaction;
+/// Error wrapper for lower-level storage errors.
+///
+/// Used to classify storage errors, allowing more accurate reporting on potential issues and
+/// crashes. Indicates how to proceed (clearing storage entirely or just restarting) in most cases.
+///
+/// Note that accessing a storage with an incompatible version of this software is also considered a
+/// case of corruption.
+#[derive(Debug, Error)]
+pub enum LmdbExtError {
+    /// The internal database is corrupted and can probably not be salvaged.
+    #[error("internal storage corrupted: {0}")]
+    Corrupted(Box<dyn std::error::Error + Send + Sync>),
+    /// A resource has been exhausted a runtime, restarting (potentially with different settings)
+    /// might fix the problem. Storage integrity is still intact.
+    #[error("storage exhausted resource (but still intact): {0}")]
+    ResourceExhausted(lmdb::Error),
+    /// Error neither corruption nor resource exhaustion occured, likely a programming error.
+    #[error("unknown LMDB storage error, likely from a bug: {0}")]
+    Other(lmdb::Error),
+}
 
-    /// Creates a new read-write transaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics if creating the transaction fails.
-    fn rw_transaction(&self) -> RwTransaction;
+// Classifies an `lmdb::Error` according to our scheme. This one of the rare cases where we accept a
+// blanked `From<>` implementation for error type conversion.
+impl From<lmdb::Error> for LmdbExtError {
+    fn from(lmdb_error: lmdb::Error) -> Self {
+        match lmdb_error {
+            lmdb::Error::PageNotFound
+            | lmdb::Error::Corrupted
+            | lmdb::Error::Panic
+            | lmdb::Error::VersionMismatch
+            | lmdb::Error::Invalid
+            | lmdb::Error::Incompatible => LmdbExtError::Corrupted(Box::new(lmdb_error)),
+
+            lmdb::Error::MapFull
+            | lmdb::Error::DbsFull
+            | lmdb::Error::ReadersFull
+            | lmdb::Error::TlsFull
+            | lmdb::Error::TxnFull
+            | lmdb::Error::CursorFull
+            | lmdb::Error::PageFull
+            | lmdb::Error::MapResized => LmdbExtError::ResourceExhausted(lmdb_error),
+
+            lmdb::Error::NotFound
+            | lmdb::Error::BadRslot
+            | lmdb::Error::BadTxn
+            | lmdb::Error::BadValSize
+            | lmdb::Error::BadDbi
+            | lmdb::Error::KeyExist
+            | lmdb::Error::Other(_) => LmdbExtError::Other(lmdb_error),
+        }
+    }
 }
 
 /// Additional methods on transaction.
 pub(super) trait TransactionExt {
     /// Helper function to load a value from a database.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a value has been successfully loaded from the database but could not be
-    /// deserialized or a database error occurred.
     fn get_value<K: AsRef<[u8]>, V: DeserializeOwned>(
         &mut self,
         db: Database,
         key: &K,
-    ) -> Option<V>;
+    ) -> Result<Option<V>, LmdbExtError>;
 }
 
 /// Additional methods on write transactions.
 pub(super) trait WriteTransactionExt {
-    /// Commits transaction results.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a database error occurs.
-    fn commit_ok(self);
-
     /// Helper function to write a value to a database.
     ///
     /// Returns `true` if the value has actually been written, `false` if the key already existed.
@@ -55,21 +81,12 @@ pub(super) trait WriteTransactionExt {
     /// # Panics
     ///
     /// Panics if a database error occurs.
-    fn put_value<K: AsRef<[u8]>, V: Serialize>(&mut self, db: Database, key: &K, value: &V)
-        -> bool;
-}
-
-impl EnvironmentExt for Environment {
-    #[inline]
-    fn ro_transaction(&self) -> RoTransaction {
-        self.begin_ro_txn()
-            .expect("could not start new read-only transaction")
-    }
-    #[inline]
-    fn rw_transaction(&self) -> RwTransaction {
-        self.begin_rw_txn()
-            .expect("could not start new read-write transaction")
-    }
+    fn put_value<K: AsRef<[u8]>, V: Serialize>(
+        &mut self,
+        db: Database,
+        key: &K,
+        value: &V,
+    ) -> Result<bool, LmdbExtError>;
 }
 
 impl<T> TransactionExt for T
@@ -81,36 +98,30 @@ where
         &mut self,
         db: Database,
         key: &K,
-    ) -> Option<V> {
+    ) -> Result<Option<V>, LmdbExtError> {
         match self.get(db, key) {
-          Ok(raw) => Some(deser(raw).expect("database corruption. TODO: handle?")),
-          Err(lmdb::Error::NotFound) => None,
-          Err(err) => panic!("error loading value from database. this is a bug or a sign of database corruption: {:?}", err)
-      }
+            // Deserialization failures are likely due to storage corruption.
+            Ok(raw) => Some(deser(raw).map_err(LmdbExtError::Corrupted)).transpose(),
+            Err(lmdb::Error::NotFound) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
     }
 }
 
 impl WriteTransactionExt for RwTransaction<'_> {
-    fn commit_ok(self) {
-        self.commit().expect("could not commit transaction")
-    }
-
     fn put_value<K: AsRef<[u8]>, V: Serialize>(
         &mut self,
         db: Database,
         key: &K,
         value: &V,
-    ) -> bool {
-        let buffer = ser_to_bytes(value);
+    ) -> Result<bool, LmdbExtError> {
+        let buffer = ser(value).expect("TODO");
 
         match self.put(db, key, &buffer, WriteFlags::NO_OVERWRITE) {
-            Ok(()) => true,
+            Ok(()) => Ok(true),
             // If we did not add the value due to it already existing, just return `false`.
-            Err(lmdb::Error::KeyExist) => false,
-            Err(err) => panic!(
-                "error storing value to database. this is a bug, or a misconfiguration: {:?}",
-                err
-            ),
+            Err(lmdb::Error::KeyExist) => Ok(false),
+            Err(err) => Err(err.into()),
         }
     }
 }
