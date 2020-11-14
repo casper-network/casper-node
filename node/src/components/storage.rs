@@ -251,7 +251,7 @@ impl Storage {
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
                 let mut tx = self.env.begin_rw_txn()?;
-                let outcome = tx.put_value(self.block_db, block.hash(), &block)?;
+                let outcome = tx.put_value(self.block_db, block.hash(), &block, false)?;
                 tx.commit()?;
 
                 if outcome {
@@ -308,7 +308,7 @@ impl Storage {
                 .ignore(),
             StorageRequest::PutDeploy { deploy, responder } => {
                 let mut tx = self.env.begin_rw_txn()?;
-                let outcome = tx.put_value(self.deploy_db, deploy.id(), &deploy)?;
+                let outcome = tx.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
                 tx.commit()?;
                 responder.respond(outcome).ignore()
             }
@@ -350,13 +350,19 @@ impl Storage {
                                 block_hash,
                             });
                         }
+
+                        // We can now skip adding, as the result is the same.
+                        eprintln!("skipping");
+                        continue;
                     }
 
                     // Update metadata and write back to db.
                     metadata
                         .execution_results
                         .insert(block_hash, execution_result);
-                    tx.put_value(self.deploy_metadata_db, &deploy_hash, &metadata)?;
+                    let was_written =
+                        tx.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
+                    assert!(was_written);
                 }
 
                 // We commit only once we finished updating all deploy metadata.

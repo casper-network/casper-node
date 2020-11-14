@@ -86,6 +86,8 @@ pub(super) trait WriteTransactionExt {
     ///
     /// Returns `true` if the value has actually been written, `false` if the key already existed.
     ///
+    /// Setting `overwrite` to true will cause the value to always be written instead.
+    ///
     /// # Panics
     ///
     /// Panics if a database error occurs.
@@ -94,6 +96,7 @@ pub(super) trait WriteTransactionExt {
         db: Database,
         key: &K,
         value: &V,
+        overwrite: bool,
     ) -> Result<bool, LmdbExtError>;
 }
 
@@ -122,10 +125,17 @@ impl WriteTransactionExt for RwTransaction<'_> {
         db: Database,
         key: &K,
         value: &V,
+        overwrite: bool,
     ) -> Result<bool, LmdbExtError> {
         let buffer = ser(value).expect("TODO");
 
-        match self.put(db, key, &buffer, WriteFlags::NO_OVERWRITE) {
+        let flags = if overwrite {
+            WriteFlags::empty()
+        } else {
+            WriteFlags::NO_OVERWRITE
+        };
+
+        match self.put(db, key, &buffer, flags) {
             Ok(()) => Ok(true),
             // If we did not add the value due to it already existing, just return `false`.
             Err(lmdb::Error::KeyExist) => Ok(false),
