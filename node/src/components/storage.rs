@@ -14,7 +14,7 @@
 //! the assumption is that caching by LMDB will offset any gains from offloading it onto a separate
 //! thread, while keeping the maximum event processing time reasonable.
 //!
-//! # Consistency
+//! ## Consistency
 //!
 //! The storage upholds a few invariants internally, namely:
 //!
@@ -25,6 +25,11 @@
 //!   block with a different block already existing at the same height causes a fatal error.
 //! * Storing a deploy or block that already exists (same hash) is fine and will silently be
 //!   accepted.
+//!
+//! ## Indices
+//!
+//! The current implementation keeps only in-memory indices, which are not persisted, based upon the
+//! estimate that they are reasonably quick to rebuild on start-up and do not take up much memory.
 
 mod lmdb_ext;
 mod serialization;
