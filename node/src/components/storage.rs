@@ -162,7 +162,7 @@ impl Storage {
                     | EnvironmentFlags::WRITE_MAP,
             )
             .set_max_readers(MAX_TRANSACTIONS)
-            .set_max_dbs(4)
+            .set_max_dbs(3)
             .set_map_size(total_size)
             .open(&root.join("storage.lmdb"))
             .map_err(Error::LmdbInit)?;
