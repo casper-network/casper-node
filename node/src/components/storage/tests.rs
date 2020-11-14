@@ -303,7 +303,7 @@ fn can_retrieve_block_by_height() {
 }
 
 #[test]
-#[should_panic(expected = "already known")]
+#[should_panic(expected = "duplicate entries")]
 fn different_block_at_height_is_fatal() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);

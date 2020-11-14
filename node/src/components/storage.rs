@@ -267,6 +267,9 @@ impl Storage {
                     }
                 }
 
+                self.block_height_index
+                    .insert(block.height(), block.hash().clone());
+
                 responder.respond(outcome).ignore()
             }
             StorageRequest::GetBlock {
