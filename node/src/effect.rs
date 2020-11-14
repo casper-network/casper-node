@@ -382,23 +382,15 @@ impl<REv> EffectBuilder<REv> {
     /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
-    pub fn immediately(self) -> impl Future<Output = ()> + Send {
-        // Note: This function is implemented manually without `async` sugar because the `Send`
-        // inferrence seems to not work in all cases otherwise.
-        async {}
-    }
+    pub async fn immediately(self) {}
 
-    /// Reports a fatal error.
+    /// Reports a fatal error.  Normally called via the `crate::fatal!()` macro.
     ///
     /// Usually causes the node to cease operations quickly and exit/crash.
-    pub fn fatal<M: Display + ?Sized>(
-        self,
-        file: &str,
-        line: u32,
-        msg: &M,
-    ) -> impl Future<Output = ()> + Send {
-        // Note: This function is implemented manually without `async` sugar because the `Send`
-        // inferrence seems to not work in all cases otherwise.
+    //
+    // Note: This function is implemented manually without `async` sugar because the `Send`
+    // inferrence seems to not work in all cases otherwise.
+    pub fn fatal(self, file: &str, line: u32, msg: String) -> impl Future<Output = ()> + Send {
         panic!("fatal error [{}:{}]: {}", file, line, msg);
         #[allow(unreachable_code)]
         async {} // The compiler will complain about an incorrect return value otherwise.
@@ -1172,7 +1164,7 @@ impl<REv> EffectBuilder<REv> {
 /// `line!()` number automatically.
 #[macro_export]
 macro_rules! fatal {
-    ($effect_builder:expr, $msg:expr) => {
-        $effect_builder.fatal(file!(), line!(), &$msg).ignore()
+    ($effect_builder:expr, $($arg:tt)*) => {
+        $effect_builder.fatal(file!(), line!(), format_args!($($arg)*).to_string()).ignore()
     };
 }

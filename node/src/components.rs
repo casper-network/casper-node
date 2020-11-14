@@ -21,6 +21,7 @@ pub(crate) mod rpc_server;
 pub mod in_memory_network;
 
 pub(crate) mod metrics;
+pub(crate) mod network;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 

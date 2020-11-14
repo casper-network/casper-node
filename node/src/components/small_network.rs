@@ -130,6 +130,8 @@ where
     public_address: SocketAddr,
     /// Our node ID,
     our_id: NodeId,
+    /// If we connect to ourself, this flag is set to true.
+    is_bootstrap_node: bool,
     /// Handle to event queue.
     event_queue: EventQueueHandle<REv>,
 
@@ -231,6 +233,7 @@ where
             secret_key: Arc::new(secret_key),
             public_address,
             our_id,
+            is_bootstrap_node: false,
             event_queue,
             incoming: HashMap::new(),
             outgoing: HashMap::new(),
@@ -358,6 +361,7 @@ where
             Ok((peer_id, transport)) => {
                 // If we have connected to ourself, allow the connection to drop.
                 if peer_id == self.our_id {
+                    self.is_bootstrap_node = true;
                     debug!(
                         %peer_address,
                         local_address=?transport.get_ref().local_addr(),
@@ -442,6 +446,7 @@ where
 
         // If we have connected to ourself, allow the connection to drop.
         if peer_id == self.our_id {
+            self.is_bootstrap_node = true;
             debug!(
                 peer_address=?transport.get_ref().peer_addr(),
                 local_address=?transport.get_ref().local_addr(),
@@ -718,17 +723,23 @@ where
                     "Bootstrap failed for node, but it was not in the set of pending connections"
                 );
 
-                // Exit with a fatal error if bootstrapping failed entirely.
                 if self.is_isolated() {
-                    // Note that we could retry the connection to other nodes, but for now we just
-                    // leave it up to the node operator to restart.
-                    fatal!(
-                        effect_builder,
-                        "failed to connect to any known node, now isolated"
-                    )
-                } else {
-                    Effects::new()
+                    if self.is_bootstrap_node {
+                        info!(
+                            "{}: failed to bootstrap to any other nodes, but continuing to run as we are a \
+                            bootstrap node", self.our_id
+                        );
+                    } else {
+                        // Note that we could retry the connection to other nodes, but for now we
+                        // just leave it up to the node operator to restart.
+                        return fatal!(
+                            effect_builder,
+                            "{}: failed to connect to any known node, now isolated",
+                            self.our_id
+                        );
+                    }
                 }
+                Effects::new()
             }
             Event::IncomingNew {
                 stream,
