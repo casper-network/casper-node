@@ -417,6 +417,59 @@ fn store_and_load_a_lot_of_deploys() {
 }
 
 #[test]
+fn store_execution_results_for_two_blocks() {
+    // This is a simplified version of the larger test below.
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    let deploy = Deploy::random(&mut harness.rng);
+
+    let block_hash_a = BlockHash::random(&mut harness.rng);
+    let block_hash_b = BlockHash::random(&mut harness.rng);
+
+    // Store the deploy.
+    put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
+
+    // Ensure deploy exists.
+    assert_eq!(
+        get_deploys(&mut harness, &mut storage, smallvec![deploy.id().clone()]),
+        vec![Some(deploy.clone())]
+    );
+
+    // Put first execution result.
+    let first_result = ExecutionResult::random(&mut harness.rng);
+    let mut first_results = HashMap::new();
+    first_results.insert(deploy.id().clone(), first_result.clone());
+    put_execution_results(&mut harness, &mut storage, block_hash_a, first_results);
+
+    // Retrieve and check if correct.
+    let (first_deploy, first_metadata) =
+        get_deploy_and_metadata(&mut harness, &mut storage, deploy.id().clone())
+            .expect("missing on first attempt");
+    assert_eq!(first_deploy, deploy);
+    let mut expected_per_block_results = HashMap::new();
+    expected_per_block_results.insert(block_hash_a.clone(), first_result);
+    assert_eq!(first_metadata.execution_results, expected_per_block_results);
+
+    // Add second result for the same deploy, different block.
+    let second_result = ExecutionResult::random(&mut harness.rng);
+    let mut second_results = HashMap::new();
+    second_results.insert(deploy.id().clone(), second_result.clone());
+    put_execution_results(&mut harness, &mut storage, block_hash_b, second_results);
+
+    // Retrieve the deploy again, should now contain both.
+    let (second_deploy, second_metadata) =
+        get_deploy_and_metadata(&mut harness, &mut storage, deploy.id().clone())
+            .expect("missing on second attempt");
+    assert_eq!(second_deploy, deploy);
+    expected_per_block_results.insert(block_hash_b.clone(), second_result);
+    assert_eq!(
+        second_metadata.execution_results,
+        expected_per_block_results
+    );
+}
+
+#[test]
 fn store_random_execution_results() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
