@@ -510,7 +510,7 @@ fn store_random_execution_results() {
 }
 
 #[test]
-#[should_panic(expected = "already stored")]
+#[should_panic(expected = "duplicate execution result")]
 fn store_execution_results_twice_for_same_block_deploy_pair() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
