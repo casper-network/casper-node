@@ -95,6 +95,14 @@ pub enum Error {
         /// Second block hash encountered at `height`.
         second: BlockHash,
     },
+    /// Attempted to store a duplicate execution result.
+    #[error("duplicate execution result for deploy {deploy_hash} in block {block_hash}")]
+    DuplicateExecutionResult {
+        /// The deploy for which the result should be stored.
+        deploy_hash: DeployHash,
+        /// The block providing the context for the deploy's exection result.
+        block_hash: BlockHash,
+    },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
     InternalStorage(#[from] LmdbExtError),
@@ -334,7 +342,10 @@ impl Storage {
                     // If we have a previous execution result, we enforce that it is the same.
                     if let Some(prev) = metadata.execution_results.get(&block_hash) {
                         if prev != &execution_result {
-                            panic!("TODO");
+                            return Err(Error::DuplicateExecutionResult {
+                                deploy_hash,
+                                block_hash,
+                            });
                         }
                     }
 
