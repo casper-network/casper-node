@@ -436,9 +436,6 @@ fn store_random_execution_results() {
     // We collect the expected result per deploy in parallel to adding them.
     let mut expected = HashMap::new();
 
-    // TODO: Store twice.
-    // TODO: Store invalid.
-
     fn setup_block(
         harness: &mut ComponentHarness<()>,
         storage: &mut Storage,
@@ -510,6 +507,68 @@ fn store_random_execution_results() {
 
         assert_eq!(raw_meta, &metadata.execution_results);
     }
+}
+
+#[test]
+#[should_panic(expected = "already stored")]
+fn store_execution_results_twice_for_same_block_deploy_pair() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    let block_hash = BlockHash::random(&mut harness.rng);
+    let deploy_hash = DeployHash::random(&mut harness.rng);
+
+    let mut exec_result_1 = HashMap::new();
+    exec_result_1.insert(
+        deploy_hash.clone(),
+        ExecutionResult::random(&mut harness.rng),
+    );
+
+    let mut exec_result_2 = HashMap::new();
+    exec_result_2.insert(
+        deploy_hash.clone(),
+        ExecutionResult::random(&mut harness.rng),
+    );
+
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        block_hash.clone(),
+        exec_result_1,
+    );
+
+    // Storing a second execution result for the same deploy on the same block should panic.
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        block_hash.clone(),
+        exec_result_2,
+    );
+}
+
+#[test]
+fn store_identical_execution_results() {
+    let mut harness = ComponentHarness::new();
+    let mut storage = storage_fixture(&mut harness);
+
+    let block_hash = BlockHash::random(&mut harness.rng);
+    let deploy_hash = DeployHash::random(&mut harness.rng);
+
+    let mut exec_result = HashMap::new();
+    exec_result.insert(
+        deploy_hash.clone(),
+        ExecutionResult::random(&mut harness.rng),
+    );
+
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        block_hash.clone(),
+        exec_result.clone(),
+    );
+
+    // We should be fine storing the exact same result twice.
+    put_execution_results(&mut harness, &mut storage, block_hash.clone(), exec_result);
 }
 
 #[test]
