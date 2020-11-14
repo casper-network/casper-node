@@ -5,7 +5,7 @@
 use lmdb::{Database, Environment, RoTransaction, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 
-use super::serialization::deser;
+use super::serialization::{deser, ser_to_bytes};
 
 /// Additional methods on `Environment`.
 pub(super) trait EnvironmentExt {
@@ -83,7 +83,7 @@ where
         key: &K,
     ) -> Option<V> {
         match self.get(db, key) {
-          Ok(raw) => Some(deser(raw)),
+          Ok(raw) => Some(deser(raw).expect("database corruption. TODO: handle?")),
           Err(lmdb::Error::NotFound) => None,
           Err(err) => panic!("error loading value from database. this is a bug or a sign of database corruption: {:?}", err)
       }
@@ -101,29 +101,11 @@ impl WriteTransactionExt for RwTransaction<'_> {
         key: &K,
         value: &V,
     ) -> bool {
-        let buf = bincode::serialize(value)
-            .expect("serialization of value failed. this is a serious bug");
+        let buffer = ser_to_bytes(value);
 
-        // TODO: To accurately report whether or not a value already exists, we need to check
-        //       beforehand, as we are not using the `WriteFlags::NO_OVERWRITE` flag (see TODO
-        //       below). Once fixed, this step can be remove
-        //
-        let exists = self.get(db, key).is_ok();
-
-        match self.put(
-            db,
-            key,
-            &buf,
-            // TODO: this should be changed back to `WriteFlags::NO_OVERWRITE` once the mutable
-            //       data (i.e. blocks' proofs) are handled via metadata as per deploys'
-            //       execution results.
-            WriteFlags::empty(),
-            // WriteFlags::NO_OVERWRITE
-        ) {
-            Ok(()) => {
-                //true
-                !exists
-            }
+        match self.put(db, key, &buffer, WriteFlags::NO_OVERWRITE) {
+            Ok(()) => true,
+            // If we did not add the value due to it already existing, just return `false`.
             Err(lmdb::Error::KeyExist) => false,
             Err(err) => panic!(
                 "error storing value to database. this is a bug, or a misconfiguration: {:?}",

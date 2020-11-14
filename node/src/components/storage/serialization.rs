@@ -2,19 +2,14 @@
 //!
 //! Centralizes settings and methods for serialization for all parts of storage.
 
-use std::io;
+use std::{error, io};
 
 use serde::{de::DeserializeOwned, Serialize};
 
-/// Deserialization helper.
-///
-/// # Panics
-///
-/// Panics if deserialization fails. Storage deserialization is infallibe, unless corruption occurs.
+/// Deserializes from a buffer.
 #[inline(always)]
-pub(crate) fn deser<T: DeserializeOwned>(raw: &[u8]) -> T {
-    bincode::deserialize(raw)
-        .expect("deserialization failed. this is a bug, or your database has been corrupted")
+pub(crate) fn deser<T: DeserializeOwned>(raw: &[u8]) -> Result<T, Box<dyn error::Error>> {
+    Ok(bincode::deserialize(raw)?)
 }
 
 /// Serialization helper
@@ -22,7 +17,7 @@ pub(crate) fn deser<T: DeserializeOwned>(raw: &[u8]) -> T {
 /// # Panics
 ///
 /// Panics if serialization fails, for reasons other than IO errors.
-#[inline(always)]
+#[inline]
 pub(crate) fn ser<T: Serialize, W: io::Write>(writer: W, value: &T) -> Result<(), io::Error> {
     match bincode::serialize_into(writer, value) {
         Ok(_) => Ok(()),
@@ -34,4 +29,15 @@ pub(crate) fn ser<T: Serialize, W: io::Write>(writer: W, value: &T) -> Result<()
             }
         }
     }
+}
+
+/// Serializes into a buffer.
+#[inline(always)]
+pub(crate) fn ser_to_bytes<T: Serialize>(value: &T) -> Vec<u8> {
+    let mut buffer = Vec::new();
+    ser(&mut buffer, value).expect(
+        "serialization for type failed. this should never happen (add more test coverage!)",
+    );
+
+    buffer
 }

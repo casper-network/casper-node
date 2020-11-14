@@ -188,7 +188,7 @@ impl Storage {
         // Note: `iter_start` has an undocument panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
-            let block: Block = deser(raw_val);
+            let block: Block = deser(raw_val).expect("TODO");
             // We use the opportunity for a small integrity check.
             assert_eq!(
                 raw_key,
