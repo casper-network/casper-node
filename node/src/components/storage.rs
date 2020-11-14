@@ -13,6 +13,18 @@
 //! Any I/O performed by the component is done on the event handling thread, this is on purpose as
 //! the assumption is that caching by LMDB will offset any gains from offloading it onto a separate
 //! thread, while keeping the maximum event processing time reasonable.
+//!
+//! # Consistency
+//!
+//! The storage upholds a few invariants internally, namely:
+//!
+//! * [temporary until refactored] Storing an execution result for a deploy in the context of a
+//!   block is guaranteed to be idempotent: Storing the same result twice is a no-op, whilst
+//!   attempting to store a differing one will cause a fatal error.
+//! * Only one block can ever be associated with a specific block height. Attempting to store a
+//!   block with a different block already existing at the same height causes a fatal error.
+//! * Storing a deploy or block that already exists (same hash) is fine and will silently be
+//!   accepted.
 
 mod lmdb_ext;
 mod serialization;
