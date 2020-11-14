@@ -2,12 +2,17 @@
 //!
 //! Various traits and helper functions to extend the lower levele LMDB functions. Unifies
 //! lower-level storage errors from lmdb and serialization issues.
+//!
+//! ## Serialization
+//!
+//! The module also centralizes settings and methods for serialization for all parts of storage.
+//!
+//! Serialization errors are unified into a generic, type erased `std` error to allow for easy
+//! interchange of the serialization format if desired.
 
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
-
-use super::serialization::{deser, ser};
 
 /// Error wrapper for lower-level storage errors.
 ///
@@ -20,14 +25,17 @@ use super::serialization::{deser, ser};
 pub enum LmdbExtError {
     /// The internal database is corrupted and can probably not be salvaged.
     #[error("internal storage corrupted: {0}")]
-    Corrupted(Box<dyn std::error::Error + Send + Sync>),
+    LmdbCorrupted(lmdb::Error),
+    /// The data stored inside the internal database is corrupted or formatted wrong.
+    #[error("internal data corrupted: {0}")]
+    DataCorrupted(Box<dyn std::error::Error + Send + Sync>),
     /// A resource has been exhausted a runtime, restarting (potentially with different settings)
     /// might fix the problem. Storage integrity is still intact.
     #[error("storage exhausted resource (but still intact): {0}")]
     ResourceExhausted(lmdb::Error),
     /// Error neither corruption nor resource exhaustion occured, likely a programming error.
-    #[error("unknown LMDB storage error, likely from a bug: {0}")]
-    Other(lmdb::Error),
+    #[error("unknown LMDB or serialization error, likely from a bug: {0}")]
+    Other(Box<dyn std::error::Error + Send + Sync>),
 }
 
 // Classifies an `lmdb::Error` according to our scheme. This one of the rare cases where we accept a
@@ -40,7 +48,7 @@ impl From<lmdb::Error> for LmdbExtError {
             | lmdb::Error::Panic
             | lmdb::Error::VersionMismatch
             | lmdb::Error::Invalid
-            | lmdb::Error::Incompatible => LmdbExtError::Corrupted(Box::new(lmdb_error)),
+            | lmdb::Error::Incompatible => LmdbExtError::LmdbCorrupted(lmdb_error),
 
             lmdb::Error::MapFull
             | lmdb::Error::DbsFull
@@ -57,7 +65,7 @@ impl From<lmdb::Error> for LmdbExtError {
             | lmdb::Error::BadValSize
             | lmdb::Error::BadDbi
             | lmdb::Error::KeyExist
-            | lmdb::Error::Other(_) => LmdbExtError::Other(lmdb_error),
+            | lmdb::Error::Other(_) => LmdbExtError::Other(Box::new(lmdb_error)),
         }
     }
 }
@@ -101,7 +109,7 @@ where
     ) -> Result<Option<V>, LmdbExtError> {
         match self.get(db, key) {
             // Deserialization failures are likely due to storage corruption.
-            Ok(raw) => Some(deser(raw).map_err(LmdbExtError::Corrupted)).transpose(),
+            Ok(raw) => deser(raw).map(Some),
             Err(lmdb::Error::NotFound) => Ok(None),
             Err(err) => Err(err.into()),
         }
@@ -124,4 +132,16 @@ impl WriteTransactionExt for RwTransaction<'_> {
             Err(err) => Err(err.into()),
         }
     }
+}
+
+/// Deserializes from a buffer.
+#[inline(always)]
+pub(crate) fn deser<T: DeserializeOwned>(raw: &[u8]) -> Result<T, LmdbExtError> {
+    bincode::deserialize(raw).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))
+}
+
+/// Serializes into a buffer.
+#[inline(always)]
+pub(crate) fn ser<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
+    bincode::serialize(value).map_err(|err| LmdbExtError::Other(Box::new(err)))
 }

@@ -37,7 +37,6 @@
 //! Corruption, temporary resource exhaustion and potential bugs.
 
 mod lmdb_ext;
-mod serialization;
 #[cfg(test)]
 mod tests;
 
@@ -64,8 +63,7 @@ use crate::{
     utils::WithDir,
     Chainspec, NodeRng,
 };
-use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
-use serialization::deser;
+use lmdb_ext::{deser, LmdbExtError, TransactionExt, WriteTransactionExt};
 
 #[cfg(test)]
 use tempfile::TempDir;
@@ -88,11 +86,8 @@ pub enum Error {
     /// Failure to create the root database directory.
     #[error("failed to create database directory `{}`: {}", .0.display(), .1)]
     CreateDatabaseDirectory(PathBuf, io::Error),
-    /// LMDB initialization failure.
-    #[error("failed to initialize lmdb: {}", .0)]
-    LmdbInit(lmdb::Error),
     /// Found a duplicate block-at-height index entry.
-    #[error("storage is corrupt, contains duplicate entries for block at height {height}: {first} / {second}")]
+    #[error("duplicate entries for block at height {height}: {first} / {second}")]
     DuplicateBlockIndex {
         /// Height at which duplication was found.
         height: u64,
@@ -103,7 +98,14 @@ pub enum Error {
     },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
-    InternalStorage(LmdbExtError),
+    InternalStorage(#[from] LmdbExtError),
+}
+
+// We wholesale wrap lmdb errors and treat them as internal errors here.
+impl From<lmdb::Error> for Error {
+    fn from(err: lmdb::Error) -> Self {
+        LmdbExtError::from(err).into()
+    }
 }
 
 #[derive(DataSize, Debug)]
@@ -178,31 +180,22 @@ impl Storage {
             .set_max_readers(MAX_TRANSACTIONS)
             .set_max_dbs(3)
             .set_map_size(total_size)
-            .open(&root.join("storage.lmdb"))
-            .map_err(Error::LmdbInit)?;
+            .open(&root.join("storage.lmdb"))?;
 
-        let block_db = env
-            .create_db(Some("blocks"), DatabaseFlags::empty())
-            .map_err(Error::LmdbInit)?;
-        let deploy_db = env
-            .create_db(Some("deploys"), DatabaseFlags::empty())
-            .map_err(Error::LmdbInit)?;
-        let deploy_metadata_db = env
-            .create_db(Some("deploy_metadata"), DatabaseFlags::empty())
-            .map_err(Error::LmdbInit)?;
+        let block_db = env.create_db(Some("blocks"), DatabaseFlags::empty())?;
+        let deploy_db = env.create_db(Some("deploys"), DatabaseFlags::empty())?;
+        let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
 
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
-        let block_tx = env.begin_ro_txn().expect("TODO");
-        let mut cursor = block_tx
-            .open_ro_cursor(block_db)
-            .expect("could not create read-only cursor on block store");
+        let block_tx = env.begin_ro_txn()?;
+        let mut cursor = block_tx.open_ro_cursor(block_db)?;
 
         // Note: `iter_start` has an undocument panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
-            let block: Block = deser(raw_val).expect("TODO");
+            let block: Block = deser(raw_val)?;
             // We use the opportunity for a small integrity check.
             assert_eq!(
                 raw_key,
