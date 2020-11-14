@@ -62,7 +62,7 @@ pub trait MintProvider {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ()>;
+    ) -> Result<(), Error>;
 
     /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
     fn balance(&mut self, purse: URef) -> Option<U512>;

@@ -277,8 +277,8 @@ impl FinalizedBlock {
 
     /// Returns slashing and reward information if this is a switch block, i.e. the last block of
     /// its era.
-    pub(crate) fn era_end(&self) -> &Option<EraEnd> {
-        &self.era_end
+    pub(crate) fn era_end(&self) -> Option<&EraEnd> {
+        self.era_end.as_ref()
     }
 
     /// Returns the ID of the era this block belongs to.

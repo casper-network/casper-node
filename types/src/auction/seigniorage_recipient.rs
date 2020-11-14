@@ -11,14 +11,29 @@ use crate::{
 #[derive(Default, PartialEq, Clone)]
 pub struct SeigniorageRecipient {
     /// Validator stake (not including delegators)
-    pub stake: U512,
+    stake: U512,
     /// Delegation rate of a seigniorage recipient.
-    pub delegation_rate: DelegationRate,
+    delegation_rate: DelegationRate,
     /// List of delegators and their accumulated bids.
-    pub delegators: BTreeMap<PublicKey, Delegator>,
+    delegators: BTreeMap<PublicKey, Delegator>,
 }
 
 impl SeigniorageRecipient {
+    /// Returns stake of the provided recipient
+    pub fn stake(&self) -> &U512 {
+        &self.stake
+    }
+
+    /// Returns delegation rate of the provided recipient
+    pub fn delegation_rate(&self) -> &DelegationRate {
+        &self.delegation_rate
+    }
+
+    /// Returns delegators of the provided recipient
+    pub fn delegators(&self) -> &BTreeMap<PublicKey, Delegator> {
+        &self.delegators
+    }
+
     /// Calculates total stake, including delegators' total stake
     pub fn total_stake(&self) -> U512 {
         self.stake + self.delegator_total_stake()
@@ -73,11 +88,11 @@ impl FromBytes for SeigniorageRecipient {
 }
 
 impl From<&Bid> for SeigniorageRecipient {
-    fn from(founding_validator: &Bid) -> Self {
+    fn from(bid: &Bid) -> Self {
         Self {
-            stake: *founding_validator.staked_amount(),
-            delegation_rate: *founding_validator.delegation_rate(),
-            ..Default::default()
+            stake: *bid.staked_amount(),
+            delegation_rate: *bid.delegation_rate(),
+            delegators: bid.delegators().clone(),
         }
     }
 }
