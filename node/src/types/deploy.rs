@@ -422,8 +422,7 @@ impl Deploy {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        // TODO - make Timestamp deterministic.
-        let timestamp = Timestamp::now();
+        let timestamp = Timestamp::random(rng);
         let ttl = TimeDiff::from(rng.gen_range(60_000, 3_600_000));
         let gas_price = rng.gen_range(1, 100);
 
