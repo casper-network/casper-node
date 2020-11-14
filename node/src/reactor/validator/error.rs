@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::components::{contract_runtime, small_network, storage};
+use crate::components::{contract_runtime, network, small_network, storage};
 
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
@@ -8,6 +8,10 @@ pub enum Error {
     /// Metrics-related error
     #[error("prometheus (metrics) error: {0}")]
     Metrics(#[from] prometheus::Error),
+
+    /// `Network` component error.
+    #[error("network error: {0}")]
+    Network(#[from] network::Error),
 
     /// `SmallNetwork` component error.
     #[error("small network error: {0}")]
