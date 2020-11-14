@@ -792,9 +792,10 @@ impl Reactor {
                 .map(|block| block.height())
                 .unwrap_or(0);
 
-            self.storage
-                .load_block_proposer_state(latest_block_height, chainspec_version, Timestamp::now())
-                .await
+            // self.storage
+            //     .load_block_proposer_state(latest_block_height, chainspec_version,
+            // Timestamp::now())     .await
+            todo!("implement block proposer state loading")
         };
 
         let (net, rest_server, config) = (

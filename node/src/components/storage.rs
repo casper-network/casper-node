@@ -51,15 +51,14 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use lmdb::{Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction};
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::{block_proposer::BlockProposerState, Component};
+use super::Component;
 use crate::{
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
     fatal,
-    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, Timestamp},
+    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
     Chainspec, NodeRng,
 };
@@ -144,7 +143,9 @@ impl<REv> Component<REv> for Storage {
             Event::StorageRequest(req) => self.handle_storage_request::<REv>(effect_builder, req),
         };
 
-        // Any error is turned into a fatal effect, the component itself does not panic.
+        // Any error is turned into a fatal effect, the component itself does not panic. Note that
+        // we are dropping a lot of responders this way, but since we are crashing with fatal
+        // anyway, it should not matter.
         match result {
             Ok(effects) => effects,
             Err(err) => fatal!(effect_builder, format!("storage error: {}", err)),
@@ -230,9 +231,9 @@ impl Storage {
     /// Handles a storage request.
     fn handle_storage_request<REv>(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
+        _effect_builder: EffectBuilder<REv>,
         req: StorageRequest,
-    ) -> Result<Effects<Event>, LmdbExtError>
+    ) -> Result<Effects<Event>, Error>
     where
         Self: Component<REv>,
     {
@@ -242,30 +243,19 @@ impl Storage {
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
                 let mut tx = self.env.begin_rw_txn()?;
-                let outcome = tx
-                    .put_value(self.block_db, block.hash(), &block)
-                    .expect("TODO");
+                let outcome = tx.put_value(self.block_db, block.hash(), &block)?;
                 tx.commit()?;
 
                 if outcome {
-                    if let Some(prev) = self
-                        .block_height_index
-                        .insert(block.height(), *block.hash())
-                    {
-                        let msg = format!(
-                            "attempted to insert block {new} at height {height} while {prev} is already known",
-                            height=block.height(),
-                            new=block.hash(),
-                            prev=prev,
-                        );
-
-                        let mut effects = Effects::new();
-                        effects.extend(fatal!(effect_builder, msg).into_iter());
-
-                        // Avoid dropping the responder, to not panic before we have a chance to
-                        // handle the `fatal` effect.
-                        effects.extend(responder.respond(false).ignore().into_iter());
-                        return Ok(effects);
+                    // If we are attempting to insert a duplicate block, return with error.
+                    if let Some(first) = self.block_height_index.get(&block.height()) {
+                        if first != block.hash() {
+                            return Err(Error::DuplicateBlockIndex {
+                                height: block.height(),
+                                first: first.clone(),
+                                second: block.hash().clone(),
+                            });
+                        }
                     }
                 }
 
@@ -275,48 +265,56 @@ impl Storage {
                 block_hash,
                 responder,
             } => responder
-                .respond(self.get_single_block(&block_hash)?)
+                .respond(self.get_single_block(&mut self.env.begin_ro_txn()?, &block_hash)?)
                 .ignore(),
             StorageRequest::GetBlockAtHeight { height, responder } => responder
-                .respond(self.get_block_by_height(height)?)
+                .respond(self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)?)
                 .ignore(),
-            StorageRequest::GetHighestBlock { responder } => responder
-                .respond(
-                    self.block_height_index
-                        .keys()
-                        .last()
-                        .and_then(|&height| self.get_block_by_height(height).transpose())
-                        .transpose()?,
-                )
-                .ignore(),
+            StorageRequest::GetHighestBlock { responder } => {
+                let mut tx = self.env.begin_ro_txn()?;
+                responder
+                    .respond(
+                        self.block_height_index
+                            .keys()
+                            .last()
+                            .and_then(|&height| {
+                                self.get_block_by_height(&mut tx, height).transpose()
+                            })
+                            .transpose()?,
+                    )
+                    .ignore()
+            }
             StorageRequest::GetBlockHeader {
                 block_hash,
                 responder,
             } => responder
+                // TODO: Find a solution for efficiently retrieving the blocker header without the
+                // block. Deserialization that allows trailing bytes could be a possible solution.
                 .respond(
-                    self.get_single_block(&block_hash)?
+                    self.get_single_block(&mut self.env.begin_ro_txn()?, &block_hash)?
                         .map(|block| block.header().clone()),
                 )
                 .ignore(),
             StorageRequest::PutDeploy { deploy, responder } => {
                 let mut tx = self.env.begin_rw_txn()?;
-                let outcome = tx.put_value(self.deploy_db, deploy.id(), &deploy);
+                let outcome = tx.put_value(self.deploy_db, deploy.id(), &deploy)?;
                 tx.commit()?;
-                responder.respond(outcome.expect("TODO")).ignore()
+                responder.respond(outcome).ignore()
             }
             StorageRequest::GetDeploys {
                 deploy_hashes,
                 responder,
             } => responder
-                .respond(self.get_deploys(deploy_hashes.as_slice())?)
+                .respond(self.get_deploys(&mut self.env.begin_ro_txn()?, deploy_hashes.as_slice())?)
                 .ignore(),
             StorageRequest::GetDeployHeaders {
                 deploy_hashes,
                 responder,
             } => responder
                 .respond(
-                    self.get_deploys(deploy_hashes.as_slice())?
-                        .into_iter() // TODO: Ineffecient, a dedicated function can avoid reallocation.
+                    // TODO: Similary to getting block headers, requires optimized function.
+                    self.get_deploys(&mut self.env.begin_ro_txn()?, deploy_hashes.as_slice())?
+                        .into_iter()
                         .map(|opt| opt.map(|deploy| deploy.header().clone()))
                         .collect(),
                 )
@@ -326,24 +324,29 @@ impl Storage {
                 execution_results,
                 responder,
             } => {
-                // TODO: Verify this code is working as intended.
                 let mut tx = self.env.begin_rw_txn()?;
 
-                let mut metadata: DeployMetadata = tx
-                    .get_value(self.deploy_metadata_db, &block_hash)
-                    .expect("TODO")
-                    .unwrap_or_default();
+                for (deploy_hash, execution_result) in execution_results {
+                    let mut metadata = self
+                        .get_deploy_metadata(&mut tx, &deploy_hash)?
+                        .unwrap_or_default();
 
-                for (_deploy_hash, execution_result) in execution_results {
+                    // If we have a previous execution result, we enforce that it is the same.
+                    if let Some(prev) = metadata.execution_results.get(&block_hash) {
+                        if prev != &execution_result {
+                            panic!("TODO");
+                        }
+                    }
+
+                    // Update metadata and write back to db.
                     metadata
                         .execution_results
                         .insert(block_hash, execution_result);
+                    tx.put_value(self.deploy_metadata_db, &deploy_hash, &metadata)?;
                 }
 
-                // Store the updated metadata.
-                tx.put_value(self.deploy_metadata_db, &block_hash, &metadata)?;
+                // We commit only once we finished updating all deploy metadata.
                 tx.commit()?;
-
                 responder.respond(()).ignore()
             }
             StorageRequest::GetDeployAndMetadata {
@@ -351,20 +354,21 @@ impl Storage {
                 responder,
             } => {
                 let mut tx = self.env.begin_ro_txn()?;
-                todo!()
-                // let value = tx
-                //     .get_value(self.deploy_db, &deploy_hash)
-                //     .expect("TODO")
-                //     .map(|deploy| {
-                //         (
-                //             deploy,
-                //             tx.get_value(self.deploy_metadata_db, &deploy_hash)
-                //                 .unwrap_or_default(),
-                //         )
-                //     });
-                // responder.respond(value).ignore()
-            }
 
+                // A missing deploy causes an early `None` return.
+                let deploy: Deploy =
+                    if let Some(deploy) = tx.get_value(self.deploy_db, &deploy_hash)? {
+                        deploy
+                    } else {
+                        return Ok(responder.respond(None).ignore());
+                    };
+
+                // Missing metadata is filled using a default.
+                let metadata = self
+                    .get_deploy_metadata(&mut tx, &deploy_hash)?
+                    .unwrap_or_default();
+                responder.respond(Some((deploy, metadata))).ignore()
+            }
             StorageRequest::PutChainspec {
                 chainspec,
                 responder,
@@ -381,41 +385,48 @@ impl Storage {
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
-    fn get_block_by_height(&self, height: u64) -> Result<Option<Block>, LmdbExtError> {
+    fn get_block_by_height<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        height: u64,
+    ) -> Result<Option<Block>, LmdbExtError> {
         self.block_height_index
             .get(&height)
-            .and_then(|block_hash| self.get_single_block(block_hash).transpose())
+            .and_then(|block_hash| self.get_single_block(tx, block_hash).transpose())
             .transpose()
     }
 
     /// Retrieves a single block in a separate transaction from storage.
-    fn get_single_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, LmdbExtError> {
-        let mut tx = self.env.begin_ro_txn()?;
+    fn get_single_block<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<Block>, LmdbExtError> {
         tx.get_value(self.block_db, &block_hash)
     }
 
     /// Retrieves a set of deploys from storage.
-    fn get_deploys(
+    fn get_deploys<Tx: Transaction>(
         &self,
+        tx: &mut Tx,
         deploy_hashes: &[DeployHash],
     ) -> Result<Vec<Option<Deploy>>, LmdbExtError> {
-        let mut tx = self.env.begin_ro_txn()?;
-
         deploy_hashes
             .iter()
             .map(|deploy_hash| tx.get_value(self.deploy_db, deploy_hash))
             .collect()
     }
 
-    /// TODO: What is this?
-    pub(crate) async fn load_block_proposer_state(
+    /// Retrieve deploy metadata associated with deploy.
+    ///
+    /// If no deploy metadata is stored for the specific deploy, an empty metadata instance will be
+    /// created, but not stored.
+    fn get_deploy_metadata<Tx: Transaction>(
         &self,
-        _latest_block_height: u64,
-        _chainspec_version: Version,
-        _timestamp: Timestamp,
-    ) -> BlockProposerState {
-        // TODO: Re-evaluate if this functionality can be scrapped.
-        todo!()
+        tx: &mut Tx,
+        deploy_hash: &DeployHash,
+    ) -> Result<Option<DeployMetadata>, Error> {
+        Ok(tx.get_value(self.deploy_metadata_db, deploy_hash)?)
     }
 }
 
