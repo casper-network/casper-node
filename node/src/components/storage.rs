@@ -260,15 +260,15 @@ impl Storage {
                         if first != block.hash() {
                             return Err(Error::DuplicateBlockIndex {
                                 height: block.height(),
-                                first: first.clone(),
-                                second: block.hash().clone(),
+                                first: *first,
+                                second: *block.hash(),
                             });
                         }
                     }
                 }
 
                 self.block_height_index
-                    .insert(block.height(), block.hash().clone());
+                    .insert(block.height(), *block.hash());
 
                 responder.respond(outcome).ignore()
             }

@@ -113,18 +113,6 @@ impl Display for BlockProposerState {
 }
 
 impl BlockProposerState {
-    // When deserialized, we will update the instance with finalized blocks from the linear chain
-    pub(crate) fn with_pending_and_finalized(
-        pending: DeployCollection,
-        finalized: ProtoBlockCollection,
-    ) -> Self {
-        Self {
-            pending,
-            finalized,
-            proposed: HashMap::new(),
-        }
-    }
-
     /// Prunes expired deploy information from the BlockProposerState, returns the total deploys
     /// pruned
     pub(crate) fn prune(&mut self, current_instant: Timestamp) -> usize {

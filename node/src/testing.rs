@@ -205,7 +205,7 @@ impl<REv: 'static> ComponentHarness<REv> {
         let responder = Responder::create(sender);
 
         // Create the event for the component.
-        let request_event = f(responder).into();
+        let request_event = f(responder);
 
         // Send directly to component.
         let returned_effects = self.send_event(component, request_event);

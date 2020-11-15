@@ -5,7 +5,6 @@ use std::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
-use semver::Version;
 use tracing::{error, info, warn};
 
 use block_executor::BlockExecutor;
@@ -781,20 +780,7 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
-        let linear_chain = self.linear_chain.linear_chain().clone();
-        let block_proposer_state = {
-            // TODO - should the current chainspec version be passed in here?
-            // let chainspec_version = Version::from((1, 0, 0));
-
-            // let latest_block_height = linear_chain
-            //     .iter()
-            //     .last()
-            //     .map(|block| block.height())
-            //     .unwrap_or(0);
-
-            // TODO: The block proposer state serialization needs to be reimplemented.
-            Default::default()
-        };
+        let block_proposer_state = Default::default();
 
         let (net, rest_server, config) = (
             self.net,
