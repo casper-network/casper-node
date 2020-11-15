@@ -47,6 +47,8 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
+#[cfg(test)]
+use std::{collections::BTreeSet, convert::TryFrom};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -55,6 +57,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::Component;
+#[cfg(test)]
+use crate::crypto::hash::Digest;
 use crate::{
     effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
     fatal,
@@ -533,13 +537,13 @@ impl Storage {
 
 // Testing code. The functions below allow direct inspection of the storage component and should
 // only ever be used when writing tests.
+#[cfg(test)]
 impl Storage {
-    /// Directly get deploy from internal store.
+    /// Directly returns a deploy from internal store.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// Panics if an IO error occurs.
-    #[cfg(test)]
     pub fn get_deploy_by_hash(&self, deploy_hash: DeployHash) -> Option<Deploy> {
         let mut tx = self
             .env
@@ -547,5 +551,28 @@ impl Storage {
             .expect("could not create RO transaction");
         tx.get_value(self.deploy_db, &deploy_hash)
             .expect("could not retrieve value from storage")
+    }
+
+    /// Reads all known deploy hashes from the internal store.
+    ///
+    /// # Panics
+    ///
+    /// Panics on any IO or db corruption error.
+    pub fn get_all_deploy_hashes(&self) -> BTreeSet<DeployHash> {
+        let tx = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+
+        let mut cursor = tx
+            .open_ro_cursor(self.deploy_db)
+            .expect("could not create cursor");
+
+        cursor
+            .iter()
+            .map(|(raw_key, _)| {
+                DeployHash::new(Digest::try_from(raw_key).expect("malformed deploy hash in DB"))
+            })
+            .collect()
     }
 }
