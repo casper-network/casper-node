@@ -177,9 +177,9 @@ impl<REv: 'static> ComponentHarness<REv> {
             _phantom: PhantomData,
         }
     }
-    /// Deconstructs the harness, keeping the on-disk state around.
-    pub(crate) fn into_on_disk_state(self) -> TempDir {
-        self.tmp
+    /// Deconstructs the harness, keeping the on-disk state and test rng.
+    pub(crate) fn into_parts(self) -> (TempDir, TestRng) {
+        (self.tmp, self.rng)
     }
 
     /// Returns whether or not there are pending events on the event queue.

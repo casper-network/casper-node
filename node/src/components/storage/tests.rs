@@ -682,7 +682,6 @@ fn test_legacy_interface() {
 fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
-    eprintln!("FIRST INIT DONE");
 
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
@@ -707,8 +706,11 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
 
     // After storing everything, destroy the harness and component, then rebuild using the same
     // directory as backing.
-    let on_disk = harness.into_on_disk_state();
-    let mut harness = ComponentHarness::builder().on_disk(on_disk).build();
+    let (on_disk, rng) = harness.into_parts();
+    let mut harness = ComponentHarness::builder()
+        .on_disk(on_disk)
+        .rng(rng)
+        .build();
     let mut storage = storage_fixture(&mut harness);
 
     let actual_block = get_block(&mut harness, &mut storage, block.hash().clone())

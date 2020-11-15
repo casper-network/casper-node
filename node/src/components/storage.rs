@@ -352,7 +352,6 @@ impl Storage {
                         }
 
                         // We can now skip adding, as the result is the same.
-                        eprintln!("skipping");
                         continue;
                     }
 
