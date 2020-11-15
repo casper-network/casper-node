@@ -682,16 +682,12 @@ fn test_legacy_interface() {
 fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let mut harness = ComponentHarness::new();
     let mut storage = storage_fixture(&mut harness);
+    eprintln!("FIRST INIT DONE");
 
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
     let block = random_block_at_height(&mut harness.rng, 42);
     let execution_result = ExecutionResult::random(&mut harness.rng);
-
-    assert_eq!(
-        get_block_at_height(&mut harness, &mut storage, 42).expect("block not indexed properly"),
-        *block
-    );
 
     put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
     put_block(&mut harness, &mut storage, block.clone());
@@ -702,6 +698,11 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
         &mut storage,
         block.hash().clone(),
         execution_results,
+    );
+
+    assert_eq!(
+        get_block_at_height(&mut harness, &mut storage, 42).expect("block not indexed properly"),
+        *block
     );
 
     // After storing everything, destroy the harness and component, then rebuild using the same
