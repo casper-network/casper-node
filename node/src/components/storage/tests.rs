@@ -184,7 +184,7 @@ fn put_execution_results(
 
 #[test]
 fn get_block_of_non_existing_block_returns_none() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
@@ -196,7 +196,7 @@ fn get_block_of_non_existing_block_returns_none() {
 
 #[test]
 fn can_put_and_get_block() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     // Create a random block, store and load it.
@@ -229,7 +229,7 @@ fn can_put_and_get_block() {
 
 #[test]
 fn can_retrieve_block_by_height() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     // Create a random block, load and store it.
@@ -305,7 +305,7 @@ fn can_retrieve_block_by_height() {
 #[test]
 #[should_panic(expected = "duplicate entries")]
 fn different_block_at_height_is_fatal() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     // Create two different blocks at the same height.
@@ -324,7 +324,7 @@ fn different_block_at_height_is_fatal() {
 
 #[test]
 fn get_vec_of_non_existing_deploy_returns_nones() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     let deploy_id = DeployHash::random(&mut harness.rng);
@@ -338,7 +338,7 @@ fn get_vec_of_non_existing_deploy_returns_nones() {
 
 #[test]
 fn can_retrieve_store_and_load_deploys() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     // Create a random deploy, store and load it.
@@ -388,7 +388,7 @@ fn can_retrieve_store_and_load_deploys() {
 fn store_and_load_a_lot_of_deploys() {
     // There is a quite a bit confusion about whether or not `commit()` must be called after
     // read-only transactions
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     let total = 1000;
@@ -419,7 +419,7 @@ fn store_and_load_a_lot_of_deploys() {
 #[test]
 fn store_execution_results_for_two_blocks() {
     // This is a simplified version of the larger test below.
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     let deploy = Deploy::random(&mut harness.rng);
@@ -471,7 +471,7 @@ fn store_execution_results_for_two_blocks() {
 
 #[test]
 fn store_random_execution_results() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     // We store results for two different blocks. Each block will have five deploys executed in it,
@@ -580,7 +580,7 @@ fn store_random_execution_results() {
 #[test]
 #[should_panic(expected = "duplicate execution result")]
 fn store_execution_results_twice_for_same_block_deploy_pair() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
@@ -616,7 +616,7 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
 
 #[test]
 fn store_identical_execution_results() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
@@ -641,7 +641,7 @@ fn store_identical_execution_results() {
 
 #[test]
 fn store_and_load_chainspec() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     let version = Version::new(1, 2, 3);
@@ -661,7 +661,7 @@ fn store_and_load_chainspec() {
 
 #[test]
 fn test_legacy_interface() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
     let deploy = Box::new(Deploy::random(&mut harness.rng));
@@ -680,7 +680,7 @@ fn test_legacy_interface() {
 
 #[test]
 fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
-    let mut harness = ComponentHarness::new();
+    let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
     eprintln!("FIRST INIT DONE");
 
@@ -708,7 +708,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     // After storing everything, destroy the harness and component, then rebuild using the same
     // directory as backing.
     let on_disk = harness.into_on_disk_state();
-    let mut harness = ComponentHarness::with_on_disk_state(on_disk);
+    let mut harness = ComponentHarness::builder().on_disk(on_disk).build();
     let mut storage = storage_fixture(&mut harness);
 
     let actual_block = get_block(&mut harness, &mut storage, block.hash().clone())

@@ -11,6 +11,7 @@ use std::{
     any::type_name,
     collections::HashSet,
     fmt::Debug,
+    marker::PhantomData,
     sync::atomic::{AtomicU16, Ordering},
 };
 
@@ -25,6 +26,7 @@ use crate::{
     logging,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
 };
+use anyhow::Context;
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use test_rng::TestRng;
 
@@ -82,6 +84,11 @@ pub(crate) fn init_logging() {
 /// Environment to test a single component as isolated as possible.
 ///
 /// Contains enough reactor machinery to drive a single component and a temporary directory.
+///
+/// # Usage
+///
+/// Cosntruction of a harness can be done straightforward through the `Default` trait, or the
+/// builder can be used to construct various aspects of it.
 pub(crate) struct ComponentHarness<REv: 'static> {
     /// Test random number generator instance.
     pub(crate) rng: TestRng,
@@ -98,39 +105,78 @@ pub(crate) struct ComponentHarness<REv: 'static> {
     pub(crate) runtime: Runtime,
 }
 
-impl<REv: 'static> ComponentHarness<REv> {
-    /// Creates a new component test harness.
+/// Builder for a `ComponentHarness`.
+pub(crate) struct ComponentHarnessBuilder<REv: 'static> {
+    rng: Option<TestRng>,
+    tmp: Option<TempDir>,
+    _phantom: PhantomData<REv>,
+}
+
+impl<REv: 'static> ComponentHarnessBuilder<REv> {
+    /// Builds a component harness instance.
     ///
     /// # Panics
     ///
-    /// Panics if a temporary directory cannot be created.
-    pub(crate) fn new() -> Self {
-        Self::with_on_disk_state(
-            TempDir::new().expect("could not create temporary directory for test harness"),
-        )
+    /// Panics if building the harness fails.
+    pub(crate) fn build(self) -> ComponentHarness<REv> {
+        self.try_build().expect("failed to build component harness")
     }
 
-    /// Creates a new component test harness from a on-disk state temporary directory.
-    pub(crate) fn with_on_disk_state(tmp: TempDir) -> Self {
-        let rng = TestRng::new();
+    /// Sets the on-disk harness folder.
+    pub(crate) fn on_disk(mut self, on_disk: TempDir) -> ComponentHarnessBuilder<REv> {
+        self.tmp = Some(on_disk);
+        self
+    }
+
+    /// Sets the test random number generator.
+    pub(crate) fn rng(mut self, rng: TestRng) -> ComponentHarnessBuilder<REv> {
+        self.rng = Some(rng);
+        self
+    }
+
+    /// Tries to build a component harness.
+    ///
+    /// Construction mail fail for various reasons such as not being able to create a temporary
+    /// directory.
+    pub(crate) fn try_build(self) -> anyhow::Result<ComponentHarness<REv>> {
+        let tmp = match self.tmp {
+            Some(tmp) => tmp,
+            None => {
+                TempDir::new().context("could not create temporary directory for test harness")?
+            }
+        };
+
+        let rng = self.rng.unwrap_or_else(TestRng::new);
+
         let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights())));
         let event_queue_handle = EventQueueHandle::new(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
+        let runtime = runtime::Builder::new()
+            .threaded_scheduler()
+            .enable_all()
+            .build()
+            .context("build tokio runtime")?;
 
-        ComponentHarness {
+        Ok(ComponentHarness {
             rng,
             scheduler,
             event_queue_handle,
             effect_builder,
             tmp,
-            runtime: runtime::Builder::new()
-                .threaded_scheduler()
-                .enable_all()
-                .build()
-                .expect("could not build tokio runtime"),
+            runtime,
+        })
+    }
+}
+
+impl<REv: 'static> ComponentHarness<REv> {
+    /// Creates a new component harness builder.
+    pub(crate) fn builder() -> ComponentHarnessBuilder<REv> {
+        ComponentHarnessBuilder {
+            rng: None,
+            tmp: None,
+            _phantom: PhantomData,
         }
     }
-
     /// Deconstructs the harness, keeping the on-disk state around.
     pub(crate) fn into_on_disk_state(self) -> TempDir {
         self.tmp
@@ -191,6 +237,12 @@ impl<REv: 'static> ComponentHarness<REv> {
     }
 }
 
+impl<REv: 'static> Default for ComponentHarness<REv> {
+    fn default() -> Self {
+        Self::builder().build()
+    }
+}
+
 /// Test that the random port generator produce at least 40k values without duplicates.
 #[test]
 fn test_random_port_gen() {
@@ -205,4 +257,8 @@ fn test_random_port_gen() {
         .collect();
 
     assert_eq!(values.len(), NUM_ROUNDS);
+}
+#[test]
+fn default_works_without_panicking_for_component_harness() {
+    let _harness = ComponentHarness::<()>::default();
 }
