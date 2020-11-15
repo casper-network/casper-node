@@ -530,3 +530,22 @@ impl Storage {
             .expect("legacy direct deploy request failed")
     }
 }
+
+// Testing code. The functions below allow direct inspection of the storage component and should
+// only ever be used when writing tests.
+impl Storage {
+    /// Directly get deploy from internal store.
+    ///
+    /// # Panic
+    ///
+    /// Panics if an IO error occurs.
+    #[cfg(test)]
+    pub fn get_deploy_by_hash(&self, deploy_hash: DeployHash) -> Option<Deploy> {
+        let mut tx = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        tx.get_value(self.deploy_db, &deploy_hash)
+            .expect("could not retrieve value from storage")
+    }
+}
