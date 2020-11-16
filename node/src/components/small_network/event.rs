@@ -20,11 +20,13 @@ pub enum Event<P> {
     },
     /// A new TCP connection has been established from an incoming connection.
     IncomingNew {
+        #[serde(skip_serializing)]
         stream: TcpStream,
         peer_address: SocketAddr,
     },
     /// The TLS handshake completed on the incoming connection.
     IncomingHandshakeCompleted {
+        #[serde(skip_serializing)]
         result: Result<(NodeId, Transport), Error>,
         peer_address: SocketAddr,
     },
@@ -32,6 +34,7 @@ pub enum Event<P> {
     IncomingMessage { peer_id: NodeId, msg: Message<P> },
     /// Incoming connection closed.
     IncomingClosed {
+        #[serde(skip_serializing)]
         result: io::Result<()>,
         peer_id: NodeId,
         peer_address: SocketAddr,
@@ -40,6 +43,7 @@ pub enum Event<P> {
     /// A new outgoing connection was successfully established.
     OutgoingEstablished {
         peer_id: NodeId,
+        #[serde(skip_serializing)]
         transport: Transport,
     },
     /// An outgoing connection failed to connect or was terminated.
@@ -51,11 +55,17 @@ pub enum Event<P> {
 
     /// Incoming network request.
     #[from]
-    NetworkRequest { req: NetworkRequest<NodeId, P> },
+    NetworkRequest {
+        #[serde(skip_serializing)]
+        req: NetworkRequest<NodeId, P>,
+    },
 
     /// Incoming network info request.
     #[from]
-    NetworkInfoRequest { req: NetworkInfoRequest<NodeId> },
+    NetworkInfoRequest {
+        #[serde(skip_serializing)]
+        req: NetworkInfoRequest<NodeId>,
+    },
 
     /// The node should gossip its own public listening address.
     GossipOurAddress,
