@@ -1,4 +1,6 @@
 mod round_success_meter;
+#[cfg(test)]
+mod tests;
 
 use std::{
     any::Any,
@@ -11,7 +13,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
-use tracing::{info, trace};
+use tracing::{info, trace, warn};
 
 use self::round_success_meter::RoundSuccessMeter;
 use casper_types::{auction::BLOCK_REWARD, U512};
@@ -279,6 +281,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                         }
                         Err((pvv, err)) => {
                             info!(?pvv, ?err, "invalid vertex");
+                            // drop all the vertices that might have depended on this one
+                            self.drop_dependent_vertices(vec![pvv.inner().id()]);
                             // TODO: Disconnect from senders!
                         }
                     }
@@ -356,6 +360,52 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     pub(crate) fn median_round_exp(&self) -> Option<u8> {
         self.highway.state().median_round_exp()
     }
+
+    fn drop_dependent_vertices(&mut self, mut vertices: Vec<Dependency<C>>) {
+        while !vertices.is_empty() {
+            vertices = self.do_drop_dependent_vertices(vertices);
+        }
+    }
+
+    fn do_drop_dependent_vertices(&mut self, vertices: Vec<Dependency<C>>) -> Vec<Dependency<C>> {
+        // collect the vertices that depend on the ones we got in the argument and their senders
+        let (senders, mut dropped_vertices): (HashSet<I>, Vec<Dependency<C>>) = vertices
+            .into_iter()
+            // filtering by is_unit, so that we don't drop vertices depending on invalid evidence
+            // or endorsements - we can still get valid ones from someone else and eventually
+            // satisfy the dependency
+            .filter(|dep| dep.is_unit())
+            .flat_map(|vertex| self.vertex_deps.remove(&vertex))
+            .flatten()
+            .map(|(sender, pvv)| (sender, pvv.inner().id()))
+            .unzip();
+
+        dropped_vertices.extend(self.drop_by_senders(senders));
+        dropped_vertices
+    }
+
+    fn drop_by_senders(&mut self, senders: HashSet<I>) -> Vec<Dependency<C>> {
+        let mut dropped_vertices = Vec::new();
+        let mut keys_to_drop = Vec::new();
+        for (key, dependent_vertices) in self.vertex_deps.iter_mut() {
+            dependent_vertices.retain(|(sender, pvv)| {
+                if senders.contains(sender) {
+                    // remember the deps we drop
+                    dropped_vertices.push(pvv.inner().id());
+                    false
+                } else {
+                    true
+                }
+            });
+            if dependent_vertices.is_empty() {
+                keys_to_drop.push(key.clone());
+            }
+        }
+        for key in keys_to_drop {
+            self.vertex_deps.remove(&key);
+        }
+        dropped_vertices
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -393,10 +443,13 @@ where
             }
             Ok(HighwayMessage::NewVertex(v)) => {
                 // Keep track of whether the prevalidated vertex was from an equivocator
+                let v_id = v.id();
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
                         // TODO: Disconnect from senders.
+                        // drop the vertices that might have depended on this one
+                        self.drop_dependent_vertices(vec![v_id]);
                         return vec![ProtocolOutcome::InvalidIncomingMessage(
                             msg,
                             sender,
@@ -496,8 +549,22 @@ where
             results
         } else {
             // TODO: Slash proposer?
-            // TODO: Drop dependent vertices? Or add timeout.
             // TODO: Disconnect from senders.
+            // Drop vertices dependent on the invalid value.
+            let dropped_vertices = self.pending_values.remove(value);
+            // recursively remove vertices depending on the dropped ones
+            warn!(
+                ?value,
+                ?dropped_vertices,
+                "consensus value is invalid; dropping dependent vertices"
+            );
+            self.drop_dependent_vertices(
+                dropped_vertices
+                    .into_iter()
+                    .flatten()
+                    .map(|vv| vv.inner().id())
+                    .collect(),
+            );
             vec![]
         }
     }

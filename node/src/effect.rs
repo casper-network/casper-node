@@ -67,12 +67,14 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     net::SocketAddr,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
+use serde::Serialize;
 use smallvec::{smallvec, SmallVec};
 use tokio::join;
 use tracing::error;
@@ -102,14 +104,14 @@ use crate::{
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
         small_network::GossipedAddress,
-        storage::{DeployHashes, DeployMetadata, DeployResults, StorageType, Value},
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
-        BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock, Item, ProtoBlock, Timestamp,
+        BlockLike, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
+        ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,
@@ -136,7 +138,7 @@ pub type Effects<Ev> = Multiple<Effect<Ev>>;
 /// size of two items is chosen because one item is the most common use case, and large items are
 /// typically boxed. In the latter case two pointers and one enum variant discriminator is almost
 /// the same size as an empty vec, which is two pointers.
-type Multiple<T> = SmallVec<[T; 2]>;
+pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 
 /// A responder satisfying a request.
 #[must_use]
@@ -144,8 +146,20 @@ type Multiple<T> = SmallVec<[T; 2]>;
 pub struct Responder<T>(Option<oneshot::Sender<T>>);
 
 impl<T: 'static + Send> Responder<T> {
+    /// Creates a new `Responder`.
+    #[inline]
     fn new(sender: oneshot::Sender<T>) -> Self {
         Responder(Some(sender))
+    }
+
+    /// Helper method for tests.
+    ///
+    /// Allows creating a responder manually. This function should not be used, unless you are
+    /// writing alternative infrastructure, e.g. for tests.
+    #[cfg(test)]
+    #[inline]
+    pub(crate) fn create(sender: oneshot::Sender<T>) -> Self {
+        Responder::new(sender)
     }
 }
 
@@ -184,6 +198,15 @@ impl<T> Drop for Responder<T> {
                 self
             );
         }
+    }
+}
+
+impl<T> Serialize for Responder<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("{:?}", self))
     }
 }
 
@@ -359,13 +382,26 @@ impl<REv> EffectBuilder<REv> {
     /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
-    pub async fn immediately(self) {}
+    pub fn immediately(self) -> impl Future<Output = ()> + Send {
+        // Note: This function is implemented manually without `async` sugar because the `Send`
+        // inferrence seems to not work in all cases otherwise.
+        async {}
+    }
 
     /// Reports a fatal error.
     ///
     /// Usually causes the node to cease operations quickly and exit/crash.
-    pub async fn fatal<M: Display + ?Sized>(self, file: &str, line: u32, msg: &M) {
+    pub fn fatal<M: Display + ?Sized>(
+        self,
+        file: &str,
+        line: u32,
+        msg: &M,
+    ) -> impl Future<Output = ()> + Send {
+        // Note: This function is implemented manually without `async` sugar because the `Send`
+        // inferrence seems to not work in all cases otherwise.
         panic!("fatal error [{}:{}]: {}", file, line, msg);
+        #[allow(unreachable_code)]
+        async {} // The compiler will complain about an incorrect return value otherwise.
     }
 
     /// Sets a timeout.
@@ -596,10 +632,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block into the linear block store.
-    pub(crate) async fn put_block_to_storage<S>(self, block: Box<S::Block>) -> bool
+    pub(crate) async fn put_block_to_storage(self, block: Box<Block>) -> bool
     where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::PutBlock { block, responder },
@@ -609,13 +644,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block from the linear block store.
-    pub(crate) async fn get_block_from_storage<S>(
-        self,
-        block_hash: <S::Block as Value>::Id,
-    ) -> Option<S::Block>
+    pub(crate) async fn get_block_from_storage(self, block_hash: BlockHash) -> Option<Block>
     where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetBlock {
@@ -628,10 +659,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests block at height.
-    pub(crate) async fn get_block_at_height<S>(self, height: u64) -> Option<S::Block>
+    pub(crate) async fn get_block_at_height(self, height: u64) -> Option<Block>
     where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetBlockAtHeight { height, responder },
@@ -641,10 +671,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests the highest block.
-    pub(crate) async fn get_highest_block<S>(self) -> Option<S::Block>
+    pub(crate) async fn get_highest_block(self) -> Option<Block>
     where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetHighestBlock { responder },
@@ -654,10 +683,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.
-    pub(crate) async fn put_deploy_to_storage<S>(self, deploy: Box<S::Deploy>) -> bool
+    pub(crate) async fn put_deploy_to_storage(self, deploy: Box<Deploy>) -> bool
     where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::PutDeploy { deploy, responder },
@@ -667,13 +695,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploys from the deploy store.
-    pub(crate) async fn get_deploys_from_storage<S>(
+    pub(crate) async fn get_deploys_from_storage(
         self,
-        deploy_hashes: DeployHashes<S>,
-    ) -> DeployResults<S>
+        deploy_hashes: Multiple<DeployHash>,
+    ) -> Vec<Option<Deploy>>
     where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
@@ -687,13 +714,12 @@ impl<REv> EffectBuilder<REv> {
 
     /// Stores the given execution results for the deploys in the given block in the linear block
     /// store.
-    pub(crate) async fn put_execution_results_to_storage<S>(
+    pub(crate) async fn put_execution_results_to_storage(
         self,
-        block_hash: <S::Block as Value>::Id,
-        execution_results: HashMap<<S::Deploy as Value>::Id, ExecutionResult>,
+        block_hash: BlockHash,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
     ) where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::PutExecutionResults {
@@ -707,13 +733,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploys from the deploy store.
-    pub(crate) async fn get_deploy_and_metadata_from_storage<S>(
+    pub(crate) async fn get_deploy_and_metadata_from_storage(
         self,
-        deploy_hash: <S::Deploy as Value>::Id,
-    ) -> Option<(S::Deploy, DeployMetadata<S::Block>)>
+        deploy_hash: DeployHash,
+    ) -> Option<(Deploy, DeployMetadata)>
     where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetDeployAndMetadata {
@@ -927,14 +952,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given chainspec into the chainspec store.
-    pub(crate) async fn put_chainspec<S>(self, chainspec: Chainspec)
+    pub(crate) async fn put_chainspec(self, chainspec: Chainspec)
     where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::PutChainspec {
-                chainspec: Box::new(chainspec),
+                chainspec: Arc::new(chainspec),
                 responder,
             },
             QueueKind::Regular,
@@ -943,10 +967,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested chainspec from the chainspec store.
-    pub(crate) async fn get_chainspec<S>(self, version: Version) -> Option<Chainspec>
+    pub(crate) async fn get_chainspec(self, version: Version) -> Option<Arc<Chainspec>>
     where
-        S: StorageType + 'static,
-        REv: From<StorageRequest<S>>,
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetChainspec { version, responder },
@@ -1111,19 +1134,18 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the set of validators, the booking block and the key block for a new era
-    pub(crate) async fn create_new_era<S>(
+    pub(crate) async fn create_new_era(
         self,
         request: ValidatorWeightsByEraIdRequest,
         booking_block_height: u64,
         key_block_height: u64,
     ) -> (
         Result<Option<ValidatorWeights>, GetEraValidatorsError>,
-        Option<S::Block>,
-        Option<S::Block>,
+        Option<Block>,
+        Option<Block>,
     )
     where
-        REv: From<ContractRuntimeRequest> + From<StorageRequest<S>>,
-        S: StorageType + 'static,
+        REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
         let future_validators = self.get_validator_weights_by_era_id(request);
         let future_booking_block = self.get_block_at_height(booking_block_height);

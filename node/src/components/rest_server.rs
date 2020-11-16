@@ -32,7 +32,6 @@ use tracing::{debug, error, warn};
 
 use super::Component;
 use crate::{
-    components::storage::Storage,
     effect::{
         requests::{ChainspecLoaderRequest, MetricsRequest, NetworkInfoRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -51,7 +50,7 @@ pub trait ReactorEventT:
     From<Event>
     + From<RestRequest<NodeId>>
     + From<NetworkInfoRequest<NodeId>>
-    + From<StorageRequest<Storage>>
+    + From<StorageRequest>
     + From<ChainspecLoaderRequest>
     + From<MetricsRequest>
     + Send
@@ -62,7 +61,7 @@ impl<REv> ReactorEventT for REv where
     REv: From<Event>
         + From<RestRequest<NodeId>>
         + From<NetworkInfoRequest<NodeId>>
-        + From<StorageRequest<Storage>>
+        + From<StorageRequest>
         + From<ChainspecLoaderRequest>
         + From<MetricsRequest>
         + Send

@@ -1,6 +1,7 @@
 use std::{io, net::SocketAddr, result, time::SystemTimeError};
 
 use openssl::error::ErrorStack;
+use serde::Serialize;
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_openssl::HandshakeError;
@@ -10,7 +11,7 @@ use crate::tls::ValidationError;
 pub(super) type Result<T> = result::Result<T, Error>;
 
 /// Error type returned by the `SmallNetwork` component.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize)]
 pub enum Error {
     /// Server failed to present certificate.
     #[error("no server certificate presented")]
@@ -29,43 +30,88 @@ pub enum Error {
     OwnCertificateInvalid(#[source] ValidationError),
     /// Failed to create a TCP listener.
     #[error("failed to create listener on {1}")]
-    ListenerCreation(#[source] io::Error, SocketAddr),
+    ListenerCreation(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+        SocketAddr,
+    ),
     /// Failed to get TCP listener address.
     #[error("failed to get listener addr")]
-    ListenerAddr(#[source] io::Error),
+    ListenerAddr(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
     /// Failed to convert std TCP listener to tokio TCP listener.
     #[error("failed to convert listener to tokio")]
-    ListenerConversion(#[source] io::Error),
+    ListenerConversion(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
     /// Could not resolve root node address.
     #[error("failed to resolve network address")]
-    ResolveAddr(#[source] io::Error),
+    ResolveAddr(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
     /// Failed to send message.
     #[error("failed to send message")]
-    MessageNotSent(#[source] io::Error),
+    MessageNotSent(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
     /// Failed to create TLS acceptor.
     #[error("failed to create acceptor")]
-    AcceptorCreation(#[source] ErrorStack),
+    AcceptorCreation(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Failed to create configuration for TLS connector.
     #[error("failed to configure connector")]
-    ConnectorConfiguration(#[source] ErrorStack),
+    ConnectorConfiguration(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Failed to generate node TLS certificate.
     #[error("failed to generate cert")]
-    CertificateGeneration(#[source] ErrorStack),
+    CertificateGeneration(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Handshaking error.
     #[error("handshake error: {0}")]
-    Handshake(#[from] HandshakeError<TcpStream>),
+    Handshake(
+        #[serde(skip_serializing)]
+        #[from]
+        HandshakeError<TcpStream>,
+    ),
     /// TLS validation error.
     #[error("TLS validation error: {0}")]
     TlsValidation(#[from] ValidationError),
     /// System time error.
     #[error("system time error: {0}")]
-    SystemTime(#[from] SystemTimeError),
+    SystemTime(
+        #[serde(skip_serializing)]
+        #[from]
+        SystemTimeError,
+    ),
     /// Systemd notification error
     #[error("could not interact with systemd: {0}")]
-    SystemD(io::Error),
+    SystemD(#[serde(skip_serializing)] io::Error),
     /// Other error.
     #[error(transparent)]
-    Anyhow(#[from] anyhow::Error),
+    Anyhow(
+        #[serde(skip_serializing)]
+        #[from]
+        anyhow::Error,
+    ),
     /// Server has stopped.
     #[error("failed to create outgoing connection as server has stopped")]
     ServerStopped,

@@ -2,13 +2,7 @@
 
 use casper_node_macros::reactor;
 
-use crate::{
-    components::storage::{Storage, StorageType},
-    protocol::Message,
-    reactor::validator,
-    types::NodeId,
-    utils::WithDir,
-};
+use crate::{protocol::Message, reactor::validator, types::NodeId, utils::WithDir};
 
 reactor!(Initializer {
   type Config = WithDir<validator::Config>;
@@ -21,16 +15,14 @@ reactor!(Initializer {
            .clone()
            .load(cfg.dir())
            .expect("TODO: return proper error when chainspec cannot be loaded"), effect_builder);
-    storage = Storage(cfg.map_ref(|cfg| cfg.storage.clone()));
+    storage = Storage(&cfg.map_ref(|cfg| cfg.storage.clone()));
     contract_runtime = ContractRuntime(cfg.map_ref(|cfg| cfg.storage.clone()), &cfg.value().contract_runtime, registry);
   }
 
-  events: {
-    storage = Event<Storage>;
-  }
+  events: {}
 
   requests: {
-    StorageRequest<Storage> -> storage;
+    StorageRequest -> storage;
     ContractRuntimeRequest -> contract_runtime;
 
     // No network traffic during initialization, just discard.

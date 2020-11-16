@@ -45,7 +45,7 @@ use crate::{
 use block::Block;
 use tallies::Tallies;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub(crate) enum UnitError {
     #[error("The unit is a ballot but doesn't cite any block.")]
     MissingBlock,
@@ -120,7 +120,7 @@ impl<C: Context> Fault<C> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct State<C: Context> {
     /// The fixed parameters.
     params: Params,
@@ -405,7 +405,7 @@ impl<C: Context> State<C> {
             }
         }
         // Stake required to consider unit to be endorsed.
-        let threshold = self.total_weight() / 3 * 2;
+        let threshold = self.total_weight() / 2;
         let endorsed: Weight = self
             .incomplete_endorsements
             .get(&unit)
@@ -416,7 +416,7 @@ impl<C: Context> State<C> {
                 self.weight(v_id)
             })
             .sum();
-        if endorsed >= threshold {
+        if endorsed > threshold {
             info!(%unit, "Unit endorsed by at least 2/3 of validators.");
             let fully_endorsed = self.incomplete_endorsements.remove(&unit).unwrap();
             self.endorsements.insert(unit, fully_endorsed);

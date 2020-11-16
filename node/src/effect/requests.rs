@@ -7,10 +7,12 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
+    sync::Arc,
 };
 
 use datasize::DataSize;
 use semver::Version;
+use serde::Serialize;
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -32,30 +34,23 @@ use casper_types::{
     Key, ProtocolVersion, URef,
 };
 
-use super::Responder;
+use super::{Multiple, Responder};
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
-        storage::{
-            DeployHashes, DeployHeaderResults, DeployMetadata, DeployResults, StorageType, Value,
-        },
     },
     crypto::{asymmetric_key::Signature, hash::Digest},
     rpcs::chain::BlockIdentifier,
     types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
-        Deploy, DeployHash, FinalizedBlock, Item, ProtoBlockHash, StatusFeed, Timestamp,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, ProtoBlockHash,
+        StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
 };
-
-type DeployAndMetadata<S> = (
-    <S as StorageType>::Deploy,
-    DeployMetadata<<S as StorageType>::Block>,
-);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -190,11 +185,11 @@ where
 #[derive(Debug)]
 /// A storage request.
 #[must_use]
-pub enum StorageRequest<S: StorageType + 'static> {
+pub enum StorageRequest {
     /// Store given block.
     PutBlock {
         /// Block to be stored.
-        block: Box<S::Block>,
+        block: Box<Block>,
         /// Responder to call with the result.  Returns true if the block was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
@@ -202,35 +197,35 @@ pub enum StorageRequest<S: StorageType + 'static> {
     /// Retrieve block with given hash.
     GetBlock {
         /// Hash of block to be retrieved.
-        block_hash: <S::Block as Value>::Id,
+        block_hash: BlockHash,
         /// Responder to call with the result.  Returns `None` is the block doesn't exist in local
         /// storage.
-        responder: Responder<Option<S::Block>>,
+        responder: Responder<Option<Block>>,
     },
     /// Retrieve block with given height.
     GetBlockAtHeight {
         /// Height of the block.
-        height: u64,
+        height: BlockHeight,
         /// Responder.
-        responder: Responder<Option<S::Block>>,
+        responder: Responder<Option<Block>>,
     },
     /// Retrieve highest block.
     GetHighestBlock {
         /// Responder.
-        responder: Responder<Option<S::Block>>,
+        responder: Responder<Option<Block>>,
     },
     /// Retrieve block header with given hash.
     GetBlockHeader {
         /// Hash of block to get header of.
-        block_hash: <S::Block as Value>::Id,
+        block_hash: BlockHash,
         /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
         /// local storage.
-        responder: Responder<Option<<S::Block as Value>::Header>>,
+        responder: Responder<Option<BlockHeader>>,
     },
     /// Store given deploy.
     PutDeploy {
         /// Deploy to store.
-        deploy: Box<S::Deploy>,
+        deploy: Box<Deploy>,
         /// Responder to call with the result.  Returns true if the deploy was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
@@ -238,38 +233,43 @@ pub enum StorageRequest<S: StorageType + 'static> {
     /// Retrieve deploys with given hashes.
     GetDeploys {
         /// Hashes of deploys to be retrieved.
-        deploy_hashes: DeployHashes<S>,
+        deploy_hashes: Multiple<DeployHash>,
         /// Responder to call with the results.
-        responder: Responder<DeployResults<S>>,
+        responder: Responder<Vec<Option<Deploy>>>,
     },
     /// Retrieve deploy headers with given hashes.
     GetDeployHeaders {
         /// Hashes of deploy headers to be retrieved.
-        deploy_hashes: DeployHashes<S>,
+        deploy_hashes: Multiple<DeployHash>,
         /// Responder to call with the results.
-        responder: Responder<DeployHeaderResults<S>>,
+        responder: Responder<Vec<Option<DeployHeader>>>,
     },
-    /// Store the given execution results for the deploys in the given block.
+    /// Store execution results for a set of deploys of a single block.
+    ///
+    /// Will return a fatal error if there are already execution results known for a specific
+    /// deploy/block combination and a different result is inserted.
+    ///
+    /// Inserting the same block/deploy combination multiple times with the same execution results
+    /// is not an error and will silently be ignored.
     PutExecutionResults {
         /// Hash of block.
-        block_hash: <S::Block as Value>::Id,
-        /// Execution results.
-        execution_results: HashMap<<S::Deploy as Value>::Id, ExecutionResult>,
-        /// Responder to call with the result.  Returns true if the execution results were stored
-        /// on this attempt or false if they were previously stored.
+        block_hash: BlockHash,
+        /// Mapping of deploys to execution results of the block.
+        execution_results: HashMap<DeployHash, ExecutionResult>,
+        /// Responder to call when done storing.
         responder: Responder<()>,
     },
     /// Retrieve deploy and its metadata.
     GetDeployAndMetadata {
         /// Hash of deploy to be retrieved.
-        deploy_hash: <S::Deploy as Value>::Id,
+        deploy_hash: DeployHash,
         /// Responder to call with the results.
-        responder: Responder<Option<DeployAndMetadata<S>>>,
+        responder: Responder<Option<(Deploy, DeployMetadata)>>,
     },
     /// Store given chainspec.
     PutChainspec {
         /// Chainspec.
-        chainspec: Box<Chainspec>,
+        chainspec: Arc<Chainspec>,
         /// Responder to call with the result.
         responder: Responder<()>,
     },
@@ -278,11 +278,11 @@ pub enum StorageRequest<S: StorageType + 'static> {
         /// Version.
         version: Version,
         /// Responder to call with the result.
-        responder: Responder<Option<Chainspec>>,
+        responder: Responder<Option<Arc<Chainspec>>>,
     },
 }
 
-impl<S: StorageType> Display for StorageRequest<S> {
+impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
@@ -416,7 +416,7 @@ pub enum RpcRequest<I> {
         /// The hash of the deploy to be retrieved.
         hash: DeployHash,
         /// Responder to call with the result.
-        responder: Responder<Option<(Deploy, DeployMetadata<LinearBlock>)>>,
+        responder: Responder<Option<(Deploy, DeployMetadata)>>,
     },
     /// Return the connected peers.
     GetPeers {
@@ -510,7 +510,7 @@ impl<I> Display for RestRequest<I> {
 }
 
 /// A contract runtime request.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub enum ContractRuntimeRequest {
     /// Get `ProtocolData` by `ProtocolVersion`.
@@ -530,6 +530,7 @@ pub enum ContractRuntimeRequest {
     /// An `ExecuteRequest` that contains multiple deploys that will be executed.
     Execute {
         /// Execution request containing deploys.
+        #[serde(skip_serializing)]
         execute_request: ExecuteRequest,
         /// Responder to call with the execution result.
         responder: Responder<Result<ExecutionResults, engine_state::RootNotFound>>,
@@ -539,6 +540,7 @@ pub enum ContractRuntimeRequest {
         /// A valid state root hash.
         state_root_hash: Digest,
         /// Effects obtained through `ExecutionResult`
+        #[serde(skip_serializing)]
         effects: AdditiveMap<Key, Transform>,
         /// Responder to call with the commit result.
         responder: Responder<Result<CommitResult, engine_state::Error>>,
@@ -546,6 +548,7 @@ pub enum ContractRuntimeRequest {
     /// A request to run upgrade.
     Upgrade {
         /// Upgrade config.
+        #[serde(skip_serializing)]
         upgrade_config: Box<UpgradeConfig>,
         /// Responder to call with the upgrade result.
         responder: Responder<Result<UpgradeResult, engine_state::Error>>,
@@ -553,6 +556,7 @@ pub enum ContractRuntimeRequest {
     /// A query request.
     Query {
         /// Query request.
+        #[serde(skip_serializing)]
         query_request: QueryRequest,
         /// Responder to call with the query result.
         responder: Responder<Result<QueryResult, engine_state::Error>>,
@@ -560,6 +564,7 @@ pub enum ContractRuntimeRequest {
     /// A balance request.
     GetBalance {
         /// Balance request.
+        #[serde(skip_serializing)]
         balance_request: BalanceRequest,
         /// Responder to call with the balance result.
         responder: Responder<Result<BalanceResult, engine_state::Error>>,
@@ -567,6 +572,7 @@ pub enum ContractRuntimeRequest {
     /// Returns validator weights.
     GetEraValidators {
         /// Get validators weights request.
+        #[serde(skip_serializing)]
         request: EraValidatorsRequest,
         /// Responder to call with the result.
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
@@ -574,6 +580,7 @@ pub enum ContractRuntimeRequest {
     /// Returns validator weights for given era.
     GetValidatorWeightsByEraId {
         /// Get validators weights request.
+        #[serde(skip_serializing)]
         request: ValidatorWeightsByEraIdRequest,
         /// Responder to call with the result.
         responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
@@ -582,6 +589,7 @@ pub enum ContractRuntimeRequest {
     /// end of an era.
     Step {
         /// The step request.
+        #[serde(skip_serializing)]
         step_request: StepRequest,
         /// Responder to call with the result.
         responder: Responder<Result<StepResult, engine_state::Error>>,
@@ -749,7 +757,7 @@ pub enum ConsensusRequest {
 }
 
 /// ChainspecLoader componenent requests.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),
