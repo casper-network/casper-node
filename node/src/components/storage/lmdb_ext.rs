@@ -1,6 +1,6 @@
 //! LMDB extensions.
 //!
-//! Various traits and helper functions to extend the lower levele LMDB functions. Unifies
+//! Various traits and helper functions to extend the lower level LMDB functions. Unifies
 //! lower-level storage errors from lmdb and serialization issues.
 //!
 //! ## Serialization
@@ -29,11 +29,11 @@ pub enum LmdbExtError {
     /// The data stored inside the internal database is corrupted or formatted wrong.
     #[error("internal data corrupted: {0}")]
     DataCorrupted(Box<dyn std::error::Error + Send + Sync>),
-    /// A resource has been exhausted a runtime, restarting (potentially with different settings)
+    /// A resource has been exhausted at runtime, restarting (potentially with different settings)
     /// might fix the problem. Storage integrity is still intact.
     #[error("storage exhausted resource (but still intact): {0}")]
     ResourceExhausted(lmdb::Error),
-    /// Error neither corruption nor resource exhaustion occured, likely a programming error.
+    /// Error neither corruption nor resource exhaustion occurred, likely a programming error.
     #[error("unknown LMDB or serialization error, likely from a bug: {0}")]
     Other(Box<dyn std::error::Error + Send + Sync>),
 }
@@ -87,10 +87,6 @@ pub(super) trait WriteTransactionExt {
     /// Returns `true` if the value has actually been written, `false` if the key already existed.
     ///
     /// Setting `overwrite` to true will cause the value to always be written instead.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a database error occurs.
     fn put_value<K: AsRef<[u8]>, V: Serialize>(
         &mut self,
         db: Database,

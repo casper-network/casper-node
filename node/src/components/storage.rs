@@ -69,7 +69,7 @@ use crate::{
     utils::WithDir,
     Chainspec, NodeRng,
 };
-use lmdb_ext::{deser, LmdbExtError, TransactionExt, WriteTransactionExt};
+use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// We can set this very low, as there is only a single reader/writer accessing the component at any
 /// one time.
@@ -207,10 +207,10 @@ impl Storage {
         let block_txn = env.begin_ro_txn()?;
         let mut cursor = block_txn.open_ro_cursor(block_db)?;
 
-        // Note: `iter_start` has an undocument panic if called on an empty database. We rely on
+        // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
         for (raw_key, raw_val) in cursor.iter() {
-            let block: Block = deser(raw_val)?;
+            let block: Block = lmdb_ext::deser(raw_val)?;
             // We use the opportunity for a small integrity check.
             assert_eq!(
                 raw_key,
@@ -252,8 +252,8 @@ impl Storage {
         Self: Component<REv>,
     {
         // Note: Database IO is handled in a blocking fashion on purpose throughout this function.
-        // The rationale behind is that long IO operations are very rare and cache misses
-        // frequent, so on average the actual execution time will be very low.
+        // The rationale is that long IO operations are very rare and cache misses frequent, so on
+        // average the actual execution time will be very low.
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
                 let mut txn = self.env.begin_rw_txn()?;
@@ -329,7 +329,7 @@ impl Storage {
                 responder,
             } => responder
                 .respond(
-                    // TODO: Similary to getting block headers, requires optimized function.
+                    // TODO: Similarly to getting block headers, requires optimized function.
                     self.get_deploys(&mut self.env.begin_ro_txn()?, deploy_hashes.as_slice())?
                         .into_iter()
                         .map(|opt| opt.map(|deploy| deploy.header().clone()))
@@ -370,7 +370,6 @@ impl Storage {
                     assert!(was_written);
                 }
 
-                // We commit only once we finished updating all deploy metadata.
                 txn.commit()?;
                 responder.respond(()).ignore()
             }
@@ -442,7 +441,7 @@ impl Storage {
             .collect()
     }
 
-    /// Retrieve deploy metadata associated with deploy.
+    /// Retrieves deploy metadata associated with deploy.
     ///
     /// If no deploy metadata is stored for the specific deploy, an empty metadata instance will be
     /// created, but not stored.
@@ -471,7 +470,7 @@ pub struct Config {
     ///
     /// The size should be a multiple of the OS page size.
     max_deploy_store_size: usize,
-    /// The maximum size of the database to use for the deploy store.
+    /// The maximum size of the database to use for the deploy metadata store.
     ///
     /// The size should be a multiple of the OS page size.
     max_deploy_metadata_store_size: usize,
@@ -513,22 +512,20 @@ impl Display for Event {
     }
 }
 
-// Legacy code follows below.
+// Legacy code follows.
 //
-// The functionality about for requests directly from the incoming network should *not* be present
-// in the validator reactor's routing code. Until it can be cleaned up, this legacy implementation
-// block provides a backwards-compatible interface for this functionality. DO NOT EXPAND, RELY ON OR
-// BUILD UPON THIS CODE.
+// The functionality about for requests directly from the incoming network was previously present in
+// the validator reactor's routing code. It is slated for an overhaul, but for the time being the
+// code below provides a backwards-compatible interface for this functionality. DO NOT EXPAND, RELY
+// ON OR BUILD UPON THIS CODE.
 
 impl Storage {
-    // Retrieve a deploy from the deploy store to handle a legacy network request.
+    // Retrieves a deploy from the deploy store to handle a legacy network request.
     pub fn handle_legacy_direct_deploy_request(&self, deploy_hash: DeployHash) -> Option<Deploy> {
         // NOTE: This function was formerly called `get_deploy_for_peer` and used to create an event
         // directly. This caused a dependency of the storage component on networking functionality,
         // which is highly problematic. For this reason, the code to send a reply has been moved to
         // the dispatching code (which should be removed anyway) as to not taint the interface.
-
-        // In reality, this function is just a deploy retrieval method that should not exist.
         self.env
             .begin_ro_txn()
             .map_err(Into::into)
