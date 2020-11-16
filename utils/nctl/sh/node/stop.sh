@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -36,6 +33,9 @@ node=${node:-"all"}
 #######################################
 # Main
 #######################################
+
+# Import utils.
+source $NCTL/sh/utils/misc.sh
 
 # Set daemon handler.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then

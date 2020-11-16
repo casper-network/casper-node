@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -37,15 +34,18 @@ loglevel=${loglevel:-debug}
 net=${net:-1}
 node=${node:-1}
 
+# Set rust log level.
+export RUST_LOG=$loglevel
+
 #######################################
 # Main
 #######################################
 
-# Set rust log level.
-export RUST_LOG=$loglevel
+# Import utils.
+source $NCTL/sh/utils/misc.sh
 
-# Import net vars.
-source $NCTL/assets/net-$net/vars
+# Import vars.
+source $(get_path_to_net_vars $net)
 
 # Set paths.
 path_net=$NCTL/assets/net-$net

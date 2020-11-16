@@ -198,9 +198,9 @@ function _set_users() {
     log "... users"
 
     mkdir $1/users
-    for user_idx in $(seq 1 $2)
+    for idx in $(seq 1 $2)
     do
-        _set_user $1 $user_idx
+        _set_user $1 $idx
     done
 }
 
@@ -279,17 +279,6 @@ function _main() {
 }
 
 #######################################
-# CLI entry point
-# Arguments:
-#   Network ordinal identifier.
-#   Count of nodes to setup.
-#   Count of users to setup.
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
-#######################################
 # Destructure input args.
 #######################################
 
@@ -324,6 +313,9 @@ users=${users:-5}
 #######################################
 # Main
 #######################################
+
+# Import utils.
+source $NCTL/sh/utils/misc.sh
 
 # Execute when inputs are valid.
 if [ $bootstraps -ge $nodes ]; then

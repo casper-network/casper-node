@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -36,5 +33,8 @@ node=${node:-1}
 #######################################
 # Main
 #######################################
+
+# Import utils.
+source $NCTL/sh/utils/misc.sh
 
 less $NCTL/assets/net-$net/nodes/node-$node/config/node-config.toml

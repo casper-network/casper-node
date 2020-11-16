@@ -4,6 +4,15 @@
 # UTILS: constants
 # ###############################################################
 
+# A type of actor representing a participating node.
+NCTL_ACCOUNT_TYPE_FAUCET="faucet"
+
+# A type of actor representing a participating node.
+NCTL_ACCOUNT_TYPE_NODE="node"
+
+# A type of actor representing a user.
+NCTL_ACCOUNT_TYPE_USER="user"
+
 # Default amount used when making transfers.
 NCTL_DEFAULT_TRANSFER_AMOUNT=1000000000   # (1e9)
 
@@ -188,6 +197,28 @@ END
 }
 
 #######################################
+# Returns an account key.
+# Globals:
+#   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
+#   NCTL_ACCOUNT_TYPE_NODE - node account type.
+#   NCTL_ACCOUNT_TYPE_USER - user account type.
+# Arguments:
+#   Network ordinal identifier.
+#   Account type (node | user | faucet).
+#   Account ordinal identifier (optional).
+#######################################
+function get_account_key() {
+    if [ $2 = $NCTL_ACCOUNT_TYPE_FAUCET ]; then
+        path_key=$(get_path_to_faucet $1)/public_key_hex
+    elif [ $2 = $NCTL_ACCOUNT_TYPE_NODE ]; then
+        path_key=$(get_path_to_node $1 $3)/keys/public_key_hex
+    elif [ $2 = $NCTL_ACCOUNT_TYPE_USER ]; then
+        path_key=$(get_path_to_user $1 $3)/public_key_hex
+    fi
+    echo `cat $path_key`  
+}
+
+#######################################
 # Get network known addresses - i.e. those of bootstrap nodes.
 # Arguments:
 #   Network ordinal identifier.
@@ -226,6 +257,23 @@ function get_genesis_timestamp()
 {
     instruction='from datetime import datetime, timedelta; print((datetime.utcnow() + timedelta(seconds='$1')).isoformat("T") + "Z");'
     python3 <<< $instruction
+}
+
+#######################################
+# Returns a main purse uref.
+# Globals:
+#   NCTL - path to nctl home directory.
+# Arguments:
+#   Network ordinal identifier.
+#   State root hash.
+#   Accoubnt key.
+#######################################
+function get_main_purse_uref() {
+echo $(
+        source $NCTL/sh/views/view_chain_account.sh net=$1 root-hash=$2 account-key=$3 \
+            | jq '.stored_value.Account.main_purse' \
+            | sed -e 's/^"//' -e 's/"$//'
+    )
 }
 
 #######################################
@@ -310,4 +358,253 @@ function get_node_address_rpc_for_curl {
 function get_node_port {
     # TODO: Need to handle case of more than 99 nodes.
     echo $(($1 + ($2 * 100) + $3))
+}
+
+#######################################
+# Get path to casper client binary.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_path_to_client() {
+    echo $NCTL/assets/net-$1/bin/casper-client
+}
+
+#######################################
+# Get path to a casper smart contract.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_path_to_contract() {
+    echo $NCTL/assets/net-$1/bin/$2
+}
+
+#######################################
+# Get path to a network faucet.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_path_to_faucet() {
+    path_net=$(get_path_to_net $1)
+    echo $path_net/faucet
+}
+
+#######################################
+# Get path to a network's assets.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_path_to_net() {
+    echo $NCTL/assets/net-$1
+}
+
+#######################################
+# Get path to a network's variables.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_path_to_net_vars() {
+    path_net=$(get_path_to_net $1)
+    echo $path_net/vars
+}
+
+#######################################
+# Get path to a node's assets.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_path_to_node() {
+    path_net=$(get_path_to_net $1)
+    echo $path_net/nodes/node-$2
+}
+
+#######################################
+# Returns an account key.
+# Globals:
+#   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
+#   NCTL_ACCOUNT_TYPE_NODE - node account type.
+#   NCTL_ACCOUNT_TYPE_USER - user account type.
+# Arguments:
+#   Network ordinal identifier.
+#   Account type (node | user | faucet).
+#   Account ordinal identifier (optional).
+#######################################
+function get_path_to_secret_key() {
+    if [ $2 = $NCTL_ACCOUNT_TYPE_FAUCET ]; then
+        echo $(get_path_to_faucet $1)/secret_key.pem
+    elif [ $2 = $NCTL_ACCOUNT_TYPE_NODE ]; then
+        echo $(get_path_to_node $1 $3)/keys/secret_key.pem
+    elif [ $2 = $NCTL_ACCOUNT_TYPE_USER ]; then
+        echo $(get_path_to_user $1 $3)/secret_key.pem
+    fi
+}
+
+#######################################
+# Get path to a user's assets.
+# Arguments:
+#   Network ordinal identifier.
+#   User ordinal identifier.
+#######################################
+function get_path_to_user() {
+    path_net=$(get_path_to_net $1)
+    echo $path_net/users/user-$2
+}
+
+#######################################
+# Returns a state root hash.
+# Globals:
+#   NCTL - path to nctl home directory.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#   Block identifier.
+#######################################
+function get_state_root_hash() {
+    node_address=$(get_node_address_rpc $1 $2)
+    if [ "$3" ]; then
+        $(get_path_to_client $net) get-state-root-hash \
+            --node-address $node_address \
+            --block-identifier $3 \
+            | jq '.result.state_root_hash' \
+            | sed -e 's/^"//' -e 's/"$//'
+    else
+        $(get_path_to_client $net) get-state-root-hash \
+            --node-address $node_address \
+            | jq '.result.state_root_hash' \
+            | sed -e 's/^"//' -e 's/"$//'
+    fi
+}
+
+# ###############################################################
+# UTILS: rendering functions
+# ###############################################################
+
+#######################################
+# Renders an account.
+# Globals:
+#   NCTL - path to nctl home directory.
+# Arguments:
+#   Network ordinal identifier.
+#   Dispatch node ordinal identifier.
+#   Account type (node | user | faucet).
+#   Account ordinal identifier (optional).
+#######################################
+function render_account() {
+    state_root_hash=$(get_state_root_hash $1 $2)
+    account_key=$(get_account_key $1 $3 $4)
+    source $NCTL/sh/views/view_chain_account.sh \
+        net=$1 \
+        node=$2 \
+        root-hash=$state_root_hash \
+        account-key=$account_key
+}
+
+#######################################
+# Renders an account balance.
+# Globals:
+#   NCTL - path to nctl home directory.
+# Arguments:
+#   Network ordinal identifier.
+#   Dispatch node ordinal identifier.
+#   Account type (node | user | faucet).
+#   Account ordinal identifier (optional).
+#######################################
+function render_account_balance() {
+    state_root_hash=$(get_state_root_hash $1 $2)
+    account_key=$(get_account_key $1 $3 $4)
+    purse_uref=$(get_main_purse_uref $1 $state_root_hash $account_key)
+    if [ $3 = $NCTL_ACCOUNT_TYPE_FAUCET ]; then
+        prefix="net-"$1":faucet"
+    elif [ $3 = $NCTL_ACCOUNT_TYPE_NODE ]; then
+        prefix="net-"$1":node-"$4
+    elif [ $3 = $NCTL_ACCOUNT_TYPE_USER ]; then
+        prefix="net-"$1":user-"$4
+    fi    
+    source $NCTL/sh/views/view_chain_account_balance.sh \
+        net=$1 \
+        node=$2 \
+        root-hash=$state_root_hash \
+        purse-uref=$purse_uref \
+        prefix=$prefix
+}
+
+#######################################
+# Renders an account hash.
+# Globals:
+#   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
+#   NCTL_ACCOUNT_TYPE_NODE - node account type.
+#   NCTL_ACCOUNT_TYPE_USER - user account type.
+# Arguments:
+#   Network ordinal identifier.
+#   Account type (node | user | faucet).
+#   Account ordinal identifier (optional).
+#######################################
+function render_account_hash() {
+    account_key=$(get_account_key $1 $2 $3)
+    account_hash=$(get_account_hash $account_key)
+    if [ $2 = $NCTL_ACCOUNT_TYPE_FAUCET ]; then
+        log "account hash :: net-$1:faucet -> "$account_hash
+    elif [ $2 = $NCTL_ACCOUNT_TYPE_NODE ]; then
+        log "account hash :: net-$1:node-$3 -> "$account_hash
+    elif [ $2 = $NCTL_ACCOUNT_TYPE_USER ]; then
+        log "account hash :: net-$1:user-$3 -> "$account_hash
+    fi
+}
+
+#######################################
+# Renders an account key.
+# Globals:
+#   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
+#   NCTL_ACCOUNT_TYPE_NODE - node account type.
+#   NCTL_ACCOUNT_TYPE_USER - user account type.
+# Arguments:
+#   Network ordinal identifier.
+#   Account type (node | user | faucet).
+#   Account ordinal identifier (optional).
+#######################################
+function render_account_key() {
+    account_key=$(get_account_key $1 $2 $3)
+    if [ $2 = $NCTL_ACCOUNT_TYPE_FAUCET ]; then
+        log "account key :: net-$1:faucet -> "$account_key
+    elif [ $2 = $NCTL_ACCOUNT_TYPE_NODE ]; then
+        log "account key :: net-$1:node-$3 -> "$account_key
+    elif [ $2 = $NCTL_ACCOUNT_TYPE_USER ]; then
+        log "account key :: net-$1:user-$3 -> "$account_key
+    fi
+}
+
+#######################################
+# Renders an account secret key path.
+# Globals:
+#   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
+#   NCTL_ACCOUNT_TYPE_NODE - node account type.
+#   NCTL_ACCOUNT_TYPE_USER - user account type.
+# Arguments:
+#   Network ordinal identifier.
+#   Account type (node | user | faucet).
+#   Account ordinal identifier (optional).
+#######################################
+function render_account_secret_key() {
+    path_key=$(get_path_to_secret_key $1 $2 $3)
+    if [ $2 = $NCTL_ACCOUNT_TYPE_FAUCET ]; then
+        log "secret key :: net-$1:faucet -> "$path_key
+    elif [ $2 = $NCTL_ACCOUNT_TYPE_NODE ]; then
+        log "secret key :: net-$1:node-$3 -> "$path_key
+    elif [ $2 = $NCTL_ACCOUNT_TYPE_USER ]; then
+        log "secret key :: net-$1:user-$3 -> "$path_key
+    fi
+}
+
+#######################################
+# Renders a state root hash at a certain node.
+# Globals:
+#   NCTL - path to nctl home directory.
+# Arguments:
+#   Network ordinal identifier.
+#   User ordinal identifier.
+#######################################
+function render_chain_state_root_hash() {
+    node_address=$(get_node_address_rpc $1 $2)
+    state_root_hash=$(get_state_root_hash $1 $2 $3)
+    log "STATE ROOT HASH @ "$node_address" :: "$state_root_hash
 }

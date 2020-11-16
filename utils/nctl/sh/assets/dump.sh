@@ -7,9 +7,6 @@
 # Arguments:
 #   Network ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -34,6 +31,12 @@ net=${net:-1}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
 log "network #$net: dumping transient assets ... please wait"
 
 # Set paths.
@@ -45,9 +48,6 @@ if [ -d $path_dump ]; then
     rm -rf $path_dump
 fi
 mkdir -p $path_dump
-
-# Set net vars.
-source $path_assets/vars
 
 # Dump chainspec.
 cp $path_assets/chainspec/accounts.csv $path_dump/accounts.csv

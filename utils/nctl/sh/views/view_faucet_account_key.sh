@@ -6,9 +6,6 @@
 # Arguments:
 #   Network ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -33,5 +30,8 @@ net=${net:-1}
 # Main
 #######################################
 
-declare path_key=$NCTL/assets/net-$net/faucet/public_key_hex
-log "net-$net :: faucet key: "$(cat $path_key)
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Render account key.
+render_account_key $net $NCTL_ACCOUNT_TYPE_FAUCET

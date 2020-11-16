@@ -6,9 +6,6 @@
 # Arguments:
 #   Network ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -32,5 +29,8 @@ net=${net:-1}
 #######################################
 # Main
 #######################################
+
+# Import utils.
+source $NCTL/sh/utils/misc.sh
 
 less $NCTL/assets/net-$net/chainspec/chainspec.toml
