@@ -108,7 +108,7 @@ where
     ) -> Result<Option<V>, LmdbExtError> {
         match self.get(db, key) {
             // Deserialization failures are likely due to storage corruption.
-            Ok(raw) => deser(raw).map(Some),
+            Ok(raw) => deserialize(raw).map(Some),
             Err(lmdb::Error::NotFound) => Ok(None),
             Err(err) => Err(err.into()),
         }
@@ -123,7 +123,7 @@ impl WriteTransactionExt for RwTransaction<'_> {
         value: &V,
         overwrite: bool,
     ) -> Result<bool, LmdbExtError> {
-        let buffer = ser(value)?;
+        let buffer = serialize(value)?;
 
         let flags = if overwrite {
             WriteFlags::empty()
@@ -142,12 +142,12 @@ impl WriteTransactionExt for RwTransaction<'_> {
 
 /// Deserializes from a buffer.
 #[inline(always)]
-pub(crate) fn deser<T: DeserializeOwned>(raw: &[u8]) -> Result<T, LmdbExtError> {
+pub(super) fn deserialize<T: DeserializeOwned>(raw: &[u8]) -> Result<T, LmdbExtError> {
     bincode::deserialize(raw).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))
 }
 
 /// Serializes into a buffer.
 #[inline(always)]
-pub(crate) fn ser<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
+pub(super) fn serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, LmdbExtError> {
     bincode::serialize(value).map_err(|err| LmdbExtError::Other(Box::new(err)))
 }
