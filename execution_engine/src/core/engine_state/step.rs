@@ -5,7 +5,10 @@ use uint::static_assertions::_core::fmt::Formatter;
 
 use casper_types::{bytesrepr, bytesrepr::ToBytes, Key, ProtocolVersion, PublicKey};
 
-use crate::shared::{newtypes::Blake2bHash, TypeMismatch};
+use crate::{
+    core::engine_state::Error,
+    shared::{newtypes::Blake2bHash, TypeMismatch},
+};
 
 #[derive(Debug)]
 pub struct SlashItem {
@@ -83,6 +86,9 @@ impl StepRequest {
 pub enum StepResult {
     RootNotFound,
     PreconditionError,
+    SlashingError(Error),
+    AuctionError(Error),
+    DistributeError(Error),
     InvalidProtocolVersion,
     KeyNotFound(Key),
     TypeMismatch(TypeMismatch),

@@ -17,7 +17,7 @@ use casper_types::{
         Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
         ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
         ARG_UNBOND_PURSE, ARG_VALIDATOR, BIDS_KEY, DEFAULT_UNBONDING_DELAY, ERA_ID_KEY,
-        ERA_VALIDATORS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, UNBONDING_PURSES_KEY,
+        INITIAL_ERA_ID, METHOD_RUN_AUCTION, UNBONDING_PURSES_KEY,
     },
     runtime_args, PublicKey, RuntimeArgs, URef, U512,
 };
@@ -203,11 +203,11 @@ fn should_run_add_bid() {
         .get(&BID_ACCOUNT_1_PK)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].origin, BID_ACCOUNT_1_PK);
+    assert_eq!(unbond_list[0].public_key, BID_ACCOUNT_1_PK);
     // `WITHDRAW_BID_AMOUNT_2` is in unbonding list
 
     assert_eq!(
-        unbonding_purse, unbond_list[0].purse,
+        unbonding_purse, unbond_list[0].unbonding_purse,
         "unbonding queue should have account's unbonding purse"
     );
     assert_eq!(unbond_list[0].amount, U512::from(WITHDRAW_BID_AMOUNT_2),);
@@ -473,7 +473,7 @@ fn should_calculate_era_validators() {
     let post_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
     assert_eq!(post_era_id, 1);
 
-    let era_validators: EraValidators = builder.get_value(auction_hash, "era_validators");
+    let era_validators: EraValidators = builder.get_era_validators();
 
     // Check if there are no missing eras after the calculation, but we don't care about what the
     // elements are
@@ -626,7 +626,7 @@ fn should_get_first_seigniorage_recipients() {
         .unwrap();
     assert_eq!(seigniorage_recipients.len(), 2);
 
-    let mut era_validators: EraValidators = builder.get_value(auction_hash, "era_validators");
+    let mut era_validators: EraValidators = builder.get_era_validators();
     let snapshot_size = DEFAULT_AUCTION_DELAY as usize + 1;
 
     assert_eq!(era_validators.len(), snapshot_size, "{:?}", era_validators); // eraindex==1 - ran once
@@ -841,18 +841,18 @@ fn should_release_founder_stake() {
         .get(&ACCOUNT_1_PK)
         .expect("should have unbond");
     assert_eq!(pre_unbond_list.len(), 2);
-    assert_eq!(pre_unbond_list[0].origin, ACCOUNT_1_PK);
+    assert_eq!(pre_unbond_list[0].public_key, ACCOUNT_1_PK);
     assert_eq!(pre_unbond_list[0].amount, ACCOUNT_1_WITHDRAW_1.into());
-    assert_eq!(pre_unbond_list[1].origin, ACCOUNT_1_PK);
+    assert_eq!(pre_unbond_list[1].public_key, ACCOUNT_1_PK);
     assert_eq!(pre_unbond_list[1].amount, ACCOUNT_1_WITHDRAW_2.into());
 
     // Funds are not transferred yet from the original bonding purse
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[0].purse),
+        builder.get_purse_balance(pre_unbond_list[0].unbonding_purse),
         U512::zero(),
     );
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[1].purse),
+        builder.get_purse_balance(pre_unbond_list[1].unbonding_purse),
         U512::zero(),
     );
     // check that bids are updated for given validator
@@ -879,11 +879,11 @@ fn should_release_founder_stake() {
     // Funds are transferred from the original bonding purse to the unbonding purses
     //
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[0].purse), // still valid
+        builder.get_purse_balance(pre_unbond_list[0].unbonding_purse), // still valid
         ACCOUNT_1_WITHDRAW_1.into(),
     );
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[1].purse), // still valid
+        builder.get_purse_balance(pre_unbond_list[1].unbonding_purse), // still valid
         U512::zero(),
     );
 
@@ -901,11 +901,11 @@ fn should_release_founder_stake() {
     builder.exec(exec_request_4).expect_success().commit();
 
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[0].purse), // still valid ref
+        builder.get_purse_balance(pre_unbond_list[0].unbonding_purse), // still valid ref
         ACCOUNT_1_WITHDRAW_1.into(),
     );
     assert_eq!(
-        builder.get_purse_balance(pre_unbond_list[1].purse), // still valid ref
+        builder.get_purse_balance(pre_unbond_list[1].unbonding_purse), // still valid ref
         ACCOUNT_1_WITHDRAW_2.into(),
     );
 
@@ -974,8 +974,7 @@ fn should_use_era_validators_endpoint_for_first_era() {
     assert_eq!(validator_weights.len(), 1);
     assert_eq!(validator_weights[&ACCOUNT_1_PK], ACCOUNT_1_BOND.into());
 
-    let era_validators: EraValidators =
-        builder.get_value(builder.get_auction_contract_hash(), ERA_VALIDATORS_KEY);
+    let era_validators: EraValidators = builder.get_era_validators();
     assert_eq!(era_validators[&0], validator_weights);
 }
 

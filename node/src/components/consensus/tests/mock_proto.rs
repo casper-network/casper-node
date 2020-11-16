@@ -67,6 +67,18 @@ where
     value: C::ConsensusValue,
     timestamp: Timestamp,
     proposer: C::ValidatorId,
+    valid: bool,
+}
+
+impl<C: Context> PendingBlock<C> {
+    fn new(value: C::ConsensusValue, timestamp: Timestamp, proposer: C::ValidatorId) -> Self {
+        PendingBlock {
+            value,
+            timestamp,
+            proposer,
+            valid: false,
+        }
+    }
 }
 
 /// A mock consensus protocol for testing.
@@ -95,7 +107,7 @@ where
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
         _validator_stakes: Vec<(C::ValidatorId, Motes)>,
-        _slashed: &HashSet<C::ValidatorId>,
+        slashed: &HashSet<C::ValidatorId>,
         _chainspec: &Chainspec,
         _prev_cp: Option<&dyn ConsensusProtocol<NodeId, C>>,
         _start_time: Timestamp,
@@ -104,7 +116,7 @@ where
         Box::new(MockProto {
             instance_id,
             evidence: Default::default(),
-            faulty: Default::default(),
+            faulty: slashed.iter().cloned().collect(),
             active_validator: None,
             pending_blocks: Default::default(),
             finalized_blocks: Default::default(),
@@ -135,10 +147,12 @@ where
             )],
             Ok(Message::Evidence(vid)) => {
                 if self.evidence.insert(vid.clone()) {
-                    let msg = Message::Evidence::<C>(vid);
-                    vec![ProtocolOutcome::CreatedGossipMessage(
-                        bincode::serialize(&msg).expect("should serialize message"),
-                    )]
+                    let msg = Message::Evidence::<C>(vid.clone());
+                    let ser_msg = bincode::serialize(&msg).expect("should serialize message");
+                    vec![
+                        ProtocolOutcome::NewEvidence(vid),
+                        ProtocolOutcome::CreatedGossipMessage(ser_msg),
+                    ]
                 } else {
                     vec![]
                 }
@@ -155,11 +169,8 @@ where
             }) => {
                 let result =
                     ProtocolOutcome::ValidateConsensusValue(sender, value.clone(), timestamp);
-                self.pending_blocks.push_back(PendingBlock {
-                    value,
-                    timestamp,
-                    proposer,
-                });
+                self.pending_blocks
+                    .push_back(PendingBlock::new(value, timestamp, proposer));
                 vec![result]
             }
             Ok(Message::FinalizeBlock) => {
@@ -167,10 +178,12 @@ where
                     value,
                     timestamp,
                     proposer,
+                    valid,
                 } = self
                     .pending_blocks
                     .pop_front()
                     .expect("should have pending blocks when handling FinalizeBlock");
+                assert!(valid, "finalized block must be validated first");
                 let fb = FinalizedBlock {
                     value,
                     timestamp,
@@ -205,11 +218,21 @@ where
 
     fn resolve_validity(
         &mut self,
-        _value: &C::ConsensusValue,
-        _valid: bool,
+        value: &C::ConsensusValue,
+        valid: bool,
         _rng: &mut NodeRng,
     ) -> Vec<ProtocolOutcome<NodeId, C>> {
-        todo!("implement resolve_validity")
+        if valid {
+            for pending_block in &mut self.pending_blocks {
+                if pending_block.value == *value {
+                    pending_block.valid = true;
+                }
+            }
+        } else {
+            self.pending_blocks
+                .retain(|pending_block| pending_block.value != *value);
+        }
+        vec![]
     }
 
     fn activate_validator(

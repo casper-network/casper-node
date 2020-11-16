@@ -95,8 +95,8 @@ impl MintProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ()> {
-        system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| ())
+    ) -> Result<(), Error> {
+        system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| Error::Transfer)
     }
 
     fn balance(&mut self, purse: URef) -> Option<U512> {
