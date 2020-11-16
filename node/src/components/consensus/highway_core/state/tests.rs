@@ -358,17 +358,7 @@ fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
     let b0 = add_unit!(state, rng, BOB, 0xB; a0, N, N)?;
     let _a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N)?;
     // c0 does not violate LNC b/c it sees Alice as faulty.
-    let c0 = WireUnit {
-        panorama: panorama!(F, b0, N),
-        creator: CAROL,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 0,
-        timestamp: 51.into(),
-        round_exp: 4u8,
-        endorsed: BTreeSet::new(),
-    };
-    assert_eq!(state.validate_lnc(&c0), None);
+    assert!(add_unit!(state, rng, CAROL, None; F, b0, N).is_ok());
     Ok(())
 }
 
@@ -388,34 +378,32 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
     //             \ |
     // Dan:         d0
 
-    let weights_dan = &[Weight(3), Weight(4), Weight(5), Weight(5)];
-    let mut state = State::new_test(weights_dan, 0);
+    let weights4 = &[Weight(3), Weight(4), Weight(5), Weight(5)];
+    let mut state = State::new_test(weights4, 0);
     let mut rng = crate::new_rng();
     let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N)?;
     let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N)?;
     let b0 = add_unit!(state, rng, BOB, 0xB; a0, N, N, N)?;
     let c0 = add_unit!(state, rng, CAROL, 0xB2; a0_prime, N, N, N)?;
     // d0 violates LNC b/c it naively cites Alice's equivocation.
-    let mut d0 = WireUnit {
-        panorama: panorama!(F, b0, c0, N),
-        creator: DAN,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 0,
-        timestamp: 51.into(),
-        round_exp: 4u8,
-        endorsed: BTreeSet::new(),
-    };
     // None of the votes is marked as being endorsed – violates LNC.
-    assert_eq!(state.validate_lnc(&d0), Some(ALICE));
-    d0.endorsed.insert(c0);
+    assert_eq!(
+        add_unit!(state, rng, DAN, None; F, b0, c0, N)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(ALICE)
+    );
     endorse!(state, rng, CAROL, c0);
     // One endorsement isn't enough.
-    assert_eq!(state.validate_lnc(&d0), Some(ALICE));
-    endorse!(state, rng, BOB, c0);
-    endorse!(state, rng, DAN, c0);
+    assert_eq!(
+        add_unit!(state, rng, DAN, None; F, b0, c0, N; c0)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(ALICE)
+    );
+    endorse!(state, rng, c0; BOB, DAN);
     // Now d0 cites non-naively b/c c0 is endorsed.
-    assert_eq!(state.validate_lnc(&d0), None);
+    assert!(add_unit!(state, rng, DAN, None; F, b0, c0, N; c0).is_ok());
     Ok(())
 }
 
@@ -439,8 +427,8 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
     //                            |
     // Eric                       e0
 
-    let weights_dan_eric = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
-    let mut state = State::new_test(weights_dan_eric, 0);
+    let weights5 = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
+    let mut state = State::new_test(weights5, 0);
     let mut rng = crate::new_rng();
     let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N, N)?;
     let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N, N)?;
@@ -449,21 +437,15 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
     let c0_prime = add_unit!(state, rng, CAROL, 0xC2; N, N, N, N, N)?;
     let d0 = add_unit!(state, rng, DAN, 0xD; a0, N, c0_prime, N, N)?;
     // e0 violates LNC b/c it naively cites Alice's & Carol's equivocations.
-    let mut e0 = WireUnit {
-        panorama: panorama!(F, b0, F, d0, N),
-        creator: ERIC,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 0,
-        timestamp: 52.into(),
-        round_exp: 4u8,
-        endorsed: BTreeSet::new(),
-    };
-    assert_eq!(state.validate_lnc(&e0), Some(ALICE));
-    e0.endorsed.insert(b0);
+    assert_eq!(
+        add_unit!(state,rng, ERIC, None; F, b0, F, d0, N)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(ALICE)
+    );
     // Endorse b0.
     endorse!(state, rng, b0; BOB, DAN, ERIC);
-    assert_eq!(state.validate_lnc(&e0), None);
+    assert!(add_unit!(state,rng, ERIC, None; F, b0, F, d0, N; b0).is_ok());
     Ok(())
 }
 
@@ -488,8 +470,8 @@ fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
     //                |                      |
     // Eric           +--+e0<----------------+
     //
-    let weights_dan_eric = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
-    let mut state = State::new_test(weights_dan_eric, 0);
+    let weights5 = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
+    let mut state = State::new_test(weights5, 0);
     let mut rng = crate::new_rng();
     let c0 = add_unit!(state, rng, CAROL, 0xC; N, N, N, N, N)?;
     let c1 = add_unit!(state, rng, CAROL, 0xC1; N, N, c0, N, N)?;
@@ -498,21 +480,15 @@ fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
     let d0 = add_unit!(state, rng, DAN, 0xD; N, N, c1_prime, N, N)?;
     // Should not require endorsements b/c e0 sees Carol as correct.
     let e0 = add_unit!(state, rng, ERIC, 0xE; N, N, c0, N, N)?;
-    let mut a0 = WireUnit {
-        panorama: panorama!(N, b0, F, d0, e0),
-        creator: ALICE,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 0,
-        timestamp: 52.into(),
-        round_exp: 4u8,
-        endorsed: BTreeSet::new(),
-    };
-    assert_eq!(state.validate_lnc(&a0), Some(CAROL));
+    assert_eq!(
+        add_unit!(state, rng, ALICE, None; N, b0, F, d0, e0)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(CAROL)
+    );
     // We pick b0 to be endorsed.
-    a0.endorsed.insert(b0);
     endorse!(state, rng, b0; ALICE, BOB, ERIC);
-    assert_eq!(state.validate_lnc(&a0), None);
+    assert!(add_unit!(state, rng, ALICE, None; N, b0, F, d0, e0; b0).is_ok());
     Ok(())
 }
 
@@ -542,28 +518,21 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
     let a0 = add_unit!(state, rng, ALICE, 0xA; N, b0, N, N)?;
     let c0 = add_unit!(state, rng, CAROL, 0xC; N, b0_prime, N, N)?;
     let c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0_prime, c0, N)?;
-    let mut d0 = WireUnit {
-        panorama: panorama!(a0, F, c1, N),
-        creator: DAN,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 0,
-        timestamp: 52.into(),
-        round_exp: 4u8,
-        endorsed: BTreeSet::new(),
-    };
-    assert_eq!(state.validate_lnc(&d0), Some(BOB));
-    // Endorse c0.
-    d0.endorsed.insert(c0);
+    assert_eq!(
+        add_unit!(state, rng, DAN, None; a0, F, c1, N)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(BOB)
+    );
     endorse!(state, rng, c0; CAROL, DAN, ALICE);
-    assert_eq!(state.validate_lnc(&d0), None);
+    assert!(add_unit!(state, rng, DAN, None; a0, F, c1, N; c0).is_ok());
     Ok(())
 }
 
 #[test]
 #[ignore = "stubbed validate_lnc"]
 fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<TestContext>> {
-    // a0 cites a descendant b1 of an eqivocation vote (b0 and b0').
+    // a0 cites a descendant b1 of an eqiuvocation vote (b0 and b0').
     // This is still detected as violation of the LNC.
     //
     // Alice                  a0<----+
@@ -584,35 +553,25 @@ fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<Tes
     let b1 = add_unit!(state, rng, BOB, 0xB1; N, b0, N, N)?;
     let a0 = add_unit!(state, rng, ALICE, 0xA; N, b1, N, N)?;
     let c0 = add_unit!(state, rng, CAROL, 0xC; N, b0_prime, N)?;
-    let mut d0 = WireUnit {
-        panorama: panorama!(a0, F, c0, N),
-        creator: DAN,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 0,
-        timestamp: 52.into(),
-        round_exp: 4u8,
-        endorsed: BTreeSet::new(),
-    };
-    assert_eq!(state.validate_lnc(&d0), Some(BOB));
-    d0.endorsed.insert(c0);
-    endorse!(state, rng, CAROL, c0);
-    endorse!(state, rng, ALICE, c0);
-    endorse!(state, rng, DAN, c0);
-    assert_eq!(state.validate_lnc(&d0), None);
+    assert_eq!(
+        add_unit!(state, rng, DAN, None; a0, F, c0, N)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(BOB)
+    );
+    endorse!(state, rng, c0; ALICE, CAROL, DAN);
+    assert!(add_unit!(state, rng, DAN, None; a0, F, c0, N).is_ok());
     Ok(())
 }
 
 #[test]
-#[ignore = "stubbed validate_lnc"]
 fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_endorse_mix_pairs.png
     //
     // Both c0 and g0 need only one of their descendants votes endorsed to not validate LNC.
-    // Even if c0 and g0 do not violate LNC, h0 that cites them still can.
-    // It needs either (a0, f0) or (b0, e0) pairs endorsed. Without that, d0 and d0' are still
-    // "reachable" through
+    // Since endorsements are monotonic (c0's and g0' endorsements are also endorsed by h0),
+    // h0 does not violate LNC b/c it cites at most one fork naively.
     let weights = &[
         Weight(3),
         Weight(4),
@@ -633,30 +592,10 @@ fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
     let c0 = add_unit!(state, rng, CAROL, None; a0, b0, N, F, N, N, N, N; a0)?;
     let e0 = add_unit!(state, rng, ERIC, None; N, N, N, d0, N, N, N, N)?;
     let f0 = add_unit!(state, rng, FRANK, None; N, N, N, d0_prime, N, N, N, N)?;
-    endorse!(state, rng, e0; ALICE, BOB, CAROL, ERIC, FRANK, GINA);
-    let g0 = add_unit!(state, rng, GINA, None; N, N, N, F, e0, f0, N, N; e0)?;
-    let mut h0 = WireUnit {
-        panorama: panorama!(a0, b0, c0, F, e0, f0, g0, N),
-        creator: HANNA,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 0,
-        timestamp: 52.into(),
-        round_exp: 4u8,
-        endorsed: vec![e0, a0].into_iter().collect(), // Endorsements included in the panorama.
-    };
-    assert_eq!(state.validate_lnc(&h0), Some(DAN));
-    // We need to endorse one vote from (e0, b0) or (a0, f0) pair.
-    // Since e0 and a0 are already endorsed, LNC check should pass if either b0 or f0 are endorsed.
-    let mut pre_endorse_state = state.clone();
-    // Endorse b0 first.
-    endorse!(state, rng, b0; ALICE, BOB, CAROL, ERIC, FRANK, GINA);
-    h0.endorsed.insert(b0);
-    assert_eq!(state.validate_lnc(&h0), None);
-    // Should also pass if f0 is endorsed.
-    endorse!(pre_endorse_state, rng, f0; ALICE, BOB, CAROL, ERIC, FRANK, GINA);
-    h0.endorsed.insert(f0);
-    assert_eq!(pre_endorse_state.validate_lnc(&h0), None);
+    endorse!(state, rng, f0; ALICE, BOB, CAROL, ERIC, FRANK, GINA);
+    let g0 = add_unit!(state, rng, GINA, None; N, N, N, F, e0, f0, N, N; f0)?;
+    // Should pass the LNC validation test.
+    let _h0 = add_unit!(state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; a0, f0)?;
     Ok(())
 }
 
@@ -684,32 +623,28 @@ fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
     let c0 = add_unit!(state, rng, CAROL, None; N, N, N, d0_prime, N, N, N, N)?;
     let e0 = add_unit!(state, rng, ERIC, None; N, N, N, d0_prime, N, N, N, N)?;
     let f0 = add_unit!(state, rng, FRANK, None; N, N, N, d0_bis, N, N, N, N)?;
-    endorse!(state, rng, b0; ALICE, BOB, CAROL, ERIC, FRANK);
-    let a0 = add_unit!(state, rng, ALICE, None; N, b0, c0, F, N, N, N, N; b0)?;
-    endorse!(state, rng, f0; ALICE, BOB, CAROL, ERIC, FRANK);
-    let g0 = add_unit!(state, rng, GINA, None; N, N, N, F, e0, f0, N, N; f0)?;
-    let mut h0 = WireUnit {
-        panorama: panorama!(a0, b0, c0, F, e0, f0, g0, N),
-        creator: HANNA,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 0,
-        timestamp: 52.into(),
-        round_exp: 4u8,
-        endorsed: vec![a0, g0].into_iter().collect(), // Endorsements included in the panorama.
-    };
-    assert_eq!(state.validate_lnc(&h0), Some(DAN));
+    endorse!(state, rng, c0; ALICE, BOB, CAROL, ERIC, FRANK);
+    let a0 = add_unit!(state, rng, ALICE, None; N, b0, c0, F, N, N, N, N; c0)?;
+    endorse!(state, rng, e0; ALICE, BOB, CAROL, ERIC, FRANK);
+    let g0 = add_unit!(state, rng, GINA, None; N, N, N, F, e0, f0, N, N; e0)?;
+    assert_eq!(
+        add_unit!(state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(DAN)
+    );
     // Even though both a0 and g0 cite DAN non-naively, for h0 to be valid
-    // we need to endorse either c0 or e0.
+    // we need to endorse either b0 or f0.
     let mut pre_endorse_state = state.clone();
     // Endorse b0 first.
-    endorse!(state, rng, c0; ALICE, BOB, CAROL, ERIC, FRANK);
-    h0.endorsed.insert(c0);
-    assert_eq!(state.validate_lnc(&h0), None);
+    endorse!(state, rng, b0; ALICE, BOB, CAROL, ERIC, FRANK);
+    assert!(add_unit!(state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0, b0).is_ok());
     // Should also pass if e0 is endorsed.
-    endorse!(pre_endorse_state, rng, e0; ALICE, BOB, CAROL, ERIC, FRANK);
-    h0.endorsed.insert(e0);
-    assert_eq!(pre_endorse_state.validate_lnc(&h0), None);
+    endorse!(pre_endorse_state, rng, f0; ALICE, BOB, CAROL, ERIC, FRANK);
+    assert!(
+        add_unit!(pre_endorse_state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0, f0)
+            .is_ok()
+    );
     Ok(())
 }
 
@@ -743,30 +678,29 @@ fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
     endorse!(state, rng, g0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
     let f0 = add_unit!(state, rng, FRANK, None; N, N, N, N, F, N, g0, h0; g0)?;
     let d0 = add_unit!(state, rng, DAN, None; N, N, N, N, F, f0, g0, h0)?;
-    let mut d1 = WireUnit {
-        panorama: panorama!(a0, b0, c0, d0, F, f0, g0, h0),
-        creator: DAN,
-        instance_id: 1u64,
-        value: None,
-        seq_number: 0,
-        timestamp: 52.into(),
-        round_exp: 4u8,
-        endorsed: vec![a0, g0].into_iter().collect(), // Endorsements included in the panorama.
-    };
-    assert_eq!(state.validate_lnc(&d1), Some(ERIC));
+    assert_eq!(
+        add_unit!(state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(ERIC)
+    );
     let mut pre_endorse_state = state.clone();
-    // If we endorse h0, then d1 should be OK since there won't be two pair of equivocating units
+    // If we endorse h0, then d1 should be OK since there won't be two equivocating units
     // cited naively.
     endorse!(state, rng, h0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
-    d1.endorsed.insert(h0);
-    assert_eq!(state.validate_lnc(&d1), None);
+    assert!(add_unit!(state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, h0).is_ok());
     // It should also work if we had endorsed b0 instead.
     endorse!(pre_endorse_state, rng, b0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
-    d1.endorsed.insert(b0);
-    assert_eq!(pre_endorse_state.validate_lnc(&d1), None);
+    assert!(
+        add_unit!(pre_endorse_state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, b0)
+            .is_ok()
+    );
     // And it should still work if both were endorsed.
     endorse!(pre_endorse_state, rng, h0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
-    assert_eq!(pre_endorse_state.validate_lnc(&d1), None);
+    assert!(
+        add_unit!(pre_endorse_state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, b0, h0)
+            .is_ok()
+    );
     Ok(())
 }
 

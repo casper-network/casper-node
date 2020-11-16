@@ -45,7 +45,7 @@ use crate::{
 use block::Block;
 use tallies::Tallies;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub(crate) enum UnitError {
     #[error("The unit is a ballot but doesn't cite any block.")]
     MissingBlock,
@@ -416,7 +416,7 @@ impl<C: Context> State<C> {
                 self.weight(v_id)
             })
             .sum();
-        if endorsed >= threshold {
+        if endorsed > threshold {
             info!(%unit, "Unit endorsed by at least 2/3 of validators.");
             let fully_endorsed = self.incomplete_endorsements.remove(&unit).unwrap();
             self.endorsements.insert(unit, fully_endorsed);
