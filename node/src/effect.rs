@@ -137,7 +137,6 @@ pub type Effects<Ev> = Multiple<Effect<Ev>>;
 /// size of two items is chosen because one item is the most common use case, and large items are
 /// typically boxed. In the latter case two pointers and one enum variant discriminator is almost
 /// the same size as an empty vec, which is two pointers.
-// TODO: Move this to a more central spot.
 pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 
 /// A responder satisfying a request.
