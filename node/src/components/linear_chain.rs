@@ -10,7 +10,7 @@ use derive_more::From;
 use futures::FutureExt;
 use tracing::{debug, error, info, warn};
 
-use super::{storage::Storage, Component};
+use super::Component;
 use crate::{
     crypto::asymmetric_key::Signature,
     effect::{
@@ -113,7 +113,7 @@ impl<I> LinearChain<I> {
 
 impl<I, REv> Component<REv> for LinearChain<I>
 where
-    REv: From<StorageRequest<Storage>>
+    REv: From<StorageRequest>
         + From<ConsensusRequest>
         + From<NetworkRequest<I, Message>>
         + From<LinearChainAnnouncement>

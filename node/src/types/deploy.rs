@@ -1,6 +1,6 @@
 use std::{
     array::TryFromSliceError,
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     iter::FromIterator,
@@ -20,11 +20,10 @@ use casper_execution_engine::core::engine_state::{
 };
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use super::{Item, Tag, TimeDiff, Timestamp};
+use super::{json_compatibility::ExecutionResult, BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::storage::Value,
     crypto::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
@@ -97,6 +96,13 @@ impl DeployHash {
     /// Returns the wrapped inner hash.
     pub fn inner(&self) -> &Digest {
         &self.0
+    }
+
+    /// Creates a random deploy hash.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let hash = Digest::random(rng);
+        DeployHash(hash)
     }
 }
 
@@ -416,8 +422,7 @@ impl Deploy {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        // TODO - make Timestamp deterministic.
-        let timestamp = Timestamp::now();
+        let timestamp = Timestamp::random(rng);
         let ttl = TimeDiff::from(rng.gen_range(60_000, 3_600_000));
         let gas_price = rng.gen_range(1, 100);
 
@@ -494,24 +499,6 @@ fn validate_deploy(deploy: &Deploy) -> bool {
     true
 }
 
-/// Trait to allow `Deploy`s to be used by the storage component.
-impl Value for Deploy {
-    type Id = DeployHash;
-    type Header = DeployHeader;
-
-    fn id(&self) -> &Self::Id {
-        self.id()
-    }
-
-    fn header(&self) -> &Self::Header {
-        self.header()
-    }
-
-    fn take_header(self) -> Self::Header {
-        self.take_header()
-    }
-}
-
 impl Item for Deploy {
     type Id = DeployHash;
 
@@ -549,6 +536,17 @@ impl From<Deploy> for DeployItem {
             deploy.id().inner().to_array(),
         )
     }
+}
+
+/// The deploy mutable metadata.
+///
+/// Currently a stop-gap measure to associate an immutable deploy with additional metadata. Holds
+/// execution results.
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq)]
+pub struct DeployMetadata {
+    /// The block hashes of blocks containing the related deploy, along with the results of
+    /// executing the related deploy in the context of one or more blocks.
+    pub execution_results: HashMap<BlockHash, ExecutionResult>,
 }
 
 impl ToBytes for Deploy {

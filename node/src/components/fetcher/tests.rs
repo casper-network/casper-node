@@ -17,7 +17,7 @@ use crate::{
         chainspec_loader::Chainspec,
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{InMemoryNetwork, NetworkController},
-        storage::{self, Storage, StorageType},
+        storage::{self, Storage},
     },
     effect::{
         announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement, RpcServerAnnouncement},
@@ -41,7 +41,7 @@ const TIMEOUT: Duration = Duration::from_secs(1);
 #[must_use]
 enum Event {
     #[from]
-    Storage(storage::Event<Storage>),
+    Storage(storage::Event),
     #[from]
     DeployAcceptor(deploy_acceptor::Event),
     #[from]
@@ -60,9 +60,9 @@ enum Event {
     DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(request: StorageRequest<Storage>) -> Self {
-        Event::Storage(storage::Event::Request(request))
+impl From<StorageRequest> for Event {
+    fn from(request: StorageRequest) -> Self {
+        Event::Storage(storage::Event::from(request))
     }
 }
 
@@ -121,7 +121,7 @@ impl reactor::Reactor for Reactor {
         let network = NetworkController::create_node(event_queue, rng);
 
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
-        let storage = Storage::new(WithDir::new(_storage_tempdir.path(), storage_config)).unwrap();
+        let storage = Storage::new(&WithDir::new(_storage_tempdir.path(), storage_config)).unwrap();
 
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::<Deploy>::new(config);
@@ -146,11 +146,13 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Storage(storage::Event::Request(StorageRequest::GetChainspec {
+            Event::Storage(storage::Event::StorageRequest(StorageRequest::GetChainspec {
                 responder,
                 ..
             })) => responder
-                .respond(Some(Chainspec::from_resources("local/chainspec.toml")))
+                .respond(Some(Arc::new(Chainspec::from_resources(
+                    "local/chainspec.toml",
+                ))))
                 .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
@@ -184,6 +186,9 @@ impl reactor::Reactor for Reactor {
                         tag: Tag::Deploy,
                         serialized_id,
                     } => {
+                        // Note: This is copied almost verbatim from the validator reactor and needs
+                        // to be refactored.
+
                         let deploy_hash = match bincode::deserialize(&serialized_id) {
                             Ok(hash) => hash,
                             Err(error) => {
@@ -194,10 +199,31 @@ impl reactor::Reactor for Reactor {
                                 return Effects::new();
                             }
                         };
-                        Event::Storage(storage::Event::GetDeployForPeer {
-                            deploy_hash,
-                            peer: sender,
-                        })
+
+                        match self
+                            .storage
+                            .handle_legacy_direct_deploy_request(deploy_hash)
+                        {
+                            // This functionality was moved out of the storage component and
+                            // should be refactored ASAP.
+                            Some(deploy) => {
+                                match Message::new_get_response(&deploy) {
+                                    Ok(message) => {
+                                        return effect_builder
+                                            .send_message(sender, message)
+                                            .ignore();
+                                    }
+                                    Err(error) => {
+                                        error!("failed to create get-response: {}", error);
+                                        return Effects::new();
+                                    }
+                                };
+                            }
+                            None => {
+                                debug!("failed to get {} for {}", deploy_hash, sender);
+                                return Effects::new();
+                            }
+                        }
                     }
                     Message::GetResponse {
                         tag: Tag::Deploy,
@@ -332,11 +358,7 @@ async fn assert_settled(
         .reactor()
         .inner()
         .storage
-        .deploy_store()
-        .get(smallvec![deploy_hash])
-        .pop()
-        .expect("should only be a single result")
-        .expect("should not error while getting");
+        .get_deploy_by_hash(deploy_hash);
     assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
 
     assert_eq!(fetched.lock().unwrap().1, expected_result)

@@ -19,7 +19,7 @@ use std::{
 use tracing::{debug, error};
 
 use crate::{
-    components::{storage::Storage, Component},
+    components::Component,
     effect::{
         announcements::GossiperAnnouncement,
         requests::{NetworkRequest, StorageRequest},
@@ -43,7 +43,7 @@ pub trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<NodeId, Message<T>>>
     + From<NetworkRequest<NodeId, NodeMessage>>
-    + From<StorageRequest<Storage>>
+    + From<StorageRequest>
     + From<GossiperAnnouncement<T>>
     + Send
     + 'static
@@ -60,7 +60,7 @@ where
     REv: From<Event<T>>
         + From<NetworkRequest<NodeId, Message<T>>>
         + From<NetworkRequest<NodeId, NodeMessage>>
-        + From<StorageRequest<Storage>>
+        + From<StorageRequest>
         + From<GossiperAnnouncement<T>>
         + Send
         + 'static,
