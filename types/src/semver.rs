@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use core::{convert::TryFrom, fmt, num::ParseIntError};
 
 use failure::Fail;
+use serde::Serialize;
 
 use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
@@ -9,7 +10,7 @@ use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 pub const SEM_VER_SERIALIZED_LENGTH: usize = 3 * U32_SERIALIZED_LENGTH;
 
 /// A struct for semantic versioning.
-#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct SemVer {
     /// Major version.
     pub major: u32,

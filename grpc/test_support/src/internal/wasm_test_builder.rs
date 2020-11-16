@@ -50,7 +50,9 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    auction::{EraId, ValidatorWeights, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION},
+    auction::{
+        EraId, EraValidators, ValidatorWeights, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
+    },
     bytesrepr::{self},
     mint::TOTAL_SUPPLY_KEY,
     runtime_args, CLTyped, CLValue, Contract, ContractHash, ContractWasm, DeployHash, DeployInfo,
@@ -822,15 +824,18 @@ where
             .finish()
     }
 
-    pub fn get_validator_weights(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
+    pub fn get_era_validators(&mut self) -> EraValidators {
         let correlation_id = CorrelationId::new();
         let state_hash = Blake2bHash::try_from(self.get_post_state_hash().as_slice())
             .expect("should create state hash");
         let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
-        let mut result = self
-            .engine_state
+        self.engine_state
             .get_era_validators(correlation_id, request)
-            .expect("get era validators should not error");
+            .expect("get era validators should not error")
+    }
+
+    pub fn get_validator_weights(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
+        let mut result = self.get_era_validators();
         result.remove(&era_id)
     }
 

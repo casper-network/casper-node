@@ -33,10 +33,10 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         amount) amount=${VALUE} ;;
-        gas) gas_price=${VALUE} ;;
+        gas) gas=${VALUE} ;;
         net) net=${VALUE} ;;
         node) node=${VALUE} ;;
-        payment) gas_payment=${VALUE} ;;
+        payment) payment=${VALUE} ;;
         user) user=${VALUE} ;;
         validator) validator=${VALUE} ;;
         *)
@@ -45,8 +45,8 @@ done
 
 # Set defaults.
 amount=${amount:-$NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT}
-gas_payment=${gas_payment:-$NCTL_DEFAULT_GAS_PAYMENT}
-gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
+payment=${payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+gas=${gas:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
 user=${user:-1}
@@ -56,18 +56,15 @@ validator=${validator:-1}
 # Main
 #######################################
 
-# Set vars.
-contract_name="delegate.wasm"
-delegator_public_key=$(cat $path_net/users/user-$user/public_key_hex)
-delegator_secret_key=$path_net/users/user-$user/secret_key.pem
+# Set deploy params.
+delegator_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $user)
+delegator_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_USER $user)
 node_address=$(get_node_address_rpc $net $node)
-path_net=$NCTL/assets/net-$net
-path_client=$path_net/bin/casper-client
-path_contract=$path_net/bin/$contract_name
-validator_public_key=`cat $path_net/nodes/node-$validator/keys/public_key_hex`
+path_contract=$(get_path_to_contract $net "delegate.wasm")
+validator_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_NODE $validator)
 
 # Inform.
-log "dispatching deploy -> "$contract_name
+log "dispatching deploy -> delegate.wasm"
 log "... network = $net"
 log "... node = $node"
 log "... node address = $node_address"
@@ -78,11 +75,11 @@ log "... amount = $amount"
 
 # Dispatch deploy.
 deploy_hash=$(
-    $path_client put-deploy \
+    $(get_path_to_client $net) put-deploy \
         --chain-name casper-net-$net \
-        --gas-price $gas_price \
+        --gas-price $gas \
         --node-address $node_address \
-        --payment-amount $gas_payment \
+        --payment-amount $payment \
         --secret-key $delegator_secret_key \
         --session-arg "amount:u512='$amount'" \
         --session-arg "delegator:public_key='$delegator_public_key'" \

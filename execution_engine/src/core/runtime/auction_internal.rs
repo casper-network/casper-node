@@ -106,7 +106,7 @@ where
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ()> {
+    ) -> Result<(), Error> {
         let mint_contract_key = self.get_mint_contract();
         if self
             .mint_transfer(mint_contract_key, source, target, amount)
@@ -114,7 +114,7 @@ where
         {
             Ok(())
         } else {
-            Err(())
+            Err(Error::Transfer)
         }
     }
 

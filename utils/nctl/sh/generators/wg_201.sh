@@ -31,10 +31,10 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         amount) amount=${VALUE} ;;
-        gas) gas_price=${VALUE} ;;
+        gas) gas=${VALUE} ;;
         net) net=${VALUE} ;;
         node) node=${VALUE} ;;
-        payment) gas_payment=${VALUE} ;;
+        payment) payment=${VALUE} ;;
         user) user=${VALUE} ;;
         *)
     esac
@@ -42,8 +42,8 @@ done
 
 # Set defaults.
 amount=${amount:$NCTL_DEFAULT_AUCTION_BID_AMOUNT}
-gas_payment=${gas_payment:-$NCTL_DEFAULT_GAS_PAYMENT}
-gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
+payment=${payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+gas=${gas:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
 user=${user:-1}
@@ -52,18 +52,15 @@ user=${user:-1}
 # Main
 #######################################
 
-# Set vars.
-user_public_key=$(cat $path_net/users/user-$user/public_key_hex)
+# Set deploy params.
+user_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_USER $user)
 user_purse_uref="TODO"
-user_secret_key=$path_net/users/user-$user/secret_key.pem
-contract_name="withdraw_bid.wasm"
+user_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $user)
 node_address=$(get_node_address_rpc $net $node)
-path_net=$NCTL/assets/net-$net
-path_client=$path_net/bin/casper-client
-path_contract=$path_net/bin/$contract_name
+path_contract=$(get_path_to_contract $net "withdraw_bid.wasm")
 
 # Inform.
-log "dispatching deploy -> "$contract_name
+log "dispatching deploy -> withdraw_bid.wasm"
 log "... network = $net"
 log "... node = $node"
 log "... node address = $node_address"
@@ -76,11 +73,11 @@ log "... withdrawal amount = $amount"
 
 # Dispatch deploy.
 deploy_hash=$(
-    $path_client put-deploy \
+    $(get_path_to_client $net) put-deploy \
         --chain-name casper-net-$net \
-        --gas-price $gas_price \
+        --gas-price $gas \
         --node-address $node_address \
-        --payment-amount $gas_payment \
+        --payment-amount $payment \
         --secret-key $user_secret_key \
         --session-arg="public_key:public_key='$user_public_key'" \
         --session-arg "amount:u512='$amount'" \

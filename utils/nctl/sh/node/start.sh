@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -41,6 +38,12 @@ node=${node:-"all"}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
 # Set rust log level.
 export RUST_LOG=$loglevel
 
@@ -56,12 +59,11 @@ fi
 # ... all nodes:
 if [ $node = "all" ]; then
     log "network #$net: starting bootstraps ... "
-    source $NCTL/assets/net-$net/vars
-    for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        if [ $node_idx -le $NCTL_NET_BOOTSTRAP_COUNT ]; then
-            log "network #$net: bootstrapping node $node_idx"
-            source $daemon_mgr $net $node_idx
+        if [ $idx -le $NCTL_NET_BOOTSTRAP_COUNT ]; then
+            log "network #$net: bootstrapping node $idx"
+            source $daemon_mgr $net $idx
         fi
     done
 

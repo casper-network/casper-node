@@ -17,6 +17,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
+use serde::Serialize;
 use tracing::{debug, error, warn};
 
 use block_proposer::BlockProposerState;
@@ -69,114 +70,116 @@ use linear_chain::LinearChain;
 use memory_metrics::MemoryMetrics;
 
 /// Top-level event for the reactor.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 #[must_use]
 pub enum Event {
     /// Network event.
     #[from]
-    Network(small_network::Event<Message>),
+    Network(#[serde(skip_serializing)] small_network::Event<Message>),
     /// Block proposer event.
     #[from]
-    BlockProposer(block_proposer::Event),
+    BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
     #[from]
     /// Storage event.
-    Storage(storage::Event<Storage>),
+    Storage(#[serde(skip_serializing)] storage::Event),
     #[from]
     /// RPC server event.
-    RpcServer(rpc_server::Event),
+    RpcServer(#[serde(skip_serializing)] rpc_server::Event),
     #[from]
     /// REST server event.
-    RestServer(rest_server::Event),
+    RestServer(#[serde(skip_serializing)] rest_server::Event),
     #[from]
     /// Event stream server event.
-    EventStreamServer(event_stream_server::Event),
+    EventStreamServer(#[serde(skip_serializing)] event_stream_server::Event),
     #[from]
     /// Chainspec Loader event.
-    ChainspecLoader(chainspec_loader::Event),
+    ChainspecLoader(#[serde(skip_serializing)] chainspec_loader::Event),
     #[from]
     /// Consensus event.
-    Consensus(consensus::Event<NodeId>),
+    Consensus(#[serde(skip_serializing)] consensus::Event<NodeId>),
     /// Deploy acceptor event.
     #[from]
-    DeployAcceptor(deploy_acceptor::Event),
+    DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     /// Deploy fetcher event.
     #[from]
-    DeployFetcher(fetcher::Event<Deploy>),
+    DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
     /// Deploy gossiper event.
     #[from]
-    DeployGossiper(gossiper::Event<Deploy>),
+    DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
     /// Address gossiper event.
     #[from]
     AddressGossiper(gossiper::Event<GossipedAddress>),
     /// Contract runtime event.
     #[from]
-    ContractRuntime(contract_runtime::Event),
+    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
     /// Block executor event.
     #[from]
-    BlockExecutor(block_executor::Event),
+    BlockExecutor(#[serde(skip_serializing)] block_executor::Event),
     /// Block validator event.
     #[from]
-    ProtoBlockValidator(block_validator::Event<ProtoBlock, NodeId>),
+    ProtoBlockValidator(#[serde(skip_serializing)] block_validator::Event<ProtoBlock, NodeId>),
     /// Linear chain event.
     #[from]
-    LinearChain(linear_chain::Event<NodeId>),
+    LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
 
     // Requests
     /// Network request.
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
+    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
     /// Network info request.
     #[from]
-    NetworkInfoRequest(NetworkInfoRequest<NodeId>),
+    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest<NodeId>),
     /// Deploy fetcher request.
     #[from]
-    DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
+    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
     /// Block proposer request.
     #[from]
-    BlockProposerRequest(BlockProposerRequest),
+    BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
     /// Block executor request.
     #[from]
-    BlockExecutorRequest(BlockExecutorRequest),
+    BlockExecutorRequest(#[serde(skip_serializing)] BlockExecutorRequest),
     /// Block validator request.
     #[from]
-    ProtoBlockValidatorRequest(BlockValidationRequest<ProtoBlock, NodeId>),
+    ProtoBlockValidatorRequest(
+        #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
+    ),
     /// Metrics request.
     #[from]
-    MetricsRequest(MetricsRequest),
+    MetricsRequest(#[serde(skip_serializing)] MetricsRequest),
     /// Chainspec info request
     #[from]
-    ChainspecLoaderRequest(ChainspecLoaderRequest),
+    ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
 
     // Announcements
     /// Network announcement.
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     /// API server announcement.
     #[from]
-    RpcServerAnnouncement(RpcServerAnnouncement),
+    RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     /// DeployAcceptor announcement.
     #[from]
-    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(ConsensusAnnouncement),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
     /// BlockExecutor announcement.
     #[from]
-    BlockExecutorAnnouncement(BlockExecutorAnnouncement),
+    BlockExecutorAnnouncement(#[serde(skip_serializing)] BlockExecutorAnnouncement),
     /// Deploy Gossiper announcement.
     #[from]
-    DeployGossiperAnnouncement(GossiperAnnouncement<Deploy>),
+    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
     /// Address Gossiper announcement.
     #[from]
-    AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
+    AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
     /// Linear chain announcement.
     #[from]
-    LinearChainAnnouncement(LinearChainAnnouncement),
+    LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(request: StorageRequest<Storage>) -> Self {
-        Event::Storage(storage::Event::Request(request))
+impl From<StorageRequest> for Event {
+    fn from(request: StorageRequest) -> Self {
+        Event::Storage(request.into())
     }
 }
 
@@ -581,10 +584,31 @@ impl reactor::Reactor for Reactor {
                                     return Effects::new();
                                 }
                             };
-                            Event::Storage(storage::Event::GetDeployForPeer {
-                                deploy_hash,
-                                peer: sender,
-                            })
+
+                            match self
+                                .storage
+                                .handle_legacy_direct_deploy_request(deploy_hash)
+                            {
+                                // This functionality was moved out of the storage component and
+                                // should be refactored ASAP.
+                                Some(deploy) => {
+                                    match Message::new_get_response(&deploy) {
+                                        Ok(message) => {
+                                            return effect_builder
+                                                .send_message(sender, message)
+                                                .ignore();
+                                        }
+                                        Err(error) => {
+                                            error!("failed to create get-response: {}", error);
+                                            return Effects::new();
+                                        }
+                                    };
+                                }
+                                None => {
+                                    debug!("failed to get {} for {}", deploy_hash, sender);
+                                    return Effects::new();
+                                }
+                            }
                         }
                         Tag::Block => {
                             let block_hash = match bincode::deserialize(&serialized_id) {

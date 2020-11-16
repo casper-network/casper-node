@@ -13,10 +13,9 @@ use casper_execution_engine::{
 use casper_types::auction::EraValidators;
 
 use crate::{
-    components::storage::DeployMetadata,
     effect::{requests::RpcRequest, Responder},
     rpcs::chain::BlockIdentifier,
-    types::{Block, Deploy, DeployHash, NodeId},
+    types::{Block, Deploy, DeployHash, DeployMetadata, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -42,8 +41,8 @@ pub enum Event {
     },
     GetDeployResult {
         hash: DeployHash,
-        result: Box<Option<(Deploy, DeployMetadata<Block>)>>,
-        main_responder: Responder<Option<(Deploy, DeployMetadata<Block>)>>,
+        result: Box<Option<(Deploy, DeployMetadata)>>,
+        main_responder: Responder<Option<(Deploy, DeployMetadata)>>,
     },
     GetPeersResult {
         peers: HashMap<NodeId, SocketAddr>,

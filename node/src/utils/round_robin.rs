@@ -12,6 +12,8 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+use enum_iterator::IntoEnumIterator;
+use serde::{ser::SerializeMap, Serialize, Serializer};
 use tokio::sync::{Mutex, Semaphore};
 
 /// Weighted round-robin scheduler.
@@ -94,6 +96,51 @@ struct Slot<K> {
 
     /// Number of items to return before moving on to the next queue.
     tickets: usize,
+}
+
+impl<I, K> WeightedRoundRobin<I, K>
+where
+    I: Serialize,
+    K: Copy + Clone + Eq + Hash + IntoEnumIterator + Serialize,
+{
+    /// Create a snapshot of the queue by locking it and serializing it.
+    ///
+    /// The serialized events are streamed directly into `serializer`.
+    ///
+    /// # Warning
+    ///
+    /// This function locks all queues in the order defined by the order defined by
+    /// `IntoEnumIterator`. Calling it multiple times in parallel is safe, but other code that locks
+    /// more than one queue at the same time needs to be aware of this.
+    pub async fn snapshot<S: Serializer>(&self, serializer: S) -> Result<(), S::Error> {
+        // Lock all queues in order get a snapshot, but release eagerly. This way we are guaranteed
+        // to have a consistent result, but we also allow for queues to be used again earlier.
+        let mut locks = Vec::new();
+
+        for kind in K::into_enum_iter() {
+            let queue_guard = self
+                .queues
+                .get(&kind)
+                .expect("missing queue while snapshotting")
+                .queue
+                .lock()
+                .await;
+
+            locks.push((kind, queue_guard));
+        }
+
+        let mut map = serializer.serialize_map(Some(locks.len()))?;
+
+        // By iterating over the guards, they are dropped in order.
+        for (kind, guard) in locks {
+            let vd = &*guard;
+            map.serialize_key(&kind)?;
+            map.serialize_value(vd)?;
+        }
+        map.end()?;
+
+        Ok(())
+    }
 }
 
 impl<I, K> WeightedRoundRobin<I, K>

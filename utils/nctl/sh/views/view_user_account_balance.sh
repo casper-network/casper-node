@@ -6,10 +6,6 @@
 # Arguments:
 #   Network ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-source $NCTL/sh/utils/queries.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -34,16 +30,24 @@ done
 # Set defaults.
 net=${net:-1}
 node=${node:-1}
-user=${user:-1}
+user=${user:-"all"}
 
 #######################################
 # Main
 #######################################
 
-state_root_hash=$(get_state_root_hash $net $node)
-account_key=$(cat $NCTL/assets/net-$net/users/user-$user/public_key_hex)
-purse_uref=$(get_main_purse_uref $net $state_root_hash $account_key)
-source $NCTL/sh/views/view_chain_account_balance.sh net=$net node=$node \
-    root-hash=$state_root_hash \
-    purse-uref=$purse_uref \
-    typeof="user-"$user
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Render account balance(s).
+if [ $user = "all" ]; then
+    for idx in $(seq 1 $NCTL_NET_USER_COUNT)
+    do
+        render_account_balance $net $idx $NCTL_ACCOUNT_TYPE_USER $idx
+    done
+else
+    render_account_balance $net $node $NCTL_ACCOUNT_TYPE_USER $node
+fi

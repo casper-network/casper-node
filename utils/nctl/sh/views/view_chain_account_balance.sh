@@ -9,9 +9,6 @@
 #   Chain root state hash.
 #   Account purse uref.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -21,7 +18,7 @@ unset net
 unset node
 unset purse_uref
 unset state_root_hash
-unset typeof
+unset prefix
 
 for ARGUMENT in "$@"
 do
@@ -32,7 +29,7 @@ do
         node) node=${VALUE} ;;
         purse-uref) purse_uref=${VALUE} ;;
         root-hash) state_root_hash=${VALUE} ;;
-        typeof) typeof=${VALUE} ;;
+        prefix) prefix=${VALUE} ;;
         *)
     esac
 done
@@ -40,19 +37,22 @@ done
 # Set defaults.
 net=${net:-1}
 node=${node:-1}
-typeof=${typeof:-"account"}
+prefix=${prefix:-"account"}
 state_root_hash=${state_root_hash:-$(get_state_root_hash $net $node)}
 
 #######################################
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
 balance=$(
-    $NCTL/assets/net-$net/bin/casper-client get-balance \
+    $(get_path_to_client $net) get-balance \
         --node-address $(get_node_address_rpc $net $node) \
         --state-root-hash $state_root_hash \
         --purse-uref $purse_uref \
         | jq '.result.balance_value' \
         | sed -e 's/^"//' -e 's/"$//'
     )
-log $typeof" balance = "$balance
+log $prefix" balance = "$balance

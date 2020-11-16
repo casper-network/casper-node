@@ -3,20 +3,29 @@
 use std::{fmt, io};
 
 use ansi_term::{Color, Style};
+use anyhow::anyhow;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use tracing::{Event, Level, Subscriber};
+use tracing::{
+    field::{Field, Visit},
+    Event, Level, Subscriber,
+};
 use tracing_subscriber::{
     fmt::{
         format,
         time::{FormatTime, SystemTime},
         FmtContext, FormatEvent, FormatFields, FormattedFields,
     },
-    prelude::*,
     registry::LookupSpan,
     EnvFilter,
 };
+
+const LOG_FIELD_MESSAGE: &str = "message";
+const LOG_FIELD_TARGET: &str = "log.target";
+const LOG_FIELD_MODULE: &str = "log.module_path";
+const LOG_FIELD_FILE: &str = "log.file";
+const LOG_FIELD_LINE: &str = "log.line";
 
 /// Logging configuration.
 #[derive(DataSize, Debug, Default, Deserialize, Serialize)]
@@ -101,6 +110,33 @@ impl FmtEvent {
     }
 }
 
+// Used to gather the relevant details from the fields applied by the `tracing_log::LogTracer`,
+// which is used by logging macros when dependent crates use `log` rather than `tracing`.
+#[derive(Default)]
+struct FieldVisitor {
+    module: Option<String>,
+    file: Option<String>,
+    line: Option<u32>,
+}
+
+impl Visit for FieldVisitor {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == LOG_FIELD_MODULE {
+            self.module = Some(value.to_string())
+        } else if field.name() == LOG_FIELD_FILE {
+            self.file = Some(value.to_string())
+        }
+    }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        if field.name() == LOG_FIELD_LINE {
+            self.line = Some(value as u32)
+        }
+    }
+
+    fn record_debug(&mut self, _field: &Field, _value: &dyn fmt::Debug) {}
+}
+
 impl<S, N> FormatEvent<S, N> for FmtEvent
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -162,8 +198,13 @@ where
         }
 
         // print the module path, filename and line number with dimmed style if `ansi_color` is true
+        let mut field_visitor = FieldVisitor::default();
+        event.record(&mut field_visitor);
         let module = {
-            let full_module_path = meta.module_path().unwrap_or_default();
+            let full_module_path = meta
+                .module_path()
+                .or_else(|| field_visitor.module.as_deref())
+                .unwrap_or_default();
             if self.abbreviate_modules {
                 // Use a smallvec for going up to six levels deep.
                 let mut parts: SmallVec<[&str; 6]> = full_module_path.split("::").collect();
@@ -185,6 +226,7 @@ where
 
         let file = if !self.abbreviate_modules {
             meta.file()
+                .or_else(|| field_visitor.file.as_deref())
                 .unwrap_or_default()
                 .rsplitn(2, '/')
                 .next()
@@ -193,11 +235,13 @@ where
             ""
         };
 
-        let line = meta.line().unwrap_or_default();
+        let line = meta.line().or(field_visitor.line).unwrap_or_default();
 
-        self.enable_dimmed_if_ansi(writer)?;
-        write!(writer, "[{} {}:{}] ", module, file, line,)?;
-        self.disable_dimmed_if_ansi(writer)?;
+        if !module.is_empty() && (!file.is_empty() || self.abbreviate_modules) {
+            self.enable_dimmed_if_ansi(writer)?;
+            write!(writer, "[{} {}:{}] ", module, file, line,)?;
+            self.disable_dimmed_if_ansi(writer)?;
+        }
 
         // print the log message and other fields
         ctx.format_fields(writer, event)?;
@@ -219,34 +263,26 @@ pub fn init() -> anyhow::Result<()> {
 ///
 /// See the `README.md` for hints on how to configure logging at runtime.
 pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
-    let formatter = format::debug_fn(|writer, field, value| {
-        if field.name() == "message" {
-            write!(writer, "{:?}", value)
-        } else {
-            write!(writer, "{}={:?}", field, value)
-        }
-    })
-    .delimited("; ");
+    let formatter = format::debug_fn(|writer, field, value| match field.name() {
+        LOG_FIELD_MESSAGE => write!(writer, "{:?}", value),
+        LOG_FIELD_TARGET | LOG_FIELD_MODULE | LOG_FIELD_FILE | LOG_FIELD_LINE => Ok(()),
+        _ => write!(writer, "; {}={:?}", field, value),
+    });
 
     match config.format {
         // Setup a new tracing-subscriber writing to `stdout` for logging.
-        LoggingFormat::Text => tracing::subscriber::set_global_default(
-            tracing_subscriber::fmt()
-                .with_writer(io::stdout)
-                .with_env_filter(EnvFilter::from_default_env())
-                .fmt_fields(formatter)
-                .event_format(FmtEvent::new(config.color, config.abbreviate_modules))
-                .finish(),
-        )?,
+        LoggingFormat::Text => tracing_subscriber::fmt()
+            .with_writer(io::stdout)
+            .with_env_filter(EnvFilter::from_default_env())
+            .fmt_fields(formatter)
+            .event_format(FmtEvent::new(config.color, config.abbreviate_modules))
+            .try_init(),
         // JSON logging writes to `stdout` as well but uses the JSON format.
-        LoggingFormat::Json => tracing::subscriber::set_global_default(
-            tracing_subscriber::fmt()
-                .with_writer(io::stdout)
-                .with_env_filter(EnvFilter::from_default_env())
-                .json()
-                .finish(),
-        )?,
+        LoggingFormat::Json => tracing_subscriber::fmt()
+            .with_writer(io::stdout)
+            .with_env_filter(EnvFilter::from_default_env())
+            .json()
+            .try_init(),
     }
-
-    Ok(())
+    .map_err(|error| anyhow!(error))
 }
