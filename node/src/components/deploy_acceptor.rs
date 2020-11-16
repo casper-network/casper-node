@@ -7,7 +7,7 @@ use semver::Version;
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::{chainspec_loader::Chainspec, storage::Storage, Component},
+    components::{chainspec_loader::Chainspec, Component},
     effect::{
         announcements::DeployAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
         EffectExt, Effects,
@@ -23,15 +23,12 @@ use super::chainspec_loader::DeployConfig;
 
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
 pub trait ReactorEventT:
-    From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest<Storage>> + Send
+    From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest> + Send
 {
 }
 
 impl<REv> ReactorEventT for REv where
-    REv: From<Event>
-        + From<DeployAcceptorAnnouncement<NodeId>>
-        + From<StorageRequest<Storage>>
-        + Send
+    REv: From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest> + Send
 {
 }
 
@@ -94,7 +91,7 @@ impl DeployAcceptor {
                     deploy,
                     source,
                     chainspec_version,
-                    maybe_deploy_config: Box::new(maybe_chainspec.map(|c| c.into())),
+                    maybe_deploy_config: Box::new(maybe_chainspec.map(|c| (*c).clone().into())),
                 }),
         }
     }

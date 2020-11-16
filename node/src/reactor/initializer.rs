@@ -12,7 +12,7 @@ use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime},
-        storage::{self, Storage, StorageType},
+        storage::{self, Storage},
         Component,
     },
     effect::{
@@ -36,16 +36,16 @@ pub enum Event {
 
     /// Storage event.
     #[from]
-    Storage(storage::Event<Storage>),
+    Storage(#[serde(skip_serializing)] storage::Event),
 
     /// Contract runtime event.
     #[from]
     ContractRuntime(contract_runtime::Event),
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(request: StorageRequest<Storage>) -> Self {
-        Event::Storage(storage::Event::Request(request))
+impl From<StorageRequest> for Event {
+    fn from(request: StorageRequest) -> Self {
+        Event::Storage(storage::Event::StorageRequest(request))
     }
 }
 
@@ -135,7 +135,7 @@ impl reactor::Reactor for Reactor {
         let effect_builder = EffectBuilder::new(event_queue);
 
         let storage_config = config.map_ref(|cfg| cfg.storage.clone());
-        let storage = Storage::new(storage_config.clone())?;
+        let storage = Storage::new(&storage_config)?;
 
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;

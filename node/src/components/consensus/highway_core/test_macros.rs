@@ -17,6 +17,9 @@ macro_rules! panorama {
 /// automatically picks reasonable values for those.
 macro_rules! add_unit {
     ($state: ident, $rng: ident, $creator: expr, $val: expr; $($obs:expr),*) => {{
+        add_unit!($state, $rng, $creator, $val; $($obs),*;)
+    }};
+    ($state: ident, $rng: ident, $creator: expr, $val: expr; $($obs:expr),*; $($ends:expr),*) => {{
         #[allow(unused_imports)] // These might be already imported at the call site.
         use crate::{
             components::consensus::highway_core::{
@@ -64,7 +67,7 @@ macro_rules! add_unit {
             seq_number,
             timestamp,
             round_exp,
-            endorsed: std::collections::BTreeSet::new(),
+            endorsed: vec![$($ends),*].into_iter().collect(),
         };
         let hash = wunit.hash();
         let swunit = SignedWireUnit::new(wunit, &TestSecret(($creator).0), &mut $rng);
@@ -100,6 +103,12 @@ macro_rules! add_unit {
 
 /// Creates an endorsement of `vote` by `creator` and adds it to the state.
 macro_rules! endorse {
+    ($state: ident, $rng: ident, $vote: expr; $($creators: expr),*) => {
+        let creators = vec![$($creators.into()),*];
+        for creator in creators.into_iter() {
+            endorse!($state, $rng, creator, $vote);
+        }
+    };
     ($state: ident, $rng: ident, $creator: expr, $vote: expr) => {
         let endorsement: Endorsement<TestContext> = Endorsement::new($vote, ($creator));
         let signature = TestSecret(($creator).0).sign(&endorsement.hash(), &mut $rng);

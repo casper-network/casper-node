@@ -20,7 +20,6 @@ use super::{Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork};
 use crate::{
     components::{
         gossiper::{self, Gossiper},
-        storage::Storage,
         Component,
     },
     effect::{
@@ -67,8 +66,8 @@ impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
     }
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(_request: StorageRequest<Storage>) -> Self {
+impl From<StorageRequest> for Event {
+    fn from(_request: StorageRequest) -> Self {
         unreachable!()
     }
 }

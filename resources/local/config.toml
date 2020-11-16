@@ -127,33 +127,26 @@ event_stream_buffer_length = 100
 # If unset, the path must be supplied as an argument via the CLI.
 path = '../node-storage'
 
-# Optional maximum size of the database to use for the block store.
-#
-# If unset, defaults to 483,183,820,800 == 450 GiB.
+# Maximum size of the database to use for the block store.
 #
 # The size should be a multiple of the OS page size.
-#max_block_store_size = 483183820800
+#
+# 483_183_820_800 == 450 GiB.
+max_block_store_size = 483_183_820_800
 
-# Optional maximum size of the database to use for the deploy store.
-#
-# If unset, defaults to 322,122,547,200 == 300 GiB.
+# Maximum size of the database to use for the deploy store.
 #
 # The size should be a multiple of the OS page size.
-#max_deploy_store_size = 322122547200
+#
+# 322_122_547_200 == 300 GiB.
+max_deploy_store_size = 322_122_547_200
 
-# Optional maximum size of the database to use for the block height store.
-#
-# If unset, defaults to 10,485,760 == 10 MiB.
+# Maximum size of the database to use for the deploy metadata.
 #
 # The size should be a multiple of the OS page size.
-#max_block_height_store_size = 10485760
-
-# Optional maximum size of the database to use for the chainspec store.
 #
-# If unset, defaults to 1,073,741,824 == 1 GiB.
-#
-# The size should be a multiple of the OS page size.
-#max_chainspec_store_size = 1073741824
+# 322_122_547_200 == 300 GiB.
+max_deploy_metadata_store_size = 322_122_547_200
 
 
 # ===================================
