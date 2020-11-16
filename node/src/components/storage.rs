@@ -204,8 +204,8 @@ impl Storage {
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("reindexing block store");
         let mut block_height_index = BTreeMap::new();
-        let block_tx = env.begin_ro_txn()?;
-        let mut cursor = block_tx.open_ro_cursor(block_db)?;
+        let block_txn = env.begin_ro_txn()?;
+        let mut cursor = block_txn.open_ro_cursor(block_db)?;
 
         // Note: `iter_start` has an undocument panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
@@ -229,7 +229,7 @@ impl Storage {
         }
         info!("block store reindexing complete");
         drop(cursor);
-        drop(block_tx);
+        drop(block_txn);
 
         Ok(Storage {
             root,
@@ -256,9 +256,9 @@ impl Storage {
         // frequent, so on average the actual execution time will be very low.
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
-                let mut tx = self.env.begin_rw_txn()?;
-                let outcome = tx.put_value(self.block_db, block.hash(), &block, false)?;
-                tx.commit()?;
+                let mut txn = self.env.begin_rw_txn()?;
+                let outcome = txn.put_value(self.block_db, block.hash(), &block, false)?;
+                txn.commit()?;
 
                 if outcome {
                     // If we are attempting to insert a duplicate block, return with error.
@@ -288,14 +288,14 @@ impl Storage {
                 .respond(self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)?)
                 .ignore(),
             StorageRequest::GetHighestBlock { responder } => {
-                let mut tx = self.env.begin_ro_txn()?;
+                let mut txn = self.env.begin_ro_txn()?;
                 responder
                     .respond(
                         self.block_height_index
                             .keys()
                             .last()
                             .and_then(|&height| {
-                                self.get_block_by_height(&mut tx, height).transpose()
+                                self.get_block_by_height(&mut txn, height).transpose()
                             })
                             .transpose()?,
                     )
@@ -313,9 +313,9 @@ impl Storage {
                 )
                 .ignore(),
             StorageRequest::PutDeploy { deploy, responder } => {
-                let mut tx = self.env.begin_rw_txn()?;
-                let outcome = tx.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
-                tx.commit()?;
+                let mut txn = self.env.begin_rw_txn()?;
+                let outcome = txn.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
+                txn.commit()?;
                 responder.respond(outcome).ignore()
             }
             StorageRequest::GetDeploys {
@@ -341,11 +341,11 @@ impl Storage {
                 execution_results,
                 responder,
             } => {
-                let mut tx = self.env.begin_rw_txn()?;
+                let mut txn = self.env.begin_rw_txn()?;
 
                 for (deploy_hash, execution_result) in execution_results {
                     let mut metadata = self
-                        .get_deploy_metadata(&mut tx, &deploy_hash)?
+                        .get_deploy_metadata(&mut txn, &deploy_hash)?
                         .unwrap_or_default();
 
                     // If we have a previous execution result, we enforce that it is the same.
@@ -366,23 +366,23 @@ impl Storage {
                         .execution_results
                         .insert(block_hash, execution_result);
                     let was_written =
-                        tx.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
+                        txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
                     assert!(was_written);
                 }
 
                 // We commit only once we finished updating all deploy metadata.
-                tx.commit()?;
+                txn.commit()?;
                 responder.respond(()).ignore()
             }
             StorageRequest::GetDeployAndMetadata {
                 deploy_hash,
                 responder,
             } => {
-                let mut tx = self.env.begin_ro_txn()?;
+                let mut txn = self.env.begin_ro_txn()?;
 
                 // A missing deploy causes an early `None` return.
                 let deploy: Deploy =
-                    if let Some(deploy) = tx.get_value(self.deploy_db, &deploy_hash)? {
+                    if let Some(deploy) = txn.get_value(self.deploy_db, &deploy_hash)? {
                         deploy
                     } else {
                         return Ok(responder.respond(None).ignore());
@@ -390,7 +390,7 @@ impl Storage {
 
                 // Missing metadata is filled using a default.
                 let metadata = self
-                    .get_deploy_metadata(&mut tx, &deploy_hash)?
+                    .get_deploy_metadata(&mut txn, &deploy_hash)?
                     .unwrap_or_default();
                 responder.respond(Some((deploy, metadata))).ignore()
             }
@@ -547,11 +547,11 @@ impl Storage {
     ///
     /// Panics if an IO error occurs.
     pub fn get_deploy_by_hash(&self, deploy_hash: DeployHash) -> Option<Deploy> {
-        let mut tx = self
+        let mut txn = self
             .env
             .begin_ro_txn()
             .expect("could not create RO transaction");
-        tx.get_value(self.deploy_db, &deploy_hash)
+        txn.get_value(self.deploy_db, &deploy_hash)
             .expect("could not retrieve value from storage")
     }
 
@@ -561,12 +561,12 @@ impl Storage {
     ///
     /// Panics on any IO or db corruption error.
     pub fn get_all_deploy_hashes(&self) -> BTreeSet<DeployHash> {
-        let tx = self
+        let txn = self
             .env
             .begin_ro_txn()
             .expect("could not create RO transaction");
 
-        let mut cursor = tx
+        let mut cursor = txn
             .open_ro_cursor(self.deploy_db)
             .expect("could not create cursor");
 
