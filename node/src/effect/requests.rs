@@ -243,7 +243,7 @@ pub enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Vec<Option<DeployHeader>>>,
     },
-    /// Store a set of execution result for multiple deploys of a single block.
+    /// Store execution results for a set of deploys of a single block.
     ///
     /// Will return a fatal error if there are already execution results known for a specific
     /// deploy/block combination and a different result is inserted.

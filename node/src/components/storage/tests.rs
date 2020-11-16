@@ -385,9 +385,7 @@ fn can_retrieve_store_and_load_deploys() {
 }
 
 #[test]
-fn store_and_load_a_lot_of_deploys() {
-    // There is a quite a bit confusion about whether or not `commit()` must be called after
-    // read-only transactions
+fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
@@ -414,7 +412,6 @@ fn store_and_load_a_lot_of_deploys() {
 
 #[test]
 fn store_execution_results_for_two_blocks() {
-    // This is a simplified version of the larger test below.
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&mut harness);
 
@@ -524,7 +521,7 @@ fn store_random_execution_results() {
         for shared_deploy in shared_deploys {
             let execution_result = ExecutionResult::random(&mut harness.rng);
 
-            // Insert out new result and ensure it is not present yet.
+            // Insert the new result and ensure it is not present yet.
             let result = block_results.insert(*shared_deploy.id(), execution_result.clone());
             assert!(result.is_none());
 
@@ -538,7 +535,7 @@ fn store_random_execution_results() {
         // We should have all results for our block collected for the input.
         assert_eq!(block_results.len(), unique_count + shared_deploys.len());
 
-        // Now we can submit the blocks execution results.
+        // Now we can submit the block's execution results.
         put_execution_results(harness, storage, *block_hash, block_results);
     }
 

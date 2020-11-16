@@ -81,13 +81,13 @@ pub(crate) fn init_logging() {
         .ok();
 }
 
-/// Environment to test a single component as isolated as possible.
+/// Harness to test a single component as isolated as possible.
 ///
 /// Contains enough reactor machinery to drive a single component and a temporary directory.
 ///
 /// # Usage
 ///
-/// Cosntruction of a harness can be done straightforward through the `Default` trait, or the
+/// Construction of a harness can be done straightforwardly through the `Default` trait, or the
 /// builder can be used to construct various aspects of it.
 pub(crate) struct ComponentHarness<REv: 'static> {
     /// Test random number generator instance.
@@ -99,7 +99,7 @@ pub(crate) struct ComponentHarness<REv: 'static> {
     pub(crate) event_queue_handle: EventQueueHandle<REv>,
     /// Effect builder pointing at the scheduler.
     pub(crate) effect_builder: EffectBuilder<REv>,
-    /// A temporary directy that can be used to store various data.
+    /// A temporary directory that can be used to store various data.
     pub(crate) tmp: TempDir,
     /// The `async` runtime used to execute effects.
     pub(crate) runtime: Runtime,
@@ -136,7 +136,7 @@ impl<REv: 'static> ComponentHarnessBuilder<REv> {
 
     /// Tries to build a component harness.
     ///
-    /// Construction mail fail for various reasons such as not being able to create a temporary
+    /// Construction may fail for various reasons such as not being able to create a temporary
     /// directory.
     pub(crate) fn try_build(self) -> anyhow::Result<ComponentHarness<REv>> {
         let tmp = match self.tmp {
@@ -177,6 +177,7 @@ impl<REv: 'static> ComponentHarness<REv> {
             _phantom: PhantomData,
         }
     }
+
     /// Deconstructs the harness, keeping the on-disk state and test rng.
     pub(crate) fn into_parts(self) -> (TempDir, TestRng) {
         (self.tmp, self.rng)
