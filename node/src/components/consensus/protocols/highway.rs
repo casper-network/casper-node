@@ -367,6 +367,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // collect the vertices that depend on the ones we got in the argument and their senders...
         let (senders, dependent_vertices): (HashSet<I>, Vec<Dependency<C>>) = vertices
             .into_iter()
+            .filter(|dep| dep.is_unit())
             .flat_map(|vertex| self.vertex_deps.remove(&vertex))
             .flatten()
             .map(|(sender, pvv)| (sender, pvv.inner().id()))
@@ -380,16 +381,23 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
     fn drop_by_senders(&mut self, senders: HashSet<I>) {
         let mut dropped_vertices = Vec::new();
-        for dependent_vertices in self.vertex_deps.values_mut() {
+        let mut keys_to_drop = Vec::new();
+        for (key, dependent_vertices) in self.vertex_deps.iter_mut() {
             dependent_vertices.retain(|(sender, pvv)| {
                 if senders.contains(sender) {
                     // remember the deps we drop
                     dropped_vertices.push(pvv.inner().id());
-                    true
-                } else {
                     false
+                } else {
+                    true
                 }
             });
+            if dependent_vertices.is_empty() {
+                keys_to_drop.push(key.clone());
+            }
+        }
+        for key in keys_to_drop {
+            self.vertex_deps.remove(&key);
         }
         self.drop_dependent_vertices(dropped_vertices);
     }

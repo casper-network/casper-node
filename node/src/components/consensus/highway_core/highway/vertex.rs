@@ -28,6 +28,16 @@ pub(crate) enum Dependency<C: Context> {
     Endorsement(C::Hash),
 }
 
+impl<C: Context> Dependency<C> {
+    /// Returns whether this identifies a unit, as opposed to other types of vertices.
+    pub(crate) fn is_unit(&self) -> bool {
+        match self {
+            Dependency::Unit(_) => true,
+            _ => false,
+        }
+    }
+}
+
 /// An element of the protocol state, that might depend on other elements.
 ///
 /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
