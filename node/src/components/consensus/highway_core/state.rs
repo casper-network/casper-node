@@ -736,7 +736,7 @@ impl<C: Context> State<C> {
                         Some(other_hash) => {
                             if self.sees_correct(eq_hash, other_hash) {
                                 opt_naive_by_wunit = Some(eq_hash);
-                            } else if !self.sees_correct(other_hash, hash) {
+                            } else if !self.sees_correct(other_hash, eq_hash) {
                                 return false;
                             }
                         }
@@ -802,12 +802,12 @@ impl<C: Context> State<C> {
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`),
     /// and sees `hash1`'s creator as correct.
     fn sees_correct(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
-        self.unit(hash0).panorama.sees_correct(self, hash1)
+        hash0 == hash1 || self.unit(hash0).panorama.sees_correct(self, hash1)
     }
 
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`).
     fn sees(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
-        self.unit(hash0).panorama.sees(self, hash1)
+        hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
     }
 }
 

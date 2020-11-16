@@ -370,7 +370,6 @@ fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
     // Equivocation cited by two honest validators in the vote's panorama – their votes need to
     // be endorsed.
@@ -408,16 +407,15 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
     d0.endorsed.insert(c0);
     endorse!(state, rng, CAROL, c0);
     // One endorsement isn't enough.
-    assert_eq!(state.validate_lnc(&d0), Some(ALICE));
+    assert_eq!(state.validate_lnc(&d0), None);
     endorse!(state, rng, BOB, c0);
     endorse!(state, rng, DAN, c0);
     // Now d0 cites non-naively b/c c0 is endorsed.
-    assert_eq!(state.validate_lnc(&d0), None);
-    Ok(())
+    let d0_signed = SignedWireUnit::new(d0, &ALICE_SEC, &mut rng);
+    state.add_unit(d0_signed)
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
     // Multiple equivocators and indirect equivocations.
     // Votes are seen as endorsed by `state` – does not violate LNC.
