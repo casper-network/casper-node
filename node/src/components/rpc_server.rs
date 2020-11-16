@@ -36,7 +36,7 @@ use self::rpcs::chain::BlockIdentifier;
 
 use super::Component;
 use crate::{
-    components::{contract_runtime::EraValidatorsRequest, storage::Storage},
+    components::contract_runtime::EraValidatorsRequest,
     crypto::hash::Digest,
     effect::{
         announcements::RpcServerAnnouncement,
@@ -63,7 +63,7 @@ pub trait ReactorEventT:
     + From<LinearChainRequest<NodeId>>
     + From<MetricsRequest>
     + From<NetworkInfoRequest<NodeId>>
-    + From<StorageRequest<Storage>>
+    + From<StorageRequest>
     + Send
 {
 }
@@ -77,7 +77,7 @@ impl<REv> ReactorEventT for REv where
         + From<LinearChainRequest<NodeId>>
         + From<MetricsRequest>
         + From<NetworkInfoRequest<NodeId>>
-        + From<StorageRequest<Storage>>
+        + From<StorageRequest>
         + Send
         + 'static
 {

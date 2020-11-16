@@ -60,6 +60,7 @@ pub(crate) struct FinalizedBlock<C: Context> {
     pub(crate) proposer: C::ValidatorId,
 }
 
+// TODO: get rid of anyhow::Error; use variant and derive Clone and PartialEq. This is for testing.
 #[derive(Debug)]
 pub(crate) enum ProtocolOutcome<I, C: Context> {
     CreatedGossipMessage(Vec<u8>),

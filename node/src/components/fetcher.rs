@@ -9,7 +9,7 @@ use smallvec::smallvec;
 use tracing::{debug, error};
 
 use crate::{
-    components::{fetcher::event::FetchResponder, storage::Storage, Component},
+    components::{fetcher::event::FetchResponder, Component},
     effect::{
         requests::{LinearChainRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -27,7 +27,7 @@ pub use event::{Event, FetchResult};
 pub trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<NodeId, Message>>
-    + From<StorageRequest<Storage>>
+    + From<StorageRequest>
     // Won't be needed when we implement "get block by height" feature in storage.
     + From<LinearChainRequest<NodeId>>
     + Send
@@ -44,7 +44,7 @@ where
     <T as Item>::Id: 'static,
     REv: From<Event<T>>
         + From<NetworkRequest<NodeId, Message>>
-        + From<StorageRequest<Storage>>
+        + From<StorageRequest>
         + From<LinearChainRequest<NodeId>>
         + Send
         + 'static,

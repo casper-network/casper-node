@@ -80,7 +80,7 @@ pub enum Event {
     BlockProposer(block_proposer::Event),
     #[from]
     /// Storage event.
-    Storage(storage::Event<Storage>),
+    Storage(storage::Event),
     #[from]
     /// RPC server event.
     RpcServer(rpc_server::Event),
@@ -174,9 +174,9 @@ pub enum Event {
     LinearChainAnnouncement(LinearChainAnnouncement),
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(request: StorageRequest<Storage>) -> Self {
-        Event::Storage(storage::Event::Request(request))
+impl From<StorageRequest> for Event {
+    fn from(request: StorageRequest) -> Self {
+        Event::Storage(request.into())
     }
 }
 
@@ -581,10 +581,31 @@ impl reactor::Reactor for Reactor {
                                     return Effects::new();
                                 }
                             };
-                            Event::Storage(storage::Event::GetDeployForPeer {
-                                deploy_hash,
-                                peer: sender,
-                            })
+
+                            match self
+                                .storage
+                                .handle_legacy_direct_deploy_request(deploy_hash)
+                            {
+                                // This functionality was moved out of the storage component and
+                                // should be refactored ASAP.
+                                Some(deploy) => {
+                                    match Message::new_get_response(&deploy) {
+                                        Ok(message) => {
+                                            return effect_builder
+                                                .send_message(sender, message)
+                                                .ignore();
+                                        }
+                                        Err(error) => {
+                                            error!("failed to create get-response: {}", error);
+                                            return Effects::new();
+                                        }
+                                    };
+                                }
+                                None => {
+                                    debug!("failed to get {} for {}", deploy_hash, sender);
+                                    return Effects::new();
+                                }
+                            }
                         }
                         Tag::Block => {
                             let block_hash = match bincode::deserialize(&serialized_id) {
