@@ -71,10 +71,10 @@ pub fn generate_files(output_dir: &str, algorithm: &str, force: bool) -> Result<
     })?;
 
     let secret_key_path = output_dir.join(SECRET_KEY_PEM);
-    secret_key.to_file(&secret_key_path)?;
+    secret_key.to_file(&secret_key_path).map_err(|error| Error::CryptoError("secret_key", error))?;
 
     let public_key_path = output_dir.join(PUBLIC_KEY_PEM);
-    public_key.to_file(&public_key_path)?;
+    public_key.to_file(&public_key_path).map_err(|error| Error::CryptoError("public_key", error))?;
 
     Ok(())
 }

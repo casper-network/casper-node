@@ -89,7 +89,7 @@ pub enum Error {
 
     /// Cryptographic error.
     #[error("Crypto error: {0}")]
-    CryptoError(#[from] CryptoError),
+    CryptoError(&'static str, CryptoError),
 
     /// Invalid `CLValue`.
     #[error("Invalid CLValue error {0}")]
