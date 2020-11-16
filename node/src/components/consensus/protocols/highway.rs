@@ -4,6 +4,7 @@ use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
+    iter,
 };
 
 use casper_execution_engine::shared::motes::Motes;
@@ -279,6 +280,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                         }
                         Err((pvv, err)) => {
                             info!(?pvv, ?err, "invalid vertex");
+                            // drop all the vertices that might have depended on this one
+                            self.drop_dependent_vertices(iter::once(pvv.inner().id()));
                             // TODO: Disconnect from senders!
                         }
                     }
@@ -427,10 +430,13 @@ where
             }
             Ok(HighwayMessage::NewVertex(v)) => {
                 // Keep track of whether the prevalidated vertex was from an equivocator
+                let v_id = v.id();
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
                         // TODO: Disconnect from senders.
+                        // drop the vertices that might have depended on this one
+                        self.drop_dependent_vertices(iter::once(v_id));
                         return vec![ProtocolOutcome::InvalidIncomingMessage(
                             msg,
                             sender,
