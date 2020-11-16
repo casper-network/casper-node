@@ -359,8 +359,6 @@ async fn assert_settled(
         .inner()
         .storage
         .get_deploy_by_hash(deploy_hash);
-    // .expect("should only be a single result");
-    // .expect("should not error while getting");
     assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
 
     assert_eq!(fetched.lock().unwrap().1, expected_result)

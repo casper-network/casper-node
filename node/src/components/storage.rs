@@ -54,7 +54,10 @@ use datasize::DataSize;
 use derive_more::From;
 use lmdb::{Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use tempfile::TempDir;
 use thiserror::Error;
+use tracing::info;
 
 use super::Component;
 #[cfg(test)]
@@ -67,10 +70,6 @@ use crate::{
     Chainspec, NodeRng,
 };
 use lmdb_ext::{deser, LmdbExtError, TransactionExt, WriteTransactionExt};
-
-#[cfg(test)]
-use tempfile::TempDir;
-use tracing::info;
 
 /// We can set this very low, as there is only a single reader/writer accessing the component at any
 /// one time.
@@ -104,7 +103,7 @@ pub enum Error {
     DuplicateExecutionResult {
         /// The deploy for which the result should be stored.
         deploy_hash: DeployHash,
-        /// The block providing the context for the deploy's exection result.
+        /// The block providing the context for the deploy's execution result.
         block_hash: BlockHash,
     },
     /// LMDB error while operating.
@@ -137,7 +136,7 @@ pub struct Storage {
     deploy_metadata_db: Database,
     /// Block height index.
     block_height_index: BTreeMap<u64, BlockHash>,
-    /// Chainspec chache.
+    /// Chainspec cache.
     chainspec_cache: Option<Arc<Chainspec>>,
 }
 
@@ -186,8 +185,11 @@ impl Storage {
         // Creates the environment and databases.
         let env = Environment::new()
             .set_flags(
+                // We manage our own directory.
                 EnvironmentFlags::NO_SUB_DIR
+                // Disable thread local storage, strongly suggested for operation with tokio.
                     | EnvironmentFlags::NO_TLS
+                // We can afford `WRITE_MAP` for a performance gain, our patterns are simple.
                     | EnvironmentFlags::WRITE_MAP,
             )
             .set_max_readers(MAX_TRANSACTIONS)
