@@ -30,11 +30,11 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         amount) amount=${VALUE} ;;
-        gas) gas_price=${VALUE} ;;
+        gas) gas=${VALUE} ;;
         interval) transfer_interval=${VALUE} ;;
         net) net=${VALUE} ;;
         node) node=${VALUE} ;;
-        payment) gas_payment=${VALUE} ;;
+        payment) payment=${VALUE} ;;
         transfers) transfers=${VALUE} ;;
         user) user=${VALUE} ;;
         *)
@@ -43,8 +43,8 @@ done
 
 # Set defaults.
 amount=${amount:-$NCTL_DEFAULT_TRANSFER_AMOUNT}
-gas_payment=${gas_payment:-$NCTL_DEFAULT_GAS_PAYMENT}
-gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
+payment=${payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+gas=${gas:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
 transfers=${transfers:-100}
@@ -82,10 +82,10 @@ fi
 function _dispatch_deploy() {
     echo $(
         $(get_path_to_client $net) transfer \
-            --chain-name casper-net-$net \
-            --gas-price $gas_price \
+            --chain-name $(get_chain_name $net) \
+            --gas-price $gas \
             --node-address $node_address \
-            --payment-amount $gas_payment \
+            --payment-amount $payment \
             --secret-key $cp1_secret_key \
             --ttl "1day" \
             --amount $amount \

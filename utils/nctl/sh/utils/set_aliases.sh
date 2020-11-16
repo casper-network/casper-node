@@ -13,6 +13,9 @@ alias nctl-compile-node='source $NCTL/sh/compile/node.sh'
 alias nctl-wg-100='source $NCTL/sh/generators/wg_100.sh'
 alias nctl-do-transfer='source $NCTL/sh/generators/wg_100.sh'
 
+alias nctl-wg-101='source $NCTL/sh/generators/wg_101.sh'
+alias nctl-do-fund-users='source $NCTL/sh/generators/wg_101.sh'
+
 alias nctl-wg-110='source $NCTL/sh/generators/wg_110.sh'
 alias nctl-do-transfer-wasm='source $NCTL/sh/generators/wg_110.sh'
 

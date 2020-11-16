@@ -13,9 +13,6 @@ NCTL_ACCOUNT_TYPE_NODE="node"
 # A type of actor representing a user.
 NCTL_ACCOUNT_TYPE_USER="user"
 
-# Default amount used when making transfers.
-NCTL_DEFAULT_TRANSFER_AMOUNT=1000000000   # (1e9)
-
 # Default amount used when making auction bids.
 NCTL_DEFAULT_AUCTION_BID_AMOUNT=1000000000   # (1e9)
 
@@ -28,10 +25,16 @@ NCTL_DEFAULT_GAS_PAYMENT=1000000000   # (1e9)
 # Default gas price multiplier.
 NCTL_DEFAULT_GAS_PRICE=10
 
-# Genesis balance of faucet account.
+# Default amount used when making transfers.
+NCTL_DEFAULT_TRANSFER_AMOUNT=1000000000   # (1e9)
+
+# Intitial balance of faucet account.
 NCTL_INITIAL_BALANCE_FAUCET=1000000000000000000000000000000000   # (1e33)
 
-# Genesis balance of validator account.
+# Intitial balance of user account.
+NCTL_INITIAL_BALANCE_USER=1000000000000000000   # (1e18)
+
+# Intitial balance of validator account.
 NCTL_INITIAL_BALANCE_VALIDATOR=1000000000000000000000000000000000   # (1e33)
 
 # Base weight applied to a validator at genesis.
@@ -246,6 +249,15 @@ function get_bootstrap_known_addresses() {
 function get_bootstrap_known_address() {
     port=$(($NCTL_BASE_PORT_NETWORK + ($1 * 100) + $2))
     echo "127.0.0.1:$port"
+}
+
+#######################################
+# Returns a chain name.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_chain_name() {
+    echo casper-net-$1
 }
 
 #######################################
