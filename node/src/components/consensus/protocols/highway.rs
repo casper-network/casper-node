@@ -369,6 +369,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // collect the vertices that depend on the ones we got in the argument and their senders
         let (senders, mut dropped_vertices): (HashSet<I>, Vec<Dependency<C>>) = vertices
             .into_iter()
+            // filtering by is_unit, so that we don't drop vertices depending on invalid evidence
+            // or endorsements - we can still get valid ones from someone else and eventually
+            // satisfy the dependency
             .filter(|dep| dep.is_unit())
             .flat_map(|vertex| self.vertex_deps.remove(&vertex))
             .flatten()
