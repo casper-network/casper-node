@@ -130,6 +130,12 @@ impl State<TestContext> {
         {
             return Err(swunit.with_error(err));
         }
+        assert_eq!(None, swunit.wire_unit.panorama.missing_dependency(self));
+        assert_eq!(None, self.needs_endorsements(&swunit));
+        // TODO: Remove this once it's included in validate_unit.
+        if let Some(vidx) = self.validate_lnc(&swunit.wire_unit) {
+            return Err(swunit.with_error(UnitError::LncNaiveCitation(vidx)));
+        }
         self.add_valid_unit(swunit);
         Ok(())
     }
@@ -405,13 +411,14 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
     // None of the votes is marked as being endorsed – violates LNC.
     assert_eq!(state.validate_lnc(&d0), Some(ALICE));
     d0.endorsed.insert(c0);
+    let d0_signed = SignedWireUnit::new(d0.clone(), &ALICE_SEC, &mut rng);
     endorse!(state, rng, CAROL, c0);
     // One endorsement isn't enough.
+    assert_eq!(Some(c0), state.needs_endorsements(&d0_signed));
     assert_eq!(state.validate_lnc(&d0), None);
     endorse!(state, rng, BOB, c0);
     endorse!(state, rng, DAN, c0);
     // Now d0 cites non-naively b/c c0 is endorsed.
-    let d0_signed = SignedWireUnit::new(d0, &ALICE_SEC, &mut rng);
     state.add_unit(d0_signed)
 }
 
