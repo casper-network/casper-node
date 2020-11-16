@@ -98,8 +98,7 @@ message CLType {
         CLType inner = 1;
     }
 
-    message FixedList {
-        CLType inner = 1;
+    message ByteArray {
         uint32 len = 2;
     }
 
@@ -134,7 +133,7 @@ message CLType {
         Simple simple_type = 1;
         Option option_type = 2;
         List list_type = 3;
-        FixedList fixed_list_type = 4;
+        ByteArray byte_array_type = 4;
         Result result_type = 5;
         Map map_type = 6;
         Tuple1 tuple1_type = 7;
@@ -174,13 +173,13 @@ message CLValueInstance {
             Key.URef uref = 13;
             Option option_value = 14;
             List list_value = 15;
-            FixedList fixed_list_value = 16;
+            ByteArray byte_array_value = 16;
             Result result_value = 17;
             Map map_value = 18;
             Tuple1 tuple1_value = 19;
             Tuple2 tuple2_value = 20;
             Tuple3 tuple3_value = 21;
-            bytes bytes_value = 22; // convenience for representing List(U8) / FixedList(U8)
+            bytes bytes_value = 22; // convenience for representing List(U8) / ByteArray
         }
     }
 
@@ -204,10 +203,8 @@ message CLValueInstance {
     message List {
         repeated Value values = 1;
     }
-    message FixedList {
-        uint32 length = 1;
-        // length of this list must be equal to length above
-        repeated Value values = 2;
+    message ByteArray {
+        bytes value = 1;
     }
     message Result {
         oneof value {

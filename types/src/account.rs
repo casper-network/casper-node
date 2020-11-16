@@ -334,7 +334,7 @@ impl Debug for AccountHash {
 
 impl CLTyped for AccountHash {
     fn cl_type() -> CLType {
-        CLType::FixedList(Box::new(CLType::U8), 32)
+        CLType::ByteArray(32)
     }
 }
 

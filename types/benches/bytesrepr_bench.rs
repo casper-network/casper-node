@@ -4,7 +4,7 @@ use std::{collections::BTreeMap, iter};
 
 use casper_types::{
     account::AccountHash,
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
     AccessRights, CLTyped, CLValue, Key, URef, U128, U256, U512,
 };
 
@@ -104,35 +104,26 @@ fn deserialize_ok_u64(b: &mut Bencher) {
     b.iter(|| Option::<u64>::from_bytes(&data));
 }
 
-fn serialize_vector_of_vector_of_u8(b: &mut Bencher) {
-    let data: Vec<Vec<u8>> = (0..4)
+fn make_test_vec_of_vec8() -> Vec<Bytes> {
+    (0..4)
         .map(|_v| {
             // 0, 1, 2, ..., 254, 255
-            iter::repeat_with(|| 0..255u8)
+            let inner_vec = iter::repeat_with(|| 0..255u8)
                 .flatten()
                 // 4 times to create 4x 1024 bytes
                 .take(4)
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            Bytes::from(inner_vec)
         })
-        .collect::<Vec<Vec<_>>>();
+        .collect()
+}
 
     b.iter(|| data.to_bytes());
 }
 
 fn deserialize_vector_of_vector_of_u8(b: &mut Bencher) {
-    let data: Vec<u8> = (0..4)
-        .map(|_v| {
-            // 0, 1, 2, ..., 254, 255
-            iter::repeat_with(|| 0..255u8)
-                .flatten()
-                // 4 times to create 4x 1024 bytes
-                .take(4)
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<Vec<_>>>()
-        .to_bytes()
-        .unwrap();
-    b.iter(|| Vec::<Vec<u8>>::from_bytes(&data));
+    let data = make_test_vec_of_vec8().to_bytes().unwrap();
+    b.iter(|| Vec::<Bytes>::from_bytes(black_box(&data)));
 }
 
 fn serialize_tree_map(b: &mut Bencher) {
@@ -313,7 +304,7 @@ fn benchmark_deserialization<T: CLTyped + ToBytes + FromBytes>(b: &mut Bencher, 
     let serialized_value = serialize_cl_value(raw_value);
     b.iter(|| {
         let cl_value: CLValue = bytesrepr::deserialize(serialized_value.clone()).unwrap();
-        let _raw_value: T = cl_value.into_t().unwrap();
+        // let _raw_value: T = cl_value.into_t().unwrap();
     });
 }
 
@@ -350,11 +341,19 @@ fn deserialize_cl_value_uint512(b: &mut Bencher) {
 }
 
 fn serialize_cl_value_bytearray(b: &mut Bencher) {
-    b.iter(|| serialize_cl_value((0..255).collect::<Vec<u8>>()));
+    b.iter_with_setup(
+        || {
+            let vec: Vec<u8> = (0..255).collect();
+            Bytes::from(vec)
+        },
+        |bytes| serialize_cl_value(bytes),
+    );
 }
 
 fn deserialize_cl_value_bytearray(b: &mut Bencher) {
-    benchmark_deserialization(b, (0..255).collect::<Vec<u8>>());
+    let vec = (0..255).collect::<Vec<u8>>();
+    let bytes: Bytes = vec.into();
+    benchmark_deserialization(b, bytes);
 }
 
 fn serialize_cl_value_listint32(b: &mut Bencher) {

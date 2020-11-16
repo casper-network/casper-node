@@ -41,7 +41,7 @@ pub extern "C" fn call() {
         let entry_point = EntryPoint::new(
             ENTRY_POINT_NAME.to_string(),
             Vec::new(),
-            CLType::FixedList(Box::new(CLType::U8), 32),
+            CLType::ByteArray(32),
             EntryPointAccess::Public,
             EntryPointType::Contract,
         );

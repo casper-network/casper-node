@@ -140,9 +140,7 @@ impl TransferRuntimeArgsBuilder {
 
                 Ok(TransferTargetMode::PurseExists(uref))
             }
-            Some(cl_value)
-                if *cl_value.cl_type() == CLType::FixedList(Box::new(CLType::U8), 32) =>
-            {
+            Some(cl_value) if *cl_value.cl_type() == CLType::ByteArray(32) => {
                 let account_key: Key = {
                     let hash = match cl_value.clone().into_t() {
                         Ok(hash) => hash,

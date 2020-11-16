@@ -78,9 +78,11 @@ impl FromBytes for Pointer {
     }
 }
 
+pub type PointerBlockArray = [Option<Pointer>; RADIX];
+
 /// Represents the underlying structure of a node in a Merkle Trie
 #[derive(Copy, Clone)]
-pub struct PointerBlock([Option<Pointer>; RADIX]);
+pub struct PointerBlock(PointerBlockArray);
 
 impl PointerBlock {
     pub fn new() -> Self {
@@ -106,8 +108,8 @@ impl PointerBlock {
     }
 }
 
-impl From<[Option<Pointer>; RADIX]> for PointerBlock {
-    fn from(src: [Option<Pointer>; RADIX]) -> Self {
+impl From<PointerBlockArray> for PointerBlock {
+    fn from(src: PointerBlockArray) -> Self {
         PointerBlock(src)
     }
 }
@@ -129,17 +131,27 @@ impl Default for PointerBlock {
 
 impl ToBytes for PointerBlock {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        for pointer in self.0.iter() {
+            result.extend(pointer.to_bytes()?);
+        }
+        Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
+        self.0.iter().map(ToBytes::serialized_length).sum()
     }
 }
 
 impl FromBytes for PointerBlock {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        FromBytes::from_bytes(bytes).map(|(arr, rem)| (PointerBlock(arr), rem))
+    fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let mut result = [None; RADIX];
+        for i in 0..RADIX {
+            let (pointer, rem) = FromBytes::from_bytes(bytes)?;
+            result[i] = pointer;
+            bytes = rem;
+        }
+        Ok((PointerBlock(result), bytes))
     }
 }
 

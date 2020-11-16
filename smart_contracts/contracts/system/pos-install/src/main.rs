@@ -95,7 +95,7 @@ pub extern "C" fn install() {
             METHOD_FINALIZE_PAYMENT,
             vec![
                 Parameter::new(ARG_AMOUNT, CLType::U512),
-                Parameter::new(ARG_ACCOUNT, CLType::FixedList(Box::new(CLType::U8), 32)),
+                Parameter::new(ARG_ACCOUNT, CLType::ByteArray(32)),
             ],
             CLType::Unit,
             EntryPointAccess::Public,

@@ -540,7 +540,7 @@ where
                 | CLType::String
                 | CLType::Option(_)
                 | CLType::List(_)
-                | CLType::FixedList(..)
+                | CLType::ByteArray(..)
                 | CLType::Result { .. }
                 | CLType::Map { .. }
                 | CLType::Tuple1(_)

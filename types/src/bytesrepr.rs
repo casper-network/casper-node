@@ -19,6 +19,10 @@ use num_integer::Integer;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 
+mod bytes;
+
+pub use bytes::Bytes;
+
 /// The number of bytes in a serialized `()`.
 pub const UNIT_SERIALIZED_LENGTH: usize = 0;
 /// The number of bytes in a serialized `bool`.
@@ -424,41 +428,24 @@ impl<T: FromBytes> FromBytes for VecDeque<T> {
 macro_rules! impl_to_from_bytes_for_array {
     ($($N:literal)+) => {
         $(
-            impl<T: ToBytes> ToBytes for [T; $N] {
+            impl ToBytes for [u8; $N] {
                 fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-                    let mut result = allocate_buffer(self)?;
-                    for item in self.iter() {
-                        result.append(&mut item.to_bytes()?);
-                    }
-                    Ok(result)
+                    Ok(self.to_vec())
                 }
 
                 fn serialized_length(&self) -> usize {
-                    self.iter().map(ToBytes::serialized_length).sum()
+                    $N
                 }
             }
 
-            impl<T: FromBytes> FromBytes for [T; $N] {
-                fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-                    let mut result: MaybeUninit<[T; $N]> = MaybeUninit::uninit();
-                    let result_ptr = result.as_mut_ptr() as *mut T;
-                    unsafe {
-                        #[allow(clippy::reversed_empty_ranges)]
-                        for i in 0..$N {
-                            let (t, remainder) = match T::from_bytes(bytes) {
-                                Ok(success) => success,
-                                Err(error) => {
-                                    for j in 0..i {
-                                        result_ptr.add(j).drop_in_place();
-                                    }
-                                    return Err(error);
-                                }
-                            };
-                            result_ptr.add(i).write(t);
-                            bytes = remainder;
-                        }
-                        Ok((result.assume_init(), bytes))
-                    }
+            impl FromBytes for [u8; $N] {
+                fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+                    // deserialize_array(bytes)
+                    let mut output: [u8; $N] = [0; $N];
+                    let as_mut_ref = output.as_mut();
+                    let (bytes, rem) = deserialize_array_slice(bytes, as_mut_ref.len())?;
+                    as_mut_ref.copy_from_slice(bytes);
+                    Ok((output, rem))
                 }
             }
         )+
@@ -1165,51 +1152,51 @@ mod tests {
     use super::*;
     use crate::bytesrepr;
 
-    #[test]
-    fn check_array_from_bytes_doesnt_leak() {
-        thread_local!(static INSTANCE_COUNT: RefCell<usize> = RefCell::new(0));
-        const MAX_INSTANCES: usize = 10;
+    // #[test]
+    // fn check_array_from_bytes_doesnt_leak() {
+    //     thread_local!(static INSTANCE_COUNT: RefCell<usize> = RefCell::new(0));
+    //     const MAX_INSTANCES: usize = 32;
 
-        struct LeakChecker;
+    //     struct LeakChecker;
 
-        impl FromBytes for LeakChecker {
-            fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-                let instance_num = INSTANCE_COUNT.with(|count| *count.borrow());
-                if instance_num >= MAX_INSTANCES {
-                    Err(Error::Formatting)
-                } else {
-                    INSTANCE_COUNT.with(|count| *count.borrow_mut() += 1);
-                    Ok((LeakChecker, bytes))
-                }
-            }
-        }
+    //     impl FromBytes for LeakChecker {
+    //         fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+    //             let instance_num = INSTANCE_COUNT.with(|count| *count.borrow());
+    //             if instance_num >= MAX_INSTANCES {
+    //                 Err(Error::Formatting)
+    //             } else {
+    //                 INSTANCE_COUNT.with(|count| *count.borrow_mut() += 1);
+    //                 Ok((LeakChecker, bytes))
+    //             }
+    //         }
+    //     }
 
-        impl Drop for LeakChecker {
-            fn drop(&mut self) {
-                INSTANCE_COUNT.with(|count| *count.borrow_mut() -= 1);
-            }
-        }
+    //     impl Drop for LeakChecker {
+    //         fn drop(&mut self) {
+    //             INSTANCE_COUNT.with(|count| *count.borrow_mut() -= 1);
+    //         }
+    //     }
 
-        // Check we can construct an array of `MAX_INSTANCES` of `LeakChecker`s.
-        {
-            let bytes = (MAX_INSTANCES as u32).to_bytes().unwrap();
-            let _array = <[LeakChecker; MAX_INSTANCES]>::from_bytes(&bytes).unwrap();
-            // Assert `INSTANCE_COUNT == MAX_INSTANCES`
-            INSTANCE_COUNT.with(|count| assert_eq!(MAX_INSTANCES, *count.borrow()));
-        }
+    //     // Check we can construct an array of `MAX_INSTANCES` of `LeakChecker`s.
+    //     {
+    //         let bytes = (MAX_INSTANCES as u32).to_bytes().unwrap();
+    //         let _array = <[LeakChecker; MAX_INSTANCES]>::from_bytes(&bytes).unwrap();
+    //         // Assert `INSTANCE_COUNT == MAX_INSTANCES`
+    //         INSTANCE_COUNT.with(|count| assert_eq!(MAX_INSTANCES, *count.borrow()));
+    //     }
 
-        // Assert the `INSTANCE_COUNT` has dropped to zero again.
-        INSTANCE_COUNT.with(|count| assert_eq!(0, *count.borrow()));
+    //     // Assert the `INSTANCE_COUNT` has dropped to zero again.
+    //     INSTANCE_COUNT.with(|count| assert_eq!(0, *count.borrow()));
 
-        // Try to construct an array of `LeakChecker`s where the `MAX_INSTANCES + 1`th instance
-        // returns an error.
-        let bytes = (MAX_INSTANCES as u32 + 1).to_bytes().unwrap();
-        let result = <[LeakChecker; MAX_INSTANCES + 1]>::from_bytes(&bytes);
-        assert!(result.is_err());
+    //     // Try to construct an array of `LeakChecker`s where the `MAX_INSTANCES + 1`th instance
+    //     // returns an error.
+    //     let bytes = (MAX_INSTANCES as u32 + 1).to_bytes().unwrap();
+    //     let result = <[LeakChecker; MAX_INSTANCES + 1]>::from_bytes(&bytes);
+    //     assert!(result.is_err());
 
-        // Assert the `INSTANCE_COUNT` has dropped to zero again.
-        INSTANCE_COUNT.with(|count| assert_eq!(0, *count.borrow()));
-    }
+    //     // Assert the `INSTANCE_COUNT` has dropped to zero again.
+    //     INSTANCE_COUNT.with(|count| assert_eq!(0, *count.borrow()));
+    // }
 
     #[test]
     fn vec_u8_from_bytes() {
