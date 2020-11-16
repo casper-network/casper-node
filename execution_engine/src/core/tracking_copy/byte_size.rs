@@ -15,18 +15,6 @@ impl ByteSize for Key {
     }
 }
 
-impl ByteSize for Account {
-    fn byte_size(&self) -> usize {
-        mem::size_of::<Self>() + self.heap_size() + self.named_keys().byte_size()
-    }
-}
-
-impl ByteSize for ContractWasm {
-    fn byte_size(&self) -> usize {
-        mem::size_of::<Self>() + self.heap_size()
-    }
-}
-
 impl ByteSize for String {
     fn byte_size(&self) -> usize {
         mem::size_of::<Self>() + self.heap_size()
@@ -46,8 +34,8 @@ impl ByteSize for StoredValue {
         mem::size_of::<Self>()
             + match self {
                 StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
-                StoredValue::Account(account) => account.heap_size(),
-                StoredValue::ContractWasm(contract_wasm) => contract_wasm.heap_size(),
+                StoredValue::Account(account) => account.serialized_length(),
+                StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
                 StoredValue::Contract(contract_header) => contract_header.serialized_length(),
                 StoredValue::ContractPackage(contract_package) => {
                     contract_package.serialized_length()
