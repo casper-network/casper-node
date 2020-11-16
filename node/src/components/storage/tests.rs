@@ -25,9 +25,14 @@ use crate::{
 ///
 /// Panics if setting up the storage fixture fails.
 fn storage_fixture(harness: &mut ComponentHarness<()>) -> Storage {
+    const MIB: usize = 1024 * 1024;
+
+    // Restrict all stores to 50 mibibytes, to catch issues before filling up the entire disk.
     let cfg = Config {
         path: harness.tmp.path().join("storage"),
-        ..Default::default()
+        max_block_store_size: 50 * MIB,
+        max_deploy_store_size: 50 * MIB,
+        max_deploy_metadata_store_size: 50 * MIB,
     };
 
     Storage::new(&WithDir::new(harness.tmp.path(), cfg)).expect(

@@ -75,6 +75,16 @@ use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 /// one time.
 const MAX_TRANSACTIONS: u32 = 1;
 
+/// One Gibibyte.
+const GIB: usize = 1024 * 1024 * 1024;
+
+/// Default max block store size.
+const DEFAULT_MAX_BLOCK_STORE_SIZE: usize = 450 * GIB;
+/// Default max deploy store size.
+const DEFAULT_MAX_DEPLOY_STORE_SIZE: usize = 300 * GIB;
+/// Default max deploy metadata store size.
+const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
+
 #[derive(Debug, From)]
 pub enum Event {
     /// Incoming storage request.
@@ -481,9 +491,9 @@ impl Default for Config {
         Config {
             // No one should be instantiating a config with storage set to default.
             path: "/dev/null".into(),
-            max_block_store_size: 483_183_820_800,
-            max_deploy_store_size: 322_122_547_200,
-            max_deploy_metadata_store_size: 322_122_547_200,
+            max_block_store_size: DEFAULT_MAX_BLOCK_STORE_SIZE,
+            max_deploy_store_size: DEFAULT_MAX_DEPLOY_STORE_SIZE,
+            max_deploy_metadata_store_size: DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE,
         }
     }
 }
