@@ -4,7 +4,6 @@ use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
-    iter,
 };
 
 use casper_execution_engine::shared::motes::Motes;
@@ -281,7 +280,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                         Err((pvv, err)) => {
                             info!(?pvv, ?err, "invalid vertex");
                             // drop all the vertices that might have depended on this one
-                            self.drop_dependent_vertices(iter::once(pvv.inner().id()));
+                            self.drop_dependent_vertices(vec![pvv.inner().id()]);
                             // TODO: Disconnect from senders!
                         }
                     }
@@ -360,26 +359,27 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.highway.state().median_round_exp()
     }
 
-    fn drop_dependent_vertices<It>(&mut self, vertices: It)
-    where
-        It: IntoIterator<Item = Dependency<C>>,
-    {
-        // collect the vertices that depend on the ones we got in the argument and their senders...
-        let (senders, dependent_vertices): (HashSet<I>, Vec<Dependency<C>>) = vertices
+    fn drop_dependent_vertices(&mut self, mut vertices: Vec<Dependency<C>>) {
+        while !vertices.is_empty() {
+            vertices = self.do_drop_dependent_vertices(vertices);
+        }
+    }
+
+    fn do_drop_dependent_vertices(&mut self, vertices: Vec<Dependency<C>>) -> Vec<Dependency<C>> {
+        // collect the vertices that depend on the ones we got in the argument and their senders
+        let (senders, mut dropped_vertices): (HashSet<I>, Vec<Dependency<C>>) = vertices
             .into_iter()
             .filter(|dep| dep.is_unit())
             .flat_map(|vertex| self.vertex_deps.remove(&vertex))
             .flatten()
             .map(|(sender, pvv)| (sender, pvv.inner().id()))
             .unzip();
-        // ...and drop them, too
-        self.drop_dependent_vertices(dependent_vertices);
-        // also, drop all vertices from the senders - if they sent us something dependent on an
-        // invalid vertex, they can't be trusted
-        self.drop_by_senders(senders);
+
+        dropped_vertices.extend(self.drop_by_senders(senders));
+        dropped_vertices
     }
 
-    fn drop_by_senders(&mut self, senders: HashSet<I>) {
+    fn drop_by_senders(&mut self, senders: HashSet<I>) -> Vec<Dependency<C>> {
         let mut dropped_vertices = Vec::new();
         let mut keys_to_drop = Vec::new();
         for (key, dependent_vertices) in self.vertex_deps.iter_mut() {
@@ -399,7 +399,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         for key in keys_to_drop {
             self.vertex_deps.remove(&key);
         }
-        self.drop_dependent_vertices(dropped_vertices);
+        dropped_vertices
     }
 }
 
@@ -444,7 +444,7 @@ where
                     Err((_, err)) => {
                         // TODO: Disconnect from senders.
                         // drop the vertices that might have depended on this one
-                        self.drop_dependent_vertices(iter::once(v_id));
+                        self.drop_dependent_vertices(vec![v_id]);
                         return vec![ProtocolOutcome::InvalidIncomingMessage(
                             msg,
                             sender,
@@ -557,7 +557,8 @@ where
                 dropped_vertices
                     .into_iter()
                     .flatten()
-                    .map(|vv| vv.inner().id()),
+                    .map(|vv| vv.inner().id())
+                    .collect(),
             );
             vec![]
         }
