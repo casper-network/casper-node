@@ -74,6 +74,7 @@ use std::{
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
+use serde::Serialize;
 use smallvec::{smallvec, SmallVec};
 use tokio::join;
 use tracing::error;
@@ -197,6 +198,15 @@ impl<T> Drop for Responder<T> {
                 self
             );
         }
+    }
+}
+
+impl<T> Serialize for Responder<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("{:?}", self))
     }
 }
 

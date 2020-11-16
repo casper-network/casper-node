@@ -15,6 +15,7 @@ use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, Registry};
+use serde::Serialize;
 use thiserror::Error;
 use tokio::task;
 use tracing::trace;
@@ -54,7 +55,7 @@ impl Debug for ContractRuntime {
 }
 
 /// Contract runtime component event.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 pub enum Event {
     /// A request made of the contract runtime component.
     #[from]

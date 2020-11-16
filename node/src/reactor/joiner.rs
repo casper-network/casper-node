@@ -5,6 +5,7 @@ use std::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
+use serde::Serialize;
 use tracing::{error, info, warn};
 
 use block_executor::BlockExecutor;
@@ -58,7 +59,7 @@ use crate::{
 };
 
 /// Top-level event for the reactor.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 #[must_use]
 pub enum Event {
     /// Network event.
@@ -67,71 +68,71 @@ pub enum Event {
 
     /// Storage event.
     #[from]
-    Storage(storage::Event),
+    Storage(#[serde(skip_serializing)] storage::Event),
 
     #[from]
     /// REST server event.
-    RestServer(rest_server::Event),
+    RestServer(#[serde(skip_serializing)] rest_server::Event),
 
     #[from]
     /// Event stream server event.
-    EventStreamServer(event_stream_server::Event),
+    EventStreamServer(#[serde(skip_serializing)] event_stream_server::Event),
 
     /// Metrics request.
     #[from]
-    MetricsRequest(MetricsRequest),
+    MetricsRequest(#[serde(skip_serializing)] MetricsRequest),
 
     #[from]
     /// Chainspec Loader event.
-    ChainspecLoader(chainspec_loader::Event),
+    ChainspecLoader(#[serde(skip_serializing)] chainspec_loader::Event),
 
     /// Chainspec info request
     #[from]
-    ChainspecLoaderRequest(ChainspecLoaderRequest),
+    ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
 
     /// Network info request.
     #[from]
-    NetworkInfoRequest(NetworkInfoRequest<NodeId>),
+    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest<NodeId>),
 
     /// Linear chain fetcher event.
     #[from]
-    BlockFetcher(fetcher::Event<Block>),
+    BlockFetcher(#[serde(skip_serializing)] fetcher::Event<Block>),
 
     /// Linear chain (by height) fetcher event.
     #[from]
-    BlockByHeightFetcher(fetcher::Event<BlockByHeight>),
+    BlockByHeightFetcher(#[serde(skip_serializing)] fetcher::Event<BlockByHeight>),
 
     /// Deploy fetcher event.
     #[from]
-    DeployFetcher(fetcher::Event<Deploy>),
+    DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
 
     /// Deploy acceptor event.
     #[from]
-    DeployAcceptor(deploy_acceptor::Event),
+    DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
 
     /// Block validator event.
     #[from]
-    BlockValidator(block_validator::Event<BlockHeader, NodeId>),
+    BlockValidator(#[serde(skip_serializing)] block_validator::Event<BlockHeader, NodeId>),
 
     /// Linear chain event.
     #[from]
-    LinearChainSync(linear_chain_sync::Event<NodeId>),
+    LinearChainSync(#[serde(skip_serializing)] linear_chain_sync::Event<NodeId>),
 
     /// Block executor event.
     #[from]
-    BlockExecutor(block_executor::Event),
+    BlockExecutor(#[serde(skip_serializing)] block_executor::Event),
 
     /// Contract Runtime event.
     #[from]
-    ContractRuntime(contract_runtime::Event),
+    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
 
     /// Linear chain event.
     #[from]
-    LinearChain(linear_chain::Event<NodeId>),
+    LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
 
     /// Consensus component event.
     #[from]
-    Consensus(consensus::Event<NodeId>),
+    Consensus(#[serde(skip_serializing)] consensus::Event<NodeId>),
 
     /// Address gossiper event.
     #[from]
@@ -140,56 +141,58 @@ pub enum Event {
     /// Requests.
     /// Linear chain block by hash fetcher request.
     #[from]
-    BlockFetcherRequest(FetcherRequest<NodeId, Block>),
+    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Block>),
 
     /// Linear chain block by height fetcher request.
     #[from]
-    BlockByHeightFetcherRequest(FetcherRequest<NodeId, BlockByHeight>),
+    BlockByHeightFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, BlockByHeight>),
 
     /// Deploy fetcher request.
     #[from]
-    DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
+    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
 
     /// Block validation request.
     #[from]
-    BlockValidatorRequest(BlockValidationRequest<BlockHeader, NodeId>),
+    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest<BlockHeader, NodeId>),
 
     /// Block executor request.
     #[from]
-    BlockExecutorRequest(BlockExecutorRequest),
+    BlockExecutorRequest(#[serde(skip_serializing)] BlockExecutorRequest),
 
     /// Block proposer request.
     #[from]
-    BlockProposerRequest(BlockProposerRequest),
+    BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
 
     /// Proto block validator request.
     #[from]
-    ProtoBlockValidatorRequest(BlockValidationRequest<ProtoBlock, NodeId>),
+    ProtoBlockValidatorRequest(
+        #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
+    ),
 
     // Announcements
     /// Network announcement.
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
 
     /// Block executor annoncement.
     #[from]
-    BlockExecutorAnnouncement(BlockExecutorAnnouncement),
+    BlockExecutorAnnouncement(#[serde(skip_serializing)] BlockExecutorAnnouncement),
 
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(ConsensusAnnouncement),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
 
     /// Address Gossiper announcement.
     #[from]
-    AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
+    AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
 
     /// DeployAcceptor announcement.
     #[from]
-    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
 
     /// Linear chain announcement.
     #[from]
-    LinearChainAnnouncement(LinearChainAnnouncement),
+    LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
 }
 
 impl From<LinearChainRequest<NodeId>> for Event {

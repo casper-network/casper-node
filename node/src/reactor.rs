@@ -35,8 +35,10 @@ use std::{
     collections::HashMap,
     env,
     fmt::{Debug, Display},
+    fs::File,
     mem,
     str::FromStr,
+    sync::atomic::Ordering,
 };
 
 use datasize::DataSize;
@@ -54,6 +56,7 @@ use crate::{
 };
 use quanta::Clock;
 pub use queue_kind::QueueKind;
+use serde::Serialize;
 use tokio::time::{Duration, Instant};
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
@@ -293,6 +296,7 @@ impl Drop for RunnerMetrics {
 impl<R> Runner<R>
 where
     R: Reactor,
+    R::Event: Serialize,
     R::Error: From<prometheus::Error>,
 {
     /// Creates a new runner from a given configuration.
@@ -387,6 +391,23 @@ where
                 self.reactor.update_metrics(event_queue);
                 self.last_metrics = now;
             }
+        }
+
+        // Dump event queue if requested, stopping the world.
+        if crate::QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
+            debug!("dumping event queue as requested");
+            let output_fn = "queue_dump.json";
+            let mut serializer = serde_json::Serializer::pretty(
+                File::create(output_fn).expect("could not create output file for queue snapshot"),
+            );
+
+            self.scheduler
+                .snapshot(&mut serializer)
+                .await
+                .expect("could not serialize snapshot");
+
+            // Indicate we are done with the dump.
+            crate::QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
 
         let (event, q) = self.scheduler.pop().await;

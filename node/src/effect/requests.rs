@@ -12,6 +12,7 @@ use std::{
 
 use datasize::DataSize;
 use semver::Version;
+use serde::Serialize;
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -509,7 +510,7 @@ impl<I> Display for RestRequest<I> {
 }
 
 /// A contract runtime request.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub enum ContractRuntimeRequest {
     /// Get `ProtocolData` by `ProtocolVersion`.
@@ -529,6 +530,7 @@ pub enum ContractRuntimeRequest {
     /// An `ExecuteRequest` that contains multiple deploys that will be executed.
     Execute {
         /// Execution request containing deploys.
+        #[serde(skip_serializing)]
         execute_request: ExecuteRequest,
         /// Responder to call with the execution result.
         responder: Responder<Result<ExecutionResults, engine_state::RootNotFound>>,
@@ -538,6 +540,7 @@ pub enum ContractRuntimeRequest {
         /// A valid state root hash.
         state_root_hash: Digest,
         /// Effects obtained through `ExecutionResult`
+        #[serde(skip_serializing)]
         effects: AdditiveMap<Key, Transform>,
         /// Responder to call with the commit result.
         responder: Responder<Result<CommitResult, engine_state::Error>>,
@@ -545,6 +548,7 @@ pub enum ContractRuntimeRequest {
     /// A request to run upgrade.
     Upgrade {
         /// Upgrade config.
+        #[serde(skip_serializing)]
         upgrade_config: Box<UpgradeConfig>,
         /// Responder to call with the upgrade result.
         responder: Responder<Result<UpgradeResult, engine_state::Error>>,
@@ -552,6 +556,7 @@ pub enum ContractRuntimeRequest {
     /// A query request.
     Query {
         /// Query request.
+        #[serde(skip_serializing)]
         query_request: QueryRequest,
         /// Responder to call with the query result.
         responder: Responder<Result<QueryResult, engine_state::Error>>,
@@ -559,6 +564,7 @@ pub enum ContractRuntimeRequest {
     /// A balance request.
     GetBalance {
         /// Balance request.
+        #[serde(skip_serializing)]
         balance_request: BalanceRequest,
         /// Responder to call with the balance result.
         responder: Responder<Result<BalanceResult, engine_state::Error>>,
@@ -566,6 +572,7 @@ pub enum ContractRuntimeRequest {
     /// Returns validator weights.
     GetEraValidators {
         /// Get validators weights request.
+        #[serde(skip_serializing)]
         request: EraValidatorsRequest,
         /// Responder to call with the result.
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
@@ -573,6 +580,7 @@ pub enum ContractRuntimeRequest {
     /// Returns validator weights for given era.
     GetValidatorWeightsByEraId {
         /// Get validators weights request.
+        #[serde(skip_serializing)]
         request: ValidatorWeightsByEraIdRequest,
         /// Responder to call with the result.
         responder: Responder<Result<Option<ValidatorWeights>, GetEraValidatorsError>>,
@@ -581,6 +589,7 @@ pub enum ContractRuntimeRequest {
     /// end of an era.
     Step {
         /// The step request.
+        #[serde(skip_serializing)]
         step_request: StepRequest,
         /// Responder to call with the result.
         responder: Responder<Result<StepResult, engine_state::Error>>,
@@ -748,7 +757,7 @@ pub enum ConsensusRequest {
 }
 
 /// ChainspecLoader componenent requests.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum ChainspecLoaderRequest {
     /// Chainspec info request.
     GetChainspecInfo(Responder<ChainspecInfo>),

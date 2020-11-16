@@ -5,6 +5,7 @@ use std::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::{
@@ -26,7 +27,7 @@ use crate::{
 };
 
 /// Top-level event for the reactor.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 #[must_use]
 pub enum Event {
     /// Chainspec handler event.
@@ -35,7 +36,7 @@ pub enum Event {
 
     /// Storage event.
     #[from]
-    Storage(storage::Event),
+    Storage(#[serde(skip_serializing)] storage::Event),
 
     /// Contract runtime event.
     #[from]

@@ -8,6 +8,9 @@ use std::{
 
 use derive_more::From;
 use prometheus::Registry;
+use rand::Rng;
+use serde::Serialize;
+use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 use tracing::debug;
@@ -34,29 +37,27 @@ use crate::{
     utils::{Loadable, WithDir},
     NodeRng,
 };
-use rand::Rng;
-use tempfile::TempDir;
 
 /// Top-level event for the reactor.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 #[must_use]
 enum Event {
     #[from]
-    Storage(storage::Event),
+    Storage(#[serde(skip_serializing)] storage::Event),
     #[from]
-    DeployAcceptor(deploy_acceptor::Event),
+    DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
-    DeployGossiper(super::Event<Deploy>),
+    DeployGossiper(#[serde(skip_serializing)] super::Event<Deploy>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, NodeMessage>),
+    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, NodeMessage>),
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, NodeMessage>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, NodeMessage>),
     #[from]
-    RpcServerAnnouncement(RpcServerAnnouncement),
+    RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
-    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     #[from]
-    DeployGossiperAnnouncement(GossiperAnnouncement<Deploy>),
+    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
 }
 
 impl From<StorageRequest> for Event {
