@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{collections::BTreeSet, fmt::Debug};
 
 use serde::{Deserialize, Serialize};
 
@@ -80,6 +80,21 @@ impl<C: Context> Vertex<C> {
             Vertex::Endorsements(_) => None,
         }
     }
+
+    pub(crate) fn signed_wire_unit(&self) -> Option<&SignedWireUnit<C>> {
+        match self {
+            Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn id(&self) -> Dependency<C> {
+        match self {
+            Vertex::Unit(signed_wire_unit) => Dependency::Unit(signed_wire_unit.wire_unit.hash()),
+            Vertex::Evidence(evidence) => Dependency::Evidence(evidence.perpetrator()),
+            Vertex::Endorsements(endorsement) => Dependency::Endorsement(endorsement.unit),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -124,7 +139,7 @@ pub(crate) struct WireUnit<C: Context> {
     pub(crate) seq_number: u64,
     pub(crate) timestamp: Timestamp,
     pub(crate) round_exp: u8,
-    pub(crate) endorsed: Vec<C::Hash>,
+    pub(crate) endorsed: BTreeSet<C::Hash>,
 }
 
 impl<C: Context> Debug for WireUnit<C> {

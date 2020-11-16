@@ -84,16 +84,10 @@ pub const METHOD_WITHDRAW_VALIDATOR_REWARD: &str = "withdraw_validator_reward";
 /// Named constant for method `read_era_id`.
 pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 
-/// Storage for `BidPurses`.
-pub const BID_PURSES_KEY: &str = "bid_purses";
 /// Storage for `UnbondingPurses`
 pub const UNBONDING_PURSES_KEY: &str = "unbonding_purses";
 /// Storage for `Bids`.
 pub const BIDS_KEY: &str = "bids";
-/// Storage for `Delegators`.
-pub const DELEGATORS_KEY: &str = "delegators";
-/// Storage for `EraValidators`.
-pub const ERA_VALIDATORS_KEY: &str = "era_validators";
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";
 /// Storage for `SeigniorageRecipientsSnapshot`.
@@ -102,10 +96,6 @@ pub const SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY: &str = "seigniorage_recipients_sn
 pub const DELEGATOR_REWARD_PURSE_KEY: &str = "delegator_reward_purse";
 /// Storage for validator reward purse
 pub const VALIDATOR_REWARD_PURSE_KEY: &str = "validator_reward_purse";
-/// Storage for `DelegatorRewardMap`.
-pub const DELEGATOR_REWARD_MAP_KEY: &str = "delegator_reward_map";
-/// Storage for `ValidatorRewardMap`.
-pub const VALIDATOR_REWARD_MAP_KEY: &str = "validator_reward_map";
 /// Total validator slots allowed.
 pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
 /// Amount of auction delay.

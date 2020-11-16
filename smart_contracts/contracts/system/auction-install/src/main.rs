@@ -10,15 +10,12 @@ use casper_contract::{
 };
 use casper_types::{
     auction::{
-        Bid, BidPurses, Bids, DelegatorRewardMap, Delegators, EraId, EraValidators,
-        SeigniorageRecipient, SeigniorageRecipients, SeigniorageRecipientsSnapshot,
-        UnbondingPurses, ValidatorRewardMap, ValidatorWeights, ARG_AUCTION_DELAY,
+        Bid, Bids, EraId, SeigniorageRecipient, SeigniorageRecipients,
+        SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_AUCTION_DELAY,
         ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY, BID_PURSES_KEY, DELEGATORS_KEY,
-        DELEGATOR_REWARD_MAP_KEY, DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, ERA_VALIDATORS_KEY,
+        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY, DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY,
         INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP_KEY, VALIDATOR_REWARD_PURSE_KEY,
-        VALIDATOR_SLOTS_KEY,
+        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
@@ -52,9 +49,6 @@ pub extern "C" fn install() {
         let genesis_validators: BTreeMap<PublicKey, U512> =
             runtime::get_named_arg(ARG_GENESIS_VALIDATORS);
 
-        // Initial bid purses calculated based on founder validator stakes
-        let mut bid_purses = BidPurses::new();
-
         // List of validators for initial era.
         let mut initial_validator_weights = ValidatorWeights::new();
 
@@ -63,7 +57,6 @@ pub extern "C" fn install() {
             let founding_validator = Bid::locked(bonding_purse, amount, locked_funds_period);
             validators.insert(validator_public_key, founding_validator);
             initial_validator_weights.insert(validator_public_key, amount);
-            bid_purses.insert(validator_public_key, bonding_purse);
         }
 
         let auction_delay: u64 = runtime::get_named_arg(ARG_AUCTION_DELAY);
@@ -71,11 +64,6 @@ pub extern "C" fn install() {
 
         // Starting era validators
         named_keys.insert(ERA_ID_KEY.into(), storage::new_uref(INITIAL_ERA_ID).into());
-
-        let mut era_validators = EraValidators::new();
-        for era_index in initial_snapshot_range.clone() {
-            era_validators.insert(era_index, initial_validator_weights.clone());
-        }
 
         let seigniorage_recipients = compute_seigniorage_recipients(&validators);
 
@@ -89,15 +77,6 @@ pub extern "C" fn install() {
         );
         named_keys.insert(BIDS_KEY.into(), storage::new_uref(validators).into());
         named_keys.insert(
-            DELEGATORS_KEY.into(),
-            storage::new_uref(Delegators::new()).into(),
-        );
-        named_keys.insert(
-            ERA_VALIDATORS_KEY.into(),
-            storage::new_uref(era_validators).into(),
-        );
-        named_keys.insert(BID_PURSES_KEY.into(), storage::new_uref(bid_purses).into());
-        named_keys.insert(
             UNBONDING_PURSES_KEY.into(),
             storage::new_uref(UnbondingPurses::new()).into(),
         );
@@ -108,14 +87,6 @@ pub extern "C" fn install() {
         named_keys.insert(
             VALIDATOR_REWARD_PURSE_KEY.into(),
             create_purse(mint_package_hash, U512::zero()).into(),
-        );
-        named_keys.insert(
-            DELEGATOR_REWARD_MAP_KEY.into(),
-            storage::new_uref(DelegatorRewardMap::new()).into(),
-        );
-        named_keys.insert(
-            VALIDATOR_REWARD_MAP_KEY.into(),
-            storage::new_uref(ValidatorRewardMap::new()).into(),
         );
         named_keys.insert(
             VALIDATOR_SLOTS_KEY.into(),

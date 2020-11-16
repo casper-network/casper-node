@@ -14,10 +14,8 @@ use casper_types::{
     auction::{
         ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
         ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY,
-        BID_PURSES_KEY, DELEGATORS_KEY, DELEGATOR_REWARD_MAP_KEY, DELEGATOR_REWARD_PURSE_KEY,
-        ERA_ID_KEY, ERA_VALIDATORS_KEY, LOCKED_FUNDS_PERIOD_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY, VALIDATOR_REWARD_MAP_KEY,
-        VALIDATOR_REWARD_PURSE_KEY,
+        DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY, VALIDATOR_REWARD_PURSE_KEY,
     },
     runtime_args, ContractHash, RuntimeArgs, U512,
 };
@@ -29,7 +27,7 @@ const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
 
 // one named_key for each validator and three for the purses, one for validator slots, one for
 // auction_delay, one for locked_funds_period.
-const EXPECTED_KNOWN_KEYS_LEN: usize = 14;
+const EXPECTED_KNOWN_KEYS_LEN: usize = 9;
 
 #[ignore]
 #[test]
@@ -103,16 +101,11 @@ fn should_run_auction_install_contract() {
     assert_eq!(named_keys.len(), EXPECTED_KNOWN_KEYS_LEN);
 
     assert!(named_keys.contains_key(BIDS_KEY));
-    assert!(named_keys.contains_key(DELEGATORS_KEY));
-    assert!(named_keys.contains_key(ERA_VALIDATORS_KEY));
     assert!(named_keys.contains_key(AUCTION_DELAY_KEY));
     assert!(named_keys.contains_key(LOCKED_FUNDS_PERIOD_KEY));
     assert!(named_keys.contains_key(ERA_ID_KEY));
     assert!(named_keys.contains_key(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY));
-    assert!(named_keys.contains_key(BID_PURSES_KEY));
     assert!(named_keys.contains_key(UNBONDING_PURSES_KEY));
     assert!(named_keys.contains_key(DELEGATOR_REWARD_PURSE_KEY));
     assert!(named_keys.contains_key(VALIDATOR_REWARD_PURSE_KEY));
-    assert!(named_keys.contains_key(DELEGATOR_REWARD_MAP_KEY));
-    assert!(named_keys.contains_key(VALIDATOR_REWARD_MAP_KEY));
 }

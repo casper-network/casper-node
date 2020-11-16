@@ -9,7 +9,7 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        BidPurses, Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BID_PURSES_KEY, BLOCK_REWARD,
+        Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_PURSE_KEY,
     },
     ContractHash, Key, ProtocolVersion, PublicKey,
@@ -95,11 +95,11 @@ fn should_step() {
         bids_before_slashing
     );
 
-    let bid_purses_before_slashing: BidPurses = builder.get_value(auction_hash, BID_PURSES_KEY);
+    let bids_before_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert!(
-        bid_purses_before_slashing.contains_key(&ACCOUNT_1_PK),
-        "should have bid purse in the bids purses table {:?}",
-        bid_purses_before_slashing
+        bids_before_slashing.contains_key(&ACCOUNT_1_PK),
+        "should have entry in bids table before slashing {:?}",
+        bids_before_slashing
     );
 
     builder.step(step_request);
@@ -109,13 +109,6 @@ fn should_step() {
         !bids_after_slashing.contains_key(&ACCOUNT_1_PK),
         "should not have entry in bids table after slashing {:?}",
         bids_after_slashing
-    );
-
-    // bid purses should not have slashed validator after slashing
-    let bid_purses_after_slashing: BidPurses = builder.get_value(auction_hash, BID_PURSES_KEY);
-    assert!(
-        !bid_purses_after_slashing.contains_key(&ACCOUNT_1_PK),
-        "should not contain slashed validator)"
     );
 
     // reward purse balance should not be the same after reward distribution

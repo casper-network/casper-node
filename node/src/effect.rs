@@ -91,7 +91,10 @@ use casper_execution_engine::{
     shared::{additive_map::AdditiveMap, transform::Transform},
     storage::{global_state::CommitResult, protocol_data::ProtocolData},
 };
-use casper_types::{auction::ValidatorWeights, Key, ProtocolVersion};
+use casper_types::{
+    auction::{EraValidators, ValidatorWeights},
+    Key, ProtocolVersion,
+};
 
 use crate::{
     components::{
@@ -116,7 +119,6 @@ use announcements::{
     BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
     GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
 };
-use casper_types::auction::EraValidators;
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,

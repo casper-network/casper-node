@@ -1,6 +1,9 @@
 #![allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 
-use std::{collections::hash_map::DefaultHasher, hash::Hasher};
+use std::{
+    collections::{hash_map::DefaultHasher, BTreeSet},
+    hash::Hasher,
+};
 
 use rand::{Rng, RngCore};
 
@@ -18,6 +21,8 @@ pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
 pub(crate) const ALICE: ValidatorIndex = ValidatorIndex(0);
 pub(crate) const BOB: ValidatorIndex = ValidatorIndex(1);
 pub(crate) const CAROL: ValidatorIndex = ValidatorIndex(2);
+pub(crate) const DAN: ValidatorIndex = ValidatorIndex(3);
+pub(crate) const ERIC: ValidatorIndex = ValidatorIndex(4);
 
 pub(crate) const N: Observation<TestContext> = Observation::None;
 pub(crate) const F: Observation<TestContext> = Observation::Faulty;
@@ -157,7 +162,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
         seq_number: 3,
         timestamp: 51.into(),
         round_exp: 4u8,
-        endorsed: vec![],
+        endorsed: BTreeSet::new(),
     };
     let unit = SignedWireUnit::new(wunit.clone(), &BOB_SEC, &mut rng);
     let opt_err = state.add_unit(unit).err().map(unit_err);
@@ -300,6 +305,164 @@ fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
     // The fork choice is now `b2`: At height 1, `a0` wins against `c0`.
     // At height 2, `b2` wins against `a1`. `c1` has most points but is not a child of `a0`.
     assert_eq!(Some(&b2), state.fork_choice(&state.panorama));
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
+    let mut state = State::new_test(WEIGHTS, 0);
+    let mut rng = crate::new_rng();
+
+    // No equivocations – incoming vote doesn't violate LNC.
+    // Create votes as follows; a0, b0 are blocks:
+    //
+    // Alice: a0 — a1
+    //           /
+    // Bob:   b0
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB; N, N, N)?;
+
+    // a1 does not violate LNC
+    let wvote = WireUnit {
+        panorama: panorama!(a0, b0, N),
+        creator: ALICE,
+        instance_id: 1u64,
+        value: None,
+        seq_number: 1,
+        timestamp: 51.into(),
+        round_exp: 4u8,
+        endorsed: BTreeSet::new(),
+    };
+    assert_eq!(state.validate_lnc(&wvote), None);
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
+    // Equivocation cited by one honest validator in the vote's panorama.
+    // Does NOT violate LNC.
+    //
+    // Bob:      b0
+    //          / |
+    // Alice: a0  |
+    //            |
+    //        a0' |
+    //           \|
+    // Carol:    c0
+    let mut state = State::new_test(WEIGHTS, 0);
+    let mut rng = crate::new_rng();
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB; a0, N, N)?;
+    let _a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N)?;
+    // c0 does not violate LNC b/c it sees Alice as faulty.
+    let c0 = WireUnit {
+        panorama: panorama!(F, b0, N),
+        creator: CAROL,
+        instance_id: 1u64,
+        value: None,
+        seq_number: 0,
+        timestamp: 51.into(),
+        round_exp: 4u8,
+        endorsed: BTreeSet::new(),
+    };
+    assert_eq!(state.validate_lnc(&c0), None);
+    Ok(())
+}
+
+#[test]
+#[ignore]
+fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
+    // Equivocation cited by two honest validators in the vote's panorama – their votes need to
+    // be endorsed.
+    //
+    // Bob:      b0
+    //          / \
+    // Alice: a0   \
+    //              \
+    //        a0'    \
+    //           \   |
+    // Carol:    c0  |
+    //             \ |
+    // Dan:         d0
+
+    let weights_dan = &[Weight(3), Weight(4), Weight(5), Weight(5)];
+    let mut state = State::new_test(weights_dan, 0);
+    let mut rng = crate::new_rng();
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N)?;
+    let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB; a0, N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 0xB2; a0_prime, N, N, N)?;
+    // d0 violates LNC b/c it naively cites Alice's equivocation.
+    let mut d0 = WireUnit {
+        panorama: panorama!(F, b0, c0, N),
+        creator: DAN,
+        instance_id: 1u64,
+        value: None,
+        seq_number: 0,
+        timestamp: 51.into(),
+        round_exp: 4u8,
+        endorsed: BTreeSet::new(),
+    };
+    // None of the votes is marked as being endorsed – violates LNC.
+    assert_eq!(state.validate_lnc(&d0), Some(ALICE));
+    d0.endorsed.insert(c0);
+    endorse!(state, rng, CAROL, c0);
+    // One endorsement isn't enough.
+    assert_eq!(state.validate_lnc(&d0), Some(ALICE));
+    endorse!(state, rng, BOB, c0);
+    endorse!(state, rng, DAN, c0);
+    // Now d0 cites non-naively b/c c0 is endorsed.
+    assert_eq!(state.validate_lnc(&d0), None);
+    Ok(())
+}
+
+#[test]
+#[ignore]
+fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
+    // Multiple equivocators and indirect equivocations.
+    // Votes are seen as endorsed by `state` – does not violate LNC.
+    //
+    // Alice   a0<---------+
+    //                     |
+    //         a0'<--+     |
+    //               |     |
+    // Bob          b0<-----------+
+    //               |     |      |
+    // Carol   c0<---+     |      |
+    //                     |      |
+    //         c0'<--------+      |
+    //                     |      |
+    // Dan                 d0<----+
+    //                            |
+    // Eric                       e0
+
+    let weights_dan_eric = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
+    let mut state = State::new_test(weights_dan_eric, 0);
+    let mut rng = crate::new_rng();
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N, N)?;
+    let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 0xC; N, N, N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB; a0_prime, N, c0, N, N)?;
+    let c0_prime = add_unit!(state, rng, CAROL, 0xC2; N, N, N, N, N)?;
+    let d0 = add_unit!(state, rng, DAN, 0xD; a0, N, c0_prime, N, N)?;
+    // e0 violates LNC b/c it naively cites Alice's & Carol's equivocations.
+    let mut e0 = WireUnit {
+        panorama: panorama!(F, b0, F, d0, N),
+        creator: ERIC,
+        instance_id: 1u64,
+        value: None,
+        seq_number: 0,
+        timestamp: 52.into(),
+        round_exp: 4u8,
+        endorsed: BTreeSet::new(),
+    };
+    assert_eq!(state.validate_lnc(&e0), Some(ALICE));
+    e0.endorsed.insert(b0);
+    // Endorse b0.
+    endorse!(state, rng, BOB, b0);
+    endorse!(state, rng, DAN, b0);
+    endorse!(state, rng, ERIC, b0);
+    assert_eq!(state.validate_lnc(&e0), None);
     Ok(())
 }
 
