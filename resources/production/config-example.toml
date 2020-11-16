@@ -129,16 +129,22 @@ path = '/root/.local/share/casper-node'
 # Maximum size of the database to use for the block store.
 #
 # The size should be a multiple of the OS page size.
+#
+# 483_183_820_800 == 450 GiB.
 max_block_store_size = 483_183_820_800
 
 # Maximum size of the database to use for the deploy store.
 #
 # The size should be a multiple of the OS page size.
+#
+# 322_122_547_200 == 300 GiB.
 max_deploy_store_size = 322_122_547_200
 
 # Maximum size of the database to use for the deploy metadata.
 #
 # The size should be a multiple of the OS page size.
+#
+# 322_122_547_200 == 300 GiB.
 max_deploy_metadata_store_size = 322_122_547_200
 
 
