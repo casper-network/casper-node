@@ -397,10 +397,9 @@ where
         if crate::QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
             debug!("dumping event queue as requested");
             let output_fn = "queue_dump.json";
-            let mut serializer = serde_json::Serializer::pretty(File::create(output_fn).expect(
-                "could not create output file for queue
-            snapshot",
-            ));
+            let mut serializer = serde_json::Serializer::pretty(
+                File::create(output_fn).expect("could not create output file for queue snapshot"),
+            );
 
             self.scheduler
                 .snapshot(&mut serializer)
