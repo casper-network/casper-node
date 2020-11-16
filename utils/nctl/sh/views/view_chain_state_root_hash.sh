@@ -7,10 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-source $NCTL/sh/utils/queries.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -34,12 +30,24 @@ done
 
 # Set defaults.
 net=${net:-1}
-node=${node:-1}
+node=${node:-"all"}
 
 #######################################
 # Main
 #######################################
 
-node_address=$(get_node_address_rpc $net $node)
-state_root_hash=$(get_state_root_hash $net $node $block)
-log "STATE ROOT HASH @ "$node_address" :: "$state_root_hash
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Render state root hash.
+if [ $node = "all" ]; then
+    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    do
+        render_chain_state_root_hash $net $idx $block
+    done
+else
+    render_chain_state_root_hash $net $node $block
+fi

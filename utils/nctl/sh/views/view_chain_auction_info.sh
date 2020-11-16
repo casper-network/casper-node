@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -37,6 +34,10 @@ node=${node:-1}
 # Main
 #######################################
 
-$NCTL/assets/net-$net/bin/casper-client get-auction-info \
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Render node API result.
+$(get_path_to_client $net) get-auction-info \
     --node-address $(get_node_address_rpc $net $node) \
     | jq '.result'

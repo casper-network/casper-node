@@ -8,9 +8,6 @@
 #   Node ordinal identifier.
 #   Deploy hash.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -40,7 +37,10 @@ node=${node:-1}
 # Main
 #######################################
 
-$NCTL/assets/net-$net/bin/casper-client get-deploy \
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+$(get_path_to_client $net) get-deploy \
     --node-address $(get_node_address_rpc $net $node) \
     $deploy_hash \
     | jq '.result'

@@ -8,9 +8,6 @@
 #   Node ordinal identifier.
 #   Block hash (optional).
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -41,13 +38,16 @@ node=${node:-1}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
 if [ "$block_hash" ]; then
-    $NCTL/assets/net-$net/bin/casper-client get-block \
+    $(get_path_to_client $net) get-block \
         --node-address $(get_node_address_rpc $net $node) \
         --block-identifier $block_hash \
         | jq '.result.block'
 else
-    $NCTL/assets/net-$net/bin/casper-client get-block \
+    $(get_path_to_client $net) get-block \
         --node-address $(get_node_address_rpc $net $node) \
         | jq '.result.block'
 fi

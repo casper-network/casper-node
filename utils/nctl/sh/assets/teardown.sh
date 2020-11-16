@@ -7,9 +7,6 @@
 # Arguments:
 #   Network ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -33,6 +30,9 @@ net=${net:-1}
 #######################################
 # Main
 #######################################
+
+# Import utils.
+source $NCTL/sh/utils/misc.sh
 
 log "network #$net: tearing down assets ... please wait"
 

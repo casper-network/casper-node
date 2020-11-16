@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Displays to stdout current node metrics.
 # Globals:
@@ -58,11 +55,17 @@ node=${node:-"all"}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Render metrics.
 if [ $node = "all" ]; then
-    source $NCTL/assets/net-$net/vars
-    for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        _view_metrics $net $node_idx $metric
+        _view_metrics $net $idx $metric
     done
 else
     _view_metrics $net $node $metric
