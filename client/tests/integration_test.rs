@@ -12,6 +12,7 @@ use casper_node::rpcs::{
     account::{PutDeploy, PutDeployParams},
     chain::{GetStateRootHash, GetStateRootHashParams},
     info::{GetDeploy, GetDeployParams},
+    state::{GetBalance, GetBalanceParams},
     RpcWithOptionalParams, RpcWithParams,
 };
 
@@ -31,6 +32,11 @@ struct MockServerHandle {
     graceful_shutdown: Option<oneshot::Sender<()>>,
     server_joiner: Option<JoinHandle<Result<(), hyper::error::Error>>>,
     address: SocketAddr,
+}
+impl MockServerHandle {
+    fn url(&self) -> String {
+        format!("http://{}", self.address)
+    }
 }
 impl Drop for MockServerHandle {
     fn drop(&mut self) {
@@ -69,13 +75,83 @@ where
     }
 }
 
+/// NewType wrapper for client errors allowing impl of PartialEq for assert_eq! and test variants.
+#[derive(Debug)]
+struct ErrWrapper(Error);
+
+impl PartialEq for ErrWrapper {
+    fn eq(&self, other: &ErrWrapper) -> bool {
+        format!("{:?}", self.0) == format!("{:?}", other.0)
+    }
+}
+
+const VALID_PURSE_UREF: &str =
+    "uref-0127d7f966ee38a85aaf7cd869c51553f7e1a162ede9d772899fbef2f59da2f085-123";
+
+const VALID_STATE_HASH: &str = "ab75dbf91b51a3d4ee20b907d6b6b35caa2438c27fa68d3672cfac8649b0c17c";
+
+#[tokio::test(threaded_scheduler)]
+async fn client_get_balance_tests() {
+    use casper_node::crypto::Error::*;
+    use hex::FromHexError::*;
+    use Error::*;
+
+    let server_handle = spawn_mock_rpc_server::<GetBalanceParams>(GetBalance::METHOD);
+    let expected_values = vec![
+        (
+            "get_balance should succeed when a valid purse and state hash are provided",
+            (VALID_PURSE_UREF, VALID_STATE_HASH),
+            Ok(()),
+        ),
+        (
+            "get_balance should raise error when all arguments are empty",
+            ("", ""),
+            Err(CryptoError(FromHex(InvalidStringLength))),
+        ),
+        (
+            "get_balance should fail with empty state_root_hash",
+            (VALID_PURSE_UREF, ""),
+            Err(CryptoError(FromHex(OddLength))),
+        ),
+        (
+            "get_balance should fail with empty purse-uref aurgument",
+            ("", VALID_STATE_HASH),
+            Err(CryptoError(FromHex(InvalidStringLength))),
+        ),
+        (
+            "get_balance should fail with bad state_root_hash value",
+            (VALID_PURSE_UREF, "deadbeef"),
+            Err(CryptoError(FromHex(OddLength))),
+        ),
+    ];
+
+    for (description, (purse_uref, state_root_hash), expected) in expected_values {
+        let response = casper_client::get_balance(
+            "1",
+            &server_handle.url(),
+            false,
+            purse_uref,
+            state_root_hash,
+        );
+        let expected = expected.map_err(ErrWrapper);
+        let result = response.map(|_| ()).map_err(ErrWrapper);
+        if result != expected {
+            assert_eq!(
+                result, expected,
+                "{} {} {}",
+                description, purse_uref, state_root_hash
+            );
+        }
+    }
+}
+
 #[tokio::test(threaded_scheduler)]
 async fn client_should_send_get_state_root_hash() {
     let server_handle = spawn_mock_rpc_server::<GetStateRootHashParams>(GetStateRootHash::METHOD);
 
     let response = casper_client::get_state_root_hash(
         "1",
-        &format!("http://{}", server_handle.address),
+        &server_handle.url(),
         false,
         "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
     );
@@ -94,7 +170,7 @@ async fn client_should_send_get_deploy() {
 
     let response = casper_client::get_deploy(
         "1",
-        &format!("http://{}", server_handle.address),
+        &server_handle.url(),
         false,
         "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
     );
@@ -113,7 +189,7 @@ async fn client_should_send_put_deploy() {
 
     let response = casper_client::put_deploy(
         "1",
-        &format!("http://{}", server_handle.address),
+        &server_handle.url(),
         false,
         DeployStrParams {
             secret_key: "../resources/local/secret_keys/node-1.pem",
