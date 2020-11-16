@@ -74,18 +74,9 @@ fn test() {
         Some(ProtocolOutcome::InvalidIncomingMessage(invalid_msg, offending_sender, _err)) => {
             assert_eq!(
                 invalid_msg, &msg,
-                "Invalid message is not message that was sent.\
-                  Invalid message in protocol outcome: {:?} ;\
-                  Message that was sent: {:?}",
-                invalid_msg, &msg
+                "Invalid message is not message that was sent."
             );
-            assert_eq!(
-                offending_sender, &sender,
-                "Unexpected sender.\
-                  Sender according to protocol outcome: {:?} ;\
-                  message that was sent: {:?}",
-                offending_sender, &sender
-            )
+            assert_eq!(offending_sender, &sender, "Unexpected sender.")
         }
         Some(protocol_outcome) => panic!("Unexpected protocol outcome {:?}", protocol_outcome),
     }
