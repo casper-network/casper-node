@@ -123,7 +123,7 @@ impl WriteTransactionExt for RwTransaction<'_> {
         value: &V,
         overwrite: bool,
     ) -> Result<bool, LmdbExtError> {
-        let buffer = ser(value).expect("TODO");
+        let buffer = ser(value)?;
 
         let flags = if overwrite {
             WriteFlags::empty()
