@@ -211,6 +211,9 @@ mod args_complex {
 
 const STANDARD_PAYMENT_ARG_NAME: &str = "amount";
 fn standard_payment(value: &str) -> Result<RuntimeArgs> {
+    if value.is_empty() {
+        return Err(Error::InvalidCLValue(value.to_string()))
+    }
     let arg = U512::from_dec_str(value)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
     let mut runtime_args = RuntimeArgs::new();
@@ -286,7 +289,7 @@ pub(super) fn parse_session_info(
         );
     }
 
-    if let Ok(session_hash) = hash(session_hash) {
+    if let Some(session_hash) = parse_contract_hash(session_hash)? {
         return ExecutableDeployItem::new_stored_contract_by_hash(
             session_hash,
             entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
@@ -304,13 +307,17 @@ pub(super) fn parse_session_info(
         );
     }
 
-    if let Ok(package_hash) = hash(session_package_hash) {
+    if let Some(package_hash) = parse_contract_hash(session_package_hash)? {
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
             package_hash,
             version,
             entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             session_args,
         );
+    }
+
+    if session_path.is_empty() {
+        return Err(Error::InvalidArgument("payment_path", "<empty>".to_string()))
     }
 
     let module_bytes = fs::read(session_path).map_err(|error| Error::IoError {
@@ -353,7 +360,7 @@ pub(super) fn parse_payment_info(
         );
     }
 
-    if let Ok(payment_hash) = hash(payment_hash) {
+    if let Some(payment_hash) = parse_contract_hash(payment_hash)? {
         return ExecutableDeployItem::new_stored_contract_by_hash(
             payment_hash,
             entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
@@ -371,13 +378,17 @@ pub(super) fn parse_payment_info(
         );
     }
 
-    if let Ok(package_hash) = hash(payment_package_hash) {
+    if let Some(package_hash) = parse_contract_hash(payment_package_hash)? {
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
             package_hash,
             version,
             entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
         );
+    }
+
+    if payment_path.is_empty() {
+        return Err(Error::InvalidArgument("payment_path", "<empty>".to_string()))
     }
 
     let module_bytes = fs::read(payment_path).map_err(|error| Error::IoError {
@@ -409,18 +420,17 @@ pub(crate) fn output(value: &str) -> Option<&str> {
     none_if_empty(value)
 }
 
-fn parse_contract_hash(value: &str) -> Result<ContractHash> {
+fn parse_contract_hash(value: &str) -> Result<Option<ContractHash>> {
+    if value.is_empty() {
+        return Ok(None)
+    }
     if let Ok(digest) = Digest::from_hex(value) {
-        return Ok(digest.to_array());
+        return Ok(Some(digest.to_array()));
     }
     if let Ok(Key::Hash(hash)) = Key::from_formatted_str(value) {
-        return Ok(hash);
+        return Ok(Some(hash));
     }
     Err(Error::FailedToParseKey)
-}
-
-fn hash(value: &str) -> Result<ContractHash> {
-    parse_contract_hash(value)
 }
 
 fn name(value: &str) -> Option<String> {

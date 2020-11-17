@@ -781,3 +781,280 @@ impl<'a> SessionStrParams<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod param_tests {
+    use super::*;
+
+    #[derive(Debug)]
+    struct ErrWrapper(pub Error);
+
+    impl PartialEq for ErrWrapper {
+        fn eq(&self, other: &ErrWrapper) -> bool {
+            format!("{:?}", self.0) == format!("{:?}", other.0)
+        }
+    }
+
+    const HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
+    const NAME: &str = "name";
+    const PKG_NAME: &str = "pkg_name";
+    const PKG_HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
+    const ENTRYPOINT: &str = "entrypoint";
+    const VERSION: &str = "0.1.0";
+    const PATH: &str = "../target/wasm32-unknown-unknown/release/standard_payment.wasm";
+
+    fn args_simple() -> Vec<&'static str> {
+        vec!["name_01:bool='false'", "name_02:u32='42'"]
+    }
+
+    /// Sample data creation methods for PaymentStrParams
+    mod session_params {
+        use std::collections::BTreeMap;
+
+        use casper_types::CLValue;
+
+        use super::*;
+
+        #[test]
+        pub fn with_hash() {
+            let params: Result<ExecutableDeployItem> =
+                SessionStrParams::with_hash(HASH, ENTRYPOINT, args_simple(), "").try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::StoredContractByHash { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let mut expected = BTreeMap::new();
+                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
+                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
+                    assert_eq!(actual, expected);
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+
+        #[test]
+        pub fn with_name() {
+            let params: Result<ExecutableDeployItem> =
+                SessionStrParams::with_name(NAME, ENTRYPOINT, args_simple(), "").try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::StoredContractByName { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let mut expected = BTreeMap::new();
+                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
+                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
+                    assert_eq!(actual, expected);
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+
+        #[test]
+        pub fn with_package_name() {
+            let params: Result<ExecutableDeployItem> = SessionStrParams::with_package_name(
+                PKG_NAME,
+                VERSION,
+                ENTRYPOINT,
+                args_simple(),
+                "",
+            )
+            .try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::StoredVersionedContractByName { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let mut expected = BTreeMap::new();
+                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
+                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
+                    assert_eq!(actual, expected);
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+
+        #[test]
+        pub fn with_package_hash() {
+            let params: Result<ExecutableDeployItem> = SessionStrParams::with_package_hash(
+                PKG_HASH,
+                VERSION,
+                ENTRYPOINT,
+                args_simple(),
+                "",
+            )
+            .try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::StoredVersionedContractByHash { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let mut expected = BTreeMap::new();
+                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
+                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
+                    assert_eq!(actual, expected);
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+
+        #[test]
+        pub fn with_path() {
+            let params: Result<ExecutableDeployItem> =
+                SessionStrParams::with_path(PATH, args_simple(), "").try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::ModuleBytes { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let mut expected = BTreeMap::new();
+                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
+                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
+                    assert_eq!(actual, expected);
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+    }
+
+    /// Sample data creation methods for PaymentStrParams
+    mod payment_params {
+        use std::collections::BTreeMap;
+
+        use casper_types::CLValue;
+
+        use super::*;
+
+        #[test]
+        pub fn with_amount() {
+            let params: Result<ExecutableDeployItem> =
+                PaymentStrParams::with_amount("100").try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::ModuleBytes { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let amount = CLValue::from_t(U512::from(100)).unwrap();
+                    assert_eq!(args.get("amount"), Some(&amount));
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+
+        #[test]
+        pub fn with_hash() {
+            let params: Result<ExecutableDeployItem> =
+                PaymentStrParams::with_hash(HASH, ENTRYPOINT, args_simple(), "").try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::StoredContractByHash { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let mut expected = BTreeMap::new();
+                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
+                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
+                    assert_eq!(actual, expected);
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+
+        #[test]
+        pub fn with_name() {
+            let params: Result<ExecutableDeployItem> =
+                PaymentStrParams::with_name(NAME, ENTRYPOINT, args_simple(), "").try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::StoredContractByName { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let mut expected = BTreeMap::new();
+                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
+                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
+                    assert_eq!(actual, expected);
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+
+        #[test]
+        pub fn with_package_name() {
+            let params: Result<ExecutableDeployItem> = PaymentStrParams::with_package_name(
+                PKG_NAME,
+                VERSION,
+                ENTRYPOINT,
+                args_simple(),
+                "",
+            )
+            .try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::StoredVersionedContractByName { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let mut expected = BTreeMap::new();
+                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
+                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
+                    assert_eq!(actual, expected);
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+
+        #[test]
+        pub fn with_package_hash() {
+            let params: Result<ExecutableDeployItem> = PaymentStrParams::with_package_hash(
+                PKG_HASH,
+                VERSION,
+                ENTRYPOINT,
+                args_simple(),
+                "",
+            )
+            .try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::StoredVersionedContractByHash { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let mut expected = BTreeMap::new();
+                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
+                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
+                    assert_eq!(actual, expected);
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+
+        #[test]
+        pub fn with_path() {
+            let params: Result<ExecutableDeployItem> =
+                PaymentStrParams::with_path(PATH, args_simple(), "").try_into();
+            match params {
+                Ok(item @ ExecutableDeployItem::ModuleBytes { .. }) => {
+                    let args = item.into_runtime_args().unwrap();
+                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let mut expected = BTreeMap::new();
+                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
+                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
+                    assert_eq!(actual, expected);
+                }
+                other => assert!(false, "incorrect type parsed {:?}", other),
+            }
+        }
+    }
+
+    mod deploy_str_params {
+        use super::*;
+
+        use std::{convert::TryInto, result::Result as StdResult};
+
+        use crate::DeployStrParams;
+
+        fn test_value() -> DeployStrParams<'static> {
+            DeployStrParams {
+                secret_key: "../resources/local/secret_keys/node-1.pem",
+                ttl: "10s",
+                chain_name: "casper-test-chain-name-1",
+                gas_price: "1",
+                ..Default::default()
+            }
+        }
+
+        #[test]
+        fn should_convert_into_deploy_params() {
+            let deploy_params: StdResult<DeployParams, ErrWrapper> =
+                test_value().try_into().map_err(ErrWrapper);
+            assert!(deploy_params.is_ok());
+        }
+    }
+}
