@@ -102,17 +102,15 @@ impl From<Secp256k1BytesArray> for Secp256k1Bytes {
 
 impl FromBytes for Secp256k1Bytes {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let mut result = [0; SECP256K1_PUBLIC_KEY_LENGTH];
-        let (secp256k1_bytes, rem) = bytesrepr::deserialize_array_slice(bytes, result.len())?;
-        result.copy_from_slice(secp256k1_bytes);
-        Ok((Secp256k1Bytes(result), rem))
+        let (secp256k1_bytes, rem) = FromBytes::from_bytes(bytes)?;
+        Ok((Secp256k1Bytes(secp256k1_bytes), rem))
     }
 }
 
 impl ToBytes for Secp256k1Bytes {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         // Without prefix similar to [u8; N] arrays.
-        bytesrepr::serialize_array(&self.0)
+        self.0.to_bytes()
     }
     fn serialized_length(&self) -> usize {
         SECP256K1_PUBLIC_KEY_LENGTH
@@ -203,7 +201,7 @@ impl ToBytes for PublicKey {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.variant_id().to_bytes()?);
         match self {
-            PublicKey::Ed25519(bytes) => buffer.extend(bytesrepr::serialize_array(bytes)?),
+            PublicKey::Ed25519(bytes) => buffer.extend(bytes.to_bytes()?),
             PublicKey::Secp256k1(bytes) => buffer.extend(bytes.to_bytes()?),
         }
         Ok(buffer)
@@ -212,7 +210,7 @@ impl ToBytes for PublicKey {
     fn serialized_length(&self) -> usize {
         PUBLIC_KEY_VARIANT_LENGTH
             + match self {
-                PublicKey::Ed25519(bytes) => bytesrepr::array_serialized_length(bytes),
+                PublicKey::Ed25519(bytes) => bytes.serialized_length(),
                 PublicKey::Secp256k1(bytes) => bytes.serialized_length(),
             }
     }
@@ -223,7 +221,7 @@ impl FromBytes for PublicKey {
         let (variant_id, bytes): (u8, _) = FromBytes::from_bytes(bytes)?;
         match variant_id {
             ED25519_VARIANT_ID => {
-                let (ed25519_bytes, bytes) = bytesrepr::deserialize_array(bytes)?;
+                let (ed25519_bytes, bytes) = FromBytes::from_bytes(bytes)?;
                 Ok((PublicKey::Ed25519(ed25519_bytes), bytes))
             }
             SECP256K1_VARIANT_ID => {

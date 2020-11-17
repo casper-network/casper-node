@@ -3,7 +3,7 @@
 use std::convert::TryInto;
 
 use crate::shared::newtypes::Blake2bHash;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 #[cfg(test)]
 pub mod gens;
@@ -146,9 +146,9 @@ impl ToBytes for PointerBlock {
 impl FromBytes for PointerBlock {
     fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let mut result = [None; RADIX];
-        for i in 0..RADIX {
+        for ith_result in &mut result {
             let (pointer, rem) = FromBytes::from_bytes(bytes)?;
-            result[i] = pointer;
+            *ith_result = pointer;
             bytes = rem;
         }
         Ok((PointerBlock(result), bytes))
@@ -231,7 +231,7 @@ impl ::std::fmt::Debug for PointerBlock {
 pub enum Trie<K, V> {
     Leaf { key: K, value: V },
     Node { pointer_block: Box<PointerBlock> },
-    Extension { affix: Vec<u8>, pointer: Pointer },
+    Extension { affix: Bytes, pointer: Pointer },
 }
 
 impl<K, V> Trie<K, V> {
@@ -257,7 +257,10 @@ impl<K, V> Trie<K, V> {
 
     /// Constructs a [`Trie::Extension`] from a given affix and pointer.
     pub fn extension(affix: Vec<u8>, pointer: Pointer) -> Self {
-        Trie::Extension { affix, pointer }
+        Trie::Extension {
+            affix: affix.into(),
+            pointer,
+        }
     }
 
     pub fn key(&self) -> Option<&K> {
@@ -324,7 +327,7 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
                 ))
             }
             2 => {
-                let (affix, rem) = bytesrepr::deserialize_bytes(rem)?;
+                let (affix, rem) = FromBytes::from_bytes(rem)?;
                 let (pointer, rem) = Pointer::from_bytes(rem)?;
                 Ok((Trie::Extension { affix, pointer }, rem))
             }

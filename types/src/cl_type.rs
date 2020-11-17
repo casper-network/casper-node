@@ -117,9 +117,7 @@ impl CLType {
                 | CLType::PublicKey
                 | CLType::Any => 0,
                 CLType::Option(cl_type) | CLType::List(cl_type) => cl_type.serialized_length(),
-                CLType::ByteArray(list_len) => {
-                    CLType::U8.serialized_length() + list_len.to_le_bytes().len()
-                }
+                CLType::ByteArray(list_len) => list_len.serialized_length(),
                 CLType::Result { ok, err } => ok.serialized_length() + err.serialized_length(),
                 CLType::Map { key, value } => key.serialized_length() + value.serialized_length(),
                 CLType::Tuple1(cl_type_array) => serialized_length_of_cl_tuple_type(cl_type_array),

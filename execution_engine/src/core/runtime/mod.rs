@@ -3239,7 +3239,6 @@ where
 #[cfg(test)]
 mod tests {
     use proptest::{
-        array,
         array::uniform32,
         collection::{btree_map, vec},
         option,

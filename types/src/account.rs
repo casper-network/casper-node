@@ -1,6 +1,6 @@
 //! Contains types and constants associated with user accounts.
 
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
     convert::TryFrom,
@@ -16,7 +16,7 @@ use failure::Fail;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
 
@@ -339,18 +339,20 @@ impl CLTyped for AccountHash {
 }
 
 impl ToBytes for AccountHash {
+    #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        bytesrepr::serialize_array(&self.0)
+        self.0.to_bytes()
     }
 
+    #[inline(always)]
     fn serialized_length(&self) -> usize {
-        bytesrepr::array_serialized_length(&self.0)
+        self.0.serialized_length()
     }
 }
 
 impl FromBytes for AccountHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (bytes, rem) = bytesrepr::deserialize_array(bytes)?;
+        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
         Ok((AccountHash::new(bytes), rem))
     }
 }

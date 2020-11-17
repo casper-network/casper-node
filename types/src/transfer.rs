@@ -48,7 +48,7 @@ impl Transfer {
 
 impl FromBytes for Transfer {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (deploy_hash, rem) = bytesrepr::deserialize_array(bytes)?;
+        let (deploy_hash, rem) = FromBytes::from_bytes(bytes)?;
         let (from, rem) = AccountHash::from_bytes(rem)?;
         let (source, rem) = URef::from_bytes(rem)?;
         let (target, rem) = URef::from_bytes(rem)?;
@@ -71,7 +71,7 @@ impl FromBytes for Transfer {
 impl ToBytes for Transfer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut bytesrepr::serialize_array(&self.deploy_hash)?);
+        result.append(&mut self.deploy_hash.to_bytes()?);
         result.append(&mut self.from.to_bytes()?);
         result.append(&mut self.source.to_bytes()?);
         result.append(&mut self.target.to_bytes()?);
@@ -81,7 +81,7 @@ impl ToBytes for Transfer {
     }
 
     fn serialized_length(&self) -> usize {
-        bytesrepr::array_serialized_length(&self.deploy_hash)
+        self.deploy_hash.serialized_length()
             + self.from.serialized_length()
             + self.source.serialized_length()
             + self.target.serialized_length()

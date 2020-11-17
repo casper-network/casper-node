@@ -175,9 +175,9 @@ where
         // let (arguments, bytes) = FromBytes::from_bytes(bytes)?;
         let mut arguments = T::default();
         let arguments_mut = arguments.as_mut();
-        for i in 0..arguments_mut.len() {
+        for ith_argument in arguments_mut {
             let (cost, rem) = FromBytes::from_bytes(bytes)?;
-            arguments_mut[i] = cost;
+            *ith_argument = cost;
             bytes = rem;
         }
         Ok((Self { cost, arguments }, bytes))

@@ -739,11 +739,13 @@ impl ToBytes for PublicKey {
         match self {
             PublicKey::Ed25519(public_key) => {
                 buffer.insert(0, ED25519_TAG);
-                buffer.extend(bytesrepr::serialize_bytes(public_key.as_ref())?);
+                let ed25519_bytes = public_key.as_bytes();
+                buffer.extend(ed25519_bytes);
             }
             PublicKey::Secp256k1(public_key) => {
                 buffer.insert(0, SECP256K1_TAG);
-                buffer.extend(bytesrepr::serialize_bytes(public_key.as_ref())?);
+                let secp256k1_bytes = public_key.as_bytes();
+                buffer.extend(secp256k1_bytes);
             }
         }
         Ok(buffer)
@@ -752,12 +754,8 @@ impl ToBytes for PublicKey {
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
-                PublicKey::Ed25519(public_key) => {
-                    bytesrepr::bytes_serialized_length(public_key.as_ref())
-                }
-                PublicKey::Secp256k1(public_key) => {
-                    bytesrepr::bytes_serialized_length(public_key.as_ref())
-                }
+                PublicKey::Ed25519(_) => ed25519::PUBLIC_KEY_LENGTH,
+                PublicKey::Secp256k1(_) => SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH,
             }
     }
 }
@@ -767,7 +765,8 @@ impl FromBytes for PublicKey {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             ED25519_TAG => {
-                let (raw_bytes, remainder) = bytesrepr::deserialize_bytes(remainder)?;
+                let (raw_bytes, remainder): ([u8; ed25519::PUBLIC_KEY_LENGTH], _) =
+                    FromBytes::from_bytes(remainder)?;
                 let public_key = Self::ed25519_from_bytes(&raw_bytes).map_err(|error| {
                     info!("failed deserializing to public key: {}", error);
                     bytesrepr::Error::Formatting
@@ -775,7 +774,8 @@ impl FromBytes for PublicKey {
                 Ok((public_key, remainder))
             }
             SECP256K1_TAG => {
-                let (raw_bytes, remainder) = bytesrepr::deserialize_bytes(remainder)?;
+                let (raw_bytes, remainder): ([u8; SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH], _) =
+                    FromBytes::from_bytes(remainder)?;
                 let public_key = Self::secp256k1_from_bytes(&raw_bytes).map_err(|error| {
                     info!("failed deserializing to public key: {}", error);
                     bytesrepr::Error::Formatting

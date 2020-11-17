@@ -6,13 +6,11 @@ use alloc::vec;
 use alloc::{
     alloc::{alloc, Layout},
     collections::{BTreeMap, BTreeSet, VecDeque},
+    str,
     string::String,
     vec::Vec,
 };
-use core::{
-    mem::{self, MaybeUninit},
-    ptr::NonNull,
-};
+use core::{convert::TryInto, mem, ptr::NonNull};
 
 use failure::Fail;
 use num_integer::Integer;
@@ -126,7 +124,7 @@ pub fn serialize(t: impl ToBytes) -> Result<Vec<u8>, Error> {
     t.into_bytes()
 }
 
-fn safe_split_at(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]), Error> {
+pub(crate) fn safe_split_at(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]), Error> {
     if n > bytes.len() {
         Err(Error::EarlyEndOfStream)
     } else {
@@ -300,9 +298,10 @@ impl ToBytes for String {
 
 impl FromBytes for String {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (str_bytes, rem): (Vec<u8>, &[u8]) = deserialize_bytes(bytes)?;
-        let result = String::from_utf8(str_bytes).map_err(|_| Error::Formatting)?;
-        Ok((result, rem))
+        let (size, remainder) = u32::from_bytes(bytes)?;
+        let (str_bytes, remainder) = safe_split_at(remainder, size as usize)?;
+        let result = String::from_utf8(str_bytes.to_vec()).map_err(|_| Error::Formatting)?;
+        Ok((result, remainder))
     }
 }
 
@@ -429,23 +428,19 @@ macro_rules! impl_to_from_bytes_for_array {
     ($($N:literal)+) => {
         $(
             impl ToBytes for [u8; $N] {
+                #[inline(always)]
                 fn to_bytes(&self) -> Result<Vec<u8>, Error> {
                     Ok(self.to_vec())
                 }
 
-                fn serialized_length(&self) -> usize {
-                    $N
-                }
+                #[inline(always)]
+                fn serialized_length(&self) -> usize { $N }
             }
 
             impl FromBytes for [u8; $N] {
                 fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-                    // deserialize_array(bytes)
-                    let mut output: [u8; $N] = [0; $N];
-                    let as_mut_ref = output.as_mut();
-                    let (bytes, rem) = deserialize_array_slice(bytes, as_mut_ref.len())?;
-                    as_mut_ref.copy_from_slice(bytes);
-                    Ok((output, rem))
+                    let (bytes, rem) = safe_split_at(bytes, $N)?;
+                    Ok((bytes.try_into().unwrap(), rem))
                 }
             }
         )+
@@ -457,6 +452,7 @@ impl_to_from_bytes_for_array! {
     10 11 12 13 14 15 16 17 18 19
     20 21 22 23 24 25 26 27 28 29
     30 31 32
+    33
     64 128 256 512
 }
 
@@ -1073,7 +1069,7 @@ where
 }
 
 /// Serializes dynamic bytes array.
-pub fn serialize_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
+pub(crate) fn serialize_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     let serialized_length = bytes_serialized_length(bytes);
     let mut vec = try_vec_with_capacity(serialized_length)?;
     let length_prefix = bytes.len() as u32;
@@ -1084,44 +1080,9 @@ pub fn serialize_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
 }
 
 /// Estimates serialized length of serialized bytes.
-pub fn bytes_serialized_length(bytes: &[u8]) -> usize {
+#[inline(always)]
+pub(crate) fn bytes_serialized_length(bytes: &[u8]) -> usize {
     U32_SERIALIZED_LENGTH + bytes.len()
-}
-
-/// Deserializes dynamic bytes array.
-pub fn deserialize_bytes(bytes: &[u8]) -> Result<(Vec<u8>, &[u8]), Error> {
-    let (size, remainder) = u32::from_bytes(bytes)?;
-    let (result, remainder) = safe_split_at(remainder, size as usize)?;
-    Ok((result.to_vec(), remainder))
-}
-
-/// Serializes array.
-pub fn serialize_array(bytes: &[u8]) -> Result<Vec<u8>, Error> {
-    Ok(bytes.to_vec())
-}
-
-/// Safely deserializes array of specified length into a slice.
-///
-/// Once const generics are stabilized we can get rid of this helper function.
-pub fn deserialize_array_slice(bytes: &[u8], n: usize) -> Result<(&[u8], &[u8]), Error> {
-    safe_split_at(bytes, n)
-}
-
-/// Deserializes a generic array.
-pub fn deserialize_array<T>(bytes: &[u8]) -> Result<(T, &[u8]), Error>
-where
-    T: AsMut<[u8]> + Default,
-{
-    let mut output = T::default();
-    let as_mut_ref = output.as_mut();
-    let (bytes, rem) = deserialize_array_slice(bytes, as_mut_ref.len())?;
-    as_mut_ref.copy_from_slice(bytes);
-    Ok((output, rem))
-}
-
-/// Calculate serialized length of an array.
-pub fn array_serialized_length(bytes: &[u8]) -> usize {
-    bytes.len()
 }
 
 // This test helper is not intended to be used by third party crates.
@@ -1147,133 +1108,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-
     use super::*;
-    use crate::bytesrepr;
-
-    // #[test]
-    // fn check_array_from_bytes_doesnt_leak() {
-    //     thread_local!(static INSTANCE_COUNT: RefCell<usize> = RefCell::new(0));
-    //     const MAX_INSTANCES: usize = 32;
-
-    //     struct LeakChecker;
-
-    //     impl FromBytes for LeakChecker {
-    //         fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-    //             let instance_num = INSTANCE_COUNT.with(|count| *count.borrow());
-    //             if instance_num >= MAX_INSTANCES {
-    //                 Err(Error::Formatting)
-    //             } else {
-    //                 INSTANCE_COUNT.with(|count| *count.borrow_mut() += 1);
-    //                 Ok((LeakChecker, bytes))
-    //             }
-    //         }
-    //     }
-
-    //     impl Drop for LeakChecker {
-    //         fn drop(&mut self) {
-    //             INSTANCE_COUNT.with(|count| *count.borrow_mut() -= 1);
-    //         }
-    //     }
-
-    //     // Check we can construct an array of `MAX_INSTANCES` of `LeakChecker`s.
-    //     {
-    //         let bytes = (MAX_INSTANCES as u32).to_bytes().unwrap();
-    //         let _array = <[LeakChecker; MAX_INSTANCES]>::from_bytes(&bytes).unwrap();
-    //         // Assert `INSTANCE_COUNT == MAX_INSTANCES`
-    //         INSTANCE_COUNT.with(|count| assert_eq!(MAX_INSTANCES, *count.borrow()));
-    //     }
-
-    //     // Assert the `INSTANCE_COUNT` has dropped to zero again.
-    //     INSTANCE_COUNT.with(|count| assert_eq!(0, *count.borrow()));
-
-    //     // Try to construct an array of `LeakChecker`s where the `MAX_INSTANCES + 1`th instance
-    //     // returns an error.
-    //     let bytes = (MAX_INSTANCES as u32 + 1).to_bytes().unwrap();
-    //     let result = <[LeakChecker; MAX_INSTANCES + 1]>::from_bytes(&bytes);
-    //     assert!(result.is_err());
-
-    //     // Assert the `INSTANCE_COUNT` has dropped to zero again.
-    //     INSTANCE_COUNT.with(|count| assert_eq!(0, *count.borrow()));
-    // }
-
-    #[test]
-    fn vec_u8_from_bytes() {
-        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
-        let data_bytes = data.to_bytes().unwrap();
-        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH / 2]).is_err());
-        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH]).is_err());
-        assert!(bytesrepr::deserialize_bytes(&data_bytes[..U32_SERIALIZED_LENGTH + 2]).is_err());
-    }
-
-    #[test]
-    fn should_serialize_deserialize_bytes() {
-        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
-        let serialized = super::serialize_bytes(&data).expect("should serialize data");
-        let (deserialized, rem): (Vec<u8>, &[u8]) =
-            super::deserialize_bytes(&serialized).expect("should deserialize data");
-        assert_eq!(data, deserialized);
-        assert!(rem.is_empty());
-    }
-
-    #[test]
-    fn should_fail_to_serialize_deserialize_malicious_bytes() {
-        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
-        let mut serialized = super::serialize_bytes(&data).expect("should serialize data");
-        serialized = serialized[..serialized.len() - 1].to_vec();
-        let res: Result<(_, &[u8]), Error> = super::deserialize_bytes(&serialized);
-        assert_eq!(res.unwrap_err(), Error::EarlyEndOfStream);
-    }
-
-    #[test]
-    fn should_serialize_deserialize_bytes_and_keep_rem() {
-        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
-        let expected_rem: Vec<u8> = vec![6, 7, 8, 9, 10];
-        let mut serialized = super::serialize_bytes(&data).expect("should serialize data");
-        serialized.extend(&expected_rem);
-        let (deserialized, rem): (Vec<u8>, &[u8]) =
-            super::deserialize_bytes(&serialized).expect("should deserialize data");
-        assert_eq!(data, deserialized);
-        assert_eq!(&rem, &expected_rem);
-    }
-
-    #[test]
-    fn should_serialize_deserialize_array() {
-        type Arr = [u8; 32];
-        let data: Arr = [255; 32];
-        let serialized = super::serialize_array(&data).expect("should serialize data");
-        let (deserialized, rem): (Arr, &[u8]) =
-            super::deserialize_array(&serialized).expect("should deserialize data");
-        assert_eq!(data, deserialized);
-        assert!(rem.is_empty());
-    }
-
-    #[test]
-    fn should_fail_serialize_deserialize_array_incomaptible_size() {
-        let data = [1, 2, 3, 4, 5];
-        let serialized = super::serialize_array(&data).expect("should serialize data");
-
-        let result_1: Result<([u8; 6], &[u8]), Error> = super::deserialize_array(&serialized);
-        assert_eq!(
-            result_1.expect_err("should have error"),
-            Error::EarlyEndOfStream
-        );
-    }
-
-    #[test]
-    fn should_serialize_deserialize_array_and_keep_rem() {
-        type Arr = [u8; 5];
-
-        let data: Arr = [1, 2, 3, 4, 5];
-        let expected_rem: Vec<u8> = vec![6, 7, 8, 9, 10];
-        let mut serialized = super::serialize_array(&data).expect("should serialize data");
-        serialized.extend(&expected_rem);
-        let (deserialized, rem): (Arr, &[u8]) =
-            super::deserialize_array(&serialized).expect("should deserialize data");
-        assert_eq!(data, deserialized);
-        assert_eq!(&rem, &expected_rem);
-    }
 
     #[test]
     fn should_not_serialize_zero_denominator() {

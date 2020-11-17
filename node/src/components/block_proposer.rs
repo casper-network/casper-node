@@ -466,6 +466,7 @@ mod tests {
     use std::collections::HashSet;
 
     use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
+    use casper_types::bytesrepr::Bytes;
     use rand::random;
 
     use super::*;
@@ -487,12 +488,12 @@ mod tests {
         let gas_price = 10;
         let chain_name = "chain".to_string();
         let payment = ExecutableDeployItem::ModuleBytes {
-            module_bytes: vec![],
-            args: vec![],
+            module_bytes: Bytes::new(),
+            args: Bytes::new(),
         };
         let session = ExecutableDeployItem::ModuleBytes {
-            module_bytes: vec![],
-            args: vec![],
+            module_bytes: Bytes::new(),
+            args: Bytes::new(),
         };
 
         let deploy = Deploy::new(

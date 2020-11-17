@@ -1,14 +1,14 @@
 use alloc::vec::Vec;
 use core::fmt::Debug;
 
-use crate::bytesrepr::{self, Error, FromBytes, ToBytes};
+use crate::bytesrepr::{Bytes, Error, FromBytes, ToBytes};
 
 const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
 
 /// A container for contract's WASM bytes.
 #[derive(PartialEq, Eq, Clone)]
 pub struct ContractWasm {
-    bytes: Vec<u8>,
+    bytes: Bytes,
 }
 
 impl Debug for ContractWasm {
@@ -28,33 +28,35 @@ impl Debug for ContractWasm {
 impl ContractWasm {
     /// Creates new WASM object from bytes.
     pub fn new(bytes: Vec<u8>) -> Self {
-        ContractWasm { bytes }
+        ContractWasm {
+            bytes: bytes.into(),
+        }
     }
 
     /// Consumes instance of [`ContractWasm`] and returns its bytes.
     pub fn take_bytes(self) -> Vec<u8> {
-        self.bytes
+        self.bytes.into()
     }
 
     /// Returns a slice of contained WASM bytes.
     pub fn bytes(&self) -> &[u8] {
-        &self.bytes
+        self.bytes.as_ref()
     }
 }
 
 impl ToBytes for ContractWasm {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        bytesrepr::serialize_bytes(&self.bytes)
+        self.bytes.to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
-        bytesrepr::bytes_serialized_length(&self.bytes)
+        self.bytes.serialized_length()
     }
 }
 
 impl FromBytes for ContractWasm {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (bytes, rem1) = bytesrepr::deserialize_bytes(bytes)?;
+        let (bytes, rem1) = FromBytes::from_bytes(bytes)?;
         Ok((ContractWasm { bytes }, rem1))
     }
 }

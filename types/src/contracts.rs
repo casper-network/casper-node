@@ -574,10 +574,8 @@ impl Contract {
 impl ToBytes for Contract {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut bytesrepr::serialize_array(
-            &self.contract_package_hash,
-        )?);
-        result.append(&mut bytesrepr::serialize_array(&self.contract_wasm_hash)?);
+        result.append(&mut self.contract_package_hash.to_bytes()?);
+        result.append(&mut self.contract_wasm_hash.to_bytes()?);
         result.append(&mut self.named_keys.to_bytes()?);
         result.append(&mut self.entry_points.to_bytes()?);
         result.append(&mut self.protocol_version.to_bytes()?);
@@ -586,8 +584,8 @@ impl ToBytes for Contract {
 
     fn serialized_length(&self) -> usize {
         ToBytes::serialized_length(&self.entry_points)
-            + bytesrepr::array_serialized_length(&self.contract_package_hash)
-            + bytesrepr::array_serialized_length(&self.contract_wasm_hash)
+            + ToBytes::serialized_length(&self.contract_package_hash)
+            + ToBytes::serialized_length(&self.contract_wasm_hash)
             + ToBytes::serialized_length(&self.protocol_version)
             + ToBytes::serialized_length(&self.named_keys)
     }
@@ -595,8 +593,8 @@ impl ToBytes for Contract {
 
 impl FromBytes for Contract {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (contract_package_hash, bytes) = bytesrepr::deserialize_array(bytes)?;
-        let (contract_wasm_hash, bytes) = bytesrepr::deserialize_array(bytes)?;
+        let (contract_package_hash, bytes) = FromBytes::from_bytes(bytes)?;
+        let (contract_wasm_hash, bytes) = FromBytes::from_bytes(bytes)?;
         let (named_keys, bytes) = NamedKeys::from_bytes(bytes)?;
         let (entry_points, bytes) = EntryPoints::from_bytes(bytes)?;
         let (protocol_version, bytes) = ProtocolVersion::from_bytes(bytes)?;

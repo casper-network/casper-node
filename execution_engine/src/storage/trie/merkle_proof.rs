@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 use crate::{
     shared::newtypes::Blake2bHash,
@@ -19,7 +19,7 @@ pub enum TrieMerkleProofStep {
         indexed_pointers_with_hole: Vec<(u8, Pointer)>,
     },
     /// Corresponds to [`Trie::Extension`]
-    Extension { affix: Vec<u8> },
+    Extension { affix: Bytes },
 }
 
 impl TrieMerkleProofStep {
@@ -33,7 +33,9 @@ impl TrieMerkleProofStep {
 
     /// Constructor for  [`TrieMerkleProofStep::Extension`]
     pub fn extension(affix: Vec<u8>) -> Self {
-        Self::Extension { affix }
+        Self::Extension {
+            affix: affix.into(),
+        }
     }
 }
 
@@ -89,7 +91,7 @@ impl FromBytes for TrieMerkleProofStep {
                 ))
             }
             TRIE_MERKLE_PROOF_STEP_EXTENSION_ID => {
-                let (affix, rem): (Vec<u8>, &[u8]) = FromBytes::from_bytes(rem)?;
+                let (affix, rem): (_, &[u8]) = FromBytes::from_bytes(rem)?;
                 Ok((TrieMerkleProofStep::Extension { affix }, rem))
             }
             _ => Err(bytesrepr::Error::Formatting),
@@ -178,7 +180,7 @@ where
                     Trie::<K, V>::node(&indexed_pointers).to_bytes()?
                 }
                 TrieMerkleProofStep::Extension { affix } => {
-                    Trie::<K, V>::extension(affix.to_owned(), pointer).to_bytes()?
+                    Trie::<K, V>::extension(affix.clone().into(), pointer).to_bytes()?
                 }
             };
             hash = Blake2bHash::new(&proof_step_bytes);
@@ -259,8 +261,11 @@ mod gens {
                         indexed_pointers_with_hole,
                     }
                 }),
-            vec(<u8>::arbitrary(), AFFIX_SIZE)
-                .prop_map(|affix| { TrieMerkleProofStep::Extension { affix } })
+            vec(<u8>::arbitrary(), AFFIX_SIZE).prop_map(|affix| {
+                TrieMerkleProofStep::Extension {
+                    affix: affix.into(),
+                }
+            })
         ]
     }
 

@@ -5,7 +5,6 @@ extern crate alloc;
 
 use alloc::{string::ToString, vec::Vec};
 
-use alloc::boxed::Box;
 use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,

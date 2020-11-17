@@ -37,11 +37,11 @@ fn deserialize_vector_of_i32s(b: &mut Bencher) {
 
 fn serialize_vector_of_u8(b: &mut Bencher) {
     // 0, 1, ... 254, 255, 0, 1, ...
-    let data: Vec<u8> = prepare_vector(BATCH)
+    let data: Bytes = prepare_vector(BATCH)
         .into_iter()
         .map(|value| value as u8)
-        .collect::<Vec<_>>();
-    b.iter(|| bytesrepr::serialize_bytes(black_box(&data)));
+        .collect();
+    b.iter(|| ToBytes::to_bytes(black_box(&data)));
 }
 
 fn deserialize_vector_of_u8(b: &mut Bencher) {
@@ -49,10 +49,10 @@ fn deserialize_vector_of_u8(b: &mut Bencher) {
     let data: Vec<u8> = prepare_vector(BATCH)
         .into_iter()
         .map(|value| value as u8)
-        .collect::<Vec<_>>()
+        .collect::<Bytes>()
         .to_bytes()
         .unwrap();
-    b.iter(|| bytesrepr::deserialize_bytes(black_box(&data)))
+    b.iter(|| Bytes::from_bytes(black_box(&data)))
 }
 
 fn serialize_u8(b: &mut Bencher) {
@@ -118,6 +118,8 @@ fn make_test_vec_of_vec8() -> Vec<Bytes> {
         .collect()
 }
 
+fn serialize_vector_of_vector_of_u8(b: &mut Bencher) {
+    let data = make_test_vec_of_vec8();
     b.iter(|| data.to_bytes());
 }
 
@@ -304,7 +306,7 @@ fn benchmark_deserialization<T: CLTyped + ToBytes + FromBytes>(b: &mut Bencher, 
     let serialized_value = serialize_cl_value(raw_value);
     b.iter(|| {
         let cl_value: CLValue = bytesrepr::deserialize(serialized_value.clone()).unwrap();
-        // let _raw_value: T = cl_value.into_t().unwrap();
+        let _raw_value: T = cl_value.into_t().unwrap();
     });
 }
 
@@ -346,7 +348,7 @@ fn serialize_cl_value_bytearray(b: &mut Bencher) {
             let vec: Vec<u8> = (0..255).collect();
             Bytes::from(vec)
         },
-        |bytes| serialize_cl_value(bytes),
+        serialize_cl_value,
     );
 }
 

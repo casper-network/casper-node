@@ -288,7 +288,7 @@ impl ToBytes for Key {
             }
             Key::Hash(hash) => {
                 result.push(HASH_ID);
-                result.append(&mut bytesrepr::serialize_array(hash)?);
+                result.append(&mut hash.to_bytes()?);
             }
             Key::URef(uref) => {
                 result.push(UREF_ID);
@@ -296,11 +296,11 @@ impl ToBytes for Key {
             }
             Key::Transfer(addr) => {
                 result.push(TRANSFER_ID);
-                result.append(&mut bytesrepr::serialize_array(addr)?);
+                result.append(&mut addr.to_bytes()?);
             }
             Key::DeployInfo(addr) => {
                 result.push(DEPLOY_INFO_ID);
-                result.append(&mut bytesrepr::serialize_array(addr)?);
+                result.append(&mut addr.to_bytes()?);
             }
         }
         Ok(result)
@@ -328,7 +328,7 @@ impl FromBytes for Key {
                 Ok((Key::Account(account_hash), rem))
             }
             HASH_ID => {
-                let (hash, rem) = bytesrepr::deserialize_array(remainder)?;
+                let (hash, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::Hash(hash), rem))
             }
             UREF_ID => {
@@ -336,11 +336,11 @@ impl FromBytes for Key {
                 Ok((Key::URef(uref), rem))
             }
             TRANSFER_ID => {
-                let (transfer_addr, rem) = bytesrepr::deserialize_array(remainder)?;
+                let (transfer_addr, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::Transfer(transfer_addr), rem))
             }
             DEPLOY_INFO_ID => {
-                let (deploy_hash, rem) = bytesrepr::deserialize_array(remainder)?;
+                let (deploy_hash, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::DeployInfo(deploy_hash), rem))
             }
             _ => Err(Error::Formatting),

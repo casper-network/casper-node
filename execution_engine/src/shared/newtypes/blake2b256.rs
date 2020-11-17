@@ -99,16 +99,16 @@ impl Into<[u8; Blake2bHash::LENGTH]> for Blake2bHash {
 
 impl ToBytes for Blake2bHash {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        bytesrepr::serialize_array(&self.0)
+        self.0.to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
-        bytesrepr::array_serialized_length(&self.0)
+        self.0.serialized_length()
     }
 }
 
 impl FromBytes for Blake2bHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        bytesrepr::deserialize_array(bytes).map(|(arr, rem)| (Blake2bHash(arr), rem))
+        FromBytes::from_bytes(bytes).map(|(arr, rem)| (Blake2bHash(arr), rem))
     }
 }

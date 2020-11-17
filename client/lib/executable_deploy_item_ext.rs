@@ -48,7 +48,7 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
         Ok(ExecutableDeployItem::StoredContractByName {
             name,
             entry_point,
-            args: args.to_bytes()?,
+            args: args.to_bytes()?.into(),
         })
     }
 
@@ -60,7 +60,7 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
         Ok(ExecutableDeployItem::StoredContractByHash {
             hash,
             entry_point,
-            args: args.to_bytes()?,
+            args: args.to_bytes()?.into(),
         })
     }
 
@@ -74,7 +74,7 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
             name,
             version, // defaults to highest enabled version
             entry_point,
-            args: args.to_bytes()?,
+            args: args.to_bytes()?.into(),
         })
     }
 
@@ -88,14 +88,14 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
             hash,
             version, // defaults to highest enabled version
             entry_point,
-            args: args.to_bytes()?,
+            args: args.to_bytes()?.into(),
         })
     }
 
     fn new_module_bytes(module_bytes: Vec<u8>, args: RuntimeArgs) -> Result<ExecutableDeployItem> {
         Ok(ExecutableDeployItem::ModuleBytes {
-            module_bytes,
-            args: args.to_bytes()?,
+            module_bytes: module_bytes.into(),
+            args: args.to_bytes()?.into(),
         })
     }
 }

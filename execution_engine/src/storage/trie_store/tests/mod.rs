@@ -49,7 +49,10 @@ fn create_data() -> Vec<TestData<Vec<u8>, Vec<u8>>> {
     let ext_node: Trie<Vec<u8>, Vec<u8>> = {
         let affix = vec![1u8, 0];
         let pointer = Pointer::NodePointer(node_2_hash);
-        Trie::Extension { affix, pointer }
+        Trie::Extension {
+            affix: affix.into(),
+            pointer,
+        }
     };
 
     let ext_node_hash = Blake2bHash::new(&ext_node.to_bytes().unwrap());

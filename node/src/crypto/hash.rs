@@ -111,17 +111,17 @@ impl UpperHex for Digest {
 
 impl ToBytes for Digest {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        bytesrepr::serialize_array(&self.0)
+        self.0.to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
-        bytesrepr::array_serialized_length(&self.0)
+        self.0.serialized_length()
     }
 }
 
 impl FromBytes for Digest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        bytesrepr::deserialize_array(bytes).map(|(inner, remainder)| (Digest(inner), remainder))
+        FromBytes::from_bytes(bytes).map(|(inner, remainder)| (Digest(inner), remainder))
     }
 }
 
