@@ -797,8 +797,8 @@ impl<C: Context> State<C> {
                     .iter()
                     .any(|e_hash| self.sees(e_hash, hash))
             };
-            // Iterate over all units cited by pred_unit.
-            let mut to_visit: Vec<_> = pred_unit.panorama.iter_correct_hashes().collect();
+            // Iterate over all units seen by pred_unit.
+            let mut to_visit = vec![pred_hash];
             // This set is a filter so that units don't get added to to_visit twice.
             let mut added_to_to_visit: HashSet<_> = to_visit.iter().cloned().collect();
             while let Some(hash) = to_visit.pop() {

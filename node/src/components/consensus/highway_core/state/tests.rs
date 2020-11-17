@@ -421,7 +421,7 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
     let d0 = add_unit!(state, rng, DAN, 0xD; a0, N, c0_prime, N, N)?;
     // e0 violates LNC b/c it naively cites Alice's & Carol's equivocations.
     assert_eq!(
-        add_unit!(state,rng, ERIC, None; F, b0, F, d0, N)
+        add_unit!(state, rng, ERIC, None; F, b0, F, d0, N)
             .unwrap_err()
             .cause,
         UnitError::LncNaiveCitation(ALICE)
@@ -429,6 +429,44 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
     // Endorse b0.
     endorse!(state, rng, b0; BOB, DAN, ERIC);
     add_unit!(state,rng, ERIC, None; F, b0, F, d0, N; b0)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
+    //           a0'<-----+
+    // Alice              |
+    //           a0 <--+  |
+    //                 |  |
+    // Bob             |  +--b0<--+--b1
+    //                 |  |       |
+    // Carol           |  +--c0<--+
+    //                 |          |
+    // Dan             +-----d0<--+
+    let weights4 = &[Weight(3), Weight(4), Weight(5), Weight(5)];
+    let mut state = State::new_test(weights4, 0);
+    let mut rng = crate::new_rng();
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N)?;
+    let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N)?;
+
+    // Bob and Carol don't see a0 yet, so they cite a0_prime naively. Dan cites a0 naively.
+    let b0 = add_unit!(state, rng, BOB, None; a0_prime, N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, None; a0_prime, N, N, N)?;
+    let d0 = add_unit!(state, rng, DAN, None; a0, N, N, N)?;
+    endorse!(state, rng, c0; ALICE, BOB, CAROL, DAN); // Everyone endorses c0.
+    endorse!(state, rng, d0; ALICE, BOB, CAROL, DAN); // Everyone endorses d0.
+
+    // The fact that c0 is endorsed is not enough. Bob would violate the LNC because his new unit
+    // cites a0 naively, and his previous unit b0 cited a0_prime naively.
+    assert_eq!(
+        add_unit!(state, rng, BOB, None; F, b0, c0, d0; c0)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(ALICE)
+    );
+    // The fact that d0 is endorsed makes both of Bob's units cite only one of Alice's forks
+    // naively (namely a0_prime), which is fine.
+    add_unit!(state, rng, BOB, None; F, b0, c0, d0; d0)?;
     Ok(())
 }
 
