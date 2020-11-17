@@ -733,9 +733,7 @@ impl reactor::Reactor for Reactor {
                 };
 
                 match consensus_announcement {
-                    ConsensusAnnouncement::Proposed(block) => {
-                        reactor_event_dispatch(block_proposer::Event::ProposedProtoBlock(block))
-                    }
+                    ConsensusAnnouncement::Proposed(_block) => Effects::new(),
                     ConsensusAnnouncement::Finalized(block) => {
                         let mut effects = reactor_event_dispatch(
                             block_proposer::Event::FinalizedProtoBlock(block.proto_block().clone()),
@@ -746,9 +744,7 @@ impl reactor::Reactor for Reactor {
                         effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
                     }
-                    ConsensusAnnouncement::Orphaned(block) => {
-                        reactor_event_dispatch(block_proposer::Event::OrphanedProtoBlock(block))
-                    }
+                    ConsensusAnnouncement::Orphaned(_block) => Effects::new(),
                     ConsensusAnnouncement::Handled(_) => {
                         debug!("Ignoring `Handled` announcement in `validator` reactor.");
                         Effects::new()

@@ -824,7 +824,7 @@ impl<REv> EffectBuilder<REv> {
             .make_request(
                 |responder| BlockProposerRequest::ListForInclusion {
                     current_instant: block_context.timestamp(),
-                    past_blocks: Default::default(), // TODO
+                    past_deploys: Default::default(), // TODO
                     responder,
                 },
                 QueueKind::Regular,

@@ -45,8 +45,8 @@ use crate::{
     rpcs::chain::BlockIdentifier,
     types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, ProtoBlockHash,
-        StatusFeed, Timestamp,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, StatusFeed,
+        Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -330,7 +330,7 @@ pub enum BlockProposerRequest {
         /// The instant for which the deploy is requested.
         current_instant: Timestamp,
         /// Set of block hashes pointing to blocks whose deploys should be excluded.
-        past_blocks: HashSet<ProtoBlockHash>,
+        past_deploys: HashSet<DeployHash>,
         /// Responder to call with the result.
         responder: Responder<HashSet<DeployHash>>,
     },
@@ -341,13 +341,13 @@ impl Display for BlockProposerRequest {
         match self {
             BlockProposerRequest::ListForInclusion {
                 current_instant,
-                past_blocks,
+                past_deploys,
                 responder: _,
             } => write!(
                 formatter,
                 "list for inclusion: instant {} past {}",
                 current_instant,
-                past_blocks.len()
+                past_deploys.len()
             ),
         }
     }

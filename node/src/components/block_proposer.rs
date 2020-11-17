@@ -14,7 +14,7 @@ use datasize::DataSize;
 use derive_more::From;
 use prometheus::{self, IntGauge, Registry};
 use semver::Version;
-use tracing::{error, info, trace};
+use tracing::{info, trace};
 
 use crate::{
     components::{chainspec_loader::DeployConfig, Component},
@@ -40,18 +40,14 @@ pub enum Event {
     },
     /// The deploy-buffer has been asked to prune stale deploys
     BufferPrune,
-    /// A proto block has been proposed. We should not propose duplicates of its deploys.
-    ProposedProtoBlock(ProtoBlock),
     /// A proto block has been finalized. We should never propose its deploys again.
     FinalizedProtoBlock(ProtoBlock),
-    /// A proto block has been orphaned. Its deploys should be re-proposed.
-    OrphanedProtoBlock(ProtoBlock),
     /// The result of the `BlockProposer` getting the chainspec from the storage component.
     GetChainspecResult {
         maybe_deploy_config: Box<Option<DeployConfig>>,
         chainspec_version: Version,
         block_timestamp: Timestamp,
-        past_blocks: HashSet<ProtoBlockHash>,
+        past_deploys: HashSet<DeployHash>,
         responder: Responder<HashSet<DeployHash>>,
     },
 }
@@ -62,14 +58,8 @@ impl Display for Event {
             Event::BufferPrune => write!(f, "buffer prune"),
             Event::Request(req) => write!(f, "deploy-buffer request: {}", req),
             Event::Buffer { hash, .. } => write!(f, "deploy-buffer add {}", hash),
-            Event::ProposedProtoBlock(block) => {
-                write!(f, "deploy-buffer proposed proto block {}", block)
-            }
             Event::FinalizedProtoBlock(block) => {
                 write!(f, "deploy-buffer finalized proto block {}", block)
-            }
-            Event::OrphanedProtoBlock(block) => {
-                write!(f, "deploy-buffer orphaned proto block {}", block)
             }
             Event::GetChainspecResult {
                 maybe_deploy_config,
@@ -96,7 +86,6 @@ impl<REv> ReactorEventT for REv where REv: From<Event> + From<StorageRequest> + 
 #[derive(DataSize, Default, Debug, Clone, PartialEq)]
 pub(crate) struct BlockProposerState {
     pending: DeployCollection,
-    proposed: ProtoBlockCollection,
     finalized: ProtoBlockCollection,
 }
 
@@ -104,9 +93,8 @@ impl Display for BlockProposerState {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
-            "(pending:{}, proposed:{}, finalized:{})",
+            "(pending:{}, finalized:{})",
             self.pending.len(),
-            self.proposed.len(),
             self.finalized.len()
         )
     }
@@ -117,9 +105,8 @@ impl BlockProposerState {
     /// pruned
     pub(crate) fn prune(&mut self, current_instant: Timestamp) -> usize {
         let pending = prune::prune_deploys(&mut self.pending, current_instant);
-        let proposed = prune::prune_blocks(&mut self.proposed, current_instant);
         let finalized = prune::prune_blocks(&mut self.finalized, current_instant);
-        pending + proposed + finalized
+        pending + finalized
     }
 }
 
@@ -220,7 +207,7 @@ impl BlockProposer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         block_timestamp: Timestamp,
-        past_blocks: HashSet<ProtoBlockHash>,
+        past_deploys: HashSet<DeployHash>,
         responder: Responder<HashSet<DeployHash>>,
     ) -> Effects<Event>
     where
@@ -237,7 +224,7 @@ impl BlockProposer {
                         maybe_deploy_config: Box::new(Some(chainspec)),
                         chainspec_version,
                         block_timestamp,
-                        past_blocks,
+                        past_deploys,
                         responder,
                     })
             }
@@ -245,7 +232,7 @@ impl BlockProposer {
                 effect_builder,
                 chainspec_version,
                 block_timestamp,
-                past_blocks,
+                past_deploys,
                 responder,
             ),
         }
@@ -257,7 +244,7 @@ impl BlockProposer {
         effect_builder: EffectBuilder<REv>,
         chainspec_version: Version,
         block_timestamp: Timestamp,
-        past_blocks: HashSet<ProtoBlockHash>,
+        past_deploys: HashSet<DeployHash>,
         responder: Responder<HashSet<DeployHash>>,
     ) -> Effects<Event>
     where
@@ -269,7 +256,7 @@ impl BlockProposer {
                 maybe_deploy_config: Box::new(maybe_chainspec.map(|c| c.genesis.deploy_config)),
                 chainspec_version,
                 block_timestamp,
-                past_blocks,
+                past_deploys,
                 responder,
             })
     }
@@ -281,13 +268,15 @@ impl BlockProposer {
         &mut self,
         deploy_config: DeployConfig,
         block_timestamp: Timestamp,
-        past_blocks: HashSet<ProtoBlockHash>,
+        past_deploys: HashSet<DeployHash>,
     ) -> HashSet<DeployHash> {
-        let past_deploys = past_blocks
-            .iter()
-            .filter_map(|block_hash| self.state.proposed.get(block_hash))
-            .chain(self.state.finalized.values())
+        let past_deploys = self
+            .state
+            .finalized
+            .values()
             .flat_map(|deploys| deploys.keys())
+            .cloned()
+            .chain(past_deploys.into_iter())
             .collect::<HashSet<_>>();
 
         // deploys_to_return = all deploys in pending that aren't in finalized blocks or
@@ -311,7 +300,7 @@ impl BlockProposer {
         deploy: &DeployHeader,
         block_timestamp: Timestamp,
         deploy_config: &DeployConfig,
-        past_deploys: &HashSet<&DeployHash>,
+        past_deploys: &HashSet<DeployHash>,
     ) -> bool {
         let all_deps_resolved = || {
             deploy
@@ -326,50 +315,24 @@ impl BlockProposer {
         ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
     }
 
-    /// Notifies the block proposer of a new block that has been proposed, so that the block's
-    /// deploys are not returned again by `remaining_deploys`.
-    fn added_block<I>(&mut self, block: ProtoBlockHash, deploys: I)
+    /// Notifies the block proposer that a block has been finalized.
+    fn finalized_block<I>(&mut self, block: ProtoBlockHash, deploys: I)
     where
         I: IntoIterator<Item = DeployHash>,
     {
-        // TODO: This will ignore deploys that weren't in `pending`. They might be added
-        // later, and then would be proposed as duplicates.
-        let deploy_map: HashMap<_, _> = deploys
+        let deploys: HashMap<_, _> = deploys
             .into_iter()
             .filter_map(|deploy_hash| {
                 self.state
                     .pending
                     .get(&deploy_hash)
-                    .map(|deploy| (deploy_hash, deploy.clone()))
+                    .map(|deploy_header| (deploy_hash, deploy_header.clone()))
             })
             .collect();
         self.state
             .pending
-            .retain(|deploy_hash, _| !deploy_map.contains_key(deploy_hash));
-        self.state.proposed.insert(block, deploy_map);
-    }
-
-    /// Notifies the block proposer that a block has been finalized.
-    fn finalized_block(&mut self, block: ProtoBlockHash) {
-        if let Some(deploys) = self.state.proposed.remove(&block) {
-            self.state
-                .pending
-                .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
-            self.state.finalized.insert(block, deploys);
-        } else if !block.is_empty() {
-            // TODO: Events are not guaranteed to be handled in order, so this could happen!
-            error!("finalized block that hasn't been proposed!");
-        }
-    }
-
-    /// Notifies the block proposer that a block has been orphaned.
-    fn orphaned_block(&mut self, block: ProtoBlockHash) {
-        if let Some(deploys) = self.state.proposed.remove(&block) {
-            self.state.pending.extend(deploys);
-        } else {
-            // TODO: Events are not guaranteed to be handled in order, so this could happen!
-            error!("orphaned block that hasn't been proposed!");
-        }
+            .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
+        self.state.finalized.insert(block, deploys);
     }
 
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned
@@ -404,29 +367,32 @@ where
             }
             Event::Request(BlockProposerRequest::ListForInclusion {
                 current_instant,
-                past_blocks,
+                past_deploys,
                 responder,
             }) => {
-                return self.get_chainspec(effect_builder, current_instant, past_blocks, responder);
+                return self.get_chainspec(
+                    effect_builder,
+                    current_instant,
+                    past_deploys,
+                    responder,
+                );
             }
             Event::Buffer { hash, header } => self.add_deploy(Timestamp::now(), hash, *header),
-            Event::ProposedProtoBlock(block) => {
+            Event::FinalizedProtoBlock(block) => {
                 let (hash, deploys, _) = block.destructure();
-                self.added_block(hash, deploys)
+                self.finalized_block(hash, deploys)
             }
-            Event::FinalizedProtoBlock(block) => self.finalized_block(*block.hash()),
-            Event::OrphanedProtoBlock(block) => self.orphaned_block(*block.hash()),
             Event::GetChainspecResult {
                 maybe_deploy_config,
                 chainspec_version,
                 block_timestamp,
-                past_blocks,
+                past_deploys,
                 responder,
             } => {
                 let deploy_config = maybe_deploy_config.expect("should return chainspec");
                 // Update chainspec cache.
                 self.chainspecs.insert(chainspec_version, deploy_config);
-                let deploys = self.remaining_deploys(deploy_config, block_timestamp, past_blocks);
+                let deploys = self.remaining_deploys(deploy_config, block_timestamp, past_deploys);
                 return responder.respond(deploys).ignore();
             }
         }
@@ -535,7 +501,7 @@ mod tests {
         let block_time2 = Timestamp::from(120);
         let block_time3 = Timestamp::from(220);
 
-        let no_blocks = HashSet::new();
+        let no_deploys = HashSet::new();
         let (mut buffer, _effects) = create_test_buffer();
         let mut rng = crate::new_rng();
         let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
@@ -544,7 +510,7 @@ mod tests {
         let (hash4, deploy4) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
 
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time2, no_blocks.clone())
+            .remaining_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
             .is_empty());
 
         // add two deploys
@@ -554,70 +520,61 @@ mod tests {
         // if we try to create a block with a timestamp that is too early, we shouldn't get any
         // deploys
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time1, no_blocks.clone())
+            .remaining_deploys(DeployConfig::default(), block_time1, no_deploys.clone())
             .is_empty());
 
         // if we try to create a block with a timestamp that is too late, we shouldn't get any
         // deploys, either
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time3, no_blocks.clone())
+            .remaining_deploys(DeployConfig::default(), block_time3, no_deploys.clone())
             .is_empty());
 
         // take the deploys out
         let deploys =
-            buffer.remaining_deploys(DeployConfig::default(), block_time2, no_blocks.clone());
+            buffer.remaining_deploys(DeployConfig::default(), block_time2, no_deploys.clone());
 
         assert_eq!(deploys.len(), 2);
         assert!(deploys.contains(&hash1));
         assert!(deploys.contains(&hash2));
 
-        // the deploys should not have been removed yet
+        // the deploys should not have been removed
         assert!(!buffer
-            .remaining_deploys(DeployConfig::default(), block_time2, no_blocks.clone())
+            .remaining_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
             .is_empty());
 
-        // the two deploys will be included in block 1
-        let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
-        buffer.added_block(block_hash1, deploys);
-
-        // the deploys should have been removed now
-        assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time2, no_blocks.clone())
-            .is_empty());
-
-        let mut blocks = HashSet::new();
-        blocks.insert(block_hash1);
+        let mut deploys = HashSet::new();
+        deploys.insert(hash1);
+        deploys.insert(hash2);
 
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time2, blocks.clone())
+            .remaining_deploys(DeployConfig::default(), block_time2, deploys.clone())
             .is_empty());
 
         // try adding the same deploy again
-        buffer.add_deploy(block_time2, hash2, deploy2.clone());
+        buffer.add_deploy(block_time2, hash2, deploy2);
 
-        // it shouldn't be returned if we include block 1 in the past blocks
+        // it shouldn't be returned if we include it in the past blocks
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time2, blocks)
+            .remaining_deploys(DeployConfig::default(), block_time2, deploys.clone())
             .is_empty());
         // ...but it should be returned if we don't include it
         assert!(
             buffer
-                .remaining_deploys(DeployConfig::default(), block_time2, no_blocks.clone())
+                .remaining_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
                 .len()
                 == 1
         );
 
-        // the previous check removed the deploy from the buffer, let's re-add it
-        buffer.add_deploy(block_time2, hash2, deploy2);
+        let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
 
         // finalize the block
-        buffer.finalized_block(block_hash1);
+        buffer.finalized_block(block_hash1, deploys);
 
         // add more deploys
         buffer.add_deploy(block_time2, hash3, deploy3);
         buffer.add_deploy(block_time2, hash4, deploy4);
 
-        let deploys = buffer.remaining_deploys(DeployConfig::default(), block_time2, no_blocks);
+        let deploys = buffer.remaining_deploys(DeployConfig::default(), block_time2, no_deploys);
 
         // since block 1 is now finalized, deploy2 shouldn't be among the ones returned
         assert_eq!(deploys.len(), 2);
@@ -650,26 +607,18 @@ mod tests {
         buffer.add_deploy(creation_time, hash3, deploy3);
         buffer.add_deploy(creation_time, hash4, deploy4);
 
-        // pending => proposed
+        // pending => finalized
         let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
-        let block_hash2 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
-        buffer.added_block(block_hash1, vec![hash1]);
-        buffer.added_block(block_hash2, vec![hash2]);
+        buffer.finalized_block(block_hash1, vec![hash1]);
 
-        // proposed => finalized
-        buffer.finalized_block(block_hash1);
-
-        assert_eq!(buffer.state.pending.len(), 2);
-        assert_eq!(buffer.state.proposed.get(&block_hash2).unwrap().len(), 1);
+        assert_eq!(buffer.state.pending.len(), 3);
         assert_eq!(buffer.state.finalized.get(&block_hash1).unwrap().len(), 1);
 
         // test for retained values
         let pruned = buffer.prune(test_time);
         assert_eq!(pruned, 0);
 
-        assert_eq!(buffer.state.pending.len(), 2);
-        assert_eq!(buffer.state.proposed.len(), 1);
-        assert_eq!(buffer.state.proposed.get(&block_hash2).unwrap().len(), 1);
+        assert_eq!(buffer.state.pending.len(), 3);
         assert_eq!(buffer.state.finalized.len(), 1);
         assert_eq!(buffer.state.finalized.get(&block_hash1).unwrap().len(), 1);
 
@@ -678,7 +627,6 @@ mod tests {
         assert_eq!(pruned, 3);
 
         assert_eq!(buffer.state.pending.len(), 1); // deploy4 is still valid
-        assert_eq!(buffer.state.proposed.len(), 0);
         assert_eq!(buffer.state.finalized.len(), 0);
     }
 
@@ -693,7 +641,7 @@ mod tests {
         // let deploy2 depend on deploy1
         let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![hash1]);
 
-        let mut blocks = HashSet::new();
+        let no_deploys = HashSet::new();
         let (mut buffer, _effects) = create_test_buffer();
 
         // add deploy2
@@ -701,23 +649,23 @@ mod tests {
 
         // deploy2 has an unsatisfied dependency
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time, blocks.clone())
+            .remaining_deploys(DeployConfig::default(), block_time, no_deploys.clone())
             .is_empty());
 
         // add deploy1
         buffer.add_deploy(creation_time, hash1, deploy1);
 
-        let deploys = buffer.remaining_deploys(DeployConfig::default(), block_time, blocks.clone());
+        let deploys =
+            buffer.remaining_deploys(DeployConfig::default(), block_time, no_deploys.clone());
         // only deploy1 should be returned, as it has no dependencies
         assert_eq!(deploys.len(), 1);
         assert!(deploys.contains(&hash1));
 
         // the deploy will be included in block 1
         let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
-        buffer.added_block(block_hash1, deploys);
-        blocks.insert(block_hash1);
+        buffer.finalized_block(block_hash1, deploys);
 
-        let deploys2 = buffer.remaining_deploys(DeployConfig::default(), block_time, blocks);
+        let deploys2 = buffer.remaining_deploys(DeployConfig::default(), block_time, no_deploys);
         // `blocks` contains a block that contains deploy1 now, so we should get deploy2
         assert_eq!(deploys2.len(), 1);
         assert!(deploys2.contains(&hash2));
