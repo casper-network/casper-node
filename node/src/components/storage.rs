@@ -85,6 +85,16 @@ const DEFAULT_MAX_DEPLOY_STORE_SIZE: usize = 300 * GIB;
 /// Default max deploy metadata store size.
 const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 
+/// OS-specific lmdb flags.
+#[cfg(not(target_os = "macos"))]
+const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
+
+/// OS-specific lmdb flags.
+///
+/// Mac OS X exhibits performance regressions when `WRITE_MAP` is used.
+#[cfg(target_os = "macos")]
+const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
+
 #[derive(Debug, From)]
 pub enum Event {
     /// Incoming storage request.
@@ -195,12 +205,11 @@ impl Storage {
         // Creates the environment and databases.
         let env = Environment::new()
             .set_flags(
+                OS_FLAGS |
                 // We manage our own directory.
                 EnvironmentFlags::NO_SUB_DIR
                 // Disable thread local storage, strongly suggested for operation with tokio.
-                    | EnvironmentFlags::NO_TLS
-                // We can afford `WRITE_MAP` for a performance gain, our patterns are simple.
-                    | EnvironmentFlags::WRITE_MAP,
+                    | EnvironmentFlags::NO_TLS,
             )
             .set_max_readers(MAX_TRANSACTIONS)
             .set_max_dbs(3)
