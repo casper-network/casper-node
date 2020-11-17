@@ -874,20 +874,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announces that a proto block has been proposed and will either be finalized or orphaned
-    /// soon.
-    pub(crate) async fn announce_proposed_proto_block(self, proto_block: ProtoBlock)
-    where
-        REv: From<ConsensusAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ConsensusAnnouncement::Proposed(proto_block),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
     /// Announces that a proto block has been finalized.
     pub(crate) async fn announce_finalized_block(self, finalized_block: FinalizedBlock)
     where
