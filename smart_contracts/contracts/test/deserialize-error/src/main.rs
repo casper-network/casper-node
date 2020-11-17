@@ -28,7 +28,7 @@ fn to_ptr<T: ToBytes>(t: T) -> (*const u8, usize, Vec<u8>) {
 mod malicious_ffi {
     // Potential attacker has available every FFI for himself
     extern "C" {
-        pub fn cl_call_contract(
+        pub fn casper_call_contract(
             contract_hash_ptr: *const u8,
             contract_hash_size: usize,
             entry_point_name_ptr: *const u8,
@@ -56,7 +56,7 @@ pub fn my_call_contract(
     {
         let mut bytes_written = 0usize;
         let ret = unsafe {
-            malicious_ffi::cl_call_contract(
+            malicious_ffi::casper_call_contract(
                 contract_hash_ptr,
                 contract_hash_size,
                 malicious_string.as_ptr(),
