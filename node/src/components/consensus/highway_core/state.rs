@@ -781,7 +781,7 @@ impl<C: Context> State<C> {
                     .iter()
                     .any(|e_hash| self.sees(e_hash, hash))
             };
-            let mut to_visit: Vec<_> = wunit.panorama.iter_correct_hashes().collect();
+            let mut to_visit: Vec<_> = pred_unit.panorama.iter_correct_hashes().collect();
             let mut added_to_to_visit: HashSet<_> = to_visit.iter().cloned().collect();
             while let Some(hash) = to_visit.pop() {
                 if seen_by_endorsed(hash) {

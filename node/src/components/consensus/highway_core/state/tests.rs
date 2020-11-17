@@ -385,14 +385,6 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
         UnitError::LncNaiveCitation(ALICE)
     );
     endorse!(state, rng, CAROL, c0);
-    // TODO: Test missing endorsement dependencies.
-    // One endorsement isn't enough.
-    // assert_eq!(
-    //     add_unit!(state, rng, DAN, None; F, b0, c0, N; c0)
-    //         .unwrap_err()
-    //         .cause,
-    //     UnitError::LncNaiveCitation(ALICE)
-    // );
     endorse!(state, rng, c0; BOB, DAN);
     // Now d0 cites non-naively b/c c0 is endorsed.
     add_unit!(state, rng, DAN, None; F, b0, c0, N; c0)?;
@@ -441,7 +433,6 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore = "stubbed validate_lnc"]
 fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
     // Eric's vote should not require an endorsement as his unit e0 cites equivocator Carol before
     // the fork.
@@ -484,7 +475,6 @@ fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore = "stubbed validate_lnc"]
 fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>> {
     // Endorsements should be transitive to descendants.
     // c1 doesn't have to be endorsed, it is enough that c0 is.
@@ -521,7 +511,6 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
 }
 
 #[test]
-#[ignore = "stubbed validate_lnc"]
 fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<TestContext>> {
     // a0 cites a descendant b1 of an eqiuvocation vote (b0 and b0').
     // This is still detected as violation of the LNC.
@@ -543,7 +532,7 @@ fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<Tes
     let b0_prime = add_unit!(state, rng, BOB, 0xBA; N, N, N, N)?;
     let b1 = add_unit!(state, rng, BOB, 0xB1; N, b0, N, N)?;
     let a0 = add_unit!(state, rng, ALICE, 0xA; N, b1, N, N)?;
-    let c0 = add_unit!(state, rng, CAROL, 0xC; N, b0_prime, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 0xC; N, b0_prime, N, N)?;
     assert_eq!(
         add_unit!(state, rng, DAN, None; a0, F, c0, N)
             .unwrap_err()
@@ -551,12 +540,11 @@ fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<Tes
         UnitError::LncNaiveCitation(BOB)
     );
     endorse!(state, rng, c0; ALICE, CAROL, DAN);
-    add_unit!(state, rng, DAN, None; a0, F, c0, N)?;
+    add_unit!(state, rng, DAN, None; a0, F, c0, N; c0)?;
     Ok(())
 }
 
 #[test]
-#[ignore = "stubbed validate_lnc"]
 fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_endorse_mix_pairs.png
@@ -664,7 +652,7 @@ fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
     let c0 = add_unit!(state, rng, CAROL, None; a0, b0, N, N, F, N, N, N; a0)?;
     endorse!(state, rng, g0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
     let f0 = add_unit!(state, rng, FRANK, None; N, N, N, N, F, N, g0, h0; g0)?;
-    let d0 = add_unit!(state, rng, DAN, None; N, N, N, N, F, f0, g0, h0)?;
+    let d0 = add_unit!(state, rng, DAN, None; N, N, N, N, F, f0, g0, h0; g0)?;
     assert_eq!(
         add_unit!(state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0)
             .unwrap_err()
@@ -672,11 +660,12 @@ fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
         UnitError::LncNaiveCitation(ERIC)
     );
     let mut pre_endorse_state = state.clone();
-    // If we endorse h0, then d1 should be OK since there won't be two equivocating units
-    // cited naively.
+    // If we endorse h0, then d1 still violates the LNC: d0 cited e0_cis naively and d1 cites
+    // e0_prime naively.
     endorse!(state, rng, h0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
-    assert!(add_unit!(state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, h0).is_ok());
-    // It should also work if we had endorsed b0 instead.
+    let result = add_unit!(state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, h0);
+    assert_eq!(result.unwrap_err().cause, UnitError::LncNaiveCitation(ERIC));
+    // It should work if we had endorsed b0 instead.
     endorse!(pre_endorse_state, rng, b0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
     add_unit!(pre_endorse_state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, b0)?;
     // And it should still work if both were endorsed.
