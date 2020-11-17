@@ -10,36 +10,6 @@ use casper_types::{
 
 use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
 
-/// Data structure summarizing auction contract data.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct AuctionState {
-    /// Global state hash
-    pub state_root_hash: Digest,
-    /// Block height
-    pub block_height: u64,
-    /// Era validators
-    pub era_validators: Option<EraValidators>,
-    /// All bids.
-    bids: Option<Bids>,
-}
-
-impl AuctionState {
-    /// Create new instance of `AuctionState`
-    pub fn new(
-        state_root_hash: Digest,
-        block_height: u64,
-        era_validators: Option<EraValidators>,
-        bids: Option<Bids>,
-    ) -> Self {
-        AuctionState {
-            state_root_hash,
-            block_height,
-            era_validators,
-            bids,
-        }
-    }
-}
-
 lazy_static! {
     static ref ERA_VALIDATORS: EraValidators = {
         let public_key_1 = PublicKey::Ed25519([42; 32]);
@@ -71,7 +41,7 @@ lazy_static! {
         bids
     };
     static ref AUCTION_INFO: AuctionState = {
-        let state_root_hash = Digest::doc_example();
+        let state_root_hash = Digest::from([11u8; Digest::LENGTH]);
         let height: u64 = 10;
         let era_validators = Some(EraValidators::doc_example().clone());
         let bids = Some(Bids::doc_example().clone());
@@ -82,6 +52,36 @@ lazy_static! {
             bids,
         }
     };
+}
+
+/// Data structure summarizing auction contract data.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct AuctionState {
+    /// Global state hash
+    pub state_root_hash: Digest,
+    /// Block height
+    pub block_height: u64,
+    /// Era validators
+    pub era_validators: Option<EraValidators>,
+    /// All bids.
+    bids: Option<Bids>,
+}
+
+impl AuctionState {
+    /// Create new instance of `AuctionState`
+    pub fn new(
+        state_root_hash: Digest,
+        block_height: u64,
+        era_validators: Option<EraValidators>,
+        bids: Option<Bids>,
+    ) -> Self {
+        AuctionState {
+            state_root_hash,
+            block_height,
+            era_validators,
+            bids,
+        }
+    }
 }
 
 impl DocExample for AuctionState {

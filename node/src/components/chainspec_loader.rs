@@ -37,6 +37,13 @@ pub use chainspec::Chainspec;
 pub(crate) use chainspec::{DeployConfig, HighwayConfig};
 pub use error::Error;
 
+lazy_static! {
+    static ref CHAINSPEC_INFO: ChainspecInfo = ChainspecInfo {
+        name: String::from("casper-example"),
+        root_hash: Some(Digest::from([2u8; Digest::LENGTH])),
+    };
+}
+
 /// `ChainspecHandler` events.
 #[derive(Debug, From)]
 pub enum Event {
@@ -87,16 +94,9 @@ impl ChainspecInfo {
     }
 }
 
-lazy_static! {
-    static ref CHAINSPECINFO: ChainspecInfo = ChainspecInfo {
-        name: String::from("casper-example"),
-        root_hash: Some(Digest::doc_example()),
-    };
-}
-
 impl DocExample for ChainspecInfo {
     fn doc_example() -> &'static Self {
-        &*CHAINSPECINFO
+        &*CHAINSPEC_INFO
     }
 }
 
