@@ -136,7 +136,7 @@ impl<C: Context> Panorama<C> {
         let mut visited = HashSet::new();
         let mut to_visit: Vec<_> = self.iter_correct_hashes().collect();
         while let Some(hash) = to_visit.pop() {
-            if !visited.insert(hash) {
+            if visited.insert(hash) {
                 if hash == hash_to_be_found {
                     return true;
                 }

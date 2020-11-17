@@ -88,6 +88,12 @@ pub(crate) enum UnitError {
     EndorsementsNotMonotonic,
     #[error("The LNC rule was violated. Vote cited ({:?}) naively.", _0)]
     LncNaiveCitation(ValidatorIndex),
+    #[error(
+        "Wire unit endorses hash but does not see it. Hash: {:?}; Wire unit: {:?}",
+        hash,
+        wire_unit
+    )]
+    EndorsedButUnseen { hash: String, wire_unit: String },
 }
 
 /// A reason for a validator to be marked as faulty.
@@ -584,6 +590,14 @@ impl<C: Context> State<C> {
             let is_terminal = |hash: &C::Hash| self.is_terminal_block(hash);
             if self.fork_choice(panorama).map_or(false, is_terminal) {
                 return Err(UnitError::ValueAfterTerminalBlock);
+            }
+        }
+        for hash in &wunit.endorsed {
+            if !wunit.panorama.sees(self, hash) {
+                return Err(UnitError::EndorsedButUnseen {
+                    hash: format!("{:?}", hash),
+                    wire_unit: format!("{:?}", wunit),
+                });
             }
         }
         match self.validate_lnc(wunit) {

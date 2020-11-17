@@ -637,7 +637,6 @@ fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore = "stubbed validate_lnc"]
 fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_four_forks.png
