@@ -35,6 +35,36 @@ use crate::{
     NodeRng,
 };
 
+lazy_static! {
+    static ref DEPLOY: Deploy = {
+        let mut rng = crate::new_rng();
+        let timestamp = *Timestamp::doc_example();
+        let ttl = TimeDiff::from(3_600_000);
+        let gas_price: u64 = 1;
+        let dependencies = vec![DeployHash::new(Digest::from([1u8; Digest::LENGTH]))];
+        let chain_name = String::from("casper-example");
+        let payment = ExecutableDeployItem::StoredContractByName {
+            name: String::from("casper-example"),
+            entry_point: String::from("example-entry-point"),
+            args: vec![1, 1],
+        };
+        let session = ExecutableDeployItem::Transfer { args: vec![2, 2] };
+        let secret_key = SecretKey::doc_example();
+
+        Deploy::new(
+            timestamp,
+            ttl,
+            gas_price,
+            dependencies,
+            chain_name,
+            payment,
+            session,
+            secret_key,
+            &mut rng,
+        )
+    };
+}
+
 /// Error returned from constructing or validating a `Deploy`.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -452,56 +482,6 @@ impl Deploy {
             rng,
         )
     }
-}
-
-lazy_static! {
-    static ref STORECONTRACTNAME: ExecutableDeployItem = {
-        let name = String::from("example_contract");
-        let entry_point = String::from("example_entry_point");
-        let args = Digest::doc_example().to_vec();
-
-        ExecutableDeployItem::StoredContractByName {
-            name,
-            entry_point,
-            args,
-        }
-    };
-    static ref MODULEBYTES: ExecutableDeployItem = {
-        let args = Digest::doc_example().to_vec();
-        ExecutableDeployItem::Transfer { args }
-    };
-}
-
-lazy_static! {
-    static ref DEPLOY: Deploy = {
-        let mut rng = crate::new_rng();
-        let timestamp = Timestamp::now();
-        let ttl = TimeDiff::from(3_600_000);
-        let gas_price: u64 = 66;
-        let dependencies = vec![DeployHash::new(Digest::doc_example())];
-        let chain_name = String::from("casper-example");
-        let payment = ExecutableDeployItem::StoredContractByName {
-            name: String::from("casper-example"),
-            entry_point: String::from("example-entry-point"),
-            args: Digest::doc_example().to_bytes().unwrap(),
-        };
-        let session = ExecutableDeployItem::Transfer {
-            args: Digest::doc_example().to_bytes().unwrap(),
-        };
-        let secret_key = SecretKey::doc_example();
-
-        Deploy::new(
-            timestamp,
-            ttl,
-            gas_price,
-            dependencies,
-            chain_name,
-            payment,
-            session,
-            secret_key,
-            &mut rng,
-        )
-    };
 }
 
 impl DocExample for Deploy {

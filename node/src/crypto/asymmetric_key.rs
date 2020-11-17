@@ -64,6 +64,13 @@ const SECP256K1_OBJECT_IDENTIFIER: [u8; 5] = [43, 129, 4, 0, 10];
 const SECP256K1_PEM_SECRET_KEY_TAG: &str = "EC PRIVATE KEY";
 const SECP256K1_PEM_PUBLIC_KEY_TAG: &str = "PUBLIC KEY";
 
+lazy_static! {
+    static ref ED25519_KEY: SecretKey = {
+        let bytes = [15u8; SecretKey::ED25519_LENGTH];
+        SecretKey::new_ed25519(bytes)
+    };
+}
+
 /// A secret or private asymmetric key.
 #[derive(DataSize)]
 pub enum SecretKey {
@@ -375,10 +382,6 @@ impl Debug for SecretKey {
             SecretKey::Secp256k1(_) => write!(formatter, "SecretKey::{}(...)", SECP256K1),
         }
     }
-}
-
-lazy_static! {
-    static ref ED25519_KEY: SecretKey = SecretKey::generate_ed25519();
 }
 
 impl DocExample for SecretKey {

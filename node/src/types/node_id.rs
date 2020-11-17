@@ -118,12 +118,12 @@ impl<'de> Deserialize<'de> for NodeId {
     }
 }
 lazy_static! {
-    static ref NODEID: NodeId = NodeId::Tls(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH]));
+    static ref NODE_ID: NodeId = NodeId::Tls(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH]));
 }
 
 impl DocExample for NodeId {
     fn doc_example() -> &'static Self {
-        &*NODEID
+        &*NODE_ID
     }
 }
 

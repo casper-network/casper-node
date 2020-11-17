@@ -13,7 +13,7 @@ use blake2::{
 use datasize::DataSize;
 use hex_buffer_serde::{Hex, HexForm};
 use hex_fmt::HexFmt;
-
+#[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -49,12 +49,6 @@ impl Digest {
         let mut inner = [0; Digest::LENGTH];
         hex::decode_to_slice(hex_input, &mut inner)?;
         Ok(Digest(inner))
-    }
-
-    ///Return a random instance for generation of documentation examples.
-    pub fn doc_example() -> Self {
-        let mut rng = crate::new_rng();
-        Digest(rng.gen::<[u8; Digest::LENGTH]>())
     }
 
     /// Generates a random instance using a `TestRng`.
