@@ -63,9 +63,10 @@ run_node() {
     local SESSION=${2}
     local ID=${3}
     local CONFIG_DIR=${4}
-    local STORAGE_DIR=${5}
+    local DATA_DIR=${5}
     local CONFIG_TOML_PATH="${CONFIG_DIR}/config.toml"
     local SECRET_KEY_PATH="${CONFIG_DIR}/secret_keys/node-${ID}.pem"
+    local STORAGE_DIR="${DATA_DIR}/node-${ID}-storage"
 
     local CMD=(
         "${EXECUTABLE}"
@@ -80,6 +81,8 @@ run_node() {
     if [[ ${ID} != 1 ]]; then
         CMD+=("-C network.bind_address='0.0.0.0:0'")
     fi
+
+    CMD+=("1> >(tee ${DATA_DIR}/node-${ID}.log) 2> >(tee ${DATA_DIR}/node-${ID}.log.stderr)")
 
     mkdir -p "${STORAGE_DIR}"
     tmux_new_window "${SESSION}" "${ID}" "${CMD[*]}"
@@ -115,13 +118,11 @@ main() {
     tmux new-session -d -s ${SESSION}
 
     local ID=1
-    local STORAGE_DIR="${TMPDIR}/node-${ID}-storage"
-    run_node ${EXECUTABLE} ${SESSION} ${ID} ${CONFIG_DIR} ${STORAGE_DIR}
+    run_node ${EXECUTABLE} ${SESSION} ${ID} ${CONFIG_DIR} ${TMPDIR}
 
     for ID in {2..5}; do
         check_for_bootstrap
-        STORAGE_DIR="${TMPDIR}/node-${ID}-storage"
-        run_node ${EXECUTABLE} ${SESSION} ${ID} ${CONFIG_DIR} ${STORAGE_DIR}
+        run_node ${EXECUTABLE} ${SESSION} ${ID} ${CONFIG_DIR} ${TMPDIR}
     done
 
     echo
