@@ -7,6 +7,7 @@ use super::*;
 use crate::{
     components::{
         consensus::{
+            consensus_protocol::EraEnd,
             tests::mock_proto::{self, MockProto, NodeId},
             Config,
         },
@@ -161,7 +162,7 @@ fn new_test_chainspec(stakes: Vec<(PublicKey, u64)>) -> Chainspec {
             GenesisAccount::new(pk.into(), pk.to_account_hash(), motes, motes)
         })
         .collect();
-    chainspec.genesis.timestamp = Timestamp::now() + 1000.into();
+    chainspec.genesis.timestamp = Timestamp::now();
     chainspec.genesis.highway_config.genesis_era_start_timestamp = chainspec.genesis.timestamp;
 
     // Every era has exactly three blocks.
@@ -293,7 +294,10 @@ async fn cross_era_slashing() -> Result<(), Error> {
     let expected_fb = FinalizedBlock::new(
         fb.proto_block().clone(),
         fb.timestamp(),
-        None, // not the era's last block
+        Some(EraEnd {
+            equivocators: vec![alice_pk],
+            rewards: Default::default(),
+        }), // the era's last block
         EraId(0),
         1, // height
         bob_pk,
