@@ -725,47 +725,62 @@ impl<C: Context> State<C> {
     /// Returns `true` if there is at most one fork by the validator `eq_idx` that is cited naively
     /// by `wunit` or earlier units by the same creator.
     fn satisfies_lnc_for(&self, wunit: &WireUnit<C>, eq_idx: ValidatorIndex) -> bool {
-        // Find all forks by eq_idx that are cited naively by wunit.
-        // * If it's more than one, return false (the LNC is violated).
-        // * If it's none, return true: If the LNC were violated we would have already noticed when
-        //   validating earlier units by wunit.creator.
+        // Find all forks by eq_idx that are cited naively by wunit itself.
+        // * If it's more than one, return false: the LNC is violated.
+        // * If it's none, return true: If the LNC were violated, it would be because of two naive
+        //   citations by wunit.creator's earlier units. So the latest of those earlier units would
+        //   already be violating the LNC itself, and thus would not have been added to the state.
         // * Otherwise store the unique naively cited fork in naive_by_wunit.
         let mut opt_naive_by_wunit = None;
         {
+            // Returns true if any endorsed (according to wunit) unit cites the given unit.
             let seen_by_endorsed =
                 |hash| wunit.endorsed.iter().any(|e_hash| self.sees(e_hash, hash));
+
+            // Iterate over all units cited by wunit.
             let mut to_visit: Vec<_> = wunit.panorama.iter_correct_hashes().collect();
+            // This set is a filter so that units don't get added to to_visit twice.
             let mut added_to_to_visit: HashSet<_> = to_visit.iter().cloned().collect();
             while let Some(hash) = to_visit.pop() {
                 if seen_by_endorsed(hash) {
-                    continue;
+                    continue; // This unit and everything below is not cited naively.
                 }
                 let unit = self.unit(hash);
-                if let Some(eq_hash) = unit.panorama[eq_idx].correct() {
-                    if seen_by_endorsed(eq_hash) {
-                        continue;
-                    }
-                    match opt_naive_by_wunit {
-                        None => opt_naive_by_wunit = Some(eq_hash),
-                        Some(other_hash) => {
-                            if self.sees_correct(eq_hash, other_hash) {
-                                opt_naive_by_wunit = Some(eq_hash);
-                            } else if !self.sees_correct(other_hash, eq_hash) {
-                                return false;
+                match &unit.panorama[eq_idx] {
+                    Observation::Correct(eq_hash) => {
+                        // The unit (and everything it cites) can only see a single fork.
+                        // No need to traverse further downward.
+                        if !seen_by_endorsed(eq_hash) {
+                            // The fork is cited naively!
+                            match opt_naive_by_wunit {
+                                // It's the first naively cited fork we found.
+                                None => opt_naive_by_wunit = Some(eq_hash),
+                                Some(other_hash) => {
+                                    // If eq_hash is later than other_hash, it is the tip of the
+                                    // same fork. If it is earlier, then other_hash is the tip.
+                                    if self.sees_correct(eq_hash, other_hash) {
+                                        opt_naive_by_wunit = Some(eq_hash);
+                                    } else if !self.sees_correct(other_hash, eq_hash) {
+                                        return false; // We found two incompatible forks!
+                                    }
+                                }
                             }
                         }
                     }
-                } else {
-                    to_visit.extend(
+                    // No forks are cited by this unit. No need to traverse further.
+                    Observation::None => (),
+                    // The unit still sees the equivocator as faulty: We need to traverse further
+                    // down the graph to find all cited forks.
+                    Observation::Faulty => to_visit.extend(
                         unit.panorama
                             .iter_correct_hashes()
                             .filter(|hash| added_to_to_visit.insert(hash)),
-                    );
+                    ),
                 }
             }
         }
         let naive_by_wunit = match opt_naive_by_wunit {
-            None => return true,
+            None => return true, // No forks are cited naively by wunit.
             Some(naive_by_wunit) => naive_by_wunit,
         };
 
@@ -775,42 +790,49 @@ impl<C: Context> State<C> {
         let mut opt_pred_hash = wunit.panorama[wunit.creator].correct();
         while let Some(pred_hash) = opt_pred_hash {
             let pred_unit = self.unit(pred_hash);
+            // Returns true if any endorsed (according to pred_unit) unit cites the given unit.
             let seen_by_endorsed = |hash| {
                 pred_unit
                     .endorsed
                     .iter()
                     .any(|e_hash| self.sees(e_hash, hash))
             };
+            // Iterate over all units cited by pred_unit.
             let mut to_visit: Vec<_> = pred_unit.panorama.iter_correct_hashes().collect();
+            // This set is a filter so that units don't get added to to_visit twice.
             let mut added_to_to_visit: HashSet<_> = to_visit.iter().cloned().collect();
             while let Some(hash) = to_visit.pop() {
                 if seen_by_endorsed(hash) {
-                    continue;
+                    continue; // This unit and everything below is not cited naively.
                 }
                 let unit = self.unit(hash);
-                if let Some(eq_hash) = unit.panorama[eq_idx].correct() {
-                    if seen_by_endorsed(eq_hash) {
-                        continue;
+                match &unit.panorama[eq_idx] {
+                    Observation::Correct(eq_hash) => {
+                        if !seen_by_endorsed(eq_hash)
+                            && !self.is_compatible(eq_hash, naive_by_wunit)
+                        {
+                            return false;
+                        }
                     }
-                    if !self.sees_correct(eq_hash, naive_by_wunit)
-                        && !self.sees_correct(naive_by_wunit, eq_hash)
-                    {
-                        return false;
-                    }
-                } else {
-                    to_visit.extend(
+                    // No forks are cited by this unit. No need to traverse further.
+                    Observation::None => (),
+                    // The unit still sees the equivocator as faulty: We need to traverse further
+                    // down the graph to find all cited forks.
+                    Observation::Faulty => to_visit.extend(
                         unit.panorama
                             .iter_correct_hashes()
                             .filter(|hash| added_to_to_visit.insert(hash)),
-                    );
+                    ),
                 }
             }
             if !pred_unit.panorama[eq_idx].is_faulty() {
+                // This unit and everything below sees only a single fork of the equivocator. If we
+                // haven't found conflicting naively cited forks yet, there are none.
                 return true;
             }
             opt_pred_hash = pred_unit.panorama[wunit.creator].correct();
         }
-        true
+        true // No earlier messages, so no conflicting naively cited forks.
     }
 
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`),
@@ -822,6 +844,13 @@ impl<C: Context> State<C> {
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`).
     fn sees(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
         hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
+    }
+
+    // Returns whether the units with `hash0` and `hash1` see each other or are equal.
+    fn is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+        hash0 == hash1
+            || self.unit(hash0).panorama.sees(self, hash1)
+            || self.unit(hash1).panorama.sees(self, hash0)
     }
 }
 
