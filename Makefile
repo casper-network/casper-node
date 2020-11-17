@@ -117,8 +117,8 @@ build-contracts-as: \
 .PHONY: build-contracts
 build-contracts: build-contracts-rs build-contracts-as
 
-resources/local/chainspec.toml: resources/local/chainspec.toml.in
-	@./generate-chainspec.sh
+resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.toml.in
+	@./$<
 
 .PHONY: test-rs
 test-rs: build-system-contracts resources/local/chainspec.toml
