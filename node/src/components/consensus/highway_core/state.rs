@@ -138,6 +138,11 @@ pub(crate) struct State<C: Context> {
     faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
+    /// Panorama used when creating new units.
+    /// In the presence of faults may lag behind `panorama`.
+    /// Units, that if cited by a new unit would make that unit violate the LNC, are not added to
+    /// `citable_panorama`.
+    citable_panorama: Panorama<C>,
     /// All currently endorsed units, by hash.
     endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
     /// Units that don't yet have 2/3 of stake endorsing them.
@@ -181,7 +186,8 @@ impl<C: Context> State<C> {
             units: HashMap::new(),
             blocks: HashMap::new(),
             faults,
-            panorama,
+            panorama: panorama.clone(),
+            citable_panorama: panorama,
             endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
             clock: Clock::new(),
@@ -287,6 +293,7 @@ impl<C: Context> State<C> {
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
     pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
         self.panorama[idx] = Observation::Faulty;
+        self.citable_panorama[idx] = Observation::Faulty;
         self.faults.entry(idx).or_insert(Fault::Indirect);
     }
 
@@ -340,6 +347,11 @@ impl<C: Context> State<C> {
         &self.panorama
     }
 
+    /// Returns the "safe" panorama, that can be used when creating new units.
+    pub(crate) fn citable_panorama(&self) -> &Panorama<C> {
+        &self.citable_panorama
+    }
+
     /// Returns the leader in the specified time slot.
     pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
         let seed = self.params.seed().wrapping_add(timestamp.millis());
@@ -380,6 +392,7 @@ impl<C: Context> State<C> {
         trace!(?evidence, "marking validator #{} as faulty", idx.0);
         self.faults.insert(idx, Fault::Direct(evidence));
         self.panorama[idx] = Observation::Faulty;
+        self.citable_panorama[idx] = Observation::Faulty;
         true
     }
 
@@ -419,7 +432,10 @@ impl<C: Context> State<C> {
         if endorsed > threshold {
             info!(%unit, "Unit endorsed by at least 2/3 of validators.");
             let fully_endorsed = self.incomplete_endorsements.remove(&unit).unwrap();
+            let creator = self.unit(&unit).creator;
             self.endorsements.insert(unit, fully_endorsed);
+            // When unit gets endorsed, it becomes safe to cite.
+            self.citable_panorama[creator] = Observation::Correct(unit);
         }
     }
 
@@ -634,6 +650,8 @@ impl<C: Context> State<C> {
                 Observation::Faulty
             }
         };
+        // TODO(HWY-167): Decide whether new unit should be accepted to the `citable_panorama`.
+        self.citable_panorama[wunit.creator] = new_obs.clone();
         self.panorama[wunit.creator] = new_obs;
     }
 
