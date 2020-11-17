@@ -23,6 +23,7 @@ pub(super) enum DisplayOrder {
     TransferSourcePurse,
     TransferTargetAccount,
     TransferTargetPurse,
+    TransferId,
     Timestamp,
     Ttl,
     GasPrice,

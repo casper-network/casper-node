@@ -141,12 +141,14 @@ impl RpcCall {
         amount: U512,
         source_purse: Option<URef>,
         target: TransferTarget,
+        id: Option<u64>,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<JsonRpc> {
         const TRANSFER_ARG_AMOUNT: &str = "amount";
         const TRANSFER_ARG_SOURCE: &str = "source";
         const TRANSFER_ARG_TARGET: &str = "target";
+        const TRANSFER_ARG_ID: &str = "id";
 
         let mut transfer_args = RuntimeArgs::new();
         transfer_args.insert(TRANSFER_ARG_AMOUNT, amount);
@@ -162,6 +164,7 @@ impl RpcCall {
                 transfer_args.insert(TRANSFER_ARG_TARGET, target_purse);
             }
         }
+        transfer_args.insert(TRANSFER_ARG_ID, id);
         let session = ExecutableDeployItem::Transfer {
             args: transfer_args.to_bytes()?,
         };

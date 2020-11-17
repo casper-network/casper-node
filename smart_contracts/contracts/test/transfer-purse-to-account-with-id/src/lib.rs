@@ -15,13 +15,15 @@ const MAIN_PURSE_FINAL_BALANCE_UREF_NAME: &str = "final_balance";
 
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
+const ARG_ID: &str = "id";
 
 pub fn delegate() {
     let source: URef = account::get_main_purse();
     let target: AccountHash = runtime::get_named_arg(ARG_TARGET);
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let id: Option<u64> = runtime::get_named_arg(ARG_ID);
 
-    let transfer_result = system::transfer_from_purse_to_account(source, target, amount, None);
+    let transfer_result = system::transfer_from_purse_to_account(source, target, amount, id);
 
     let final_balance = system::get_balance(source).unwrap_or_revert_with(ApiError::User(103));
 

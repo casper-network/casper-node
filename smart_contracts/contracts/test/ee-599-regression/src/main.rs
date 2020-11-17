@@ -67,8 +67,13 @@ pub extern "C" fn transfer_from_purse_to_purse_ext() {
 
     let main_purse = account::get_main_purse();
 
-    system::transfer_from_purse_to_purse(main_purse, donation_purse, U512::from(DONATION_AMOUNT))
-        .unwrap_or_revert();
+    system::transfer_from_purse_to_purse(
+        main_purse,
+        donation_purse,
+        U512::from(DONATION_AMOUNT),
+        None,
+    )
+    .unwrap_or_revert();
 }
 
 #[no_mangle]
@@ -83,6 +88,7 @@ pub extern "C" fn transfer_from_purse_to_account_ext() {
         main_purse,
         maintainer_account_hash,
         U512::from(DONATION_AMOUNT),
+        None,
     )
     .unwrap_or_revert();
 }
@@ -91,7 +97,7 @@ pub extern "C" fn transfer_from_purse_to_account_ext() {
 pub extern "C" fn transfer_to_account_ext() {
     // This is the address of account which installed the contract
     let maintainer_account_hash = get_maintainer_account_hash().unwrap_or_revert();
-    system::transfer_to_account(maintainer_account_hash, U512::from(DONATION_AMOUNT))
+    system::transfer_to_account(maintainer_account_hash, U512::from(DONATION_AMOUNT), None)
         .unwrap_or_revert();
     let _main_purse = account::get_main_purse();
 }

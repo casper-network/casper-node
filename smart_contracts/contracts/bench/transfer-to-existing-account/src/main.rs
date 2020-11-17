@@ -19,7 +19,7 @@ enum Error {
 pub extern "C" fn call() {
     let account: AccountHash = runtime::get_named_arg(ARG_TARGET);
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    let result = system::transfer_to_account(account, amount).unwrap_or_revert();
+    let result = system::transfer_to_account(account, amount, None).unwrap_or_revert();
     match result {
         TransferredTo::ExistingAccount => {
             // This is the expected result, as all accounts have to be initialized beforehand
