@@ -193,38 +193,39 @@ async fn propose_and_finalize(
     }
     .received(NodeId(1), EraId(0)); // TODO: Compute era ID.
     let mut effects = handle(es, event);
-
-    // As a result, the era supervisor should request validation of the proto block and evidence
-    // against Alice.
     let validate = tokio::spawn(effects.pop().unwrap());
-    let request_evidence = tokio::spawn(effects.pop().unwrap());
-    assert!(effects.is_empty());
-    // TODO: Requests depend on accusations.
-    reactor.expect_send_message(NodeId(1)).await; // Sending request for evidence.
-    request_evidence.await.unwrap();
-
-    // The block validator returns true: The deploys in the block are valid. As a result, we don't
-    // do anything yet (no new effects): We have to wait for the evidence first.
     reactor
         .expect_block_validation(&proto_block, NodeId(1), timestamp, true)
         .await;
     let rv_event = validate.await.unwrap().pop().unwrap();
-    let effects = handle(es, rv_event);
+
+    // As a result, the era supervisor should request validation of the proto block and evidence
+    // against Alice.
+    for _ in &accusations {
+        let request_evidence = tokio::spawn(effects.pop().unwrap());
+        reactor.expect_send_message(NodeId(1)).await; // Sending request for evidence.
+        request_evidence.await.unwrap();
+    }
     assert!(effects.is_empty());
 
-    // Node 1 replies with evidence of Alice's fault. That completes our requirements for the
-    // proposed block. The era supervisor announces that it has passed the proposed block to the
-    // consensus protocol. It also gossips the new evidence to other nodes.
-    // TODO: Only pass in the requested evidence.
-    let event = ClMessage::Evidence(accusations[0].clone()).received(NodeId(1), EraId(0));
-    let mut effects = handle(es, event);
+    // Node 1 replies with requested evidence.
+    for pk in &accusations {
+        let event = ClMessage::Evidence(pk.clone()).received(NodeId(1), EraId(0));
+        let mut effects = handle(es, event);
+        let broadcast_evidence = tokio::spawn(effects.pop().unwrap());
+        assert!(effects.is_empty());
+        reactor.expect_broadcast().await; //Gossip evidence to other nodes.
+        broadcast_evidence.await.unwrap();
+    }
+
+    // The block validator returns true: The deploys in the block are valid. That completes our
+    // requirements for the proposed block. The era supervisor announces that it has passed the
+    // proposed block to the consensus protocol.
+    let mut effects = handle(es, rv_event);
     let announce_proposed = tokio::spawn(effects.pop().unwrap());
-    let broadcast_evidence = tokio::spawn(effects.pop().unwrap());
     assert!(effects.is_empty());
     assert_eq!(proto_block, reactor.expect_proposed().await);
-    reactor.expect_broadcast().await; //Gossip evidence to other nodes.
     announce_proposed.await.unwrap();
-    broadcast_evidence.await.unwrap();
 
     // Node 1 now sends us another message that is sufficient for the protocol to finalize the
     // block. The era supervisor is expected to announce finalization, and to request execution.
@@ -276,6 +277,7 @@ async fn cross_era_slashing() -> Result<(), Error> {
         )?
     };
     assert!(effects.is_empty());
+
     let fb = propose_and_finalize(&mut es, bob_pk, vec![alice_pk], &mut rng).await;
     let expected_fb = FinalizedBlock::new(
         fb.proto_block().clone(),
@@ -283,6 +285,17 @@ async fn cross_era_slashing() -> Result<(), Error> {
         None, // not the era's last block
         EraId(0),
         0, // height
+        bob_pk,
+    );
+    assert_eq!(expected_fb, fb);
+
+    let fb = propose_and_finalize(&mut es, bob_pk, vec![], &mut rng).await;
+    let expected_fb = FinalizedBlock::new(
+        fb.proto_block().clone(),
+        fb.timestamp(),
+        None, // not the era's last block
+        EraId(0),
+        1, // height
         bob_pk,
     );
     assert_eq!(expected_fb, fb);
