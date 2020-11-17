@@ -25,6 +25,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     testing::TestRng,
     utils::{self, External, Loadable},
+    NodeRng,
 };
 
 type ClMessage = mock_proto::Message<ClContext>;
@@ -169,62 +170,36 @@ fn new_test_chainspec(stakes: Vec<(PublicKey, u64)>) -> Chainspec {
     chainspec
 }
 
-#[tokio::test]
-async fn propose_and_finalize() -> Result<(), Error> {
-    let mut rng = TestRng::new();
-
-    let alice_sk = SecretKey::random(&mut rng);
-    let alice_pk = PublicKey::from(&alice_sk);
-    let bob_sk = SecretKey::random(&mut rng);
-    let bob_pk = PublicKey::from(&bob_sk);
-
-    let chainspec = new_test_chainspec(vec![(alice_pk, 10), (bob_pk, 100)]);
-    let config = Config {
-        secret_key_path: External::Loaded(alice_sk),
-    };
-
-    let registry = Registry::new();
+async fn propose_and_finalize(
+    es: &mut EraSupervisor<NodeId>,
+    proposer: PublicKey,
+    accusations: Vec<PublicKey>,
+    rng: &mut NodeRng,
+) -> FinalizedBlock {
     let reactor = MockReactor::new();
     let effect_builder = EffectBuilder::new(EventQueueHandle::new(reactor.scheduler));
-
-    // Initialize the era supervisor. There are two validators, Alice and Bob. This instance,
-    // however, is only a passive observer.
-    let (mut es, effects) = EraSupervisor::new(
-        Timestamp::now(),
-        WithDir::new("tmp", config),
-        effect_builder,
-        vec![
-            (alice_pk, Motes::new(10.into())),
-            (bob_pk, Motes::new(100.into())),
-        ],
-        &chainspec,
-        Default::default(), // genesis state root hash
-        &registry,
-        Box::new(MockProto::new_boxed),
-        &mut rng,
-    )?;
-    assert!(effects.is_empty());
     let mut handle = |es: &mut EraSupervisor<NodeId>, event: super::Event<NodeId>| {
-        es.handle_event(effect_builder, &mut rng, event)
+        es.handle_event(effect_builder, rng, event)
     };
 
-    // Bob proposes a new block and accuses Alice. We receive that proposal via node 1.
+    // Propose a new block. We receive that proposal via node 1.
     let proto_block = ProtoBlock::new(vec![], true);
-    let candidate_block = CandidateBlock::new(proto_block.clone(), vec![alice_pk]);
+    let candidate_block = CandidateBlock::new(proto_block.clone(), accusations.clone());
     let timestamp = Timestamp::now();
     let event = ClMessage::BlockByOtherValidator {
         value: candidate_block.clone(),
         timestamp,
-        proposer: bob_pk,
+        proposer,
     }
-    .received(NodeId(1), EraId(0));
-    let mut effects = handle(&mut es, event);
+    .received(NodeId(1), EraId(0)); // TODO: Compute era ID.
+    let mut effects = handle(es, event);
 
     // As a result, the era supervisor should request validation of the proto block and evidence
     // against Alice.
     let validate = tokio::spawn(effects.pop().unwrap());
     let request_evidence = tokio::spawn(effects.pop().unwrap());
     assert!(effects.is_empty());
+    // TODO: Requests depend on accusations.
     reactor.expect_send_message(NodeId(1)).await; // Sending request for evidence.
     request_evidence.await.unwrap();
 
@@ -234,40 +209,83 @@ async fn propose_and_finalize() -> Result<(), Error> {
         .expect_block_validation(&proto_block, NodeId(1), timestamp, true)
         .await;
     let rv_event = validate.await.unwrap().pop().unwrap();
-    let effects = handle(&mut es, rv_event);
+    let effects = handle(es, rv_event);
     assert!(effects.is_empty());
 
     // Node 1 replies with evidence of Alice's fault. That completes our requirements for the
     // proposed block. The era supervisor announces that it has passed the proposed block to the
     // consensus protocol. It also gossips the new evidence to other nodes.
-    let event = ClMessage::Evidence(alice_pk).received(NodeId(1), EraId(0));
-    let mut effects = handle(&mut es, event);
-    let _announce_proposed = tokio::spawn(effects.pop().unwrap());
+    // TODO: Only pass in the requested evidence.
+    let event = ClMessage::Evidence(accusations[0].clone()).received(NodeId(1), EraId(0));
+    let mut effects = handle(es, event);
+    let announce_proposed = tokio::spawn(effects.pop().unwrap());
     let broadcast_evidence = tokio::spawn(effects.pop().unwrap());
     assert!(effects.is_empty());
     assert_eq!(proto_block, reactor.expect_proposed().await);
-    // TODO: Why does it hang if we await this effect?
-    // announce_proposed.await.unwrap();
     reactor.expect_broadcast().await; //Gossip evidence to other nodes.
+    announce_proposed.await.unwrap();
     broadcast_evidence.await.unwrap();
 
     // Node 1 now sends us another message that is sufficient for the protocol to finalize the
     // block. The era supervisor is expected to announce finalization, and to request execution.
     let event = ClMessage::FinalizeBlock.received(NodeId(1), EraId(0));
-    let mut effects = handle(&mut es, event);
+    let mut effects = handle(es, event);
     tokio::spawn(effects.pop().unwrap()).await.unwrap();
     tokio::spawn(effects.pop().unwrap()).await.unwrap();
     assert!(effects.is_empty());
+
+    let fb = reactor.expect_execute().await;
+    assert_eq!(fb, reactor.expect_finalized().await);
+    fb
+}
+
+#[tokio::test]
+async fn cross_era_slashing() -> Result<(), Error> {
+    let mut rng = TestRng::new();
+
+    let alice_sk = SecretKey::random(&mut rng);
+    let alice_pk = PublicKey::from(&alice_sk);
+    let bob_sk = SecretKey::random(&mut rng);
+    let bob_pk = PublicKey::from(&bob_sk);
+
+    let (mut es, effects) = {
+        let chainspec = new_test_chainspec(vec![(alice_pk, 10), (bob_pk, 100)]);
+        let config = Config {
+            secret_key_path: External::Loaded(alice_sk),
+        };
+
+        let registry = Registry::new();
+        let reactor = MockReactor::new();
+        let effect_builder = EffectBuilder::new(EventQueueHandle::new(reactor.scheduler));
+
+        // Initialize the era supervisor. There are two validators, Alice and Bob. This instance,
+        // however, is only a passive observer.
+        EraSupervisor::new(
+            Timestamp::now(),
+            WithDir::new("tmp", config),
+            effect_builder,
+            vec![
+                (alice_pk, Motes::new(10.into())),
+                (bob_pk, Motes::new(100.into())),
+            ],
+            &chainspec,
+            Default::default(), // genesis state root hash
+            &registry,
+            Box::new(MockProto::new_boxed),
+            &mut rng,
+        )?
+    };
+    assert!(effects.is_empty());
+    let fb = propose_and_finalize(&mut es, bob_pk, vec![alice_pk], &mut rng).await;
     let expected_fb = FinalizedBlock::new(
-        proto_block,
-        timestamp,
+        fb.proto_block().clone(),
+        fb.timestamp(),
         None, // not the era's last block
         EraId(0),
         0, // height
         bob_pk,
     );
-    assert_eq!(expected_fb, reactor.expect_execute().await);
-    assert_eq!(expected_fb, reactor.expect_finalized().await);
+    assert_eq!(expected_fb, fb);
 
     Ok(())
 }
