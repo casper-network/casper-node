@@ -265,7 +265,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns hashes of endorsed units.
-    pub(crate) fn endorsements<'a>(&'a self) -> impl Iterator<Item = C::Hash> + 'a {
+    pub(crate) fn endorsements(&self) -> impl Iterator<Item = C::Hash> + '_ {
         self.endorsements.keys().cloned()
     }
 
@@ -357,7 +357,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns an iterator over all faulty validators.
-    pub(crate) fn faulty_validators<'a>(&'a self) -> impl Iterator<Item = ValidatorIndex> + 'a {
+    pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.faults.keys().cloned()
     }
 

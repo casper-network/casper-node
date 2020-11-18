@@ -31,10 +31,7 @@ pub(crate) enum Dependency<C: Context> {
 impl<C: Context> Dependency<C> {
     /// Returns whether this identifies a unit, as opposed to other types of vertices.
     pub(crate) fn is_unit(&self) -> bool {
-        match self {
-            Dependency::Unit(_) => true,
-            _ => false,
-        }
+        matches!(self, Dependency::Unit(_))
     }
 }
 

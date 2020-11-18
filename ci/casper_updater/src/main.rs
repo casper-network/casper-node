@@ -24,7 +24,6 @@
     arithmetic_overflow,
     invalid_type_param_default,
     macro_expanded_macro_exports_accessed_by_absolute_paths,
-    missing_fragment_specifier,
     mutable_transmutes,
     no_mangle_const_items,
     order_dependent_trait_objects,

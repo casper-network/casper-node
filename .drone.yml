@@ -129,6 +129,7 @@ steps:
 - name: build-deb
   image: casperlabs/node-build-u1804
   commands:
+    - make setup-rs
     - "make deb"
 
 - name: test-deb

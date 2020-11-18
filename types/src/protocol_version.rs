@@ -38,10 +38,7 @@ impl VersionCheckResult {
     ///
     /// Any other variant than [`VersionCheckResult::CodeIsRequired`] returns false.
     pub fn is_code_required(&self) -> bool {
-        match self {
-            VersionCheckResult::CodeIsRequired => true,
-            _ => false,
-        }
+        matches!(self, VersionCheckResult::CodeIsRequired)
     }
 }
 

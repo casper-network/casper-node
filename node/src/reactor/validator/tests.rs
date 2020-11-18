@@ -63,14 +63,14 @@ impl TestChain {
 
     /// Creates an initializer/validator configuration for the `idx`th validator.
     fn create_node_config(&mut self, idx: usize, first_node_port: u16) -> validator::Config {
-        // Start with a default configuration.
-        let mut cfg = validator::Config::default();
-
         // Set the network configuration.
-        cfg.network = if idx == 0 {
-            small_network::Config::default_local_net_first_node(first_node_port)
-        } else {
-            small_network::Config::default_local_net(first_node_port)
+        let mut cfg = validator::Config {
+            network: if idx == 0 {
+                small_network::Config::default_local_net_first_node(first_node_port)
+            } else {
+                small_network::Config::default_local_net(first_node_port)
+            },
+            ..Default::default()
         };
 
         // Set the correct chainspec...

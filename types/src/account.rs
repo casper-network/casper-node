@@ -230,7 +230,7 @@ impl AccountHash {
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
             .strip_prefix(FORMATTED_STRING_PREFIX)
-            .ok_or_else(|| FromStrError::InvalidPrefix)?;
+            .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = AccountHashBytes::try_from(base16::decode(remainder)?.as_ref())?;
         Ok(AccountHash(bytes))
     }

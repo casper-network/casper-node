@@ -90,7 +90,7 @@ impl Query {
     fn current_path(&self) -> String {
         let mut path = format!("{:?}", self.base_key);
         for name in &self.visited_names {
-            path.push_str("/");
+            path.push('/');
             path.push_str(name);
         }
         path
