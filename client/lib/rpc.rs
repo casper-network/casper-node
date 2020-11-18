@@ -1,3 +1,5 @@
+use std::fs::File;
+
 use futures::executor;
 use jsonrpc_lite::{Id, JsonRpc, Params};
 use rand::Rng;
@@ -174,7 +176,11 @@ impl RpcCall {
     }
 
     pub(crate) fn send_deploy_file(self, input_path: &str) -> Result<JsonRpc> {
-        let deploy = Deploy::read_deploy(input_path)?;
+        let input = File::open(input_path).map_err(|error| Error::IoError {
+            context: format!("unble to read input file '{}'", input_path),
+            error,
+        })?;
+        let deploy = Deploy::read_deploy(input)?;
         let params = PutDeployParams { deploy };
         SendDeploy::request_with_map_params(self, params)
     }

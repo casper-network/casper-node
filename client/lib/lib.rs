@@ -23,7 +23,7 @@ mod parsing;
 mod rpc;
 mod validation;
 
-use std::convert::TryInto;
+use std::{convert::TryInto, fs::File};
 
 use jsonrpc_lite::JsonRpc;
 
@@ -39,6 +39,7 @@ use error::Result;
 use executable_deploy_item_ext::ExecutableDeployItemExt;
 use parsing::none_if_empty;
 use rpc::{RpcCall, TransferTarget};
+pub use validation::ValidateResponseError;
 
 /// Creates a `Deploy` and sends it to the network for execution.
 ///
@@ -95,12 +96,18 @@ pub fn make_deploy(
     session: SessionStrParams<'_>,
     payment: PaymentStrParams<'_>,
 ) -> Result<()> {
-    Deploy::make_deploy(
-        none_if_empty(maybe_output_path),
-        deploy.try_into()?,
-        payment.try_into()?,
-        session.try_into()?,
-    )
+    let output = deploy::output_or_stdout(none_if_empty(maybe_output_path)).map_err(|error| {
+        Error::IoError {
+            context: format!(
+                "unable to get file or stdout, provided '{:?}'",
+                maybe_output_path
+            ),
+            error,
+        }
+    })?;
+
+    Deploy::with_payment_and_session(deploy.try_into()?, payment.try_into()?, session.try_into()?)
+        .write_deploy(output)
 }
 
 /// Reads a previously-saved `Deploy` from a file, cryptographically signs it, and outputs it to a
@@ -112,8 +119,22 @@ pub fn make_deploy(
 ///   file already exists, it will be overwritten.
 pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &str) -> Result<()> {
     let secret_key = parsing::secret_key(secret_key)?;
-    let maybe_output = parsing::output(maybe_output_path);
-    Deploy::sign_deploy_file(&input_path, secret_key, maybe_output)
+    let maybe_output_path = parsing::output(maybe_output_path);
+
+    let output = deploy::output_or_stdout(maybe_output_path).map_err(|error| Error::IoError {
+        context: format!(
+            "unable to get file or stdout, provided '{:?}'",
+            maybe_output_path
+        ),
+        error,
+    })?;
+
+    let input = File::open(&input_path).map_err(|error| Error::IoError {
+        context: format!("unable to read deploy file at '{}'", input_path),
+        error,
+    })?;
+
+    Deploy::sign_and_write_deploy(input, secret_key, output)
 }
 
 /// Reads a previously-saved `Deploy` from a file and sends it to the network for execution.

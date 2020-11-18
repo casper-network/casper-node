@@ -95,8 +95,14 @@ impl MockServerHandle {
         }
     }
 
-    fn get_balance(&self, purse_uref: &str, state_root_hash: &str) -> Result<(), ErrWrapper> {
-        casper_client::get_balance("1", &self.url(), false, purse_uref, state_root_hash)
+    // lib/deploy.rs houses file related operation tests
+    // intentionally missing here are:
+    // * sign_deploy
+    // * send_deploy
+    // * make_deploy
+
+    fn get_balance(&self, state_root_hash: &str, purse_uref: &str) -> Result<(), ErrWrapper> {
+        casper_client::get_balance("1", &self.url(), false, state_root_hash, purse_uref)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
@@ -155,23 +161,6 @@ impl MockServerHandle {
         .map_err(ErrWrapper)
     }
 
-    fn make_deploy(
-        &self,
-        maybe_output_path: &str,
-        deploy_params: DeployStrParams<'static>,
-        session_params: SessionStrParams<'static>,
-        payment_params: PaymentStrParams<'static>,
-    ) -> Result<(), ErrWrapper> {
-        casper_client::make_deploy(
-            maybe_output_path,
-            deploy_params,
-            session_params,
-            payment_params,
-        )
-        .map(|_| ())
-        .map_err(ErrWrapper)
-    }
-
     fn get_auction_info(&self) -> Result<(), ErrWrapper> {
         casper_client::get_auction_info("1", &self.url(), false)
             .map(|_| ())
@@ -205,9 +194,9 @@ impl Into<ErrWrapper> for Error {
 }
 
 const VALID_PURSE_UREF: &str =
-    "uref-0127d7f966ee38a85aaf7cd869c51553f7e1a162ede9d772899fbef2f59da2f085-123";
-
-const VALID_STATE_HASH: &str = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
+    "uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007";
+const VALID_STATE_ROOT_HASH: &str =
+    "55db08058acb54c295b115cbd9b282eb2862e76d5bb8493bb80c0598a50a12a5";
 
 mod deploy_params {
     use super::*;
@@ -228,20 +217,14 @@ mod payment_params {
     use super::*;
 
     const NAME: &str = "name";
-    const PKG_HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
     const ENTRYPOINT: &str = "entrypoint";
-    const VERSION: &str = "0.1.0";
 
     fn args_simple() -> Vec<&'static str> {
-        vec!["name_01:bool='false'", "name_02:int='42'"]
+        vec!["name_01:bool='false'", "name_02:i32='42'"]
     }
 
     pub fn test_data_with_name() -> PaymentStrParams<'static> {
         PaymentStrParams::with_name(NAME, ENTRYPOINT, args_simple(), "")
-    }
-
-    pub fn test_data_with_package_hash() -> PaymentStrParams<'static> {
-        PaymentStrParams::with_package_hash(PKG_HASH, VERSION, ENTRYPOINT, args_simple(), "")
     }
 }
 
@@ -249,17 +232,12 @@ mod payment_params {
 mod session_params {
     use super::*;
 
-    const NAME: &str = "name";
     const PKG_HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
     const ENTRYPOINT: &str = "entrypoint";
     const VERSION: &str = "0.1.0";
 
     fn args_simple() -> Vec<&'static str> {
-        vec!["name_01:bool='false'", "name_02:int='42'"]
-    }
-
-    pub fn test_data_with_name() -> SessionStrParams<'static> {
-        SessionStrParams::with_name(NAME, ENTRYPOINT, args_simple(), "")
+        vec!["name_01:bool='false'", "name_02:i32='42'"]
     }
 
     pub fn test_data_with_package_hash() -> SessionStrParams<'static> {
@@ -274,12 +252,20 @@ use Error::*;
 mod get_balance {
     use super::*;
 
+    use casper_client::ValidateResponseError;
+    use casper_types::URefFromStrError;
+
     #[tokio::test(threaded_scheduler)]
     async fn should_succeed_with_valid_arguments() {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
-        assert!(server_handle
-            .get_balance(VALID_PURSE_UREF, VALID_STATE_HASH)
-            .is_ok());
+        assert_eq!(
+            server_handle.get_balance(VALID_STATE_ROOT_HASH, VALID_PURSE_UREF),
+            // NOTE: this "success" means that we then fail to validate the response, but that
+            // is outside the scope of this test.
+            // The MockServerHandle could support a pre-baked response, which should successfully
+            // validate
+            Err(InvalidResponse(ValidateResponseError::ValidateResponseFailedToParse).into())
+        );
     }
 
     #[tokio::test(threaded_scheduler)]
@@ -287,7 +273,7 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance("", ""),
-            Err(CryptoError("purse_uref", FromHex(InvalidStringLength)).into())
+            Err(CryptoError("state_root_hash", FromHex(InvalidStringLength)).into())
         );
     }
 
@@ -295,8 +281,8 @@ mod get_balance {
     async fn should_fail_with_empty_state_root_hash() {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
-            server_handle.get_balance(VALID_PURSE_UREF, ""),
-            Err(CryptoError("state_root_hash", FromHex(OddLength)).into())
+            server_handle.get_balance("", VALID_PURSE_UREF),
+            Err(CryptoError("state_root_hash", FromHex(InvalidStringLength)).into())
         );
     }
 
@@ -304,8 +290,8 @@ mod get_balance {
     async fn should_fail_with_empty_purse_uref() {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
-            server_handle.get_balance("", VALID_STATE_HASH),
-            Err(CryptoError("purse_uref", FromHex(InvalidStringLength)).into())
+            server_handle.get_balance(VALID_STATE_ROOT_HASH, ""),
+            Err(FailedToParseURef("purse_uref", URefFromStrError::InvalidPrefix).into())
         );
     }
 
@@ -313,7 +299,7 @@ mod get_balance {
     async fn should_fail_with_bad_state_root_hash() {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
-            server_handle.get_balance(VALID_PURSE_UREF, "deadbeef"),
+            server_handle.get_balance("deadbeef", VALID_PURSE_UREF),
             Err(CryptoError("state_root_hash", FromHex(InvalidStringLength)).into())
         );
     }
@@ -336,8 +322,7 @@ mod get_state_root_hash {
 
     #[tokio::test(threaded_scheduler)]
     async fn should_succeed_with_empty_block_id() {
-        let server_handle =
-            MockServerHandle::spawn::<GetStateRootHashParams>(GetStateRootHash::METHOD);
+        let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
         assert_eq!(server_handle.get_state_root_hash(""), Ok(()));
     }
 }
@@ -362,27 +347,6 @@ mod get_deploy {
             server_handle.get_deploy("012345",),
             Err(CryptoError("deploy_hash", FromHex(InvalidStringLength)).into())
         );
-    }
-}
-
-mod send_deploy {
-    #[test]
-    fn todo() {
-        todo!()
-    }
-}
-
-mod make_deploy {
-    #[test]
-    fn todo() {
-        todo!()
-    }
-}
-
-mod sign_deploy {
-    #[test]
-    fn todo() {
-        todo!()
     }
 }
 
@@ -419,13 +383,14 @@ mod transfer {
     use super::*;
 
     #[tokio::test(threaded_scheduler)]
-    async fn client_transfer_with_target_purse_and_target_account_should_fail() {
+    async fn should_succeed() {
         // Transfer uses PutDeployParams + PutDeploy
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         let amount = "100";
-        let maybe_source_purse = "12345";
-        let maybe_target_purse = "12345";
-        let maybe_target_account = "12345";
+        let maybe_source_purse = VALID_PURSE_UREF;
+        let maybe_target_purse = "";
+        let maybe_target_account =
+            "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
         assert_eq!(
             server_handle.transfer(
                 amount,
@@ -435,7 +400,25 @@ mod transfer {
                 deploy_params::test_data_valid(),
                 payment_params::test_data_with_name()
             ),
-            Err(Error::InvalidArgument("target_account | target_purse", maybe_source_purse.to_string()).into())
+            Ok(())
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_if_both_target_purse_and_target_account_provided() {
+        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
+        let maybe_target_purse = VALID_PURSE_UREF;
+        let maybe_target_account = "12345";
+        assert_eq!(
+            server_handle.transfer(
+                "100",
+                VALID_PURSE_UREF,
+                maybe_target_purse,
+                maybe_target_account,
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name()
+            ),
+            Err(Error::InvalidArgument("target_account | target_purse", "Invalid arguments to get_transfer_target - must provide either a target account or purse.".to_string()).into())
         );
     }
 }

@@ -52,7 +52,8 @@ fn gas_price(value: &str) -> Result<u64> {
 fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
     let mut hashes = Vec::with_capacity(values.len());
     for value in values {
-        let digest = Digest::from_hex(value).map_err(|error| Error::CryptoError("dependencies", error))?;
+        let digest =
+            Digest::from_hex(value).map_err(|error| Error::CryptoError("dependencies", error))?;
         hashes.push(DeployHash::new(digest))
     }
     Ok(hashes)
@@ -212,7 +213,7 @@ mod args_complex {
 const STANDARD_PAYMENT_ARG_NAME: &str = "amount";
 fn standard_payment(value: &str) -> Result<RuntimeArgs> {
     if value.is_empty() {
-        return Err(Error::InvalidCLValue(value.to_string()))
+        return Err(Error::InvalidCLValue(value.to_string()));
     }
     let arg = U512::from_dec_str(value)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
@@ -317,7 +318,10 @@ pub(super) fn parse_session_info(
     }
 
     if session_path.is_empty() {
-        return Err(Error::InvalidArgument("payment_path", "<empty>".to_string()))
+        return Err(Error::InvalidArgument(
+            "payment_path",
+            "<empty>".to_string(),
+        ));
     }
 
     let module_bytes = fs::read(session_path).map_err(|error| Error::IoError {
@@ -388,7 +392,10 @@ pub(super) fn parse_payment_info(
     }
 
     if payment_path.is_empty() {
-        return Err(Error::InvalidArgument("payment_path", "<empty>".to_string()))
+        return Err(Error::InvalidArgument(
+            "payment_path",
+            "<empty>".to_string(),
+        ));
     }
 
     let module_bytes = fs::read(payment_path).map_err(|error| Error::IoError {
@@ -422,7 +429,7 @@ pub(crate) fn output(value: &str) -> Option<&str> {
 
 fn parse_contract_hash(value: &str) -> Result<Option<ContractHash>> {
     if value.is_empty() {
-        return Ok(None)
+        return Ok(None);
     }
     if let Ok(digest) = Digest::from_hex(value) {
         return Ok(Some(digest.to_array()));
