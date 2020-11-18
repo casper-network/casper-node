@@ -321,8 +321,8 @@ pub fn get_auction_info(maybe_rpc_id: &str, node_address: &str, verbose: bool) -
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
-pub fn get_rpcs(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_rpcs()
+pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbose)?.list_rpcs()
 }
 
 /// Container for `Deploy` construction options.

@@ -24,7 +24,7 @@ pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: Effe
     let rpc_get_peers = rpcs::info::GetPeers::create_filter(effect_builder);
     let rpc_get_status = rpcs::info::GetStatus::create_filter(effect_builder);
     let rpc_get_auction_info = rpcs::state::GetAuctionInfo::create_filter(effect_builder);
-    let rpc_get_rpcs = rpcs::docs::GetRpcs::create_filter(effect_builder);
+    let rpc_get_rpcs = rpcs::docs::ListRpcs::create_filter(effect_builder);
 
     let service = warp_json_rpc::service(
         rpc_put_deploy
