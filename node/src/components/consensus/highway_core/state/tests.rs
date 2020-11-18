@@ -214,7 +214,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let b2 = add_unit!(state, rng, BOB, None; F, b1, c0)?;
 
     // The state's own panorama has been updated correctly.
-    assert_eq!(state.panorama().clone(), panorama!(F, b2, c1));
+    assert_eq!(*state.panorama(), panorama!(F, b2, c1));
     Ok(())
 }
 

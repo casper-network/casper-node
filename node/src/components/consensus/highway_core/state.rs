@@ -152,8 +152,8 @@ impl<C: Context> Panoramas<C> {
 
     /// Updates latest observation of `creator` as `Correct(unit)`.
     /// Once a unit is a endorsed it is safe to cite it.
-    pub(crate) fn endorsed(&mut self, creator: ValidatorIndex, unit: C::Hash) {
-        self.citable_panorama[creator] = Observation::Correct(unit);
+    pub(crate) fn endorsed(&mut self, _creator: ValidatorIndex, _unit: C::Hash) {
+        //TODO
     }
 
     /// Updates panoramas with the new observation.
@@ -773,16 +773,16 @@ impl<C: Context> State<C> {
     /// Returns the panorama of the confirmation for the leader unit `vhash`.
     pub(crate) fn confirmation_panorama(
         &self,
-        vidx: ValidatorIndex,
+        own_idx: ValidatorIndex,
         vhash: &C::Hash,
     ) -> Panorama<C> {
         let unit = self.unit(vhash);
         let mut panorama;
         // TODO(HWY-167): Confirmation panorama.
-        if let Some(prev_hash) = self.panorama().get(vidx).correct().cloned() {
+        if let Some(prev_hash) = self.panorama().get(own_idx).correct().cloned() {
             let own_unit = self.unit(&prev_hash);
             panorama = unit.panorama.merge(self, &own_unit.panorama);
-            panorama[vidx] = Observation::Correct(prev_hash);
+            panorama[own_idx] = Observation::Correct(prev_hash);
         } else {
             panorama = unit.panorama.clone();
         }
