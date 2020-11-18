@@ -35,11 +35,11 @@ node=${node:-"all"}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Set daemon handler.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    daemon_mgr=$NCTL/sh/daemon/supervisord/node_stop.sh
+    daemon_mgr=$NCTL/sh/daemons/supervisord/node_stop.sh
 fi
 
 # Stop node(s).

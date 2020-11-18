@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 #
-# Invokes auction.delegate entry point.
+# Invokes auction.undelegate entry point.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifier (int).
-#   Node ordinal identifier (int).
-#   User ordinal identifier (int).
-#   Bid amount (motes).
-#   Delegation rate (float).
-
-# Import utils.
-source $NCTL/sh/utils/misc.sh
+#   Network ordinal identifier (optional).
+#   Node ordinal identifier (optional).
+#   User ordinal identifier (optional).
+#   Validator ordinal identifier (optional).
+#   Withdrawal amount (optional).
+#   Gas price (optional).
+#   Gas payment (optional).
 
 #######################################
 # Destructure input args.
@@ -56,21 +55,26 @@ validator=${validator:-1}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils.sh
+
 # Set deploy params.
-delegator_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $user)
+delegator_account_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $user)
 delegator_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_USER $user)
+delegator_main_purse_uref=$(get_main_purse_uref $net $node $delegator_account_key)
 node_address=$(get_node_address_rpc $net $node)
-path_contract=$(get_path_to_contract $net "delegate.wasm")
+path_contract=$(get_path_to_contract $net "undelegate.wasm")
 validator_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_NODE $validator)
 
 # Inform.
-log "dispatching deploy -> delegate.wasm"
+log "dispatching deploy -> undelegate.wasm"
 log "... network = $net"
 log "... node = $node"
 log "... node address = $node_address"
 log "... contract = $path_contract"
 log "... delegator id = $user"
 log "... delegator secret key = $delegator_secret_key"
+log "... delegator main purse uref = $delegator_main_purse_uref"
 log "... amount = $amount"
 
 # Dispatch deploy.
@@ -82,8 +86,9 @@ deploy_hash=$(
         --payment-amount $payment \
         --secret-key $delegator_secret_key \
         --session-arg "amount:u512='$amount'" \
-        --session-arg "delegator:public_key='$delegator_public_key'" \
+        --session-arg "delegator:public_key='$delegator_account_key'" \
         --session-arg "validator:public_key='$validator_public_key'" \
+        --session-arg "unbond_purse:uref='$delegator_main_purse_uref'" \
         --session-path $path_contract \
         --ttl "1day" \
         | jq '.result.deploy_hash' \

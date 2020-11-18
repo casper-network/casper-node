@@ -38,9 +38,7 @@ node=${node:-1}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
-$(get_path_to_client $net) get-deploy \
-    --node-address $(get_node_address_rpc $net $node) \
-    $deploy_hash \
-    | jq '.result'
+# Render on-chain deploy information.
+render_chain_deploy $net $node $deploy_hash

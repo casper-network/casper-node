@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 #
-# Dispatches wasmless transfers to a test net.
+# Fund user accounts from faucet.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   User ordinal identifier.
-#   Transfer dispatch count.
-#   Transfer dispatch interval.
+#   Network ordinal identifier (optional).
+#   Node ordinal identifier (optional).
+#   Gas price (optional).
+#   Gas payment (optional).
 
 #######################################
 # Destructure input args.
@@ -44,7 +43,7 @@ payment=${payment:-$NCTL_DEFAULT_GAS_PAYMENT}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Import vars.
 source $(get_path_to_net_vars $net)
@@ -56,18 +55,25 @@ log "... node=$node"
 log "... transfer amount=$NCTL_INITIAL_BALANCE_USER"
 log "... dispatched deploys:"
 
+# Set faucet secret key.
+path_to_faucet_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_FAUCET)
+
 for idx in $(seq 1 $NCTL_NET_USER_COUNT)
 do
+    # Set user account key.
+    user_account_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $idx)
+
+    # Dispatch deploy.
     deploy_hash=$(
         $(get_path_to_client $net) transfer \
             --chain-name $(get_chain_name $net) \
             --gas-price $gas \
             --node-address $(get_node_address_rpc $net $node) \
             --payment-amount $payment \
-            --secret-key $(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_FAUCET) \
+            --secret-key $path_to_faucet_secret_key \
             --ttl "1day" \
             --amount $NCTL_INITIAL_BALANCE_USER \
-            --target-account $(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $idx) \
+            --target-account $user_account_key \
             | jq '.result.deploy_hash' \
             | sed -e 's/^"//' -e 's/"$//'
         )

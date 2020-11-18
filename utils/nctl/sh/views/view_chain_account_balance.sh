@@ -35,19 +35,20 @@ do
 done
 
 # Set defaults.
-net=${net:-1}
-node=${node:-1}
-prefix=${prefix:-"account"}
-state_root_hash=${state_root_hash:-$(get_state_root_hash $net $node)}
+local net=${net:-1}
+local node=${node:-1}
+local prefix=${prefix:-"account"}
+local state_root_hash=${state_root_hash:-$(get_state_root_hash $net $node)}
 
 #######################################
 # Main
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
-balance=$(
+# Set account balance.
+local balance=$(
     $(get_path_to_client $net) get-balance \
         --node-address $(get_node_address_rpc $net $node) \
         --state-root-hash $state_root_hash \
@@ -55,4 +56,5 @@ balance=$(
         | jq '.result.balance_value' \
         | sed -e 's/^"//' -e 's/"$//'
     )
+
 log $prefix" balance = "$balance

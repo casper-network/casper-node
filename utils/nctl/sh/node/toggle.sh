@@ -35,14 +35,14 @@ node=${node:-1}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Import vars.
 source $(get_path_to_net_vars $net)
 
 # Set daemon handler.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    daemon_mgr=$NCTL/sh/daemon/supervisord/node_toggle.sh
+    daemon_mgr=$NCTL/sh/daemons/supervisord/node_toggle.sh
 fi
 
 # Pass through to daemon handler.

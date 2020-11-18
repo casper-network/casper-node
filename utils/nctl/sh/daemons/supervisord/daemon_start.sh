@@ -9,7 +9,7 @@
 #######################################
 
 # Import utils.
-source $NCTL/sh/daemon/supervisord/utils.sh
+source $NCTL/sh/daemons/supervisord/utils.sh
 
 # If sock file not found then start daemon.
 if [ ! -e "$(get_path_net_supervisord_sock $1)" ]; then
