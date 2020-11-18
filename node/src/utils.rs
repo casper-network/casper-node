@@ -17,6 +17,7 @@ use std::{
 use datasize::DataSize;
 use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
+use serde::Serialize;
 use thiserror::Error;
 
 #[cfg(test)]
@@ -189,7 +190,7 @@ impl<T> WithDir<T> {
 }
 
 /// The source of a piece of data.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum Source<I> {
     /// A peer with the wrapped ID.
     Peer(I),

@@ -20,7 +20,6 @@ use super::{Config, Event as SmallNetworkEvent, GossipedAddress, SmallNetwork};
 use crate::{
     components::{
         gossiper::{self, Gossiper},
-        storage::Storage,
         Component,
     },
     effect::{
@@ -41,18 +40,18 @@ use crate::{
 };
 
 /// Test-reactor event.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 enum Event {
     #[from]
-    SmallNet(SmallNetworkEvent<Message>),
+    SmallNet(#[serde(skip_serializing)] SmallNetworkEvent<Message>),
     #[from]
-    AddressGossiper(gossiper::Event<GossipedAddress>),
+    AddressGossiper(#[serde(skip_serializing)] gossiper::Event<GossipedAddress>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
+    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     #[from]
-    AddressGossiperAnnouncement(GossiperAnnouncement<GossipedAddress>),
+    AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
 }
 
 impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
@@ -67,8 +66,8 @@ impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
     }
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(_request: StorageRequest<Storage>) -> Self {
+impl From<StorageRequest> for Event {
+    fn from(_request: StorageRequest) -> Self {
         unreachable!()
     }
 }

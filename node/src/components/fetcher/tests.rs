@@ -7,6 +7,7 @@ use std::{
 use derive_more::From;
 use futures::FutureExt;
 use prometheus::Registry;
+use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
@@ -17,7 +18,7 @@ use crate::{
         chainspec_loader::Chainspec,
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{InMemoryNetwork, NetworkController},
-        storage::{self, Storage, StorageType},
+        storage::{self, Storage},
     },
     effect::{
         announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement, RpcServerAnnouncement},
@@ -37,32 +38,32 @@ use crate::{
 const TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Top-level event for the reactor.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 #[must_use]
 enum Event {
     #[from]
-    Storage(storage::Event<Storage>),
+    Storage(#[serde(skip_serializing)] storage::Event),
     #[from]
-    DeployAcceptor(deploy_acceptor::Event),
+    DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
-    DeployFetcher(super::Event<Deploy>),
+    DeployFetcher(#[serde(skip_serializing)] super::Event<Deploy>),
     #[from]
-    DeployFetcherRequest(FetcherRequest<NodeId, Deploy>),
+    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
     #[from]
-    NetworkRequest(NetworkRequest<NodeId, Message>),
+    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
     #[from]
-    LinearChainRequest(LinearChainRequest<NodeId>),
+    LinearChainRequest(#[serde(skip_serializing)] LinearChainRequest<NodeId>),
     #[from]
-    NetworkAnnouncement(NetworkAnnouncement<NodeId, Message>),
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
     #[from]
-    RpcServerAnnouncement(RpcServerAnnouncement),
+    RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
-    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement<NodeId>),
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(request: StorageRequest<Storage>) -> Self {
-        Event::Storage(storage::Event::Request(request))
+impl From<StorageRequest> for Event {
+    fn from(request: StorageRequest) -> Self {
+        Event::Storage(storage::Event::from(request))
     }
 }
 
@@ -121,7 +122,7 @@ impl reactor::Reactor for Reactor {
         let network = NetworkController::create_node(event_queue, rng);
 
         let (storage_config, _storage_tempdir) = storage::Config::default_for_tests();
-        let storage = Storage::new(WithDir::new(_storage_tempdir.path(), storage_config)).unwrap();
+        let storage = Storage::new(&WithDir::new(_storage_tempdir.path(), storage_config)).unwrap();
 
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_fetcher = Fetcher::<Deploy>::new(config);
@@ -146,11 +147,13 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Storage(storage::Event::Request(StorageRequest::GetChainspec {
+            Event::Storage(storage::Event::StorageRequest(StorageRequest::GetChainspec {
                 responder,
                 ..
             })) => responder
-                .respond(Some(Chainspec::from_resources("local/chainspec.toml")))
+                .respond(Some(Arc::new(Chainspec::from_resources(
+                    "local/chainspec.toml",
+                ))))
                 .ignore(),
             Event::Storage(event) => reactor::wrap_effects(
                 Event::Storage,
@@ -184,6 +187,9 @@ impl reactor::Reactor for Reactor {
                         tag: Tag::Deploy,
                         serialized_id,
                     } => {
+                        // Note: This is copied almost verbatim from the validator reactor and needs
+                        // to be refactored.
+
                         let deploy_hash = match bincode::deserialize(&serialized_id) {
                             Ok(hash) => hash,
                             Err(error) => {
@@ -194,10 +200,31 @@ impl reactor::Reactor for Reactor {
                                 return Effects::new();
                             }
                         };
-                        Event::Storage(storage::Event::GetDeployForPeer {
-                            deploy_hash,
-                            peer: sender,
-                        })
+
+                        match self
+                            .storage
+                            .handle_legacy_direct_deploy_request(deploy_hash)
+                        {
+                            // This functionality was moved out of the storage component and
+                            // should be refactored ASAP.
+                            Some(deploy) => {
+                                match Message::new_get_response(&deploy) {
+                                    Ok(message) => {
+                                        return effect_builder
+                                            .send_message(sender, message)
+                                            .ignore();
+                                    }
+                                    Err(error) => {
+                                        error!("failed to create get-response: {}", error);
+                                        return Effects::new();
+                                    }
+                                };
+                            }
+                            None => {
+                                debug!("failed to get {} for {}", deploy_hash, sender);
+                                return Effects::new();
+                            }
+                        }
                     }
                     Message::GetResponse {
                         tag: Tag::Deploy,
@@ -298,12 +325,12 @@ async fn store_deploy(
             node_id,
             &mut rng,
             move |event: &Event| -> bool {
-                match event {
+                matches!(
+                    event,
                     Event::DeployAcceptorAnnouncement(
                         DeployAcceptorAnnouncement::AcceptedNewDeploy { .. },
-                    ) => true,
-                    _ => false,
-                }
+                    )
+                )
             },
             TIMEOUT,
         )
@@ -332,11 +359,7 @@ async fn assert_settled(
         .reactor()
         .inner()
         .storage
-        .deploy_store()
-        .get(smallvec![deploy_hash])
-        .pop()
-        .expect("should only be a single result")
-        .expect("should not error while getting");
+        .get_deploy_by_hash(deploy_hash);
     assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
 
     assert_eq!(fetched.lock().unwrap().1, expected_result)
@@ -473,15 +496,13 @@ async fn should_timeout_fetch_from_peer() {
             &requesting_node,
             &mut rng,
             move |event: &Event| -> bool {
-                if let Event::NetworkRequest(NetworkRequest::SendMessage {
-                    payload: Message::GetRequest { .. },
-                    ..
-                }) = event
-                {
-                    true
-                } else {
-                    false
-                }
+                matches!(
+                    event,
+                    Event::NetworkRequest(NetworkRequest::SendMessage {
+                        payload: Message::GetRequest { .. },
+                        ..
+                    })
+                )
             },
             TIMEOUT,
         )
@@ -493,15 +514,13 @@ async fn should_timeout_fetch_from_peer() {
             &holding_node,
             &mut rng,
             move |event: &Event| -> bool {
-                if let Event::NetworkRequest(NetworkRequest::SendMessage {
-                    payload: Message::GetResponse { .. },
-                    ..
-                }) = event
-                {
-                    true
-                } else {
-                    false
-                }
+                matches!(
+                    event,
+                    Event::NetworkRequest(NetworkRequest::SendMessage {
+                        payload: Message::GetResponse { .. },
+                        ..
+                    })
+                )
             },
             TIMEOUT,
         )

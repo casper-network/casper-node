@@ -121,6 +121,61 @@ impl<C: Context> Fault<C> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct Panoramas<C: Context> {
+    /// The full panorama, corresponding to the complete protocol state.
+    panorama: Panorama<C>,
+    /// Panorama used when creating new units.
+    /// In the presence of faults may lag behind `panorama`.
+    /// Units, that if cited by a new unit would make that unit violate the LNC, are not added to
+    /// `citable_panorama`.
+    citable_panorama: Panorama<C>,
+}
+
+impl<C: Context> Panoramas<C> {
+    fn new(panorama: Panorama<C>, citable_panorama: Panorama<C>) -> Self {
+        Panoramas {
+            panorama,
+            citable_panorama,
+        }
+    }
+
+    /// Returns the complete protocol state's latest panorama.
+    pub(crate) fn panorama(&self) -> &Panorama<C> {
+        &self.panorama
+    }
+
+    /// Returns the citable panorama.
+    pub(crate) fn citable_panorama(&self) -> &Panorama<C> {
+        &self.citable_panorama
+    }
+
+    /// Marks validator at `idx` as faulty.
+    pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
+        self.panorama[idx] = Observation::Faulty;
+        self.citable_panorama[idx] = Observation::Faulty;
+    }
+
+    /// Updates latest observation of `creator` as `Correct(unit)`.
+    /// Once a unit is a endorsed it is safe to cite it.
+    pub(crate) fn endorsed(&mut self, _creator: ValidatorIndex, _unit: C::Hash) {
+        //TODO
+    }
+
+    /// Updates panoramas with the new observation.
+    /// `citable_panorama` will be updated only if it won't violate the LNC.
+    pub(crate) fn update_panorama(&mut self, creator: ValidatorIndex, new_obs: Observation<C>) {
+        // TODO(HWY-167): Decide whether new unit should be accepted to the `citable_panorama`.
+        self.citable_panorama[creator] = new_obs.clone();
+        self.panorama[creator] = new_obs;
+    }
+
+    /// Returns the latest observation of `validator`.
+    pub(crate) fn get(&self, validator: ValidatorIndex) -> &Observation<C> {
+        self.panorama.get(validator)
+    }
+}
+
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -142,8 +197,8 @@ pub(crate) struct State<C: Context> {
     blocks: HashMap<C::Hash, Block<C>>,
     /// List of faulty validators and their type of fault.
     faults: HashMap<ValidatorIndex, Fault<C>>,
-    /// The full panorama, corresponding to the complete protocol state.
-    panorama: Panorama<C>,
+    /// Panoramas that the protocol observed.
+    panoramas: Panoramas<C>,
     /// All currently endorsed units, by hash.
     endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
     /// Units that don't yet have 2/3 of stake endorsing them.
@@ -180,6 +235,7 @@ impl<C: Context> State<C> {
             );
             panorama[*idx] = Observation::Faulty;
         }
+        let panoramas = Panoramas::new(panorama.clone(), panorama);
         State {
             params,
             weights,
@@ -187,7 +243,7 @@ impl<C: Context> State<C> {
             units: HashMap::new(),
             blocks: HashMap::new(),
             faults,
-            panorama,
+            panoramas,
             endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
             clock: Clock::new(),
@@ -215,7 +271,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns hashes of endorsed units.
-    pub(crate) fn endorsements<'a>(&'a self) -> impl Iterator<Item = C::Hash> + 'a {
+    pub(crate) fn endorsements(&self) -> impl Iterator<Item = C::Hash> + '_ {
         self.endorsements.keys().cloned()
     }
 
@@ -231,7 +287,7 @@ impl<C: Context> State<C> {
 
     /// Returns the total weight of all known-faulty validators.
     pub(crate) fn faulty_weight(&self) -> Weight {
-        self.faulty_weight_in(&self.panorama)
+        self.faulty_weight_in(self.panorama())
     }
 
     /// Returns the sum of all validators' voting weights.
@@ -292,7 +348,7 @@ impl<C: Context> State<C> {
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
     pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
-        self.panorama[idx] = Observation::Faulty;
+        self.panoramas.mark_faulty(idx);
         self.faults.entry(idx).or_insert(Fault::Indirect);
     }
 
@@ -307,13 +363,13 @@ impl<C: Context> State<C> {
     }
 
     /// Returns an iterator over all faulty validators.
-    pub(crate) fn faulty_validators<'a>(&'a self) -> impl Iterator<Item = ValidatorIndex> + 'a {
+    pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.faults.keys().cloned()
     }
 
     /// Returns an iterator over latest unit hashes from honest validators.
     pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
-        self.panorama.iter_correct_hashes()
+        self.panorama().iter_correct_hashes()
     }
 
     /// Returns the unit with the given hash, if present.
@@ -343,7 +399,12 @@ impl<C: Context> State<C> {
 
     /// Returns the complete protocol state's latest panorama.
     pub(crate) fn panorama(&self) -> &Panorama<C> {
-        &self.panorama
+        &self.panoramas.panorama()
+    }
+
+    /// Returns the "safe" panorama, that can be used when creating new units.
+    pub(crate) fn citable_panorama(&self) -> &Panorama<C> {
+        &self.panoramas.citable_panorama()
     }
 
     /// Returns the leader in the specified time slot.
@@ -385,7 +446,7 @@ impl<C: Context> State<C> {
         // TODO: Should use Display, not Debug!
         trace!(?evidence, "marking validator #{} as faulty", idx.0);
         self.faults.insert(idx, Fault::Direct(evidence));
-        self.panorama[idx] = Observation::Faulty;
+        self.panoramas.mark_faulty(idx);
         true
     }
 
@@ -425,7 +486,10 @@ impl<C: Context> State<C> {
         if endorsed > threshold {
             info!(%unit, "Unit endorsed by at least 2/3 of validators.");
             let fully_endorsed = self.incomplete_endorsements.remove(&unit).unwrap();
+            let creator = self.unit(&unit).creator;
             self.endorsements.insert(unit, fully_endorsed);
+            // When unit gets endorsed, it becomes safe to cite.
+            self.panoramas.endorsed(creator, unit);
         }
     }
 
@@ -624,7 +688,7 @@ impl<C: Context> State<C> {
     fn update_panorama(&mut self, swunit: &SignedWireUnit<C>) {
         let wunit = &swunit.wire_unit;
         let creator = wunit.creator;
-        let new_obs = match (self.panorama.get(creator), wunit.panorama.get(creator)) {
+        let new_obs = match (self.panoramas.get(creator), wunit.panorama.get(creator)) {
             (Observation::Faulty, _) => Observation::Faulty,
             (obs0, obs1) if obs0 == obs1 => Observation::Correct(wunit.hash()),
             (Observation::None, _) => panic!("missing creator's previous unit"),
@@ -638,7 +702,7 @@ impl<C: Context> State<C> {
                 Observation::Faulty
             }
         };
-        self.panorama[wunit.creator] = new_obs;
+        self.panoramas.update_panorama(wunit.creator, new_obs);
     }
 
     /// Returns `true` if this is a proposal and the creator is not faulty.
@@ -699,7 +763,7 @@ impl<C: Context> State<C> {
     /// Returns `None` if there are no correct validators in the panorama.
     pub(crate) fn median_round_exp(&self) -> Option<u8> {
         weighted_median(
-            self.panorama
+            self.panorama()
                 .iter_correct(self)
                 .map(|unit| (unit.round_exp, self.weight(unit.creator))),
         )
@@ -851,6 +915,29 @@ impl<C: Context> State<C> {
         hash0 == hash1
             || self.unit(hash0).panorama.sees(self, hash1)
             || self.unit(hash1).panorama.sees(self, hash0)
+    }
+
+    /// Returns the panorama of the confirmation for the leader unit `vhash`.
+    pub(crate) fn confirmation_panorama(
+        &self,
+        own_idx: ValidatorIndex,
+        vhash: &C::Hash,
+    ) -> Panorama<C> {
+        let unit = self.unit(vhash);
+        let mut panorama;
+        // TODO(HWY-167): Confirmation panorama.
+        if let Some(prev_hash) = self.panorama().get(own_idx).correct().cloned() {
+            let own_unit = self.unit(&prev_hash);
+            panorama = unit.panorama.merge(self, &own_unit.panorama);
+            panorama[own_idx] = Observation::Correct(prev_hash);
+        } else {
+            panorama = unit.panorama.clone();
+        }
+        panorama[unit.creator] = Observation::Correct(*vhash);
+        for faulty_v in self.faulty_validators() {
+            panorama[faulty_v] = Observation::Faulty;
+        }
+        panorama
     }
 }
 

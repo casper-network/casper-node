@@ -36,6 +36,8 @@ pub mod tls;
 pub mod types;
 pub mod utils;
 
+use std::sync::{atomic::AtomicBool, Arc};
+
 use ansi_term::Color::Red;
 use lazy_static::lazy_static;
 #[cfg(not(test))]
@@ -91,6 +93,14 @@ lazy_static! {
 
     /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
     pub static ref VERSION_STRING: String = version_string(false);
+
+    /// Global flag that indicates the currently running reactor should dump its event queue.
+    pub static ref QUEUE_DUMP_REQUESTED: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+}
+
+/// Setup UNIX signal hooks for current application.
+pub fn setup_signal_hooks() {
+    let _ = signal_hook::flag::register(libc::SIGUSR1, QUEUE_DUMP_REQUESTED.clone());
 }
 
 /// Constructs a new `NodeRng`.

@@ -15,6 +15,7 @@ use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
 use prometheus::{self, Histogram, HistogramOpts, Registry};
+use serde::Serialize;
 use thiserror::Error;
 use tokio::task;
 use tracing::trace;
@@ -54,7 +55,7 @@ impl Debug for ContractRuntime {
 }
 
 /// Contract runtime component event.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 pub enum Event {
     /// A request made of the contract runtime component.
     #[from]
@@ -393,7 +394,7 @@ impl ContractRuntime {
         contract_runtime_config: &Config,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
-        let path = storage_config.with_dir(storage_config.value().path());
+        let path = storage_config.with_dir(storage_config.value().path.clone());
         let environment = Arc::new(LmdbEnvironment::new(
             path.as_path(),
             contract_runtime_config.max_global_state_size(),

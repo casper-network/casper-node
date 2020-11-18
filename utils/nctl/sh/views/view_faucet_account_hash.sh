@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 #
-# Renders a network faucet account hash.
+# Renders a faucet's account hash.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
-
-# Import utils.
-source $NCTL/sh/utils/misc.sh
 
 #######################################
 # Destructure input args.
@@ -33,5 +30,8 @@ net=${net:-1}
 # Main
 #######################################
 
-account_key=$(cat $NCTL/assets/net-$net/faucet/public_key_hex)
-log "net-$net :: faucet account hash: "$(get_account_hash $account_key)
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Render account hash.
+render_account_hash $net $NCTL_ACCOUNT_TYPE_FAUCET

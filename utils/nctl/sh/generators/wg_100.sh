@@ -10,9 +10,6 @@
 #   Transfer dispatch count.
 #   Transfer dispatch interval.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -33,11 +30,11 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         amount) amount=${VALUE} ;;
-        gas) gas_price=${VALUE} ;;
+        gas) gas=${VALUE} ;;
         interval) transfer_interval=${VALUE} ;;
         net) net=${VALUE} ;;
         node) node=${VALUE} ;;
-        payment) gas_payment=${VALUE} ;;
+        payment) payment=${VALUE} ;;
         transfers) transfers=${VALUE} ;;
         user) user=${VALUE} ;;
         *)
@@ -46,8 +43,8 @@ done
 
 # Set defaults.
 amount=${amount:-$NCTL_DEFAULT_TRANSFER_AMOUNT}
-gas_payment=${gas_payment:-$NCTL_DEFAULT_GAS_PAYMENT}
-gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
+payment=${payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+gas=${gas:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
 transfers=${transfers:-100}
@@ -58,14 +55,37 @@ user=${user:-1}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Set deploy params.
+cp1_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_FAUCET)
+cp1_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_FAUCET)
+cp2_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $user)
+
+# Inform.
+log "dispatching $transfers wasmless transfers"
+log "... network=$net"
+log "... node=$node"
+log "... transfer amount=$amount"
+log "... transfer interval=$transfer_interval (s)"
+log "... counter-party 1 public key=$cp1_public_key"
+log "... counter-party 2 public key=$cp2_public_key"
+if [ $transfers -le 10 ]; then
+    log "... dispatched deploys:"
+fi
+
 # Deploy dispatcher.
 function _dispatch_deploy() {
     echo $(
-        $path_net/bin/casper-client transfer \
-            --chain-name casper-net-$net \
-            --gas-price $gas_price \
+        $(get_path_to_client $net) transfer \
+            --chain-name $(get_chain_name $net) \
+            --gas-price $gas \
             --node-address $node_address \
-            --payment-amount $gas_payment \
+            --payment-amount $payment \
             --secret-key $cp1_secret_key \
             --ttl "1day" \
             --amount $amount \
@@ -75,38 +95,14 @@ function _dispatch_deploy() {
         )
 }
 
-# Set paths.
-path_net=$NCTL/assets/net-$net
-
-# Set counter-parties.
-cp1_secret_key=$path_net/faucet/secret_key.pem
-cp1_public_key=`cat $path_net/faucet/public_key_hex`
-cp1_account_hash=$(get_account_hash $cp1_public_key)
-cp2_public_key=`cat $path_net/users/user-$user/public_key_hex`
-cp2_account_hash=$(get_account_hash $cp2_public_key)
-
-log "dispatching $transfers wasmless transfers"
-log "... network=$net"
-log "... node=$node"
-log "... transfer amount=$amount"
-log "... transfer interval=$transfer_interval (s)"
-log "... counter-party 1 public key=$cp1_public_key"
-log "... counter-party 2 public key=$cp2_public_key"
-log "... counter-party 1 account hash=$cp1_account_hash"
-log "... counter-party 2 account hash=$cp2_account_hash"
-if [ $transfers -le 10 ]; then
-    log "... dispatched deploys:"
-fi
-
 # Dispatch transfers to each node in round-robin fashion.
 if [ $node = "all" ]; then
     transferred=0
     while [ $transferred -lt $transfers ];
     do
-        source $NCTL/assets/net-$net/vars
-        for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+        for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
         do
-            node_address=$(get_node_address_rpc $net $node_idx)
+            node_address=$(get_node_address_rpc $net $idx)
             deploy_hash=$(_dispatch_deploy)
             if [ $transfers -le 10 ]; then
                 log "... ... "$deploy_hash
@@ -132,4 +128,3 @@ else
     done
 fi
 
-log "dispatch complete"

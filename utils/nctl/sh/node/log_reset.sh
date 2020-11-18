@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -37,8 +34,14 @@ node=${node:-"all"}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Reset logs.
 if [ $node = "all" ]; then
-    source $NCTL/assets/net-$net/vars
     for node_id in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
         rm $NCTL/assets/net-$net/nodes/node-$node_id/logs/*.log > /dev/null 2>&1

@@ -18,7 +18,7 @@ use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
 pub fn get_main_purse() -> URef {
     let dest_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);
     let bytes = unsafe {
-        ext_ffi::get_main_purse(dest_non_null_ptr.as_ptr());
+        ext_ffi::casper_get_main_purse(dest_non_null_ptr.as_ptr());
         Vec::from_raw_parts(
             dest_non_null_ptr.as_ptr(),
             UREF_SERIALIZED_LENGTH,
@@ -35,7 +35,7 @@ pub fn set_action_threshold(
 ) -> Result<(), SetThresholdFailure> {
     let action_type = action_type as u32;
     let threshold = threshold.value().into();
-    let result = unsafe { ext_ffi::set_action_threshold(action_type, threshold) };
+    let result = unsafe { ext_ffi::casper_set_action_threshold(action_type, threshold) };
     if result == 0 {
         Ok(())
     } else {
@@ -48,7 +48,11 @@ pub fn add_associated_key(account_hash: AccountHash, weight: Weight) -> Result<(
     let (account_hash_ptr, account_hash_size, _bytes) = to_ptr(account_hash);
     // Cast of u8 (weight) into i32 is assumed to be always safe
     let result = unsafe {
-        ext_ffi::add_associated_key(account_hash_ptr, account_hash_size, weight.value().into())
+        ext_ffi::casper_add_associated_key(
+            account_hash_ptr,
+            account_hash_size,
+            weight.value().into(),
+        )
     };
     if result == 0 {
         Ok(())
@@ -60,7 +64,8 @@ pub fn add_associated_key(account_hash: AccountHash, weight: Weight) -> Result<(
 /// Removes the given [`AccountHash`] from the account's associated keys.
 pub fn remove_associated_key(account_hash: AccountHash) -> Result<(), RemoveKeyFailure> {
     let (account_hash_ptr, account_hash_size, _bytes) = to_ptr(account_hash);
-    let result = unsafe { ext_ffi::remove_associated_key(account_hash_ptr, account_hash_size) };
+    let result =
+        unsafe { ext_ffi::casper_remove_associated_key(account_hash_ptr, account_hash_size) };
     if result == 0 {
         Ok(())
     } else {
@@ -76,7 +81,11 @@ pub fn update_associated_key(
     let (account_hash_ptr, account_hash_size, _bytes) = to_ptr(account_hash);
     // Cast of u8 (weight) into i32 is assumed to be always safe
     let result = unsafe {
-        ext_ffi::update_associated_key(account_hash_ptr, account_hash_size, weight.value().into())
+        ext_ffi::casper_update_associated_key(
+            account_hash_ptr,
+            account_hash_size,
+            weight.value().into(),
+        )
     };
     if result == 0 {
         Ok(())

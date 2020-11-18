@@ -9,10 +9,6 @@
 #   Chain root state hash.
 #   Account key.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-source $NCTL/sh/utils/queries.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -44,10 +40,8 @@ node=${node:-1}
 # Main
 #######################################
 
-state_root_hash=$(get_state_root_hash $net $node)
-account_key=$(cat $NCTL/assets/net-$net/faucet/public_key_hex)
+# Import utils.
+source $NCTL/sh/utils/misc.sh
 
-source $NCTL/sh/views/view_chain_account.sh \
-    net=$net node=$node \
-    root-hash=$state_root_hash \
-    account-key=$account_key
+log "network #$net :: on-chain faucet account details:"
+render_account $net $node $NCTL_ACCOUNT_TYPE_FAUCET

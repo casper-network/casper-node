@@ -131,6 +131,7 @@ dist
 
 resources/production/*.wasm
 resources/node-storage/*
+resources/local/chainspec.toml
 
 # CLion
 .idea/

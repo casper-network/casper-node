@@ -5,23 +5,23 @@
 name = 'casper-example'
 # Timestamp for the genesis block, also used in seeding the pseudo-random number generator used in contract-runtime for
 # computing genesis post-state hash.
-timestamp = '2020-10-01T00:00:01Z'
+timestamp = '${TIMESTAMP}'
 # Protocol version at genesis.
 protocol_version = '1.0.0'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the mint
 # system contract.
-mint_installer_path = '../../target/wasm32-unknown-unknown/release/mint_install.wasm'
+mint_installer_path = '${BASEDIR}/target/wasm32-unknown-unknown/release/mint_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Proof of
 # Stake system contract.
-pos_installer_path = '../../target/wasm32-unknown-unknown/release/pos_install.wasm'
+pos_installer_path = '${BASEDIR}/target/wasm32-unknown-unknown/release/pos_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Standard
 # Payment system contract.
-standard_payment_installer_path = '../../target/wasm32-unknown-unknown/release/standard_payment_install.wasm'
+standard_payment_installer_path = '${BASEDIR}/target/wasm32-unknown-unknown/release/standard_payment_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Auction
 # system contract.
-auction_installer_path = '../../target/wasm32-unknown-unknown/release/auction_install.wasm'
+auction_installer_path = '${BASEDIR}/target/wasm32-unknown-unknown/release/auction_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the CSV file containing initial account balances and bonds.
-accounts_path = 'accounts.csv'
+accounts_path = '${BASEDIR}/resources/local/accounts.csv'
 # Number of slots available in validator auction.
 validator_slots = 5
 # Number of eras before an auction actually defines the set of validators. If you bond with a sufficient bid in era N, you will be a validator in era N + auction_delay + 1
@@ -41,7 +41,7 @@ round_seigniorage_rate = [15_959, 6_204_824_582_392]
 [highway]
 # Beginning of era 0. By this time, a sufficient majority (> 50% + F/2 — see finality_threshold_percent below)
 # of validator nodes must be up and running to start the blockchain.
-genesis_era_start_timestamp = '2020-10-01T00:00:01Z'
+genesis_era_start_timestamp = '${TIMESTAMP}'
 # Era duration.
 era_duration = '41seconds'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the

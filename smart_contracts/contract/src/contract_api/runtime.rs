@@ -25,7 +25,7 @@ use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
 pub fn ret(value: CLValue) -> ! {
     let (ptr, size, _bytes) = contract_api::to_ptr(value);
     unsafe {
-        ext_ffi::ret(ptr, size);
+        ext_ffi::casper_ret(ptr, size);
     }
 }
 
@@ -35,7 +35,7 @@ pub fn ret(value: CLValue) -> ! {
 /// deploy response.
 pub fn revert<T: Into<ApiError>>(error: T) -> ! {
     unsafe {
-        ext_ffi::revert(error.into().into());
+        ext_ffi::casper_revert(error.into().into());
     }
 }
 
@@ -57,7 +57,7 @@ pub fn call_contract<T: CLTyped + FromBytes>(
     let bytes_written = {
         let mut bytes_written = MaybeUninit::uninit();
         let ret = unsafe {
-            ext_ffi::call_contract(
+            ext_ffi::casper_call_contract(
                 contract_hash_ptr,
                 contract_hash_size,
                 entry_point_name_ptr,
@@ -97,7 +97,7 @@ pub fn call_versioned_contract<T: CLTyped + FromBytes>(
     let bytes_written = {
         let mut bytes_written = MaybeUninit::uninit();
         let ret = unsafe {
-            ext_ffi::call_versioned_contract(
+            ext_ffi::casper_call_versioned_contract(
                 contract_package_hash_ptr,
                 contract_package_hash_size,
                 contract_version_ptr,
@@ -136,7 +136,7 @@ fn deserialize_contract_result<T: CLTyped + FromBytes>(bytes_written: usize) -> 
 fn get_named_arg_size(name: &str) -> Option<usize> {
     let mut arg_size: usize = 0;
     let ret = unsafe {
-        ext_ffi::get_named_arg_size(
+        ext_ffi::casper_get_named_arg_size(
             name.as_bytes().as_ptr(),
             name.len(),
             &mut arg_size as *mut usize,
@@ -159,7 +159,7 @@ pub fn get_named_arg<T: FromBytes>(name: &str) -> T {
         let res = {
             let data_non_null_ptr = contract_api::alloc_bytes(arg_size);
             let ret = unsafe {
-                ext_ffi::get_named_arg(
+                ext_ffi::casper_get_named_arg(
                     name.as_bytes().as_ptr(),
                     name.len(),
                     data_non_null_ptr.as_ptr(),
@@ -184,7 +184,7 @@ pub fn get_named_arg<T: FromBytes>(name: &str) -> T {
 pub fn get_caller() -> AccountHash {
     let output_size = {
         let mut output_size = MaybeUninit::uninit();
-        let ret = unsafe { ext_ffi::get_caller(output_size.as_mut_ptr()) };
+        let ret = unsafe { ext_ffi::casper_get_caller(output_size.as_mut_ptr()) };
         api_error::result_from(ret).unwrap_or_revert();
         unsafe { output_size.assume_init() }
     };
@@ -196,7 +196,7 @@ pub fn get_caller() -> AccountHash {
 pub fn get_blocktime() -> BlockTime {
     let dest_non_null_ptr = contract_api::alloc_bytes(BLOCKTIME_SERIALIZED_LENGTH);
     let bytes = unsafe {
-        ext_ffi::get_blocktime(dest_non_null_ptr.as_ptr());
+        ext_ffi::casper_get_blocktime(dest_non_null_ptr.as_ptr());
         Vec::from_raw_parts(
             dest_non_null_ptr.as_ptr(),
             BLOCKTIME_SERIALIZED_LENGTH,
@@ -209,7 +209,7 @@ pub fn get_blocktime() -> BlockTime {
 /// Returns the current [`Phase`].
 pub fn get_phase() -> Phase {
     let dest_non_null_ptr = contract_api::alloc_bytes(PHASE_SERIALIZED_LENGTH);
-    unsafe { ext_ffi::get_phase(dest_non_null_ptr.as_ptr()) };
+    unsafe { ext_ffi::casper_get_phase(dest_non_null_ptr.as_ptr()) };
     let bytes = unsafe {
         Vec::from_raw_parts(
             dest_non_null_ptr.as_ptr(),
@@ -229,7 +229,7 @@ pub fn get_key(name: &str) -> Option<Key> {
     let mut key_bytes = vec![0u8; Key::max_serialized_length()];
     let mut total_bytes: usize = 0;
     let ret = unsafe {
-        ext_ffi::get_key(
+        ext_ffi::casper_get_key(
             name_ptr,
             name_size,
             key_bytes.as_mut_ptr(),
@@ -253,7 +253,7 @@ pub fn get_key(name: &str) -> Option<Key> {
 /// currently-executing module is a direct call or a sub-call respectively.
 pub fn has_key(name: &str) -> bool {
     let (name_ptr, name_size, _bytes) = contract_api::to_ptr(name);
-    let result = unsafe { ext_ffi::has_key(name_ptr, name_size) };
+    let result = unsafe { ext_ffi::casper_has_key(name_ptr, name_size) };
     result == 0
 }
 
@@ -264,7 +264,7 @@ pub fn has_key(name: &str) -> bool {
 pub fn put_key(name: &str, key: Key) {
     let (name_ptr, name_size, _bytes) = contract_api::to_ptr(name);
     let (key_ptr, key_size, _bytes2) = contract_api::to_ptr(key);
-    unsafe { ext_ffi::put_key(name_ptr, name_size, key_ptr, key_size) };
+    unsafe { ext_ffi::casper_put_key(name_ptr, name_size, key_ptr, key_size) };
 }
 
 /// Removes the [`Key`] stored under `name` in the current context's named keys.
@@ -273,7 +273,7 @@ pub fn put_key(name: &str, key: Key) {
 /// currently-executing module is a direct call or a sub-call respectively.
 pub fn remove_key(name: &str) {
     let (name_ptr, name_size, _bytes) = contract_api::to_ptr(name);
-    unsafe { ext_ffi::remove_key(name_ptr, name_size) }
+    unsafe { ext_ffi::casper_remove_key(name_ptr, name_size) }
 }
 
 /// Returns the named keys of the current context.
@@ -285,7 +285,7 @@ pub fn list_named_keys() -> NamedKeys {
         let mut total_keys = MaybeUninit::uninit();
         let mut result_size = 0;
         let ret = unsafe {
-            ext_ffi::load_named_keys(total_keys.as_mut_ptr(), &mut result_size as *mut usize)
+            ext_ffi::casper_load_named_keys(total_keys.as_mut_ptr(), &mut result_size as *mut usize)
         };
         api_error::result_from(ret).unwrap_or_revert();
         let total_keys = unsafe { total_keys.assume_init() };
@@ -301,7 +301,7 @@ pub fn list_named_keys() -> NamedKeys {
 /// Validates uref against named keys.
 pub fn is_valid_uref(uref: URef) -> bool {
     let (uref_ptr, uref_size, _bytes) = contract_api::to_ptr(uref);
-    let result = unsafe { ext_ffi::is_valid_uref(uref_ptr, uref_size) };
+    let result = unsafe { ext_ffi::casper_is_valid_uref(uref_ptr, uref_size) };
     result != 0
 }
 
@@ -309,7 +309,7 @@ pub fn is_valid_uref(uref: URef) -> bool {
 pub fn blake2b<T: AsRef<[u8]>>(input: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
     let mut ret = [0; BLAKE2B_DIGEST_LENGTH];
     let result = unsafe {
-        ext_ffi::blake2b(
+        ext_ffi::casper_blake2b(
             input.as_ref().as_ptr(),
             input.as_ref().len(),
             ret.as_mut_ptr(),
@@ -323,7 +323,7 @@ pub fn blake2b<T: AsRef<[u8]>>(input: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
 fn read_host_buffer_into(dest: &mut [u8]) -> Result<usize, ApiError> {
     let mut bytes_written = MaybeUninit::uninit();
     let ret = unsafe {
-        ext_ffi::read_host_buffer(dest.as_mut_ptr(), dest.len(), bytes_written.as_mut_ptr())
+        ext_ffi::casper_read_host_buffer(dest.as_mut_ptr(), dest.len(), bytes_written.as_mut_ptr())
     };
     // NOTE: When rewriting below expression as `result_from(ret).map(|_| unsafe { ... })`, and the
     // caller ignores the return value, execution of the contract becomes unstable and ultimately
@@ -347,5 +347,5 @@ pub(crate) fn read_host_buffer(size: usize) -> Result<Vec<u8>, ApiError> {
 /// Prints a debug message
 pub fn print(text: &str) {
     let (text_ptr, text_size, _bytes) = contract_api::to_ptr(text);
-    unsafe { ext_ffi::print(text_ptr, text_size) }
+    unsafe { ext_ffi::casper_print(text_ptr, text_size) }
 }

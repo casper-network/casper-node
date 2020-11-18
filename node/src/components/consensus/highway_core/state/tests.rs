@@ -216,7 +216,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let b2 = add_unit!(state, rng, BOB, None; F, b1, c0)?;
 
     // The state's own panorama has been updated correctly.
-    assert_eq!(state.panorama, panorama!(F, b2, c1));
+    assert_eq!(*state.panorama(), panorama!(F, b2, c1));
     Ok(())
 }
 
@@ -309,7 +309,7 @@ fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
     assert_eq!(Some(&a0), state.block(&state.unit(&a1).block).parent());
     // The fork choice is now `b2`: At height 1, `a0` wins against `c0`.
     // At height 2, `b2` wins against `a1`. `c1` has most points but is not a child of `a0`.
-    assert_eq!(Some(&b2), state.fork_choice(&state.panorama));
+    assert_eq!(Some(&b2), state.fork_choice(state.panorama()));
     Ok(())
 }
 

@@ -213,7 +213,7 @@ impl<Rhs, T: Copy + Add<Rhs, Output = T>> Add<ValidatorMap<Rhs>> for ValidatorMa
 
 impl<T> ValidatorMap<Option<T>> {
     /// Returns the keys of all validators whose value is `Some`.
-    pub(crate) fn keys_some<'a>(&'a self) -> impl Iterator<Item = ValidatorIndex> + 'a {
+    pub(crate) fn keys_some(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.enumerate()
             .filter(|(_, opt)| opt.is_some())
             .map(|(vidx, _)| vidx)

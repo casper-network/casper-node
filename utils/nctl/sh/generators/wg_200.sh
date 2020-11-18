@@ -10,19 +10,14 @@
 #   Bid amount (motes).
 #   Delegation rate (float).
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
 
-# TODO: accept purse uref
-
 # Unset to avoid parameter collisions.
 unset amount
-unset gas_payment
-unset gas_price
+unset payment
+unset gas
 unset delegation_rate
 unset net
 unset node
@@ -34,11 +29,11 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         amount) amount=${VALUE} ;;
-        gas) gas_price=${VALUE} ;;
-        rate) delegation_rate=${VALUE} ;;
+        gas) gas=${VALUE} ;;
         net) net=${VALUE} ;;
         node) node=${VALUE} ;;
-        payment) gas_payment=${VALUE} ;;
+        payment) payment=${VALUE} ;;
+        rate) delegation_rate=${VALUE} ;;
         user) user=${VALUE} ;;
         *)
     esac
@@ -47,8 +42,8 @@ done
 # Set defaults.
 amount=${amount:-$NCTL_DEFAULT_AUCTION_BID_AMOUNT}
 delegation_rate=${delegation_rate:-125}
-gas_payment=${gas_payment:-$NCTL_DEFAULT_GAS_PAYMENT}
-gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
+payment=${payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+gas=${gas:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
 user=${user:-1}
@@ -57,17 +52,17 @@ user=${user:-1}
 # Main
 #######################################
 
-# Set vars.
-bidder_secret_key=$path_net/users/user-$user/secret_key.pem
-bidder_public_key=$(cat $path_net/users/user-$user/public_key_hex)
-contract_name="add_bid.wasm"
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Set deploy params.
+bidder_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_USER $user)
+bidder_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $user)
 node_address=$(get_node_address_rpc $net $node)
-path_net=$NCTL/assets/net-$net
-path_client=$path_net/bin/casper-client
-path_contract=$path_net/bin/$contract_name
+path_contract=$(get_path_to_contract $net "add_bid.wasm")
 
 # Inform.
-log "dispatching deploy -> "$contract_name
+log "dispatching deploy -> add_bid.wasm"
 log "... network = $net"
 log "... node = $node"
 log "... node address = $node_address"
@@ -79,11 +74,11 @@ log "... bid delegation rate = $delegation_rate"
 
 # Dispatch deploy.
 deploy_hash=$(
-    $path_client put-deploy \
+    $(get_path_to_client $net) put-deploy \
         --chain-name casper-net-$net \
-        --gas-price $gas_price \
+        --gas-price $gas \
         --node-address $node_address \
-        --payment-amount $gas_payment \
+        --payment-amount $payment \
         --secret-key $bidder_secret_key \
         --session-arg="public_key:public_key='$bidder_public_key'" \
         --session-arg "amount:u512='$amount'" \

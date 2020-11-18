@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Displays to stdout current node status.
 # Globals:
@@ -18,7 +15,7 @@ source $NCTL/sh/utils/misc.sh
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function _view_status() {
+function render_node_status() {
     node_address=$(get_node_address_rpc $1 $2)
     log "network #$1 :: node #$2 :: $node_address :: status:"
     curl -s --header 'Content-Type: application/json' \
@@ -57,13 +54,20 @@ node=${node:-"all"}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Render node status.
 if [ $node = "all" ]; then
-    source $NCTL/assets/net-$net/vars
-    for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        _view_status $net $node_idx
         echo "------------------------------------------------------------------------------------------------------------------------------------"
+        render_node_status $net $idx
     done
+    echo "------------------------------------------------------------------------------------------------------------------------------------"
 else
-    _view_status $net $node
+    render_node_status $net $node
 fi

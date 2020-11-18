@@ -28,10 +28,7 @@ use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::{Item, Tag, Timestamp};
 use crate::{
-    components::{
-        consensus::{self, EraId},
-        storage::{Value, WithBlockHeight},
-    },
+    components::consensus::{self, EraId},
     crypto::{
         asymmetric_key::{PublicKey, Signature},
         hash::{self, Digest},
@@ -403,6 +400,7 @@ impl BlockHash {
         &self.0
     }
 
+    /// Creates a random block hash.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let hash = Digest::random(rng);
@@ -775,6 +773,13 @@ impl Block {
         Ok(())
     }
 
+    /// Overrides the height of a block.
+    #[cfg(test)]
+    pub fn set_height(&mut self, height: u64) -> &mut Self {
+        self.header.height = height;
+        self
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
@@ -861,29 +866,6 @@ impl BlockLike for Block {
 impl BlockLike for BlockHeader {
     fn deploys(&self) -> &Vec<DeployHash> {
         self.deploy_hashes()
-    }
-}
-
-impl Value for Block {
-    type Id = BlockHash;
-    type Header = BlockHeader;
-
-    fn id(&self) -> &Self::Id {
-        &self.hash
-    }
-
-    fn header(&self) -> &Self::Header {
-        &self.header
-    }
-
-    fn take_header(self) -> Self::Header {
-        self.header
-    }
-}
-
-impl WithBlockHeight for Block {
-    fn height(&self) -> u64 {
-        self.height()
     }
 }
 

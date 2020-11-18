@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 #
-# Renders a network faucet account key.
+# Renders a validator account.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
-
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-source $NCTL/sh/utils/queries.sh
+#   Node ordinal identifier.
 
 #######################################
 # Destructure input args.
@@ -17,7 +14,6 @@ source $NCTL/sh/utils/queries.sh
 # Unset to avoid parameter collisions.
 unset net
 unset node
-unset user
 
 for ARGUMENT in "$@"
 do
@@ -26,23 +22,34 @@ do
     case "$KEY" in
         net) net=${VALUE} ;;
         node) node=${VALUE} ;;
-        user) user=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
 net=${net:-1}
-node=${node:-1}
-user=${user:-1}
+node=${node:-"all"}
 
 #######################################
 # Main
 #######################################
 
-state_root_hash=$(get_state_root_hash $net $node)
-account_key=$(cat $NCTL/assets/net-$net/nodes/node-$node/keys/public_key_hex)
+# Import utils.
+source $NCTL/sh/utils/misc.sh
 
-source $NCTL/sh/views/view_chain_account.sh net=$net node=$node \
-    root-hash=$state_root_hash \
-    account-key=$account_key
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Render account(s).
+if [ $node = "all" ]; then
+    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    do
+        echo "------------------------------------------------------------------------------------------------------------------------------------"
+        log "network #$net :: node #$idx :: on-chain account details:"
+        render_account $net $idx $NCTL_ACCOUNT_TYPE_NODE $idx
+    done
+    echo "------------------------------------------------------------------------------------------------------------------------------------"
+else
+    log "network #$net :: node #$node :: on-chain account details:"
+    render_account $net $node $NCTL_ACCOUNT_TYPE_NODE $node
+fi

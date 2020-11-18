@@ -20,11 +20,11 @@ TIMESTAMP=${GENESIS_TIMESTAMP:-$TIMESTAMP}
 
 echo "GENESIS_TIMESTAMP=${TIMESTAMP}"
 
+export BASEDIR
+export TIMESTAMP
+
 # Update the chainspec to use the current time as the genesis timestamp.
-cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
-sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = \"${TIMESTAMP}\"/" ${CHAINSPEC}
-sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
-sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
+envsubst < ${BASEDIR}/resources/local/chainspec.toml.in > ${CHAINSPEC}
 
 # If no nodes defined, start all.
 NODES="${@:-1 2 3 4 5}"

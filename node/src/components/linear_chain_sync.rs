@@ -31,7 +31,7 @@ use datasize::DataSize;
 use rand::{seq::SliceRandom, Rng};
 use tracing::{error, info, trace, warn};
 
-use super::{fetcher::FetchResult, storage::Storage, Component};
+use super::{fetcher::FetchResult, Component};
 use crate::{
     effect::{
         requests::{BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest},
@@ -44,7 +44,7 @@ use event::BlockByHeightResult;
 pub use event::Event;
 
 pub trait ReactorEventT<I>:
-    From<StorageRequest<Storage>>
+    From<StorageRequest>
     + From<FetcherRequest<I, Block>>
     + From<FetcherRequest<I, BlockByHeight>>
     + From<BlockValidationRequest<BlockHeader, I>>
@@ -54,7 +54,7 @@ pub trait ReactorEventT<I>:
 }
 
 impl<I, REv> ReactorEventT<I> for REv where
-    REv: From<StorageRequest<Storage>>
+    REv: From<StorageRequest>
         + From<FetcherRequest<I, Block>>
         + From<FetcherRequest<I, BlockByHeight>>
         + From<BlockValidationRequest<BlockHeader, I>>
@@ -205,10 +205,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
-        match self.state {
-            State::None | State::Done => true,
-            _ => false,
-        }
+        matches!(self.state, State::None | State::Done)
     }
 
     fn block_downloaded<REv>(

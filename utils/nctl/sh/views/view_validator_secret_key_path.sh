@@ -7,22 +7,6 @@
 #   Network ordinal identifier.
 #   User ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
-#######################################
-# Displays to stdout a user's account key.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   User ordinal identifier.
-#######################################
-function _view_node_secret_key() {
-    declare path_key=$NCTL/assets/net-$1/nodes/node-$2/keys/secret_key.pem
-    log "secret key :: net-$1:node-$2 -> "$path_key
-}
-
 #######################################
 # Destructure input args.
 #######################################
@@ -50,12 +34,18 @@ node=${node:-"all"}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Render path to secret key(s).
 if [ $node = "all" ]; then
-    source $NCTL/assets/net-$net/vars
-    for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        _view_node_secret_key $net $node_idx
+        render_account_secret_key $net $NCTL_ACCOUNT_TYPE_NODE $idx
     done
 else
-    _view_node_secret_key $net $node
+    render_account_secret_key $net $NCTL_ACCOUNT_TYPE_NODE $node
 fi

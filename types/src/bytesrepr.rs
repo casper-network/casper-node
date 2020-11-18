@@ -371,9 +371,7 @@ impl<T: ToBytes> ToBytes for Vec<T> {
 fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
     // see https://doc.rust-lang.org/src/alloc/raw_vec.rs.html#75-98
     let elem_size = mem::size_of::<T>();
-    let alloc_size = capacity
-        .checked_mul(elem_size)
-        .ok_or_else(|| Error::OutOfMemory)?;
+    let alloc_size = capacity.checked_mul(elem_size).ok_or(Error::OutOfMemory)?;
 
     let ptr = if alloc_size == 0 {
         NonNull::<T>::dangling()
@@ -381,7 +379,7 @@ fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
         let align = mem::align_of::<T>();
         let layout = Layout::from_size_align(alloc_size, align).unwrap();
         let raw_ptr = unsafe { alloc(layout) };
-        let non_null_ptr = NonNull::<u8>::new(raw_ptr).ok_or_else(|| Error::OutOfMemory)?;
+        let non_null_ptr = NonNull::<u8>::new(raw_ptr).ok_or(Error::OutOfMemory)?;
         non_null_ptr.cast()
     };
     unsafe { Ok(Vec::from_raw_parts(ptr.as_ptr(), 0, capacity)) }

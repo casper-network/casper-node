@@ -17,7 +17,7 @@ use semver::Version;
 use tracing::{error, info, trace};
 
 use crate::{
-    components::{chainspec_loader::DeployConfig, storage::Storage, Component},
+    components::{chainspec_loader::DeployConfig, Component},
     effect::{
         requests::{BlockProposerRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
@@ -88,15 +88,9 @@ impl Display for Event {
 type DeployCollection = HashMap<DeployHash, DeployHeader>;
 pub type ProtoBlockCollection = HashMap<ProtoBlockHash, DeployCollection>;
 
-pub(crate) trait ReactorEventT:
-    From<Event> + From<StorageRequest<Storage>> + Send + 'static
-{
-}
+pub(crate) trait ReactorEventT: From<Event> + From<StorageRequest> + Send + 'static {}
 
-impl<REv> ReactorEventT for REv where
-    REv: From<Event> + From<StorageRequest<Storage>> + Send + 'static
-{
-}
+impl<REv> ReactorEventT for REv where REv: From<Event> + From<StorageRequest> + Send + 'static {}
 
 /// Stores the internal state of the BlockProposer.
 #[derive(DataSize, Default, Debug, Clone, PartialEq)]
@@ -119,18 +113,6 @@ impl Display for BlockProposerState {
 }
 
 impl BlockProposerState {
-    // When deserialized, we will update the instance with finalized blocks from the linear chain
-    pub(crate) fn with_pending_and_finalized(
-        pending: DeployCollection,
-        finalized: ProtoBlockCollection,
-    ) -> Self {
-        Self {
-            pending,
-            finalized,
-            proposed: HashMap::new(),
-        }
-    }
-
     /// Prunes expired deploy information from the BlockProposerState, returns the total deploys
     /// pruned
     pub(crate) fn prune(&mut self, current_instant: Timestamp) -> usize {
@@ -279,7 +261,7 @@ impl BlockProposer {
         responder: Responder<HashSet<DeployHash>>,
     ) -> Effects<Event>
     where
-        REv: From<StorageRequest<Storage>> + Send,
+        REv: From<StorageRequest> + Send,
     {
         effect_builder
             .get_chainspec(chainspec_version.clone())
@@ -537,8 +519,8 @@ mod tests {
             .expect("Failure to create a new Block Proposer")
     }
 
-    impl From<StorageRequest<Storage>> for Event {
-        fn from(_: StorageRequest<Storage>) -> Self {
+    impl From<StorageRequest> for Event {
+        fn from(_: StorageRequest) -> Self {
             // we never send a storage request in our unit tests, but if this does become
             // meaningful....
             todo!()

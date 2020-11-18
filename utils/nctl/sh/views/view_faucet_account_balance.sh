@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 #
-# Renders a network faucet account balance.
+# Renders a faucet account balance.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
-
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-source $NCTL/sh/utils/queries.sh
+#   Node ordinal identifier.
 
 #######################################
 # Destructure input args.
@@ -37,10 +34,11 @@ node=${node:-1}
 # Main
 #######################################
 
-state_root_hash=$(get_state_root_hash $net $node)
-account_key=$(cat $NCTL/assets/net-$net/faucet/public_key_hex)
-purse_uref=$(get_main_purse_uref $net $state_root_hash $account_key)
-source $NCTL/sh/views/view_chain_account_balance.sh net=$net node=$node \
-    root-hash=$state_root_hash \
-    purse-uref=$purse_uref \
-    typeof="faucet"
+# Import utils.
+source $NCTL/sh/utils/misc.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Render account balance.
+render_account_balance $net $node $NCTL_ACCOUNT_TYPE_FAUCET

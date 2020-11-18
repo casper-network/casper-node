@@ -73,7 +73,7 @@ casper-node validator /etc/casper-node/config.toml
 ```
 
 The node ships with an [example configuration file](resources/local/config.toml) that should be setup first.  There is
-also a commented [local chainspec](resources/local/chainspec.toml) in the same folder.
+also a template for a local [chainspec](resources/local/chainspec.toml.in) in the same folder.
 
 For launching, the following configuration values must be properly set:
 
@@ -184,6 +184,46 @@ modules in `components`, and `warn` level for the remaining codebase:
 
 ```
 RUST_LOG=casper_node::components::small=trace,casper_node::comp=info,warn
+```
+
+## Debugging
+
+Some additional debug functionality is available, mainly allowed for inspections of the internal event queue.
+
+### Event queue dump
+
+The event queue can be dumped by sending a `SIGUSR1` to the running node process, e.g. if the node's process ID was `$NODE_PID`:
+
+```console
+kill -USR1 $NODE_PID
+```
+
+This will create a `queue_dump.json` in the working directory of the node. A tool like [jq](https://stedolan.github.io/jq/) can then be used to format and display it:
+
+```console
+$ jq < queue_dump.json
+{
+  "NetworkIncoming": [],
+  "Network": [],
+  "Regular": [
+    "AddressGossiper"
+  ],
+  "Api": []
+}
+```
+
+#### jq Examples
+
+Dump the type of events:
+
+```console
+jq 'map_values( map(keys[0] | {"type": ., weight: 1})| group_by(.type) | map ([.[0].type,(.|length)]) | map({(.[0]): .[1]}) )' queue_dump.json
+```
+
+Count number of events in each queue:
+
+```console
+jq 'map_values(map(keys[0]))' queue_dump.json
 ```
 
 ## Running a client
