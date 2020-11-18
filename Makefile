@@ -117,8 +117,11 @@ build-contracts-as: \
 .PHONY: build-contracts
 build-contracts: build-contracts-rs build-contracts-as
 
+resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.toml.in
+	@./$<
+
 .PHONY: test-rs
-test-rs: build-system-contracts
+test-rs: build-system-contracts resources/local/chainspec.toml
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --workspace
 
 .PHONY: test-as
@@ -186,6 +189,7 @@ check: \
 
 .PHONY: clean
 clean:
+	rm -rf resources/local/chainspec.toml
 	rm -rf $(CONTRACT_TARGET_DIR_AS)
 	rm -rf $(TOOL_TARGET_DIR)
 	rm -rf $(TOOL_WASM_DIR)
