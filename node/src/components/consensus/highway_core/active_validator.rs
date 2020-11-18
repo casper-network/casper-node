@@ -6,7 +6,7 @@ use super::{
     endorsement::{Endorsement, SignedEndorsement},
     evidence::Evidence,
     highway::{Endorsements, ValidVertex, Vertex, WireUnit},
-    state::{self, Observation, Panorama, State, Unit},
+    state::{self, Panorama, State, Unit},
     validators::ValidatorIndex,
 };
 
@@ -145,7 +145,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         let mut effects = vec![];
         if self.should_send_confirmation(vhash, now, state) {
-            let panorama = self.confirmation_panorama(vhash, state);
+            let panorama = state.confirmation_panorama(self.vidx, vhash);
             if panorama.has_correct() {
                 let confirmation_unit = self.new_unit(panorama, now, None, state, instance_id, rng);
                 let vv = ValidVertex(Vertex::Unit(confirmation_unit));
@@ -290,25 +290,6 @@ impl<C: Context> ActiveValidator<C> {
             return false;
         }
         true
-    }
-
-    /// Returns the panorama of the confirmation for the leader unit `vhash`.
-    fn confirmation_panorama(&self, vhash: &C::Hash, state: &State<C>) -> Panorama<C> {
-        let unit = state.unit(vhash);
-        let mut panorama;
-        // TODO(HWY-167): Confirmation panorama.
-        if let Some(prev_hash) = state.panorama().get(self.vidx).correct().cloned() {
-            let own_unit = state.unit(&prev_hash);
-            panorama = unit.panorama.merge(state, &own_unit.panorama);
-            panorama[self.vidx] = Observation::Correct(prev_hash);
-        } else {
-            panorama = unit.panorama.clone();
-        }
-        panorama[unit.creator] = Observation::Correct(*vhash);
-        for faulty_v in state.faulty_validators() {
-            panorama[faulty_v] = Observation::Faulty;
-        }
-        panorama
     }
 
     /// Returns a new unit with the given data, and the correct sequence number.
