@@ -37,9 +37,11 @@ build_node() {
 }
 
 generate_timestamp() {
+    local DELAY=${1}
+
     local SCRIPT=(
         "from datetime import datetime, timedelta;"
-        "print((datetime.utcnow() + timedelta(seconds=40)).isoformat('T') + 'Z')"
+        "print((datetime.utcnow() + timedelta(seconds=${DELAY})).isoformat('T') + 'Z')"
     )
 
     python3 -c "${SCRIPT[*]}"
@@ -98,12 +100,13 @@ check_for_bootstrap () {
 }
 
 main() {
+    local DELAY=${1:-40}
     local SESSION="${SESSION:-local}"
     local TMPDIR="${TMPDIR:-$(mktemp -d)}"
     local BASEDIR="$(readlink -f $(dirname ${0}))"
     local EXECUTABLE="${BASEDIR}/target/debug/casper-node"
     local CONFIG_DIR="${BASEDIR}/resources/local"
-    local TIMESTAMP="$(generate_timestamp)"
+    local TIMESTAMP="$(generate_timestamp ${DELAY})"
     local RUST_LOG="${RUST_LOG:-debug}"
 
     export TMPDIR
@@ -126,6 +129,7 @@ main() {
     done
 
     echo
+    echo "DELAY     : ${DELAY}"
     echo "TMPDIR    : ${TMPDIR}"
     echo "TIMESTAMP : ${TIMESTAMP}"
     echo "RUST_LOG  : ${RUST_LOG}"
@@ -138,4 +142,4 @@ main() {
     echo
 }
 
-main
+main ${@}
