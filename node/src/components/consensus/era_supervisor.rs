@@ -50,7 +50,7 @@ use crate::{
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
-    types::{BlockHash, BlockHeader, FinalizedBlock, ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, FinalizedBlock, ProtoBlock, ProtoBlockHash, Timestamp},
     utils::WithDir,
     NodeRng,
 };
@@ -93,6 +93,8 @@ pub struct EraSupervisor<I> {
     /// A node keeps `2 * bonded_eras` past eras around, because the oldest bonded era could still
     /// receive blocks that refer to `bonded_eras` before that.
     bonded_eras: u64,
+    /// The hash of the last finalized proto-block; needed for interactions with the block proposer
+    last_finalized_proto_block: Option<ProtoBlockHash>,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
 }
@@ -137,6 +139,7 @@ where
             new_consensus,
             node_start_time: Timestamp::now(),
             bonded_eras,
+            last_finalized_proto_block: None,
             metrics,
         };
 
@@ -599,7 +602,11 @@ where
             }
             ProtocolOutcome::CreateNewBlock { block_context } => self
                 .effect_builder
-                .request_proto_block(block_context, self.rng.gen())
+                .request_proto_block(
+                    block_context,
+                    self.era_supervisor.last_finalized_proto_block,
+                    self.rng.gen(),
+                )
                 .event(move |(proto_block, block_context)| Event::NewProtoBlock {
                     era_id,
                     proto_block,
@@ -637,6 +644,8 @@ where
                     .effect_builder
                     .announce_finalized_block(finalized_block.clone())
                     .ignore();
+                self.era_supervisor.last_finalized_proto_block =
+                    Some(*finalized_block.proto_block().hash());
                 // Request execution of the finalized block.
                 effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects

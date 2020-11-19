@@ -368,6 +368,7 @@ where
             Event::Request(BlockProposerRequest::ListForInclusion {
                 current_instant,
                 past_deploys,
+                last_finalized_block: _,
                 responder,
             }) => {
                 return self.get_chainspec(

@@ -111,7 +111,7 @@ use crate::{
     types::{
         json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
         BlockLike, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
-        ProtoBlock, Timestamp,
+        ProtoBlock, ProtoBlockHash, Timestamp,
     },
     utils::Source,
     Chainspec,
@@ -815,6 +815,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext,
+        last_finalized_block: Option<ProtoBlockHash>,
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
@@ -825,6 +826,7 @@ impl<REv> EffectBuilder<REv> {
                 |responder| BlockProposerRequest::ListForInclusion {
                     current_instant: block_context.timestamp(),
                     past_deploys: Default::default(), // TODO
+                    last_finalized_block,
                     responder,
                 },
                 QueueKind::Regular,
