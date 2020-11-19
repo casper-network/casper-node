@@ -78,16 +78,20 @@ impl Display for Event {
 
 type DeployCollection = HashMap<DeployHash, DeployHeader>;
 pub type ProtoBlockCollection = HashMap<ProtoBlockHash, DeployCollection>;
+type FinalizationQueue = HashMap<ProtoBlockHash, (ProtoBlockHash, Vec<DeployHash>)>;
+type RequestQueue = HashMap<ProtoBlockHash, Vec<ListForInclusionRequest>>;
 
 pub(crate) trait ReactorEventT: From<Event> + From<StorageRequest> + Send + 'static {}
 
 impl<REv> ReactorEventT for REv where REv: From<Event> + From<StorageRequest> + Send + 'static {}
 
 /// Stores the internal state of the BlockProposer.
-#[derive(DataSize, Default, Debug, Clone, PartialEq)]
+#[derive(DataSize, Default, Debug)]
 pub(crate) struct BlockProposerState {
     pending: DeployCollection,
     finalized: ProtoBlockCollection,
+    finalization_queue: FinalizationQueue,
+    request_queue: RequestQueue,
 }
 
 impl Display for BlockProposerState {
@@ -147,7 +151,7 @@ mod prune {
 }
 
 /// Block proposer.
-#[derive(DataSize, Debug, Clone)]
+#[derive(DataSize, Debug)]
 pub(crate) struct BlockProposer {
     state: BlockProposerState,
     #[data_size(skip)]
@@ -322,6 +326,29 @@ impl BlockProposer {
         self.state.finalized.insert(block, deploys);
     }
 
+    /// Handles finalization of a block.
+    fn handle_finalized_block<I, REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        block: ProtoBlockHash,
+        deploys: I,
+    ) -> Effects<Event>
+    where
+        I: IntoIterator<Item = DeployHash>,
+        REv: ReactorEventT,
+    {
+        self.finalized_block(block, deploys);
+
+        if let Some(requests) = self.state.request_queue.remove(&block) {
+            requests
+                .into_iter()
+                .flat_map(|request| self.get_chainspec(effect_builder, request))
+                .collect()
+        } else {
+            Effects::new()
+        }
+    }
+
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned
     fn prune(&mut self, current_instant: Timestamp) -> usize {
         self.state.prune(current_instant)
@@ -353,12 +380,45 @@ where
                     .event(|_| Event::BufferPrune);
             }
             Event::Request(BlockProposerRequest::ListForInclusion(request)) => {
-                return self.get_chainspec(effect_builder, request);
+                match request.last_finalized_block {
+                    Some(block_hash) if !self.state.finalized.contains_key(&block_hash) => {
+                        self.state
+                            .request_queue
+                            .entry(block_hash)
+                            .or_insert_with(Vec::new)
+                            .push(request);
+                    }
+                    _ => {
+                        return self.get_chainspec(effect_builder, request);
+                    }
+                }
             }
             Event::Buffer { hash, header } => self.add_deploy(Timestamp::now(), hash, *header),
-            Event::FinalizedProtoBlock { block, parent: _ } => {
+            Event::FinalizedProtoBlock { block, parent } => {
                 let (hash, deploys, _) = block.destructure();
-                self.finalized_block(hash, deploys)
+                match parent {
+                    Some(parent_hash) if !self.state.finalized.contains_key(&parent_hash) => {
+                        self.state
+                            .finalization_queue
+                            .insert(parent_hash, (hash, deploys));
+                    }
+                    _ => {
+                        let mut effects =
+                            self.handle_finalized_block(effect_builder, hash, deploys);
+                        let mut parent_hash = hash;
+                        while let Some((hash, deploys)) =
+                            self.state.finalization_queue.remove(&parent_hash)
+                        {
+                            effects.extend(self.handle_finalized_block(
+                                effect_builder,
+                                hash,
+                                deploys,
+                            ));
+                            parent_hash = hash;
+                        }
+                        return effects;
+                    }
+                }
             }
             Event::GetChainspecResult {
                 maybe_deploy_config,

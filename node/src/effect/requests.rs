@@ -322,7 +322,7 @@ impl Display for StorageRequest {
 }
 
 /// Details of a request for a list of deploys to propose in a new block.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub struct ListForInclusionRequest {
     /// The instant for which the deploy is requested.
     pub(crate) current_instant: Timestamp,
