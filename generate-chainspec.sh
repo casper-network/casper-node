@@ -5,9 +5,11 @@ set -o nounset
 set -o pipefail
 
 generate_timestamp() {
+    local DELAY=${1}
+
     local SCRIPT=(
         "from datetime import datetime, timedelta;"
-        "print((datetime.utcnow() + timedelta(seconds=40)).isoformat('T') + 'Z')"
+        "print((datetime.utcnow() + timedelta(seconds=${DELAY})).isoformat('T') + 'Z')"
     )
 
     python3 -c "${SCRIPT[*]}"
@@ -27,10 +29,11 @@ generate_chainspec() {
 }
 
 main() {
+    local DELAY=${1:-40}
     local BASEDIR="$(readlink -f $(dirname ${0}))"
-    local TIMESTAMP="$(generate_timestamp)"
+    local TIMESTAMP="$(generate_timestamp ${DELAY})"
 
     generate_chainspec ${BASEDIR} ${TIMESTAMP}
 }
 
-main
+main ${@}

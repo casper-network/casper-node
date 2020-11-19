@@ -24,7 +24,7 @@ pub fn read<T: CLTyped + FromBytes>(uref: URef) -> Result<Option<T>, bytesrepr::
 
     let value_size = {
         let mut value_size = MaybeUninit::uninit();
-        let ret = unsafe { ext_ffi::read_value(key_ptr, key_size, value_size.as_mut_ptr()) };
+        let ret = unsafe { ext_ffi::casper_read_value(key_ptr, key_size, value_size.as_mut_ptr()) };
         match api_error::result_from(ret) {
             Ok(_) => unsafe { value_size.assume_init() },
             Err(ApiError::ValueNotFound) => return Ok(None),
@@ -52,7 +52,11 @@ pub fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
     let value_size = {
         let mut value_size = MaybeUninit::uninit();
         let ret = unsafe {
-            ext_ffi::read_value_local(key_bytes.as_ptr(), key_bytes.len(), value_size.as_mut_ptr())
+            ext_ffi::casper_read_value_local(
+                key_bytes.as_ptr(),
+                key_bytes.len(),
+                value_size.as_mut_ptr(),
+            )
         };
         match api_error::result_from(ret) {
             Ok(_) => unsafe { value_size.assume_init() },
@@ -74,7 +78,7 @@ pub fn write<T: CLTyped + ToBytes>(uref: URef, value: T) {
     let (cl_value_ptr, cl_value_size, _bytes2) = contract_api::to_ptr(cl_value);
 
     unsafe {
-        ext_ffi::write(key_ptr, key_size, cl_value_ptr, cl_value_size);
+        ext_ffi::casper_write(key_ptr, key_size, cl_value_ptr, cl_value_size);
     }
 }
 
@@ -86,7 +90,7 @@ pub fn write_local<K: ToBytes, V: CLTyped + ToBytes>(key: K, value: V) {
     let (cl_value_ptr, cl_value_size, _bytes) = contract_api::to_ptr(cl_value);
 
     unsafe {
-        ext_ffi::write_local(key_ptr, key_size, cl_value_ptr, cl_value_size);
+        ext_ffi::casper_write_local(key_ptr, key_size, cl_value_ptr, cl_value_size);
     }
 }
 
@@ -100,7 +104,7 @@ pub fn add<T: CLTyped + ToBytes>(uref: URef, value: T) {
 
     unsafe {
         // Could panic if `value` cannot be added to the given value in memory.
-        ext_ffi::add(key_ptr, key_size, cl_value_ptr, cl_value_size);
+        ext_ffi::casper_add(key_ptr, key_size, cl_value_ptr, cl_value_size);
     }
 }
 
@@ -110,7 +114,7 @@ pub fn new_uref<T: CLTyped + ToBytes>(init: T) -> URef {
     let cl_value = CLValue::from_t(init).unwrap_or_revert();
     let (cl_value_ptr, cl_value_size, _cl_value_bytes) = contract_api::to_ptr(cl_value);
     let bytes = unsafe {
-        ext_ffi::new_uref(uref_non_null_ptr.as_ptr(), cl_value_ptr, cl_value_size); // URef has `READ_ADD_WRITE`
+        ext_ffi::casper_new_uref(uref_non_null_ptr.as_ptr(), cl_value_ptr, cl_value_size); // URef has `READ_ADD_WRITE`
         Vec::from_raw_parts(
             uref_non_null_ptr.as_ptr(),
             UREF_SERIALIZED_LENGTH,
@@ -155,7 +159,10 @@ pub fn create_contract_package_at_hash() -> (ContractPackageHash, URef) {
     let mut hash_addr = ContractPackageHash::default();
     let mut access_addr = [0u8; 32];
     unsafe {
-        ext_ffi::create_contract_package_at_hash(hash_addr.as_mut_ptr(), access_addr.as_mut_ptr());
+        ext_ffi::casper_create_contract_package_at_hash(
+            hash_addr.as_mut_ptr(),
+            access_addr.as_mut_ptr(),
+        );
     }
     let contract_package_hash = hash_addr;
     let access_uref = URef::new(access_addr, AccessRights::READ_ADD_WRITE);
@@ -184,7 +191,7 @@ pub fn create_contract_user_group(
     let value_size = {
         let mut output_size = MaybeUninit::uninit();
         let ret = unsafe {
-            ext_ffi::create_contract_user_group(
+            ext_ffi::casper_create_contract_user_group(
                 contract_package_hash_ptr,
                 contract_package_hash_size,
                 label_ptr,
@@ -214,7 +221,7 @@ pub fn provision_contract_user_group_uref(
     let value_size = {
         let mut value_size = MaybeUninit::uninit();
         let ret = unsafe {
-            ext_ffi::provision_contract_user_group_uref(
+            ext_ffi::casper_provision_contract_user_group_uref(
                 contract_package_hash_ptr,
                 contract_package_hash_size,
                 label_ptr,
@@ -240,7 +247,7 @@ pub fn remove_contract_user_group_urefs(
     let (label_ptr, label_size, _bytes3) = contract_api::to_ptr(label);
     let (urefs_ptr, urefs_size, _bytes4) = contract_api::to_ptr(urefs);
     let ret = unsafe {
-        ext_ffi::remove_contract_user_group_urefs(
+        ext_ffi::casper_remove_contract_user_group_urefs(
             contract_package_hash_ptr,
             contract_package_hash_size,
             label_ptr,
@@ -261,7 +268,7 @@ pub fn remove_contract_user_group(
         contract_api::to_ptr(package_hash);
     let (label_ptr, label_size, _bytes3) = contract_api::to_ptr(label);
     let ret = unsafe {
-        ext_ffi::remove_contract_user_group(
+        ext_ffi::casper_remove_contract_user_group(
             contract_package_hash_ptr,
             contract_package_hash_size,
             label_ptr,
@@ -290,7 +297,7 @@ pub fn add_contract_version(
     let mut contract_version: ContractVersion = 0;
 
     let ret = unsafe {
-        ext_ffi::add_contract_version(
+        ext_ffi::casper_add_contract_version(
             contract_package_hash_ptr,
             contract_package_hash_size,
             &mut contract_version as *mut ContractVersion,
@@ -325,7 +332,7 @@ pub fn disable_contract_version(
     let (contract_hash_ptr, contract_hash_size, _bytes2) = contract_api::to_ptr(contract_hash);
 
     let result = unsafe {
-        ext_ffi::disable_contract_version(
+        ext_ffi::casper_disable_contract_version(
             contract_package_hash_ptr,
             contract_package_hash_size,
             contract_hash_ptr,
