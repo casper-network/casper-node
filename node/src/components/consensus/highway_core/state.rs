@@ -158,8 +158,8 @@ impl<C: Context> Panoramas<C> {
 
     /// Updates latest observation of `creator` as `Correct(unit)`.
     /// Once a unit is a endorsed it is safe to cite it.
-    pub(crate) fn endorsed(&mut self, _creator: ValidatorIndex, _unit: C::Hash) {
-        //TODO
+    pub(crate) fn endorsed(&mut self, creator: ValidatorIndex, uhash: C::Hash) {
+        self.citable_panorama[creator] = Observation::Correct(uhash);
     }
 
     /// Updates panoramas with the new observation.
@@ -449,19 +449,19 @@ impl<C: Context> State<C> {
     /// If, after adding, we have collected enough endorsements to consider unit _endorsed_,
     /// it will be *upgraded* to fully endorsed.
     pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
-        let unit = *endorsements.unit();
+        let uhash = *endorsements.unit();
         let validator_count = self.validator_count();
-        info!("Received endorsements of {:?}", unit);
+        info!("Received endorsements of {:?}", uhash);
         {
             let entry = self
                 .incomplete_endorsements
-                .entry(unit)
+                .entry(uhash)
                 .or_insert_with(|| Vec::with_capacity(validator_count));
             for (vid, signature) in endorsements.endorsers {
                 // Add endorsements from validators we haven't seen endorsement yet.
                 if !entry.iter().any(|e| e.validator_idx() == vid) {
                     let endorsement =
-                        SignedEndorsement::new(Endorsement::new(unit, vid), signature);
+                        SignedEndorsement::new(Endorsement::new(uhash, vid), signature);
                     entry.push(endorsement)
                 }
             }
@@ -470,7 +470,7 @@ impl<C: Context> State<C> {
         let threshold = self.total_weight() / 2;
         let endorsed: Weight = self
             .incomplete_endorsements
-            .get(&unit)
+            .get(&uhash)
             .unwrap()
             .iter()
             .map(|e| {
@@ -479,12 +479,55 @@ impl<C: Context> State<C> {
             })
             .sum();
         if endorsed > threshold {
-            info!(%unit, "Unit endorsed by at least 2/3 of validators.");
-            let fully_endorsed = self.incomplete_endorsements.remove(&unit).unwrap();
-            let creator = self.unit(&unit).creator;
-            self.endorsements.insert(unit, fully_endorsed);
-            // When unit gets endorsed, it becomes safe to cite.
-            self.panoramas.endorsed(creator, unit);
+            info!(%uhash, "Unit endorsed by at least 50% of validators, by weight.");
+            self.endorsed(uhash);
+        }
+    }
+
+    /// Updates the state on newly endorsed unit.
+    fn endorsed(&mut self, uhash: C::Hash) {
+        let fully_endorsed = self.incomplete_endorsements.remove(&uhash).unwrap();
+        self.endorsements.insert(uhash, fully_endorsed);
+        let creator = self.unit(&uhash).creator;
+
+        if self.citable_panorama().next_seq_num(self, creator) >= self.unit(&uhash).seq_number {
+            // Previously endorsed unit comes later than `uhash`.
+            // We must have had endorsed it, and everything it sees, earlier.
+            return;
+        }
+
+        if !self.is_faulty(creator) {
+            // New unit we haven't seen endorsed before.
+            self.panoramas.endorsed(creator, uhash);
+        }
+
+        // We need to include everything seen by unit as well, otherwise this could make
+        // citable_panorama invalid. E.g. if unit2 by Alice is seen from `unit` but later than
+        // citable_panorama[ALICE], we must set citable_panorama[ALICE] = Correct(unit2), otherwise
+        // any vote with this panorama will be considered invalid.
+
+        let mut to_visit: Vec<_> = self
+            .unit(&uhash)
+            .panorama
+            .iter_correct_hashes()
+            .cloned()
+            .collect();
+
+        while let Some(hash) = to_visit.pop() {
+            let nunit_seq_number = self.unit(&hash).seq_number;
+            let nunit_creator = self.unit(&hash).creator;
+            if self.citable_panorama().next_seq_num(self, nunit_creator) >= nunit_seq_number {
+                // We have already endorsed `nunit` and its panorama.
+                continue;
+            }
+
+            if !self.is_faulty(nunit_creator) {
+                // New unit, endorse it.
+                self.panoramas.endorsed(nunit_creator, hash);
+            }
+
+            // Enqueue all of its panorama.
+            to_visit.extend(self.unit(&hash).panorama.iter_correct_hashes());
         }
     }
 
