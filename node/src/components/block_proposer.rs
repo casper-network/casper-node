@@ -19,8 +19,8 @@ use tracing::{info, trace};
 use crate::{
     components::{chainspec_loader::DeployConfig, Component},
     effect::{
-        requests::{BlockProposerRequest, StorageRequest},
-        EffectBuilder, EffectExt, Effects, Responder,
+        requests::{BlockProposerRequest, ListForInclusionRequest, StorageRequest},
+        EffectBuilder, EffectExt, Effects,
     },
     types::{DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
     NodeRng,
@@ -46,9 +46,7 @@ pub enum Event {
     GetChainspecResult {
         maybe_deploy_config: Box<Option<DeployConfig>>,
         chainspec_version: Version,
-        block_timestamp: Timestamp,
-        past_deploys: HashSet<DeployHash>,
-        responder: Responder<HashSet<DeployHash>>,
+        request: ListForInclusionRequest,
     },
 }
 
@@ -206,9 +204,7 @@ impl BlockProposer {
     fn get_chainspec<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block_timestamp: Timestamp,
-        past_deploys: HashSet<DeployHash>,
-        responder: Responder<HashSet<DeployHash>>,
+        request: ListForInclusionRequest,
     ) -> Effects<Event>
     where
         REv: ReactorEventT,
@@ -223,18 +219,10 @@ impl BlockProposer {
                     .event(move |_| Event::GetChainspecResult {
                         maybe_deploy_config: Box::new(Some(chainspec)),
                         chainspec_version,
-                        block_timestamp,
-                        past_deploys,
-                        responder,
+                        request,
                     })
             }
-            None => self.get_chainspec_from_storage(
-                effect_builder,
-                chainspec_version,
-                block_timestamp,
-                past_deploys,
-                responder,
-            ),
+            None => self.get_chainspec_from_storage(effect_builder, chainspec_version, request),
         }
     }
 
@@ -243,9 +231,7 @@ impl BlockProposer {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         chainspec_version: Version,
-        block_timestamp: Timestamp,
-        past_deploys: HashSet<DeployHash>,
-        responder: Responder<HashSet<DeployHash>>,
+        request: ListForInclusionRequest,
     ) -> Effects<Event>
     where
         REv: From<StorageRequest> + Send,
@@ -255,9 +241,7 @@ impl BlockProposer {
             .event(move |maybe_chainspec| Event::GetChainspecResult {
                 maybe_deploy_config: Box::new(maybe_chainspec.map(|c| c.genesis.deploy_config)),
                 chainspec_version,
-                block_timestamp,
-                past_deploys,
-                responder,
+                request,
             })
     }
 
@@ -365,18 +349,8 @@ where
                     .set_timeout(PRUNE_INTERVAL)
                     .event(|_| Event::BufferPrune);
             }
-            Event::Request(BlockProposerRequest::ListForInclusion {
-                current_instant,
-                past_deploys,
-                last_finalized_block: _,
-                responder,
-            }) => {
-                return self.get_chainspec(
-                    effect_builder,
-                    current_instant,
-                    past_deploys,
-                    responder,
-                );
+            Event::Request(BlockProposerRequest::ListForInclusion(request)) => {
+                return self.get_chainspec(effect_builder, request);
             }
             Event::Buffer { hash, header } => self.add_deploy(Timestamp::now(), hash, *header),
             Event::FinalizedProtoBlock(block) => {
@@ -386,15 +360,17 @@ where
             Event::GetChainspecResult {
                 maybe_deploy_config,
                 chainspec_version,
-                block_timestamp,
-                past_deploys,
-                responder,
+                request,
             } => {
                 let deploy_config = maybe_deploy_config.expect("should return chainspec");
                 // Update chainspec cache.
                 self.chainspecs.insert(chainspec_version, deploy_config);
-                let deploys = self.remaining_deploys(deploy_config, block_timestamp, past_deploys);
-                return responder.respond(deploys).ignore();
+                let deploys = self.remaining_deploys(
+                    deploy_config,
+                    request.current_instant,
+                    request.past_deploys,
+                );
+                return request.responder.respond(deploys).ignore();
             }
         }
         Effects::new()

@@ -122,8 +122,8 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StorageRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, ListForInclusionRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -823,11 +823,13 @@ impl<REv> EffectBuilder<REv> {
     {
         let deploys = self
             .make_request(
-                |responder| BlockProposerRequest::ListForInclusion {
-                    current_instant: block_context.timestamp(),
-                    past_deploys: Default::default(), // TODO
-                    last_finalized_block,
-                    responder,
+                |responder| {
+                    BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
+                        current_instant: block_context.timestamp(),
+                        past_deploys: Default::default(), // TODO
+                        last_finalized_block,
+                        responder,
+                    })
                 },
                 QueueKind::Regular,
             )

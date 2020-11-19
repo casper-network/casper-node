@@ -321,32 +321,36 @@ impl Display for StorageRequest {
     }
 }
 
+/// Details of a request for a list of deploys to propose in a new block.
+#[derive(Debug)]
+pub struct ListForInclusionRequest {
+    /// The instant for which the deploy is requested.
+    pub(crate) current_instant: Timestamp,
+    /// Set of block hashes pointing to blocks whose deploys should be excluded.
+    pub(crate) past_deploys: HashSet<DeployHash>,
+    /// The hash of the last block that was finalized at the point when the request was made.
+    pub(crate) last_finalized_block: Option<ProtoBlockHash>,
+    /// Responder to call with the result.
+    pub(crate) responder: Responder<HashSet<DeployHash>>,
+}
+
 /// A `BlockProposer` request.
 #[derive(Debug)]
 #[must_use]
 pub enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
-    ListForInclusion {
-        /// The instant for which the deploy is requested.
-        current_instant: Timestamp,
-        /// Set of block hashes pointing to blocks whose deploys should be excluded.
-        past_deploys: HashSet<DeployHash>,
-        /// The hash of the last block that was finalized at the point when the request was made.
-        last_finalized_block: Option<ProtoBlockHash>,
-        /// Responder to call with the result.
-        responder: Responder<HashSet<DeployHash>>,
-    },
+    ListForInclusion(ListForInclusionRequest),
 }
 
 impl Display for BlockProposerRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockProposerRequest::ListForInclusion {
+            BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
                 current_instant,
                 past_deploys,
                 last_finalized_block: _,
                 responder: _,
-            } => write!(
+            }) => write!(
                 formatter,
                 "list for inclusion: instant {} past {}",
                 current_instant,
