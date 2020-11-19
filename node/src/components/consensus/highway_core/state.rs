@@ -270,11 +270,6 @@ impl<C: Context> State<C> {
         &self.weights
     }
 
-    /// Returns hashes of endorsed units.
-    pub(crate) fn endorsements(&self) -> impl Iterator<Item = C::Hash> + '_ {
-        self.endorsements.keys().cloned()
-    }
-
     /// Returns the total weight of all validators marked faulty in this panorama.
     pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
         panorama
@@ -775,8 +770,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the set of units (by hash) that are endorsed and seen from the panorama.
-    #[allow(unused)] // TODO: Use for creating new LNC-compliant units.
-    fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
+    pub(crate) fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
         // First we collect all units that were already seen as endorsed by earlier units.
         let mut result: BTreeSet<C::Hash> = pan
             .iter_correct_hashes()

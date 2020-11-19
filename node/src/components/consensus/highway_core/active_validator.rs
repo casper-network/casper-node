@@ -313,7 +313,7 @@ impl<C: Context> ActiveValidator<C> {
             panorama = state.citable_panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
-        let endorsed = state.endorsements().collect();
+        let endorsed = state.seen_endorsed(&panorama);
         let wunit = WireUnit {
             panorama,
             creator: self.vidx,
