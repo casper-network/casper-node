@@ -879,13 +879,19 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a proto block has been finalized.
-    pub(crate) async fn announce_finalized_block(self, finalized_block: FinalizedBlock)
-    where
+    pub(crate) async fn announce_finalized_block(
+        self,
+        finalized_block: FinalizedBlock,
+        parent: Option<ProtoBlockHash>,
+    ) where
         REv: From<ConsensusAnnouncement>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
+                ConsensusAnnouncement::Finalized {
+                    block: Box::new(finalized_block),
+                    parent,
+                },
                 QueueKind::Regular,
             )
             .await

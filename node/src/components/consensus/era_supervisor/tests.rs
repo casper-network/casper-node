@@ -115,7 +115,11 @@ impl MockReactor {
 
     async fn expect_finalized(&self) -> FinalizedBlock {
         let (event, _) = self.scheduler.pop().await;
-        if let Event::ConsensusAnnouncement(ConsensusAnnouncement::Finalized(fb)) = event {
+        if let Event::ConsensusAnnouncement(ConsensusAnnouncement::Finalized {
+            block: fb,
+            parent: _,
+        }) = event
+        {
             *fb
         } else {
             panic!(

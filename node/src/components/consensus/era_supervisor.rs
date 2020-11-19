@@ -642,7 +642,10 @@ where
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
-                    .announce_finalized_block(finalized_block.clone())
+                    .announce_finalized_block(
+                        finalized_block.clone(),
+                        self.era_supervisor.last_finalized_proto_block,
+                    )
                     .ignore();
                 self.era_supervisor.last_finalized_proto_block =
                     Some(*finalized_block.proto_block().hash());

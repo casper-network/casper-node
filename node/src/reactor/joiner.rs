@@ -688,7 +688,7 @@ impl reactor::Reactor for Reactor {
                         linear_chain_sync::Event::BlockHandled(block_header),
                     ),
                 ),
-                ConsensusAnnouncement::Finalized(block) => reactor::wrap_effects(
+                ConsensusAnnouncement::Finalized { block, parent: _ } => reactor::wrap_effects(
                     Event::EventStreamServer,
                     self.event_stream_server.handle_event(
                         effect_builder,

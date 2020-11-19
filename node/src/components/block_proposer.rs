@@ -41,7 +41,10 @@ pub enum Event {
     /// The deploy-buffer has been asked to prune stale deploys
     BufferPrune,
     /// A proto block has been finalized. We should never propose its deploys again.
-    FinalizedProtoBlock(ProtoBlock),
+    FinalizedProtoBlock {
+        block: ProtoBlock,
+        parent: Option<ProtoBlockHash>,
+    },
     /// The result of the `BlockProposer` getting the chainspec from the storage component.
     GetChainspecResult {
         maybe_deploy_config: Box<Option<DeployConfig>>,
@@ -56,7 +59,7 @@ impl Display for Event {
             Event::BufferPrune => write!(f, "buffer prune"),
             Event::Request(req) => write!(f, "deploy-buffer request: {}", req),
             Event::Buffer { hash, .. } => write!(f, "deploy-buffer add {}", hash),
-            Event::FinalizedProtoBlock(block) => {
+            Event::FinalizedProtoBlock { block, parent: _ } => {
                 write!(f, "deploy-buffer finalized proto block {}", block)
             }
             Event::GetChainspecResult {
@@ -353,7 +356,7 @@ where
                 return self.get_chainspec(effect_builder, request);
             }
             Event::Buffer { hash, header } => self.add_deploy(Timestamp::now(), hash, *header),
-            Event::FinalizedProtoBlock(block) => {
+            Event::FinalizedProtoBlock { block, parent: _ } => {
                 let (hash, deploys, _) = block.destructure();
                 self.finalized_block(hash, deploys)
             }
