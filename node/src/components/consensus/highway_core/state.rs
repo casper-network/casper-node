@@ -162,17 +162,17 @@ impl<C: Context> Panoramas<C> {
         self.citable_panorama[creator] = Observation::Correct(uhash);
     }
 
-    /// Updates panoramas with the new observation.
-    /// `citable_panorama` will be updated only if it won't violate the LNC.
-    pub(crate) fn update_panorama(&mut self, creator: ValidatorIndex, new_obs: Observation<C>) {
-        // TODO(HWY-167): Decide whether new unit should be accepted to the `citable_panorama`.
-        self.citable_panorama[creator] = new_obs.clone();
-        self.panorama[creator] = new_obs;
-    }
-
     /// Returns the latest observation of `validator`.
     pub(crate) fn get(&self, validator: ValidatorIndex) -> &Observation<C> {
         self.panorama.get(validator)
+    }
+
+    pub(crate) fn citable_panorama_mut(&mut self) -> &mut Panorama<C> {
+        &mut self.citable_panorama
+    }
+
+    pub(crate) fn panorama_mut(&mut self) -> &mut Panorama<C> {
+        &mut self.panorama
     }
 }
 
@@ -740,7 +740,14 @@ impl<C: Context> State<C> {
                 Observation::Faulty
             }
         };
-        self.panoramas.update_panorama(wunit.creator, new_obs);
+        self.panoramas.panorama_mut()[creator] = new_obs.clone();
+
+        if new_obs.is_faulty() || !self.citable_panorama().has_faulty() {
+            self.panoramas.citable_panorama_mut()[creator] = new_obs;
+        } else if let Some(uhash) = new_obs.correct() {
+            // Check if there's a naively cited unit, by a known equivocator, in the past of
+            // `uhash`.
+        }
     }
 
     /// Returns `true` if this is a proposal and the creator is not faulty.
