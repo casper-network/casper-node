@@ -1,8 +1,8 @@
-# nctl Usage
+# NCTL Usage
 
-Once activated, nctl commands can be used to setup & control nodes within local test network(s).  Whilst most nctl users will tend to focus upon testing a single network, developers may wish to test multiple networks in parallel so as to observe behavioural differences induced as a result of altering either the network's configuration or its binary set.  
+Once activated, NCTL commands can be used to setup & control nodes within local test network(s).  Whilst most NCTL users will tend to focus upon testing a single network, developers may wish to test multiple networks in parallel so as to observe behavioural differences induced as a result of altering either the network's configuration or its binary set.  
 
-This usage guide focusses upon the former use case, i.e. testing a single network, and thus all nctl commands described below are executed with their default values.  Please refer [here](commands.md) for full details of supported nctl commands.
+This usage guide focusses upon the former use case, i.e. testing a single network, and thus all NCTL commands described below are executed with their default values.  Please refer [here](commands.md) for full details of supported NCTL commands.
 
 ## Step 0: Compile network binaries.
 
@@ -128,4 +128,4 @@ nctl-assets-teardown
 
 ## Summary
 
-Using nctl one can spin up either a single or multiple test networks.  Each network is isolated in terms of its assets - this includes port numbers.  The nctl commands parameter defaults are set for the general use case of testing a single local 5 node network.  You are encouraged to integrate nctl into your daily workflow so as to standardise the manner in which the network is tested in a localised setting.
+Using NCTL one can spin up either a single or multiple test networks.  Each network is isolated in terms of its assets - this includes port numbers.  The NCTL commands parameter defaults are set for the general use case of testing a single local 5 node network.  You are encouraged to integrate NCTL into your daily workflow so as to standardise the manner in which the network is tested in a localised setting.

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Resets node logs.
+# Renders a user's account hash.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
-#   Node ordinal identifier.
+#   User ordinal identifier.
 
 #######################################
 # Destructure input args.
@@ -40,12 +40,12 @@ source $NCTL/sh/utils.sh
 # Import vars.
 source $(get_path_to_net_vars $net)
 
-# Reset logs.
+# Render user main purse u-ref.
 if [ $node = "all" ]; then
-    for node_id in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for idx in $(seq 1 $NCTL_NET_NODE_COUNT); 
     do
-        rm $NCTL/assets/net-$net/nodes/node-$node_id/logs/*.log > /dev/null 2>&1
+        render_account_main_purse_uref $net $idx $NCTL_ACCOUNT_TYPE_NODE $idx
     done
 else
-    rm $NCTL/assets/net-$net/nodes/node-$node/logs/*.log > /dev/null 2>&1
+    render_account_main_purse_uref $net $node $NCTL_ACCOUNT_TYPE_USER $node
 fi

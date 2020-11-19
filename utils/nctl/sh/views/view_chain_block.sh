@@ -39,15 +39,7 @@ node=${node:-1}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
-if [ "$block_hash" ]; then
-    $(get_path_to_client $net) get-block \
-        --node-address $(get_node_address_rpc $net $node) \
-        --block-identifier $block_hash \
-        | jq '.result.block'
-else
-    $(get_path_to_client $net) get-block \
-        --node-address $(get_node_address_rpc $net $node) \
-        | jq '.result.block'
-fi
+# Render on-chain block information.
+render_chain_block $net $node $block_hash

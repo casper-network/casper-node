@@ -1,5 +1,5 @@
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 #######################################
 # ERC-20: get on-chain contract hash.

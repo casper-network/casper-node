@@ -131,22 +131,22 @@ path = '../node-storage'
 #
 # The size should be a multiple of the OS page size.
 #
-# 483_183_820_800 == 450 GiB.
-max_block_store_size = 483_183_820_800
+# 483_183_820_800 == 18 GiB.
+max_block_store_size = 19_327_352_832
 
 # Maximum size of the database to use for the deploy store.
 #
 # The size should be a multiple of the OS page size.
 #
-# 322_122_547_200 == 300 GiB.
-max_deploy_store_size = 322_122_547_200
+# 322_122_547_200 == 12 GiB.
+max_deploy_store_size = 12_884_901_888
 
 # Maximum size of the database to use for the deploy metadata.
 #
 # The size should be a multiple of the OS page size.
 #
-# 322_122_547_200 == 300 GiB.
-max_deploy_metadata_store_size = 322_122_547_200
+# 322_122_547_200 == 12 GiB.
+max_deploy_metadata_store_size = 12_884_901_888
 
 
 # ===================================
@@ -205,7 +205,7 @@ get_from_peer_timeout = 3
 
 # Optional maximum size of the database to use for the global state store.
 #
-# If unset, defaults to 805,306,368,000 == 750 GiB.
+# If unset, defaults to 32,212,254,720 == 30 GiB.
 #
 # The size should be a multiple of the OS page size.
-#max_global_state_size = 805306368000
+#max_global_state_size = 32_212_254_720

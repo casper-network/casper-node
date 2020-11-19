@@ -36,7 +36,7 @@ node=${node:-1}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 source $NCTL/sh/contracts/erc20/utils.sh
 
 # Import vars.
