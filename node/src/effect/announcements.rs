@@ -11,8 +11,8 @@ use std::{
 use crate::{
     components::small_network::GossipedAddress,
     types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-        DeployHeader, FinalizedBlock, Item,
+        Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, ExecutionResult,
+        FinalizedBlock, Item, ProtoBlock,
     },
     utils::Source,
 };

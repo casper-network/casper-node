@@ -16,10 +16,7 @@ use casper_execution_engine::{
 use crate::{
     crypto::hash::Digest,
     effect::requests::BlockExecutorRequest,
-    types::{
-        json_compatibility::ExecutionResult, BlockHash, Deploy, DeployHash, DeployHeader,
-        FinalizedBlock,
-    },
+    types::{BlockHash, Deploy, DeployHash, DeployHeader, ExecutionResult, FinalizedBlock},
 };
 
 /// Block executor component event.

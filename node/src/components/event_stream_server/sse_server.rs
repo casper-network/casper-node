@@ -17,8 +17,7 @@ use crate::{
     components::CLIENT_API_VERSION,
     crypto::asymmetric_key::PublicKey,
     types::{
-        json_compatibility::ExecutionResult, BlockHash, BlockHeader, DeployHash, FinalizedBlock,
-        TimeDiff, Timestamp,
+        BlockHash, BlockHeader, DeployHash, ExecutionResult, FinalizedBlock, TimeDiff, Timestamp,
     },
 };
 

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use casper_types::{
-    auction::{Bid, Bids, Delegator, EraValidators},
+    auction::{Bid, Bids, DelegationRate, Delegator, EraId, EraValidators},
     AccessRights, PublicKey, URef, U512,
 };
 
@@ -50,13 +50,74 @@ lazy_static! {
         let height: u64 = 10;
         let era_validators = Some(EraValidators::doc_example().clone());
         let bids = Some(Bids::doc_example().clone());
-        AuctionState {
-            state_root_hash,
-            block_height: height,
-            era_validators,
-            bids,
-        }
+        AuctionState::new(state_root_hash, height, era_validators, bids)
     };
+}
+
+/// A struct to capture a ValidatorWeight
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct JsonValidatorWeights {
+    public_key: PublicKey,
+    weight: U512,
+}
+/// A single EraValidator
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct JsonEraValidators {
+    era_id: EraId,
+    validator_weights: Vec<JsonValidatorWeights>,
+}
+/// One delegator for a given validator to be serialized in a JSON conforming format
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct JsonDelegator {
+    public_key: PublicKey,
+    delegator: Delegator,
+}
+
+/// Convert a Bid to a conforming JSON Representation of that bid.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct JsonBid {
+    /// The purse that was used for bonding.
+    bonding_purse: URef,
+    /// The amount of tokens staked by a validator (not including delegators).
+    staked_amount: U512,
+    /// Delegation rate
+    delegation_rate: DelegationRate,
+    /// A flag that represents a winning entry.
+    ///
+    /// `Some` indicates locked funds for a specific era and an autowin status, and `None` case
+    /// means that funds are unlocked and autowin status is removed.
+    release_era: Option<EraId>,
+    /// A Vector consisting of JsonDelegators
+    delegators: Vec<JsonDelegator>,
+    /// This validator's seigniorage reward
+    reward: U512,
+}
+
+impl From<Bid> for JsonBid {
+    fn from(bid: Bid) -> Self {
+        let mut json_delegators: Vec<JsonDelegator> = Vec::new();
+        for (public_key, delegator) in bid.delegators().iter() {
+            json_delegators.push(JsonDelegator {
+                public_key: *public_key,
+                delegator: *delegator,
+            });
+        }
+        JsonBid {
+            bonding_purse: *bid.bonding_purse(),
+            staked_amount: *bid.staked_amount(),
+            delegation_rate: *bid.delegation_rate(),
+            release_era: bid.release_era(),
+            delegators: json_delegators,
+            reward: *bid.reward(),
+        }
+    }
+}
+
+/// A Json representation of a single bid.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct JsonBids {
+    public_key: PublicKey,
+    bid: JsonBid,
 }
 
 /// Data structure summarizing auction contract data.
@@ -67,9 +128,9 @@ pub struct AuctionState {
     /// Block height
     pub block_height: u64,
     /// Era validators
-    pub era_validators: Option<EraValidators>,
-    /// All bids.
-    bids: Option<Bids>,
+    pub era_validators: Vec<JsonEraValidators>,
+    /// All bids contained within a vector.
+    bids: Vec<JsonBids>,
 }
 
 impl AuctionState {
@@ -80,11 +141,35 @@ impl AuctionState {
         era_validators: Option<EraValidators>,
         bids: Option<Bids>,
     ) -> Self {
+        let mut json_era_validators: Vec<JsonEraValidators> = Vec::new();
+        for (era_id, validator_weights) in era_validators.unwrap().iter() {
+            let mut json_validator_weights: Vec<JsonValidatorWeights> = Vec::new();
+            for (public_key, weight) in validator_weights.iter() {
+                json_validator_weights.push(JsonValidatorWeights {
+                    public_key: *public_key,
+                    weight: *weight,
+                });
+            }
+            json_era_validators.push(JsonEraValidators {
+                era_id: *era_id,
+                validator_weights: json_validator_weights,
+            });
+        }
+
+        let mut json_bids: Vec<JsonBids> = Vec::new();
+        for (public_key, bid) in bids.unwrap().iter() {
+            let json_bid = JsonBid::from(bid.clone());
+            json_bids.push(JsonBids {
+                public_key: *public_key,
+                bid: json_bid,
+            });
+        }
+
         AuctionState {
             state_root_hash,
             block_height,
-            era_validators,
-            bids,
+            era_validators: json_era_validators,
+            bids: json_bids,
         }
     }
 }

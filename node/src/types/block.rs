@@ -788,6 +788,11 @@ impl Block {
         self.proofs.push(proof)
     }
 
+    /// Provide proofs for an OpenRPC compatible representation.
+    pub fn proofs(&self) -> &Vec<Signature> {
+        &self.proofs
+    }
+
     fn serialize_body(body: &()) -> Result<Vec<u8>, bytesrepr::Error> {
         body.to_bytes()
     }

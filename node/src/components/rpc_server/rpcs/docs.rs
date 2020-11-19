@@ -24,7 +24,7 @@ use super::{
     },
     info::{
         GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult, GetStatus,
-        JsonExecutionResult,
+        JsonExecutionResult, JsonPeers,
     },
     state::{
         GetAuctionInfo, GetAuctionInfoResult, GetBalance, GetBalanceParams, GetBalanceResult,
@@ -39,7 +39,7 @@ use crate::{
     effect::EffectBuilder,
     types::{
         json_compatibility::{AuctionState, ExecutionResult, StoredValue},
-        Block, BlockHash, Deploy, GetStatusResult, NodeId, PeersMap, StatusFeed,
+        Block, BlockHash, Deploy, GetStatusResult, NodeId, StatusFeed,
     },
 };
 
@@ -78,7 +78,7 @@ lazy_static! {
 
         let response_result = GetBlockResult {
             api_version: CLIENT_API_VERSION.clone(),
-            block: Some(block.clone()),
+            block: Some(block.clone().into()),
         };
 
         result.push_with_optional_params::<GetBlock>(
@@ -140,7 +140,9 @@ lazy_static! {
 
         let peers_for_status = peers_hashmap.clone();
 
-        let peers = PeersMap::from(peers_hashmap).into();
+        let peers = peers_hashmap.iter()
+            .map(|(node, addr)| JsonPeers::new(node.clone(), *addr))
+            .collect();
         let response_result = GetPeersResult {
             api_version: CLIENT_API_VERSION.clone(),
             peers,

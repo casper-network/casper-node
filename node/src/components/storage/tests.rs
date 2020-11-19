@@ -10,9 +10,7 @@ use super::{Config, Storage};
 use crate::{
     effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng},
-    types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, DeployMetadata,
-    },
+    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, ExecutionResult},
     utils::WithDir,
     Chainspec,
 };
