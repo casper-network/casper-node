@@ -95,6 +95,12 @@ steps:
   - make test
   - make test-contracts
 
+- name: client-tests
+  image: casperlabs/node-build-u1804
+  commands:
+  - make setup-rs
+  - make test-client
+
 - name: client-ffi-examples
   image: casperlabs/node-build-u1804
   commands:

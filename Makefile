@@ -144,6 +144,11 @@ test-contracts_as: build-contracts-rs build-contracts-as
 .PHONY: test-contracts
 test-contracts: test-contracts-rs test-contracts_as
 
+.PHONY: test-client
+test-client:
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "client/Cargo.toml"
+
+
 .PHONY: check-format
 check-format:
 	$(CARGO) fmt --all -- --check
