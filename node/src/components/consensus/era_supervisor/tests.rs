@@ -1,7 +1,10 @@
 use anyhow::Error;
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use derive_more::From;
+use futures::channel::oneshot;
 use prometheus::Registry;
+
+use casper_types::auction::ValidatorWeights;
 
 use super::*;
 use crate::{
@@ -13,18 +16,22 @@ use crate::{
         },
         Component,
     },
-    crypto::asymmetric_key::{PublicKey, SecretKey},
+    crypto::{
+        asymmetric_key::{PublicKey, SecretKey},
+        hash::Digest,
+    },
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ConsensusRequest,
             ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
-        EffectBuilder,
+        EffectBuilder, Responder,
     },
     protocol,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     testing::TestRng,
+    types::{Block, BlockHash},
     utils::{self, External, Loadable},
     NodeRng,
 };
@@ -49,6 +56,7 @@ enum Event {
     Storage(StorageRequest),
     #[from]
     ContractRuntime(ContractRuntimeRequest),
+    // ConsensusRequest(ConsensusRequest),
 }
 
 struct MockReactor {
@@ -150,6 +158,47 @@ impl MockReactor {
             );
         }
     }
+
+    async fn expect_announce_block_handled(&self) -> Box<BlockHeader> {
+        let (event, _) = self.scheduler.pop().await;
+        if let Event::ConsensusAnnouncement(ConsensusAnnouncement::Handled(block_header)) = event {
+            block_header
+        } else {
+            panic!(
+                "unexpected event: {:?}, expected block handled announcement",
+                event
+            );
+        }
+    }
+
+    async fn expect_validator_weights(&self, weights: ValidatorWeights) {
+        let (event, _) = self.scheduler.pop().await;
+        if let Event::ContractRuntime(ContractRuntimeRequest::GetValidatorWeightsByEraId {
+            responder,
+            ..
+        }) = event
+        {
+            responder.respond(Ok(Some(weights))).await;
+        } else {
+            panic!(
+                "unexpected event: {:?}, expected validator weights request",
+                event
+            );
+        }
+    }
+
+    async fn expect_get_block_at_height(&self, block: Block) {
+        let (event, _) = self.scheduler.pop().await;
+        if let Event::Storage(StorageRequest::GetBlockAtHeight { responder, .. }) = event {
+            // TODO: Assert expected height.
+            responder.respond(Some(block)).await;
+        } else {
+            panic!(
+                "unexpected event: {:?}, expected block at height request",
+                event
+            );
+        }
+    }
 }
 
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.
@@ -175,10 +224,12 @@ async fn propose_and_finalize(
     es: &mut EraSupervisor<NodeId>,
     proposer: PublicKey,
     accusations: Vec<PublicKey>,
+    parent: BlockHash,
     rng: &mut NodeRng,
-) -> FinalizedBlock {
+) -> Block {
     let reactor = MockReactor::new();
     let effect_builder = EffectBuilder::new(EventQueueHandle::new(reactor.scheduler));
+    let era_id = es.current_era;
     let mut handle = |es: &mut EraSupervisor<NodeId>, event: super::Event<NodeId>| {
         es.handle_event(effect_builder, rng, event)
     };
@@ -192,7 +243,7 @@ async fn propose_and_finalize(
         timestamp,
         proposer,
     }
-    .received(NodeId(1), EraId(0)); // TODO: Compute era ID.
+    .received(NodeId(1), era_id);
     let mut effects = handle(es, event);
     let validate = tokio::spawn(effects.pop().unwrap());
     reactor
@@ -211,7 +262,7 @@ async fn propose_and_finalize(
 
     // Node 1 replies with requested evidence.
     for pk in &accusations {
-        let event = ClMessage::Evidence(pk.clone()).received(NodeId(1), EraId(0));
+        let event = ClMessage::Evidence(*pk).received(NodeId(1), EraId(0));
         let mut effects = handle(es, event);
         let broadcast_evidence = tokio::spawn(effects.pop().unwrap());
         assert!(effects.is_empty());
@@ -238,7 +289,34 @@ async fn propose_and_finalize(
 
     let fb = reactor.expect_execute().await;
     assert_eq!(fb, reactor.expect_finalized().await);
-    fb
+
+    let block = Block::new(parent, Default::default(), Default::default(), fb.clone());
+    let block_header = Box::new(block.header().clone());
+    let (sender, _receiver) = oneshot::channel(); // TODO: Check receiver.
+    let responder = Responder::create(sender);
+    let request = ConsensusRequest::HandleLinearBlock(block_header.clone(), responder);
+    let mut effects = handle(es, request.into());
+    let finality_sig = tokio::spawn(effects.pop().unwrap()); // Finality signature.
+    let _opt_create_new_era_event = if block_header.switch_block() {
+        let create_new_era = tokio::spawn(effects.pop().unwrap());
+        let weights = vec![(block_header.proposer().clone().into(), 10.into())]
+            .into_iter()
+            .collect();
+        reactor.expect_validator_weights(weights).await;
+        // TODO: Return the correct block!
+        reactor.expect_get_block_at_height(block.clone()).await;
+        reactor.expect_get_block_at_height(block.clone()).await;
+        Some(create_new_era.await.unwrap())
+    } else {
+        assert_eq!(block_header, reactor.expect_announce_block_handled().await);
+        tokio::spawn(effects.pop().unwrap()).await.unwrap(); // Announce block handled.
+        finality_sig.await.unwrap();
+        None
+    };
+    assert!(effects.is_empty());
+
+    // TODO: CreateNewEra event
+    block
 }
 
 #[tokio::test]
@@ -279,7 +357,9 @@ async fn cross_era_slashing() -> Result<(), Error> {
     };
     assert!(effects.is_empty());
 
-    let fb = propose_and_finalize(&mut es, bob_pk, vec![alice_pk], &mut rng).await;
+    let parent_hash = BlockHash::from(Digest::from([0; Digest::LENGTH]));
+    let block = propose_and_finalize(&mut es, bob_pk, vec![alice_pk], parent_hash, &mut rng).await;
+    let fb: FinalizedBlock = block.header().clone().into();
     let expected_fb = FinalizedBlock::new(
         fb.proto_block().clone(),
         fb.timestamp(),
@@ -289,8 +369,10 @@ async fn cross_era_slashing() -> Result<(), Error> {
         bob_pk,
     );
     assert_eq!(expected_fb, fb);
+    let parent_hash = *block.hash();
 
-    let fb = propose_and_finalize(&mut es, bob_pk, vec![], &mut rng).await;
+    let block = propose_and_finalize(&mut es, bob_pk, vec![], parent_hash, &mut rng).await;
+    let fb: FinalizedBlock = block.header().clone().into();
     let expected_fb = FinalizedBlock::new(
         fb.proto_block().clone(),
         fb.timestamp(),
@@ -303,6 +385,18 @@ async fn cross_era_slashing() -> Result<(), Error> {
         bob_pk,
     );
     assert_eq!(expected_fb, fb);
+    // let parent_hash = block.hash();
+
+    // let fb = propose_and_finalize(&mut es, bob_pk, vec![], &mut rng).await;
+    // let expected_fb = FinalizedBlock::new(
+    //     fb.proto_block().clone(),
+    //     fb.timestamp(),
+    //     None, // not the era's last block
+    //     EraId(1),
+    //     2, // height
+    //     bob_pk,
+    // );
+    // assert_eq!(expected_fb, fb);
 
     Ok(())
 }
