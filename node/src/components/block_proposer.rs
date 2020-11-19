@@ -578,32 +578,17 @@ mod tests {
         assert!(deploys.contains(&hash2));
 
         // the deploys should not have been removed
-        assert!(!buffer
-            .remaining_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
-            .is_empty());
-
-        let mut deploys = HashSet::new();
-        deploys.insert(hash1);
-        deploys.insert(hash2);
-
-        assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time2, deploys.clone())
-            .is_empty());
-
-        // try adding the same deploy again
-        buffer.add_deploy(block_time2, hash2, deploy2);
-
-        // it shouldn't be returned if we include it in the past blocks
-        assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time2, deploys.clone())
-            .is_empty());
-        // ...but it should be returned if we don't include it
-        assert!(
+        assert_eq!(
             buffer
                 .remaining_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
-                .len()
-                == 1
+                .len(),
+            2
         );
+
+        // but they shouldn't be returned if we include it in the past deploys
+        assert!(buffer
+            .remaining_deploys(DeployConfig::default(), block_time2, deploys.clone())
+            .is_empty());
 
         let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
 
@@ -616,7 +601,8 @@ mod tests {
 
         let deploys = buffer.remaining_deploys(DeployConfig::default(), block_time2, no_deploys);
 
-        // since block 1 is now finalized, deploy2 shouldn't be among the ones returned
+        // since block 1 is now finalized, neither deploy1 nor deploy2 should be among the ones
+        // returned
         assert_eq!(deploys.len(), 2);
         assert!(deploys.contains(&hash3));
         assert!(deploys.contains(&hash4));
