@@ -28,7 +28,7 @@ use signature::{RandomizedSigner, Signature as Sig, Verifier};
 use tracing::info;
 use untrusted::Input;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 use super::{Error, Result};
 #[cfg(test)]
@@ -999,7 +999,8 @@ impl ToBytes for Signature {
             }
             Signature::Secp256k1(signature) => {
                 buffer.insert(0, SECP256K1_TAG);
-                buffer.extend(signature.as_ref().to_vec().into_bytes()?);
+                let bytes = Bytes::from(signature.as_ref().to_vec());
+                buffer.extend(bytes.into_bytes()?);
             }
         }
         Ok(buffer)
@@ -1029,7 +1030,7 @@ impl FromBytes for Signature {
                 Ok((ed25519_signature, remainder))
             }
             SECP256K1_TAG => {
-                let (secp256k1_signature_bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
+                let (secp256k1_signature_bytes, remainder) = Bytes::from_bytes(remainder)?;
                 let secp256k1_signature = Self::secp256k1_from_bytes(secp256k1_signature_bytes)
                     .map_err(|error| {
                         info!("failed to deserialize secp256k1 signature: {}", error);

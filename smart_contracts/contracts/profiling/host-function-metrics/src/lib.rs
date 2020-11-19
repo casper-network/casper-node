@@ -13,6 +13,7 @@ use casper_contract::{
 };
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
+    bytesrepr::Bytes,
     contracts::NamedKeys,
     runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
@@ -76,7 +77,7 @@ fn truncate_named_keys(named_keys: NamedKeys, rng: &mut SmallRng) -> NamedKeys {
 // `storage` module.
 fn large_function() {
     let seed: u64 = runtime::get_named_arg(ARG_SEED);
-    let random_bytes: Vec<u8> = runtime::get_named_arg(ARG_BYTES);
+    let random_bytes: Bytes = runtime::get_named_arg(ARG_BYTES);
 
     let uref = storage::new_uref(random_bytes.clone());
 
@@ -103,7 +104,7 @@ fn large_function() {
     }
 
     storage::write(uref, random_bytes.clone());
-    let retrieved_value: Vec<u8> = storage::read_or_revert(uref);
+    let retrieved_value: Bytes = storage::read_or_revert(uref);
     if retrieved_value != random_bytes {
         runtime::revert(Error::ReadOrRevert);
     }

@@ -234,3 +234,16 @@ mod tests {
         assert_eq!(&rem, &expected_rem);
     }
 }
+
+#[cfg(test)]
+pub mod gens {
+    use super::Bytes;
+    use proptest::{
+        collection::{vec, SizeRange},
+        prelude::*,
+    };
+
+    pub fn bytes_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Bytes> {
+        vec(any::<u8>(), size).prop_map(|vec| Bytes::from(vec))
+    }
+}

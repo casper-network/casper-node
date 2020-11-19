@@ -10,6 +10,8 @@ use alloc::{
     string::String,
     vec::Vec,
 };
+#[cfg(debug_assertions)]
+use core::any;
 use core::{convert::TryInto, mem, ptr::NonNull};
 
 use failure::Fail;
@@ -305,8 +307,19 @@ impl FromBytes for String {
     }
 }
 
+fn ensure_efficient_serialization<T>() {
+    #[cfg(debug_assertions)]
+    debug_assert_ne!(
+        any::type_name::<T>(),
+        any::type_name::<u8>(),
+        "You should use Bytes newtype wrapper for efficiency"
+    );
+}
+
 #[allow(clippy::ptr_arg)]
 fn slice_to_bytes<T: ToBytes>(vec: &[T]) -> Result<Vec<u8>, Error> {
+    ensure_efficient_serialization::<T>();
+
     let mut result = try_vec_with_capacity(iterator_serialized_length(vec.iter()))?;
     result.append(&mut (vec.len() as u32).to_bytes()?);
 
@@ -318,6 +331,8 @@ fn slice_to_bytes<T: ToBytes>(vec: &[T]) -> Result<Vec<u8>, Error> {
 }
 
 fn vec_into_bytes<T: ToBytes>(vec: Vec<T>) -> Result<Vec<u8>, Error> {
+    ensure_efficient_serialization::<T>();
+
     let mut result = allocate_buffer(&vec)?;
     result.append(&mut (vec.len() as u32).to_bytes()?);
 
@@ -364,6 +379,8 @@ fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
 }
 
 fn vec_from_bytes<T: FromBytes>(bytes: &[u8]) -> Result<(Vec<T>, &[u8]), Error> {
+    ensure_efficient_serialization::<T>();
+
     let (count, mut stream) = u32::from_bytes(bytes)?;
 
     let mut result = try_vec_with_capacity(count as usize)?;
@@ -377,6 +394,8 @@ fn vec_from_bytes<T: FromBytes>(bytes: &[u8]) -> Result<(Vec<T>, &[u8]), Error> 
 }
 
 fn vec_from_vec<T: FromBytes>(bytes: Vec<u8>) -> Result<(Vec<T>, Vec<u8>), Error> {
+    ensure_efficient_serialization::<T>();
+
     Vec::<T>::from_bytes(bytes.as_slice()).map(|(x, remainder)| (x, Vec::from(remainder)))
 }
 
@@ -1017,23 +1036,24 @@ impl<
 }
 
 impl ToBytes for str {
+    #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        if self.len() > u32::max_value() as usize - U32_SERIALIZED_LENGTH {
-            return Err(Error::OutOfMemory);
-        }
-        self.as_bytes().to_vec().into_bytes()
+        serialize_bytes(self.as_bytes())
     }
 
+    #[inline]
     fn serialized_length(&self) -> usize {
-        U32_SERIALIZED_LENGTH + self.as_bytes().len()
+        bytes_serialized_length(self.as_bytes())
     }
 }
 
 impl ToBytes for &str {
+    #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         (*self).to_bytes()
     }
 
+    #[inline(always)]
     fn serialized_length(&self) -> usize {
         (*self).serialized_length()
     }
@@ -1122,6 +1142,13 @@ mod tests {
         let result: Result<Ratio<u64>, Error> = super::deserialize(malicious_bytes);
         assert_eq!(result.unwrap_err(), Error::Formatting);
     }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "You should use Bytes newtype wrapper for efficiency")]
+    fn should_fail_to_serialize_slice_of_u8() {
+        slice_to_bytes(b"0123456789").unwrap();
+    }
 }
 
 #[cfg(test)]
@@ -1130,7 +1157,10 @@ mod proptests {
 
     use proptest::{collection::vec, prelude::*};
 
-    use crate::{bytesrepr, gens::*};
+    use crate::{
+        bytesrepr::{self, bytes::gens::bytes_arb, ToBytes},
+        gens::*,
+    };
 
     proptest! {
         #[test]
@@ -1174,7 +1204,7 @@ mod proptests {
         }
 
         #[test]
-        fn test_vec_u8(u in vec(any::<u8>(), 1..100)) {
+        fn test_vec_u8(u in bytes_arb(1..100)) {
             bytesrepr::test_serialization_roundtrip(&u);
         }
 
@@ -1196,7 +1226,7 @@ mod proptests {
         }
 
         #[test]
-        fn test_vec_vec_u8(u in vec(vec(any::<u8>(), 1..100), 10)) {
+        fn test_vec_vec_u8(u in vec(bytes_arb(1..100), 10)) {
             bytesrepr::test_serialization_roundtrip(&u);
         }
 
@@ -1213,6 +1243,12 @@ mod proptests {
         #[test]
         fn test_string(s in "\\PC*") {
             bytesrepr::test_serialization_roundtrip(&s);
+        }
+
+        #[test]
+        fn test_str(s in "\\PC*") {
+            let not_a_string_object = s.as_str();
+            not_a_string_object.to_bytes().expect("should serialize a str");
         }
 
         #[test]

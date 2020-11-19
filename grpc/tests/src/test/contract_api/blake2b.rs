@@ -48,7 +48,7 @@ fn should_hash() {
             *DEFAULT_ACCOUNT_ADDR,
             BLAKE2B_WASM,
             runtime_args! {
-                ARG_BYTES => input.to_vec()
+                ARG_BYTES => input
             },
         )
         .build();

@@ -387,7 +387,7 @@ export function testGroupEntryPointAccess(): bool {
 }
 
 export function testComplexCLType(): bool {
-    let type = CLType.fixedList(new CLType(CLTypeTag.U8), 32);
+    let type = CLType.byteArray(32);
     let bytes = type.toBytes();
     let truth = hex2bin("0f0320000000");
     assert(checkArraysEqual(typedToArray(truth), bytes));
