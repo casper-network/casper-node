@@ -18,7 +18,7 @@ pub(super) use unit::Unit;
 use std::{
     borrow::Borrow,
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     convert::identity,
     iter,
 };
@@ -268,11 +268,6 @@ impl<C: Context> State<C> {
     /// Returns the map of validator weights.
     pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
         &self.weights
-    }
-
-    /// Returns hashes of endorsed units.
-    pub(crate) fn endorsements(&self) -> impl Iterator<Item = C::Hash> + '_ {
-        self.endorsements.keys().cloned()
     }
 
     /// Returns the total weight of all validators marked faulty in this panorama.
@@ -657,7 +652,7 @@ impl<C: Context> State<C> {
             }
         }
         for hash in &wunit.endorsed {
-            if !wunit.panorama.sees(self, hash) {
+            if !wunit.panorama._sees(self, hash) {
                 return Err(UnitError::EndorsedButUnseen {
                     hash: format!("{:?}", hash),
                     wire_unit: format!("{:?}", wunit),
@@ -774,6 +769,23 @@ impl<C: Context> State<C> {
         self.units.is_empty()
     }
 
+    /// Returns the set of units (by hash) that are endorsed and seen from the panorama.
+    pub(crate) fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
+        // First we collect all units that were already seen as endorsed by earlier units.
+        let mut result: BTreeSet<C::Hash> = pan
+            .iter_correct_hashes()
+            .flat_map(|hash| self.unit(hash).endorsed.iter().cloned())
+            .collect();
+        // Now add all remaining endorsed units. Since the pan.sees check is expensive, do it only
+        // for the ones that are actually new.
+        for hash in self.endorsements.keys() {
+            if !result.contains(hash) && pan._sees(self, hash) {
+                result.insert(*hash);
+            }
+        }
+        result
+    }
+
     /// Validates whether `wunit` violates the Limited Naïveté Criterion (LNC).
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
     /// `None` if the LNC is satisfied.
@@ -786,9 +798,14 @@ impl<C: Context> State<C> {
             .find(|eq_idx| !self.satisfies_lnc_for(wunit, *eq_idx))
     }
 
+    // Stub, replace with `_satisfies_lnc_for`
+    fn satisfies_lnc_for(&self, _wunit: &WireUnit<C>, _eq_idx: ValidatorIndex) -> bool {
+        true
+    }
+
     /// Returns `true` if there is at most one fork by the validator `eq_idx` that is cited naively
     /// by `wunit` or earlier units by the same creator.
-    fn satisfies_lnc_for(&self, wunit: &WireUnit<C>, eq_idx: ValidatorIndex) -> bool {
+    fn _satisfies_lnc_for(&self, wunit: &WireUnit<C>, eq_idx: ValidatorIndex) -> bool {
         // Find all forks by eq_idx that are cited naively by wunit itself.
         // * If it's more than one, return false: the LNC is violated.
         // * If it's none, return true: If the LNC were violated, it would be because of two naive
@@ -799,7 +816,7 @@ impl<C: Context> State<C> {
         {
             // Returns true if any endorsed (according to wunit) unit cites the given unit.
             let seen_by_endorsed =
-                |hash| wunit.endorsed.iter().any(|e_hash| self.sees(e_hash, hash));
+                |hash| wunit.endorsed.iter().any(|e_hash| self._sees(e_hash, hash));
 
             // Iterate over all units cited by wunit.
             let mut to_visit: Vec<_> = wunit.panorama.iter_correct_hashes().collect();
@@ -822,9 +839,9 @@ impl<C: Context> State<C> {
                                 Some(other_hash) => {
                                     // If eq_hash is later than other_hash, it is the tip of the
                                     // same fork. If it is earlier, then other_hash is the tip.
-                                    if self.sees_correct(eq_hash, other_hash) {
+                                    if self._sees_correct(eq_hash, other_hash) {
                                         opt_naive_by_wunit = Some(eq_hash);
-                                    } else if !self.sees_correct(other_hash, eq_hash) {
+                                    } else if !self._sees_correct(other_hash, eq_hash) {
                                         return false; // We found two incompatible forks!
                                     }
                                 }
@@ -859,7 +876,7 @@ impl<C: Context> State<C> {
                 pred_unit
                     .endorsed
                     .iter()
-                    .any(|e_hash| self.sees(e_hash, hash))
+                    .any(|e_hash| self._sees(e_hash, hash))
             };
             // Iterate over all units seen by pred_unit.
             let mut to_visit = vec![pred_hash];
@@ -873,7 +890,7 @@ impl<C: Context> State<C> {
                 match &unit.panorama[eq_idx] {
                     Observation::Correct(eq_hash) => {
                         if !seen_by_endorsed(eq_hash)
-                            && !self.is_compatible(eq_hash, naive_by_wunit)
+                            && !self._is_compatible(eq_hash, naive_by_wunit)
                         {
                             return false;
                         }
@@ -901,20 +918,20 @@ impl<C: Context> State<C> {
 
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`),
     /// and sees `hash1`'s creator as correct.
-    fn sees_correct(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
-        hash0 == hash1 || self.unit(hash0).panorama.sees_correct(self, hash1)
+    fn _sees_correct(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+        hash0 == hash1 || self.unit(hash0).panorama._sees_correct(self, hash1)
     }
 
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`).
-    fn sees(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
-        hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
+    fn _sees(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+        hash0 == hash1 || self.unit(hash0).panorama._sees(self, hash1)
     }
 
     // Returns whether the units with `hash0` and `hash1` see each other or are equal.
-    fn is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+    fn _is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
         hash0 == hash1
-            || self.unit(hash0).panorama.sees(self, hash1)
-            || self.unit(hash1).panorama.sees(self, hash0)
+            || self.unit(hash0).panorama._sees(self, hash1)
+            || self.unit(hash1).panorama._sees(self, hash0)
     }
 
     /// Returns the panorama of the confirmation for the leader unit `vhash`.

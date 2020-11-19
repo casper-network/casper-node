@@ -276,7 +276,7 @@ impl<C: Context> ActiveValidator<C> {
             return false;
         }
         if let Some(unit) = self.latest_unit(state) {
-            if unit.panorama.sees_correct(state, vhash) {
+            if unit.panorama._sees_correct(state, vhash) {
                 error!(%vhash, "called on_new_unit with already confirmed proposal");
                 return false; // We already sent a confirmation.
             }
@@ -313,7 +313,7 @@ impl<C: Context> ActiveValidator<C> {
             panorama = state.citable_panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
-        let endorsed = state.endorsements().collect();
+        let endorsed = state.seen_endorsed(&panorama);
         let wunit = WireUnit {
             panorama,
             creator: self.vidx,
