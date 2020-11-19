@@ -142,7 +142,7 @@ test-contracts-as: build-contracts-rs build-contracts-as
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
 
 .PHONY: test-contracts
-test-contracts: test-contracts-rs test-contracts_as
+test-contracts: test-contracts-rs test-contracts-as
 
 .PHONY: check-format
 check-format:
