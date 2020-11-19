@@ -284,7 +284,7 @@ pub(super) mod dependencies {
         matches
             .values_of(ARG_NAME)
             .iter()
-            .map(|i| i.clone().map(|v| v))
+            .cloned()
             .flatten()
             .collect()
     }
@@ -372,7 +372,7 @@ pub(super) mod arg_simple {
             matches
                 .values_of(ARG_NAME)
                 .iter()
-                .map(|i| i.clone().map(|v| v))
+                .cloned()
                 .flatten()
                 .collect()
         }
@@ -392,7 +392,7 @@ pub(super) mod arg_simple {
             matches
                 .values_of(ARG_NAME)
                 .iter()
-                .map(|i| i.clone().map(|v| v))
+                .cloned()
                 .flatten()
                 .collect()
         }

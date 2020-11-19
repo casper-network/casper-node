@@ -57,6 +57,8 @@ pub trait MintProvider {
     ) -> TransferResult;
 
     /// Transfers `amount` from `source` purse to a `target` purse.
+    // TODO - remove the lint relaxation.
+    #[allow(clippy::result_unit_err)]
     fn transfer_purse_to_purse(
         &mut self,
         source: URef,

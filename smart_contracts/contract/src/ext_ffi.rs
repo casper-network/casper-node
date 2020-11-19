@@ -6,18 +6,19 @@ extern "C" {
     /// The bytes in the span of wasm memory from `key_ptr` to `key_ptr + key_size` must correspond
     /// to a valid global state key, otherwise the function will fail. If the key is de-serialized
     /// successfully, then the result of the read is serialized and buffered in the runtime. This
-    /// result can be obtained via the [`read_host_buffer`] function. Returns standard error code.
+    /// result can be obtained via the [`casper_read_host_buffer`] function. Returns standard error
+    /// code.
     ///
     /// # Arguments
     ///
     /// * `key_ptr` - pointer (offset in wasm linear memory) to serialized form of the key to read
     /// * `key_size` - size of the serialized key (in bytes)
     /// * `output_size` - pointer to a value where host will write size of bytes read from given key
-    pub fn read_value(key_ptr: *const u8, key_size: usize, output_size: *mut usize) -> i32;
+    pub fn casper_read_value(key_ptr: *const u8, key_size: usize, output_size: *mut usize) -> i32;
     /// The bytes in wasm memory from offset `key_ptr` to `key_ptr + key_size`
     /// will be used together with the current context’s seed to form a local key.
     /// The value at that local key is read from the global state, serialized and
-    /// buffered in the runtime. This result can be obtained via the [`read_host_buffer`]
+    /// buffered in the runtime. This result can be obtained via the [`casper_read_host_buffer`]
     /// function.
     ///
     /// # Arguments
@@ -25,7 +26,11 @@ extern "C" {
     /// * `key_ptr` - pointer to bytes representing the user-defined key
     /// * `key_size` - size of the key (in bytes)
     /// * `output_size` - pointer to a value where host will write size of bytes read from given key
-    pub fn read_value_local(key_ptr: *const u8, key_size: usize, output_size: *mut usize) -> i32;
+    pub fn casper_read_value_local(
+        key_ptr: *const u8,
+        key_size: usize,
+        output_size: *mut usize,
+    ) -> i32;
     /// This function writes the provided value (read via de-serializing the bytes
     /// in wasm memory from offset `value_ptr` to `value_ptr + value_size`) under
     /// the provided key (read via de-serializing the bytes in wasm memory from
@@ -39,7 +44,12 @@ extern "C" {
     /// * `key_size` - size of the key (in bytes)
     /// * `value_ptr` - pointer to bytes representing the value to write at the key
     /// * `value_size` - size of the value (in bytes)
-    pub fn write(key_ptr: *const u8, key_size: usize, value_ptr: *const u8, value_size: usize);
+    pub fn casper_write(
+        key_ptr: *const u8,
+        key_size: usize,
+        value_ptr: *const u8,
+        value_size: usize,
+    );
 
     /// The bytes in wasm memory from offset `key_ptr` to `key_ptr + key_size`
     /// will be used together with the current context’s seed to form a local key.
@@ -54,7 +64,7 @@ extern "C" {
     /// * `key_size` - size of the key (in bytes)
     /// * `value_ptr` - pointer to bytes representing the value to write at the key
     /// * `value_size` - size of the value (in bytes)
-    pub fn write_local(
+    pub fn casper_write_local(
         key_ptr: *const u8,
         key_size: usize,
         value_ptr: *const u8,
@@ -74,7 +84,7 @@ extern "C" {
     /// * `key_size` - size of the key (in bytes)
     /// * `value_ptr` - pointer to bytes representing the value to write at the key
     /// * `value_size` - size of the value (in bytes)
-    pub fn add(key_ptr: *const u8, key_size: usize, value_ptr: *const u8, value_size: usize);
+    pub fn casper_add(key_ptr: *const u8, key_size: usize, value_ptr: *const u8, value_size: usize);
     /// This function causes the runtime to generate a new [`casper_types::uref::URef`], with
     /// the provided value stored under it in the global state. The new
     /// [`casper_types::uref::URef`] is written (in serialized form) to the wasm linear
@@ -90,14 +100,14 @@ extern "C" {
     /// * `value_ptr` - pointer to bytes representing the value to write under the new
     ///   [`casper_types::uref::URef`]
     /// * `value_size` - size of the value (in bytes)
-    pub fn new_uref(uref_ptr: *mut u8, value_ptr: *const u8, value_size: usize);
+    pub fn casper_new_uref(uref_ptr: *mut u8, value_ptr: *const u8, value_size: usize);
     ///
-    pub fn load_named_keys(total_keys: *mut usize, result_size: *mut usize) -> i32;
+    pub fn casper_load_named_keys(total_keys: *mut usize, result_size: *mut usize) -> i32;
     /// This function causes a `Trap`, terminating the currently running module,
     /// but first copies the bytes from `value_ptr` to `value_ptr + value_size` to
     /// a buffer which is returned to the calling module (if this module was
-    /// invoked by [`call_contract`] or [`call_versioned_contract`]). Additionally, the known
-    /// [`casper_types::uref::URef`]s of the calling context are augmented with the
+    /// invoked by [`casper_call_contract`] or [`casper_call_versioned_contract`]). Additionally,
+    /// the known [`casper_types::uref::URef`]s of the calling context are augmented with the
     /// [`casper_types::uref::URef`]s de-serialized from wasm memory offset
     /// `extra_urefs_ptr` to `extra_urefs_ptr + extra_urefs_size`. This function will cause a
     /// `Trap` if the bytes at `extra_urefs_ptr` cannot be de-serialized as type `Vec<URef>`, or
@@ -108,9 +118,9 @@ extern "C" {
     ///
     /// * `value_ptr`: pointer to bytes representing the value to return to the caller
     /// * `value_size`: size of the value (in bytes)
-    pub fn ret(value_ptr: *const u8, value_size: usize) -> !;
+    pub fn casper_ret(value_ptr: *const u8, value_size: usize) -> !;
     ///
-    pub fn get_key(
+    pub fn casper_get_key(
         name_ptr: *const u8,
         name_size: usize,
         output_ptr: *mut u8,
@@ -118,11 +128,16 @@ extern "C" {
         bytes_written_ptr: *mut usize,
     ) -> i32;
     ///
-    pub fn has_key(name_ptr: *const u8, name_size: usize) -> i32;
+    pub fn casper_has_key(name_ptr: *const u8, name_size: usize) -> i32;
     ///
-    pub fn put_key(name_ptr: *const u8, name_size: usize, key_ptr: *const u8, key_size: usize);
+    pub fn casper_put_key(
+        name_ptr: *const u8,
+        name_size: usize,
+        key_ptr: *const u8,
+        key_size: usize,
+    );
     ///
-    pub fn remove_key(name_ptr: *const u8, name_size: usize);
+    pub fn casper_remove_key(name_ptr: *const u8, name_size: usize);
     /// This function causes a `Trap` which terminates the currently running
     /// module. Additionally, it signals that the current entire phase of
     /// execution of the deploy should be terminated as well, and that the effects
@@ -133,13 +148,13 @@ extern "C" {
     /// # Arguments
     ///
     /// * `status` - error code of the revert
-    pub fn revert(status: u32) -> !;
+    pub fn casper_revert(status: u32) -> !;
     /// This function checks if all the keys contained in the given `Value` are
     /// valid in the current context (i.e. the `Value` does not contain any forged
     /// [`casper_types::uref::URef`]s). This function causes a `Trap` if the bytes in wasm
     /// memory from offset `value_ptr` to `value_ptr + value_size` cannot be de-serialized as
     /// type `Value`.
-    pub fn is_valid_uref(uref_ptr: *const u8, uref_size: usize) -> i32;
+    pub fn casper_is_valid_uref(uref_ptr: *const u8, uref_size: usize) -> i32;
     /// This function attempts to add the given public key as an associated key to
     /// the current account. Presently only 32-byte keys are supported; it is up
     /// to the caller to ensure that the 32-bytes starting from offset
@@ -149,7 +164,7 @@ extern "C" {
     /// for adding the key where 0 represents success, 1 means no more keys can be
     /// added to this account (only 10 keys can be added), 2 means the key is
     /// already associated (if you wish to change the weight of an associated key
-    /// then used [`update_associated_key`]), and 3 means permission denied (this
+    /// then used [`casper_update_associated_key`]), and 3 means permission denied (this
     /// could be because the function was called outside of session code or
     /// because the key management threshold was not met by the keys authorizing
     /// the deploy).
@@ -162,7 +177,7 @@ extern "C" {
     /// * `public_key` - pointer to the bytes in wasm memory representing the public key to add,
     ///   presently only 32-byte public keys are supported.
     /// * `weight` - the weight to assign to this public key
-    pub fn add_associated_key(
+    pub fn casper_add_associated_key(
         account_hash_ptr: *const u8,
         account_hash_size: usize,
         weight: i32,
@@ -187,7 +202,10 @@ extern "C" {
     /// * `public_key` - pointer to the bytes in wasm memory representing the public key to update,
     ///   presently only 32-byte public keys are supported.
     /// * `weight` - the weight to assign to this public key
-    pub fn remove_associated_key(account_hash_ptr: *const u8, account_hash_size: usize) -> i32;
+    pub fn casper_remove_associated_key(
+        account_hash_ptr: *const u8,
+        account_hash_size: usize,
+    ) -> i32;
     /// This function attempts to update the given public key as an associated key
     /// to the current account. Presently only 32-byte keys are supported; it is
     /// up to the caller to ensure that the 32-bytes starting from offset
@@ -208,7 +226,7 @@ extern "C" {
     /// * `public_key` - pointer to the bytes in wasm memory representing the
     ///  public key to update, presently only 32-byte public keys are supported
     /// * `weight` - the weight to assign to this public key
-    pub fn update_associated_key(
+    pub fn casper_update_associated_key(
         account_hash_ptr: *const u8,
         account_hash_size: usize,
         weight: i32,
@@ -230,7 +248,7 @@ extern "C" {
     ///
     /// * `action` - index representing the action threshold to set
     /// * `threshold` - new value of the threshold for performing this action
-    pub fn set_action_threshold(permission_level: u32, threshold: u32) -> i32;
+    pub fn casper_set_action_threshold(permission_level: u32, threshold: u32) -> i32;
     /// This function returns the public key of the account for this deploy. The
     /// result is always 36-bytes in length (4 bytes prefix on a 32-byte public
     /// key); it is up to the caller to ensure the right amount of memory is
@@ -240,7 +258,7 @@ extern "C" {
     /// # Arguments
     ///
     /// * `dest_ptr` - pointer to position in wasm memory where to write the result
-    pub fn get_caller(output_size: *mut usize) -> i32;
+    pub fn casper_get_caller(output_size: *mut usize) -> i32;
     /// This function gets the timestamp which will be in the block this deploy is
     /// included in. The return value is always a 64-bit unsigned integer,
     /// representing the number of milliseconds since the Unix epoch. It is up to
@@ -250,7 +268,7 @@ extern "C" {
     /// # Arguments
     ///
     /// * `dest_ptr` - pointer in wasm memory where to write the result
-    pub fn get_blocktime(dest_ptr: *const u8);
+    pub fn casper_get_blocktime(dest_ptr: *const u8);
     /// This function uses the mint contract to create a new, empty purse. If the
     /// call is successful then the [`casper_types::uref::URef`] (in serialized form) is written
     /// to the indicated place in wasm memory. It is up to the caller to ensure at
@@ -263,7 +281,7 @@ extern "C" {
     /// * `purse_ptr` - pointer to position in wasm memory where to write the created
     ///   [`casper_types::uref::URef`]
     /// * `purse_size` - allocated size for the [`casper_types::uref::URef`]
-    pub fn create_purse(purse_ptr: *const u8, purse_size: usize) -> i32;
+    pub fn casper_create_purse(purse_ptr: *const u8, purse_size: usize) -> i32;
     /// This function uses the mint contract’s transfer function to transfer
     /// tokens from the current account’s main purse to the main purse of the
     /// target account. If the target account does not exist then it is
@@ -288,7 +306,7 @@ extern "C" {
     /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
     ///   target account
     /// * `amount_size` - size of the amount (in bytes)
-    pub fn transfer_to_account(
+    pub fn casper_transfer_to_account(
         target_ptr: *const u8,
         target_size: usize,
         amount_ptr: *const u8,
@@ -322,7 +340,7 @@ extern "C" {
     /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
     ///   target account
     /// * `amount_size` - size of the amount (in bytes)
-    pub fn transfer_from_purse_to_account(
+    pub fn casper_transfer_from_purse_to_account(
         source_ptr: *const u8,
         source_size: usize,
         target_ptr: *const u8,
@@ -354,7 +372,7 @@ extern "C" {
     /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
     ///   target account
     /// * `amount_size` - size of the amount (in bytes)
-    pub fn transfer_from_purse_to_purse(
+    pub fn casper_transfer_from_purse_to_purse(
         source_ptr: *const u8,
         source_size: usize,
         target_ptr: *const u8,
@@ -376,7 +394,7 @@ extern "C" {
     /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
     ///   target account
     /// * `amount_size` - size of the amount (in bytes)
-    pub fn record_transfer(
+    pub fn casper_record_transfer(
         source_ptr: *const u8,
         source_size: usize,
         target_ptr: *const u8,
@@ -398,7 +416,11 @@ extern "C" {
     /// * `purse_ptr` - pointer in wasm memory to the bytes representing the
     ///   [`casper_types::uref::URef`] of the purse to get the balance of
     /// * `purse_size` - size of the [`casper_types::uref::URef`] (in bytes)
-    pub fn get_balance(purse_ptr: *const u8, purse_size: usize, result_size: *mut usize) -> i32;
+    pub fn casper_get_balance(
+        purse_ptr: *const u8,
+        purse_size: usize,
+        result_size: *mut usize,
+    ) -> i32;
     /// This function writes bytes representing the current phase of the deploy
     /// execution to the specified pointer. The size of the result is always one
     /// byte, it is up to the caller to ensure one byte of memory is allocated at
@@ -411,15 +433,15 @@ extern "C" {
     /// # Arguments
     ///
     /// * `dest_ptr` - pointer to position in wasm memory to write the result
-    pub fn get_phase(dest_ptr: *mut u8);
+    pub fn casper_get_phase(dest_ptr: *mut u8);
     ///
-    pub fn get_system_contract(
+    pub fn casper_get_system_contract(
         system_contract_index: u32,
         dest_ptr: *mut u8,
         dest_size: usize,
     ) -> i32;
     ///
-    pub fn get_main_purse(dest_ptr: *mut u8);
+    pub fn casper_get_main_purse(dest_ptr: *mut u8);
     /// This function copies the contents of the current runtime buffer into the
     /// wasm memory, beginning at the provided offset. It is intended that this
     /// function be called after a call to a function that uses host buffer. It is up to the caller
@@ -436,11 +458,15 @@ extern "C" {
     ///   be written
     /// * `dest_size` - size of output buffer
     /// * `bytes_written` - a pointer to a value where amount of bytes written will be set
-    pub fn read_host_buffer(dest_ptr: *mut u8, dest_size: usize, bytes_written: *mut usize) -> i32;
+    pub fn casper_read_host_buffer(
+        dest_ptr: *mut u8,
+        dest_size: usize,
+        bytes_written: *mut usize,
+    ) -> i32;
     /// Creates new contract package at hash. Returns both newly generated
     /// [`casper_types::ContractPackageHash`] and a [`casper_types::URef`] for further
     /// modifying access.
-    pub fn create_contract_package_at_hash(hash_addr_ptr: *mut u8, access_addr_ptr: *mut u8);
+    pub fn casper_create_contract_package_at_hash(hash_addr_ptr: *mut u8, access_addr_ptr: *mut u8);
     /// Creates new named contract user group under a contract package.
     ///
     /// # Arguments
@@ -454,7 +480,7 @@ extern "C" {
     /// * `existing_urefs_size` - size of serialized list of  [`casper_types::URef`]s
     /// * `output_size_ptr` - pointer to a value where a size of list of [`casper_types::URef`]s
     ///   written to host buffer will be set.
-    pub fn create_contract_user_group(
+    pub fn casper_create_contract_user_group(
         contract_package_hash_ptr: *const u8,
         contract_package_hash_size: usize,
         label_ptr: *const u8,
@@ -479,7 +505,7 @@ extern "C" {
     /// * `output_size` - size of memory area that host can write to
     /// * `bytes_written_ptr` - pointer to a value where host will set a number of bytes written to
     ///   the `output_size` pointer
-    pub fn add_contract_version(
+    pub fn casper_add_contract_version(
         contract_package_hash_ptr: *const u8,
         contract_package_hash_size: usize,
         version_ptr: *const u32,
@@ -500,7 +526,7 @@ extern "C" {
     /// * `contract_package_hash_size` - size of contract package hash in serialized form.
     /// * `contract_hash_ptr` - pointer to serialized contract hash.
     /// * `contract_hash_size` - size of contract hash in serialized form.
-    pub fn disable_contract_version(
+    pub fn casper_disable_contract_version(
         contract_package_hash_ptr: *const u8,
         contract_package_hash_size: usize,
         contract_hash_ptr: *const u8,
@@ -520,7 +546,7 @@ extern "C" {
     /// * `runtime_args_size` - size of serialized runtime arguments
     /// * `result_size` - a pointer to a value which will be set to a size of bytes of called
     ///   contract return value
-    pub fn call_contract(
+    pub fn casper_call_contract(
         contract_hash_ptr: *const u8,
         contract_hash_size: usize,
         entry_point_name_ptr: *const u8,
@@ -547,7 +573,7 @@ extern "C" {
     /// * `runtime_args_ptr` -
     /// * `runtime_args_size` -
     /// * `result_size` -
-    pub fn call_versioned_contract(
+    pub fn casper_call_versioned_contract(
         contract_package_hash_ptr: *const u8,
         contract_package_hash_size: usize,
         contract_version_ptr: *const u8,
@@ -570,7 +596,11 @@ extern "C" {
     /// * `dest_ptr` - pointer to the location where argument bytes will be copied from the host
     ///   side
     /// * `dest_size` - size of destination pointer
-    pub fn get_named_arg_size(name_ptr: *const u8, name_size: usize, dest_size: *mut usize) -> i32;
+    pub fn casper_get_named_arg_size(
+        name_ptr: *const u8,
+        name_size: usize,
+        dest_size: *mut usize,
+    ) -> i32;
     /// This function copies the contents of the current runtime buffer into the
     /// wasm memory, beginning at the provided offset. It is intended that this
     /// function be called after a call to `load_arg`. It is up to the caller to
@@ -589,7 +619,7 @@ extern "C" {
     /// * `dest_ptr` - pointer to the location where argument bytes will be copied from the host
     ///   side
     /// * `dest_size` - size of destination pointer
-    pub fn get_named_arg(
+    pub fn casper_get_named_arg(
         name_ptr: *const u8,
         name_size: usize,
         dest_ptr: *mut u8,
@@ -603,7 +633,7 @@ extern "C" {
     /// * `contract_package_hash_size` - size of contract package hash in serialized form.
     /// * `label_ptr` - serialized group label
     /// * `label_size` - size of serialized group label
-    pub fn remove_contract_user_group(
+    pub fn casper_remove_contract_user_group(
         contract_package_hash_ptr: *const u8,
         contract_package_hash_size: usize,
         label_ptr: *const u8,
@@ -620,7 +650,7 @@ extern "C" {
     /// * `label_ptr` - serialized group label
     /// * `label_size` - size of serialized group label
     /// * `value_size_ptr` - size of data written to a host buffer will be saved here
-    pub fn provision_contract_user_group_uref(
+    pub fn casper_provision_contract_user_group_uref(
         contract_package_hash_ptr: *const u8,
         contract_package_hash_size: usize,
         label_ptr: *const u8,
@@ -638,7 +668,7 @@ extern "C" {
     /// * `label_size` - size of serialized group label
     /// * `urefs_ptr` - pointer to serialized list of urefs
     /// * `urefs_size` - size of serialized list of urefs
-    pub fn remove_contract_user_group_urefs(
+    pub fn casper_remove_contract_user_group_urefs(
         contract_package_hash_ptr: *const u8,
         contract_package_hash_size: usize,
         label_ptr: *const u8,
@@ -653,7 +683,12 @@ extern "C" {
     /// * `in_size` - length of bytes
     /// * `out_ptr` - pointer to the location where argument bytes will be copied from the host side
     /// * `out_size` - size of output pointer
-    pub fn blake2b(in_ptr: *const u8, in_size: usize, out_ptr: *mut u8, out_size: usize) -> i32;
+    pub fn casper_blake2b(
+        in_ptr: *const u8,
+        in_size: usize,
+        out_ptr: *mut u8,
+        out_size: usize,
+    ) -> i32;
     /// Prints data directly to stanadard output on the host.
     ///
     /// # Arguments
@@ -661,5 +696,5 @@ extern "C" {
     /// * `text_ptr` - pointer to serialized text to print
     /// * `text_size` - size of serialized text to print
     #[cfg(feature = "test-support")]
-    pub fn print(text_ptr: *const u8, text_size: usize);
+    pub fn casper_print(text_ptr: *const u8, text_size: usize);
 }

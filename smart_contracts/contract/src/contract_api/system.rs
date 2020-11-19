@@ -20,7 +20,7 @@ fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
         let result = {
             let mut hash_data_raw = ContractHash::default();
             let value = unsafe {
-                ext_ffi::get_system_contract(
+                ext_ffi::casper_get_system_contract(
                     system_contract_index,
                     hash_data_raw.as_mut_ptr(),
                     hash_data_raw.len(),
@@ -68,7 +68,7 @@ pub fn get_auction() -> ContractHash {
 pub fn create_purse() -> URef {
     let purse_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);
     unsafe {
-        let ret = ext_ffi::create_purse(purse_non_null_ptr.as_ptr(), UREF_SERIALIZED_LENGTH);
+        let ret = ext_ffi::casper_create_purse(purse_non_null_ptr.as_ptr(), UREF_SERIALIZED_LENGTH);
         if ret == 0 {
             let bytes = Vec::from_raw_parts(
                 purse_non_null_ptr.as_ptr(),
@@ -88,7 +88,8 @@ pub fn get_balance(purse: URef) -> Option<U512> {
 
     let value_size = {
         let mut output_size = MaybeUninit::uninit();
-        let ret = unsafe { ext_ffi::get_balance(purse_ptr, purse_size, output_size.as_mut_ptr()) };
+        let ret =
+            unsafe { ext_ffi::casper_get_balance(purse_ptr, purse_size, output_size.as_mut_ptr()) };
         match api_error::result_from(ret) {
             Ok(_) => unsafe { output_size.assume_init() },
             Err(ApiError::InvalidPurse) => return None,
@@ -105,8 +106,9 @@ pub fn get_balance(purse: URef) -> Option<U512> {
 pub fn transfer_to_account(target: AccountHash, amount: U512) -> TransferResult {
     let (target_ptr, target_size, _bytes1) = contract_api::to_ptr(target);
     let (amount_ptr, amount_size, _bytes2) = contract_api::to_ptr(amount);
-    let return_code =
-        unsafe { ext_ffi::transfer_to_account(target_ptr, target_size, amount_ptr, amount_size) };
+    let return_code = unsafe {
+        ext_ffi::casper_transfer_to_account(target_ptr, target_size, amount_ptr, amount_size)
+    };
     TransferredTo::result_from(return_code)
 }
 
@@ -121,7 +123,7 @@ pub fn transfer_from_purse_to_account(
     let (target_ptr, target_size, _bytes2) = contract_api::to_ptr(target);
     let (amount_ptr, amount_size, _bytes3) = contract_api::to_ptr(amount);
     let return_code = unsafe {
-        ext_ffi::transfer_from_purse_to_account(
+        ext_ffi::casper_transfer_from_purse_to_account(
             source_ptr,
             source_size,
             target_ptr,
@@ -144,7 +146,7 @@ pub fn transfer_from_purse_to_purse(
     let (target_ptr, target_size, _bytes2) = contract_api::to_ptr(target);
     let (amount_ptr, amount_size, _bytes3) = contract_api::to_ptr(amount);
     let result = unsafe {
-        ext_ffi::transfer_from_purse_to_purse(
+        ext_ffi::casper_transfer_from_purse_to_purse(
             source_ptr,
             source_size,
             target_ptr,
@@ -168,7 +170,7 @@ pub fn record_transfer(source: URef, target: URef, amount: U512) -> Result<(), A
     let (target_ptr, target_size, _bytes2) = contract_api::to_ptr(target);
     let (amount_ptr, amount_size, _bytes3) = contract_api::to_ptr(amount);
     let result = unsafe {
-        ext_ffi::record_transfer(
+        ext_ffi::casper_record_transfer(
             source_ptr,
             source_size,
             target_ptr,

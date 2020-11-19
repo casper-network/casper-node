@@ -232,7 +232,7 @@ mod tests {
 
         let actual = {
             let mut items = protocol_data.system_contracts();
-            items.sort();
+            items.sort_unstable();
             items
         };
 
@@ -265,7 +265,7 @@ mod tests {
 
         let actual = {
             let mut items = protocol_data.system_contracts();
-            items.sort();
+            items.sort_unstable();
             items
         };
 

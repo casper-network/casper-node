@@ -1,37 +1,37 @@
 /** @hidden */
-@external("env", "read_value")
+@external("env", "casper_read_value")
 export declare function read_value(key_ptr: usize, key_size: usize, value_size: usize): i32;
 /** @hidden */
-@external("env", "read_value_local")
+@external("env", "casper_read_value_local")
 export declare function read_value_local(key_ptr: usize, key_size: usize, output_size: usize): i32;
 /** @hidden */
-@external("env", "write")
+@external("env", "casper_write")
 export declare function write(key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;
 /** @hidden */
-@external("env", "write_local")
+@external("env", "casper_write_local")
 export declare function write_local(key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;
 /** @hidden */
-@external("env", "add")
+@external("env", "casper_add")
 export declare function add(key_ptr: usize, key_size: usize, value_ptr: usize, value_size: usize): void;
 /** @hidden */
-@external("env", "new_uref")
+@external("env", "casper_new_uref")
 export declare function new_uref(uref_ptr: usize, value_ptr: usize, value_size: usize): void;
-@external("env", "load_named_keys")
+@external("env", "casper_load_named_keys")
 export declare function load_named_keys(total_keys: usize, result_size: usize): i32;
 /** @hidden */
-@external("env", "get_named_arg")
+@external("env", "casper_get_named_arg")
 export declare function get_named_arg(name_ptr: usize, name_size: usize, dest_ptr: usize, dest_size: usize): i32;
 /** @hidden */
-@external("env", "get_named_arg_size")
+@external("env", "casper_get_named_arg_size")
 export declare function get_named_arg_size(name_ptr: usize, name_size: usize, dest_size: usize): i32;
 /** @hidden */
-@external("env", "ret")
+@external("env", "casper_ret")
 export declare function ret(value_ptr: usize, value_size: usize): void;
 /** @hidden */
-@external("env", "call_contract")
+@external("env", "casper_call_contract")
 export declare function call_contract(contract_hash_ptr: usize, contract_hash_size: usize, entry_point_name_ptr: usize, entry_point_name_size: usize, runtime_args_ptr: usize, runtime_args_size: usize, result_size: usize): i32;
 /** @hidden */
-@external("env", "call_versioned_contract")
+@external("env", "casper_call_versioned_contract")
 export declare function call_versioned_contract(
     contract_package_hash_ptr: usize,
     contract_package_hash_size: usize,
@@ -44,7 +44,7 @@ export declare function call_versioned_contract(
     result_size: usize,
 ): i32;
 /** @hidden */
-@external("env", "get_key")
+@external("env", "casper_get_key")
 export declare function get_key(
     name_ptr: usize,
     name_size: usize,
@@ -53,43 +53,43 @@ export declare function get_key(
     bytes_written_ptr: usize,
 ): i32;
 /** @hidden */
-@external("env", "has_key")
+@external("env", "casper_has_key")
 export declare function has_key(name_ptr: usize, name_size: usize): i32;
 /** @hidden */
-@external("env", "put_key")
+@external("env", "casper_put_key")
 export declare function put_key(name_ptr: usize, name_size: usize, key_ptr: usize, key_size: usize): void;
 /** @hidden */
-@external("env", "remove_key")
+@external("env", "casper_remove_key")
 export declare function remove_key(name_ptr: usize, name_size: u32): void;
 /** @hidden */
-@external("env", "revert")
+@external("env", "casper_revert")
 export declare function revert(err_code: i32): void;
 /** @hidden */
-@external("env", "is_valid_uref")
+@external("env", "casper_is_valid_uref")
 export declare function is_valid_uref(target_ptr: usize, target_size: u32): i32;
 /** @hidden */
-@external("env", "add_associated_key")
+@external("env", "casper_add_associated_key")
 export declare function add_associated_key(account_hash_ptr: usize, account_hash_size: usize, weight: i32): i32;
 /** @hidden */
-@external("env", "remove_associated_key")
+@external("env", "casper_remove_associated_key")
 export declare function remove_associated_key(account_hash_ptr: usize, account_hash_size: usize): i32;
 /** @hidden */
-@external("env", "update_associated_key")
+@external("env", "casper_update_associated_key")
 export declare function update_associated_key(account_hash_ptr: usize, account_hash_size: usize, weight: i32): i32;
 /** @hidden */
-@external("env", "set_action_threshold")
+@external("env", "casper_set_action_threshold")
 export declare function set_action_threshold(permission_level: u32, threshold: i32): i32;
 /** @hidden */
-@external("env", "get_blocktime")
+@external("env", "casper_get_blocktime")
 export declare function get_blocktime(dest_ptr: usize): void;
 /** @hidden */
-@external("env", "get_caller")
+@external("env", "casper_get_caller")
 export declare function get_caller(output_size: usize): i32;
 /** @hidden */
-@external("env", "create_purse")
+@external("env", "casper_create_purse")
 export declare function create_purse(purse_ptr: usize, purse_size: u32): i32;
 /** @hidden */
-@external("env", "transfer_to_account")
+@external("env", "casper_transfer_to_account")
 export declare function transfer_to_account(
     target_ptr: usize,
     target_size: u32,
@@ -97,7 +97,7 @@ export declare function transfer_to_account(
     amount_size: u32,
 ): i32;
 /** @hidden */
-@external("env", "transfer_from_purse_to_account")
+@external("env", "casper_transfer_from_purse_to_account")
 export declare function transfer_from_purse_to_account(
     source_ptr: usize,
     source_size: u32,
@@ -107,7 +107,7 @@ export declare function transfer_from_purse_to_account(
     amount_size: u32,
 ):  i32;
 /** @hidden */
-@external("env", "transfer_from_purse_to_purse")
+@external("env", "casper_transfer_from_purse_to_purse")
 export declare function transfer_from_purse_to_purse(
     source_ptr: usize,
     source_size: u32,
@@ -117,13 +117,13 @@ export declare function transfer_from_purse_to_purse(
     amount_size: u32,
 ): i32;
 /** @hidden */
-@external("env", "get_balance")
+@external("env", "casper_get_balance")
 export declare function get_balance(purse_ptr: usize, purse_size: usize, result_size: usize): i32;
 /** @hidden */
-@external("env", "get_phase")
+@external("env", "casper_get_phase")
 export declare function get_phase(dest_ptr: usize): void;
 /** @hidden */
-@external("env", "upgrade_contract_at_uref")
+@external("env", "casper_upgrade_contract_at_uref")
 export declare function upgrade_contract_at_uref(
     name_ptr: usize,
     name_size: u32,
@@ -131,23 +131,23 @@ export declare function upgrade_contract_at_uref(
     key_size: u32
 ): i32;
 /** @hidden */
-@external("env", "get_system_contract")
+@external("env", "casper_get_system_contract")
 export declare function get_system_contract(system_contract_index: u32, dest_ptr: usize, dest_size: u32): i32;
 /** @hidden */
-@external("env", "get_main_purse")
+@external("env", "casper_get_main_purse")
 export declare function get_main_purse(dest_ptr: usize): void;
 /** @hidden */
-@external("env", "read_host_buffer")
+@external("env", "casper_read_host_buffer")
 export declare function read_host_buffer(dest_ptr: usize, dest_size: u32, bytes_written: usize): i32;
 /** @hidden */
-@external("env", "remove_contract_user_group")
+@external("env", "casper_remove_contract_user_group")
 export declare function remove_contract_user_group(
     contract_package_hash_ptr: usize,
     contract_package_hash_size: usize,
     label_ptr: usize,
     label_size: usize): i32;
 /** @hidden */
-@external("env", "provision_contract_user_group_uref")
+@external("env", "casper_provision_contract_user_group_uref")
 export declare function provision_contract_user_group_uref(
     contract_package_hash_ptr: usize,
     contract_package_hash_size: usize,
@@ -156,7 +156,7 @@ export declare function provision_contract_user_group_uref(
     value_size_ptr: usize,
 ): i32;
 /** @hidden */
-@external("env", "remove_contract_user_group_urefs")
+@external("env", "casper_remove_contract_user_group_urefs")
 export declare function remove_contract_user_group_urefs(
     contract_package_hash_ptr: usize,
     contract_package_hash_size: usize,
@@ -166,10 +166,10 @@ export declare function remove_contract_user_group_urefs(
     urefs_size: usize,
 ): i32;
 /** @hidden */
-@external("env", "create_contract_package_at_hash")
+@external("env", "casper_create_contract_package_at_hash")
 export declare function create_contract_package_at_hash(hash_addr_ptr: usize, access_addr_ptr: usize): void;
 /** @hidden */
-@external("env", "add_contract_version")
+@external("env", "casper_add_contract_version")
 export declare function add_contract_version(
     contract_package_hash_ptr: usize,
     contract_package_hash_size: usize,
@@ -183,7 +183,7 @@ export declare function add_contract_version(
     bytes_written_ptr: usize,
 ): i32;
 /** @hidden */
-@external("env", "create_contract_user_group")
+@external("env", "casper_create_contract_user_group")
 export declare function create_contract_user_group(
     contract_package_hash_ptr: usize,
     contract_package_hash_size: usize,
@@ -195,7 +195,7 @@ export declare function create_contract_user_group(
     output_size_ptr: usize,
 ): i32;
 /** @hidden */
-@external("env", "disable_contract_version")
+@external("env", "casper_disable_contract_version")
 export declare function disable_contract_version(
     contract_package_hash_ptr: usize,
     contract_package_hash_size: usize,

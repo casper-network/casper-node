@@ -55,7 +55,7 @@ impl From<Error> for ApiError {
     }
 }
 
-fn create_random_names<'a>(rng: &'a mut SmallRng) -> impl Iterator<Item = String> + 'a {
+fn create_random_names(rng: &mut SmallRng) -> impl Iterator<Item = String> + '_ {
     iter::repeat_with(move || {
         let key_length: usize = rng.gen_range(MIN_NAMED_KEY_NAME_LENGTH, MAX_NAMED_KEY_NAME_LENGTH);
         rng.sample_iter(&Alphanumeric)

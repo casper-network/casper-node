@@ -21,7 +21,6 @@ use std::{
     convert::{TryFrom, TryInto},
     fmt::Debug,
     io::ErrorKind,
-    iter::FromIterator,
     marker::{Send, Sync},
 };
 
@@ -172,7 +171,7 @@ where
         let protobuf_results_iter = results.into_iter().map(Into::into);
         exec_response
             .mut_success()
-            .set_deploy_results(FromIterator::from_iter(protobuf_results_iter));
+            .set_deploy_results(protobuf_results_iter.collect());
         SingleResponse::completed(exec_response)
     }
 

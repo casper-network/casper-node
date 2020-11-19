@@ -243,8 +243,10 @@ impl DeployItemBuilder {
 
 impl Default for DeployItemBuilder {
     fn default() -> Self {
-        let mut deploy_item: DeployItemData = Default::default();
-        deploy_item.gas_price = 1;
+        let deploy_item = DeployItemData {
+            gas_price: 1,
+            ..Default::default()
+        };
         DeployItemBuilder { deploy_item }
     }
 }

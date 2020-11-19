@@ -68,7 +68,8 @@ const AUCTION_ERROR_MAX: u32 = AUCTION_ERROR_OFFSET + u8::MAX as u32;
 /// Errors which can be encountered while running a smart contract.
 ///
 /// An `ApiError` can be converted to a `u32` in order to be passed via the execution engine's
-/// `ext_ffi::revert()` function.  This means the information each variant can convey is limited.
+/// `ext_ffi::casper_revert()` function.  This means the information each variant can convey is
+/// limited.
 ///
 /// The variants are split into numeric ranges as follows:
 ///
