@@ -18,7 +18,7 @@ pub(super) use unit::Unit;
 use std::{
     borrow::Borrow,
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     convert::identity,
     iter,
 };
@@ -772,6 +772,24 @@ impl<C: Context> State<C> {
     /// Returns `true` if the state contains no units.
     pub(crate) fn is_empty(&self) -> bool {
         self.units.is_empty()
+    }
+
+    /// Returns the set of units (by hash) that are endorsed and seen from the panorama.
+    #[allow(unused)] // TODO: Use for creating new LNC-compliant units.
+    fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
+        // First we collect all units that were already seen as endorsed by earlier units.
+        let mut result: BTreeSet<C::Hash> = pan
+            .iter_correct_hashes()
+            .flat_map(|hash| self.unit(hash).endorsed.iter().cloned())
+            .collect();
+        // Now add all remaining endorsed units. Since the pan.sees check is expensive, do it only
+        // for the ones that are actually new.
+        for hash in self.endorsements.keys() {
+            if !result.contains(hash) && pan.sees(self, hash) {
+                result.insert(*hash);
+            }
+        }
+        result
     }
 
     /// Validates whether `wunit` violates the Limited Naïveté Criterion (LNC).
