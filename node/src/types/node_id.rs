@@ -122,7 +122,7 @@ impl Debug for NodeId {
         match self {
             NodeId::Tls(key_fingerprint) => write!(
                 formatter,
-                "PeerId::Tls({})",
+                "NodeId::Tls({})",
                 HexFmt(key_fingerprint.as_ref())
             ),
             NodeId::P2p(peer_id) => write!(formatter, "PeerId::P2p({})", peer_id.to_base58()),
@@ -135,15 +135,15 @@ impl Display for NodeId {
         match self {
             NodeId::Tls(key_fingerprint) => write!(
                 formatter,
-                "PeerId::Tls({:10})",
+                "NodeId::Tls({:10})",
                 HexFmt(key_fingerprint.as_ref())
             ),
             NodeId::P2p(peer_id) => {
                 let base58_peer_id = peer_id.to_base58();
                 write!(
                     formatter,
-                    "PeerId::P2p({}..{})",
-                    &base58_peer_id[..4],
+                    "NodeId::P2p({}..{})",
+                    &base58_peer_id[8..12],
                     &base58_peer_id[(base58_peer_id.len() - 4)..]
                 )
             }
