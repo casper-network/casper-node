@@ -212,7 +212,7 @@ impl Account {
 impl ToBytes for Account {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        result.extend(self.account_hash.to_bytes()?);
+        result.append(&mut self.account_hash.to_bytes()?);
         result.append(&mut self.named_keys.to_bytes()?);
         result.append(&mut self.main_purse.to_bytes()?);
         result.append(&mut self.associated_keys.to_bytes()?);

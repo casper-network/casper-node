@@ -172,7 +172,6 @@ where
 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (cost, mut bytes) = FromBytes::from_bytes(bytes)?;
-        // let (arguments, bytes) = FromBytes::from_bytes(bytes)?;
         let mut arguments = T::default();
         let arguments_mut = arguments.as_mut();
         for ith_argument in arguments_mut {

@@ -415,7 +415,7 @@ impl<T: ToBytes> ToBytes for VecDeque<T> {
         let mut result = allocate_buffer(self)?;
         result.append(&mut (self.len() as u32).to_bytes()?);
         for item in slice1.iter().chain(slice2.iter()) {
-            result.extend(item.to_bytes()?);
+            result.append(&mut item.to_bytes()?);
         }
         Ok(result)
     }
