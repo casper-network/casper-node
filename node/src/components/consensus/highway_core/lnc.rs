@@ -80,9 +80,7 @@ pub(crate) fn find_forks<C: Context>(
             Observation::Faulty => to_visit.extend(
                 unit.panorama
                     .iter_correct_hashes()
-                    .filter(|hash| added_to_to_visit.insert(hash))
-                    .cloned()
-                    .into_iter(),
+                    .filter(|hash| added_to_to_visit.insert(hash)),
             ),
         }
     }

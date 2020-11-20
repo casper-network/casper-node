@@ -747,8 +747,21 @@ impl<C: Context> State<C> {
         if new_obs.is_faulty() || !self.citable_panorama().has_faulty() {
             self.panoramas.citable_panorama_mut()[creator] = new_obs;
         } else if let Some(uhash) = new_obs.correct() {
+            let unit = self.unit(uhash);
             // Check if there's a naively cited unit, by a known equivocator, in the past of
             // `uhash`.
+            let cites_naively = unit
+                .panorama
+                .enumerate()
+                .filter(|(_, obs)| obs.is_faulty())
+                .map(|(i, _)| i)
+                .any(|eq_idx| {
+                    lnc::find_forks(&unit.panorama, &unit.endorsed, eq_idx, self).is_none()
+                });
+
+            if !cites_naively {
+                self.panoramas.citable_panorama_mut()[creator] = new_obs;
+            }
         }
     }
 
