@@ -262,7 +262,7 @@ async fn propose_and_finalize(
 
     // Node 1 replies with requested evidence.
     for pk in &accusations {
-        let event = ClMessage::Evidence(*pk).received(NodeId(1), EraId(0));
+        let event = ClMessage::Evidence(*pk).received(NodeId(1), era_id);
         let mut effects = handle(es, event);
         let broadcast_evidence = tokio::spawn(effects.pop().unwrap());
         assert!(effects.is_empty());
@@ -281,7 +281,7 @@ async fn propose_and_finalize(
 
     // Node 1 now sends us another message that is sufficient for the protocol to finalize the
     // block. The era supervisor is expected to announce finalization, and to request execution.
-    let event = ClMessage::FinalizeBlock.received(NodeId(1), EraId(0));
+    let event = ClMessage::FinalizeBlock.received(NodeId(1), era_id);
     let mut effects = handle(es, event);
     tokio::spawn(effects.pop().unwrap()).await.unwrap();
     tokio::spawn(effects.pop().unwrap()).await.unwrap();
@@ -292,13 +292,15 @@ async fn propose_and_finalize(
 
     let block = Block::new(parent, Default::default(), Default::default(), fb.clone());
     let block_header = Box::new(block.header().clone());
-    let (sender, _receiver) = oneshot::channel(); // TODO: Check receiver.
+    let (sender, receiver) = oneshot::channel();
     let responder = Responder::create(sender);
+    let receiver = tokio::spawn(receiver);
     let request = ConsensusRequest::HandleLinearBlock(block_header.clone(), responder);
     let mut effects = handle(es, request.into());
-    let finality_sig = tokio::spawn(effects.pop().unwrap()); // Finality signature.
-    let _opt_create_new_era_event = if block_header.switch_block() {
+    if block_header.switch_block() {
         let create_new_era = tokio::spawn(effects.pop().unwrap());
+        let finality_sig = tokio::spawn(effects.pop().unwrap()); // Finality signature.
+        assert!(effects.is_empty());
         let weights = vec![(block_header.proposer().clone().into(), 10.into())]
             .into_iter()
             .collect();
@@ -306,16 +308,26 @@ async fn propose_and_finalize(
         // TODO: Return the correct block!
         reactor.expect_get_block_at_height(block.clone()).await;
         reactor.expect_get_block_at_height(block.clone()).await;
-        Some(create_new_era.await.unwrap())
-    } else {
-        assert_eq!(block_header, reactor.expect_announce_block_handled().await);
-        tokio::spawn(effects.pop().unwrap()).await.unwrap(); // Announce block handled.
         finality_sig.await.unwrap();
-        None
-    };
-    assert!(effects.is_empty());
+        let mut events = create_new_era.await.unwrap();
+        let create_new_era_event = events.pop().unwrap();
+        assert!(events.is_empty());
 
-    // TODO: CreateNewEra event
+        let mut effects = handle(es, create_new_era_event);
+        let block_h = tokio::spawn(effects.pop().unwrap()); // Announce block handled.
+        assert!(effects.is_empty());
+        assert_eq!(block_header, reactor.expect_announce_block_handled().await);
+        block_h.await.unwrap();
+    } else {
+        let block_h = tokio::spawn(effects.pop().unwrap()); // Announce block handled.
+        tokio::spawn(effects.pop().unwrap()).await.unwrap(); // Finality signature.
+        assert!(effects.is_empty());
+        assert_eq!(block_header, reactor.expect_announce_block_handled().await);
+        block_h.await.unwrap();
+    };
+    let sig = receiver.await.unwrap().unwrap();
+    asymmetric_key::verify(block.hash(), &sig, &es.public_signing_key).unwrap();
+
     block
 }
 
@@ -385,18 +397,19 @@ async fn cross_era_slashing() -> Result<(), Error> {
         bob_pk,
     );
     assert_eq!(expected_fb, fb);
-    // let parent_hash = block.hash();
+    let parent_hash = *block.hash();
 
-    // let fb = propose_and_finalize(&mut es, bob_pk, vec![], &mut rng).await;
-    // let expected_fb = FinalizedBlock::new(
-    //     fb.proto_block().clone(),
-    //     fb.timestamp(),
-    //     None, // not the era's last block
-    //     EraId(1),
-    //     2, // height
-    //     bob_pk,
-    // );
-    // assert_eq!(expected_fb, fb);
+    let block = propose_and_finalize(&mut es, bob_pk, vec![], parent_hash, &mut rng).await;
+    let fb: FinalizedBlock = block.header().clone().into();
+    let expected_fb = FinalizedBlock::new(
+        fb.proto_block().clone(),
+        fb.timestamp(),
+        None, // not the era's last block
+        EraId(1),
+        2, // height
+        bob_pk,
+    );
+    assert_eq!(expected_fb, fb);
 
     Ok(())
 }
