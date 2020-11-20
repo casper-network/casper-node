@@ -1,6 +1,6 @@
 //! The set of JSON-RPCs which the API server handles.
 //!
-//! See https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs for info.
+//! See <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs> for info.
 
 pub mod account;
 pub mod chain;
@@ -28,7 +28,7 @@ pub const RPC_API_PATH: &str = "rpc";
 
 /// Error code returned if the JSON-RPC response indicates failure.
 ///
-/// See https://www.jsonrpc.org/specification#error_object for details.
+/// See <https://www.jsonrpc.org/specification#error_object> for details.
 #[repr(i64)]
 enum ErrorCode {
     NoSuchDeploy = 32000,

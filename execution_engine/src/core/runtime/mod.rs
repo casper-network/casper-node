@@ -1542,7 +1542,7 @@ where
         Ok(())
     }
 
-    /// Writes runtime context's account main purse to [dest_ptr] in the Wasm memory.
+    /// Writes runtime context's account main purse to dest_ptr in the Wasm memory.
     fn get_main_purse(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let purse = self.context.get_main_purse()?;
         let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
@@ -1551,7 +1551,7 @@ where
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
 
-    /// Writes caller (deploy) account public key to [dest_ptr] in the Wasm
+    /// Writes caller (deploy) account public key to dest_ptr in the Wasm
     /// memory.
     fn get_caller(&mut self, output_size: u32) -> Result<Result<(), ApiError>, Trap> {
         if !self.can_write_to_host_buffer() {
@@ -1574,7 +1574,7 @@ where
         Ok(Ok(()))
     }
 
-    /// Writes runtime context's phase to [dest_ptr] in the Wasm memory.
+    /// Writes runtime context's phase to dest_ptr in the Wasm memory.
     fn get_phase(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let phase = self.context.phase();
         let bytes = phase.into_bytes().map_err(Error::BytesRepr)?;
@@ -1583,7 +1583,7 @@ where
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
 
-    /// Writes current blocktime to [dest_ptr] in Wasm memory.
+    /// Writes current blocktime to dest_ptr in Wasm memory.
     fn get_blocktime(&self, dest_ptr: u32) -> Result<(), Trap> {
         let blocktime = self
             .context
