@@ -12,7 +12,7 @@ use alloc::{
 };
 #[cfg(debug_assertions)]
 use core::any;
-use core::{convert::TryInto, mem, ptr::NonNull};
+use core::{mem, ptr::NonNull};
 
 use failure::Fail;
 use num_integer::Integer;
