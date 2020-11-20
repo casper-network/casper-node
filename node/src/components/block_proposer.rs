@@ -242,7 +242,7 @@ impl BlockProposer {
             .finalized_deploys
             .keys()
             .cloned()
-            .chain(past_deploys.into_iter())
+            .chain(past_deploys)
             .collect::<HashSet<_>>();
 
         // deploys_to_return = all deploys in pending that aren't in finalized blocks or
@@ -359,7 +359,7 @@ where
                     self.state
                         .request_queue
                         .entry(request.next_block_height)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(request);
                 } else {
                     return self.get_chainspec(effect_builder, request);
