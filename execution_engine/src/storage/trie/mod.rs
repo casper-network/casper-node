@@ -1,6 +1,6 @@
 //! Core types for a Merkle Trie
 
-use std::convert::TryInto;
+use std::{convert::TryInto, mem::MaybeUninit};
 
 use crate::shared::newtypes::Blake2bHash;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
@@ -52,10 +52,11 @@ impl ToBytes for Pointer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.push(self.tag());
-        ret.extend(self.hash().as_ref());
+        ret.extend_from_slice(self.hash().as_ref());
         Ok(ret)
     }
 
+    #[inline(always)]
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH + Blake2bHash::LENGTH
     }
@@ -78,7 +79,8 @@ impl FromBytes for Pointer {
     }
 }
 
-pub type PointerBlockArray = [Option<Pointer>; RADIX];
+pub type PointerBlockValue = Option<Pointer>;
+pub type PointerBlockArray = [PointerBlockValue; RADIX];
 
 /// Represents the underlying structure of a node in a Merkle Trie
 #[derive(Copy, Clone)]
@@ -133,7 +135,7 @@ impl ToBytes for PointerBlock {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
         for pointer in self.0.iter() {
-            result.extend(pointer.to_bytes()?);
+            result.append(&mut pointer.to_bytes()?);
         }
         Ok(result)
     }
@@ -145,18 +147,30 @@ impl ToBytes for PointerBlock {
 
 impl FromBytes for PointerBlock {
     fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let mut result = [None; RADIX];
-        for ith_result in &mut result {
-            let (pointer, rem) = FromBytes::from_bytes(bytes)?;
-            *ith_result = pointer;
-            bytes = rem;
-        }
-        Ok((PointerBlock(result), bytes))
+        let pointer_block_array = {
+            let mut result: MaybeUninit<PointerBlockArray> = MaybeUninit::uninit();
+            let result_ptr = result.as_mut_ptr() as *mut PointerBlockValue;
+            for i in 0..RADIX {
+                let (t, remainder) = match FromBytes::from_bytes(bytes) {
+                    Ok(success) => success,
+                    Err(error) => {
+                        for j in 0..i {
+                            unsafe { result_ptr.add(j).drop_in_place() }
+                        }
+                        return Err(error);
+                    }
+                };
+                unsafe { result_ptr.add(i).write(t) };
+                bytes = remainder;
+            }
+            unsafe { result.assume_init() }
+        };
+        Ok((PointerBlock(pointer_block_array), bytes))
     }
 }
 
 impl core::ops::Index<usize> for PointerBlock {
-    type Output = Option<Pointer>;
+    type Output = PointerBlockValue;
 
     #[inline]
     fn index(&self, index: usize) -> &Self::Output {
@@ -174,40 +188,40 @@ impl core::ops::IndexMut<usize> for PointerBlock {
 }
 
 impl core::ops::Index<core::ops::Range<usize>> for PointerBlock {
-    type Output = [Option<Pointer>];
+    type Output = [PointerBlockValue];
 
     #[inline]
-    fn index(&self, index: core::ops::Range<usize>) -> &[Option<Pointer>] {
+    fn index(&self, index: core::ops::Range<usize>) -> &[PointerBlockValue] {
         let &PointerBlock(ref dat) = self;
         &dat[index]
     }
 }
 
 impl core::ops::Index<core::ops::RangeTo<usize>> for PointerBlock {
-    type Output = [Option<Pointer>];
+    type Output = [PointerBlockValue];
 
     #[inline]
-    fn index(&self, index: core::ops::RangeTo<usize>) -> &[Option<Pointer>] {
+    fn index(&self, index: core::ops::RangeTo<usize>) -> &[PointerBlockValue] {
         let &PointerBlock(ref dat) = self;
         &dat[index]
     }
 }
 
 impl core::ops::Index<core::ops::RangeFrom<usize>> for PointerBlock {
-    type Output = [Option<Pointer>];
+    type Output = [PointerBlockValue];
 
     #[inline]
-    fn index(&self, index: core::ops::RangeFrom<usize>) -> &[Option<Pointer>] {
+    fn index(&self, index: core::ops::RangeFrom<usize>) -> &[PointerBlockValue] {
         let &PointerBlock(ref dat) = self;
         &dat[index]
     }
 }
 
 impl core::ops::Index<core::ops::RangeFull> for PointerBlock {
-    type Output = [Option<Pointer>];
+    type Output = [PointerBlockValue];
 
     #[inline]
-    fn index(&self, index: core::ops::RangeFull) -> &[Option<Pointer>] {
+    fn index(&self, index: core::ops::RangeFull) -> &[PointerBlockValue] {
         let &PointerBlock(ref dat) = self;
         &dat[index]
     }

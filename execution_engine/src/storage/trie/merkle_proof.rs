@@ -49,11 +49,11 @@ impl ToBytes for TrieMerkleProofStep {
             } => {
                 ret.push(TRIE_MERKLE_PROOF_STEP_NODE_ID);
                 ret.push(*hole_index);
-                ret.extend(indexed_pointers_with_hole.to_bytes()?)
+                ret.append(&mut indexed_pointers_with_hole.to_bytes()?)
             }
             TrieMerkleProofStep::Extension { affix } => {
                 ret.push(TRIE_MERKLE_PROOF_STEP_EXTENSION_ID);
-                ret.extend(affix.to_bytes()?)
+                ret.append(&mut affix.to_bytes()?)
             }
         };
         Ok(ret)
@@ -196,9 +196,9 @@ where
 {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret: Vec<u8> = bytesrepr::allocate_buffer(self)?;
-        ret.extend(self.key.to_bytes()?);
-        ret.extend(self.value.to_bytes()?);
-        ret.extend(self.proof_steps.to_bytes()?);
+        ret.append(&mut self.key.to_bytes()?);
+        ret.append(&mut self.value.to_bytes()?);
+        ret.append(&mut self.proof_steps.to_bytes()?);
         Ok(ret)
     }
 

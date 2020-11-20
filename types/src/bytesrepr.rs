@@ -261,10 +261,8 @@ impl ToBytes for u32 {
 
 impl FromBytes for u32 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let mut result = [0u8; U32_SERIALIZED_LENGTH];
         let (bytes, remainder) = safe_split_at(bytes, U32_SERIALIZED_LENGTH)?;
-        result.copy_from_slice(bytes);
-        Ok((<u32>::from_le_bytes(result), remainder))
+        Ok((<u32>::from_le_bytes(bytes.try_into().unwrap()), remainder))
     }
 }
 
@@ -1094,8 +1092,8 @@ pub(crate) fn serialize_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     let mut vec = try_vec_with_capacity(serialized_length)?;
     let length_prefix = bytes.len() as u32;
     let length_prefix_bytes = length_prefix.to_le_bytes();
-    vec.extend(&length_prefix_bytes);
-    vec.extend(bytes);
+    vec.extend_from_slice(&length_prefix_bytes);
+    vec.extend_from_slice(bytes);
     Ok(vec)
 }
 
