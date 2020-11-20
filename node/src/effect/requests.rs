@@ -326,10 +326,13 @@ impl Display for StorageRequest {
 pub struct ListForInclusionRequest {
     /// The instant for which the deploy is requested.
     pub(crate) current_instant: Timestamp,
-    /// Set of block hashes pointing to blocks whose deploys should be excluded.
+    /// Set of deploy hashes of deploys that should be excluded in addition to the finalized ones.
     pub(crate) past_deploys: HashSet<DeployHash>,
-    /// The height of the next block to be finalized
-    pub(crate) next_block_height: u64,
+    /// The height of the next block to be finalized at the point the request was made.
+    /// This is _only_ a way of expressing how many blocks have been finalized at the moment the
+    /// request was made. Block Proposer uses this in order to determine if there might be any
+    /// deploys that are neither in `past_deploys`, nor among the finalized deploys it knows of.
+    pub(crate) next_finalized: u64,
     /// Responder to call with the result.
     pub(crate) responder: Responder<HashSet<DeployHash>>,
 }
@@ -348,14 +351,14 @@ impl Display for BlockProposerRequest {
             BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
                 current_instant,
                 past_deploys,
-                next_block_height,
+                next_finalized,
                 responder: _,
             }) => write!(
                 formatter,
-                "list for inclusion: instant {} past {} next_block_height {}",
+                "list for inclusion: instant {} past {} next_finalized {}",
                 current_instant,
                 past_deploys.len(),
-                next_block_height
+                next_finalized
             ),
         }
     }

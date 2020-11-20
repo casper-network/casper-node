@@ -93,7 +93,12 @@ pub struct EraSupervisor<I> {
     /// A node keeps `2 * bonded_eras` past eras around, because the oldest bonded era could still
     /// receive blocks that refer to `bonded_eras` before that.
     bonded_eras: u64,
-    /// The height of the next block to be finalized
+    /// The height of the next block to be finalized.
+    /// We keep that in order to be able to signal to the Block Proposer how many blocks have been
+    /// finalized when we request a new block. This way the Block Proposer can know whether it's up
+    /// to date, or whether it has to wait for more finalized blocks before responding.
+    /// This value could be obtained from the consensus instance in a relevant era, but caching it
+    /// here is the easiest way of achieving the desired effect.
     next_block_height: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,

@@ -28,6 +28,9 @@ use crate::{
 
 const PRUNE_INTERVAL: Duration = Duration::from_secs(10);
 
+/// The type of values expressing the block height in the chain.
+type BlockHeight = u64;
+
 /// An event for when using the block proposer as a component.
 #[derive(Debug, From)]
 pub enum Event {
@@ -41,7 +44,10 @@ pub enum Event {
     /// The deploy-buffer has been asked to prune stale deploys
     BufferPrune,
     /// A proto block has been finalized. We should never propose its deploys again.
-    FinalizedProtoBlock { block: ProtoBlock, height: u64 },
+    FinalizedProtoBlock {
+        block: ProtoBlock,
+        height: BlockHeight,
+    },
     /// The result of the `BlockProposer` getting the chainspec from the storage component.
     GetChainspecResult {
         maybe_deploy_config: Box<Option<DeployConfig>>,
@@ -77,9 +83,16 @@ impl Display for Event {
     }
 }
 
+/// A collection of deploy hashes with their corresponding deploy headers.
 type DeployCollection = HashMap<DeployHash, DeployHeader>;
-type FinalizationQueue = HashMap<u64, Vec<DeployHash>>;
-type RequestQueue = HashMap<u64, Vec<ListForInclusionRequest>>;
+/// A queue of contents of blocks that we know have been finalized, but we are still missing
+/// notifications about finalization of some of their ancestors. It maps block height to the
+/// deploys contained in the corresponding block.
+type FinalizationQueue = HashMap<BlockHeight, Vec<DeployHash>>;
+/// A queue of requests we can't respond to yet, because we aren't up to date on finalized blocks.
+/// The key is the height of the next block we will expect to be finalized at the point when we can
+/// fulfill the corresponding requests.
+type RequestQueue = HashMap<BlockHeight, Vec<ListForInclusionRequest>>;
 
 pub(crate) trait ReactorEventT: From<Event> + From<StorageRequest> + Send + 'static {}
 
@@ -88,10 +101,19 @@ impl<REv> ReactorEventT for REv where REv: From<Event> + From<StorageRequest> + 
 /// Stores the internal state of the BlockProposer.
 #[derive(DataSize, Default, Debug)]
 pub(crate) struct BlockProposerState {
+    /// The collection of deploys pending for inclusion in a block.
     pending: DeployCollection,
+    /// The deploys that have already been included in a finalized block.
     finalized_deploys: DeployCollection,
-    next_finalized: u64,
+    /// The next block height we expect to be finalized.
+    /// If we receive a notification of finalization of a later block, we will store it in
+    /// finalization_queue.
+    /// If we receive a request that contains a later next_finalized, we will store it in
+    /// request_queue.
+    next_finalized: BlockHeight,
+    /// The queue of finalized block contents awaiting inclusion in `self.finalized_deploys`.
     finalization_queue: FinalizationQueue,
+    /// The queue of requests awaiting being handled.
     request_queue: RequestQueue,
 }
 
@@ -272,7 +294,7 @@ impl BlockProposer {
     }
 
     /// Notifies the block proposer that a block has been finalized.
-    fn finalized_block<I>(&mut self, deploys: I)
+    fn finalized_deploys<I>(&mut self, deploys: I)
     where
         I: IntoIterator<Item = DeployHash>,
     {
@@ -295,14 +317,14 @@ impl BlockProposer {
     fn handle_finalized_block<I, REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        height: u64,
+        height: BlockHeight,
         deploys: I,
     ) -> Effects<Event>
     where
         I: IntoIterator<Item = DeployHash>,
         REv: ReactorEventT,
     {
-        self.finalized_block(deploys);
+        self.finalized_deploys(deploys);
         self.state.next_finalized = height + 1;
 
         if let Some(requests) = self.state.request_queue.remove(&self.state.next_finalized) {
@@ -346,10 +368,10 @@ where
                     .event(|_| Event::BufferPrune);
             }
             Event::Request(BlockProposerRequest::ListForInclusion(request)) => {
-                if request.next_block_height > self.state.next_finalized {
+                if request.next_finalized > self.state.next_finalized {
                     self.state
                         .request_queue
-                        .entry(request.next_block_height)
+                        .entry(request.next_finalized)
                         .or_default()
                         .push(request);
                 } else {
@@ -546,7 +568,7 @@ mod tests {
             .is_empty());
 
         // finalize the block
-        buffer.finalized_block(deploys);
+        buffer.finalized_deploys(deploys);
 
         // add more deploys
         buffer.add_deploy(block_time2, hash3, deploy3);
@@ -587,7 +609,7 @@ mod tests {
         buffer.add_deploy(creation_time, hash4, deploy4);
 
         // pending => finalized
-        buffer.finalized_block(vec![hash1]);
+        buffer.finalized_deploys(vec![hash1]);
 
         assert_eq!(buffer.state.pending.len(), 3);
         assert!(buffer.state.finalized_deploys.contains_key(&hash1));
@@ -640,7 +662,7 @@ mod tests {
         assert!(deploys.contains(&hash1));
 
         // the deploy will be included in block 1
-        buffer.finalized_block(deploys);
+        buffer.finalized_deploys(deploys);
 
         let deploys2 = buffer.propose_deploys(DeployConfig::default(), block_time, no_deploys);
         // `blocks` contains a block that contains deploy1 now, so we should get deploy2

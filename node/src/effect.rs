@@ -810,12 +810,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes the timestamp of a future block for which deploys are to be proposed.
-    // TODO: The input `BlockContext` will probably be a different type than the context in the
-    //       return value in the future.
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext,
-        next_block_height: u64,
+        next_finalized: u64,
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
@@ -827,7 +825,7 @@ impl<REv> EffectBuilder<REv> {
                     BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
                         current_instant: block_context.timestamp(),
                         past_deploys: Default::default(), // TODO
-                        next_block_height,
+                        next_finalized,
                         responder,
                     })
                 },
