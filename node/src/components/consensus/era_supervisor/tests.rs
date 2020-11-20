@@ -113,18 +113,6 @@ impl MockReactor {
         }
     }
 
-    async fn expect_proposed(&self) -> ProtoBlock {
-        let (event, _) = self.scheduler.pop().await;
-        if let Event::ConsensusAnnouncement(ConsensusAnnouncement::Proposed(proto_block)) = event {
-            proto_block
-        } else {
-            panic!(
-                "unexpected event: {:?}, expected announcement of proposed proto block",
-                event
-            );
-        }
-    }
-
     async fn expect_finalized(&self) -> FinalizedBlock {
         let (event, _) = self.scheduler.pop().await;
         if let Event::ConsensusAnnouncement(ConsensusAnnouncement::Finalized(fb)) = event {
@@ -242,10 +230,8 @@ async fn propose_and_finalize() -> Result<(), Error> {
     // consensus protocol. It also gossips the new evidence to other nodes.
     let event = ClMessage::Evidence(alice_pk).received(NodeId(1), EraId(0));
     let mut effects = handle(&mut es, event);
-    let _announce_proposed = tokio::spawn(effects.pop().unwrap());
     let broadcast_evidence = tokio::spawn(effects.pop().unwrap());
     assert!(effects.is_empty());
-    assert_eq!(proto_block, reactor.expect_proposed().await);
     // TODO: Why does it hang if we await this effect?
     // announce_proposed.await.unwrap();
     reactor.expect_broadcast().await; //Gossip evidence to other nodes.
