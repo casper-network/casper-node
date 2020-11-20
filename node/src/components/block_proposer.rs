@@ -303,8 +303,9 @@ impl BlockProposer {
         REv: ReactorEventT,
     {
         self.finalized_block(deploys);
+        self.state.next_finalized = height + 1;
 
-        if let Some(requests) = self.state.request_queue.remove(&(height + 1)) {
+        if let Some(requests) = self.state.request_queue.remove(&self.state.next_finalized) {
             requests
                 .into_iter()
                 .flat_map(|request| self.get_chainspec(effect_builder, request))
@@ -365,12 +366,12 @@ where
                 } else {
                     let mut effects = self.handle_finalized_block(effect_builder, height, deploys);
                     while let Some(deploys) = self.state.finalization_queue.remove(&height) {
+                        height += 1;
                         effects.extend(self.handle_finalized_block(
                             effect_builder,
                             height,
                             deploys,
                         ));
-                        height += 1;
                     }
                     return effects;
                 }
