@@ -209,7 +209,7 @@ impl BlockProposer {
         }
     }
 
-    /// Gets the chainspec from storage in order to call `remaining_deploys()`.
+    /// Gets the chainspec from storage in order to call `propose_deploys()`.
     fn get_chainspec_from_storage<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -229,22 +229,12 @@ impl BlockProposer {
     }
 
     /// Returns a list of candidates for inclusion into a block.
-    /// rename to proposed deploys
-    /// maybe use cuckoofilter
-    fn remaining_deploys(
+    fn propose_deploys(
         &mut self,
         deploy_config: DeployConfig,
         block_timestamp: Timestamp,
         past_deploys: HashSet<DeployHash>,
     ) -> HashSet<DeployHash> {
-        let past_deploys = self
-            .state
-            .finalized_deploys
-            .keys()
-            .cloned()
-            .chain(past_deploys)
-            .collect::<HashSet<_>>();
-
         // deploys_to_return = all deploys in pending that aren't in finalized blocks or
         // proposed blocks from the set `past_blocks`
         self.state
@@ -253,6 +243,7 @@ impl BlockProposer {
             .filter(|&(hash, deploy)| {
                 self.is_deploy_valid(deploy, block_timestamp, &deploy_config, &past_deploys)
                     && !past_deploys.contains(hash)
+                    && !self.state.finalized_deploys.contains_key(hash)
             })
             .map(|(hash, _deploy)| *hash)
             .take(deploy_config.block_max_deploy_count as usize)
@@ -393,7 +384,7 @@ where
                 let deploy_config = maybe_deploy_config.expect("should return chainspec");
                 // Update chainspec cache.
                 self.chainspecs.insert(chainspec_version, deploy_config);
-                let deploys = self.remaining_deploys(
+                let deploys = self.propose_deploys(
                     deploy_config,
                     request.current_instant,
                     request.past_deploys,
@@ -514,7 +505,7 @@ mod tests {
         let (hash4, deploy4) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
 
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
+            .propose_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
             .is_empty());
 
         // add two deploys
@@ -524,18 +515,18 @@ mod tests {
         // if we try to create a block with a timestamp that is too early, we shouldn't get any
         // deploys
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time1, no_deploys.clone())
+            .propose_deploys(DeployConfig::default(), block_time1, no_deploys.clone())
             .is_empty());
 
         // if we try to create a block with a timestamp that is too late, we shouldn't get any
         // deploys, either
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time3, no_deploys.clone())
+            .propose_deploys(DeployConfig::default(), block_time3, no_deploys.clone())
             .is_empty());
 
         // take the deploys out
         let deploys =
-            buffer.remaining_deploys(DeployConfig::default(), block_time2, no_deploys.clone());
+            buffer.propose_deploys(DeployConfig::default(), block_time2, no_deploys.clone());
 
         assert_eq!(deploys.len(), 2);
         assert!(deploys.contains(&hash1));
@@ -544,14 +535,14 @@ mod tests {
         // the deploys should not have been removed
         assert_eq!(
             buffer
-                .remaining_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
+                .propose_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
                 .len(),
             2
         );
 
         // but they shouldn't be returned if we include it in the past deploys
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time2, deploys.clone())
+            .propose_deploys(DeployConfig::default(), block_time2, deploys.clone())
             .is_empty());
 
         // finalize the block
@@ -561,7 +552,7 @@ mod tests {
         buffer.add_deploy(block_time2, hash3, deploy3);
         buffer.add_deploy(block_time2, hash4, deploy4);
 
-        let deploys = buffer.remaining_deploys(DeployConfig::default(), block_time2, no_deploys);
+        let deploys = buffer.propose_deploys(DeployConfig::default(), block_time2, no_deploys);
 
         // since block 1 is now finalized, neither deploy1 nor deploy2 should be among the ones
         // returned
@@ -636,14 +627,14 @@ mod tests {
 
         // deploy2 has an unsatisfied dependency
         assert!(buffer
-            .remaining_deploys(DeployConfig::default(), block_time, no_deploys.clone())
+            .propose_deploys(DeployConfig::default(), block_time, no_deploys.clone())
             .is_empty());
 
         // add deploy1
         buffer.add_deploy(creation_time, hash1, deploy1);
 
         let deploys =
-            buffer.remaining_deploys(DeployConfig::default(), block_time, no_deploys.clone());
+            buffer.propose_deploys(DeployConfig::default(), block_time, no_deploys.clone());
         // only deploy1 should be returned, as it has no dependencies
         assert_eq!(deploys.len(), 1);
         assert!(deploys.contains(&hash1));
@@ -651,7 +642,7 @@ mod tests {
         // the deploy will be included in block 1
         buffer.finalized_block(deploys);
 
-        let deploys2 = buffer.remaining_deploys(DeployConfig::default(), block_time, no_deploys);
+        let deploys2 = buffer.propose_deploys(DeployConfig::default(), block_time, no_deploys);
         // `blocks` contains a block that contains deploy1 now, so we should get deploy2
         assert_eq!(deploys2.len(), 1);
         assert!(deploys2.contains(&hash2));
