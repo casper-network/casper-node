@@ -56,7 +56,6 @@ enum Event {
     Storage(StorageRequest),
     #[from]
     ContractRuntime(ContractRuntimeRequest),
-    // ConsensusRequest(ConsensusRequest),
 }
 
 struct MockReactor {
