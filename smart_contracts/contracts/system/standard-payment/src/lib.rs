@@ -27,7 +27,7 @@ impl MintProvider for StandardPaymentContract {
         target: URef,
         amount: U512,
     ) -> Result<(), ApiError> {
-        system::transfer_from_purse_to_purse(source, target, amount)
+        system::transfer_from_purse_to_purse(source, target, amount, None)
     }
 }
 

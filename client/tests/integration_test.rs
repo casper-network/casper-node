@@ -148,6 +148,7 @@ async fn client_transfer_with_target_purse_and_target_account_should_fail() {
         "",
         "some-target-purse",
         "some-target-account",
+        "",
         DeployStrParams {
             secret_key: "../resources/local/secret_keys/node-1.pem",
             ttl: "10s",

@@ -337,10 +337,13 @@ where
                 // args(1) = length of array of bytes of an account hash
                 // args(2) = pointer to array of bytes of an amount
                 // args(3) = length of array of bytes of an amount
-                let (key_ptr, key_size, amount_ptr, amount_size) = Args::parse(args)?;
+                // args(4) = pointer to array of bytes of an id
+                // args(5) = length of array of bytes of an id
+                let (key_ptr, key_size, amount_ptr, amount_size, id_ptr, id_size) =
+                    Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.transfer_to_account,
-                    [key_ptr, key_size, amount_ptr, amount_size],
+                    [key_ptr, key_size, amount_ptr, amount_size, id_ptr, id_size],
                 )?;
                 let account_hash: AccountHash = {
                     let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
@@ -350,7 +353,11 @@ where
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
                     bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
                 };
-                let ret = self.transfer_to_account(account_hash, amount)?;
+                let id: Option<u64> = {
+                    let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+                let ret = self.transfer_to_account(account_hash, amount, id)?;
                 Ok(Some(RuntimeValue::I32(TransferredTo::i32_from(ret))))
             }
 
@@ -361,8 +368,18 @@ where
                 // args(3) = length of array of bytes in Wasm memory of an account hash
                 // args(4) = pointer to array of bytes in Wasm memory of an amount
                 // args(5) = length of array of bytes in Wasm memory of an amount
-                let (source_ptr, source_size, key_ptr, key_size, amount_ptr, amount_size) =
-                    Args::parse(args)?;
+                // args(6) = pointer to array of bytes in Wasm memory of an id
+                // args(7) = length of array of bytes in Wasm memory of an id
+                let (
+                    source_ptr,
+                    source_size,
+                    key_ptr,
+                    key_size,
+                    amount_ptr,
+                    amount_size,
+                    id_ptr,
+                    id_size,
+                ) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.transfer_from_purse_to_account,
                     [
@@ -372,6 +389,8 @@ where
                         key_size,
                         amount_ptr,
                         amount_size,
+                        id_ptr,
+                        id_size,
                     ],
                 )?;
                 let source_purse = {
@@ -386,8 +405,12 @@ where
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
                     bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
                 };
+                let id: Option<u64> = {
+                    let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
                 let ret =
-                    self.transfer_from_purse_to_account(source_purse, account_hash, amount)?;
+                    self.transfer_from_purse_to_account(source_purse, account_hash, amount, id)?;
                 Ok(Some(RuntimeValue::I32(TransferredTo::i32_from(ret))))
             }
 
@@ -398,8 +421,18 @@ where
                 // args(3) = length of array of bytes in Wasm memory of a target purse
                 // args(4) = pointer to array of bytes in Wasm memory of an amount
                 // args(5) = length of array of bytes in Wasm memory of an amount
-                let (source_ptr, source_size, target_ptr, target_size, amount_ptr, amount_size) =
-                    Args::parse(args)?;
+                // args(6) = pointer to array of bytes in Wasm memory of an id
+                // args(7) = length of array of bytes in Wasm memory of an id
+                let (
+                    source_ptr,
+                    source_size,
+                    target_ptr,
+                    target_size,
+                    amount_ptr,
+                    amount_size,
+                    id_ptr,
+                    id_size,
+                ) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.transfer_from_purse_to_purse,
                     [
@@ -409,6 +442,8 @@ where
                         target_size,
                         amount_ptr,
                         amount_size,
+                        id_ptr,
+                        id_size,
                     ],
                 )?;
                 let ret = self.transfer_from_purse_to_purse(
@@ -418,6 +453,8 @@ where
                     target_size,
                     amount_ptr,
                     amount_size,
+                    id_ptr,
+                    id_size,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
@@ -880,21 +917,25 @@ where
             FunctionIndex::RecordTransfer => {
                 // RecordTransfer is a special cased internal host function only callable by the
                 // mint contract and for accounting purposes it isn't represented in protocol data.
-                let (source_ptr, source_size, target_ptr, target_size, amount_ptr, amount_size): (
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                ) = Args::parse(args)?;
+                let (
+                    source_ptr,
+                    source_size,
+                    target_ptr,
+                    target_size,
+                    amount_ptr,
+                    amount_size,
+                    id_ptr,
+                    id_size,
+                ): (u32, u32, u32, u32, u32, u32, u32, u32) = Args::parse(args)?;
                 scoped_instrumenter.add_property("source_size", source_size.to_string());
                 scoped_instrumenter.add_property("target_size", target_size.to_string());
                 scoped_instrumenter.add_property("amount_size", amount_size.to_string());
+                scoped_instrumenter.add_property("id_size", id_size.to_string());
                 let source: URef = self.t_from_mem(source_ptr, source_size)?;
                 let target: URef = self.t_from_mem(target_ptr, target_size)?;
                 let amount: U512 = self.t_from_mem(amount_ptr, amount_size)?;
-                self.record_transfer(source, target, amount)?;
+                let id: Option<u64> = self.t_from_mem(id_ptr, id_size)?;
+                self.record_transfer(source, target, amount, id)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
         }

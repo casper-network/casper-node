@@ -167,6 +167,7 @@ pub fn transfer(
     maybe_source_purse: &str,
     maybe_target_purse: &str,
     maybe_target_account: &str,
+    maybe_id: &str,
     deploy: DeployStrParams<'_>,
     payment: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
@@ -177,10 +178,13 @@ pub fn transfer(
 
     let source_purse = parsing::purse(maybe_source_purse).ok();
 
+    let maybe_id = parsing::transfer_id(maybe_id)?;
+
     RpcCall::new(maybe_rpc_id, node_address, verbose)?.transfer(
         amount,
         source_purse,
         target,
+        maybe_id,
         deploy.try_into()?,
         payment.try_into()?,
     )

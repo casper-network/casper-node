@@ -105,8 +105,14 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn record_transfer(&mut self, source: URef, target: URef, amount: U512) -> Result<(), Error> {
-        let result = Runtime::record_transfer(self, source, target, amount);
+    fn record_transfer(
+        &mut self,
+        source: URef,
+        target: URef,
+        amount: U512,
+        id: Option<u64>,
+    ) -> Result<(), Error> {
+        let result = Runtime::record_transfer(self, source, target, amount, id);
         result.map_err(|_| Error::RecordTransferFailure)
     }
 }
