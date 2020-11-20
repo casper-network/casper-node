@@ -244,6 +244,6 @@ pub mod gens {
     };
 
     pub fn bytes_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Bytes> {
-        vec(any::<u8>(), size).prop_map(|vec| Bytes::from(vec))
+        vec(any::<u8>(), size).prop_map(Bytes::from)
     }
 }

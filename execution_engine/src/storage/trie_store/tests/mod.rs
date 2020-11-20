@@ -2,7 +2,7 @@ mod concurrent;
 mod proptests;
 mod simple;
 
-use casper_types::bytesrepr::ToBytes;
+use casper_types::bytesrepr::{Bytes, ToBytes};
 
 use crate::{
     shared::newtypes::Blake2bHash,
@@ -18,25 +18,25 @@ impl<'a, K, V> Into<(&'a Blake2bHash, &'a Trie<K, V>)> for &'a TestData<K, V> {
     }
 }
 
-fn create_data() -> Vec<TestData<Vec<u8>, Vec<u8>>> {
+fn create_data() -> Vec<TestData<Bytes, Bytes>> {
     let leaf_1 = Trie::Leaf {
-        key: vec![0u8, 0, 0],
-        value: b"val_1".to_vec(),
+        key: Bytes::from(vec![0u8, 0, 0]),
+        value: Bytes::from(b"val_1".to_vec()),
     };
     let leaf_2 = Trie::Leaf {
-        key: vec![1u8, 0, 0],
-        value: b"val_2".to_vec(),
+        key: Bytes::from(vec![1u8, 0, 0]),
+        value: Bytes::from(b"val_2".to_vec()),
     };
     let leaf_3 = Trie::Leaf {
-        key: vec![1u8, 0, 1],
-        value: b"val_3".to_vec(),
+        key: Bytes::from(vec![1u8, 0, 1]),
+        value: Bytes::from(b"val_3".to_vec()),
     };
 
     let leaf_1_hash = Blake2bHash::new(&leaf_1.to_bytes().unwrap());
     let leaf_2_hash = Blake2bHash::new(&leaf_2.to_bytes().unwrap());
     let leaf_3_hash = Blake2bHash::new(&leaf_3.to_bytes().unwrap());
 
-    let node_2: Trie<Vec<u8>, Vec<u8>> = {
+    let node_2: Trie<Bytes, Bytes> = {
         let mut pointer_block = PointerBlock::new();
         pointer_block[0] = Some(Pointer::LeafPointer(leaf_2_hash));
         pointer_block[1] = Some(Pointer::LeafPointer(leaf_3_hash));
@@ -46,7 +46,7 @@ fn create_data() -> Vec<TestData<Vec<u8>, Vec<u8>>> {
 
     let node_2_hash = Blake2bHash::new(&node_2.to_bytes().unwrap());
 
-    let ext_node: Trie<Vec<u8>, Vec<u8>> = {
+    let ext_node: Trie<Bytes, Bytes> = {
         let affix = vec![1u8, 0];
         let pointer = Pointer::NodePointer(node_2_hash);
         Trie::Extension {
@@ -57,7 +57,7 @@ fn create_data() -> Vec<TestData<Vec<u8>, Vec<u8>>> {
 
     let ext_node_hash = Blake2bHash::new(&ext_node.to_bytes().unwrap());
 
-    let node_1: Trie<Vec<u8>, Vec<u8>> = {
+    let node_1: Trie<Bytes, Bytes> = {
         let mut pointer_block = PointerBlock::new();
         pointer_block[0] = Some(Pointer::LeafPointer(leaf_1_hash));
         pointer_block[1] = Some(Pointer::NodePointer(ext_node_hash));
