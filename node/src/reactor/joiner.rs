@@ -178,7 +178,7 @@ pub enum Event {
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
 
-    /// Block executor annoncement.
+    /// Block executor announcement.
     #[from]
     BlockExecutorAnnouncement(#[serde(skip_serializing)] BlockExecutorAnnouncement),
 
@@ -366,7 +366,12 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let network_config = network::Config::from(&config.network);
-        let (network, network_effects) = Network::new(event_queue, network_config, false)?;
+        let (network, network_effects) = Network::new(
+            event_queue,
+            network_config,
+            chainspec_loader.chainspec(),
+            false,
+        )?;
         let genesis_config_hash = chainspec_loader.chainspec().hash();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
@@ -487,16 +492,10 @@ impl reactor::Reactor for Reactor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Network(event) => {
-                if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
-                    reactor::wrap_effects(
-                        Event::Network,
-                        self.network.handle_event(effect_builder, rng, event),
-                    )
-                } else {
-                    Effects::new()
-                }
-            }
+            Event::Network(event) => reactor::wrap_effects(
+                Event::Network,
+                self.network.handle_event(effect_builder, rng, event),
+            ),
             Event::SmallNetwork(event) => reactor::wrap_effects(
                 Event::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
@@ -790,11 +789,14 @@ impl reactor::Reactor for Reactor {
             Event::ChainspecLoaderRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::ChainspecLoader(req.into()))
             }
-            Event::NetworkInfoRequest(req) => self.dispatch_event(
-                effect_builder,
-                rng,
-                Event::SmallNetwork(small_network::Event::from(req)),
-            ),
+            Event::NetworkInfoRequest(req) => {
+                let event = if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+                    Event::Network(network::Event::from(req))
+                } else {
+                    Event::SmallNetwork(small_network::Event::from(req))
+                };
+                self.dispatch_event(effect_builder, rng, event)
+            }
         }
     }
 

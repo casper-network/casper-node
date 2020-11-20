@@ -2,7 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     hash::Hash,
     net::{IpAddr, Ipv4Addr, SocketAddr},
 };
@@ -23,8 +23,8 @@ use crate::{
 static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let node_id = NodeId::doc_example();
     let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
-    let mut peers = HashMap::new();
-    peers.insert(node_id.clone(), socket_addr);
+    let mut peers = BTreeMap::new();
+    peers.insert(node_id.clone(), socket_addr.to_string());
     let status_feed = StatusFeed::<NodeId> {
         last_added_block: Some(Block::doc_example().clone()),
         peers,
@@ -36,12 +36,12 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
 
 /// Data feed for client "info_get_status" endpoint.
 #[derive(Debug, Serialize)]
-#[serde(bound = "I: Eq + Hash + Serialize")]
+#[serde(bound = "I: Eq + Hash + Ord + Serialize")]
 pub struct StatusFeed<I> {
     /// The last block added to the chain.
     pub last_added_block: Option<Block>,
     /// The peer nodes which are connected to this node.
-    pub peers: HashMap<I, SocketAddr>,
+    pub peers: BTreeMap<I, String>,
     /// The chainspec info for this node.
     pub chainspec_info: ChainspecInfo,
     /// The compiled node version.
@@ -51,7 +51,7 @@ pub struct StatusFeed<I> {
 impl<I> StatusFeed<I> {
     pub(crate) fn new(
         last_added_block: Option<Block>,
-        peers: HashMap<I, SocketAddr>,
+        peers: BTreeMap<I, String>,
         chainspec_info: ChainspecInfo,
     ) -> Self {
         StatusFeed {

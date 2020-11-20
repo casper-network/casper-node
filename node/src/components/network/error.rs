@@ -6,6 +6,10 @@ use thiserror::Error;
 /// Error type returned by the `Network` component.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Invalid configuration: must have at least one known address.
+    #[error("config must have at least one known address")]
+    InvalidConfig,
+
     /// Signing libp2p-noise static ID keypair failed.
     #[error("signing libp2p-noise static ID keypair failed: {0}")]
     StaticKeypairSigning(NoiseError),

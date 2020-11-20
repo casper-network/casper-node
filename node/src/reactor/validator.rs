@@ -369,7 +369,12 @@ impl reactor::Reactor for Reactor {
 
         let effect_builder = EffectBuilder::new(event_queue);
         let network_config = network::Config::from(&config.network);
-        let (network, network_effects) = Network::new(event_queue, network_config, true)?;
+        let (network, network_effects) = Network::new(
+            event_queue,
+            network_config,
+            chainspec_loader.chainspec(),
+            true,
+        )?;
         let genesis_config_hash = chainspec_loader.chainspec().hash();
         let (small_network, small_network_effects) =
             SmallNetwork::new(event_queue, config.network, genesis_config_hash, true)?;
@@ -463,16 +468,10 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Network(event) => {
-                if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
-                    reactor::wrap_effects(
-                        Event::Network,
-                        self.network.handle_event(effect_builder, rng, event),
-                    )
-                } else {
-                    Effects::new()
-                }
-            }
+            Event::Network(event) => reactor::wrap_effects(
+                Event::Network,
+                self.network.handle_event(effect_builder, rng, event),
+            ),
             Event::SmallNetwork(event) => reactor::wrap_effects(
                 Event::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
@@ -546,16 +545,22 @@ impl reactor::Reactor for Reactor {
             ),
 
             // Requests:
-            Event::NetworkRequest(req) => self.dispatch_event(
-                effect_builder,
-                rng,
-                Event::SmallNetwork(small_network::Event::from(req)),
-            ),
-            Event::NetworkInfoRequest(req) => self.dispatch_event(
-                effect_builder,
-                rng,
-                Event::SmallNetwork(small_network::Event::from(req)),
-            ),
+            Event::NetworkRequest(req) => {
+                let event = if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+                    Event::Network(network::Event::from(req))
+                } else {
+                    Event::SmallNetwork(small_network::Event::from(req))
+                };
+                self.dispatch_event(effect_builder, rng, event)
+            }
+            Event::NetworkInfoRequest(req) => {
+                let event = if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+                    Event::Network(network::Event::from(req))
+                } else {
+                    Event::SmallNetwork(small_network::Event::from(req))
+                };
+                self.dispatch_event(effect_builder, rng, event)
+            }
             Event::DeployFetcherRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployFetcher(req.into()))
             }
@@ -847,6 +852,10 @@ impl reactor::Reactor for Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        self.small_network.node_id()
+        if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+            self.network.node_id()
+        } else {
+            self.small_network.node_id()
+        }
     }
 }
