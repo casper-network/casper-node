@@ -1,6 +1,6 @@
 //! RPCs returning ancillary information.
 
-use std::{net::SocketAddr, str};
+use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -19,8 +19,8 @@ use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{
-        json_compatibility::ExecutionResult as RPCExecutionResult, BlockHash, Deploy, DeployHash,
-        GetStatusResult, NodeId,
+        json_compatibility::ExecutionResult, BlockHash, Deploy, DeployHash, GetStatusResult,
+        PeersMap,
     },
 };
 
@@ -37,7 +37,7 @@ pub struct JsonExecutionResult {
     /// The block hash.
     pub block_hash: BlockHash,
     /// Execution result.
-    pub result: RPCExecutionResult,
+    pub result: ExecutionResult,
 }
 
 /// Result for "info_get_deploy" RPC response.
@@ -96,10 +96,7 @@ impl RpcWithParamsExt for GetDeploy {
             let execution_results = metadata
                 .execution_results
                 .into_iter()
-                .map(|(block_hash, result)| JsonExecutionResult {
-                    block_hash,
-                    result: result.into(),
-                })
+                .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
                 .collect();
 
             let result = Self::ResponseResult {
@@ -112,31 +109,6 @@ impl RpcWithParamsExt for GetDeploy {
         .boxed()
     }
 }
-/// Change Peers from HashMap to OpenRPC compatible format
-#[derive(Debug, Serialize, Deserialize)]
-pub struct JsonPeers {
-    form: String,
-    id: String,
-    addr: SocketAddr,
-}
-
-impl JsonPeers {
-    /// Create a single OpenRPC compatible Peer representation.
-    pub fn new(node: NodeId, addr: SocketAddr) -> Self {
-        match node {
-            NodeId::Tls(fingerprint) => JsonPeers {
-                form: "Tls".to_string(),
-                id: fingerprint.to_string(),
-                addr,
-            },
-            NodeId::P2p(peer_id) => JsonPeers {
-                form: "P2p".to_string(),
-                id: peer_id.to_string(),
-                addr,
-            },
-        }
-    }
-}
 
 /// Result for "info_get_peers" RPC response.
 #[derive(Serialize, Deserialize, Debug)]
@@ -144,7 +116,7 @@ pub struct GetPeersResult {
     /// The RPC API version.
     pub api_version: Version,
     /// The node ID and network address of each connected peer.
-    pub peers: Vec<JsonPeers>,
+    pub peers: PeersMap,
 }
 
 /// "info_get_peers" RPC.
@@ -168,13 +140,9 @@ impl RpcWithoutParamsExt for GetPeers {
                 )
                 .await;
 
-            let peers = peers
-                .iter()
-                .map(|(node, addr)| JsonPeers::new(node.clone(), *addr))
-                .collect();
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                peers,
+                peers: PeersMap::from(peers),
             };
             Ok(response_builder.success(result)?)
         }

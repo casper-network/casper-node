@@ -980,6 +980,96 @@ impl Item for BlockByHeight {
     }
 }
 
+pub(crate) mod json_compatibility {
+    use super::*;
+
+    #[derive(Serialize, Deserialize, Debug)]
+    struct Reward {
+        validator: PublicKey,
+        amount: u64,
+    }
+
+    /// Equivocation and reward information to be included in the terminal block.
+    #[derive(Serialize, Deserialize, Debug)]
+    struct JsonEraEnd {
+        equivocators: Vec<PublicKey>,
+        rewards: Vec<Reward>,
+    }
+
+    impl From<EraEnd> for JsonEraEnd {
+        fn from(era_end: EraEnd) -> Self {
+            JsonEraEnd {
+                equivocators: era_end.equivocators,
+                rewards: era_end
+                    .rewards
+                    .into_iter()
+                    .map(|(validator, amount)| Reward { validator, amount })
+                    .collect(),
+            }
+        }
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    struct JsonBlockHeader {
+        parent_hash: BlockHash,
+        state_root_hash: Digest,
+        body_hash: Digest,
+        deploy_hashes: Vec<DeployHash>,
+        random_bit: bool,
+        accumulated_seed: Digest,
+        era_end: Option<JsonEraEnd>,
+        timestamp: Timestamp,
+        era_id: EraId,
+        height: u64,
+        proposer: PublicKey,
+    }
+
+    impl From<BlockHeader> for JsonBlockHeader {
+        fn from(block_header: BlockHeader) -> Self {
+            JsonBlockHeader {
+                parent_hash: block_header.parent_hash,
+                state_root_hash: block_header.state_root_hash,
+                body_hash: block_header.body_hash,
+                deploy_hashes: block_header.deploy_hashes,
+                random_bit: block_header.random_bit,
+                accumulated_seed: block_header.accumulated_seed,
+                era_end: block_header.era_end.map(JsonEraEnd::from),
+                timestamp: block_header.timestamp,
+                era_id: block_header.era_id,
+                height: block_header.height,
+                proposer: block_header.proposer,
+            }
+        }
+    }
+
+    /// A JSON-friendly representation of `Block`.
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct JsonBlock {
+        hash: BlockHash,
+        header: JsonBlockHeader,
+        body: (),
+        proofs: Vec<Signature>,
+    }
+
+    impl JsonBlock {
+        /// Returns the hashes of the `Deploy`s included in the `Block`.
+        pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
+            &self.header.deploy_hashes
+        }
+    }
+
+    impl From<Block> for JsonBlock {
+        fn from(block: Block) -> Self {
+            JsonBlock {
+                hash: block.hash,
+                header: JsonBlockHeader::from(block.header),
+                body: block.body,
+                proofs: block.proofs,
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use casper_types::bytesrepr;

@@ -19,7 +19,7 @@ use crate::{
         EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{Block, BlockByHeight, BlockHash, DeployHash, ExecutionResult},
+    types::{json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, DeployHash},
     NodeRng,
 };
 

@@ -1,7 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
 use crate::types::{
-    BlockHash, BlockHeader, DeployHash, DeployHeader, ExecutionResult, FinalizedBlock,
+    json_compatibility::ExecutionResult, BlockHash, BlockHeader, DeployHash, DeployHeader,
+    FinalizedBlock,
 };
 
 #[derive(Debug)]

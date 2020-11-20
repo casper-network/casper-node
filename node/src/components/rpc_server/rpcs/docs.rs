@@ -24,7 +24,7 @@ use super::{
     },
     info::{
         GetDeploy, GetDeployParams, GetDeployResult, GetPeers, GetPeersResult, GetStatus,
-        JsonExecutionResult, JsonPeers,
+        JsonExecutionResult,
     },
     state::{
         GetAuctionInfo, GetAuctionInfoResult, GetBalance, GetBalanceParams, GetBalanceResult,
@@ -39,7 +39,7 @@ use crate::{
     effect::EffectBuilder,
     types::{
         json_compatibility::{AuctionState, ExecutionResult, StoredValue},
-        Block, BlockHash, Deploy, GetStatusResult, NodeId, StatusFeed,
+        Block, BlockHash, Deploy, GetStatusResult, NodeId, PeersMap, StatusFeed,
     },
 };
 
@@ -134,18 +134,12 @@ lazy_static! {
 
         // Setup GetPeers.
         let node_id = NodeId::doc_example();
-        let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8888);
-        let mut peers_hashmap: HashMap<NodeId, SocketAddr> = HashMap::new();
-        peers_hashmap.insert(node_id.clone(), socket_addr);
-
-        let peers_for_status = peers_hashmap.clone();
-
-        let peers = peers_hashmap.iter()
-            .map(|(node, addr)| JsonPeers::new(node.clone(), *addr))
-            .collect();
+        let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
+        let mut peers: HashMap<NodeId, SocketAddr> = HashMap::new();
+        peers.insert(node_id.clone(), socket_addr);
         let response_result = GetPeersResult {
             api_version: CLIENT_API_VERSION.clone(),
-            peers,
+            peers: PeersMap::from(peers.clone()),
         };
 
         result.push_without_params::<GetPeers>(
@@ -158,7 +152,7 @@ lazy_static! {
         let chainspec_info = ChainspecInfo::doc_example().clone();
         let status_feed = StatusFeed::<NodeId> {
             last_added_block: Some(Block::doc_example().clone()),
-            peers: peers_for_status,
+            peers,
             chainspec_info,
             version: crate::VERSION_STRING.as_str(),
         };

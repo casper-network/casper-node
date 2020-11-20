@@ -2,7 +2,6 @@
 
 mod block;
 mod deploy;
-mod execution_result;
 mod item;
 pub mod json_compatibility;
 mod node_config;
@@ -15,12 +14,13 @@ use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
 use rand_chacha::ChaCha20Rng;
 
-pub use block::{Block, BlockHash, BlockHeader, BlockValidationError};
-pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock};
+pub use block::{
+    json_compatibility::JsonBlock, Block, BlockHash, BlockHeader, BlockValidationError,
+};
+pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock, ProtoBlockHash};
 pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, Error as DeployError,
 };
-pub use execution_result::ExecutionResult;
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;

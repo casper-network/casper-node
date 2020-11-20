@@ -34,7 +34,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     types::{
-        Block, BlockHash, Deploy, DeployHash, DeployHeader, ExecutionResult, FinalizedBlock, NodeId,
+        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, DeployHeader,
+        FinalizedBlock, NodeId,
     },
     NodeRng,
 };

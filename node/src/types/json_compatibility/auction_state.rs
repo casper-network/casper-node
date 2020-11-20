@@ -54,42 +54,44 @@ lazy_static! {
     };
 }
 
-/// A struct to capture a ValidatorWeight
+/// A validator's weight.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct JsonValidatorWeights {
     public_key: PublicKey,
     weight: U512,
 }
-/// A single EraValidator
+
+/// The validators for the given era.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct JsonEraValidators {
     era_id: EraId,
     validator_weights: Vec<JsonValidatorWeights>,
 }
-/// One delegator for a given validator to be serialized in a JSON conforming format
+
+/// A delegator associated with the given validator.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct JsonDelegator {
     public_key: PublicKey,
     delegator: Delegator,
 }
 
-/// Convert a Bid to a conforming JSON Representation of that bid.
+/// An entry in a founding validator map representing a bid.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct JsonBid {
     /// The purse that was used for bonding.
     bonding_purse: URef,
     /// The amount of tokens staked by a validator (not including delegators).
     staked_amount: U512,
-    /// Delegation rate
+    /// The delegation rate.
     delegation_rate: DelegationRate,
     /// A flag that represents a winning entry.
     ///
     /// `Some` indicates locked funds for a specific era and an autowin status, and `None` case
     /// means that funds are unlocked and autowin status is removed.
     release_era: Option<EraId>,
-    /// A Vector consisting of JsonDelegators
+    /// The delegators.
     delegators: Vec<JsonDelegator>,
-    /// This validator's seigniorage reward
+    /// This validator's seigniorage reward.
     reward: U512,
 }
 
@@ -123,11 +125,11 @@ pub struct JsonBids {
 /// Data structure summarizing auction contract data.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct AuctionState {
-    /// Global state hash
+    /// Global state hash.
     pub state_root_hash: Digest,
-    /// Block height
+    /// Block height.
     pub block_height: u64,
-    /// Era validators
+    /// Era validators.
     pub era_validators: Vec<JsonEraValidators>,
     /// All bids contained within a vector.
     bids: Vec<JsonBids>,

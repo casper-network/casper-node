@@ -109,8 +109,9 @@ use crate::{
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, ExecutionResult, FinalizedBlock, Item, ProtoBlock, Timestamp,
+        json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
+        BlockLike, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
+        ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,

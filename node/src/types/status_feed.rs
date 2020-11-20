@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     components::{chainspec_loader::ChainspecInfo, consensus::EraId},
-    rpcs::info::JsonPeers,
-    types::{Block, BlockHash, NodeId, Timestamp},
+    types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
 };
 
 /// Data feed for client "info_get_status" endpoint.
@@ -68,7 +67,7 @@ pub struct GetStatusResult {
     /// The genesis root hash.
     pub genesis_root_hash: String,
     /// The node ID and network address of each connected peer.
-    pub peers: Vec<JsonPeers>,
+    pub peers: PeersMap,
     /// The minimal info of the last block from the linear chain.
     pub last_added_block_info: Option<MinimalBlockInfo>,
     /// The compiled node version.
@@ -91,11 +90,7 @@ impl From<StatusFeed<NodeId>> for GetStatusResult {
             .unwrap_or_default()
             .to_string();
         let api_version = None;
-        let peers = status_feed
-            .peers
-            .iter()
-            .map(|(node, addr)| JsonPeers::new(node.clone(), *addr))
-            .collect();
+        let peers = PeersMap::from(status_feed.peers);
         let last_added_block_info = status_feed.last_added_block.map(Into::into);
         let build_version = crate::VERSION_STRING.clone();
         GetStatusResult {
