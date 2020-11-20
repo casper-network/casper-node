@@ -261,8 +261,10 @@ impl ToBytes for u32 {
 
 impl FromBytes for u32 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let mut result = [0u8; U32_SERIALIZED_LENGTH];
         let (bytes, remainder) = safe_split_at(bytes, U32_SERIALIZED_LENGTH)?;
-        Ok((<u32>::from_le_bytes(bytes.try_into().unwrap()), remainder))
+        result.copy_from_slice(bytes);
+        Ok((<u32>::from_le_bytes(result), remainder))
     }
 }
 
@@ -457,7 +459,10 @@ macro_rules! impl_to_from_bytes_for_array {
             impl FromBytes for [u8; $N] {
                 fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
                     let (bytes, rem) = safe_split_at(bytes, $N)?;
-                    Ok((bytes.try_into().unwrap(), rem))
+                    // SAFETY: safe_split_at makes sure `bytes` is exactly $N bytes.
+                    let ptr = bytes.as_ptr() as *const [u8; $N];
+                    let result = unsafe { *ptr };
+                    Ok((result, rem))
                 }
             }
         )+
