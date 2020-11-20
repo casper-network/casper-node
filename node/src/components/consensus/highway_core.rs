@@ -37,6 +37,7 @@ pub(crate) mod finality_detector;
 pub(crate) mod highway;
 pub(crate) mod state;
 pub(crate) mod validators;
+mod lnc;
 
 mod endorsement;
 mod evidence;
