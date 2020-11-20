@@ -260,10 +260,9 @@ impl BlockProposer {
         past_deploys: &HashSet<DeployHash>,
     ) -> bool {
         let all_deps_resolved = || {
-            deploy
-                .dependencies()
-                .iter()
-                .all(|dep| past_deploys.contains(dep))
+            deploy.dependencies().iter().all(|dep| {
+                past_deploys.contains(dep) || self.state.finalized_deploys.contains_key(dep)
+            })
         };
         let ttl_valid = deploy.ttl() <= deploy_config.max_ttl;
         let timestamp_valid = deploy.timestamp() <= block_timestamp;
