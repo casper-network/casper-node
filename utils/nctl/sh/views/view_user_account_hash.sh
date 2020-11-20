@@ -35,14 +35,14 @@ user=${user:-"all"}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Import vars.
 source $(get_path_to_net_vars $net)
 
 # Render user account hash.
 if [ $user = "all" ]; then
-    for idx in $(seq 1 $NCTL_NET_USER_COUNT)
+    for idx in $(seq 1 $NCTL_NET_USER_COUNT); 
     do
         render_account_hash $net $NCTL_ACCOUNT_TYPE_USER $idx
     done

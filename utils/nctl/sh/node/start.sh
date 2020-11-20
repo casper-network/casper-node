@@ -39,7 +39,7 @@ node=${node:-"all"}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Import vars.
 source $(get_path_to_net_vars $net)
@@ -52,7 +52,7 @@ source $NCTL/sh/node/log_reset.sh net=$net node=$node
 
 # Set daemon handler.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    daemon_mgr=$NCTL/sh/daemon/supervisord/node_start.sh
+    daemon_mgr=$NCTL/sh/daemons/supervisord/node_start.sh
 fi
 
 # Start node(s) by passing through to daemon specific handler.
