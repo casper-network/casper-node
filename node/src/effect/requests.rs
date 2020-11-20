@@ -45,8 +45,8 @@ use crate::{
     rpcs::chain::BlockIdentifier,
     types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, ProtoBlockHash,
-        StatusFeed, Timestamp,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, StatusFeed,
+        Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -328,8 +328,8 @@ pub struct ListForInclusionRequest {
     pub(crate) current_instant: Timestamp,
     /// Set of block hashes pointing to blocks whose deploys should be excluded.
     pub(crate) past_deploys: HashSet<DeployHash>,
-    /// The hash of the last block that was finalized at the point when the request was made.
-    pub(crate) last_finalized_block: Option<ProtoBlockHash>,
+    /// The height of the next block to be finalized
+    pub(crate) next_block_height: u64,
     /// Responder to call with the result.
     pub(crate) responder: Responder<HashSet<DeployHash>>,
 }
@@ -348,13 +348,14 @@ impl Display for BlockProposerRequest {
             BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
                 current_instant,
                 past_deploys,
-                last_finalized_block: _,
+                next_block_height,
                 responder: _,
             }) => write!(
                 formatter,
-                "list for inclusion: instant {} past {}",
+                "list for inclusion: instant {} past {} next_block_height {}",
                 current_instant,
-                past_deploys.len()
+                past_deploys.len(),
+                next_block_height
             ),
         }
     }

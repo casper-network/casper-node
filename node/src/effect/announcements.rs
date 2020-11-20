@@ -12,7 +12,7 @@ use crate::{
     components::small_network::GossipedAddress,
     types::{
         json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-        DeployHeader, FinalizedBlock, Item, ProtoBlockHash,
+        DeployHeader, FinalizedBlock, Item,
     },
     utils::Source,
 };
@@ -117,12 +117,7 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
 #[derive(Debug)]
 pub enum ConsensusAnnouncement {
     /// A block was finalized.
-    Finalized {
-        /// The finalized block.
-        block: Box<FinalizedBlock>,
-        /// The hash of the parent proto-block.
-        parent: Option<ProtoBlockHash>,
-    },
+    Finalized(Box<FinalizedBlock>),
     /// A linear chain block has been handled.
     Handled(Box<BlockHeader>),
 }
@@ -130,7 +125,7 @@ pub enum ConsensusAnnouncement {
 impl Display for ConsensusAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ConsensusAnnouncement::Finalized { block, parent: _ } => {
+            ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized proto block {}", block)
             }
             ConsensusAnnouncement::Handled(block_header) => write!(

@@ -22,7 +22,7 @@ use crate::{
         requests::{BlockProposerRequest, ListForInclusionRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{DeployHash, DeployHeader, ProtoBlock, ProtoBlockHash, Timestamp},
+    types::{DeployHash, DeployHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 
@@ -41,10 +41,7 @@ pub enum Event {
     /// The deploy-buffer has been asked to prune stale deploys
     BufferPrune,
     /// A proto block has been finalized. We should never propose its deploys again.
-    FinalizedProtoBlock {
-        block: ProtoBlock,
-        parent: Option<ProtoBlockHash>,
-    },
+    FinalizedProtoBlock { block: ProtoBlock, height: u64 },
     /// The result of the `BlockProposer` getting the chainspec from the storage component.
     GetChainspecResult {
         maybe_deploy_config: Box<Option<DeployConfig>>,
@@ -59,8 +56,12 @@ impl Display for Event {
             Event::BufferPrune => write!(f, "buffer prune"),
             Event::Request(req) => write!(f, "deploy-buffer request: {}", req),
             Event::Buffer { hash, .. } => write!(f, "deploy-buffer add {}", hash),
-            Event::FinalizedProtoBlock { block, parent: _ } => {
-                write!(f, "deploy-buffer finalized proto block {}", block)
+            Event::FinalizedProtoBlock { block, height } => {
+                write!(
+                    f,
+                    "deploy-buffer finalized proto block {} at height {}",
+                    block, height
+                )
             }
             Event::GetChainspecResult {
                 maybe_deploy_config,
@@ -77,9 +78,8 @@ impl Display for Event {
 }
 
 type DeployCollection = HashMap<DeployHash, DeployHeader>;
-pub type ProtoBlockCollection = HashMap<ProtoBlockHash, DeployCollection>;
-type FinalizationQueue = HashMap<ProtoBlockHash, (ProtoBlockHash, Vec<DeployHash>)>;
-type RequestQueue = HashMap<ProtoBlockHash, Vec<ListForInclusionRequest>>;
+type FinalizationQueue = HashMap<u64, Vec<DeployHash>>;
+type RequestQueue = HashMap<u64, Vec<ListForInclusionRequest>>;
 
 pub(crate) trait ReactorEventT: From<Event> + From<StorageRequest> + Send + 'static {}
 
@@ -89,7 +89,8 @@ impl<REv> ReactorEventT for REv where REv: From<Event> + From<StorageRequest> + 
 #[derive(DataSize, Default, Debug)]
 pub(crate) struct BlockProposerState {
     pending: DeployCollection,
-    finalized: ProtoBlockCollection,
+    finalized_deploys: DeployCollection,
+    next_finalized: u64,
     finalization_queue: FinalizationQueue,
     request_queue: RequestQueue,
 }
@@ -100,7 +101,7 @@ impl Display for BlockProposerState {
             f,
             "(pending:{}, finalized:{})",
             self.pending.len(),
-            self.finalized.len()
+            self.finalized_deploys.len()
         )
     }
 }
@@ -110,7 +111,7 @@ impl BlockProposerState {
     /// pruned
     pub(crate) fn prune(&mut self, current_instant: Timestamp) -> usize {
         let pending = prune::prune_deploys(&mut self.pending, current_instant);
-        let finalized = prune::prune_blocks(&mut self.finalized, current_instant);
+        let finalized = prune::prune_deploys(&mut self.finalized_deploys, current_instant);
         pending + finalized
     }
 }
@@ -127,26 +128,6 @@ mod prune {
         let initial_len = deploys.len();
         deploys.retain(|_hash, header| !header.expired(current_instant));
         initial_len - deploys.len()
-    }
-
-    /// Prunes expired deploy information from each ProtoBlockCollection, returns the total
-    /// deploys pruned
-    pub(super) fn prune_blocks(
-        blocks: &mut ProtoBlockCollection,
-        current_instant: Timestamp,
-    ) -> usize {
-        let mut pruned = 0;
-        let mut remove = Vec::new();
-        for (block_hash, deploys) in blocks.iter_mut() {
-            pruned += prune_deploys(deploys, current_instant);
-            if deploys.is_empty() {
-                remove.push(*block_hash);
-            }
-        }
-        remove.iter().for_each(|block_hash| {
-            blocks.remove(block_hash);
-        });
-        pruned
     }
 }
 
@@ -194,12 +175,7 @@ impl BlockProposer {
             return;
         }
         // only add the deploy if it isn't contained in a finalized block
-        if !self
-            .state
-            .finalized
-            .values()
-            .any(|block| block.contains_key(&hash))
-        {
+        if !self.state.finalized_deploys.contains_key(&hash) {
             self.state.pending.insert(hash, header);
             info!("added deploy {} to the buffer", hash);
         } else {
@@ -263,9 +239,8 @@ impl BlockProposer {
     ) -> HashSet<DeployHash> {
         let past_deploys = self
             .state
-            .finalized
-            .values()
-            .flat_map(|deploys| deploys.keys())
+            .finalized_deploys
+            .keys()
             .cloned()
             .chain(past_deploys.into_iter())
             .collect::<HashSet<_>>();
@@ -307,7 +282,7 @@ impl BlockProposer {
     }
 
     /// Notifies the block proposer that a block has been finalized.
-    fn finalized_block<I>(&mut self, block: ProtoBlockHash, deploys: I)
+    fn finalized_block<I>(&mut self, deploys: I)
     where
         I: IntoIterator<Item = DeployHash>,
     {
@@ -323,23 +298,23 @@ impl BlockProposer {
         self.state
             .pending
             .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
-        self.state.finalized.insert(block, deploys);
+        self.state.finalized_deploys.extend(deploys);
     }
 
     /// Handles finalization of a block.
     fn handle_finalized_block<I, REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        block: ProtoBlockHash,
+        height: u64,
         deploys: I,
     ) -> Effects<Event>
     where
         I: IntoIterator<Item = DeployHash>,
         REv: ReactorEventT,
     {
-        self.finalized_block(block, deploys);
+        self.finalized_block(deploys);
 
-        if let Some(requests) = self.state.request_queue.remove(&block) {
+        if let Some(requests) = self.state.request_queue.remove(&(height + 1)) {
             requests
                 .into_iter()
                 .flat_map(|request| self.get_chainspec(effect_builder, request))
@@ -380,44 +355,34 @@ where
                     .event(|_| Event::BufferPrune);
             }
             Event::Request(BlockProposerRequest::ListForInclusion(request)) => {
-                match request.last_finalized_block {
-                    Some(block_hash) if !self.state.finalized.contains_key(&block_hash) => {
-                        self.state
-                            .request_queue
-                            .entry(block_hash)
-                            .or_insert_with(Vec::new)
-                            .push(request);
-                    }
-                    _ => {
-                        return self.get_chainspec(effect_builder, request);
-                    }
+                if request.next_block_height > self.state.next_finalized {
+                    self.state
+                        .request_queue
+                        .entry(request.next_block_height)
+                        .or_insert_with(Vec::new)
+                        .push(request);
+                } else {
+                    return self.get_chainspec(effect_builder, request);
                 }
             }
             Event::Buffer { hash, header } => self.add_deploy(Timestamp::now(), hash, *header),
-            Event::FinalizedProtoBlock { block, parent } => {
-                let (hash, deploys, _) = block.destructure();
-                match parent {
-                    Some(parent_hash) if !self.state.finalized.contains_key(&parent_hash) => {
-                        self.state
-                            .finalization_queue
-                            .insert(parent_hash, (hash, deploys));
+            Event::FinalizedProtoBlock { block, mut height } => {
+                let (_, deploys, _) = block.destructure();
+                if height > self.state.next_finalized {
+                    // safe to subtract 1 - height will never be 0 in this branch, because
+                    // next_finalized is at least 0, and height has to be greater
+                    self.state.finalization_queue.insert(height - 1, deploys);
+                } else {
+                    let mut effects = self.handle_finalized_block(effect_builder, height, deploys);
+                    while let Some(deploys) = self.state.finalization_queue.remove(&height) {
+                        effects.extend(self.handle_finalized_block(
+                            effect_builder,
+                            height,
+                            deploys,
+                        ));
+                        height += 1;
                     }
-                    _ => {
-                        let mut effects =
-                            self.handle_finalized_block(effect_builder, hash, deploys);
-                        let mut parent_hash = hash;
-                        while let Some((hash, deploys)) =
-                            self.state.finalization_queue.remove(&parent_hash)
-                        {
-                            effects.extend(self.handle_finalized_block(
-                                effect_builder,
-                                hash,
-                                deploys,
-                            ));
-                            parent_hash = hash;
-                        }
-                        return effects;
-                    }
+                    return effects;
                 }
             }
             Event::GetChainspecResult {
@@ -472,14 +437,13 @@ mod tests {
     use std::collections::HashSet;
 
     use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
-    use rand::random;
 
     use super::*;
     use crate::{
-        crypto::{asymmetric_key::SecretKey, hash::hash},
+        crypto::asymmetric_key::SecretKey,
         reactor::{EventQueueHandle, QueueKind, Scheduler},
         testing::TestRng,
-        types::{Deploy, DeployHash, DeployHeader, ProtoBlockHash, TimeDiff},
+        types::{Deploy, DeployHash, DeployHeader, TimeDiff},
         utils,
     };
 
@@ -555,7 +519,7 @@ mod tests {
 
         // add two deploys
         buffer.add_deploy(block_time2, hash1, deploy1);
-        buffer.add_deploy(block_time2, hash2, deploy2.clone());
+        buffer.add_deploy(block_time2, hash2, deploy2);
 
         // if we try to create a block with a timestamp that is too early, we shouldn't get any
         // deploys
@@ -590,10 +554,8 @@ mod tests {
             .remaining_deploys(DeployConfig::default(), block_time2, deploys.clone())
             .is_empty());
 
-        let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
-
         // finalize the block
-        buffer.finalized_block(block_hash1, deploys);
+        buffer.finalized_block(deploys);
 
         // add more deploys
         buffer.add_deploy(block_time2, hash3, deploy3);
@@ -634,26 +596,25 @@ mod tests {
         buffer.add_deploy(creation_time, hash4, deploy4);
 
         // pending => finalized
-        let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
-        buffer.finalized_block(block_hash1, vec![hash1]);
+        buffer.finalized_block(vec![hash1]);
 
         assert_eq!(buffer.state.pending.len(), 3);
-        assert_eq!(buffer.state.finalized.get(&block_hash1).unwrap().len(), 1);
+        assert!(buffer.state.finalized_deploys.contains_key(&hash1));
 
         // test for retained values
         let pruned = buffer.prune(test_time);
         assert_eq!(pruned, 0);
 
         assert_eq!(buffer.state.pending.len(), 3);
-        assert_eq!(buffer.state.finalized.len(), 1);
-        assert_eq!(buffer.state.finalized.get(&block_hash1).unwrap().len(), 1);
+        assert_eq!(buffer.state.finalized_deploys.len(), 1);
+        assert!(buffer.state.finalized_deploys.contains_key(&hash1));
 
         // now move the clock to make some things expire
         let pruned = buffer.prune(expired_time);
         assert_eq!(pruned, 3);
 
         assert_eq!(buffer.state.pending.len(), 1); // deploy4 is still valid
-        assert_eq!(buffer.state.finalized.len(), 0);
+        assert_eq!(buffer.state.finalized_deploys.len(), 0);
     }
 
     #[test]
@@ -688,8 +649,7 @@ mod tests {
         assert!(deploys.contains(&hash1));
 
         // the deploy will be included in block 1
-        let block_hash1 = ProtoBlockHash::new(hash(random::<[u8; 16]>()));
-        buffer.finalized_block(block_hash1, deploys);
+        buffer.finalized_block(deploys);
 
         let deploys2 = buffer.remaining_deploys(DeployConfig::default(), block_time, no_deploys);
         // `blocks` contains a block that contains deploy1 now, so we should get deploy2

@@ -111,7 +111,7 @@ use crate::{
     types::{
         json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
         BlockLike, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
-        ProtoBlock, ProtoBlockHash, Timestamp,
+        ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,
@@ -815,7 +815,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext,
-        last_finalized_block: Option<ProtoBlockHash>,
+        next_block_height: u64,
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
@@ -827,7 +827,7 @@ impl<REv> EffectBuilder<REv> {
                     BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
                         current_instant: block_context.timestamp(),
                         past_deploys: Default::default(), // TODO
-                        last_finalized_block,
+                        next_block_height,
                         responder,
                     })
                 },
@@ -879,19 +879,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a proto block has been finalized.
-    pub(crate) async fn announce_finalized_block(
-        self,
-        finalized_block: FinalizedBlock,
-        parent: Option<ProtoBlockHash>,
-    ) where
+    pub(crate) async fn announce_finalized_block(self, finalized_block: FinalizedBlock)
+    where
         REv: From<ConsensusAnnouncement>,
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Finalized {
-                    block: Box::new(finalized_block),
-                    parent,
-                },
+                ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
                 QueueKind::Regular,
             )
             .await

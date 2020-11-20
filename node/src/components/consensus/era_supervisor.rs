@@ -50,7 +50,7 @@ use crate::{
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
-    types::{BlockHash, BlockHeader, FinalizedBlock, ProtoBlock, ProtoBlockHash, Timestamp},
+    types::{BlockHash, BlockHeader, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
     NodeRng,
 };
@@ -93,8 +93,8 @@ pub struct EraSupervisor<I> {
     /// A node keeps `2 * bonded_eras` past eras around, because the oldest bonded era could still
     /// receive blocks that refer to `bonded_eras` before that.
     bonded_eras: u64,
-    /// The hash of the last finalized proto-block; needed for interactions with the block proposer
-    last_finalized_proto_block: Option<ProtoBlockHash>,
+    /// The height of the next block to be finalized
+    next_block_height: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
 }
@@ -139,7 +139,7 @@ where
             new_consensus,
             node_start_time: Timestamp::now(),
             bonded_eras,
-            last_finalized_proto_block: None,
+            next_block_height: 0,
             metrics,
         };
 
@@ -604,7 +604,7 @@ where
                 .effect_builder
                 .request_proto_block(
                     block_context,
-                    self.era_supervisor.last_finalized_proto_block,
+                    self.era_supervisor.next_block_height,
                     self.rng.gen(),
                 )
                 .event(move |(proto_block, block_context)| Event::NewProtoBlock {
@@ -642,13 +642,9 @@ where
                 // Announce the finalized proto block.
                 let mut effects = self
                     .effect_builder
-                    .announce_finalized_block(
-                        finalized_block.clone(),
-                        self.era_supervisor.last_finalized_proto_block,
-                    )
+                    .announce_finalized_block(finalized_block.clone())
                     .ignore();
-                self.era_supervisor.last_finalized_proto_block =
-                    Some(*finalized_block.proto_block().hash());
+                self.era_supervisor.next_block_height = finalized_block.height() + 1;
                 // Request execution of the finalized block.
                 effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects

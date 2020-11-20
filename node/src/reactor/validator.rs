@@ -733,11 +733,11 @@ impl reactor::Reactor for Reactor {
                 };
 
                 match consensus_announcement {
-                    ConsensusAnnouncement::Finalized { block, parent } => {
+                    ConsensusAnnouncement::Finalized(block) => {
                         let mut effects =
                             reactor_event_dispatch(block_proposer::Event::FinalizedProtoBlock {
                                 block: block.proto_block().clone(),
-                                parent,
+                                height: block.height(),
                             });
                         let reactor_event = Event::EventStreamServer(
                             event_stream_server::Event::BlockFinalized(block),
