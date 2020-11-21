@@ -47,6 +47,9 @@ pub enum Error {
     /// Failed to record transfer.
     #[fail(display = "Failed to record transfer")]
     RecordTransferFailure = 10,
+    /// Invalid attempt to reduce total supply.
+    #[fail(display = "Invalid attempt to reduce total supply")]
+    InvalidTotalSupplyReductionAttempt = 11,
 }
 
 impl From<PurseError> for Error {

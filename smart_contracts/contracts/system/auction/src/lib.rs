@@ -23,7 +23,7 @@ use casper_types::{
         METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     bytesrepr::{FromBytes, ToBytes},
-    mint::{METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD},
+    mint::{METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD, METHOD_REDUCE_TOTAL_SUPPLY},
     system_contract_errors,
     system_contract_errors::auction::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
@@ -121,6 +121,18 @@ impl MintProvider for AuctionContract {
         let result: Result<URef, system_contract_errors::mint::Error> =
             runtime::call_contract(mint_contract, METHOD_MINT, runtime_args);
         result.map_err(|_| Error::MintReward)
+    }
+
+    fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
+        let mint_contract = system::get_mint();
+        let runtime_args = {
+            let mut tmp = RuntimeArgs::new();
+            tmp.insert(ARG_AMOUNT, amount);
+            tmp
+        };
+        let result: Result<(), system_contract_errors::mint::Error> =
+            runtime::call_contract(mint_contract, METHOD_REDUCE_TOTAL_SUPPLY, runtime_args);
+        result.map_err(|_| Error::MintReduceTotalSupply)
     }
 }
 

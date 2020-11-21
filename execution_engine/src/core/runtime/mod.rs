@@ -1735,6 +1735,12 @@ where
                     mint_runtime.mint(amount);
                 CLValue::from_t(result)?
             }
+            mint::METHOD_REDUCE_TOTAL_SUPPLY => {
+                let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
+                let result: Result<(), system_contract_errors::mint::Error> =
+                    mint_runtime.reduce_total_supply(amount);
+                CLValue::from_t(result)?
+            }
             // Type: `fn create() -> URef`
             mint::METHOD_CREATE => {
                 let uref = mint_runtime.mint(U512::zero()).map_err(Self::reverter)?;
@@ -3062,6 +3068,25 @@ where
         };
         let result = self.call_contract(mint_contract_hash, mint::METHOD_MINT, runtime_args)?;
         let result: Result<URef, system_contract_errors::mint::Error> = result.into_t()?;
+        Ok(result.map_err(system_contract_errors::Error::from)?)
+    }
+
+    /// Calls the `reduce_total_supply` method on the mint contract at the given mint
+    /// contract key
+    fn mint_reduce_total_supply(
+        &mut self,
+        mint_contract_hash: ContractHash,
+        amount: U512,
+    ) -> Result<(), Error> {
+        let runtime_args = runtime_args! {
+            mint::ARG_AMOUNT => amount,
+        };
+        let result = self.call_contract(
+            mint_contract_hash,
+            mint::METHOD_REDUCE_TOTAL_SUPPLY,
+            runtime_args,
+        )?;
+        let result: Result<(), system_contract_errors::mint::Error> = result.into_t()?;
         Ok(result.map_err(system_contract_errors::Error::from)?)
     }
 
