@@ -2,14 +2,14 @@ use std::convert::TryFrom;
 
 use crate::engine_server::{mappings, mappings::ParsingError, state};
 
-use casper_types::{account::AccountHash, DeployInfo, TransferAddr, URef, U512};
+use casper_types::{account::AccountHash, DeployHash, DeployInfo, TransferAddr, URef, U512};
 
 impl From<DeployInfo> for state::DeployInfo {
     fn from(deploy_info: DeployInfo) -> Self {
         let mut ret = state::DeployInfo::new();
         {
             let mut pb_deploy_hash = state::DeployHash::new();
-            pb_deploy_hash.deploy_hash = deploy_info.deploy_hash.to_vec();
+            pb_deploy_hash.deploy_hash = deploy_info.deploy_hash.value().to_vec();
             ret.set_deploy(pb_deploy_hash)
         }
         {
@@ -42,10 +42,10 @@ impl TryFrom<state::DeployInfo> for DeployInfo {
     fn try_from(pb_deploy_info: state::DeployInfo) -> Result<Self, Self::Error> {
         let deploy = {
             let deploy_hash = pb_deploy_info.get_deploy();
-            mappings::vec_to_array(
+            DeployHash::new(mappings::vec_to_array(
                 deploy_hash.deploy_hash.to_owned(),
                 "Protobuf DeployInfo.deploy",
-            )?
+            )?)
         };
         let transfers = pb_deploy_info
             .get_transfers()

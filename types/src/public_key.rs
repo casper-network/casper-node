@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{string::String, vec::Vec};
 use core::{
     cmp,
@@ -6,6 +9,8 @@ use core::{
 };
 
 use datasize::DataSize;
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -119,10 +124,20 @@ impl ToBytes for Secp256k1Bytes {
 
 /// Simplified raw data type
 #[derive(DataSize, Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "std",
+    schemars(
+        with = "String",
+        description = "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+    )
+)]
 pub enum PublicKey {
     /// Ed25519 public key.
+    #[cfg_attr(feature = "std", schemars(skip))]
     Ed25519([u8; ED25519_PUBLIC_KEY_LENGTH]),
     /// Secp256k1 public key.
+    #[cfg_attr(feature = "std", schemars(skip))]
     Secp256k1(Secp256k1Bytes),
 }
 

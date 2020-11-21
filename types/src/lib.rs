@@ -77,12 +77,6 @@ pub use public_key::{PublicKey, Secp256k1Bytes, ED25519_PUBLIC_KEY_LENGTH};
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use system_contract_type::SystemContractType;
-pub use transfer::Transfer;
+pub use transfer::{DeployHash, Transfer, DEPLOY_HASH_LENGTH};
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};
-
-/// The length of a deploy hash.
-pub const DEPLOY_HASH_LENGTH: usize = 32;
-
-/// A deploy hash.
-pub type DeployHash = [u8; DEPLOY_HASH_LENGTH];

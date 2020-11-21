@@ -1,7 +1,12 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{string::String, vec::Vec};
 use core::fmt;
 
 use failure::Fail;
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{json, Value};
 
@@ -52,8 +57,16 @@ impl From<bytesrepr::Error> for CLValueError {
 /// It holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the
 /// [`CLType`] of the underlying data as a separate member.
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct CLValue {
     cl_type: CLType,
+    #[cfg_attr(
+        feature = "std",
+        schemars(
+            with = "String",
+            description = "Hex-encoded value, serialized using ToBytes."
+        )
+    )]
     bytes: Vec<u8>,
 }
 
@@ -288,7 +301,7 @@ mod tests {
     use crate::{
         account::{AccountHash, ACCOUNT_HASH_LENGTH},
         key::KEY_HASH_LENGTH,
-        AccessRights, UREF_ADDR_LENGTH,
+        AccessRights, DeployHash, DEPLOY_HASH_LENGTH, UREF_ADDR_LENGTH,
     };
 
     #[test]
@@ -453,7 +466,7 @@ mod tests {
                 r#"{"cl_type":"Key","parsed_to_json":{"Transfer":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}}"#,
             );
 
-            let key_deploy_info = Key::DeployInfo([5; KEY_HASH_LENGTH]);
+            let key_deploy_info = Key::DeployInfo(DeployHash::new([5; DEPLOY_HASH_LENGTH]));
             check_to_json(
                 key_deploy_info,
                 r#"{"cl_type":"Key","parsed_to_json":{"DeployInfo":"deploy-0505050505050505050505050505050505050505050505050505050505050505"}}"#,
@@ -691,7 +704,7 @@ mod tests {
                 r#"{"cl_type":{"Option":"Key"},"parsed_to_json":{"Transfer":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}}"#,
             );
 
-            let key_deploy_info = Key::DeployInfo([5; KEY_HASH_LENGTH]);
+            let key_deploy_info = Key::DeployInfo(DeployHash::new([5; DEPLOY_HASH_LENGTH]));
             check_to_json(
                 Some(key_deploy_info),
                 r#"{"cl_type":{"Option":"Key"},"parsed_to_json":{"DeployInfo":"deploy-0505050505050505050505050505050505050505050505050505050505050505"}}"#,

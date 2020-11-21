@@ -99,7 +99,7 @@ pub(crate) mod gens {
     };
 
     pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
-        array::uniform32(<u8>::arbitrary())
+        array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::new)
     }
 
     pub fn transfer_addr_arb() -> impl Strategy<Value = TransferAddr> {

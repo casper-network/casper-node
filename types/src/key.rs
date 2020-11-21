@@ -168,7 +168,11 @@ impl Key {
             Key::URef(uref) => uref.to_formatted_string(),
             Key::Transfer(addr) => format!("{}{}", TRANSFER_PREFIX, base16::encode_lower(addr)),
             Key::DeployInfo(addr) => {
-                format!("{}{}", DEPLOY_INFO_PREFIX, base16::encode_lower(addr))
+                format!(
+                    "{}{}",
+                    DEPLOY_INFO_PREFIX,
+                    base16::encode_lower(addr.as_bytes())
+                )
             }
         }
     }
@@ -182,9 +186,9 @@ impl Key {
                 base16::decode(hex)?.as_ref(),
             )?))
         } else if let Some(hex) = input.strip_prefix(DEPLOY_INFO_PREFIX) {
-            Ok(Key::DeployInfo(DeployHash::try_from(
-                base16::decode(hex)?.as_ref(),
-            )?))
+            Ok(Key::DeployInfo(DeployHash::new(
+                <[u8; DEPLOY_HASH_LENGTH]>::try_from(base16::decode(hex)?.as_ref())?,
+            )))
         } else if let Some(hex) = input.strip_prefix(TRANSFER_PREFIX) {
             Ok(Key::Transfer(TransferAddr::try_from(
                 base16::decode(hex)?.as_ref(),
@@ -236,7 +240,7 @@ impl Key {
             Key::Hash(bytes) => bytes,
             Key::URef(uref) => uref.addr(),
             Key::Transfer(addr) => addr,
-            Key::DeployInfo(addr) => addr,
+            Key::DeployInfo(addr) => addr.value(),
         }
     }
 
@@ -255,7 +259,7 @@ impl Display for Key {
             Key::Hash(addr) => write!(f, "Key::Hash({})", HexFmt(addr)),
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
             Key::Transfer(addr) => write!(f, "Key::Transfer({})", HexFmt(addr)),
-            Key::DeployInfo(addr) => write!(f, "Key::DeployInfo({})", HexFmt(addr)),
+            Key::DeployInfo(addr) => write!(f, "Key::DeployInfo({})", HexFmt(addr.as_bytes())),
         }
     }
 }
@@ -532,7 +536,7 @@ mod tests {
             format!("{}", transfer_key),
             format!("Key::Transfer({})", expected_hash)
         );
-        let deploy_info_key = Key::DeployInfo(addr_array);
+        let deploy_info_key = Key::DeployInfo(DeployHash::new(addr_array));
         assert_eq!(
             format!("{}", deploy_info_key),
             format!("Key::DeployInfo({})", expected_hash)
@@ -592,7 +596,7 @@ mod tests {
         let key_transfer = Key::Transfer([42; BLAKE2B_DIGEST_LENGTH]);
         assert!(key_transfer.serialized_length() <= Key::max_serialized_length());
 
-        let key_deploy_info = Key::DeployInfo([42; BLAKE2B_DIGEST_LENGTH]);
+        let key_deploy_info = Key::DeployInfo(DeployHash::new([42; BLAKE2B_DIGEST_LENGTH]));
         assert!(key_deploy_info.serialized_length() <= Key::max_serialized_length());
     }
 
@@ -611,7 +615,7 @@ mod tests {
             AccessRights::READ,
         )));
         round_trip(Key::Transfer([42; KEY_HASH_LENGTH]));
-        round_trip(Key::DeployInfo([42; KEY_HASH_LENGTH]));
+        round_trip(Key::DeployInfo(DeployHash::new([42; KEY_HASH_LENGTH])));
 
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert!(Key::from_formatted_str(invalid_prefix).is_err());
@@ -658,7 +662,7 @@ mod tests {
             format!(r#"{{"Transfer":"transfer-{}"}}"#, hex_bytes)
         );
 
-        let key_deploy_info = Key::DeployInfo(array);
+        let key_deploy_info = Key::DeployInfo(DeployHash::new(array));
         assert_eq!(
             serde_json::to_string(&key_deploy_info).unwrap(),
             format!(r#"{{"DeployInfo":"deploy-{}"}}"#, hex_bytes)

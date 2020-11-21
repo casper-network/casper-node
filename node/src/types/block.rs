@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 #[cfg(test)]
 use std::iter;
 use std::{
@@ -19,27 +22,27 @@ use hex_fmt::{HexFmt, HexList};
 use lazy_static::lazy_static;
 #[cfg(test)]
 use rand::Rng;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[cfg(test)]
 use casper_types::auction::BLOCK_REWARD;
-
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::{Item, Tag, Timestamp};
-#[cfg(test)]
-use crate::testing::TestRng;
 use crate::{
     components::consensus::{self, EraId},
     crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey, Signature},
+        asymmetric_key::{PublicKey, SecretKey, Signature},
         hash::{self, Digest},
     },
     rpcs::docs::DocExample,
-    types::DeployHash,
+    types::{Deploy, DeployHash},
     utils::DisplayIter,
 };
+#[cfg(test)]
+use crate::{crypto::asymmetric_key, testing::TestRng};
 
 lazy_static! {
     static ref ERA_END: EraEnd = {
@@ -58,7 +61,7 @@ lazy_static! {
         }
     };
     static ref FINALIZED_BLOCK: FinalizedBlock = {
-        let deploy_hashes = vec![DeployHash::new(Digest::from([6u8; Digest::LENGTH]))];
+        let deploy_hashes = vec![*Deploy::doc_example().id()];
         let random_bit = true;
         let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
         let timestamp = *Timestamp::doc_example();
@@ -77,16 +80,18 @@ lazy_static! {
         )
     };
     static ref BLOCK: Block = {
-        let mut rng = crate::new_rng();
         let parent_hash = BlockHash::new(Digest::from([7u8; Digest::LENGTH]));
         let state_root_hash = Digest::from([8u8; Digest::LENGTH]);
         let finalized_block = FinalizedBlock::doc_example().clone();
         let parent_seed = Digest::from([9u8; Digest::LENGTH]);
 
         let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
-        let secret_key = SecretKey::doc_example();
-        let public_key = PublicKey::from(secret_key);
-        let signature = asymmetric_key::sign(block.hash.inner(), secret_key, &public_key, &mut rng);
+        let signature = Signature::from_hex(
+            "01bd9a3d1fe100345702c4631ce1e22b7dd7c2cd5b3808744efd36fdfc900bff30b19d4fdc369c104924a9\
+            f62ccfa91f3a9fc013b9066224a7ebdfe39579892200"
+                .as_bytes(),
+        )
+        .unwrap();
         block.append_proof(signature);
         block
     };
@@ -424,7 +429,18 @@ impl Display for FinalizedBlock {
 
 /// A cryptographic hash identifying a [`Block`](struct.Block.html).
 #[derive(
-    Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug,
+    Copy,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+    JsonSchema,
 )]
 pub struct BlockHash(Digest);
 
@@ -983,14 +999,14 @@ impl Item for BlockByHeight {
 pub(crate) mod json_compatibility {
     use super::*;
 
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     struct Reward {
         validator: PublicKey,
         amount: u64,
     }
 
     /// Equivocation and reward information to be included in the terminal block.
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     struct JsonEraEnd {
         equivocators: Vec<PublicKey>,
         rewards: Vec<Reward>,
@@ -1009,7 +1025,7 @@ pub(crate) mod json_compatibility {
         }
     }
 
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     struct JsonBlockHeader {
         parent_hash: BlockHash,
         state_root_hash: Digest,
@@ -1043,7 +1059,7 @@ pub(crate) mod json_compatibility {
     }
 
     /// A JSON-friendly representation of `Block`.
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     pub struct JsonBlock {
         hash: BlockHash,
         header: JsonBlockHeader,

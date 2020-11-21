@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
@@ -7,6 +10,8 @@ use core::{
 };
 
 use hex_fmt::HexFmt;
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{bytesrepr, AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH};
@@ -79,7 +84,15 @@ impl Display for FromStrError {
 ///
 /// A `URef` can be used to index entities such as [`CLValue`](crate::CLValue)s, or smart contracts.
 #[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct URef(URefAddr, AccessRights);
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "std",
+    schemars(with = "String", description = "Hex-encoded, formatted URef.")
+)]
+pub struct URef(
+    #[cfg_attr(feature = "std", schemars(skip))] URefAddr,
+    #[cfg_attr(feature = "std", schemars(skip))] AccessRights,
+);
 
 impl URef {
     /// Constructs a [`URef`] from an address and access rights.

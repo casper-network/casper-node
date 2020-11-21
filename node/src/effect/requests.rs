@@ -45,8 +45,8 @@ use crate::{
     rpcs::chain::BlockIdentifier,
     types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, ProtoBlockHash,
-        StatusFeed, Timestamp,
+        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, StatusFeed,
+        Timestamp,
     },
     utils::DisplayIter,
     Chainspec,

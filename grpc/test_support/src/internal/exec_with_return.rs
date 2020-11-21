@@ -15,8 +15,8 @@ use casper_execution_engine::{
     storage::{global_state::StateProvider, protocol_data::ProtocolData},
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, BlockTime, CLTyped, EntryPointType, Key, Phase,
-    ProtocolVersion, RuntimeArgs, URef, U512,
+    account::AccountHash, bytesrepr::FromBytes, BlockTime, CLTyped, DeployHash, EntryPointType,
+    Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
@@ -32,7 +32,7 @@ pub fn exec<S, T>(
     address: AccountHash,
     wasm_file: &str,
     block_time: u64,
-    deploy_hash: [u8; 32],
+    deploy_hash: DeployHash,
     entry_point_name: &str,
     args: RuntimeArgs,
     extra_urefs: Vec<URef>,
@@ -58,16 +58,16 @@ where
 
     let phase = Phase::Session;
     let address_generator = {
-        let address_generator = AddressGenerator::new(&deploy_hash, phase);
+        let address_generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
         Rc::new(RefCell::new(address_generator))
     };
     let transfer_address_generator = {
-        let address_generator = AddressGenerator::new(&deploy_hash, phase);
+        let address_generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
         Rc::new(RefCell::new(address_generator))
     };
     let gas_counter = Gas::default();
     let fn_store_id = {
-        let fn_store_id = AddressGenerator::new(&deploy_hash, phase);
+        let fn_store_id = AddressGenerator::new(deploy_hash.as_bytes(), phase);
         Rc::new(RefCell::new(fn_store_id))
     };
     let gas_limit = Gas::new(U512::from(std::u64::MAX));

@@ -4,11 +4,16 @@
 //! It is stored as metadata related to a given deploy, and made available to clients via the
 //! JSON-RPC API.
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use datasize::DataSize;
+use hex_buffer_serde::{Hex, HexForm};
 use lazy_static::lazy_static;
 use log::info;
 #[cfg(test)]
 use rand::{seq::SliceRandom, Rng};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
@@ -20,9 +25,10 @@ use casper_execution_engine::{
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    CLValue, TransferAddr, KEY_HASH_LENGTH, U128, U256, U512,
+    CLValue, KEY_HASH_LENGTH, U128, U256, U512,
 };
 
+use super::NamedKey;
 use crate::rpcs::docs::DocExample;
 
 #[cfg(test)]
@@ -82,7 +88,10 @@ lazy_static! {
             transforms,
         };
 
-        let transfers = vec![[89; KEY_HASH_LENGTH], [130; KEY_HASH_LENGTH]];
+        let transfers = vec![
+            TransferAddress([89; KEY_HASH_LENGTH]),
+            TransferAddress([130; KEY_HASH_LENGTH]),
+        ];
 
         ExecutionResult {
             effect,
@@ -99,11 +108,51 @@ impl DocExample for ExecutionResult {
     }
 }
 
+/// The hash digest; a wrapped `u8` array.
+#[derive(
+    Copy,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Default,
+    Debug,
+    JsonSchema,
+)]
+#[schemars(with = "String", description = "Hex-encoded transfer address.")]
+pub struct TransferAddress(
+    #[serde(with = "HexForm::<[u8; KEY_HASH_LENGTH]>")]
+    #[schemars(skip, with = "String")]
+    [u8; KEY_HASH_LENGTH],
+);
+
+impl ToBytes for TransferAddress {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for TransferAddress {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (address, remainder) = <[u8; KEY_HASH_LENGTH]>::from_bytes(bytes)?;
+        Ok((TransferAddress(address), remainder))
+    }
+}
+
 /// The result of executing a single deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize, JsonSchema)]
 pub struct ExecutionResult {
     effect: ExecutionEffect,
-    transfers: Vec<TransferAddr>,
+    transfers: Vec<TransferAddress>,
     cost: U512,
     error_message: Option<String>,
 }
@@ -141,7 +190,7 @@ impl ExecutionResult {
         let transfer_count = rng.gen_range(0, 6);
         let mut transfers = vec![];
         for _ in 0..transfer_count {
-            transfers.push(rng.gen())
+            transfers.push(TransferAddress(rng.gen()))
         }
 
         let error_message = if rng.gen() {
@@ -168,7 +217,10 @@ impl From<&EngineExecutionResult> for ExecutionResult {
                 cost,
             } => ExecutionResult {
                 effect: effect.into(),
-                transfers: transfers.clone(),
+                transfers: transfers
+                    .iter()
+                    .map(|transfer| TransferAddress(*transfer))
+                    .collect(),
                 cost: cost.value(),
                 error_message: None,
             },
@@ -179,7 +231,10 @@ impl From<&EngineExecutionResult> for ExecutionResult {
                 cost,
             } => ExecutionResult {
                 effect: effect.into(),
-                transfers: transfers.clone(),
+                transfers: transfers
+                    .iter()
+                    .map(|transfer| TransferAddress(*transfer))
+                    .collect(),
                 cost: cost.value(),
                 error_message: Some(error.to_string()),
             },
@@ -208,7 +263,7 @@ impl ToBytes for ExecutionResult {
 impl FromBytes for ExecutionResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (effect, remainder) = ExecutionEffect::from_bytes(bytes)?;
-        let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
+        let (transfers, remainder) = Vec::<TransferAddress>::from_bytes(remainder)?;
         let (cost, remainder) = U512::from_bytes(remainder)?;
         let (error_message, remainder) = Option::<String>::from_bytes(remainder)?;
         let execution_result = ExecutionResult {
@@ -222,7 +277,7 @@ impl FromBytes for ExecutionResult {
 }
 
 /// The effect of executing a single deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug, DataSize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug, DataSize, JsonSchema)]
 struct ExecutionEffect {
     /// The resulting operations.
     #[data_size(skip)]
@@ -280,7 +335,7 @@ impl FromBytes for ExecutionEffect {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize, JsonSchema)]
 struct Operation {
     /// The formatted string of the `Key`.
     key: String,
@@ -310,7 +365,7 @@ impl FromBytes for Operation {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize, JsonSchema)]
 enum OpKind {
     Read,
     Write,
@@ -360,7 +415,7 @@ impl FromBytes for OpKind {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize, JsonSchema)]
 struct TransformEntry {
     /// The formatted string of the `Key`.
     key: String,
@@ -390,7 +445,7 @@ impl FromBytes for TransformEntry {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize, JsonSchema)]
 enum Transform {
     Identity,
     #[data_size(skip)]
@@ -587,34 +642,6 @@ impl FromBytes for Transform {
                 Err(bytesrepr::Error::Formatting)
             }
         }
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug, DataSize)]
-struct NamedKey {
-    name: String,
-    key: String,
-}
-
-impl ToBytes for NamedKey {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.name.to_bytes()?);
-        buffer.extend(self.key.to_bytes()?);
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.name.serialized_length() + self.key.serialized_length()
-    }
-}
-
-impl FromBytes for NamedKey {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (name, remainder) = String::from_bytes(bytes)?;
-        let (key, remainder) = String::from_bytes(remainder)?;
-        let named_key = NamedKey { name, key };
-        Ok((named_key, remainder))
     }
 }
 

@@ -1,17 +1,21 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{collections::HashMap, net::SocketAddr};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::NodeId;
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, JsonSchema)]
 struct PeerEntry {
     node_id: String,
     address: SocketAddr,
 }
 
 /// Map of peer IDs to network addresses.
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, JsonSchema)]
 pub struct PeersMap(Vec<PeerEntry>);
 
 impl From<HashMap<NodeId, SocketAddr>> for PeersMap {

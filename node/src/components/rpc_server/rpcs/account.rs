@@ -1,15 +1,20 @@
 //! RPCs related to accounts.
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
+use lazy_static::lazy_static;
+use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use warp_json_rpc::Builder;
 
-use super::{Error, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt};
+use super::{docs::DocExample, Error, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt};
 use crate::{
     components::CLIENT_API_VERSION,
     effect::EffectBuilder,
@@ -17,20 +22,43 @@ use crate::{
     types::{Deploy, DeployHash},
 };
 
+lazy_static! {
+    static ref PUT_DEPLOY_PARAMS: PutDeployParams = PutDeployParams {
+        deploy: Deploy::doc_example().clone(),
+    };
+    static ref PUT_DEPLOY_RESULT: PutDeployResult = PutDeployResult {
+        api_version: CLIENT_API_VERSION.clone(),
+        deploy_hash: *Deploy::doc_example().id(),
+    };
+}
+
 /// Params for "account_put_deploy" RPC request.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct PutDeployParams {
     /// The `Deploy`.
     pub deploy: Deploy,
 }
 
+impl DocExample for PutDeployParams {
+    fn doc_example() -> &'static Self {
+        &*PUT_DEPLOY_PARAMS
+    }
+}
+
 /// Result for "account_put_deploy" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct PutDeployResult {
     /// The RPC API version.
+    #[schemars(with = "String")]
     pub api_version: Version,
     /// The deploy hash.
     pub deploy_hash: DeployHash,
+}
+
+impl DocExample for PutDeployResult {
+    fn doc_example() -> &'static Self {
+        &*PUT_DEPLOY_RESULT
+    }
 }
 
 /// "account_put_deploy" RPC

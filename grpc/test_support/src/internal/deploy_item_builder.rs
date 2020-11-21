@@ -212,7 +212,7 @@ impl DeployItemBuilder {
 
     pub fn with_deploy_hash(mut self, hash: [u8; 32]) -> Self {
         let digest: Blake2bHash = hash.into();
-        self.deploy_item.deploy_hash = digest.value();
+        self.deploy_item.deploy_hash = DeployHash::new(digest.value());
         self
     }
 

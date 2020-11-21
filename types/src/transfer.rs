@@ -1,15 +1,92 @@
-use alloc::vec::Vec;
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
 
-use serde::{Deserialize, Serialize};
+use alloc::{string::String, vec::Vec};
+use core::convert::TryFrom;
+
+use datasize::DataSize;
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    DeployHash, URef, U512,
+    URef, U512,
 };
+
+/// The length of a deploy hash.
+pub const DEPLOY_HASH_LENGTH: usize = 32;
+
+/// A newtype wrapping a [`[u8; DEPLOY_HASH_LENGTH]`] which is the raw bytes of the deploy hash.
+#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "std",
+    schemars(with = "String", description = "Hex-encoded deploy hash.")
+)]
+pub struct DeployHash(#[cfg_attr(feature = "std", schemars(skip))] [u8; DEPLOY_HASH_LENGTH]);
+
+impl DeployHash {
+    /// Constructs a new `DeployHash` instance from the raw bytes of a deploy hash.
+    pub const fn new(value: [u8; DEPLOY_HASH_LENGTH]) -> DeployHash {
+        DeployHash(value)
+    }
+
+    /// Returns the raw bytes of the deploy hash as an array.
+    pub fn value(&self) -> [u8; DEPLOY_HASH_LENGTH] {
+        self.0
+    }
+
+    /// Returns the raw bytes of the deploy hash as a `slice`.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl ToBytes for DeployHash {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for DeployHash {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        <[u8; DEPLOY_HASH_LENGTH]>::from_bytes(bytes)
+            .map(|(inner, remainder)| (DeployHash(inner), remainder))
+    }
+}
+
+impl Serialize for DeployHash {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            base16::encode_lower(&self.0).serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DeployHash {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bytes = if deserializer.is_human_readable() {
+            let hex_string = String::deserialize(deserializer)?;
+            let vec_bytes = base16::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
+            <[u8; DEPLOY_HASH_LENGTH]>::try_from(vec_bytes.as_ref()).map_err(SerdeError::custom)?
+        } else {
+            <[u8; DEPLOY_HASH_LENGTH]>::deserialize(deserializer)?
+        };
+        Ok(DeployHash(bytes))
+    }
+}
 
 /// Represents a transfer from one purse to another
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct Transfer {
     /// Deploy that created the transfer
     pub deploy_hash: DeployHash,

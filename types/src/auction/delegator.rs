@@ -1,5 +1,10 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::vec::Vec;
 
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -10,6 +15,7 @@ use crate::{
 
 /// Represents a party delegating their stake to a validator (or "delegatee")
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct Delegator {
     staked_amount: U512,
     bonding_purse: URef,

@@ -1,6 +1,11 @@
-use lazy_static::lazy_static;
-use serde::{Deserialize, Serialize};
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::collections::BTreeMap;
+
+use lazy_static::lazy_static;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use casper_types::{
     auction::{Bid, Bids, DelegationRate, Delegator, EraId, EraValidators},
@@ -11,24 +16,18 @@ use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
 
 lazy_static! {
     static ref ERA_VALIDATORS: EraValidators = {
-        let secret_key_1 = SecretKey::doc_example();
-        let public_key_1 = PublicKey::from(secret_key_1);
-        let asm_bytes = public_key_1.to_bytes().unwrap();
-        let (casper_key, _) = casper_types::PublicKey::from_bytes(&asm_bytes).unwrap();
-        let json_key = json_compatibility::PublicKey::from(casper_key);
+        let public_key_1 = PublicKey::Ed25519([42; 32]);
 
         let mut validator_weights = BTreeMap::new();
-        validator_weights.insert(json_key, U512::from(10));
+        validator_weights.insert(public_key_1, U512::from(10));
 
         let mut era_validators = BTreeMap::new();
-        era_validators.insert(10, validator_weights);
+        era_validators.insert(10u64, validator_weights);
 
         era_validators
     };
     static ref BIDS: Bids = {
-        let bonding_purse = String::from(
-            "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
-        );
+        let bonding_purse = URef::new([250; 32], AccessRights::READ_ADD_WRITE);
         let staked_amount = U512::from(10);
         let release_era: u64 = 42;
 
@@ -41,12 +40,12 @@ lazy_static! {
         let public_key_1 = PublicKey::Ed25519([42; 32]);
 
         let mut bids = BTreeMap::new();
-        bids.insert(json_key, bid);
+        bids.insert(public_key_1, bid);
 
         bids
     };
     static ref AUCTION_INFO: AuctionState = {
-        let state_root_hash = Digest::from([11u8; Digest::LENGTH]);
+        let state_root_hash = Digest::from([11; Digest::LENGTH]);
         let height: u64 = 10;
         let era_validators = Some(EraValidators::doc_example().clone());
         let bids = Some(Bids::doc_example().clone());
@@ -55,28 +54,28 @@ lazy_static! {
 }
 
 /// A validator's weight.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
 pub struct JsonValidatorWeights {
     public_key: PublicKey,
     weight: U512,
 }
 
 /// The validators for the given era.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
 pub struct JsonEraValidators {
     era_id: EraId,
     validator_weights: Vec<JsonValidatorWeights>,
 }
 
 /// A delegator associated with the given validator.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
 pub struct JsonDelegator {
     public_key: PublicKey,
     delegator: Delegator,
 }
 
 /// An entry in a founding validator map representing a bid.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
 pub struct JsonBid {
     /// The purse that was used for bonding.
     bonding_purse: URef,
@@ -116,14 +115,14 @@ impl From<Bid> for JsonBid {
 }
 
 /// A Json representation of a single bid.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
 pub struct JsonBids {
     public_key: PublicKey,
     bid: JsonBid,
 }
 
 /// Data structure summarizing auction contract data.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
 pub struct AuctionState {
     /// Global state hash.
     pub state_root_hash: Digest,

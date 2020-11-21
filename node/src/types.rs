@@ -17,7 +17,7 @@ use rand_chacha::ChaCha20Rng;
 pub use block::{
     json_compatibility::JsonBlock, Block, BlockHash, BlockHeader, BlockValidationError,
 };
-pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock, ProtoBlockHash};
+pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock};
 pub use deploy::{
     Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, Error as DeployError,
 };

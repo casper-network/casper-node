@@ -20,8 +20,8 @@ use casper_types::{
     bytesrepr::ToBytes,
     contracts::NamedKeys,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
-    DeployInfo, EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
-    Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
+    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion,
+    RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
 };
 
 use crate::{
@@ -97,7 +97,7 @@ pub struct RuntimeContext<'a, R> {
     //(could point at an account or contract in the global state)
     base_key: Key,
     blocktime: BlockTime,
-    deploy_hash: [u8; KEY_HASH_LENGTH],
+    deploy_hash: DeployHash,
     gas_limit: Gas,
     gas_counter: Gas,
     hash_address_generator: Rc<RefCell<AddressGenerator>>,
@@ -127,7 +127,7 @@ where
         account: &'a Account,
         base_key: Key,
         blocktime: BlockTime,
-        deploy_hash: [u8; KEY_HASH_LENGTH],
+        deploy_hash: DeployHash,
         gas_limit: Gas,
         gas_counter: Gas,
         hash_address_generator: Rc<RefCell<AddressGenerator>>,
@@ -257,7 +257,7 @@ where
         self.blocktime
     }
 
-    pub fn get_deploy_hash(&self) -> [u8; KEY_HASH_LENGTH] {
+    pub fn get_deploy_hash(&self) -> DeployHash {
         self.deploy_hash
     }
 

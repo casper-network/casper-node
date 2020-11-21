@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::fmt::{self, Debug, Display, Formatter};
 
 use datasize::DataSize;
@@ -7,6 +10,7 @@ use rand::{
     distributions::{Alphanumeric, Distribution, Standard},
     Rng,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
@@ -26,34 +30,55 @@ const STORED_VERSIONED_CONTRACT_BY_HASH_TAG: u8 = 3;
 const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 4;
 const TRANSFER_TAG: u8 = 5;
 
-#[derive(Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub enum ExecutableDeployItem {
     ModuleBytes {
         #[serde(with = "HexForm::<Vec<u8>>")]
+        #[schemars(with = "String", description = "Hex-encoded raw Wasm bytes.")]
         module_bytes: Vec<u8>,
         // assumes implicit `call` noarg entrypoint
         #[serde(with = "HexForm::<Vec<u8>>")]
+        #[schemars(
+            with = "String",
+            description = "Hex-encoded contract args, serialized using ToBytes."
+        )]
         args: Vec<u8>,
     },
     StoredContractByHash {
         #[serde(with = "HexForm::<[u8; KEY_HASH_LENGTH]>")]
+        #[schemars(with = "String", description = "Hex-encoded hash.")]
         hash: ContractHash,
         entry_point: String,
         #[serde(with = "HexForm::<Vec<u8>>")]
+        #[schemars(
+            with = "String",
+            description = "Hex-encoded contract args, serialized using ToBytes."
+        )]
         args: Vec<u8>,
     },
     StoredContractByName {
         name: String,
         entry_point: String,
         #[serde(with = "HexForm::<Vec<u8>>")]
+        #[schemars(
+            with = "String",
+            description = "Hex-encoded contract args, serialized using ToBytes."
+        )]
         args: Vec<u8>,
     },
     StoredVersionedContractByHash {
         #[serde(with = "HexForm::<[u8; KEY_HASH_LENGTH]>")]
+        #[schemars(with = "String", description = "Hex-encoded hash.")]
         hash: ContractPackageHash,
         version: Option<ContractVersion>, // defaults to highest enabled version
         entry_point: String,
         #[serde(with = "HexForm::<Vec<u8>>")]
+        #[schemars(
+            with = "String",
+            description = "Hex-encoded contract args, serialized using ToBytes."
+        )]
         args: Vec<u8>,
     },
     StoredVersionedContractByName {
@@ -61,10 +86,18 @@ pub enum ExecutableDeployItem {
         version: Option<ContractVersion>, // defaults to highest enabled version
         entry_point: String,
         #[serde(with = "HexForm::<Vec<u8>>")]
+        #[schemars(
+            with = "String",
+            description = "Hex-encoded contract args, serialized using ToBytes."
+        )]
         args: Vec<u8>,
     },
     Transfer {
         #[serde(with = "HexForm::<Vec<u8>>")]
+        #[schemars(
+            with = "String",
+            description = "Hex-encoded contract args, serialized using ToBytes."
+        )]
         args: Vec<u8>,
     },
 }

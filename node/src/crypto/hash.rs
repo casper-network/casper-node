@@ -1,5 +1,8 @@
 //! Cryptographic hash type and function.
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{
     array::TryFromSliceError,
     convert::TryFrom,
@@ -15,6 +18,7 @@ use hex_buffer_serde::{Hex, HexForm};
 use hex_fmt::HexFmt;
 #[cfg(test)]
 use rand::Rng;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::newtypes::Blake2bHash;
@@ -26,9 +30,25 @@ use crate::testing::TestRng;
 
 /// The hash digest; a wrapped `u8` array.
 #[derive(
-    Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Default,
+    Copy,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Default,
+    JsonSchema,
 )]
-pub struct Digest(#[serde(with = "HexForm::<[u8; Digest::LENGTH]>")] [u8; Digest::LENGTH]);
+#[schemars(with = "String", description = "Hex-encoded hash digest.")]
+pub struct Digest(
+    #[serde(with = "HexForm::<[u8; Digest::LENGTH]>")]
+    #[schemars(skip, with = "String")]
+    [u8; Digest::LENGTH],
+);
 
 impl Digest {
     /// Length of `Digest` in bytes.

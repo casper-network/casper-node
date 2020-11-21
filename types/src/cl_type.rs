@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, VecDeque},
@@ -7,6 +10,8 @@ use alloc::{
 use core::mem;
 
 use num_rational::Ratio;
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -42,6 +47,7 @@ const CL_TYPE_TAG_PUBLIC_KEY: u8 = 22;
 ///
 /// Provides a description of the underlying data type of a [`CLValue`](crate::CLValue).
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub enum CLType {
     /// `bool` primitive.
     Bool,

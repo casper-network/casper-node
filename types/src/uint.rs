@@ -413,6 +413,23 @@ macro_rules! impl_traits_for_uint {
             }
         }
 
+        #[cfg(feature = "std")]
+        impl schemars::JsonSchema for $type {
+            fn schema_name() -> String {
+                format!("U{}", $total_bytes * 8)
+            }
+
+            fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+                let schema = gen.subschema_for::<String>();
+                let mut schema_object = schema.into_object();
+                schema_object.metadata().description = Some(format!(
+                    "Decimal representation of a {}-bit integer.",
+                    $total_bytes * 8
+                ));
+                schema_object.into()
+            }
+        }
+
         #[cfg(test)]
         mod $test_mod {
             use super::*;

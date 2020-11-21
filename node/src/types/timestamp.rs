@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{
     fmt::{self, Display, Formatter},
     ops::{Add, AddAssign, Div, Mul, Rem, Sub},
@@ -11,6 +14,7 @@ use humantime::{DurationError, TimestampError};
 use lazy_static::lazy_static;
 #[cfg(test)]
 use rand::Rng;
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
@@ -28,7 +32,10 @@ lazy_static! {
 }
 
 /// A timestamp type, representing a concrete moment in time.
-#[derive(DataSize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shr, Shl)]
+#[derive(
+    DataSize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shr, Shl, JsonSchema,
+)]
+#[schemars(with = "String", description = "Timestamp formatted as per RFC 3339")]
 pub struct Timestamp(u64);
 
 impl Timestamp {
@@ -205,7 +212,9 @@ impl From<u64> for Timestamp {
     Sub,
     SubAssign,
     From,
+    JsonSchema,
 )]
+#[schemars(with = "String", description = "Human-readable duration.")]
 pub struct TimeDiff(u64);
 
 impl Display for TimeDiff {

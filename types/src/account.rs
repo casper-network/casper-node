@@ -1,5 +1,8 @@
 //! Contains types and constants associated with user accounts.
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
@@ -13,6 +16,8 @@ use blake2::{
 };
 use datasize::DataSize;
 use failure::Fail;
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -199,7 +204,12 @@ pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 /// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
 #[derive(DataSize, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct AccountHash(AccountHashBytes);
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "std",
+    schemars(with = "String", description = "Hex-encoded account hash.")
+)]
+pub struct AccountHash(#[cfg_attr(feature = "std", schemars(skip))] AccountHashBytes);
 
 impl AccountHash {
     /// Constructs a new `AccountHash` instance from the raw bytes of an Public Key Account Hash.

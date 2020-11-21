@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{
     array::TryFromSliceError,
     collections::{BTreeSet, HashMap},
@@ -12,6 +15,7 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 #[cfg(test)]
 use rand::{Rng, RngCore};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::warn;
@@ -37,31 +41,47 @@ use crate::{
 
 lazy_static! {
     static ref DEPLOY: Deploy = {
-        let mut rng = crate::new_rng();
-        let timestamp = *Timestamp::doc_example();
-        let ttl = TimeDiff::from(3_600_000);
-        let gas_price: u64 = 1;
-        let dependencies = vec![DeployHash::new(Digest::from([1u8; Digest::LENGTH]))];
-        let chain_name = String::from("casper-example");
         let payment = ExecutableDeployItem::StoredContractByName {
             name: String::from("casper-example"),
             entry_point: String::from("example-entry-point"),
             args: vec![1, 1],
         };
         let session = ExecutableDeployItem::Transfer { args: vec![2, 2] };
-        let secret_key = SecretKey::doc_example();
+        let serialized_body = serialize_body(&payment, &session);
+        let body_hash = hash::hash(&serialized_body);
 
-        Deploy::new(
-            timestamp,
-            ttl,
-            gas_price,
-            dependencies,
-            chain_name,
+        let secret_key = SecretKey::doc_example();
+        let header = DeployHeader {
+            account: PublicKey::from(secret_key),
+            timestamp: *Timestamp::doc_example(),
+            ttl: TimeDiff::from(3_600_000),
+            gas_price: 1,
+            body_hash,
+            dependencies: vec![DeployHash::new(Digest::from([1u8; Digest::LENGTH]))],
+            chain_name: String::from("casper-example"),
+        };
+        let serialized_header = serialize_header(&header);
+        let hash = DeployHash::new(hash::hash(&serialized_header));
+
+        let signature = Signature::from_hex(
+            "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d976\
+            1185c961daee1adab0649912a6477bcd2e69bd91bd08"
+                .as_bytes(),
+        )
+        .unwrap();
+        let approval = Approval {
+            signer: PublicKey::from(secret_key),
+            signature,
+        };
+
+        Deploy {
+            hash,
+            header,
             payment,
             session,
-            secret_key,
-            &mut rng,
-        )
+            approvals: vec![approval],
+            is_valid: None,
+        }
     };
 }
 
@@ -116,8 +136,10 @@ impl From<TryFromSliceError> for Error {
     Deserialize,
     Debug,
     Default,
+    JsonSchema,
 )]
-pub struct DeployHash(Digest);
+#[schemars(with = "String", description = "Hex-encoded deploy hash.")]
+pub struct DeployHash(#[schemars(skip)] Digest);
 
 impl DeployHash {
     /// Constructs a new `DeployHash`.
@@ -173,7 +195,9 @@ impl FromBytes for DeployHash {
 }
 
 /// The header portion of a [`Deploy`](struct.Deploy.html).
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
+)]
 pub struct DeployHeader {
     account: PublicKey,
     timestamp: Timestamp,
@@ -297,7 +321,9 @@ impl Display for DeployHeader {
 }
 
 /// A struct containing a signature and the public key of the signer.
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
+)]
 pub struct Approval {
     signer: PublicKey,
     signature: Signature,
@@ -344,7 +370,9 @@ impl FromBytes for Approval {
 }
 
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
+)]
 pub struct Deploy {
     hash: DeployHash,
     header: DeployHeader,
@@ -571,7 +599,7 @@ impl From<Deploy> for DeployItem {
             deploy.payment().clone(),
             deploy.header().gas_price(),
             BTreeSet::from_iter(vec![account_hash]),
-            deploy.id().inner().to_array(),
+            casper_types::DeployHash::new(deploy.id().inner().to_array()),
         )
     }
 }

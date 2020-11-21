@@ -1,5 +1,8 @@
 //! Asymmetric-key types and functions.
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{
     cmp::Ordering,
     convert::TryFrom,
@@ -21,6 +24,7 @@ use lazy_static::lazy_static;
 use pem::Pem;
 #[cfg(test)]
 use rand::{Rng, RngCore};
+use schemars::JsonSchema;
 use serde::{
     de::{Deserializer, Error as SerdeError},
     Deserialize, Serialize, Serializer,
@@ -409,13 +413,19 @@ impl<'de> Deserialize<'de> for SecretKey {
 }
 
 /// A public asymmetric key.
-#[derive(Clone, Copy, DataSize, Eq, PartialEq)]
+#[derive(Clone, Copy, DataSize, Eq, PartialEq, JsonSchema)]
+#[schemars(
+    with = "String",
+    description = "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+)]
 pub enum PublicKey {
     /// Ed25519 public key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
+    #[schemars(skip)]
     Ed25519(ed25519::PublicKey),
     /// secp256k1 public key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
+    #[schemars(skip)]
     Secp256k1(k256::PublicKey),
 }
 
@@ -845,16 +855,22 @@ pub fn generate_secp256k1_keypair() -> (SecretKey, PublicKey) {
 }
 
 /// A signature of given data.
-#[derive(Clone, Copy, DataSize)]
+#[derive(Clone, Copy, DataSize, JsonSchema)]
+#[schemars(
+    with = "String",
+    description = "Hex-encoded cryptographic signature, including the algorithm tag prefix."
+)]
 pub enum Signature {
     /// Ed25519 signature.
     //
     // This is held as a byte array rather than an `ed25519_dalek::Signature` as that type doesn't
     // implement `AsRef` amongst other common traits.  In order to implement these common traits,
     // it is convenient and cheap to use `signature.as_ref()`.
+    #[schemars(skip)]
     Ed25519([u8; ed25519::SIGNATURE_LENGTH]),
     /// secp256k1 signature.
     #[data_size(skip)] // Manually verified to have no data on the heap.
+    #[schemars(skip)]
     Secp256k1(Secp256k1Signature),
 }
 

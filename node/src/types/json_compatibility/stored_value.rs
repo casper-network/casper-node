@@ -1,18 +1,21 @@
 //! This file provides types to allow conversion from an EE `StoredValue` into a similar type
 //! which can be serialized to a valid JSON representation.
+
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::convert::TryFrom;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::shared::{
-    account::Account, stored_value::StoredValue as ExecutionEngineStoredValue,
-};
+use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
 use casper_types::{
     bytesrepr::{self, ToBytes},
     CLValue, Transfer,
 };
 
-use super::DeployInfo;
+use super::{Account, DeployInfo};
 
 /// Representation of a value stored in global state.
 ///
@@ -20,7 +23,7 @@ use super::DeployInfo;
 /// encoding the resulting byte string.
 ///
 /// `Account` has its own `json_compatibility` representation (see its docs for further info).
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
 pub enum StoredValue {
     /// A CasperLabs value.
     CLValue(CLValue),
@@ -44,7 +47,7 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
     fn try_from(ee_stored_value: &ExecutionEngineStoredValue) -> Result<Self, Self::Error> {
         let stored_value = match ee_stored_value {
             ExecutionEngineStoredValue::CLValue(cl_value) => StoredValue::CLValue(cl_value.clone()),
-            ExecutionEngineStoredValue::Account(account) => StoredValue::Account(account.clone()),
+            ExecutionEngineStoredValue::Account(account) => StoredValue::Account(account.into()),
             ExecutionEngineStoredValue::ContractWasm(contract_wasm) => {
                 StoredValue::ContractWasm(hex::encode(&contract_wasm.to_bytes()?))
             }
