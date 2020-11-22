@@ -251,7 +251,7 @@ async fn propose_and_finalize(
     let rv_event = validate.await.unwrap().pop().unwrap();
 
     // As a result, the era supervisor should request validation of the proto block and evidence
-    // against Alice.
+    // against all accused validators.
     for _ in &accusations {
         let request_evidence = tokio::spawn(effects.pop().unwrap());
         reactor.expect_send_message(NodeId(1)).await; // Sending request for evidence.
@@ -331,7 +331,7 @@ async fn propose_and_finalize(
 }
 
 #[tokio::test]
-async fn cross_era_slashing() -> Result<(), Error> {
+async fn finalize_blocks_and_switch_eras() -> Result<(), Error> {
     let mut rng = TestRng::new();
 
     let alice_sk = SecretKey::random(&mut rng);
