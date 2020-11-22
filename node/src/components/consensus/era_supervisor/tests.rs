@@ -122,18 +122,6 @@ impl MockReactor {
         }
     }
 
-    async fn expect_proposed(&self) -> ProtoBlock {
-        let (event, _) = self.scheduler.pop().await;
-        if let Event::ConsensusAnnouncement(ConsensusAnnouncement::Proposed(proto_block)) = event {
-            proto_block
-        } else {
-            panic!(
-                "unexpected event: {:?}, expected announcement of proposed proto block",
-                event
-            );
-        }
-    }
-
     async fn expect_finalized(&self) -> FinalizedBlock {
         let (event, _) = self.scheduler.pop().await;
         if let Event::ConsensusAnnouncement(ConsensusAnnouncement::Finalized(fb)) = event {
@@ -273,10 +261,7 @@ async fn propose_and_finalize(
     // requirements for the proposed block. The era supervisor announces that it has passed the
     // proposed block to the consensus protocol.
     let mut effects = handle(es, rv_event);
-    let announce_proposed = tokio::spawn(effects.pop().unwrap());
     assert!(effects.is_empty());
-    assert_eq!(proto_block, reactor.expect_proposed().await);
-    announce_proposed.await.unwrap();
 
     // Node 1 now sends us another message that is sufficient for the protocol to finalize the
     // block. The era supervisor is expected to announce finalization, and to request execution.

@@ -696,10 +696,6 @@ impl reactor::Reactor for Reactor {
                         event_stream_server::Event::BlockFinalized(block),
                     ),
                 ),
-                other => {
-                    warn!("Ignoring consensus announcement {}", other);
-                    Effects::new()
-                }
             },
             Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining

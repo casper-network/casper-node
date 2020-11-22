@@ -19,7 +19,7 @@ fn standard_payment(amount: U512) {
     let payment_purse: URef =
         runtime::call_contract(pos_pointer, GET_PAYMENT_PURSE, RuntimeArgs::default());
 
-    system::transfer_from_purse_to_purse(main_purse, payment_purse, amount).unwrap_or_revert()
+    system::transfer_from_purse_to_purse(main_purse, payment_purse, amount, None).unwrap_or_revert()
 }
 
 #[no_mangle]

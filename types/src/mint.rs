@@ -69,7 +69,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     }
 
     /// Transfers `amount` of tokens from `source` purse to a `target` purse.
-    fn transfer(&mut self, source: URef, target: URef, amount: U512) -> Result<(), Error> {
+    fn transfer(
+        &mut self,
+        source: URef,
+        target: URef,
+        amount: U512,
+        id: Option<u64>,
+    ) -> Result<(), Error> {
         if !source.is_writeable() || !target.is_addable() {
             return Err(Error::InvalidAccessRights);
         }
@@ -90,7 +96,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         };
         self.write(source_balance, source_value - amount)?;
         self.add(target_balance, amount)?;
-        self.record_transfer(source, target, amount)?;
+        self.record_transfer(source, target, amount, id)?;
         Ok(())
     }
 

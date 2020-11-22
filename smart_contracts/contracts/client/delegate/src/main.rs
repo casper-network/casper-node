@@ -40,7 +40,7 @@ pub extern "C" fn call() {
         let source_purse = account::get_main_purse();
         let bonding_purse = system::create_purse();
         // transfer amount to a bidding purse
-        system::transfer_from_purse_to_purse(source_purse, bonding_purse, amount)
+        system::transfer_from_purse_to_purse(source_purse, bonding_purse, amount, None)
             .unwrap_or_revert();
         bonding_purse
     };

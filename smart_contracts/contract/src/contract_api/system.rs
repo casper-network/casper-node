@@ -103,11 +103,19 @@ pub fn get_balance(purse: URef) -> Option<U512> {
 
 /// Transfers `amount` of motes from the default purse of the account to `target`
 /// account.  If `target` does not exist it will be created.
-pub fn transfer_to_account(target: AccountHash, amount: U512) -> TransferResult {
+pub fn transfer_to_account(target: AccountHash, amount: U512, id: Option<u64>) -> TransferResult {
     let (target_ptr, target_size, _bytes1) = contract_api::to_ptr(target);
     let (amount_ptr, amount_size, _bytes2) = contract_api::to_ptr(amount);
+    let (id_ptr, id_size, _bytes3) = contract_api::to_ptr(id);
     let return_code = unsafe {
-        ext_ffi::casper_transfer_to_account(target_ptr, target_size, amount_ptr, amount_size)
+        ext_ffi::casper_transfer_to_account(
+            target_ptr,
+            target_size,
+            amount_ptr,
+            amount_size,
+            id_ptr,
+            id_size,
+        )
     };
     TransferredTo::result_from(return_code)
 }
@@ -118,10 +126,12 @@ pub fn transfer_from_purse_to_account(
     source: URef,
     target: AccountHash,
     amount: U512,
+    id: Option<u64>,
 ) -> TransferResult {
     let (source_ptr, source_size, _bytes1) = contract_api::to_ptr(source);
     let (target_ptr, target_size, _bytes2) = contract_api::to_ptr(target);
     let (amount_ptr, amount_size, _bytes3) = contract_api::to_ptr(amount);
+    let (id_ptr, id_size, _bytes4) = contract_api::to_ptr(id);
     let return_code = unsafe {
         ext_ffi::casper_transfer_from_purse_to_account(
             source_ptr,
@@ -130,6 +140,8 @@ pub fn transfer_from_purse_to_account(
             target_size,
             amount_ptr,
             amount_size,
+            id_ptr,
+            id_size,
         )
     };
     TransferredTo::result_from(return_code)
@@ -141,10 +153,12 @@ pub fn transfer_from_purse_to_purse(
     source: URef,
     target: URef,
     amount: U512,
+    id: Option<u64>,
 ) -> Result<(), ApiError> {
     let (source_ptr, source_size, _bytes1) = contract_api::to_ptr(source);
     let (target_ptr, target_size, _bytes2) = contract_api::to_ptr(target);
     let (amount_ptr, amount_size, _bytes3) = contract_api::to_ptr(amount);
+    let (id_ptr, id_size, _bytes4) = contract_api::to_ptr(id);
     let result = unsafe {
         ext_ffi::casper_transfer_from_purse_to_purse(
             source_ptr,
@@ -153,6 +167,8 @@ pub fn transfer_from_purse_to_purse(
             target_size,
             amount_ptr,
             amount_size,
+            id_ptr,
+            id_size,
         )
     };
     if result == 0 {
@@ -165,10 +181,16 @@ pub fn transfer_from_purse_to_purse(
 /// Records a transfer.  Can only be called from within the mint contract.
 /// Needed to support system contract-based execution.
 #[doc(hidden)]
-pub fn record_transfer(source: URef, target: URef, amount: U512) -> Result<(), ApiError> {
+pub fn record_transfer(
+    source: URef,
+    target: URef,
+    amount: U512,
+    id: Option<u64>,
+) -> Result<(), ApiError> {
     let (source_ptr, source_size, _bytes1) = contract_api::to_ptr(source);
     let (target_ptr, target_size, _bytes2) = contract_api::to_ptr(target);
     let (amount_ptr, amount_size, _bytes3) = contract_api::to_ptr(amount);
+    let (id_ptr, id_size, _bytes4) = contract_api::to_ptr(id);
     let result = unsafe {
         ext_ffi::casper_record_transfer(
             source_ptr,
@@ -177,6 +199,8 @@ pub fn record_transfer(source: URef, target: URef, amount: U512) -> Result<(), A
             target_size,
             amount_ptr,
             amount_size,
+            id_ptr,
+            id_size,
         )
     };
     if result == 0 {

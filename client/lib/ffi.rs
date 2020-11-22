@@ -363,6 +363,7 @@ pub extern "C" fn casper_transfer(
     maybe_source_purse: *const c_char,
     maybe_target_purse: *const c_char,
     maybe_target_account: *const c_char,
+    maybe_id: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     payment_params: *const casper_payment_params_t,
     response_buf: *mut c_uchar,
@@ -376,6 +377,7 @@ pub extern "C" fn casper_transfer(
     let maybe_source_purse = try_unsafe_arg!(maybe_source_purse);
     let maybe_target_purse = try_unsafe_arg!(maybe_target_purse);
     let maybe_target_account = try_unsafe_arg!(maybe_target_account);
+    let maybe_id = try_unsafe_arg!(maybe_id);
     let deploy_params = try_arg_into!(deploy_params);
     let payment_params = try_arg_into!(payment_params);
     runtime.block_on(async move {
@@ -387,6 +389,7 @@ pub extern "C" fn casper_transfer(
             maybe_source_purse,
             maybe_target_purse,
             maybe_target_account,
+            maybe_id,
             deploy_params,
             payment_params,
         );

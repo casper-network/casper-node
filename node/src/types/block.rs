@@ -93,20 +93,9 @@ impl ProtoBlockHash {
         ProtoBlockHash(hash)
     }
 
-    pub fn from_parts(deploys: &[DeployHash], random_bit: bool) -> Self {
-        ProtoBlockHash::new(hash::hash(
-            &bincode::serialize(&(deploys, random_bit)).expect("serialize ProtoBlock"),
-        ))
-    }
-
     /// Returns the wrapped inner hash.
     pub fn inner(&self) -> &Digest {
         &self.0
-    }
-
-    /// Returns `true` is `self` is a hash of empty `ProtoBlock`.
-    pub(crate) fn is_empty(self) -> bool {
-        self == ProtoBlock::empty_random_bit_false() || self == ProtoBlock::empty_random_bit_true()
     }
 }
 
@@ -161,18 +150,6 @@ impl ProtoBlock {
 
     pub(crate) fn destructure(self) -> (ProtoBlockHash, Vec<DeployHash>, bool) {
         (self.hash, self.deploys, self.random_bit)
-    }
-
-    /// Returns hash of empty ProtoBlock (no deploys) with a random bit set to false.
-    /// Added here so that it's always aligned with how hash is calculated.
-    pub(crate) fn empty_random_bit_false() -> ProtoBlockHash {
-        *ProtoBlock::new(vec![], false).hash()
-    }
-
-    /// Returns hash of empty ProtoBlock (no deploys) with a random bit set to true.
-    /// Added here so that it's always aligned with how hash is calculated.
-    pub(crate) fn empty_random_bit_true() -> ProtoBlockHash {
-        *ProtoBlock::new(vec![], true).hash()
     }
 }
 
