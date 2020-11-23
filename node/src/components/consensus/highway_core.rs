@@ -35,12 +35,13 @@ mod test_macros;
 pub(crate) mod active_validator;
 pub(crate) mod finality_detector;
 pub(crate) mod highway;
-mod lnc;
 pub(crate) mod state;
 pub(crate) mod validators;
 
 mod endorsement;
 mod evidence;
+mod lnc;
+
 #[cfg(test)]
 pub(crate) mod highway_testing;
 
