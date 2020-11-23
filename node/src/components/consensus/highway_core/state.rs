@@ -746,17 +746,16 @@ impl<C: Context> State<C> {
             // If the new observation is `Faulty`, it is save to update the `citable_panorama`
             // b/c we won't violate LNC if we use it for our next unit.
             self.panoramas.citable_panorama_mut()[creator] = new_obs;
-        } else if let Some(uhash) = new_obs.correct() {
-            let unit = self.unit(uhash);
+        } else if new_obs.is_correct() {
             // Check if citing new unit will make us violate LNC.
-            let mut updated_panorama = self.citable_panorama().merge(self, &unit.panorama);
-            updated_panorama[unit.creator] = new_obs.clone();
+            let mut updated_panorama = self.citable_panorama().merge(self, &wunit.panorama);
+            updated_panorama[wunit.creator] = new_obs.clone();
             let cites_naively = updated_panorama
                 .enumerate()
                 .filter(|(_, obs)| obs.is_faulty())
                 .map(|(i, _)| i)
                 .any(|eq_idx| {
-                    lnc::find_forks(&unit.panorama, &unit.endorsed, eq_idx, self).is_none()
+                    lnc::find_forks(&wunit.panorama, &wunit.endorsed, eq_idx, self).is_none()
                 });
 
             if !cites_naively {
