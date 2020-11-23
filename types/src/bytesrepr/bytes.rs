@@ -1,5 +1,9 @@
-use alloc::vec::{IntoIter, Vec};
+use alloc::{
+    string::String,
+    vec::{IntoIter, Vec},
+};
 use core::{
+    cmp, fmt,
     iter::FromIterator,
     mem,
     ops::{Deref, Index, Range, RangeFrom, RangeFull, RangeTo},
@@ -7,13 +11,16 @@ use core::{
 };
 
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{Error as SerdeError, SeqAccess, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 
 use super::{Error, FromBytes, ToBytes};
 use crate::{CLType, CLTyped};
 
 /// A newtype wrapper for bytes that has efficient serialization routines.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Default, Hash, Serialize, Deserialize)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Default, Hash)]
 pub struct Bytes(Vec<u8>);
 
 impl Bytes {
@@ -75,17 +82,17 @@ impl AsRef<[u8]> for Bytes {
 impl ToBytes for Bytes {
     #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        super::serialize_bytes(&self.0)
+        super::vec_u8_to_bytes(&self.0)
     }
 
     #[inline(always)]
     fn into_bytes(self) -> Result<Vec<u8>, Error> {
-        super::serialize_bytes(&self.0)
+        super::vec_u8_to_bytes(&self.0)
     }
 
     #[inline(always)]
     fn serialized_length(&self) -> usize {
-        super::bytes_serialized_length(&self.0)
+        super::vec_u8_serialized_length(&self.0)
     }
 }
 
@@ -191,12 +198,99 @@ impl DataSize for Bytes {
     }
 }
 
+struct BytesVisitor;
+
+impl<'de> Visitor<'de> for BytesVisitor {
+    type Value = Bytes;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("byte array")
+    }
+
+    fn visit_seq<V>(self, mut visitor: V) -> Result<Bytes, V::Error>
+    where
+        V: SeqAccess<'de>,
+    {
+        let len = cmp::min(visitor.size_hint().unwrap_or(0), 4096);
+        let mut bytes = Vec::with_capacity(len);
+
+        while let Some(b) = visitor.next_element()? {
+            bytes.push(b);
+        }
+
+        Ok(Bytes::from(bytes))
+    }
+
+    fn visit_bytes<E>(self, v: &[u8]) -> Result<Bytes, E>
+    where
+        E: SerdeError,
+    {
+        Ok(Bytes::from(v))
+    }
+
+    fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Bytes, E>
+    where
+        E: SerdeError,
+    {
+        Ok(Bytes::from(v))
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Bytes, E>
+    where
+        E: SerdeError,
+    {
+        Ok(Bytes::from(v.as_bytes()))
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<Bytes, E>
+    where
+        E: SerdeError,
+    {
+        Ok(Bytes::from(v.into_bytes()))
+    }
+}
+
+impl<'de> Deserialize<'de> for Bytes {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let hex_string = String::deserialize(deserializer)?;
+            base16::decode(&hex_string)
+                .map(Bytes)
+                .map_err(SerdeError::custom)
+        } else {
+            let bytes = deserializer.deserialize_byte_buf(BytesVisitor)?;
+            Ok(bytes)
+        }
+    }
+}
+
+impl Serialize for Bytes {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            base16::encode_lower(&self.0).serialize(serializer)
+        } else {
+            serializer.serialize_bytes(&self.0)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
     use alloc::vec::Vec;
 
+    use serde_json::json;
+    use serde_test::{assert_tokens, Configure, Token};
+
     use super::Bytes;
+
+    const TRUTH: &[u8] = &[0xde, 0xad, 0xbe, 0xef];
 
     #[test]
     fn vec_u8_from_bytes() {
@@ -232,6 +326,31 @@ mod tests {
             FromBytes::from_bytes(&serialized).expect("should deserialize data");
         assert_eq!(data, deserialized);
         assert_eq!(&rem, &expected_rem);
+    }
+
+    #[test]
+    fn should_ser_de_human_readable() {
+        let truth = vec![0xde, 0xad, 0xbe, 0xef];
+
+        let bytes_ser: Bytes = truth.clone().into();
+
+        let json_object = serde_json::to_value(bytes_ser).unwrap();
+        assert_eq!(json_object, json!("deadbeef"));
+
+        let bytes_de: Bytes = serde_json::from_value(json_object).unwrap();
+        assert_eq!(bytes_de, Bytes::from(truth));
+    }
+
+    #[test]
+    fn should_ser_de_readable() {
+        let truth: Bytes = TRUTH.into();
+        assert_tokens(&truth.readable(), &[Token::Str("deadbeef")]);
+    }
+
+    #[test]
+    fn should_ser_de_compact() {
+        let truth: Bytes = TRUTH.into();
+        assert_tokens(&truth.compact(), &[Token::Bytes(TRUTH)]);
     }
 }
 

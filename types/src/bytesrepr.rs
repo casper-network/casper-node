@@ -289,11 +289,11 @@ impl FromBytes for u64 {
 impl ToBytes for String {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let bytes = self.as_bytes();
-        serialize_bytes(bytes)
+        u8_slice_to_bytes(bytes)
     }
 
     fn serialized_length(&self) -> usize {
-        bytes_serialized_length(self.as_bytes())
+        u8_slice_serialized_length(self.as_bytes())
     }
 }
 
@@ -315,44 +315,35 @@ fn ensure_efficient_serialization<T>() {
     );
 }
 
-#[allow(clippy::ptr_arg)]
-fn slice_to_bytes<T: ToBytes>(vec: &[T]) -> Result<Vec<u8>, Error> {
-    ensure_efficient_serialization::<T>();
-
-    let mut result = try_vec_with_capacity(iterator_serialized_length(vec.iter()))?;
-    result.append(&mut (vec.len() as u32).to_bytes()?);
-
-    for item in vec.iter() {
-        result.append(&mut item.to_bytes()?);
-    }
-
-    Ok(result)
-}
-
-fn vec_into_bytes<T: ToBytes>(vec: Vec<T>) -> Result<Vec<u8>, Error> {
-    ensure_efficient_serialization::<T>();
-
-    let mut result = allocate_buffer(&vec)?;
-    result.append(&mut (vec.len() as u32).to_bytes()?);
-
-    for item in vec {
-        result.append(&mut item.into_bytes()?);
-    }
-
-    Ok(result)
-}
-
 fn iterator_serialized_length<'a, T: 'a + ToBytes>(ts: impl Iterator<Item = &'a T>) -> usize {
     U32_SERIALIZED_LENGTH + ts.map(ToBytes::serialized_length).sum::<usize>()
 }
 
 impl<T: ToBytes> ToBytes for Vec<T> {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        slice_to_bytes(self)
+        ensure_efficient_serialization::<T>();
+
+        let mut result = try_vec_with_capacity(self.serialized_length())?;
+        result.append(&mut (self.len() as u32).to_bytes()?);
+
+        for item in self.iter() {
+            result.append(&mut item.to_bytes()?);
+        }
+
+        Ok(result)
     }
 
     fn into_bytes(self) -> Result<Vec<u8>, Error> {
-        vec_into_bytes(self)
+        ensure_efficient_serialization::<T>();
+
+        let mut result = allocate_buffer(&self)?;
+        result.append(&mut (self.len() as u32).to_bytes()?);
+
+        for item in self {
+            result.append(&mut item.into_bytes()?);
+        }
+
+        Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
@@ -377,21 +368,6 @@ fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
     unsafe { Ok(Vec::from_raw_parts(ptr.as_ptr(), 0, capacity)) }
 }
 
-fn vec_from_bytes<T: FromBytes>(bytes: &[u8]) -> Result<(Vec<T>, &[u8]), Error> {
-    ensure_efficient_serialization::<T>();
-
-    let (count, mut stream) = u32::from_bytes(bytes)?;
-
-    let mut result = try_vec_with_capacity(count as usize)?;
-    for _ in 0..count {
-        let (value, remainder) = T::from_bytes(stream)?;
-        result.push(value);
-        stream = remainder;
-    }
-
-    Ok((result, stream))
-}
-
 fn vec_from_vec<T: FromBytes>(bytes: Vec<u8>) -> Result<(Vec<T>, Vec<u8>), Error> {
     ensure_efficient_serialization::<T>();
 
@@ -400,7 +376,18 @@ fn vec_from_vec<T: FromBytes>(bytes: Vec<u8>) -> Result<(Vec<T>, Vec<u8>), Error
 
 impl<T: FromBytes> FromBytes for Vec<T> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        vec_from_bytes(bytes)
+        ensure_efficient_serialization::<T>();
+
+        let (count, mut stream) = u32::from_bytes(bytes)?;
+
+        let mut result = try_vec_with_capacity(count as usize)?;
+        for _ in 0..count {
+            let (value, remainder) = T::from_bytes(stream)?;
+            result.push(value);
+            stream = remainder;
+        }
+
+        Ok((result, stream))
     }
 
     fn from_vec(bytes: Vec<u8>) -> Result<(Self, Vec<u8>), Error> {
@@ -1040,12 +1027,12 @@ impl<
 impl ToBytes for str {
     #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        serialize_bytes(self.as_bytes())
+        u8_slice_to_bytes(self.as_bytes())
     }
 
     #[inline]
     fn serialized_length(&self) -> usize {
-        bytes_serialized_length(self.as_bytes())
+        u8_slice_serialized_length(self.as_bytes())
     }
 }
 
@@ -1090,9 +1077,14 @@ where
     }
 }
 
-/// Serializes dynamic bytes array.
-pub(crate) fn serialize_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
-    let serialized_length = bytes_serialized_length(bytes);
+/// Serializes a slice of bytes with a length prefix.
+///
+/// This function is serializing a slice of bytes with an addition of a 4 byte length prefix.
+///
+/// For safety you should prefer to use [`vec_u8_to_bytes`]. For efficiency reasons you should also
+/// avoid using serializing Vec<u8>.
+fn u8_slice_to_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
+    let serialized_length = u8_slice_serialized_length(bytes);
     let mut vec = try_vec_with_capacity(serialized_length)?;
     let length_prefix = bytes.len() as u32;
     let length_prefix_bytes = length_prefix.to_le_bytes();
@@ -1101,10 +1093,27 @@ pub(crate) fn serialize_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(vec)
 }
 
-/// Estimates serialized length of serialized bytes.
+/// Serializes a vector of bytes with a length prefix.
+///
+/// For efficiency you should avoid serializing Vec<u8>.
+#[allow(clippy::ptr_arg)]
+#[inline]
+pub(crate) fn vec_u8_to_bytes(vec: &Vec<u8>) -> Result<Vec<u8>, Error> {
+    u8_slice_to_bytes(vec.as_slice())
+}
+
+/// Returns serialized length of serialized slice of bytes.
+///
+/// This function adds a length prefix in the beggining.
 #[inline(always)]
-pub(crate) fn bytes_serialized_length(bytes: &[u8]) -> usize {
+fn u8_slice_serialized_length(bytes: &[u8]) -> usize {
     U32_SERIALIZED_LENGTH + bytes.len()
+}
+
+#[allow(clippy::ptr_arg)]
+#[inline]
+pub(crate) fn vec_u8_serialized_length(vec: &Vec<u8>) -> usize {
+    u8_slice_serialized_length(vec.as_slice())
 }
 
 // This test helper is not intended to be used by third party crates.
@@ -1149,7 +1158,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "You should use Bytes newtype wrapper for efficiency")]
     fn should_fail_to_serialize_slice_of_u8() {
-        slice_to_bytes(b"0123456789").unwrap();
+        b"0123456789".to_bytes().unwrap();
     }
 }
 
