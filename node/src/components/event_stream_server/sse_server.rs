@@ -25,7 +25,7 @@ use crate::{
 /// The URL path.
 pub const SSE_API_PATH: &str = "events";
 /// The number of events to buffer in the tokio broadcast channel to help slower clients to try to
-/// avoid missing events.  See https://docs.rs/tokio/0.2.22/tokio/sync/broadcast/index.html#lagging
+/// avoid missing events.  See <https://docs.rs/tokio/0.2.22/tokio/sync/broadcast/index.html#lagging>
 /// for further details.
 const BROADCAST_CHANNEL_SIZE: usize = 10;
 
