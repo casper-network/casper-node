@@ -16,7 +16,7 @@ use casper_types::{
     mint::{
         Mint, RuntimeProvider, StorageProvider, SystemProvider, ARG_AMOUNT, ARG_ID, ARG_PURSE,
         ARG_SOURCE, ARG_TARGET, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT,
-        METHOD_READ_BASE_ROUND_REWARD, METHOD_TRANSFER,
+        METHOD_READ_BASE_ROUND_REWARD, METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER,
     },
     system_contract_errors::mint::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
@@ -92,6 +92,14 @@ pub fn mint() {
     runtime::ret(ret)
 }
 
+pub fn reduce_total_supply() {
+    let mut mint_contract = MintContract;
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let result: Result<(), Error> = mint_contract.reduce_total_supply(amount);
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret)
+}
+
 pub fn create() {
     let mut mint_contract = MintContract;
     let uref = mint_contract.mint(U512::zero()).unwrap_or_revert();
@@ -133,6 +141,18 @@ pub fn get_entry_points() -> EntryPoints {
         vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
         CLType::Result {
             ok: Box::new(CLType::URef),
+            err: Box::new(CLType::U8),
+        },
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(entry_point);
+
+    let entry_point = EntryPoint::new(
+        METHOD_REDUCE_TOTAL_SUPPLY,
+        vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
+        CLType::Result {
+            ok: Box::new(CLType::Unit),
             err: Box::new(CLType::U8),
         },
         EntryPointAccess::Public,

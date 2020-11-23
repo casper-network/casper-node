@@ -133,6 +133,12 @@ where
         self.mint_mint(mint_contract, amount)
             .map_err(|_| Error::MintReward)
     }
+
+    fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
+        let mint_contract = self.get_mint_contract();
+        self.mint_reduce_total_supply(mint_contract, amount)
+            .map_err(|_| Error::MintReduceTotalSupply)
+    }
 }
 
 impl<'a, R> Auction for Runtime<'a, R>

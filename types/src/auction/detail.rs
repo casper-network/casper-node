@@ -261,22 +261,23 @@ where
     Ok(amount)
 }
 
-/// Removes validator entries from either founders or validators, wherever they
-/// might be found.
+/// Removes bids of specified public keys.
 ///
-/// This function is intended to be called together with the slash function in the Mint
-/// contract.
+/// Returns the amount of stake burned by removing the bids.
 pub(crate) fn quash_bid<P: StorageProvider + RuntimeProvider + ?Sized>(
     provider: &mut P,
     validator_public_keys: &[PublicKey],
-) -> Result<()> {
+) -> Result<U512> {
     // Clean up inside `bids`
     let mut validators = get_bids(provider)?;
 
     let mut modified_validators = 0usize;
 
+    let mut burned_amount: U512 = U512::zero();
+
     for validator_public_key in validator_public_keys {
-        if validators.remove(validator_public_key).is_some() {
+        if let Some(bid) = validators.remove(validator_public_key) {
+            burned_amount += *bid.staked_amount();
             modified_validators += 1;
         }
     }
@@ -285,5 +286,5 @@ pub(crate) fn quash_bid<P: StorageProvider + RuntimeProvider + ?Sized>(
         set_bids(provider, validators)?;
     }
 
-    Ok(())
+    Ok(burned_amount)
 }
