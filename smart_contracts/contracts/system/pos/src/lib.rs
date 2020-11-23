@@ -24,7 +24,7 @@ impl MintProvider for ProofOfStakeContract {
         target: AccountHash,
         amount: U512,
     ) -> TransferResult {
-        system::transfer_from_purse_to_account(source, target, amount)
+        system::transfer_from_purse_to_account(source, target, amount, None)
     }
 
     fn transfer_purse_to_purse(
@@ -33,7 +33,7 @@ impl MintProvider for ProofOfStakeContract {
         target: URef,
         amount: U512,
     ) -> Result<(), ()> {
-        system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| ())
+        system::transfer_from_purse_to_purse(source, target, amount, None).map_err(|_| ())
     }
 
     fn balance(&mut self, purse: URef) -> Option<U512> {

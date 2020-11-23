@@ -18,7 +18,7 @@
 //! has advanced past their last received event.
 //!
 //! For details about the SSE model and a list of supported SSEs, see:
-//! https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs
+//! <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs>
 
 mod config;
 mod event;

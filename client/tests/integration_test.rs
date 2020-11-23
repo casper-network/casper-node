@@ -136,6 +136,7 @@ impl MockServerHandle {
             maybe_source_purse,
             maybe_target_purse,
             maybe_target_account,
+            "",
             deploy_params,
             payment_params,
         )

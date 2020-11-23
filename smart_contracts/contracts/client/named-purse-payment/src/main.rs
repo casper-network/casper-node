@@ -53,5 +53,6 @@ pub extern "C" fn call() {
         runtime::call_contract(pos_contract_hash, GET_PAYMENT_PURSE, RuntimeArgs::default());
 
     // transfer amount from named purse to payment purse, which will be used to pay for execution
-    system::transfer_from_purse_to_purse(purse_uref, payment_purse, amount).unwrap_or_revert();
+    system::transfer_from_purse_to_purse(purse_uref, payment_purse, amount, None)
+        .unwrap_or_revert();
 }

@@ -324,7 +324,9 @@ impl BlockExecutor {
 
         let execution_effect = match ee_execution_result {
             EngineExecutionResult::Success { effect, cost, .. } => {
-                debug!(?effect, %cost, "execution succeeded");
+                // We do want to see the deploy hash and cost in the logs.
+                // We don't need to see the effects in the logs.
+                debug!(?deploy_hash, %cost, "execution succeeded");
                 effect
             }
             EngineExecutionResult::Failure {
@@ -333,7 +335,10 @@ impl BlockExecutor {
                 cost,
                 ..
             } => {
-                error!(?error, ?effect, %cost, "execution failure");
+                // Failure to execute a contract is a user error, not a system error.
+                // We do want to see the deploy hash, error, and cost in the logs.
+                // We don't need to see the effects in the logs.
+                debug!(?deploy_hash, ?error, %cost, "execution failure");
                 effect
             }
         };
@@ -491,6 +496,7 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         self.finalize_block_execution(effect_builder, state)
                     }
                     _ => {
+                        // When step fails, the auction process is broken and we should panic.
                         error!(?result, "run step failed - internal contract runtime error");
                         panic!("unable to run step");
                     }

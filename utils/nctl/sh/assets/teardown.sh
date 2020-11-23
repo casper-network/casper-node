@@ -32,7 +32,7 @@ net=${net:-1}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 log "network #$net: tearing down assets ... please wait"
 
@@ -41,7 +41,7 @@ source $NCTL/sh/node/stop.sh net=$net node=all
 
 # Set daemon handler.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    daemon_mgr=$NCTL/sh/daemon/supervisord/daemon_kill.sh
+    daemon_mgr=$NCTL/sh/daemons/supervisord/daemon_kill.sh
 fi
 
 # Kill service daemon (if appropriate).

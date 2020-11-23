@@ -148,12 +148,11 @@ impl DeployExt for Deploy {
         )
     }
 
-    fn write_deploy<W>(&self, output: W) -> Result<()>
+    fn write_deploy<W>(&self, mut output: W) -> Result<()>
     where
         W: Write,
     {
         let content = serde_json::to_string_pretty(self)?;
-        let mut output = output;
         output
             .write_all(content.as_bytes())
             .map_err(|error| Error::IoError {

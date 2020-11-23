@@ -18,7 +18,7 @@ pub(super) use unit::Unit;
 use std::{
     borrow::Borrow,
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::identity,
     iter,
 };
@@ -84,10 +84,16 @@ pub(crate) enum UnitError {
     ValueAfterTerminalBlock,
     #[error("The unit's creator is banned.")]
     Banned,
-    #[error("The unit's endorsed votes were not a superset of its justifications.")]
+    #[error("The unit's endorsed units were not a superset of its justifications.")]
     EndorsementsNotMonotonic,
     #[error("The LNC rule was violated. Vote cited ({:?}) naively.", _0)]
     LncNaiveCitation(ValidatorIndex),
+    #[error(
+        "Wire unit endorses hash but does not see it. Hash: {:?}; Wire unit: {:?}",
+        hash,
+        wire_unit
+    )]
+    EndorsedButUnseen { hash: String, wire_unit: String },
 }
 
 /// A reason for a validator to be marked as faulty.
@@ -194,9 +200,11 @@ pub(crate) struct State<C: Context> {
     /// Panoramas that the protocol observed.
     panoramas: Panoramas<C>,
     /// All currently endorsed units, by hash.
-    endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
+    endorsements: HashMap<C::Hash, ValidatorMap<Option<C::Signature>>>,
     /// Units that don't yet have 2/3 of stake endorsing them.
-    incomplete_endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
+    /// Signatures are stored in a map so that a single validator sending lots of signatures for
+    /// different units doesn't cause us to allocate a lot of memory.
+    incomplete_endorsements: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
     /// Clock to track fork choice
     clock: Clock,
 }
@@ -264,11 +272,6 @@ impl<C: Context> State<C> {
         &self.weights
     }
 
-    /// Returns hashes of endorsed units.
-    pub(crate) fn endorsements(&self) -> impl Iterator<Item = C::Hash> + '_ {
-        self.endorsements.keys().cloned()
-    }
-
     /// Returns the total weight of all validators marked faulty in this panorama.
     pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
         panorama
@@ -300,7 +303,12 @@ impl<C: Context> State<C> {
 
     /// Returns endorsements for `unit`, if any.
     pub(crate) fn opt_endorsements(&self, unit: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
-        self.endorsements.get(unit).cloned()
+        self.endorsements.get(unit).map(|signatures| {
+            signatures
+                .iter_some()
+                .map(|(vidx, sig)| SignedEndorsement::new(Endorsement::new(*unit, vidx), *sig))
+                .collect()
+        })
     }
 
     /// Returns whether evidence against validator nr. `idx` is known.
@@ -314,14 +322,13 @@ impl<C: Context> State<C> {
         unit: &C::Hash,
         v_ids: I,
     ) -> bool {
-        self.incomplete_endorsements
-            .get(unit)
-            .map(|v| {
-                v_ids
-                    .into_iter()
-                    .all(|v_id| v.get(v_id.0 as usize).is_some())
-            })
-            .unwrap_or(false)
+        if self.endorsements.contains_key(unit) {
+            true // We have enough endorsements for this unit.
+        } else if let Some(sigs) = self.incomplete_endorsements.get(unit) {
+            v_ids.into_iter().all(|v_id| sigs.contains_key(v_id))
+        } else {
+            v_ids.into_iter().next().is_none()
+        }
     }
 
     /// Returns whether we have seen enough endorsements for the unit.
@@ -449,40 +456,31 @@ impl<C: Context> State<C> {
     /// it will be *upgraded* to fully endorsed.
     pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
         let unit = *endorsements.unit();
-        let validator_count = self.validator_count();
-        info!("Received endorsements of {:?}", unit);
-        {
-            let entry = self
-                .incomplete_endorsements
-                .entry(unit)
-                .or_insert_with(|| Vec::with_capacity(validator_count));
-            for (vid, signature) in endorsements.endorsers {
-                // Add endorsements from validators we haven't seen endorsement yet.
-                if !entry.iter().any(|e| e.validator_idx() == vid) {
-                    let endorsement =
-                        SignedEndorsement::new(Endorsement::new(unit, vid), signature);
-                    entry.push(endorsement)
-                }
-            }
+        if self.endorsements.contains_key(&unit) {
+            return; // We already have a sufficient number of endorsements.
         }
+        info!("Received endorsements of {:?}", unit);
+        self.incomplete_endorsements
+            .entry(unit)
+            .or_default()
+            .extend(endorsements.endorsers);
+        let endorsed: Weight = self.incomplete_endorsements[&unit]
+            .keys()
+            .map(|vidx| self.weight(*vidx))
+            .sum();
         // Stake required to consider unit to be endorsed.
         let threshold = self.total_weight() / 2;
-        let endorsed: Weight = self
-            .incomplete_endorsements
-            .get(&unit)
-            .unwrap()
-            .iter()
-            .map(|e| {
-                let v_id = e.validator_idx();
-                self.weight(v_id)
-            })
-            .sum();
         if endorsed > threshold {
-            info!(%unit, "Unit endorsed by at least 2/3 of validators.");
-            let fully_endorsed = self.incomplete_endorsements.remove(&unit).unwrap();
-            let creator = self.unit(&unit).creator;
-            self.endorsements.insert(unit, fully_endorsed);
+            info!(%unit, "Unit endorsed by at least 1/2 of validators.");
+            let mut fully_endorsed = self.incomplete_endorsements.remove(&unit).unwrap();
+            let endorsed_map = self
+                .weights()
+                .keys()
+                .map(|vidx| fully_endorsed.remove(&vidx))
+                .collect();
+            self.endorsements.insert(unit, endorsed_map);
             // When unit gets endorsed, it becomes safe to cite.
+            let creator = self.unit(&unit).creator;
             self.panoramas.endorsed(creator, unit);
         }
     }
@@ -650,20 +648,18 @@ impl<C: Context> State<C> {
                 return Err(UnitError::ValueAfterTerminalBlock);
             }
         }
+        for hash in &wunit.endorsed {
+            if !wunit.panorama._sees(self, hash) {
+                return Err(UnitError::EndorsedButUnseen {
+                    hash: format!("{:?}", hash),
+                    wire_unit: format!("{:?}", wunit),
+                });
+            }
+        }
         match self.validate_lnc(wunit) {
             None => Ok(()),
             Some(vidx) => Err(UnitError::LncNaiveCitation(vidx)),
         }
-    }
-
-    /// Validates whether `wvote` violates the LNC rule.
-    /// Returns index of the first equivocator that was cited naively.
-    ///
-    /// Vote violates LNC rule if it cites naively an equivocation.
-    /// If it cites equivocator then it needs to endorse votes that cite equivocating votes.
-    fn validate_lnc(&self, _wvote: &WireUnit<C>) -> Option<ValidatorIndex> {
-        // TODO
-        None
     }
 
     /// Returns `true` if the `bhash` is a block that can have no children.
@@ -768,6 +764,171 @@ impl<C: Context> State<C> {
     /// Returns `true` if the state contains no units.
     pub(crate) fn is_empty(&self) -> bool {
         self.units.is_empty()
+    }
+
+    /// Returns the set of units (by hash) that are endorsed and seen from the panorama.
+    pub(crate) fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
+        // First we collect all units that were already seen as endorsed by earlier units.
+        let mut result: BTreeSet<C::Hash> = pan
+            .iter_correct_hashes()
+            .flat_map(|hash| self.unit(hash).endorsed.iter().cloned())
+            .collect();
+        // Now add all remaining endorsed units. Since the pan.sees check is expensive, do it only
+        // for the ones that are actually new.
+        for hash in self.endorsements.keys() {
+            if !result.contains(hash) && pan._sees(self, hash) {
+                result.insert(*hash);
+            }
+        }
+        result
+    }
+
+    /// Validates whether `wunit` violates the Limited Naïveté Criterion (LNC).
+    /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
+    /// `None` if the LNC is satisfied.
+    fn validate_lnc(&self, wunit: &WireUnit<C>) -> Option<ValidatorIndex> {
+        wunit
+            .panorama
+            .enumerate()
+            .filter(|(_, obs)| obs.is_faulty())
+            .map(|(i, _)| i)
+            .find(|eq_idx| !self.satisfies_lnc_for(wunit, *eq_idx))
+    }
+
+    // Stub, replace with `_satisfies_lnc_for`
+    fn satisfies_lnc_for(&self, _wunit: &WireUnit<C>, _eq_idx: ValidatorIndex) -> bool {
+        true
+    }
+
+    /// Returns `true` if there is at most one fork by the validator `eq_idx` that is cited naively
+    /// by `wunit` or earlier units by the same creator.
+    fn _satisfies_lnc_for(&self, wunit: &WireUnit<C>, eq_idx: ValidatorIndex) -> bool {
+        // Find all forks by eq_idx that are cited naively by wunit itself.
+        // * If it's more than one, return false: the LNC is violated.
+        // * If it's none, return true: If the LNC were violated, it would be because of two naive
+        //   citations by wunit.creator's earlier units. So the latest of those earlier units would
+        //   already be violating the LNC itself, and thus would not have been added to the state.
+        // * Otherwise store the unique naively cited fork in naive_by_wunit.
+        let mut opt_naive_by_wunit = None;
+        {
+            // Returns true if any endorsed (according to wunit) unit cites the given unit.
+            let seen_by_endorsed =
+                |hash| wunit.endorsed.iter().any(|e_hash| self._sees(e_hash, hash));
+
+            // Iterate over all units cited by wunit.
+            let mut to_visit: Vec<_> = wunit.panorama.iter_correct_hashes().collect();
+            // This set is a filter so that units don't get added to to_visit twice.
+            let mut added_to_to_visit: HashSet<_> = to_visit.iter().cloned().collect();
+            while let Some(hash) = to_visit.pop() {
+                if seen_by_endorsed(hash) {
+                    continue; // This unit and everything below is not cited naively.
+                }
+                let unit = self.unit(hash);
+                match &unit.panorama[eq_idx] {
+                    Observation::Correct(eq_hash) => {
+                        // The unit (and everything it cites) can only see a single fork.
+                        // No need to traverse further downward.
+                        if !seen_by_endorsed(eq_hash) {
+                            // The fork is cited naively!
+                            match opt_naive_by_wunit {
+                                // It's the first naively cited fork we found.
+                                None => opt_naive_by_wunit = Some(eq_hash),
+                                Some(other_hash) => {
+                                    // If eq_hash is later than other_hash, it is the tip of the
+                                    // same fork. If it is earlier, then other_hash is the tip.
+                                    if self._sees_correct(eq_hash, other_hash) {
+                                        opt_naive_by_wunit = Some(eq_hash);
+                                    } else if !self._sees_correct(other_hash, eq_hash) {
+                                        return false; // We found two incompatible forks!
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // No forks are cited by this unit. No need to traverse further.
+                    Observation::None => (),
+                    // The unit still sees the equivocator as faulty: We need to traverse further
+                    // down the graph to find all cited forks.
+                    Observation::Faulty => to_visit.extend(
+                        unit.panorama
+                            .iter_correct_hashes()
+                            .filter(|hash| added_to_to_visit.insert(hash)),
+                    ),
+                }
+            }
+        }
+        let naive_by_wunit = match opt_naive_by_wunit {
+            None => return true, // No forks are cited naively by wunit.
+            Some(naive_by_wunit) => naive_by_wunit,
+        };
+
+        // Iterate over all earlier units by wunit.creator, and find all forks by eq_idx they
+        // naively cite. If any of those forks are incompatible with naive_by_wunit, the LNC is
+        // violated.
+        let mut opt_pred_hash = wunit.panorama[wunit.creator].correct();
+        while let Some(pred_hash) = opt_pred_hash {
+            let pred_unit = self.unit(pred_hash);
+            // Returns true if any endorsed (according to pred_unit) unit cites the given unit.
+            let seen_by_endorsed = |hash| {
+                pred_unit
+                    .endorsed
+                    .iter()
+                    .any(|e_hash| self._sees(e_hash, hash))
+            };
+            // Iterate over all units seen by pred_unit.
+            let mut to_visit = vec![pred_hash];
+            // This set is a filter so that units don't get added to to_visit twice.
+            let mut added_to_to_visit: HashSet<_> = to_visit.iter().cloned().collect();
+            while let Some(hash) = to_visit.pop() {
+                if seen_by_endorsed(hash) {
+                    continue; // This unit and everything below is not cited naively.
+                }
+                let unit = self.unit(hash);
+                match &unit.panorama[eq_idx] {
+                    Observation::Correct(eq_hash) => {
+                        if !seen_by_endorsed(eq_hash)
+                            && !self._is_compatible(eq_hash, naive_by_wunit)
+                        {
+                            return false;
+                        }
+                    }
+                    // No forks are cited by this unit. No need to traverse further.
+                    Observation::None => (),
+                    // The unit still sees the equivocator as faulty: We need to traverse further
+                    // down the graph to find all cited forks.
+                    Observation::Faulty => to_visit.extend(
+                        unit.panorama
+                            .iter_correct_hashes()
+                            .filter(|hash| added_to_to_visit.insert(hash)),
+                    ),
+                }
+            }
+            if !pred_unit.panorama[eq_idx].is_faulty() {
+                // This unit and everything below sees only a single fork of the equivocator. If we
+                // haven't found conflicting naively cited forks yet, there are none.
+                return true;
+            }
+            opt_pred_hash = pred_unit.panorama[wunit.creator].correct();
+        }
+        true // No earlier messages, so no conflicting naively cited forks.
+    }
+
+    /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`),
+    /// and sees `hash1`'s creator as correct.
+    fn _sees_correct(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+        hash0 == hash1 || self.unit(hash0).panorama._sees_correct(self, hash1)
+    }
+
+    /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`).
+    fn _sees(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+        hash0 == hash1 || self.unit(hash0).panorama._sees(self, hash1)
+    }
+
+    // Returns whether the units with `hash0` and `hash1` see each other or are equal.
+    fn _is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+        hash0 == hash1
+            || self.unit(hash0).panorama._sees(self, hash1)
+            || self.unit(hash1).panorama._sees(self, hash0)
     }
 
     /// Returns the panorama of the confirmation for the leader unit `vhash`.

@@ -11,6 +11,8 @@ pub(crate) enum EndorsementError {
     Creator,
     #[error("The signature is invalid.")]
     Signature,
+    #[error("The list of endorsements is empty.")]
+    Empty,
 }
 
 /// Testimony that creator of `unit` was seen honest

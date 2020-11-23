@@ -122,8 +122,8 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
-    NetworkRequest, StorageRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, ListForInclusionRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -810,11 +810,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes the timestamp of a future block for which deploys are to be proposed.
-    // TODO: The input `BlockContext` will probably be a different type than the context in the
-    //       return value in the future.
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext,
+        next_finalized: u64,
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
@@ -822,10 +821,13 @@ impl<REv> EffectBuilder<REv> {
     {
         let deploys = self
             .make_request(
-                |responder| BlockProposerRequest::ListForInclusion {
-                    current_instant: block_context.timestamp(),
-                    past_blocks: Default::default(), // TODO
-                    responder,
+                |responder| {
+                    BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
+                        current_instant: block_context.timestamp(),
+                        past_deploys: Default::default(), // TODO
+                        next_finalized,
+                        responder,
+                    })
                 },
                 QueueKind::Regular,
             )
@@ -872,20 +874,6 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
-    }
-
-    /// Announces that a proto block has been proposed and will either be finalized or orphaned
-    /// soon.
-    pub(crate) async fn announce_proposed_proto_block(self, proto_block: ProtoBlock)
-    where
-        REv: From<ConsensusAnnouncement>,
-    {
-        self.0
-            .schedule(
-                ConsensusAnnouncement::Proposed(proto_block),
-                QueueKind::Regular,
-            )
-            .await
     }
 
     /// Announces that a proto block has been finalized.

@@ -148,6 +148,11 @@ impl<T> ValidatorMap<T> {
             .map(|(idx, value)| (ValidatorIndex(idx as u32), value))
     }
 
+    /// Returns an iterator over all validator indices.
+    pub(crate) fn keys(&self) -> impl Iterator<Item = ValidatorIndex> {
+        (0..self.len()).map(|idx| ValidatorIndex(idx as u32))
+    }
+
     /// Binary searches this sorted `ValidatorMap` for `x`.
     ///
     /// If the value is found, `Ok` is returned, containing the index, otherwise `Err`, with the
@@ -214,9 +219,13 @@ impl<Rhs, T: Copy + Add<Rhs, Output = T>> Add<ValidatorMap<Rhs>> for ValidatorMa
 impl<T> ValidatorMap<Option<T>> {
     /// Returns the keys of all validators whose value is `Some`.
     pub(crate) fn keys_some(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+        self.iter_some().map(|(vidx, _)| vidx)
+    }
+
+    /// Returns an iterator over all values that are present, together with their index.
+    pub(crate) fn iter_some(&self) -> impl Iterator<Item = (ValidatorIndex, &T)> + '_ {
         self.enumerate()
-            .filter(|(_, opt)| opt.is_some())
-            .map(|(vidx, _)| vidx)
+            .filter_map(|(vidx, opt)| opt.as_ref().map(|val| (vidx, val)))
     }
 }
 

@@ -43,7 +43,7 @@ gas_payment=${gas_payment:-70000000000}
 gas_price=${gas_price:-$NCTL_DEFAULT_GAS_PRICE}
 net=${net:-1}
 node=${node:-1}
-token_name=${token_name:-"Acme Corporation"}
+token_name=${token_name:-"Acme Token"}
 token_symbol=${token_symbol:-"ACME"}
 token_supply=${token_supply:-1000000000000000000000000000000000}
 
@@ -52,7 +52,7 @@ token_supply=${token_supply:-1000000000000000000000000000000000}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Import vars.
 source $(get_path_to_net_vars $net)

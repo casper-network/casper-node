@@ -462,6 +462,16 @@ pub(crate) fn purse(value: &str) -> Result<URef> {
     URef::from_formatted_str(value).map_err(|error| Error::FailedToParseURef("purse", error))
 }
 
+pub(crate) fn transfer_id(value: &str) -> Result<Option<u64>> {
+    if str::is_empty(value) {
+        return Ok(None);
+    }
+    let value = value
+        .parse::<u64>()
+        .map_err(|error| Error::FailedToParseInt("transfer_id", error))?;
+    Ok(Some(value))
+}
+
 #[cfg(test)]
 mod tests {
 

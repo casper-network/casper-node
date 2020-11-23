@@ -19,7 +19,7 @@ pub const UREF_SERIALIZED_LENGTH: usize = UREF_ADDR_LENGTH + ACCESS_RIGHTS_SERIA
 
 const FORMATTED_STRING_PREFIX: &str = "uref-";
 
-/// The address of a [`URef`](types::URef) (unforgeable reference) on the network.
+/// The address of a `URef` (unforgeable reference) on the network.
 pub type URefAddr = [u8; UREF_ADDR_LENGTH];
 
 /// Error while parsing a URef from a formatted string.

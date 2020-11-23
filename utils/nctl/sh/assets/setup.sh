@@ -53,7 +53,7 @@ function _set_chainspec() {
 
     # Set config.
     path_config=$1/chainspec/chainspec.toml
-    cp $NCTL_CASPER_HOME/resources/local/chainspec.toml $path_config
+    cp $NCTL_CASPER_HOME/resources/local/chainspec.toml.in $path_config
 
     # Set config setting: genesis.name.
     GENESIS_NAME=casper-net-$2
@@ -63,14 +63,14 @@ function _set_chainspec() {
     GENESIS_TIMESTAMP=$(get_genesis_timestamp $3)
     sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = \"${GENESIS_TIMESTAMP}\"/" $path_config > /dev/null 2>&1
 
-    # Set config settings:
+    # Override config settings as all paths need to point relative to nctl's assets dir:
+    #    genesis.accounts_path
     #    genesis.mint_installer_path
     #    genesis.pos_installer_path
     #    genesis.standard_payment_installer_path
     #    genesis.auction_installer_path
-    # These are paths to WASM smart contracts, and they still need to point
-    # relative to nctl's assets dir.
-    sed -i "s?\.\./\.\./target/wasm32-unknown-unknown/release/?../bin/?g" $path_config > /dev/null 2>&1
+    sed -i "s?\${BASEDIR}/target/wasm32-unknown-unknown/release/?../bin/?g" $path_config > /dev/null 2>&1
+    sed -i "s?\${BASEDIR}/resources/local/?./?g" $path_config > /dev/null 2>&1
 
     # Set accounts.csv.
     touch $1/chainspec/accounts.csv
@@ -315,7 +315,7 @@ users=${users:-5}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Execute when inputs are valid.
 if [ $bootstraps -ge $nodes ]; then
