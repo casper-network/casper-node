@@ -506,6 +506,9 @@ impl<C: Context> Highway<C> {
             }
             Vertex::Endorsements(endorsements) => {
                 let unit = *endorsements.unit();
+                if endorsements.endorsers.is_empty() {
+                    return Err(EndorsementError::Empty.into());
+                }
                 for (v_id, signature) in endorsements.endorsers.iter() {
                     let validator = self.validators.id(*v_id).ok_or(EndorsementError::Creator)?;
                     let endorsement: Endorsement<C> = Endorsement::new(unit, *v_id);

@@ -18,7 +18,7 @@ pub(super) use unit::Unit;
 use std::{
     borrow::Borrow,
     cmp::Ordering,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::identity,
     iter,
 };
@@ -200,9 +200,11 @@ pub(crate) struct State<C: Context> {
     /// Panoramas that the protocol observed.
     panoramas: Panoramas<C>,
     /// All currently endorsed units, by hash.
-    endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
+    endorsements: HashMap<C::Hash, ValidatorMap<Option<C::Signature>>>,
     /// Units that don't yet have 2/3 of stake endorsing them.
-    incomplete_endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
+    /// Signatures are stored in a map so that a single validator sending lots of signatures for
+    /// different units doesn't cause us to allocate a lot of memory.
+    incomplete_endorsements: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
     /// Clock to track fork choice
     clock: Clock,
 }
@@ -301,7 +303,12 @@ impl<C: Context> State<C> {
 
     /// Returns endorsements for `unit`, if any.
     pub(crate) fn opt_endorsements(&self, unit: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
-        self.endorsements.get(unit).cloned()
+        self.endorsements.get(unit).map(|signatures| {
+            signatures
+                .iter_some()
+                .map(|(vidx, sig)| SignedEndorsement::new(Endorsement::new(*unit, vidx), *sig))
+                .collect()
+        })
     }
 
     /// Returns whether evidence against validator nr. `idx` is known.
@@ -315,14 +322,13 @@ impl<C: Context> State<C> {
         unit: &C::Hash,
         v_ids: I,
     ) -> bool {
-        self.incomplete_endorsements
-            .get(unit)
-            .map(|v| {
-                v_ids
-                    .into_iter()
-                    .all(|v_id| v.get(v_id.0 as usize).is_some())
-            })
-            .unwrap_or(false)
+        if let Some(sigs) = self.incomplete_endorsements.get(unit) {
+            v_ids.into_iter().all(|v_id| sigs.contains_key(v_id))
+        } else if let Some(sigs) = self.endorsements.get(unit) {
+            v_ids.into_iter().all(|v_id| sigs[*v_id].is_some())
+        } else {
+            v_ids.into_iter().next().is_none()
+        }
     }
 
     /// Returns whether we have seen enough endorsements for the unit.
@@ -450,40 +456,31 @@ impl<C: Context> State<C> {
     /// it will be *upgraded* to fully endorsed.
     pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
         let unit = *endorsements.unit();
-        let validator_count = self.validator_count();
-        info!("Received endorsements of {:?}", unit);
-        {
-            let entry = self
-                .incomplete_endorsements
-                .entry(unit)
-                .or_insert_with(|| Vec::with_capacity(validator_count));
-            for (vid, signature) in endorsements.endorsers {
-                // Add endorsements from validators we haven't seen endorsement yet.
-                if !entry.iter().any(|e| e.validator_idx() == vid) {
-                    let endorsement =
-                        SignedEndorsement::new(Endorsement::new(unit, vid), signature);
-                    entry.push(endorsement)
-                }
-            }
+        if self.endorsements.contains_key(&unit) {
+            return; // We already have a sufficient number of endorsements.
         }
+        info!("Received endorsements of {:?}", unit);
+        self.incomplete_endorsements
+            .entry(unit)
+            .or_default()
+            .extend(endorsements.endorsers);
+        let endorsed: Weight = self.incomplete_endorsements[&unit]
+            .keys()
+            .map(|vidx| self.weight(*vidx))
+            .sum();
         // Stake required to consider unit to be endorsed.
         let threshold = self.total_weight() / 2;
-        let endorsed: Weight = self
-            .incomplete_endorsements
-            .get(&unit)
-            .unwrap()
-            .iter()
-            .map(|e| {
-                let v_id = e.validator_idx();
-                self.weight(v_id)
-            })
-            .sum();
         if endorsed > threshold {
-            info!(%unit, "Unit endorsed by at least 2/3 of validators.");
-            let fully_endorsed = self.incomplete_endorsements.remove(&unit).unwrap();
-            let creator = self.unit(&unit).creator;
-            self.endorsements.insert(unit, fully_endorsed);
+            info!(%unit, "Unit endorsed by at least 1/2 of validators.");
+            let mut fully_endorsed = self.incomplete_endorsements.remove(&unit).unwrap();
+            let endorsed_map = self
+                .weights()
+                .keys()
+                .map(|vidx| fully_endorsed.remove(&vidx))
+                .collect();
+            self.endorsements.insert(unit, endorsed_map);
             // When unit gets endorsed, it becomes safe to cite.
+            let creator = self.unit(&unit).creator;
             self.panoramas.endorsed(creator, unit);
         }
     }
