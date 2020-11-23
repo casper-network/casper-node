@@ -749,7 +749,7 @@ impl<C: Context> State<C> {
         } else if new_obs.is_correct() {
             // Check if citing new unit will make us violate LNC.
             let mut updated_panorama = self.citable_panorama().merge(self, &wunit.panorama);
-            updated_panorama[wunit.creator] = new_obs.clone();
+            updated_panorama[wunit.creator] = new_obs;
             let cites_naively = updated_panorama
                 .enumerate()
                 .filter(|(_, obs)| obs.is_faulty())
