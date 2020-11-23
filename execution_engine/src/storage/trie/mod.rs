@@ -1,9 +1,9 @@
 //! Core types for a Merkle Trie
 
-use std::convert::TryInto;
+use std::{convert::TryInto, mem::MaybeUninit};
 
 use crate::shared::newtypes::Blake2bHash;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 #[cfg(test)]
 pub mod gens;
@@ -52,10 +52,11 @@ impl ToBytes for Pointer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.push(self.tag());
-        ret.extend(self.hash().as_ref());
+        ret.extend_from_slice(self.hash().as_ref());
         Ok(ret)
     }
 
+    #[inline(always)]
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH + Blake2bHash::LENGTH
     }
@@ -78,9 +79,12 @@ impl FromBytes for Pointer {
     }
 }
 
+pub type PointerBlockValue = Option<Pointer>;
+pub type PointerBlockArray = [PointerBlockValue; RADIX];
+
 /// Represents the underlying structure of a node in a Merkle Trie
 #[derive(Copy, Clone)]
-pub struct PointerBlock([Option<Pointer>; RADIX]);
+pub struct PointerBlock(PointerBlockArray);
 
 impl PointerBlock {
     pub fn new() -> Self {
@@ -106,8 +110,8 @@ impl PointerBlock {
     }
 }
 
-impl From<[Option<Pointer>; RADIX]> for PointerBlock {
-    fn from(src: [Option<Pointer>; RADIX]) -> Self {
+impl From<PointerBlockArray> for PointerBlock {
+    fn from(src: PointerBlockArray) -> Self {
         PointerBlock(src)
     }
 }
@@ -129,22 +133,45 @@ impl Default for PointerBlock {
 
 impl ToBytes for PointerBlock {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        for pointer in self.0.iter() {
+            result.append(&mut pointer.to_bytes()?);
+        }
+        Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
+        self.0.iter().map(ToBytes::serialized_length).sum()
     }
 }
 
 impl FromBytes for PointerBlock {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        FromBytes::from_bytes(bytes).map(|(arr, rem)| (PointerBlock(arr), rem))
+    fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let pointer_block_array = {
+            // With MaybeUninit here we can avoid default initialization of result array below.
+            let mut result: MaybeUninit<PointerBlockArray> = MaybeUninit::uninit();
+            let result_ptr = result.as_mut_ptr() as *mut PointerBlockValue;
+            for i in 0..RADIX {
+                let (t, remainder) = match FromBytes::from_bytes(bytes) {
+                    Ok(success) => success,
+                    Err(error) => {
+                        for j in 0..i {
+                            unsafe { result_ptr.add(j).drop_in_place() }
+                        }
+                        return Err(error);
+                    }
+                };
+                unsafe { result_ptr.add(i).write(t) };
+                bytes = remainder;
+            }
+            unsafe { result.assume_init() }
+        };
+        Ok((PointerBlock(pointer_block_array), bytes))
     }
 }
 
 impl core::ops::Index<usize> for PointerBlock {
-    type Output = Option<Pointer>;
+    type Output = PointerBlockValue;
 
     #[inline]
     fn index(&self, index: usize) -> &Self::Output {
@@ -162,40 +189,40 @@ impl core::ops::IndexMut<usize> for PointerBlock {
 }
 
 impl core::ops::Index<core::ops::Range<usize>> for PointerBlock {
-    type Output = [Option<Pointer>];
+    type Output = [PointerBlockValue];
 
     #[inline]
-    fn index(&self, index: core::ops::Range<usize>) -> &[Option<Pointer>] {
+    fn index(&self, index: core::ops::Range<usize>) -> &[PointerBlockValue] {
         let &PointerBlock(ref dat) = self;
         &dat[index]
     }
 }
 
 impl core::ops::Index<core::ops::RangeTo<usize>> for PointerBlock {
-    type Output = [Option<Pointer>];
+    type Output = [PointerBlockValue];
 
     #[inline]
-    fn index(&self, index: core::ops::RangeTo<usize>) -> &[Option<Pointer>] {
+    fn index(&self, index: core::ops::RangeTo<usize>) -> &[PointerBlockValue] {
         let &PointerBlock(ref dat) = self;
         &dat[index]
     }
 }
 
 impl core::ops::Index<core::ops::RangeFrom<usize>> for PointerBlock {
-    type Output = [Option<Pointer>];
+    type Output = [PointerBlockValue];
 
     #[inline]
-    fn index(&self, index: core::ops::RangeFrom<usize>) -> &[Option<Pointer>] {
+    fn index(&self, index: core::ops::RangeFrom<usize>) -> &[PointerBlockValue] {
         let &PointerBlock(ref dat) = self;
         &dat[index]
     }
 }
 
 impl core::ops::Index<core::ops::RangeFull> for PointerBlock {
-    type Output = [Option<Pointer>];
+    type Output = [PointerBlockValue];
 
     #[inline]
-    fn index(&self, index: core::ops::RangeFull) -> &[Option<Pointer>] {
+    fn index(&self, index: core::ops::RangeFull) -> &[PointerBlockValue] {
         let &PointerBlock(ref dat) = self;
         &dat[index]
     }
@@ -219,7 +246,7 @@ impl ::std::fmt::Debug for PointerBlock {
 pub enum Trie<K, V> {
     Leaf { key: K, value: V },
     Node { pointer_block: Box<PointerBlock> },
-    Extension { affix: Vec<u8>, pointer: Pointer },
+    Extension { affix: Bytes, pointer: Pointer },
 }
 
 impl<K, V> Trie<K, V> {
@@ -245,7 +272,10 @@ impl<K, V> Trie<K, V> {
 
     /// Constructs a [`Trie::Extension`] from a given affix and pointer.
     pub fn extension(affix: Vec<u8>, pointer: Pointer) -> Self {
-        Trie::Extension { affix, pointer }
+        Trie::Extension {
+            affix: affix.into(),
+            pointer,
+        }
     }
 
     pub fn key(&self) -> Option<&K> {
@@ -312,7 +342,7 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
                 ))
             }
             2 => {
-                let (affix, rem) = Vec::<u8>::from_bytes(rem)?;
+                let (affix, rem) = FromBytes::from_bytes(rem)?;
                 let (pointer, rem) = Pointer::from_bytes(rem)?;
                 Ok((Trie::Extension { affix, pointer }, rem))
             }

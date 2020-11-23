@@ -15,5 +15,5 @@ pub fn delegate() {
     let account_hash: AccountHash = runtime::get_named_arg(ARG_TARGET);
     let transfer_amount: u64 = runtime::get_named_arg(ARG_AMOUNT);
     let u512_motes = U512::from(transfer_amount);
-    system::transfer_to_account(account_hash, u512_motes).unwrap_or_revert();
+    system::transfer_to_account(account_hash, u512_motes, None).unwrap_or_revert();
 }

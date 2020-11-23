@@ -19,7 +19,7 @@ use crate::{
             ConsensusMessage, EraId, Event,
         },
     },
-    types::Timestamp,
+    types::{TimeDiff, Timestamp},
     NodeRng,
 };
 
@@ -95,6 +95,10 @@ where
     faulty: BTreeSet<C::ValidatorId>,
     /// This validator's ID and secret key, if active.
     active_validator: Option<(C::ValidatorId, C::ValidatorSecret)>,
+    /// The era length, in minimum duration and height.
+    era_length: (TimeDiff, u64),
+    /// The era's start time.
+    start_time: Timestamp,
     pending_blocks: VecDeque<PendingBlock<C>>,
     finalized_blocks: Vec<FinalizedBlock<C>>,
 }
@@ -108,16 +112,19 @@ where
         instance_id: C::InstanceId,
         _validator_stakes: Vec<(C::ValidatorId, Motes)>,
         slashed: &HashSet<C::ValidatorId>,
-        _chainspec: &Chainspec,
+        chainspec: &Chainspec,
         _prev_cp: Option<&dyn ConsensusProtocol<NodeId, C>>,
-        _start_time: Timestamp,
+        start_time: Timestamp,
         _seed: u64,
     ) -> Box<dyn ConsensusProtocol<NodeId, C>> {
+        let hw_config = &chainspec.genesis.highway_config;
         Box::new(MockProto {
             instance_id,
             evidence: Default::default(),
             faulty: slashed.iter().cloned().collect(),
             active_validator: None,
+            era_length: (hw_config.era_duration, hw_config.minimum_era_height),
+            start_time,
             pending_blocks: Default::default(),
             finalized_blocks: Default::default(),
         })
@@ -184,12 +191,20 @@ where
                     .pop_front()
                     .expect("should have pending blocks when handling FinalizeBlock");
                 assert!(valid, "finalized block must be validated first");
+                let height = self.finalized_blocks.len() as u64;
+                let rewards = if timestamp >= self.start_time + self.era_length.0
+                    && height + 1 >= self.era_length.1
+                {
+                    Some(Default::default())
+                } else {
+                    None
+                };
                 let fb = FinalizedBlock {
                     value,
                     timestamp,
-                    height: self.finalized_blocks.len() as u64,
-                    rewards: Default::default(),
-                    equivocators: Default::default(),
+                    height,
+                    rewards,
+                    equivocators: Default::default(), // TODO
                     proposer,
                 };
                 self.finalized_blocks.push(fb.clone());

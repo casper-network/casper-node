@@ -13,6 +13,7 @@ use casper_contract::{
 };
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
+    bytesrepr::Bytes,
     contracts::NamedKeys,
     runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
@@ -76,7 +77,7 @@ fn truncate_named_keys(named_keys: NamedKeys, rng: &mut SmallRng) -> NamedKeys {
 // `storage` module.
 fn large_function() {
     let seed: u64 = runtime::get_named_arg(ARG_SEED);
-    let random_bytes: Vec<u8> = runtime::get_named_arg(ARG_BYTES);
+    let random_bytes: Bytes = runtime::get_named_arg(ARG_BYTES);
 
     let uref = storage::new_uref(random_bytes.clone());
 
@@ -103,7 +104,7 @@ fn large_function() {
     }
 
     storage::write(uref, random_bytes.clone());
-    let retrieved_value: Vec<u8> = storage::read_or_revert(uref);
+    let retrieved_value: Bytes = storage::read_or_revert(uref);
     if retrieved_value != random_bytes {
         runtime::revert(Error::ReadOrRevert);
     }
@@ -192,17 +193,18 @@ pub extern "C" fn call() {
     let new_purse = system::create_purse();
 
     let transfer_amount = U512::from(TRANSFER_AMOUNT);
-    system::transfer_from_purse_to_purse(main_purse, new_purse, transfer_amount).unwrap_or_revert();
+    system::transfer_from_purse_to_purse(main_purse, new_purse, transfer_amount, None)
+        .unwrap_or_revert();
 
     let balance = system::get_balance(new_purse).unwrap_or_revert();
     if balance != transfer_amount {
         runtime::revert(Error::Transfer);
     }
 
-    system::transfer_from_purse_to_account(new_purse, destination_account, transfer_amount)
+    system::transfer_from_purse_to_account(new_purse, destination_account, transfer_amount, None)
         .unwrap_or_revert();
 
-    system::transfer_to_account(destination_account, transfer_amount).unwrap_or_revert();
+    system::transfer_to_account(destination_account, transfer_amount, None).unwrap_or_revert();
 
     // ========== remaining functions from `runtime` module ========================================
 

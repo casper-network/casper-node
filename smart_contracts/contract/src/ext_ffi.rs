@@ -85,20 +85,18 @@ extern "C" {
     /// * `value_ptr` - pointer to bytes representing the value to write at the key
     /// * `value_size` - size of the value (in bytes)
     pub fn casper_add(key_ptr: *const u8, key_size: usize, value_ptr: *const u8, value_size: usize);
-    /// This function causes the runtime to generate a new [`casper_types::uref::URef`], with
+    /// This function causes the runtime to generate a new `URef`, with
     /// the provided value stored under it in the global state. The new
-    /// [`casper_types::uref::URef`] is written (in serialized form) to the wasm linear
+    /// `URef` is written (in serialized form) to the wasm linear
     /// memory starting from the `key_ptr` offset. Note that data corruption is possible if not
-    /// enough memory is allocated for the [`casper_types::uref::URef`] at `key_ptr`. This
+    /// enough memory is allocated for the `URef` at `key_ptr`. This
     /// function will cause a `Trap` if the bytes in wasm memory from offset `value_ptr` to
     /// `value_ptr + value_size` cannot be de-serialized into a `Value`.
     ///
     /// # Arguments
     ///
-    /// * `key_ptr` - pointer to the offset in wasm memory where the new
-    ///   [`casper_types::uref::URef`] will be written
-    /// * `value_ptr` - pointer to bytes representing the value to write under the new
-    ///   [`casper_types::uref::URef`]
+    /// * `key_ptr` - pointer to the offset in wasm memory where the new `URef` will be written
+    /// * `value_ptr` - pointer to bytes representing the value to write under the new `URef`
     /// * `value_size` - size of the value (in bytes)
     pub fn casper_new_uref(uref_ptr: *mut u8, value_ptr: *const u8, value_size: usize);
     ///
@@ -107,11 +105,11 @@ extern "C" {
     /// but first copies the bytes from `value_ptr` to `value_ptr + value_size` to
     /// a buffer which is returned to the calling module (if this module was
     /// invoked by [`casper_call_contract`] or [`casper_call_versioned_contract`]). Additionally,
-    /// the known [`casper_types::uref::URef`]s of the calling context are augmented with the
-    /// [`casper_types::uref::URef`]s de-serialized from wasm memory offset
+    /// the known `URef`s of the calling context are augmented with the
+    /// `URef`s de-serialized from wasm memory offset
     /// `extra_urefs_ptr` to `extra_urefs_ptr + extra_urefs_size`. This function will cause a
     /// `Trap` if the bytes at `extra_urefs_ptr` cannot be de-serialized as type `Vec<URef>`, or
-    /// if any of the extra [`casper_types::uref::URef`]s are invalid in the current
+    /// if any of the extra `URef`s are invalid in the current
     /// context.
     ///
     /// # Arguments
@@ -151,7 +149,7 @@ extern "C" {
     pub fn casper_revert(status: u32) -> !;
     /// This function checks if all the keys contained in the given `Value` are
     /// valid in the current context (i.e. the `Value` does not contain any forged
-    /// [`casper_types::uref::URef`]s). This function causes a `Trap` if the bytes in wasm
+    /// `URef`s). This function causes a `Trap` if the bytes in wasm
     /// memory from offset `value_ptr` to `value_ptr + value_size` cannot be de-serialized as
     /// type `Value`.
     pub fn casper_is_valid_uref(uref_ptr: *const u8, uref_size: usize) -> i32;
@@ -270,7 +268,7 @@ extern "C" {
     /// * `dest_ptr` - pointer in wasm memory where to write the result
     pub fn casper_get_blocktime(dest_ptr: *const u8);
     /// This function uses the mint contract to create a new, empty purse. If the
-    /// call is successful then the [`casper_types::uref::URef`] (in serialized form) is written
+    /// call is successful then the `URef` (in serialized form) is written
     /// to the indicated place in wasm memory. It is up to the caller to ensure at
     /// least `purse_size` bytes are allocated at `purse_ptr`, otherwise
     /// data corruption may occur. This function causes a `Trap` if
@@ -278,9 +276,8 @@ extern "C" {
     ///
     /// # Arguments
     ///
-    /// * `purse_ptr` - pointer to position in wasm memory where to write the created
-    ///   [`casper_types::uref::URef`]
-    /// * `purse_size` - allocated size for the [`casper_types::uref::URef`]
+    /// * `purse_ptr` - pointer to position in wasm memory where to write the created `URef`
+    /// * `purse_size` - allocated size for the `URef`
     pub fn casper_create_purse(purse_ptr: *const u8, purse_size: usize) -> i32;
     /// This function uses the mint contract’s transfer function to transfer
     /// tokens from the current account’s main purse to the main purse of the
@@ -306,22 +303,26 @@ extern "C" {
     /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
     ///   target account
     /// * `amount_size` - size of the amount (in bytes)
+    /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
+    /// * `id_size` - size of the id (in bytes)
     pub fn casper_transfer_to_account(
         target_ptr: *const u8,
         target_size: usize,
         amount_ptr: *const u8,
         amount_size: usize,
+        id_ptr: *const u8,
+        id_size: usize,
     ) -> i32;
     /// This function uses the mint contract’s transfer function to transfer
     /// tokens from the specified purse to the main purse of the target account.
     /// If the target account does not exist then it is automatically created, and
     /// the tokens are transferred to the main purse of the new account. The
-    /// source is a serialized [`casper_types::uref::URef`].
+    /// source is a serialized `URef`.
     /// The target is a serialized `PublicKey` (i.e. 36 bytes where the
     /// first 4 bytes are the number `32` in little endian encoding, and the
     /// remaining 32-bytes are the public key). The amount must be a serialized
     /// 512-bit unsigned integer. This function causes a `Trap` if the source
-    /// cannot be de-serialized as a [`casper_types::uref::URef`], or the target cannot be
+    /// cannot be de-serialized as a `URef`, or the target cannot be
     /// de-serialized as a `PublicKey` or the amount cannot be de-serialized into
     /// a `U512`. The return value indicated what occurred, where 0 means a
     /// successful transfer to an existing account, 1 means a successful transfer
@@ -331,15 +332,17 @@ extern "C" {
     ///
     /// # Arguments
     ///
-    /// * `source_ptr` - pointer in wasm memory to bytes representing the source
-    ///   [`casper_types::uref::URef`] to transfer from
-    /// * `source_size` - size of the source [`casper_types::uref::URef`] (in bytes)
+    /// * `source_ptr` - pointer in wasm memory to bytes representing the source `URef` to transfer
+    ///   from
+    /// * `source_size` - size of the source `URef` (in bytes)
     /// * `target_ptr` - pointer in wasm memory to bytes representing the target account to transfer
     ///   to
     /// * `target_size` - size of the target (in bytes)
     /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
     ///   target account
     /// * `amount_size` - size of the amount (in bytes)
+    /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
+    /// * `id_size` - size of the id (in bytes)
     pub fn casper_transfer_from_purse_to_account(
         source_ptr: *const u8,
         source_size: usize,
@@ -347,15 +350,17 @@ extern "C" {
         target_size: usize,
         amount_ptr: *const u8,
         amount_size: usize,
+        id_ptr: *const u8,
+        id_size: usize,
     ) -> i32;
     /// This function uses the mint contract’s transfer function to transfer
     /// tokens from the specified source purse to the specified target purse. If
     /// the target account does not exist then it is automatically created, and
     /// the tokens are transferred to the main purse of the new account. The
-    /// source is a serialized [`casper_types::uref::URef`].
-    /// The target is also a serialized [`casper_types::uref::URef`]. The amount must be a
+    /// source is a serialized `URef`.
+    /// The target is also a serialized `URef`. The amount must be a
     /// serialized 512-bit unsigned integer. This function causes a `Trap` if the
-    /// source or target cannot be de-serialized as a [`casper_types::uref::URef`] or the amount
+    /// source or target cannot be de-serialized as a `URef` or the amount
     /// cannot be de-serialized into a `U512`. The return value indicated what
     /// occurred, where 0 means a successful transfer, 1 means the transfer
     /// failed (this could be because the source purse had insufficient tokens or
@@ -363,15 +368,17 @@ extern "C" {
     ///
     /// # Arguments
     ///
-    /// * `source_ptr` - pointer in wasm memory to bytes representing the source
-    ///   [`casper_types::uref::URef`] to transfer from
-    /// * `source_size` - size of the source [`casper_types::uref::URef`] (in bytes)
-    /// * `target_ptr` - pointer in wasm memory to bytes representing the target
-    ///   [`casper_types::uref::URef`] to transfer to
+    /// * `source_ptr` - pointer in wasm memory to bytes representing the source `URef` to transfer
+    ///   from
+    /// * `source_size` - size of the source `URef` (in bytes)
+    /// * `target_ptr` - pointer in wasm memory to bytes representing the target `URef` to transfer
+    ///   to
     /// * `target_size` - size of the target (in bytes)
     /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
     ///   target account
     /// * `amount_size` - size of the amount (in bytes)
+    /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
+    /// * `id_size` - size of the id (in bytes)
     pub fn casper_transfer_from_purse_to_purse(
         source_ptr: *const u8,
         source_size: usize,
@@ -379,21 +386,25 @@ extern "C" {
         target_size: usize,
         amount_ptr: *const u8,
         amount_size: usize,
+        id_ptr: *const u8,
+        id_size: usize,
     ) -> i32;
     /// Records a transfer.  Can only be called from within the mint contract.
     /// Needed to support system contract-based execution.
     ///
     /// # Arguments
     ///
-    /// * `source_ptr` - pointer in wasm memory to bytes representing the source
-    ///   [`casper_types::uref::URef`] to transfer from
-    /// * `source_size` - size of the source [`casper_types::uref::URef`] (in bytes)
-    /// * `target_ptr` - pointer in wasm memory to bytes representing the target
-    ///   [`casper_types::uref::URef`] to transfer to
+    /// * `source_ptr` - pointer in wasm memory to bytes representing the source `URef` to transfer
+    ///   from
+    /// * `source_size` - size of the source `URef` (in bytes)
+    /// * `target_ptr` - pointer in wasm memory to bytes representing the target `URef` to transfer
+    ///   to
     /// * `target_size` - size of the target (in bytes)
     /// * `amount_ptr` - pointer in wasm memory to bytes representing the amount to transfer to the
     ///   target account
     /// * `amount_size` - size of the amount (in bytes)
+    /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
+    /// * `id_size` - size of the id (in bytes)
     pub fn casper_record_transfer(
         source_ptr: *const u8,
         source_size: usize,
@@ -401,11 +412,13 @@ extern "C" {
         target_size: usize,
         amount_ptr: *const u8,
         amount_size: usize,
+        id_ptr: *const u8,
+        id_size: usize,
     ) -> i32;
     /// This function uses the mint contract's balance function to get the balance
     /// of the specified purse. It causes a `Trap` if the bytes in wasm memory
     /// from `purse_ptr` to `purse_ptr + purse_size` cannot be
-    /// de-serialized as a [`casper_types::uref::URef`]. The return value is the size of the
+    /// de-serialized as a `URef`. The return value is the size of the
     /// result in bytes. The result is copied to the host buffer and thus can be obtained
     /// by any function which copies the buffer into wasm memory (e.g.
     /// `get_read`). The result bytes are serialized from type `Option<U512>` and
@@ -413,9 +426,9 @@ extern "C" {
     ///
     /// # Arguments
     ///
-    /// * `purse_ptr` - pointer in wasm memory to the bytes representing the
-    ///   [`casper_types::uref::URef`] of the purse to get the balance of
-    /// * `purse_size` - size of the [`casper_types::uref::URef`] (in bytes)
+    /// * `purse_ptr` - pointer in wasm memory to the bytes representing the `URef` of the purse to
+    ///   get the balance of
+    /// * `purse_size` - size of the `URef` (in bytes)
     pub fn casper_get_balance(
         purse_ptr: *const u8,
         purse_size: usize,

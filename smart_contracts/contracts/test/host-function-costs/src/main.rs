@@ -14,6 +14,7 @@ use casper_contract::{
 };
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
+    bytesrepr::Bytes,
     contracts::NamedKeys,
     runtime_args, ApiError, BlockTime, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
@@ -124,7 +125,7 @@ pub extern "C" fn llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll
 
 #[no_mangle]
 pub extern "C" fn arg_size_function() {
-    let _bytes: Vec<u8> = runtime::get_named_arg(ARG_BYTES);
+    let _bytes: Bytes = runtime::get_named_arg(ARG_BYTES);
 }
 
 // Executes the named key functions from the `runtime` module and most of the functions from the
@@ -132,7 +133,7 @@ pub extern "C" fn arg_size_function() {
 #[no_mangle]
 pub extern "C" fn storage_function() {
     let key_name: String = runtime::get_named_arg(ARG_KEY_NAME);
-    let random_bytes: Vec<u8> = runtime::get_named_arg(ARG_BYTES);
+    let random_bytes: Bytes = runtime::get_named_arg(ARG_BYTES);
 
     let uref = storage::new_uref(random_bytes.clone());
 
@@ -154,7 +155,7 @@ pub extern "C" fn storage_function() {
     }
 
     storage::write(uref, random_bytes.clone());
-    let retrieved_value: Vec<u8> = storage::read_or_revert(uref);
+    let retrieved_value: Bytes = storage::read_or_revert(uref);
     if retrieved_value != random_bytes {
         runtime::revert(Error::ReadOrRevert);
     }
@@ -193,17 +194,23 @@ pub extern "C" fn account_function() {
     let new_purse = system::create_purse();
 
     let transfer_amount = U512::from(TRANSFER_AMOUNT);
-    system::transfer_from_purse_to_purse(main_purse, new_purse, transfer_amount).unwrap_or_revert();
+    system::transfer_from_purse_to_purse(main_purse, new_purse, transfer_amount, None)
+        .unwrap_or_revert();
 
     let balance = system::get_balance(new_purse).unwrap_or_revert();
     if balance != transfer_amount {
         runtime::revert(Error::Transfer);
     }
 
-    system::transfer_from_purse_to_account(new_purse, DESTINATION_ACCOUNT_HASH, transfer_amount)
-        .unwrap_or_revert();
+    system::transfer_from_purse_to_account(
+        new_purse,
+        DESTINATION_ACCOUNT_HASH,
+        transfer_amount,
+        None,
+    )
+    .unwrap_or_revert();
 
-    system::transfer_to_account(DESTINATION_ACCOUNT_HASH, transfer_amount).unwrap_or_revert();
+    system::transfer_to_account(DESTINATION_ACCOUNT_HASH, transfer_amount, None).unwrap_or_revert();
 
     // ========== remaining functions from `runtime` module ========================================
 

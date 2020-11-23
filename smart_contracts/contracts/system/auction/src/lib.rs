@@ -58,7 +58,8 @@ impl SystemProvider for AuctionContract {
         target: URef,
         amount: U512,
     ) -> StdResult<(), Error> {
-        system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| Error::Transfer)
+        system::transfer_from_purse_to_purse(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 }
 
@@ -87,7 +88,7 @@ impl MintProvider for AuctionContract {
         target: AccountHash,
         amount: U512,
     ) -> TransferResult {
-        system::transfer_from_purse_to_account(source, target, amount)
+        system::transfer_from_purse_to_account(source, target, amount, None)
     }
 
     fn transfer_purse_to_purse(
@@ -96,7 +97,8 @@ impl MintProvider for AuctionContract {
         target: URef,
         amount: U512,
     ) -> Result<(), Error> {
-        system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| Error::Transfer)
+        system::transfer_from_purse_to_purse(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
     fn balance(&mut self, purse: URef) -> Option<U512> {

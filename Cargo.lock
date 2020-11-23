@@ -793,7 +793,6 @@ dependencies = [
  "rand 0.7.3",
  "serde_json",
  "tempfile",
- "wabt",
 ]
 
 [[package]]
@@ -836,7 +835,6 @@ dependencies = [
  "tracing",
  "uint",
  "uuid",
- "wabt",
  "wasmi",
 ]
 
@@ -927,7 +925,6 @@ dependencies = [
  "untrusted",
  "uuid",
  "vergen",
- "wabt",
  "warp",
  "warp-json-rpc",
  "wasmi",
@@ -963,6 +960,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "serde_test",
  "uint",
  "version-sync",
 ]
@@ -1090,15 +1088,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4344512281c643ae7638bbabc3af17a11307803ec8f0fcad9fae512a8bf36467"
 dependencies = [
  "bitflags 1.2.1",
-]
-
-[[package]]
-name = "cmake"
-version = "0.1.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e56268c17a6248366d66d4a47a3381369d068cce8409bb1716ed77ea32163bb"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -5278,6 +5267,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_test"
+version = "1.0.117"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9a49e2f787c0fddfd5e758cbbd3cbf81c3a8d12ef091283c52d9e9b4d417d3c"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_urlencoded"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6266,6 +6264,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "transfer-purse-to-account-with-id"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "transfer-purse-to-accounts"
 version = "0.1.0"
 dependencies = [
@@ -6605,29 +6611,6 @@ name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
-
-[[package]]
-name = "wabt"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00bef93d5e6c81a293bccf107cf43aa47239382f455ba14869d36695d8963b9c"
-dependencies = [
- "serde",
- "serde_derive",
- "serde_json",
- "wabt-sys",
-]
-
-[[package]]
-name = "wabt-sys"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a4e043159f63e16986e713e9b5e1c06043df4848565bf672e27c523864c7791"
-dependencies = [
- "cc",
- "cmake",
- "glob",
-]
 
 [[package]]
 name = "wait-timeout"

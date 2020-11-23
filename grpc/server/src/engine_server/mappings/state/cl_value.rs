@@ -10,7 +10,7 @@ impl From<CLValue> for state::CLValue {
 
         let mut pb_value = state::CLValue::new();
         pb_value.set_cl_type(cl_type.into());
-        pb_value.set_serialized_value(bytes);
+        pb_value.set_serialized_value(bytes.into());
 
         pb_value
     }

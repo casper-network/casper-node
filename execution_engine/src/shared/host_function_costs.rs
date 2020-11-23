@@ -2,12 +2,14 @@ use datasize::DataSize;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
 use super::gas::Gas;
 
 /// Representation of argument's cost.
 pub type Cost = u32;
+
+const COST_SERIALIZED_LENGTH: usize = U32_SERIALIZED_LENGTH;
 
 /// An identifier that represents an unused argument.
 const NOT_USED: Cost = 0;
@@ -148,27 +150,35 @@ where
 
 impl<T> ToBytes for HostFunction<T>
 where
-    T: ToBytes + AsRef<[Cost]>,
+    T: AsRef<[Cost]>,
 {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.cost.to_bytes()?);
-        ret.append(&mut self.arguments.to_bytes()?);
+        for value in self.arguments.as_ref().iter() {
+            ret.append(&mut value.to_bytes()?);
+        }
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
-        self.cost.serialized_length() + self.arguments.serialized_length()
+        self.cost.serialized_length() + (COST_SERIALIZED_LENGTH * self.arguments.as_ref().len())
     }
 }
 
 impl<T> FromBytes for HostFunction<T>
 where
-    T: FromBytes + Default,
+    T: Default + AsMut<[Cost]>,
 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (cost, bytes) = FromBytes::from_bytes(bytes)?;
-        let (arguments, bytes) = FromBytes::from_bytes(bytes)?;
+        let (cost, mut bytes) = FromBytes::from_bytes(bytes)?;
+        let mut arguments = T::default();
+        let arguments_mut = arguments.as_mut();
+        for ith_argument in arguments_mut {
+            let (cost, rem) = FromBytes::from_bytes(bytes)?;
+            *ith_argument = cost;
+            bytes = rem;
+        }
         Ok((Self { cost, arguments }, bytes))
     }
 }
@@ -196,9 +206,9 @@ pub struct HostFunctionCosts {
     pub get_caller: HostFunction<[Cost; 1]>,
     pub get_blocktime: HostFunction<[Cost; 1]>,
     pub create_purse: HostFunction<[Cost; 2]>,
-    pub transfer_to_account: HostFunction<[Cost; 4]>,
-    pub transfer_from_purse_to_account: HostFunction<[Cost; 6]>,
-    pub transfer_from_purse_to_purse: HostFunction<[Cost; 6]>,
+    pub transfer_to_account: HostFunction<[Cost; 6]>,
+    pub transfer_from_purse_to_account: HostFunction<[Cost; 8]>,
+    pub transfer_from_purse_to_purse: HostFunction<[Cost; 8]>,
     pub get_balance: HostFunction<[Cost; 3]>,
     pub get_phase: HostFunction<[Cost; 1]>,
     pub get_system_contract: HostFunction<[Cost; 3]>,

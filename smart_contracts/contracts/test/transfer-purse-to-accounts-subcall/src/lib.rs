@@ -18,10 +18,10 @@ const HASH_KEY_NAME: &str = "transfer_purse_to_accounts_hash";
 
 pub fn delegate() {
     let source: URef = runtime::get_named_arg(ARG_SOURCE);
-    let targets: BTreeMap<AccountHash, U512> = runtime::get_named_arg(ARG_TARGETS);
+    let targets: BTreeMap<AccountHash, (U512, Option<u64>)> = runtime::get_named_arg(ARG_TARGETS);
 
-    for (target, amount) in &targets {
-        system::transfer_from_purse_to_account(source, *target, *amount).unwrap_or_revert();
+    for (target, (amount, id)) in &targets {
+        system::transfer_from_purse_to_account(source, *target, *amount, *id).unwrap_or_revert();
     }
 
     let contract_hash = runtime::get_key(HASH_KEY_NAME)

@@ -35,7 +35,7 @@ where
         amount: U512,
     ) -> Result<(), ApiError> {
         let mint_contract_hash = self.get_mint_contract();
-        self.mint_transfer(mint_contract_hash, source, target, amount)
+        self.mint_transfer(mint_contract_hash, source, target, amount, None)
             .map_err(|error| match error {
                 execution::Error::SystemContract(system_contract_errors::Error::Mint(
                     mint_error,

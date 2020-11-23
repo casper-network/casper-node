@@ -123,9 +123,6 @@ pub fn cl_type_arb() -> impl Strategy<Value = CLType> {
                 .clone()
                 .prop_map(|val| CLType::Option(Box::new(val))),
             element.clone().prop_map(|val| CLType::List(Box::new(val))),
-            // Fixed lists of any size
-            (element.clone(), 1u32..32u32)
-                .prop_map(|(cl_type, len)| CLType::FixedList(Box::new(cl_type), len)),
             // Realistic Result type generator: ok is anything recursive, err is simple type
             (element.clone(), cl_simple_type_arb()).prop_map(|(ok, err)| CLType::Result {
                 ok: Box::new(ok),
@@ -177,7 +174,7 @@ pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
             | CLType::PublicKey
             | CLType::Option(_)
             | CLType::List(_)
-            | CLType::FixedList(..)
+            | CLType::ByteArray(..)
             | CLType::Result { .. }
             | CLType::Map { .. }
             | CLType::Tuple1(_)
@@ -203,7 +200,6 @@ pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
         ".*".prop_map(|x: String| CLValue::from_t(x).expect("should create CLValue")),
         option::of(any::<u64>()).prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         vec(uref_arb(), 0..100).prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
-        [any::<u64>(); 32].prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         result::maybe_err(key_arb(), ".*")
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         btree_map(".*", u512_arb(), 0..100)
@@ -213,6 +209,8 @@ pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         (any::<bool>(), any::<i32>(), any::<i64>())
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
+        // Fixed lists of any size
+        any::<u8>().prop_map(|len| CLValue::from_t([len; 32]).expect("should create CLValue")),
     ]
 }
 

@@ -11,7 +11,7 @@ use crate::core::{Address, ADDRESS_LENGTH};
 
 const SEED_LENGTH: usize = 32;
 
-/// An [`AddressGenerator`] generates [`URef`](types::URef) addresses.
+/// An `AddressGenerator` generates `URef` addresses.
 pub struct AddressGenerator(ChaChaRng);
 
 impl AddressGenerator {
