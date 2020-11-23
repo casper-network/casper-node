@@ -1,5 +1,6 @@
-use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
 use parity_wasm::{builder, elements::Module};
+
+use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
 
 use crate::shared::wasm_prep::{PreprocessingError, Preprocessor};
 

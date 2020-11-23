@@ -1,4 +1,5 @@
 //! Contains serialization and deserialization code for types used throughout the system.
+mod bytes;
 
 // Can be removed once https://github.com/rust-lang/rustfmt/issues/3362 is resolved.
 #[rustfmt::skip]
@@ -18,8 +19,6 @@ use failure::Fail;
 use num_integer::Integer;
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
-
-mod bytes;
 
 pub use bytes::Bytes;
 

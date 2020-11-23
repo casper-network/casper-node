@@ -148,6 +148,7 @@ impl ToBytes for PointerBlock {
 impl FromBytes for PointerBlock {
     fn from_bytes(mut bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let pointer_block_array = {
+            // With MaybeUninit here we can avoid default initialization of result array below.
             let mut result: MaybeUninit<PointerBlockArray> = MaybeUninit::uninit();
             let result_ptr = result.as_mut_ptr() as *mut PointerBlockValue;
             for i in 0..RADIX {

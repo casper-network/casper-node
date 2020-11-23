@@ -200,7 +200,6 @@ pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
         ".*".prop_map(|x: String| CLValue::from_t(x).expect("should create CLValue")),
         option::of(any::<u64>()).prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         vec(uref_arb(), 0..100).prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
-        // [any::<u64>(); 32].prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         result::maybe_err(key_arb(), ".*")
             .prop_map(|x| CLValue::from_t(x).expect("should create CLValue")),
         btree_map(".*", u512_arb(), 0..100)
