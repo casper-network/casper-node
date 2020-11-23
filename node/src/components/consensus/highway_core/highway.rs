@@ -275,10 +275,8 @@ impl<C: Context> Highway<C> {
             Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
             Vertex::Endorsements(endorsements) => {
                 let unit = endorsements.unit();
-                self.state.is_endorsed(unit)
-                    || self
-                        .state
-                        .has_all_endorsements(unit, endorsements.validator_ids())
+                self.state
+                    .has_all_endorsements(unit, endorsements.validator_ids())
             }
         }
     }

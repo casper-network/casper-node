@@ -322,10 +322,10 @@ impl<C: Context> State<C> {
         unit: &C::Hash,
         v_ids: I,
     ) -> bool {
-        if let Some(sigs) = self.incomplete_endorsements.get(unit) {
-            v_ids.into_iter().all(|v_id| sigs.contains_key(v_id))
-        } else if let Some(sigs) = self.endorsements.get(unit) {
+        if let Some(sigs) = self.endorsements.get(unit) {
             v_ids.into_iter().all(|v_id| sigs[*v_id].is_some())
+        } else if let Some(sigs) = self.incomplete_endorsements.get(unit) {
+            v_ids.into_iter().all(|v_id| sigs.contains_key(v_id))
         } else {
             v_ids.into_iter().next().is_none()
         }
