@@ -21,7 +21,7 @@ pub fn delegate() {
     let target: AccountHash = runtime::get_named_arg(ARG_TARGET);
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
-    let transfer_result = system::transfer_from_purse_to_account(source, target, amount);
+    let transfer_result = system::transfer_from_purse_to_account(source, target, amount, None);
 
     let final_balance = system::get_balance(source).unwrap_or_revert_with(ApiError::User(103));
 

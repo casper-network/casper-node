@@ -16,7 +16,7 @@ enum Error {
 }
 
 fn create_account_with_amount(account: AccountHash, amount: U512) {
-    match system::transfer_to_account(account, amount) {
+    match system::transfer_to_account(account, amount, None) {
         Ok(TransferredTo::NewAccount) => (),
         Ok(TransferredTo::ExistingAccount) => {
             runtime::revert(ApiError::User(Error::AccountAlreadyExists as u16))

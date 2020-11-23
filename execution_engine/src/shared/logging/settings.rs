@@ -26,8 +26,8 @@ impl Settings {
         }
     }
 
-    /// If `true`, log messages created via [`log_metric()`](crate::logging::log_metric) and
-    /// [`log_duration()`](crate::logging::log_duration) are logged, regardless of the log-level.
+    /// If `true`, log messages created via `log_metric()` and
+    /// `log_duration()` are logged, regardless of the log-level.
     pub fn with_metrics_enabled(mut self, value: bool) -> Self {
         self.enable_metrics = value;
         self

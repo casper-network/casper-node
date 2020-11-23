@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 #
-# Dispatches wasm transfers to a test net.
+# Dispatches wasmless transfers to a test net.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   User ordinal identifier.
-#   Transfer dispatch count.
-#   Transfer dispatch interval.
+#   Network ordinal identifier (optional).
+#   Node ordinal identifier (optional).
+#   User ordinal identifier (optional).
+#   Transfer amount (optional).
+#   Transfer dispatch count (optional).
+#   Transfer dispatch interval (optional).
+#   Gas price (optional).
+#   Gas payment (optional).
 
 #######################################
 # Destructure input args.
@@ -56,7 +59,7 @@ user=${user:-1}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Import vars.
 source $(get_path_to_net_vars $net)
@@ -65,19 +68,15 @@ source $(get_path_to_net_vars $net)
 cp1_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_FAUCET)
 cp1_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_FAUCET)
 cp2_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $user)
-cp2_account_hash=$(get_account_hash $cp2_public_key)
-path_contract=$(get_path_to_contract $net "transfer_to_account_u512.wasm")
 
 # Inform.
-log "dispatching $transfers wasm transfers"
+log "dispatching $transfers wasmless transfers"
 log "... network=$net"
 log "... node=$node"
 log "... transfer amount=$amount"
-log "... transfer contract=$path_contract"
 log "... transfer interval=$transfer_interval (s)"
 log "... counter-party 1 public key=$cp1_public_key"
 log "... counter-party 2 public key=$cp2_public_key"
-log "... counter-party 2 account hash=$cp2_account_hash"
 if [ $transfers -le 10 ]; then
     log "... dispatched deploys:"
 fi
@@ -85,16 +84,15 @@ fi
 # Deploy dispatcher.
 function _dispatch_deploy() {
     echo $(
-        $(get_path_to_client $net) put-deploy \
-            --chain-name casper-net-$net \
+        $(get_path_to_client $net) transfer \
+            --chain-name $(get_chain_name $net) \
             --gas-price $gas \
             --node-address $node_address \
             --payment-amount $payment \
             --secret-key $cp1_secret_key \
-            --session-arg "amount:u512='$amount'" \
-            --session-arg "target:account_hash='account-hash-$cp2_account_hash'" \
-            --session-path $path_contract \
             --ttl "1day" \
+            --amount $amount \
+            --target-account $cp2_public_key \
             | jq '.result.deploy_hash' \
             | sed -e 's/^"//' -e 's/"$//'
         )
@@ -132,3 +130,4 @@ else
         sleep $transfer_interval
     done
 fi
+

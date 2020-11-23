@@ -13,6 +13,7 @@ use casper_types::{
 
 const TRANSFER_ARG_TARGET: &str = "target";
 const TRANSFER_ARG_AMOUNT: &str = "amount";
+const TRANSFER_ARG_ID: &str = "id";
 
 const ALICE_KEY: PublicKey = PublicKey::Ed25519([3; 32]);
 const BOB_KEY: PublicKey = PublicKey::Ed25519([5; 32]);
@@ -37,8 +38,8 @@ fn get_balance_should_work() {
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
             TRANSFER_ARG_TARGET => *ALICE_ADDR,
-            TRANSFER_ARG_AMOUNT => *TRANSFER_AMOUNT_1
-
+            TRANSFER_ARG_AMOUNT => *TRANSFER_AMOUNT_1,
+            TRANSFER_ARG_ID => <Option<u64>>::None,
         },
     )
     .build();
@@ -141,8 +142,8 @@ fn get_balance_should_work() {
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
             TRANSFER_ARG_TARGET => *BOB_ADDR,
-            TRANSFER_ARG_AMOUNT => *TRANSFER_AMOUNT_1
-
+            TRANSFER_ARG_AMOUNT => *TRANSFER_AMOUNT_1,
+            TRANSFER_ARG_ID => <Option<u64>>::None
         },
     )
     .build();

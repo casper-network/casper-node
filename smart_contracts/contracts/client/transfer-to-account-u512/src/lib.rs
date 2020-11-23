@@ -15,5 +15,5 @@ const ARG_AMOUNT: &str = "amount";
 pub fn delegate() {
     let account_hash: AccountHash = runtime::get_named_arg(ARG_TARGET);
     let transfer_amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    system::transfer_to_account(account_hash, transfer_amount).unwrap_or_revert();
+    system::transfer_to_account(account_hash, transfer_amount, None).unwrap_or_revert();
 }

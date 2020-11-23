@@ -42,7 +42,7 @@ state_root_hash=${state_root_hash:-$(get_state_root_hash $net $node)}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Render node API result.
 $(get_path_to_client $net) query-state \

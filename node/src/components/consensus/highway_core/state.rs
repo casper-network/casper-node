@@ -18,7 +18,7 @@ pub(super) use unit::Unit;
 use std::{
     borrow::Borrow,
     cmp::Ordering,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::identity,
     iter,
 };
@@ -202,9 +202,11 @@ pub(crate) struct State<C: Context> {
     /// Panoramas that the protocol observed.
     panoramas: Panoramas<C>,
     /// All currently endorsed units, by hash.
-    endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
+    endorsements: HashMap<C::Hash, ValidatorMap<Option<C::Signature>>>,
     /// Units that don't yet have 2/3 of stake endorsing them.
-    incomplete_endorsements: HashMap<C::Hash, Vec<SignedEndorsement<C>>>,
+    /// Signatures are stored in a map so that a single validator sending lots of signatures for
+    /// different units doesn't cause us to allocate a lot of memory.
+    incomplete_endorsements: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
     /// Clock to track fork choice
     clock: Clock,
 }
@@ -303,7 +305,12 @@ impl<C: Context> State<C> {
 
     /// Returns endorsements for `unit`, if any.
     pub(crate) fn opt_endorsements(&self, unit: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
-        self.endorsements.get(unit).cloned()
+        self.endorsements.get(unit).map(|signatures| {
+            signatures
+                .iter_some()
+                .map(|(vidx, sig)| SignedEndorsement::new(Endorsement::new(*unit, vidx), *sig))
+                .collect()
+        })
     }
 
     /// Returns whether evidence against validator nr. `idx` is known.
@@ -317,14 +324,13 @@ impl<C: Context> State<C> {
         unit: &C::Hash,
         v_ids: I,
     ) -> bool {
-        self.incomplete_endorsements
-            .get(unit)
-            .map(|v| {
-                v_ids
-                    .into_iter()
-                    .all(|v_id| v.get(v_id.0 as usize).is_some())
-            })
-            .unwrap_or(false)
+        if self.endorsements.contains_key(unit) {
+            true // We have enough endorsements for this unit.
+        } else if let Some(sigs) = self.incomplete_endorsements.get(unit) {
+            v_ids.into_iter().all(|v_id| sigs.contains_key(v_id))
+        } else {
+            v_ids.into_iter().next().is_none()
+        }
     }
 
     /// Returns whether we have seen enough endorsements for the unit.
@@ -451,45 +457,37 @@ impl<C: Context> State<C> {
     /// If, after adding, we have collected enough endorsements to consider unit _endorsed_,
     /// it will be *upgraded* to fully endorsed.
     pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
-        let uhash = *endorsements.unit();
-        let validator_count = self.validator_count();
-        info!("Received endorsements of {:?}", uhash);
-        {
-            let entry = self
-                .incomplete_endorsements
-                .entry(uhash)
-                .or_insert_with(|| Vec::with_capacity(validator_count));
-            for (vid, signature) in endorsements.endorsers {
-                // Add endorsements from validators we haven't seen endorsement yet.
-                if !entry.iter().any(|e| e.validator_idx() == vid) {
-                    let endorsement =
-                        SignedEndorsement::new(Endorsement::new(uhash, vid), signature);
-                    entry.push(endorsement)
-                }
-            }
+        let unit = *endorsements.unit();
+        if self.endorsements.contains_key(&unit) {
+            return; // We already have a sufficient number of endorsements.
         }
+        info!("Received endorsements of {:?}", unit);
+        self.incomplete_endorsements
+            .entry(unit)
+            .or_default()
+            .extend(endorsements.endorsers);
+        let endorsed: Weight = self.incomplete_endorsements[&unit]
+            .keys()
+            .map(|vidx| self.weight(*vidx))
+            .sum();
         // Stake required to consider unit to be endorsed.
         let threshold = self.total_weight() / 2;
-        let endorsed: Weight = self
-            .incomplete_endorsements
-            .get(&uhash)
-            .unwrap()
-            .iter()
-            .map(|e| {
-                let v_id = e.validator_idx();
-                self.weight(v_id)
-            })
-            .sum();
         if endorsed > threshold {
-            info!(%uhash, "Unit endorsed by at least 50% of validators, by weight.");
-            self.endorsed(uhash);
+            info!(%unit, "Unit endorsed by at least 1/2 of validators.");
+            self.endorsed(unit);
         }
     }
 
     /// Updates the state on newly endorsed unit.
     fn endorsed(&mut self, uhash: C::Hash) {
-        let fully_endorsed = self.incomplete_endorsements.remove(&uhash).unwrap();
-        self.endorsements.insert(uhash, fully_endorsed);
+        let mut fully_endorsed = self.incomplete_endorsements.remove(&uhash).unwrap();
+        let endorsed_map = self
+            .weights()
+            .keys()
+            .map(|vidx| fully_endorsed.remove(&vidx))
+            .collect();
+        self.endorsements.insert(uhash, endorsed_map);
+        // When unit gets endorsed, it becomes safe to cite.
         let creator = self.unit(&uhash).creator;
 
         if self.citable_panorama().next_seq_num(self, creator) >= self.unit(&uhash).seq_number {
@@ -897,7 +895,7 @@ impl<C: Context> State<C> {
                 match &unit.panorama[eq_idx] {
                     Observation::Correct(eq_hash) => {
                         if !seen_by_endorsed(eq_hash)
-                            && !self.is_compatible(eq_hash, &naive_by_wunit)
+                            && !self._is_compatible(eq_hash, &naive_by_wunit)
                         {
                             return false;
                         }
@@ -935,10 +933,8 @@ impl<C: Context> State<C> {
     }
 
     // Returns whether the units with `hash0` and `hash1` see each other or are equal.
-    fn is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
-        hash0 == hash1
-            || self.unit(hash0).panorama.sees(self, hash1)
-            || self.unit(hash1).panorama.sees(self, hash0)
+    fn _is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+        hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
     }
 
     /// Returns the panorama of the confirmation for the leader unit `vhash`.

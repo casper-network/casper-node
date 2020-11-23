@@ -10,10 +10,10 @@
 #######################################
 
 # Import utils.
-source $NCTL/sh/daemon/supervisord/utils.sh
+source $NCTL/sh/daemons/supervisord/utils.sh
 
 # Ensure daemon is up.
-source $NCTL/sh/daemon/supervisord/daemon_start.sh $1 
+source $NCTL/sh/daemons/supervisord/daemon_start.sh $1 
 
 # Start nodeset.
 if [ $2 = "all" ]; then
