@@ -1158,7 +1158,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "You should use Bytes newtype wrapper for efficiency")]
     fn should_fail_to_serialize_slice_of_u8() {
-        b"0123456789".to_bytes().unwrap();
+        let bytes = b"0123456789".to_vec();
+        bytes.to_bytes().unwrap();
     }
 }
 
