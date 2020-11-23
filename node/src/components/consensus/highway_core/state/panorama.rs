@@ -101,11 +101,6 @@ impl<C: Context> Panorama<C> {
         self.iter().any(Observation::is_correct)
     }
 
-    /// Returns `true` if there is at least one faulty observation.
-    pub(crate) fn has_faulty(&self) -> bool {
-        self.iter().any(Observation::is_faulty)
-    }
-
     /// Returns an iterator over all honest validators' latest units.
     pub(crate) fn iter_correct<'a>(
         &'a self,

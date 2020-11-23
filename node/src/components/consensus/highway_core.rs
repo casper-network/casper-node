@@ -35,9 +35,9 @@ mod test_macros;
 pub(crate) mod active_validator;
 pub(crate) mod finality_detector;
 pub(crate) mod highway;
+mod lnc;
 pub(crate) mod state;
 pub(crate) mod validators;
-mod lnc;
 
 mod endorsement;
 mod evidence;
