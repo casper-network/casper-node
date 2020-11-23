@@ -322,8 +322,8 @@ impl<C: Context> State<C> {
         unit: &C::Hash,
         v_ids: I,
     ) -> bool {
-        if let Some(sigs) = self.endorsements.get(unit) {
-            v_ids.into_iter().all(|v_id| sigs[*v_id].is_some())
+        if self.endorsements.contains_key(unit) {
+            true // We have enough endorsements for this unit.
         } else if let Some(sigs) = self.incomplete_endorsements.get(unit) {
             v_ids.into_iter().all(|v_id| sigs.contains_key(v_id))
         } else {
