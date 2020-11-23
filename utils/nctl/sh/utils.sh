@@ -459,8 +459,6 @@ function get_node_port {
 
 #######################################
 # Returns path to a binary file.
-# Globals:
-#   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
 #   Binary file name.
