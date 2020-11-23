@@ -184,41 +184,55 @@ impl DeployExt for Deploy {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
-
     use super::*;
 
     use crate::{DeployStrParams, PaymentStrParams, SessionStrParams};
+    use std::convert::TryInto;
 
-    const UNSIGNED_DEPLOY: &str = r#"{
-            "hash": "168d7ea9c88e76b3eef72759f2a7af24663cc871a469c7ba1387ca479e82fb41",
-            "header": {
-                "account": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
-                "timestamp": "2020-11-18T17:34:10.617Z",
-                "ttl": "10s",
-                "gas_price": 1,
-                "body_hash": "1edd9716bc3b94fb2e4bdc769a1bcb0b3c7c4df2135ff1c2a405f0ae22e47646",
-                "dependencies": [],
-                "chain_name": "casper-test-chain-name-1"
+    const PKG_HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
+    const ENTRYPOINT: &str = "entrypoint";
+    const VERSION: &str = "0.1.0";
+    const SAMPLE_DEPLOY: &str = r#"{
+        "hash": "c38849ad9057a368caf3e62799c5368de9e656185f781e434e16757c6e8ce9f4",
+        "header": {
+          "account": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
+          "timestamp": "2020-11-23T19:20:23.015Z",
+          "ttl": "10s",
+          "gas_price": 1,
+          "body_hash": "1edd9716bc3b94fb2e4bdc769a1bcb0b3c7c4df2135ff1c2a405f0ae22e47646",
+          "dependencies": [
+            "be5fdeea0240e999e376f8ecbce1bd4fd9336f58dae4a5842558a4da6ad35aa8",
+            "168d7ea9c88e76b3eef72759f2a7af24663cc871a469c7ba1387ca479e82fb41"
+          ],
+          "chain_name": "casper-test-chain-name-1"
+        },
+        "payment": {
+          "StoredVersionedContractByHash": {
+            "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
+            "version": null,
+            "entry_point": "entrypoint",
+            "args": "02000000070000006e616d655f3031010000000000070000006e616d655f3032040000002a00000001"
+          }
+        },
+        "session": {
+          "StoredVersionedContractByHash": {
+            "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
+            "version": null,
+            "entry_point": "entrypoint",
+            "args": "02000000070000006e616d655f3031010000000000070000006e616d655f3032040000002a00000001"
+          }
+        },
+        "approvals": [
+            {
+                "signer": "0129559e33ff6e1917c0bb6890ac5cf6087c9c79440b42b035741e6b2075a23637",
+                "signature": "0184ac4c736ad2cc715bf67408f7d5c5495a53b5d52e7a0bd67696b2acf20736f0970f8909cd80ff50fcc104bc78d2a44134deabf8bd60ec60ee80bafd39b5e60c"
             },
-            "payment": {
-                "StoredVersionedContractByHash": {
-                    "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
-                    "version": null,
-                    "entry_point": "entrypoint",
-                    "args": "02000000070000006e616d655f3031010000000000070000006e616d655f3032040000002a00000001"
-                }
-            },
-            "session": {
-                "StoredVersionedContractByHash": {
-                    "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
-                    "version": null,
-                    "entry_point": "entrypoint",
-                    "args": "02000000070000006e616d655f3031010000000000070000006e616d655f3032040000002a00000001"
-                }
-            },
-            "approvals": []
-        }"#;
+            {
+                "signer": "01e204c257ab9ba52b5635d3904112ddc8339472d8fa07a9bed0f2cd7196e6f2b1",
+                "signature": "0102ad384f4754d1564fa10d65b7df7d3caeeb0b81acd0cecb65d95ed146dc5a1a87f65ae6d86ff120ded8cf84ae1e3fd05a06c0fe3c9de6ad562fbfb707329904"
+            }
+        ]
+      }"#;
 
     #[derive(Debug)]
     struct ErrWrapper(pub Error);
@@ -235,12 +249,13 @@ mod tests {
             ttl: "10s",
             chain_name: "casper-test-chain-name-1",
             gas_price: "1",
+            dependencies: vec![
+                "be5fdeea0240e999e376f8ecbce1bd4fd9336f58dae4a5842558a4da6ad35aa8",
+                "168d7ea9c88e76b3eef72759f2a7af24663cc871a469c7ba1387ca479e82fb41",
+            ],
             ..Default::default()
         }
     }
-    const PKG_HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
-    const ENTRYPOINT: &str = "entrypoint";
-    const VERSION: &str = "0.1.0";
 
     fn args_simple() -> Vec<&'static str> {
         vec!["name_01:bool='false'", "name_02:i32='42'"]
@@ -265,7 +280,7 @@ mod tests {
 
         let result = String::from_utf8(output).unwrap();
 
-        let expected = Deploy::read_deploy(UNSIGNED_DEPLOY.as_bytes()).unwrap();
+        let expected = Deploy::read_deploy(SAMPLE_DEPLOY.as_bytes()).unwrap();
         let actual = Deploy::read_deploy(result.as_bytes()).unwrap();
         assert_eq!(expected.header().account(), actual.header().account());
         assert_eq!(expected.header().ttl(), actual.header().ttl());
@@ -277,7 +292,7 @@ mod tests {
 
     #[test]
     fn should_read_deploy() {
-        let bytes = UNSIGNED_DEPLOY.as_bytes();
+        let bytes = SAMPLE_DEPLOY.as_bytes();
         assert_eq!(
             Deploy::read_deploy(bytes).map(|_| ()).map_err(ErrWrapper),
             Ok(())
@@ -286,20 +301,20 @@ mod tests {
 
     #[test]
     fn should_sign_deploy() {
-        let bytes = UNSIGNED_DEPLOY.as_bytes();
-        let mut unsigned_deploy = Deploy::read_deploy(bytes).unwrap();
-
+        let bytes = SAMPLE_DEPLOY.as_bytes();
+        let mut deploy = Deploy::read_deploy(bytes).unwrap();
         assert!(
-            !unsigned_deploy.is_valid(),
-            "deploy should be !is_valid() as it is unsigned {:#?}",
-            unsigned_deploy
+            deploy.is_valid(),
+            "deploy should be is_valid() {:#?}",
+            deploy
         );
+        assert_eq!(deploy.approvals().len(), 2);
         let mut result = Vec::new();
-
         Deploy::sign_and_write_deploy(bytes, SecretKey::generate_ed25519(), &mut result).unwrap();
-        let mut signed_deploy = Deploy::read_deploy(&result[..]).unwrap();
-        assert!(
-            signed_deploy.is_valid(),
+        let signed_deploy = Deploy::read_deploy(&result[..]).unwrap();
+        assert_eq!(
+            signed_deploy.approvals().len(),
+            deploy.approvals().len() + 1,
             "deploy should be is_valid() because it has been signed {:#?}",
             signed_deploy
         );

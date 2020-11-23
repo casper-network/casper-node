@@ -180,7 +180,7 @@ impl RpcCall {
 
     pub(crate) fn send_deploy_file(self, input_path: &str) -> Result<JsonRpc> {
         let input = File::open(input_path).map_err(|error| Error::IoError {
-            context: format!("unble to read input file '{}'", input_path),
+            context: format!("unable to read input file '{}'", input_path),
             error,
         })?;
         let deploy = Deploy::read_deploy(input)?;

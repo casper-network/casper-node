@@ -16,6 +16,11 @@ use casper_node::rpcs::{
     RpcWithOptionalParams, RpcWithParams,
 };
 
+const VALID_PURSE_UREF: &str =
+    "uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007";
+const VALID_STATE_ROOT_HASH: &str =
+    "55db08058acb54c295b115cbd9b282eb2862e76d5bb8493bb80c0598a50a12a5";
+
 fn test_filter<P>(
     method: &'static str,
 ) -> impl Filter<Extract = (Response<Body>,), Error = Rejection> + Copy
@@ -41,10 +46,12 @@ struct MockServerHandle {
     server_joiner: Option<JoinHandle<Result<(), hyper::error::Error>>>,
     address: SocketAddr,
 }
+
 impl MockServerHandle {
     fn url(&self) -> String {
         format!("http://{}", self.address)
     }
+
     /// Will spawn a server on localhost and respond to JSON-RPC requests that successfully
     /// deserialize as `P`.
     fn spawn<P>(method: &'static str) -> Self
@@ -52,33 +59,23 @@ impl MockServerHandle {
         P: 'static,
         for<'de> P: Deserialize<'de> + Send,
     {
-        let service = warp_json_rpc::service(test_filter::<P>(method));
-        let builder = Server::try_bind(&([127, 0, 0, 1], 0).into()).unwrap();
-        let make_svc =
-            hyper::service::make_service_fn(move |_| future::ok::<_, Infallible>(service.clone()));
-        let (graceful_shutdown, shutdown_receiver) = oneshot::channel::<()>();
-        let graceful_shutdown = Some(graceful_shutdown);
-        let server = builder.serve(make_svc);
-        let address = server.local_addr();
-        let server_with_shutdown = server.with_graceful_shutdown(async {
-            shutdown_receiver.await.ok();
-        });
-        let server_joiner = tokio::spawn(server_with_shutdown);
-        let server_joiner = Some(server_joiner);
-        MockServerHandle {
-            graceful_shutdown,
-            server_joiner,
-            address,
-        }
+        Self::spawn_with_filter(test_filter::<P>(method))
     }
 
-    /// Will spawn a server on localhost and respond to JSON-RPC requests that successfully
-    /// deserialize as `P`.
+    /// Will spawn a server on localhost and respond to JSON-RPC requests that don't take
+    /// parameters.
     fn spawn_without_params(method: &'static str) -> Self {
-        let service = warp_json_rpc::service(test_filter_without_params(method));
-        let builder = Server::try_bind(&([127, 0, 0, 1], 0).into()).unwrap();
+        Self::spawn_with_filter(test_filter_without_params(method))
+    }
+
+    fn spawn_with_filter<F>(filter: F) -> Self
+    where
+        F: Filter<Extract = (Response<Body>,), Error = Rejection> + Send + Sync + 'static + Copy,
+    {
+        let service = warp_json_rpc::service(filter);
         let make_svc =
             hyper::service::make_service_fn(move |_| future::ok::<_, Infallible>(service.clone()));
+        let builder = Server::try_bind(&([127, 0, 0, 1], 0).into()).unwrap();
         let (graceful_shutdown, shutdown_receiver) = oneshot::channel::<()>();
         let graceful_shutdown = Some(graceful_shutdown);
         let server = builder.serve(make_svc);
@@ -193,11 +190,6 @@ impl Into<ErrWrapper> for Error {
         ErrWrapper(self)
     }
 }
-
-const VALID_PURSE_UREF: &str =
-    "uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007";
-const VALID_STATE_ROOT_HASH: &str =
-    "55db08058acb54c295b115cbd9b282eb2862e76d5bb8493bb80c0598a50a12a5";
 
 mod deploy_params {
     use super::*;

@@ -319,7 +319,7 @@ pub(super) fn parse_session_info(
 
     if session_path.is_empty() {
         return Err(Error::InvalidArgument(
-            "payment_path",
+            "session_path",
             "<empty>".to_string(),
         ));
     }

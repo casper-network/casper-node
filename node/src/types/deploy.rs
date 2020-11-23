@@ -401,10 +401,15 @@ impl Deploy {
         &self.session
     }
 
-    /// Returns true if:
+    /// Returns the `Approval`s for this deploy.
+    pub fn approvals(&self) -> &[Approval] {
+        &self.approvals
+    }
+
+    /// Returns true if and only if:
     ///   * the deploy hash is correct (should be the hash of the header), and
     ///   * the body hash is correct (should be the hash of the body), and
-    ///   * there are approvals, and they are all valid signatures of the deploy hash
+    ///   * all approvals are valid signatures of the deploy hash
     ///
     /// Note: this is a relatively expensive operation, requiring re-serialization of the deploy,
     ///       hashing, and signature checking, so should be called as infrequently as possible.
@@ -473,11 +478,6 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 // Computationally expensive validity check for a given deploy instance, including
 // asymmetric_key signing verification.
 fn validate_deploy(deploy: &Deploy) -> bool {
-    // When sent from the client, it's possible to get a Deploy without any `approvals` present.
-    // This is an intermediate state that needs to be validated.
-    if deploy.approvals.is_empty() {
-        return false;
-    }
     let serialized_body = serialize_body(&deploy.payment, &deploy.session);
     let body_hash = hash::hash(&serialized_body);
     if body_hash != deploy.header.body_hash {
@@ -492,6 +492,9 @@ fn validate_deploy(deploy: &Deploy) -> bool {
         return false;
     }
 
+    // We don't need to check for an empty set here. EE checks that the correct number and weight of
+    // signatures are provided when executing the deploy, so all we need to do here is check that
+    // any provided signatures are valid.
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) =
             asymmetric_key::verify(&deploy.hash, &approval.signature, &approval.signer)
