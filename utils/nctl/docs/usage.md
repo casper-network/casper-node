@@ -1,6 +1,6 @@
 # NCTL Usage
 
-Once activated, NCTL commands can be used to setup & control nodes within local test network(s).  Whilst most NCTL users will tend to focus upon testing a single network, developers may wish to test multiple networks in parallel so as to observe behavioural differences induced as a result of altering either the network's configuration or its binary set.  
+Once activated, NCTL commands can be used to setup & control nodes within local test network(s).  Whilst most NCTL users will tend to focus upon testing a single network, developers may wish to test multiple networks in parallel so as to observe behavioural differences induced as a result of altering either the network's configuration or its binary set.
 
 This usage guide focusses upon the former use case, i.e. testing a single network, and thus all NCTL commands described below are executed with their default values.  Please refer [here](commands.md) for full details of supported NCTL commands.
 
@@ -11,6 +11,8 @@ Prior to testing a network ensure that the binary sets are available:
 ```
 nctl-compile
 ```
+
+This will run `make setup-rs` and `make build-system-contracts -j`, and compile both `casper-node` and `casper-client` in release mode.
 
 ## Step 1: Create network assets.
 
@@ -40,7 +42,7 @@ nctl-assets-setup
 /storage
 ```
 
-- Examining the contents of `$NCTL/assets/net-1/users/user-1`, i.e. user 1, you will find both cryptographic keys & account public key (hex) files. 
+- Examining the contents of `$NCTL/assets/net-1/users/user-1`, i.e. user 1, you will find both cryptographic keys & account public key (hex) files.
 
 - Once assets have been created you are advised to review contents of toml files, i.e. `/chainspec/chainspec.toml` & the various `/nodes/node-X/config/node-config.toml` files.
 
@@ -60,7 +62,7 @@ vi $NCTL/assets/net-1/nodes/node-3/config/node-config.toml
 
 ## Step 2: Start a node in interactive mode.
 
-- Starting a node interactively is useful to verify that the network assets have been correctly established and that the network is ready for testing.  
+- Starting a node interactively is useful to verify that the network assets have been correctly established and that the network is ready for testing.
 
 ```
 nctl-interactive
@@ -88,7 +90,7 @@ nctl-status
 
 ```
 # Restart all nodes.
-nctl-restart 
+nctl-restart
 
 # Restart node 1.
 nctl-restart node=1
@@ -98,7 +100,7 @@ nctl-restart node=1
 
 ```
 # Stop all nodes.
-nctl-stop 
+nctl-stop
 
 # Stop node 1.
 nctl-stop node=1
