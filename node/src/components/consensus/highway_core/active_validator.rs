@@ -145,11 +145,16 @@ impl<C: Context> ActiveValidator<C> {
         }
         let mut effects = vec![];
         if self.should_send_confirmation(vhash, now, state) {
-            let panorama = state.confirmation_panorama(self.vidx, vhash);
-            if panorama.has_correct() {
-                let confirmation_unit = self.new_unit(panorama, now, None, state, instance_id, rng);
-                let vv = ValidVertex(Vertex::Unit(confirmation_unit));
-                effects.extend(vec![Effect::NewVertex(vv)])
+            let panorama_opt = state.confirmation_panorama(self.vidx, vhash);
+            if let Some(panorama) = panorama_opt {
+                if panorama.has_correct() {
+                    let confirmation_unit =
+                        self.new_unit(panorama, now, None, state, instance_id, rng);
+                    let vv = ValidVertex(Vertex::Unit(confirmation_unit));
+                    effects.extend(vec![Effect::NewVertex(vv)])
+                }
+            } else {
+                return effects;
             }
         };
         if self.should_endorse(vhash, state) {

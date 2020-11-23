@@ -866,12 +866,7 @@ impl<C: Context> State<C> {
     /// Returns `true` if there is at most one fork by the validator `eq_idx` that is cited naively
     /// by `wunit` or earlier units by the same creator.
     fn satisfies_lnc_for(&self, wunit: &WireUnit<C>, eq_idx: ValidatorIndex) -> bool {
-        let naive_by_wunit = match lnc::find_forks(
-            &wunit.panorama,
-            &wunit.endorsed,
-            eq_idx,
-            self,
-        ) {
+        let naive_by_wunit = match lnc::find_forks(&wunit.panorama, &wunit.endorsed, eq_idx, self) {
             LncForks::Multiple => return false, // More than one fork is cited naively by wunit.
             LncForks::None => return true,      // No forks are cited naively by wunit.
             LncForks::Single(naive_by_wunit) => naive_by_wunit,
@@ -947,26 +942,27 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the panorama of the confirmation for the leader unit `vhash`.
+    ///
+    /// Returns `None` if we are not supposed to confirm the proposal.
     pub(crate) fn confirmation_panorama(
         &self,
         own_idx: ValidatorIndex,
-        vhash: &C::Hash,
-    ) -> Panorama<C> {
-        let unit = self.unit(vhash);
+        uhash: &C::Hash,
+    ) -> Option<Panorama<C>> {
+        let proposal = self.unit(uhash);
         let mut panorama;
-        // TODO(HWY-167): Confirmation panorama.
         if let Some(prev_hash) = self.panorama().get(own_idx).correct().cloned() {
-            let own_unit = self.unit(&prev_hash);
-            panorama = unit.panorama.merge(self, &own_unit.panorama);
-            panorama[own_idx] = Observation::Correct(prev_hash);
-        } else {
-            panorama = unit.panorama.clone();
+            // If proposal doesn't see our own previous vote, don't confirm it.
+            if !proposal.panorama.sees(self, &prev_hash) {
+                return None;
+            }
         }
-        panorama[unit.creator] = Observation::Correct(*vhash);
+        panorama = proposal.panorama.clone();
+        panorama[proposal.creator] = Observation::Correct(*uhash);
         for faulty_v in self.faulty_validators() {
             panorama[faulty_v] = Observation::Faulty;
         }
-        panorama
+        Some(panorama)
     }
 }
 

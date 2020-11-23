@@ -151,19 +151,6 @@ impl<C: Context> Panorama<C> {
         false
     }
 
-    /// Merges two panoramas into a new one.
-    pub(crate) fn merge(&self, state: &State<C>, other: &Panorama<C>) -> Panorama<C> {
-        let merge_obs = |observations: (&Observation<C>, &Observation<C>)| match observations {
-            (Observation::Faulty, _) | (_, Observation::Faulty) => Observation::Faulty,
-            (Observation::None, obs) | (obs, Observation::None) => obs.clone(),
-            (obs0, Observation::Correct(vh1)) if self.sees_correct(state, vh1) => obs0.clone(),
-            (Observation::Correct(vh0), obs1) if other.sees_correct(state, vh0) => obs1.clone(),
-            (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
-        };
-        let observations = self.iter().zip(other).map(merge_obs).collect_vec();
-        Panorama::from(observations)
-    }
-
     /// Returns the panorama seeing all units seen by `self` with a timestamp no later than
     /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
     pub(crate) fn cutoff(&self, state: &State<C>, timestamp: Timestamp) -> Panorama<C> {
