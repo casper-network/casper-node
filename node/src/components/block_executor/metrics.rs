@@ -12,9 +12,9 @@ impl BlockExecutorMetrics {
     pub fn new(registry: Registry) -> Result<Self, prometheus::Error> {
         let chain_height = IntGauge::new("chain_height", "current chain height")?;
         registry.register(Box::new(chain_height.clone()))?;
-        Ok(BlockExecutorMetrics{
+        Ok(BlockExecutorMetrics {
             chain_height,
-            registry
+            registry,
         })
     }
 }
@@ -33,4 +33,3 @@ impl Default for BlockExecutorMetrics {
         BlockExecutorMetrics::new(registry).unwrap()
     }
 }
-

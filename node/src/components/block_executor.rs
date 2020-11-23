@@ -25,7 +25,10 @@ use casper_execution_engine::{
 use casper_types::ProtocolVersion;
 
 use crate::{
-    components::{block_executor::event::State, Component},
+    components::{
+        block_executor::{event::State, metrics::BlockExecutorMetrics},
+        Component,
+    },
     crypto::hash::Digest,
     effect::{
         announcements::BlockExecutorAnnouncement,
@@ -41,7 +44,6 @@ use crate::{
     NodeRng,
 };
 pub(crate) use event::Event;
-use crate::components::block_executor::metrics::BlockExecutorMetrics;
 use prometheus::Registry;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `BlockExecutor`
@@ -90,7 +92,7 @@ pub(crate) struct BlockExecutor {
     exec_queue: HashMap<BlockHeight, (FinalizedBlock, VecDeque<Deploy>)>,
     /// Metrics to track current chain height.
     #[data_size(skip)]
-    metrics: BlockExecutorMetrics
+    metrics: BlockExecutorMetrics,
 }
 
 impl BlockExecutor {
@@ -100,7 +102,7 @@ impl BlockExecutor {
             genesis_state_root_hash,
             parent_map: HashMap::new(),
             exec_queue: HashMap::new(),
-            metrics
+            metrics,
         }
     }
 

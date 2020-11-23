@@ -1,4 +1,4 @@
-use prometheus::{Gauge, IntCounter, Registry, IntGauge};
+use prometheus::{Gauge, IntCounter, IntGauge, Registry};
 
 use crate::types::{FinalizedBlock, Timestamp};
 
@@ -29,7 +29,7 @@ impl ConsensusMetrics {
             "time_of_last_proto_block",
             "timestamp of the most recently accepted proto block",
         )?;
-        let current_era = IntGauge::new("current_era","The current era")?;
+        let current_era = IntGauge::new("current_era", "The current era")?;
         registry.register(Box::new(finalization_time.clone()))?;
         registry.register(Box::new(finalized_block_count.clone()))?;
         registry.register(Box::new(current_era.clone()))?;
