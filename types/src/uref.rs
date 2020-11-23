@@ -9,7 +9,11 @@ use core::{
 use hex_fmt::HexFmt;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{bytesrepr, AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH};
+use crate::{
+    bytesrepr,
+    bytesrepr::{Error, FromBytes},
+    AccessRights, ApiError, Key, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+};
 
 /// The number of bytes in a [`URef`] address.
 pub const UREF_ADDR_LENGTH: usize = 32;
@@ -183,7 +187,7 @@ impl Debug for URef {
 }
 
 impl bytesrepr::ToBytes for URef {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut result = bytesrepr::unchecked_allocate_buffer(self);
         result.append(&mut self.0.to_bytes()?);
         result.append(&mut self.1.to_bytes()?);
@@ -195,10 +199,10 @@ impl bytesrepr::ToBytes for URef {
     }
 }
 
-impl bytesrepr::FromBytes for URef {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (id, rem): ([u8; 32], &[u8]) = bytesrepr::FromBytes::from_bytes(bytes)?;
-        let (access_rights, rem): (AccessRights, &[u8]) = bytesrepr::FromBytes::from_bytes(rem)?;
+impl FromBytes for URef {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (id, rem) = FromBytes::from_bytes(bytes)?;
+        let (access_rights, rem) = FromBytes::from_bytes(rem)?;
         Ok((URef(id, access_rights), rem))
     }
 }

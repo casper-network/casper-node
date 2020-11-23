@@ -166,7 +166,7 @@ impl RpcCall {
         }
         transfer_args.insert(TRANSFER_ARG_ID, id);
         let session = ExecutableDeployItem::Transfer {
-            args: transfer_args.to_bytes()?,
+            args: transfer_args.to_bytes()?.into(),
         };
         let deploy = Deploy::with_payment_and_session(deploy_params, payment, session);
         let params = PutDeployParams { deploy };

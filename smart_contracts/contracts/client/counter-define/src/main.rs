@@ -6,7 +6,6 @@ extern crate alloc;
 use alloc::{string::String, vec, vec::Vec};
 use core::convert::TryInto;
 
-use alloc::boxed::Box;
 use casper_contract::{
     contract_api::{self, runtime, storage},
     ext_ffi,
@@ -105,7 +104,7 @@ fn get_entry_points() -> EntryPoints {
         ENTRYPOINT_SESSION,
         vec![Parameter::new(
             ARG_CONTRACT_HASH_NAME,
-            CLType::FixedList(Box::new(CLType::U8), 32),
+            CLType::ByteArray(32),
         )],
         CLType::Unit,
         EntryPointAccess::Public,

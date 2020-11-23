@@ -19,7 +19,6 @@ const CONTRACT_TRANSFER_TO_PURSE: &str = "transfer_to_purse.wasm";
 
 /// Size of batch used in multiple execs benchmark, and multiple deploys per exec cases.
 const TRANSFER_BATCH_SIZE: u64 = 3;
-const PER_RUN_FUNDING: u64 = 10_000_000;
 const TARGET_ADDR: AccountHash = AccountHash::new([127; 32]);
 const ARG_AMOUNT: &str = "amount";
 const ARG_ACCOUNTS: &str = "accounts";
@@ -133,7 +132,7 @@ fn transfer_to_account_multiple_deploys(
     for i in 0..TRANSFER_BATCH_SIZE {
         let deploy = DeployItemBuilder::default()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(PER_RUN_FUNDING) })
+            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT })
             .with_session_code(
                 CONTRACT_TRANSFER_TO_EXISTING_ACCOUNT,
                 runtime_args! {

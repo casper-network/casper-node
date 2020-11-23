@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use casper_types::bytesrepr::Bytes;
 use lmdb::{self, Database, Environment, RoTransaction, RwTransaction, WriteFlags};
 
 use crate::storage::{
@@ -19,9 +20,9 @@ impl<'a> Transaction for RoTransaction<'a> {
 }
 
 impl<'a> Readable for RoTransaction<'a> {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
         match lmdb::Transaction::get(self, handle, &key) {
-            Ok(bytes) => Ok(Some(bytes.to_vec())),
+            Ok(bytes) => Ok(Some(Bytes::from(bytes))),
             Err(lmdb::Error::NotFound) => Ok(None),
             Err(e) => Err(e),
         }
@@ -39,9 +40,9 @@ impl<'a> Transaction for RwTransaction<'a> {
 }
 
 impl<'a> Readable for RwTransaction<'a> {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
         match lmdb::Transaction::get(self, handle, &key) {
-            Ok(bytes) => Ok(Some(bytes.to_vec())),
+            Ok(bytes) => Ok(Some(Bytes::from(bytes))),
             Err(lmdb::Error::NotFound) => Ok(None),
             Err(e) => Err(e),
         }

@@ -13,8 +13,8 @@ impl TryFrom<DeployPayload_oneof_payload> for ExecutableDeployItem {
         Ok(match pb_deploy_payload {
             DeployPayload_oneof_payload::deploy_code(pb_deploy_code) => {
                 ExecutableDeployItem::ModuleBytes {
-                    module_bytes: pb_deploy_code.code,
-                    args: pb_deploy_code.args,
+                    module_bytes: pb_deploy_code.code.into(),
+                    args: pb_deploy_code.args.into(),
                 }
             }
             DeployPayload_oneof_payload::stored_contract_hash(mut pb_stored_contract_hash) => {
@@ -26,14 +26,14 @@ impl TryFrom<DeployPayload_oneof_payload> for ExecutableDeployItem {
                 ExecutableDeployItem::StoredContractByHash {
                     hash,
                     entry_point: pb_stored_contract_hash.entry_point_name,
-                    args: pb_stored_contract_hash.args,
+                    args: pb_stored_contract_hash.args.into(),
                 }
             }
             DeployPayload_oneof_payload::stored_contract_name(pb_stored_contract_name) => {
                 ExecutableDeployItem::StoredContractByName {
                     name: pb_stored_contract_name.name,
                     entry_point: pb_stored_contract_name.entry_point_name,
-                    args: pb_stored_contract_name.args,
+                    args: pb_stored_contract_name.args.into(),
                 }
             }
             DeployPayload_oneof_payload::stored_package_by_name(mut pb_stored_package_by_name) => {
@@ -47,7 +47,7 @@ impl TryFrom<DeployPayload_oneof_payload> for ExecutableDeployItem {
                         None
                     },
                     entry_point: pb_stored_package_by_name.entry_point_name,
-                    args: pb_stored_package_by_name.args,
+                    args: pb_stored_package_by_name.args.into(),
                 }
             }
             DeployPayload_oneof_payload::stored_package_by_hash(mut pb_stored_package_by_hash) => {
@@ -66,11 +66,11 @@ impl TryFrom<DeployPayload_oneof_payload> for ExecutableDeployItem {
                         None
                     },
                     entry_point: pb_stored_package_by_hash.entry_point_name,
-                    args: pb_stored_package_by_hash.args,
+                    args: pb_stored_package_by_hash.args.into(),
                 }
             }
             DeployPayload_oneof_payload::transfer(pb_transfer) => ExecutableDeployItem::Transfer {
-                args: pb_transfer.args,
+                args: pb_transfer.args.into(),
             },
         })
     }
@@ -82,8 +82,8 @@ impl From<ExecutableDeployItem> for DeployPayload {
         match edi {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
                 let code = result.mut_deploy_code();
-                code.set_code(module_bytes);
-                code.set_args(args);
+                code.set_code(module_bytes.into());
+                code.set_args(args.into());
             }
             ExecutableDeployItem::StoredContractByHash {
                 hash,
@@ -93,7 +93,7 @@ impl From<ExecutableDeployItem> for DeployPayload {
                 let inner = result.mut_stored_contract_hash();
                 inner.set_hash(hash.to_vec());
                 inner.set_entry_point_name(entry_point);
-                inner.set_args(args);
+                inner.set_args(args.into());
             }
             ExecutableDeployItem::StoredContractByName {
                 name,
@@ -103,7 +103,7 @@ impl From<ExecutableDeployItem> for DeployPayload {
                 let inner = result.mut_stored_contract_name();
                 inner.set_name(name);
                 inner.set_entry_point_name(entry_point);
-                inner.set_args(args);
+                inner.set_args(args.into());
             }
             ExecutableDeployItem::StoredVersionedContractByName {
                 name,
@@ -117,7 +117,7 @@ impl From<ExecutableDeployItem> for DeployPayload {
                     inner.set_version(ver)
                 }
                 inner.set_entry_point_name(entry_point);
-                inner.set_args(args);
+                inner.set_args(args.into());
             }
             ExecutableDeployItem::StoredVersionedContractByHash {
                 hash,
@@ -131,11 +131,11 @@ impl From<ExecutableDeployItem> for DeployPayload {
                     inner.set_version(ver)
                 }
                 inner.set_entry_point_name(entry_point);
-                inner.set_args(args);
+                inner.set_args(args.into());
             }
             ExecutableDeployItem::Transfer { args } => {
                 let inner = result.mut_transfer();
-                inner.set_args(args);
+                inner.set_args(args.into());
             }
         }
         result

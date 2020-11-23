@@ -33,6 +33,7 @@ criterion = "0.3.3"
 proptest = "0.10.0"
 serde_json = "1.0.55"
 version-sync = "0.9"
+serde_test = "1.0.117"
 
 [features]
 default = ["base16/alloc", "serde/alloc", "serde_json/alloc"]
