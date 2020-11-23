@@ -260,7 +260,7 @@ async fn propose_and_finalize(
     // The block validator returns true: The deploys in the block are valid. That completes our
     // requirements for the proposed block. The era supervisor announces that it has passed the
     // proposed block to the consensus protocol.
-    let mut effects = handle(es, rv_event);
+    let effects = handle(es, rv_event);
     assert!(effects.is_empty());
 
     // Node 1 now sends us another message that is sufficient for the protocol to finalize the
