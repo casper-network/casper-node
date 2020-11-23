@@ -896,7 +896,7 @@ impl<C: Context> State<C> {
                 match &unit.panorama[eq_idx] {
                     Observation::Correct(eq_hash) => {
                         if !seen_by_endorsed(eq_hash)
-                            && !self._is_compatible(eq_hash, &naive_by_wunit)
+                            && !self.is_compatible(eq_hash, &naive_by_wunit)
                         {
                             return false;
                         }
@@ -934,7 +934,7 @@ impl<C: Context> State<C> {
     }
 
     // Returns whether the units with `hash0` and `hash1` see each other or are equal.
-    fn _is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+    fn is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
         hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
     }
 
@@ -947,14 +947,14 @@ impl<C: Context> State<C> {
         uhash: &C::Hash,
     ) -> Option<Panorama<C>> {
         let proposal = self.unit(uhash);
-        let mut panorama;
-        if let Some(prev_hash) = self.panorama().get(own_idx).correct().cloned() {
+        let mut panorama = proposal.panorama.clone();
+        if let Some(prev_hash) = self.citable_panorama().get(own_idx).correct() {
             // If proposal doesn't see our own previous vote, don't confirm it.
-            if !proposal.panorama.sees(self, &prev_hash) {
+            if !proposal.panorama.sees(self, prev_hash) {
                 return None;
             }
+            panorama[own_idx] = Observation::Correct(*prev_hash);
         }
-        panorama = proposal.panorama.clone();
         panorama[proposal.creator] = Observation::Correct(*uhash);
         for faulty_v in self.faulty_validators() {
             panorama[faulty_v] = Observation::Faulty;
