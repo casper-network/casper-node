@@ -408,7 +408,7 @@ impl reactor::Reactor for Reactor {
             .genesis_state_root_hash()
             .expect("Should have Genesis state root hash");
 
-        let block_executor = BlockExecutor::new(genesis_state_root_hash);
+        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone());
 
         let linear_chain = linear_chain::LinearChain::new();
 

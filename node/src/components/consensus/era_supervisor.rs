@@ -135,6 +135,7 @@ where
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
 
+        metrics.current_era.set(0);
         let mut era_supervisor = Self {
             active_eras: Default::default(),
             secret_signing_key,
@@ -231,7 +232,7 @@ where
             panic!("{} already exists", era_id);
         }
         self.current_era = era_id;
-
+        self.metrics.current_era.set(self.current_era.0 as i64);
         info!(
             ?validator_stakes,
             %start_time,

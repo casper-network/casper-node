@@ -1,5 +1,6 @@
 //! Block executor component.
 mod event;
+mod metrics;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -40,6 +41,8 @@ use crate::{
     NodeRng,
 };
 pub(crate) use event::Event;
+use crate::components::block_executor::metrics::BlockExecutorMetrics;
+use prometheus::Registry;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `BlockExecutor`
 /// can work with.
@@ -85,14 +88,19 @@ pub(crate) struct BlockExecutor {
     parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: HashMap<BlockHeight, (FinalizedBlock, VecDeque<Deploy>)>,
+    /// Metrics to track current chain height.
+    #[data_size(skip)]
+    metrics: BlockExecutorMetrics
 }
 
 impl BlockExecutor {
-    pub(crate) fn new(genesis_state_root_hash: Digest) -> Self {
+    pub(crate) fn new(genesis_state_root_hash: Digest, registry: Registry) -> Self {
+        let metrics = BlockExecutorMetrics::new(registry).unwrap();
         BlockExecutor {
             genesis_state_root_hash,
             parent_map: HashMap::new(),
             exec_queue: HashMap::new(),
+            metrics
         }
     }
 
@@ -159,6 +167,8 @@ impl BlockExecutor {
         // The state hash of the last execute-commit cycle is used as the block's post state
         // hash.
         let next_height = state.finalized_block.height() + 1;
+        // Update the metric.
+        self.metrics.chain_height.set(next_height as i64);
         let block = self.create_block(state.finalized_block, state.state_root_hash);
 
         let mut effects = effect_builder

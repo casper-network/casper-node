@@ -1,4 +1,4 @@
-use prometheus::{Gauge, IntCounter, Registry};
+use prometheus::{Gauge, IntCounter, Registry, IntGauge};
 
 use crate::types::{FinalizedBlock, Timestamp};
 
@@ -11,6 +11,8 @@ pub struct ConsensusMetrics {
     finalized_block_count: IntCounter,
     /// Timestamp of the most recently accepted proto block.
     time_of_last_proposed_block: Gauge,
+    /// The Current era.
+    pub current_era: IntGauge,
     /// registry component.
     registry: Registry,
 }
@@ -27,12 +29,15 @@ impl ConsensusMetrics {
             "time_of_last_proto_block",
             "timestamp of the most recently accepted proto block",
         )?;
+        let current_era = IntGauge::new("current_era","The current era")?;
         registry.register(Box::new(finalization_time.clone()))?;
         registry.register(Box::new(finalized_block_count.clone()))?;
+        registry.register(Box::new(current_era.clone()))?;
         Ok(ConsensusMetrics {
             finalization_time,
             finalized_block_count,
             time_of_last_proposed_block,
+            current_era,
             registry: registry.clone(),
         })
     }
@@ -59,5 +64,8 @@ impl Drop for ConsensusMetrics {
         self.registry
             .unregister(Box::new(self.finalized_block_count.clone()))
             .expect("did not expect deregisterting amount to fail");
+        self.registry
+            .unregister(Box::new(self.current_era.clone()))
+            .expect("did note expect deregistering curren_era to fail");
     }
 }

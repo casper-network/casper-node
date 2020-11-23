@@ -488,6 +488,7 @@ mod tests {
             payment,
             session,
             &secret_key,
+
             rng,
         );
 
