@@ -748,10 +748,10 @@ impl<C: Context> State<C> {
             self.panoramas.citable_panorama_mut()[creator] = new_obs;
         } else if let Some(uhash) = new_obs.correct() {
             let unit = self.unit(uhash);
-            // Check if there's a naively cited unit, by a known equivocator, in the past of
-            // `uhash`.
-            let cites_naively = unit
-                .panorama
+            // Check if citing new unit will make us violate LNC.
+            let mut updated_panorama = self.citable_panorama().merge(self, &unit.panorama);
+            updated_panorama[unit.creator] = new_obs.clone();
+            let cites_naively = updated_panorama
                 .enumerate()
                 .filter(|(_, obs)| obs.is_faulty())
                 .map(|(i, _)| i)
@@ -760,7 +760,7 @@ impl<C: Context> State<C> {
                 });
 
             if !cites_naively {
-                self.panoramas.citable_panorama_mut()[creator] = new_obs;
+                self.panoramas.citable_panorama = updated_panorama;
             }
         }
     }
