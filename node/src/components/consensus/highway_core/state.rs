@@ -755,7 +755,7 @@ impl<C: Context> State<C> {
                 .filter(|(_, obs)| obs.is_faulty())
                 .map(|(i, _)| i)
                 .any(|eq_idx| {
-                    lnc::find_forks(&wunit.panorama, &wunit.endorsed, eq_idx, self).is_none()
+                    !lnc::find_forks(&wunit.panorama, &wunit.endorsed, eq_idx, self).is_none()
                 });
 
             if !cites_naively {
