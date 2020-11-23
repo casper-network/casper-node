@@ -947,14 +947,13 @@ impl<C: Context> State<C> {
         uhash: &C::Hash,
     ) -> Option<Panorama<C>> {
         let proposal = self.unit(uhash);
-        let mut panorama = proposal.panorama.clone();
         if let Some(prev_hash) = self.citable_panorama().get(own_idx).correct() {
             // If proposal doesn't see our own previous vote, don't confirm it.
             if !proposal.panorama.sees(self, prev_hash) {
                 return None;
             }
-            panorama[own_idx] = Observation::Correct(*prev_hash);
         }
+        let mut panorama = proposal.panorama.clone();
         panorama[proposal.creator] = Observation::Correct(*uhash);
         for faulty_v in self.faulty_validators() {
             panorama[faulty_v] = Observation::Faulty;
