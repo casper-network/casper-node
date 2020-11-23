@@ -31,7 +31,7 @@ pub fn delegate() {
     if already_funded {
         runtime::revert(ApiError::User(CustomError::AlreadyFunded as u16));
     } else {
-        system::transfer_to_account(account_hash, amount).unwrap_or_revert();
+        system::transfer_to_account(account_hash, amount, None).unwrap_or_revert();
         // Transfer successful; Store the fact of funding in the local state.
         storage::write_local(account_hash, amount);
     }

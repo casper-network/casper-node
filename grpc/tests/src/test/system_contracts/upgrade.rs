@@ -800,6 +800,7 @@ fn should_upgrade_only_auction_delay() {
     )
 }
 
+#[ignore]
 #[test]
 fn should_upgrade_only_locked_funds_period() {
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -858,6 +859,7 @@ fn should_upgrade_only_locked_funds_period() {
     )
 }
 
+#[ignore]
 #[test]
 fn should_upgrade_only_round_seigniorage_rate() {
     let mut builder = InMemoryWasmTestBuilder::default();

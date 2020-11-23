@@ -67,6 +67,6 @@ fn seed_new_account() {
     let source = account::get_main_purse();
     let target: AccountHash = runtime::get_named_arg(ARG_ACCOUNT_HASH);
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    system::transfer_from_purse_to_account(source, target, amount)
+    system::transfer_from_purse_to_account(source, target, amount, None)
         .unwrap_or_revert_with(ApiError::User(Error::UnableToSeedAccount as u16));
 }

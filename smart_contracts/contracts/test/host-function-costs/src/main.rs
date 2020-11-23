@@ -194,17 +194,23 @@ pub extern "C" fn account_function() {
     let new_purse = system::create_purse();
 
     let transfer_amount = U512::from(TRANSFER_AMOUNT);
-    system::transfer_from_purse_to_purse(main_purse, new_purse, transfer_amount).unwrap_or_revert();
+    system::transfer_from_purse_to_purse(main_purse, new_purse, transfer_amount, None)
+        .unwrap_or_revert();
 
     let balance = system::get_balance(new_purse).unwrap_or_revert();
     if balance != transfer_amount {
         runtime::revert(Error::Transfer);
     }
 
-    system::transfer_from_purse_to_account(new_purse, DESTINATION_ACCOUNT_HASH, transfer_amount)
-        .unwrap_or_revert();
+    system::transfer_from_purse_to_account(
+        new_purse,
+        DESTINATION_ACCOUNT_HASH,
+        transfer_amount,
+        None,
+    )
+    .unwrap_or_revert();
 
-    system::transfer_to_account(DESTINATION_ACCOUNT_HASH, transfer_amount).unwrap_or_revert();
+    system::transfer_to_account(DESTINATION_ACCOUNT_HASH, transfer_amount, None).unwrap_or_revert();
 
     // ========== remaining functions from `runtime` module ========================================
 

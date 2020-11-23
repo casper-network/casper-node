@@ -8,7 +8,7 @@
 ########################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 pushd $NCTL_CASPER_HOME
 

@@ -35,7 +35,7 @@ node=${node:-"all"}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 source $NCTL/sh/node/stop.sh net=$net node=$node
 source $NCTL/sh/node/start.sh net=$net node=$node

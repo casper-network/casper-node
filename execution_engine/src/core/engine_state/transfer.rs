@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use casper_types::{
-    account::AccountHash, AccessRights, ApiError, CLType, Key, RuntimeArgs, URef, U512,
+    account::AccountHash, mint, AccessRights, ApiError, CLType, Key, RuntimeArgs, URef, U512,
 };
 
 use crate::{
@@ -13,10 +13,6 @@ use crate::{
     shared::{self, account::Account, newtypes::CorrelationId, stored_value::StoredValue},
     storage::global_state::StateReader,
 };
-
-const SOURCE: &str = "source";
-const TARGET: &str = "target";
-const AMOUNT: &str = "amount";
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TransferTargetMode {
@@ -66,7 +62,7 @@ impl TransferRuntimeArgsBuilder {
         R::Error: Into<ExecError>,
     {
         let imputed_runtime_args = &self.inner;
-        let arg_name = SOURCE;
+        let arg_name = mint::ARG_SOURCE;
         match imputed_runtime_args.get(arg_name) {
             Some(cl_value) if *cl_value.cl_type() == CLType::URef => {
                 let uref: URef = match cl_value.clone().into_t() {
@@ -124,7 +120,7 @@ impl TransferRuntimeArgsBuilder {
         R::Error: Into<ExecError>,
     {
         let imputed_runtime_args = &self.inner;
-        let arg_name = TARGET;
+        let arg_name = mint::ARG_TARGET;
         match imputed_runtime_args.get(arg_name) {
             Some(cl_value) if *cl_value.cl_type() == CLType::URef => {
                 let uref: URef = match cl_value.clone().into_t() {
@@ -194,7 +190,7 @@ impl TransferRuntimeArgsBuilder {
 
     fn resolve_amount(&self) -> Result<U512, Error> {
         let imputed_runtime_args = &self.inner;
-        match imputed_runtime_args.get(AMOUNT) {
+        match imputed_runtime_args.get(mint::ARG_AMOUNT) {
             Some(amount_value) if *amount_value.cl_type() == CLType::U512 => {
                 match amount_value.clone().into_t::<U512>() {
                     Ok(amount) => {
@@ -270,12 +266,24 @@ impl TransferRuntimeArgsBuilder {
 
         let amount = self.resolve_amount()?;
 
+        let id = {
+            let id_bytes: Result<Option<u64>, _> = match self.inner.get(mint::ARG_ID) {
+                Some(id_bytes) => id_bytes.clone().into_t(),
+                None => return Err(ExecError::Revert(ApiError::MissingArgument).into()),
+            };
+            match id_bytes {
+                Ok(id) => id,
+                Err(err) => return Err(Error::Exec(ExecError::Revert(err.into()))),
+            }
+        };
+
         let runtime_args = {
             let mut runtime_args = RuntimeArgs::new();
 
-            runtime_args.insert(SOURCE, source_uref);
-            runtime_args.insert(TARGET, target_uref);
-            runtime_args.insert(AMOUNT, amount);
+            runtime_args.insert(mint::ARG_SOURCE, source_uref);
+            runtime_args.insert(mint::ARG_TARGET, target_uref);
+            runtime_args.insert(mint::ARG_AMOUNT, amount);
+            runtime_args.insert(mint::ARG_ID, id);
 
             runtime_args
         };

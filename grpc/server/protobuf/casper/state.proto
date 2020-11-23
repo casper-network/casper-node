@@ -239,6 +239,10 @@ message ContractWasm {
     bytes wasm = 1;
 }
 
+message TransferId {
+    uint64 value = 1;
+}
+
 message Transfer {
     DeployHash deploy = 1;
     AccountHash from = 2;
@@ -246,6 +250,7 @@ message Transfer {
     Key.URef target = 4;
     BigInt amount = 5;
     BigInt gas = 6;
+    TransferId id = 7;
 }
 
 message DeployInfo {

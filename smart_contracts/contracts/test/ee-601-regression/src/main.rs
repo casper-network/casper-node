@@ -32,7 +32,7 @@ pub extern "C" fn call() {
             RuntimeArgs::default(),
         );
 
-        system::transfer_from_purse_to_purse(account::get_main_purse(), payment_purse, amount)
+        system::transfer_from_purse_to_purse(account::get_main_purse(), payment_purse, amount, None)
             .unwrap_or_revert()
     }
 

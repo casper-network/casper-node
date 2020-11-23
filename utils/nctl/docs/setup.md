@@ -1,4 +1,4 @@
-# nctl setup
+# NCTL setup
 
 ### Step 0 - pre-requisites.
 
@@ -16,36 +16,25 @@ cd YOUR_WORKING_DIRECTORY/casper-node
 make setup-rs
 ```
 
-### Step 2 - set local setup file.
+### Step 2 - extend bashrc file to make NCTL commands available from terminal session.
 
 ```
 cd YOUR_WORKING_DIRECTORY/casper-node
 
-cat >> $HOME/.casper-nctl <<- EOM
-
-# Activate nctl shell.
-. $(pwd)/utils/nctl/activate
-
-EOM
-```
-
-### Step 3 - extend bashrc file to make nctl commands available from terminal session.
-
-```
 cat >> $HOME/.bashrc <<- EOM
 
 # ----------------------------------------------------------------------
 # CASPER - NCTL
 # ----------------------------------------------------------------------
 
-# Activate nctl shell.
-. $HOME/.casper-nctl
+# Activate NCTL shell.
+. $(pwd)/utils/nctl/activate
 
 EOM
 ```
 
-### Step 4 - activate nctl shell.
+### Step 3 - refresh bash session.
 
 ```
-. $HOME/.casper-nctl
+. $HOME/.bashrc
 ```

@@ -23,6 +23,8 @@ pub struct Transfer {
     pub amount: U512,
     /// Gas
     pub gas: U512,
+    /// User-defined id
+    pub id: Option<u64>,
 }
 
 impl Transfer {
@@ -34,6 +36,7 @@ impl Transfer {
         target: URef,
         amount: U512,
         gas: U512,
+        id: Option<u64>,
     ) -> Self {
         Transfer {
             deploy_hash,
@@ -42,6 +45,7 @@ impl Transfer {
             target,
             amount,
             gas,
+            id,
         }
     }
 }
@@ -54,6 +58,7 @@ impl FromBytes for Transfer {
         let (target, rem) = URef::from_bytes(rem)?;
         let (amount, rem) = U512::from_bytes(rem)?;
         let (gas, rem) = U512::from_bytes(rem)?;
+        let (id, rem) = <Option<u64>>::from_bytes(rem)?;
         Ok((
             Transfer {
                 deploy_hash,
@@ -62,6 +67,7 @@ impl FromBytes for Transfer {
                 target,
                 amount,
                 gas,
+                id,
             },
             rem,
         ))
@@ -77,6 +83,7 @@ impl ToBytes for Transfer {
         result.append(&mut self.target.to_bytes()?);
         result.append(&mut self.amount.to_bytes()?);
         result.append(&mut self.gas.to_bytes()?);
+        result.append(&mut self.id.to_bytes()?);
         Ok(result)
     }
 
@@ -87,12 +94,13 @@ impl ToBytes for Transfer {
             + self.target.serialized_length()
             + self.amount.serialized_length()
             + self.gas.serialized_length()
+            + self.id.serialized_length()
     }
 }
 
 #[cfg(test)]
 mod gens {
-    use proptest::prelude::Strategy;
+    use proptest::prelude::{prop::option, Arbitrary, Strategy};
 
     use crate::{
         deploy_info::gens::{account_hash_arb, deploy_hash_arb},
@@ -108,15 +116,17 @@ mod gens {
             uref_arb(),
             u512_arb(),
             u512_arb(),
+            option::of(<u64>::arbitrary()),
         )
             .prop_map(
-                |(deploy_hash, from, source, target, amount, gas)| Transfer {
+                |(deploy_hash, from, source, target, amount, gas, id)| Transfer {
                     deploy_hash,
                     from,
                     source,
                     target,
                     amount,
                     gas,
+                    id,
                 },
             )
     }

@@ -20,8 +20,13 @@ pub extern "C" fn call() {
 
     for i in 0..total_purses {
         let new_purse = system::create_purse();
-        system::transfer_from_purse_to_purse(account::get_main_purse(), new_purse, seed_amount)
-            .unwrap_or_revert();
+        system::transfer_from_purse_to_purse(
+            account::get_main_purse(),
+            new_purse,
+            seed_amount,
+            None,
+        )
+        .unwrap_or_revert();
 
         let name = format!("purse:{}", i);
         runtime::put_key(&name, new_purse.into());

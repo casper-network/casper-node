@@ -6264,6 +6264,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "transfer-purse-to-account-with-id"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "transfer-purse-to-accounts"
 version = "0.1.0"
 dependencies = [
