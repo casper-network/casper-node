@@ -57,6 +57,6 @@ pub extern "C" fn call() {
         let target: URef =
             runtime::call_contract(pos_contract_hash, GET_PAYMENT_PURSE, RuntimeArgs::default());
 
-        system::transfer_from_purse_to_purse(source, target, amount).unwrap_or_revert();
+        system::transfer_from_purse_to_purse(source, target, amount, None).unwrap_or_revert();
     }
 }

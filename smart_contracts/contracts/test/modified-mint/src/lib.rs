@@ -14,9 +14,9 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     contracts::Parameters,
     mint::{
-        Mint, RuntimeProvider, StorageProvider, SystemProvider, ARG_AMOUNT, ARG_PURSE, ARG_SOURCE,
-        ARG_TARGET, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
-        METHOD_TRANSFER,
+        Mint, RuntimeProvider, StorageProvider, SystemProvider, ARG_AMOUNT, ARG_ID, ARG_PURSE,
+        ARG_SOURCE, ARG_TARGET, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT,
+        METHOD_READ_BASE_ROUND_REWARD, METHOD_TRANSFER,
     },
     system_contract_errors::mint::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
@@ -71,8 +71,15 @@ impl StorageProvider for MintContract {
 }
 
 impl SystemProvider for MintContract {
-    fn record_transfer(&mut self, source: URef, target: URef, amount: U512) -> Result<(), Error> {
-        system::record_transfer(source, target, amount).map_err(|_| Error::RecordTransferFailure)
+    fn record_transfer(
+        &mut self,
+        source: URef,
+        target: URef,
+        amount: U512,
+        id: Option<u64>,
+    ) -> Result<(), Error> {
+        system::record_transfer(source, target, amount, id)
+            .map_err(|_| Error::RecordTransferFailure)
     }
 }
 
@@ -114,7 +121,8 @@ pub fn transfer() {
     let source: URef = runtime::get_named_arg(ARG_SOURCE);
     let target: URef = runtime::get_named_arg(ARG_TARGET);
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    let result: Result<(), Error> = mint_contract.transfer(source, target, amount);
+    let id: Option<u64> = runtime::get_named_arg(ARG_ID);
+    let result: Result<(), Error> = mint_contract.transfer(source, target, amount, id);
     let ret = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(ret);
 }
@@ -165,6 +173,7 @@ pub fn get_entry_points() -> EntryPoints {
             Parameter::new(ARG_SOURCE, CLType::URef),
             Parameter::new(ARG_TARGET, CLType::URef),
             Parameter::new(ARG_AMOUNT, CLType::U512),
+            Parameter::new(ARG_ID, CLType::Option(Box::new(CLType::U64))),
         ],
         CLType::Result {
             ok: Box::new(CLType::Unit),

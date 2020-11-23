@@ -2,7 +2,7 @@
 //! `casper-engine-grpc-server` in order to gauge the server's performance.
 //!
 //! For details of how to run this executable, see the README in this directory or at
-//! https://github.com/CasperLabs/casper-node/tree/master/grpc/tests/src/profiling#concurrent-executor
+//! <https://github.com/CasperLabs/casper-node/tree/master/grpc/tests/src/profiling#concurrent-executor>
 
 use std::{
     iter::Sum,

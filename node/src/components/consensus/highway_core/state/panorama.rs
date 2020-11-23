@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{collections::HashSet, fmt::Debug};
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -71,7 +71,7 @@ impl<C: Context> Observation<C> {
         match (self, other) {
             (Observation::Faulty, _) | (_, Observation::None) => true,
             (Observation::Correct(hash0), Observation::Correct(hash1)) => {
-                hash0 == hash1 || state.unit(hash0).panorama.sees_correct(state, hash1)
+                hash0 == hash1 || state.unit(hash0).panorama._sees_correct(state, hash1)
             }
             (_, _) => false,
         }
@@ -122,7 +122,7 @@ impl<C: Context> Panorama<C> {
     }
 
     /// Returns `true` if `self` sees the creator of `hash` as correct, and sees that unit.
-    pub(crate) fn sees_correct(&self, state: &State<C>, hash: &C::Hash) -> bool {
+    pub(crate) fn _sees_correct(&self, state: &State<C>, hash: &C::Hash) -> bool {
         let unit = state.unit(hash);
         let can_see = |latest_hash: &C::Hash| {
             Some(hash) == state.find_in_swimlane(latest_hash, unit.seq_number)
@@ -130,13 +130,29 @@ impl<C: Context> Panorama<C> {
         self.get(unit.creator).correct().map_or(false, can_see)
     }
 
+    /// Returns `true` if `self` sees the unit with the specified `hash`.
+    pub(crate) fn _sees(&self, state: &State<C>, hash_to_be_found: &C::Hash) -> bool {
+        // TODO: Optimize this!
+        let mut visited = HashSet::new();
+        let mut to_visit: Vec<_> = self.iter_correct_hashes().collect();
+        while let Some(hash) = to_visit.pop() {
+            if visited.insert(hash) {
+                if hash == hash_to_be_found {
+                    return true;
+                }
+                to_visit.extend(state.unit(hash).panorama.iter_correct_hashes());
+            }
+        }
+        false
+    }
+
     /// Merges two panoramas into a new one.
     pub(crate) fn merge(&self, state: &State<C>, other: &Panorama<C>) -> Panorama<C> {
         let merge_obs = |observations: (&Observation<C>, &Observation<C>)| match observations {
             (Observation::Faulty, _) | (_, Observation::Faulty) => Observation::Faulty,
             (Observation::None, obs) | (obs, Observation::None) => obs.clone(),
-            (obs0, Observation::Correct(vh1)) if self.sees_correct(state, vh1) => obs0.clone(),
-            (Observation::Correct(vh0), obs1) if other.sees_correct(state, vh0) => obs1.clone(),
+            (obs0, Observation::Correct(vh1)) if self._sees_correct(state, vh1) => obs0.clone(),
+            (Observation::Correct(vh0), obs1) if other._sees_correct(state, vh0) => obs1.clone(),
             (Observation::Correct(_), Observation::Correct(_)) => Observation::Faulty,
         };
         let observations = self.iter().zip(other).map(merge_obs).collect_vec();

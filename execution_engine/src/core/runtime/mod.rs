@@ -1542,7 +1542,7 @@ where
         Ok(())
     }
 
-    /// Writes runtime context's account main purse to [dest_ptr] in the Wasm memory.
+    /// Writes runtime context's account main purse to dest_ptr in the Wasm memory.
     fn get_main_purse(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let purse = self.context.get_main_purse()?;
         let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
@@ -1551,7 +1551,7 @@ where
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
 
-    /// Writes caller (deploy) account public key to [dest_ptr] in the Wasm
+    /// Writes caller (deploy) account public key to dest_ptr in the Wasm
     /// memory.
     fn get_caller(&mut self, output_size: u32) -> Result<Result<(), ApiError>, Trap> {
         if !self.can_write_to_host_buffer() {
@@ -1574,7 +1574,7 @@ where
         Ok(Ok(()))
     }
 
-    /// Writes runtime context's phase to [dest_ptr] in the Wasm memory.
+    /// Writes runtime context's phase to dest_ptr in the Wasm memory.
     fn get_phase(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let phase = self.context.phase();
         let bytes = phase.into_bytes().map_err(Error::BytesRepr)?;
@@ -1583,7 +1583,7 @@ where
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
 
-    /// Writes current blocktime to [dest_ptr] in Wasm memory.
+    /// Writes current blocktime to dest_ptr in Wasm memory.
     fn get_blocktime(&self, dest_ptr: u32) -> Result<(), Trap> {
         let blocktime = self
             .context
@@ -1753,13 +1753,15 @@ where
                     mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)?
             }
-            // Type: `fn transfer(source: URef, target: URef, amount: U512) -> Result<(), Error>`
+            // Type: `fn transfer(source: URef, target: URef, amount: U512, id: Option<u64>) ->
+            // Result<(), Error>`
             mint::METHOD_TRANSFER => {
                 let source: URef = Self::get_named_argument(&runtime_args, mint::ARG_SOURCE)?;
                 let target: URef = Self::get_named_argument(&runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
+                let id: Option<u64> = Self::get_named_argument(&runtime_args, mint::ARG_ID)?;
                 let result: Result<(), system_contract_errors::mint::Error> =
-                    mint_runtime.transfer(source, target, amount);
+                    mint_runtime.transfer(source, target, amount, id);
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             // Type: `fn read_base_round_reward() -> Result<U512, Error>`
@@ -2810,7 +2812,13 @@ where
     }
 
     /// Records a transfer.
-    fn record_transfer(&mut self, source: URef, target: URef, amount: U512) -> Result<(), Error> {
+    fn record_transfer(
+        &mut self,
+        source: URef,
+        target: URef,
+        amount: U512,
+        id: Option<u64>,
+    ) -> Result<(), Error> {
         if self.context.base_key() != Key::from(self.protocol_data().mint()) {
             return Err(Error::InvalidContext);
         }
@@ -2824,7 +2832,7 @@ where
             let deploy_hash: DeployHash = self.context.get_deploy_hash();
             let from: AccountHash = self.context.account().account_hash();
             let fee: U512 = U512::zero(); // TODO
-            Transfer::new(deploy_hash, from, source, target, amount, fee)
+            Transfer::new(deploy_hash, from, source, target, amount, fee, id)
         };
         {
             let transfers = self.context.transfers_mut();
@@ -3111,18 +3119,16 @@ where
         source: URef,
         target: URef,
         amount: U512,
+        id: Option<u64>,
     ) -> Result<(), Error> {
-        const ARG_SOURCE: &str = "source";
-        const ARG_TARGET: &str = "target";
-        const ARG_AMOUNT: &str = "amount";
-
         let args_values: RuntimeArgs = runtime_args! {
-            ARG_SOURCE => source,
-            ARG_TARGET => target,
-            ARG_AMOUNT => amount,
+            mint::ARG_SOURCE => source,
+            mint::ARG_TARGET => target,
+            mint::ARG_AMOUNT => amount,
+            mint::ARG_ID => id,
         };
 
-        let result = self.call_contract(mint_contract_hash, "transfer", args_values)?;
+        let result = self.call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values)?;
         let result: Result<(), system_contract_errors::mint::Error> = result.into_t()?;
         Ok(result.map_err(system_contract_errors::Error::from)?)
     }
@@ -3134,6 +3140,7 @@ where
         source: URef,
         target: AccountHash,
         amount: U512,
+        id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let mint_contract_hash = self.get_mint_contract();
 
@@ -3156,6 +3163,7 @@ where
             source,
             target_purse.with_access_rights(AccessRights::ADD),
             amount,
+            id,
         ) {
             Ok(_) => {
                 let account = Account::create(target, Default::default(), target_purse);
@@ -3174,13 +3182,14 @@ where
         source: URef,
         target: URef,
         amount: U512,
+        id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let mint_contract_key = self.get_mint_contract();
 
         // This appears to be a load-bearing use of `RuntimeContext::insert_uref`.
         self.context.insert_uref(target);
 
-        match self.mint_transfer(mint_contract_key, source, target, amount) {
+        match self.mint_transfer(mint_contract_key, source, target, amount, id) {
             Ok(_) => Ok(Ok(TransferredTo::ExistingAccount)),
             Err(_) => Ok(Err(ApiError::Transfer)),
         }
@@ -3192,9 +3201,10 @@ where
         &mut self,
         target: AccountHash,
         amount: U512,
+        id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let source = self.context.get_main_purse()?;
-        self.transfer_from_purse_to_account(source, target, amount)
+        self.transfer_from_purse_to_account(source, target, amount, id)
     }
 
     /// Transfers `amount` of motes from `source` purse to `target` account.
@@ -3204,6 +3214,7 @@ where
         source: URef,
         target: AccountHash,
         amount: U512,
+        id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
@@ -3211,7 +3222,7 @@ where
             None => {
                 // If no account exists, create a new account and transfer the amount to its
                 // purse.
-                self.transfer_to_new_account(source, target, amount)
+                self.transfer_to_new_account(source, target, amount, id)
             }
             Some(StoredValue::Account(account)) => {
                 let target = account.main_purse_add_only();
@@ -3219,7 +3230,7 @@ where
                     return Ok(Ok(TransferredTo::ExistingAccount));
                 }
                 // If an account exists, transfer the amount to its purse
-                self.transfer_to_existing_account(source, target, amount)
+                self.transfer_to_existing_account(source, target, amount, id)
             }
             Some(_) => {
                 // If some other value exists, return an error
@@ -3229,6 +3240,7 @@ where
     }
 
     /// Transfers `amount` of motes from `source` purse to `target` purse.
+    #[allow(clippy::too_many_arguments)]
     fn transfer_from_purse_to_purse(
         &mut self,
         source_ptr: u32,
@@ -3237,6 +3249,8 @@ where
         target_size: u32,
         amount_ptr: u32,
         amount_size: u32,
+        id_ptr: u32,
+        id_size: u32,
     ) -> Result<Result<(), ApiError>, Error> {
         let source: URef = {
             let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
@@ -3253,10 +3267,15 @@ where
             bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
         };
 
+        let id: Option<u64> = {
+            let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
+            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+        };
+
         let mint_contract_key = self.get_mint_contract();
 
         if self
-            .mint_transfer(mint_contract_key, source, target, amount)
+            .mint_transfer(mint_contract_key, source, target, amount, id)
             .is_ok()
         {
             Ok(Ok(()))

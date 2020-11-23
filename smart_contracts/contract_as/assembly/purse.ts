@@ -4,6 +4,8 @@ import {U512} from "./bignum";
 import {Error, ErrorCode} from "./error";
 import {UREF_SERIALIZED_LENGTH} from "./constants";
 import {URef} from "./uref";
+import {toBytesU64} from "./bytesrepr";
+import {Option} from "./option";
 
 /**
  * The result of a successful transfer between purses.
@@ -92,8 +94,8 @@ export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uin
     for (let i = 0; i < targetAccount.length; i++) {
         targetBytes[i] = targetAccount[i];
     }
-
     let amountBytes = amount.toBytes();
+    let idBytes = new Option(null).toBytes()
 
     let ret = externals.transfer_from_purse_to_account(
         purseBytes.dataStart,
@@ -102,6 +104,8 @@ export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uin
         targetBytes.length,
         amountBytes.dataStart,
         amountBytes.length,
+        idBytes.dataStart,
+        idBytes.length,
     );
 
     if (ret == TransferredTo.ExistingAccount)
@@ -121,6 +125,7 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
     let sourceBytes = sourcePurse.toBytes();
     let targetBytes = targetPurse.toBytes();
     let amountBytes = amount.toBytes();
+    let idBytes = new Option(null).toBytes()
 
     let ret = externals.transfer_from_purse_to_purse(
         sourceBytes.dataStart,
@@ -129,6 +134,8 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
         targetBytes.length,
         amountBytes.dataStart,
         amountBytes.length,
+        idBytes.dataStart,
+        idBytes.length,
     );
     return ret;
 }

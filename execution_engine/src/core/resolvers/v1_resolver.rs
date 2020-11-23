@@ -129,15 +129,15 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 FunctionIndex::CreatePurseIndex.into(),
             ),
             "casper_transfer_to_account" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
                 FunctionIndex::TransferToAccountIndex.into(),
             ),
             "casper_transfer_from_purse_to_account" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
+                Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
                 FunctionIndex::TransferFromPurseToAccountIndex.into(),
             ),
             "casper_transfer_from_purse_to_purse" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
+                Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
                 FunctionIndex::TransferFromPurseToPurseIndex.into(),
             ),
             "casper_get_balance" => FuncInstance::alloc_host(
@@ -209,7 +209,7 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 FunctionIndex::Blake2b.into(),
             ),
             "casper_record_transfer" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
+                Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
                 FunctionIndex::RecordTransfer.into(),
             ),
             #[cfg(feature = "test-support")]

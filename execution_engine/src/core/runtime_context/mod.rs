@@ -768,7 +768,7 @@ where
     }
 
     /// Adds `value` to the `key`. The premise for being able to `add` value is
-    /// that the type of it [value] can be added (is a Monoid). If the
+    /// that the type of it value can be added (is a Monoid). If the
     /// values can't be added, either because they're not a Monoid or if the
     /// value stored under `key` has different type, then `TypeMismatch`
     /// errors is returned.
