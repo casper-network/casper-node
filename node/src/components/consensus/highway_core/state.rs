@@ -496,39 +496,11 @@ impl<C: Context> State<C> {
             return;
         }
 
-        if !self.is_faulty(creator) {
-            // New unit we haven't seen endorsed before.
-            self.panoramas.endorsed(creator, uhash);
-        }
+        let new_panorama = self
+            .citable_panorama()
+            .merge(self, &self.inclusive_panorama(&uhash));
 
-        // We need to include everything seen by unit as well, otherwise this could make
-        // citable_panorama invalid. E.g. if unit2 by Alice is seen from `unit` but later than
-        // citable_panorama[ALICE], we must set citable_panorama[ALICE] = Correct(unit2), otherwise
-        // any vote with this panorama will be considered invalid.
-
-        let mut to_visit: Vec<_> = self
-            .unit(&uhash)
-            .panorama
-            .iter_correct_hashes()
-            .cloned()
-            .collect();
-
-        while let Some(hash) = to_visit.pop() {
-            let nunit_seq_number = self.unit(&hash).seq_number;
-            let nunit_creator = self.unit(&hash).creator;
-            if self.citable_panorama().next_seq_num(self, nunit_creator) >= nunit_seq_number {
-                // We have already endorsed `nunit` and its panorama.
-                continue;
-            }
-
-            if !self.is_faulty(nunit_creator) {
-                // New unit, endorse it.
-                self.panoramas.endorsed(nunit_creator, hash);
-            }
-
-            // Enqueue all of its panorama.
-            to_visit.extend(self.unit(&hash).panorama.iter_correct_hashes());
-        }
+        self.panoramas.citable_panorama = new_panorama;
     }
 
     pub(crate) fn wire_unit(
