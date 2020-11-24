@@ -360,9 +360,9 @@ mod get_deploy {
 }
 
 mod get_auction_info {
-    use casper_node::rpcs::{state::GetAuctionInfo, RpcWithoutParams};
-
     use super::*;
+
+    use casper_node::rpcs::{state::GetAuctionInfo, RpcWithoutParams};
 
     #[tokio::test(threaded_scheduler)]
     async fn should_succeed() {
