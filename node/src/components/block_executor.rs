@@ -170,7 +170,9 @@ impl BlockExecutor {
         // hash.
         let next_height = state.finalized_block.height() + 1;
         // Update the metric.
-        self.metrics.chain_height.set(next_height as i64);
+        self.metrics
+            .chain_height
+            .set(state.finalized_block.height() as i64);
         let block = self.create_block(state.finalized_block, state.state_root_hash);
 
         let mut effects = effect_builder
