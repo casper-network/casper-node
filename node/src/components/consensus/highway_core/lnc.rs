@@ -25,7 +25,8 @@ impl<C: Context> LncForks<C> {
 
 /// Looks for forks, created by `eq_idx` validator, that are visible in the past of the panorama.
 ///
-/// Exits early if more than one fork is found as it cannot satisfy LNC then anyway.
+/// Exits early if more than one of these forks is naively cited, i.e. not seen by an endorsed unit,
+/// as it cannot satisfy the LNC then anyway.
 pub(crate) fn find_forks<C: Context>(
     panorama: &Panorama<C>,
     endorsed: &BTreeSet<C::Hash>,
@@ -40,7 +41,7 @@ pub(crate) fn find_forks<C: Context>(
     // * Otherwise store the unique naively cited fork in naive_by_wunit.
     let mut opt_naive_by_wunit = None;
 
-    // Returns true if any endorsed (according to wunit) unit cites the given unit.
+    // Returns true if any endorsed unit cites the given unit.
     let seen_by_endorsed = |hash| endorsed.iter().any(|e_hash| state.sees(e_hash, hash));
 
     // Iterate over all units cited by wunit.

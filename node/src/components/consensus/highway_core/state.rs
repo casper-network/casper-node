@@ -743,7 +743,7 @@ impl<C: Context> State<C> {
         self.panoramas.panorama_mut()[creator] = new_obs.clone();
 
         if new_obs.is_faulty() {
-            // If the new observation is `Faulty`, it is save to update the `citable_panorama`
+            // If the new observation is `Faulty`, it is safe to update the `citable_panorama`
             // b/c we won't violate LNC if we use it for our next unit.
             self.panoramas.citable_panorama_mut()[creator] = new_obs;
         } else if new_obs.is_correct() {
