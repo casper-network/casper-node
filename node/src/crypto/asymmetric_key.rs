@@ -24,7 +24,7 @@ use lazy_static::lazy_static;
 use pem::Pem;
 #[cfg(test)]
 use rand::{Rng, RngCore};
-use schemars::JsonSchema;
+use schemars::{gen, schema::Schema, JsonSchema};
 use serde::{
     de::{Deserializer, Error as SerdeError},
     Deserialize, Serialize, Serializer,
@@ -413,19 +413,13 @@ impl<'de> Deserialize<'de> for SecretKey {
 }
 
 /// A public asymmetric key.
-#[derive(Clone, Copy, DataSize, Eq, PartialEq, JsonSchema)]
-#[schemars(
-    with = "String",
-    description = "Hex-encoded cryptographic public key, including the algorithm tag prefix."
-)]
+#[derive(Clone, Copy, DataSize, Eq, PartialEq)]
 pub enum PublicKey {
     /// Ed25519 public key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
-    #[schemars(skip)]
     Ed25519(ed25519::PublicKey),
     /// secp256k1 public key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
-    #[schemars(skip)]
     Secp256k1(k256::PublicKey),
 }
 
@@ -814,6 +808,21 @@ impl FromBytes for PublicKey {
     }
 }
 
+impl JsonSchema for PublicKey {
+    fn schema_name() -> String {
+        String::from("PublicKey")
+    }
+
+    fn json_schema(gen: &mut gen::SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "Hex-encoded cryptographic public key, including the algorithm tag prefix.".to_string(),
+        );
+        schema_object.into()
+    }
+}
+
 /// Generates an Ed25519 keypair using the operating system's cryptographically secure random number
 /// generator.
 pub fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
@@ -855,22 +864,16 @@ pub fn generate_secp256k1_keypair() -> (SecretKey, PublicKey) {
 }
 
 /// A signature of given data.
-#[derive(Clone, Copy, DataSize, JsonSchema)]
-#[schemars(
-    with = "String",
-    description = "Hex-encoded cryptographic signature, including the algorithm tag prefix."
-)]
+#[derive(Clone, Copy, DataSize)]
 pub enum Signature {
     /// Ed25519 signature.
     //
     // This is held as a byte array rather than an `ed25519_dalek::Signature` as that type doesn't
     // implement `AsRef` amongst other common traits.  In order to implement these common traits,
     // it is convenient and cheap to use `signature.as_ref()`.
-    #[schemars(skip)]
     Ed25519([u8; ed25519::SIGNATURE_LENGTH]),
     /// secp256k1 signature.
     #[data_size(skip)] // Manually verified to have no data on the heap.
-    #[schemars(skip)]
     Secp256k1(Secp256k1Signature),
 }
 
@@ -1084,6 +1087,21 @@ impl Serialize for Signature {
 impl<'de> Deserialize<'de> for Signature {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
         deserialize(deserializer)
+    }
+}
+
+impl JsonSchema for Signature {
+    fn schema_name() -> String {
+        String::from("Signature")
+    }
+
+    fn json_schema(gen: &mut gen::SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "Hex-encoded cryptographic signature, including the algorithm tag prefix.".to_string(),
+        );
+        schema_object.into()
     }
 }
 
