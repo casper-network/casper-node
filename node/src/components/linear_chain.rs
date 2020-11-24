@@ -278,7 +278,9 @@ where
                     effect_builder
                         .handle_linear_chain_block(block_header.clone())
                         .event(move |(pk, signature)| {
-                            FinalitySignature::new(block_hash, signature, pk).into()
+                            Event::NewFinalitySignature(Box::new(FinalitySignature::new(
+                                block_hash, signature, pk,
+                            )))
                         }),
                 );
                 effects.extend(
