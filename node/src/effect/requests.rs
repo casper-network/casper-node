@@ -35,15 +35,25 @@ use casper_types::{
 };
 
 use super::{Multiple, Responder};
-use crate::{Chainspec, components::{
+use crate::{
+    components::{
         chainspec_loader::ChainspecInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
-    }, crypto::{asymmetric_key::Signature, hash::Digest}, rpcs::chain::BlockIdentifier, crypto::asymmetric_key::PublicKey, types::{
+    },
+    crypto::{
+        asymmetric_key::{PublicKey, Signature},
+        hash::Digest,
+    },
+    rpcs::chain::BlockIdentifier,
+    types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
         Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, StatusFeed,
         Timestamp,
-    }, utils::DisplayIter};
+    },
+    utils::DisplayIter,
+    Chainspec,
+};
 
 /// A metrics request.
 #[derive(Debug)]
