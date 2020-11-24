@@ -478,13 +478,10 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 // Computationally expensive validity check for a given deploy instance, including
 // asymmetric_key signing verification.
 fn validate_deploy(deploy: &Deploy) -> bool {
-    // FIXME: remove println! calls here after CI-only test failure is fixed
-
     let serialized_body = serialize_body(&deploy.payment, &deploy.session);
     let body_hash = hash::hash(&serialized_body);
     if body_hash != deploy.header.body_hash {
         warn!(?deploy, ?body_hash, "invalid deploy body hash");
-        println!("invalid deploy body hash, {:?} {:?}", deploy, body_hash);
         return false;
     }
 
@@ -492,15 +489,6 @@ fn validate_deploy(deploy: &Deploy) -> bool {
     let hash = DeployHash::new(hash::hash(&serialized_header));
     if hash != deploy.hash {
         warn!(?deploy, ?hash, "invalid deploy hash");
-        println!("invalid deploy hash, {:?} {:?}", deploy, hash);
-        println!(
-            "serialized_header bytes, {:?}",
-            hex::encode(&serialized_header)
-        );
-        println!(
-            "serialized_header json, {:?}",
-            serde_json::to_string_pretty(&deploy.header).unwrap()
-        );
         return false;
     }
 
@@ -512,7 +500,6 @@ fn validate_deploy(deploy: &Deploy) -> bool {
             asymmetric_key::verify(&deploy.hash, &approval.signature, &approval.signer)
         {
             warn!(?deploy, "failed to verify approval {}: {}", index, error);
-            println!("failed to verify approval, {:?} {:?}", index, error);
             return false;
         }
     }

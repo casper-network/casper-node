@@ -193,10 +193,10 @@ mod tests {
     const ENTRYPOINT: &str = "entrypoint";
     const VERSION: &str = "0.1.0";
     const SAMPLE_DEPLOY: &str = r#"{
-        "hash": "c38849ad9057a368caf3e62799c5368de9e656185f781e434e16757c6e8ce9f4",
+        "hash": "5e5baa4f7c77233d1cabe8e28569e597eb5a00e62b29c3278d5179378551bb99",
         "header": {
           "account": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
-          "timestamp": "2020-11-23T19:20:23.015Z",
+          "timestamp": "2020-11-24T17:38:19.515Z",
           "ttl": "10s",
           "gas_price": 1,
           "body_hash": "1edd9716bc3b94fb2e4bdc769a1bcb0b3c7c4df2135ff1c2a405f0ae22e47646",
@@ -224,12 +224,12 @@ mod tests {
         },
         "approvals": [
             {
-                "signer": "0129559e33ff6e1917c0bb6890ac5cf6087c9c79440b42b035741e6b2075a23637",
-                "signature": "0184ac4c736ad2cc715bf67408f7d5c5495a53b5d52e7a0bd67696b2acf20736f0970f8909cd80ff50fcc104bc78d2a44134deabf8bd60ec60ee80bafd39b5e60c"
+                "signer": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
+                "signature": "010925cbe2ae196a23eafa6b169c36381b4c2f9701c0f9adfef7304bd5f5fbca8b4c08ef439694b6b9597133a6b017b0bc031fbf85fe3725bb0dd5187567839606"
             },
             {
-                "signer": "01e204c257ab9ba52b5635d3904112ddc8339472d8fa07a9bed0f2cd7196e6f2b1",
-                "signature": "0102ad384f4754d1564fa10d65b7df7d3caeeb0b81acd0cecb65d95ed146dc5a1a87f65ae6d86ff120ded8cf84ae1e3fd05a06c0fe3c9de6ad562fbfb707329904"
+                "signer": "012b4ea314a3d130fa382d3443189adb1e085f24581da256a2ee56dd253e7c56ed",
+                "signature": "017146b3d3684b7124e97ffe962a229cdca7775b6001ad8204f2c97ffba5fe6dbaf72e1636c123a13915f2972f18229e5c8392222a77d7f6b00e1635d63d814700"
             }
         ]
       }"#;
@@ -282,6 +282,10 @@ mod tests {
 
         let expected = Deploy::read_deploy(SAMPLE_DEPLOY.as_bytes()).unwrap();
         let actual = Deploy::read_deploy(result.as_bytes()).unwrap();
+
+        // The test output can be used to generate data for SAMPLE_DEPLOY:
+        // println!("{}", serde_json::to_string_pretty(&actual).unwrap());
+
         assert_eq!(expected.header().account(), actual.header().account());
         assert_eq!(expected.header().ttl(), actual.header().ttl());
         assert_eq!(expected.header().gas_price(), actual.header().gas_price());
@@ -308,10 +312,19 @@ mod tests {
             "deploy should be is_valid() {:#?}",
             deploy
         );
-        assert_eq!(deploy.approvals().len(), 2);
+        assert_eq!(
+            deploy.approvals().len(),
+            2,
+            "Sample deploy should have 2 approvals."
+        );
+
         let mut result = Vec::new();
         Deploy::sign_and_write_deploy(bytes, SecretKey::generate_ed25519(), &mut result).unwrap();
         let signed_deploy = Deploy::read_deploy(&result[..]).unwrap();
+
+        // Can be used to update SAMPLE_DEPLOY data:
+        // println!("{}", serde_json::to_string_pretty(&signed_deploy).unwrap());
+
         assert_eq!(
             signed_deploy.approvals().len(),
             deploy.approvals().len() + 1,
