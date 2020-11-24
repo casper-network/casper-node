@@ -726,6 +726,7 @@ impl Block {
         self.proofs.push(proof)
     }
 
+    /// Returns true if block already contains the proof.
     pub(crate) fn contains_proof(&self, proof: &Signature) -> bool {
         self.proofs.iter().any(|s| s == proof)
     }
