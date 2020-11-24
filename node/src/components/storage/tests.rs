@@ -210,11 +210,11 @@ fn can_put_and_get_block() {
     let was_new = put_block(&mut harness, &mut storage, block.clone());
     assert!(was_new, "putting block should have returned `true`");
 
-    // Storing the same block again should work, but yield a result of `false`.
+    // Storing the same block again should work, but yield a result of `true`.
     let was_new_second_time = put_block(&mut harness, &mut storage, block.clone());
     assert!(
-        !was_new_second_time,
-        "storing block the second time should have returned `false`"
+        was_new_second_time,
+        "storing block the second time should have returned `true`"
     );
 
     let response = get_block(&mut harness, &mut storage, *block.hash());
@@ -321,7 +321,7 @@ fn different_block_at_height_is_fatal() {
     assert!(was_new);
 
     let was_new = put_block(&mut harness, &mut storage, block_44_a);
-    assert!(!was_new);
+    assert!(was_new);
 
     // Putting a different block with the same height should now crash.
     put_block(&mut harness, &mut storage, block_44_b);
