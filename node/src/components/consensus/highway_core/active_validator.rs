@@ -308,7 +308,12 @@ impl<C: Context> ActiveValidator<C> {
                 "canceling proposal for {} due to unit", prop_time
             );
         }
-        if panorama[self.vidx] != state.panorama()[self.vidx] {
+        // If the panorama doesn't cite our own previous vote, we equivocate.
+        // If it is not citable, we would be unable to add our own vote to citable_panorama.
+        // In those cases, use citable_panorama instead.
+        if panorama[self.vidx] != state.panorama()[self.vidx]
+            || !state.citable_panorama().geq(state, &panorama)
+        {
             error!("replacing unit panorama to avoid equivocation");
             panorama = state.citable_panorama().clone();
             assert_eq!(panorama[self.vidx], state.panorama()[self.vidx]);

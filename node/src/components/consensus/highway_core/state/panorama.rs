@@ -181,7 +181,7 @@ impl<C: Context> Panorama<C> {
 
     /// Returns whether `self` can possibly come later in time than `other`, i.e. it can see
     /// every honest message and every fault seen by `other`.
-    pub(super) fn geq(&self, state: &State<C>, other: &Panorama<C>) -> bool {
+    pub(crate) fn geq(&self, state: &State<C>, other: &Panorama<C>) -> bool {
         let mut pairs_iter = self.iter().zip(other);
         pairs_iter.all(|(obs_self, obs_other)| obs_self.geq(state, obs_other))
     }

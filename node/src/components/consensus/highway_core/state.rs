@@ -123,55 +123,6 @@ impl<C: Context> Fault<C> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct Panoramas<C: Context> {
-    /// The full panorama, corresponding to the complete protocol state.
-    panorama: Panorama<C>,
-    /// Panorama used when creating new units.
-    /// In the presence of faults may lag behind `panorama`.
-    /// Units, that if cited by a new unit would make that unit violate the LNC, are not added to
-    /// `citable_panorama`.
-    citable_panorama: Panorama<C>,
-}
-
-impl<C: Context> Panoramas<C> {
-    fn new(panorama: Panorama<C>, citable_panorama: Panorama<C>) -> Self {
-        Panoramas {
-            panorama,
-            citable_panorama,
-        }
-    }
-
-    /// Returns the complete protocol state's latest panorama.
-    fn panorama(&self) -> &Panorama<C> {
-        &self.panorama
-    }
-
-    /// Returns the citable panorama.
-    fn citable_panorama(&self) -> &Panorama<C> {
-        &self.citable_panorama
-    }
-
-    /// Marks validator at `idx` as faulty.
-    fn mark_faulty(&mut self, idx: ValidatorIndex) {
-        self.panorama[idx] = Observation::Faulty;
-        self.citable_panorama[idx] = Observation::Faulty;
-    }
-
-    /// Returns the latest observation of `validator`.
-    fn get(&self, validator: ValidatorIndex) -> &Observation<C> {
-        self.panorama.get(validator)
-    }
-
-    fn citable_panorama_mut(&mut self) -> &mut Panorama<C> {
-        &mut self.citable_panorama
-    }
-
-    fn panorama_mut(&mut self) -> &mut Panorama<C> {
-        &mut self.panorama
-    }
-}
-
 /// A passive instance of the Highway protocol, containing its local state.
 ///
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
@@ -193,8 +144,13 @@ pub(crate) struct State<C: Context> {
     blocks: HashMap<C::Hash, Block<C>>,
     /// List of faulty validators and their type of fault.
     faults: HashMap<ValidatorIndex, Fault<C>>,
-    /// Panoramas that the protocol observed.
-    panoramas: Panoramas<C>,
+    /// The full panorama, corresponding to the complete protocol state.
+    panorama: Panorama<C>,
+    /// Panorama used when creating new units.
+    /// In the presence of faults may lag behind `panorama`.
+    /// Units, that if cited by a new unit would make that unit violate the LNC, are not added to
+    /// `citable_panorama`.
+    citable_panorama: Panorama<C>,
     /// All currently endorsed units, by hash.
     endorsements: HashMap<C::Hash, ValidatorMap<Option<C::Signature>>>,
     /// Units that don't yet have 2/3 of stake endorsing them.
@@ -233,7 +189,6 @@ impl<C: Context> State<C> {
             );
             panorama[*idx] = Observation::Faulty;
         }
-        let panoramas = Panoramas::new(panorama.clone(), panorama);
         State {
             params,
             weights,
@@ -241,7 +196,8 @@ impl<C: Context> State<C> {
             units: HashMap::new(),
             blocks: HashMap::new(),
             faults,
-            panoramas,
+            citable_panorama: panorama.clone(),
+            panorama,
             endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
             clock: Clock::new(),
@@ -345,7 +301,8 @@ impl<C: Context> State<C> {
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
     pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
-        self.panoramas.mark_faulty(idx);
+        self.panorama[idx] = Observation::Faulty;
+        self.citable_panorama[idx] = Observation::Faulty;
         self.faults.entry(idx).or_insert(Fault::Indirect);
     }
 
@@ -361,7 +318,7 @@ impl<C: Context> State<C> {
 
     /// Returns an iterator over latest unit hashes from honest validators.
     pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
-        self.panorama().iter_correct_hashes()
+        self.panorama.iter_correct_hashes()
     }
 
     /// Returns the unit with the given hash, if present.
@@ -391,12 +348,12 @@ impl<C: Context> State<C> {
 
     /// Returns the complete protocol state's latest panorama.
     pub(crate) fn panorama(&self) -> &Panorama<C> {
-        &self.panoramas.panorama()
+        &self.panorama
     }
 
     /// Returns the "safe" panorama, that can be used when creating new units.
     pub(crate) fn citable_panorama(&self) -> &Panorama<C> {
-        &self.panoramas.citable_panorama()
+        &self.citable_panorama
     }
 
     /// Returns the leader in the specified time slot.
@@ -438,7 +395,8 @@ impl<C: Context> State<C> {
         // TODO: Should use Display, not Debug!
         trace!(?evidence, "marking validator #{} as faulty", idx.0);
         self.faults.insert(idx, Fault::Direct(evidence));
-        self.panoramas.mark_faulty(idx);
+        self.panorama[idx] = Observation::Faulty;
+        self.citable_panorama[idx] = Observation::Faulty;
         true
     }
 
@@ -478,10 +436,10 @@ impl<C: Context> State<C> {
         self.endorsements.insert(uhash, endorsed_map);
 
         let new_panorama = self
-            .citable_panorama()
+            .citable_panorama
             .merge(self, &self.inclusive_panorama(&uhash));
 
-        self.panoramas.citable_panorama = new_panorama;
+        self.citable_panorama = new_panorama;
     }
 
     pub(crate) fn wire_unit(
@@ -679,7 +637,7 @@ impl<C: Context> State<C> {
     fn update_panorama(&mut self, swunit: &SignedWireUnit<C>) {
         let wunit = &swunit.wire_unit;
         let creator = wunit.creator;
-        let new_obs = match (self.panoramas.get(creator), wunit.panorama.get(creator)) {
+        let new_obs = match (self.panorama.get(creator), wunit.panorama.get(creator)) {
             (Observation::Faulty, _) => Observation::Faulty,
             (obs0, obs1) if obs0 == obs1 => Observation::Correct(wunit.hash()),
             (Observation::None, _) => panic!("missing creator's previous unit"),
@@ -693,32 +651,28 @@ impl<C: Context> State<C> {
                 Observation::Faulty
             }
         };
-        self.panoramas.panorama_mut()[creator] = new_obs.clone();
+        self.panorama[creator] = new_obs.clone();
 
         if new_obs.is_faulty() {
             // If the new observation is `Faulty`, it is safe to update the `citable_panorama`
             // b/c we won't violate LNC if we use it for our next unit.
-            self.panoramas.citable_panorama_mut()[creator] = new_obs;
+            self.citable_panorama[creator] = new_obs;
         } else if new_obs.is_correct() {
-            // Check if citing new unit will make us violate LNC.
-            let mut updated_panorama = self.citable_panorama().merge(self, &wunit.panorama);
+            // Check if citing new unit would introduce a new naively cited fork by an equivocator,
+            // so we'd be in danger of violating the LNC.
+            let mut updated_panorama = self.citable_panorama.merge(self, &wunit.panorama);
             updated_panorama[wunit.creator] = new_obs;
+            let endorsed = self.endorsements.keys().cloned().collect();
             let cites_naively = updated_panorama
                 .enumerate()
                 .filter(|(_, obs)| obs.is_faulty())
                 .map(|(i, _)| i)
                 .any(|eq_idx| {
-                    !lnc::find_forks(
-                        &updated_panorama,
-                        &self.endorsements.keys().cloned().collect(),
-                        eq_idx,
-                        self,
-                    )
-                    .is_none()
+                    !lnc::find_forks(&updated_panorama, &endorsed, eq_idx, self).is_none()
                 });
 
             if !cites_naively {
-                self.panoramas.citable_panorama = updated_panorama;
+                self.citable_panorama = updated_panorama;
             }
         }
     }
@@ -781,7 +735,7 @@ impl<C: Context> State<C> {
     /// Returns `None` if there are no correct validators in the panorama.
     pub(crate) fn median_round_exp(&self) -> Option<u8> {
         weighted_median(
-            self.panorama()
+            self.panorama
                 .iter_correct(self)
                 .map(|unit| (unit.round_exp, self.weight(unit.creator))),
         )
@@ -904,8 +858,10 @@ impl<C: Context> State<C> {
         uhash: &C::Hash,
     ) -> Panorama<C> {
         let mut confirmation_panorama = self.inclusive_panorama(uhash);
-        if confirmation_panorama[own_idx] != self.citable_panorama()[own_idx] {
-            confirmation_panorama = self.citable_panorama().clone();
+        if confirmation_panorama[own_idx] != self.citable_panorama[own_idx]
+            || !self.citable_panorama().geq(self, &confirmation_panorama)
+        {
+            confirmation_panorama = self.citable_panorama.clone();
         }
         confirmation_panorama
     }
