@@ -266,7 +266,11 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance("", ""),
-            Err(CryptoError("state_root_hash", FromHex(InvalidStringLength)).into())
+            Err(CryptoError {
+                context: "state_root_hash",
+                error: FromHex(InvalidStringLength)
+            }
+            .into())
         );
     }
 
@@ -275,7 +279,11 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance("", VALID_PURSE_UREF),
-            Err(CryptoError("state_root_hash", FromHex(InvalidStringLength)).into())
+            Err(CryptoError {
+                context: "state_root_hash",
+                error: FromHex(InvalidStringLength)
+            }
+            .into())
         );
     }
 
@@ -293,7 +301,11 @@ mod get_balance {
         let server_handle = MockServerHandle::spawn::<GetBalanceParams>(GetBalance::METHOD);
         assert_eq!(
             server_handle.get_balance("deadbeef", VALID_PURSE_UREF),
-            Err(CryptoError("state_root_hash", FromHex(InvalidStringLength)).into())
+            Err(CryptoError {
+                context: "state_root_hash",
+                error: FromHex(InvalidStringLength)
+            }
+            .into())
         );
     }
 }
@@ -338,7 +350,11 @@ mod get_deploy {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert_eq!(
             server_handle.get_deploy("012345",),
-            Err(CryptoError("deploy_hash", FromHex(InvalidStringLength)).into())
+            Err(CryptoError {
+                context: "deploy_hash",
+                error: FromHex(InvalidStringLength)
+            }
+            .into())
         );
     }
 }

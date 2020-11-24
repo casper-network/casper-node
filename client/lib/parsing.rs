@@ -52,8 +52,10 @@ fn gas_price(value: &str) -> Result<u64> {
 fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
     let mut hashes = Vec::with_capacity(values.len());
     for value in values {
-        let digest =
-            Digest::from_hex(value).map_err(|error| Error::CryptoError("dependencies", error))?;
+        let digest = Digest::from_hex(value).map_err(|error| Error::CryptoError {
+            context: "dependencies",
+            error,
+        })?;
         hashes.push(DeployHash::new(digest))
     }
     Ok(hashes)
@@ -224,7 +226,10 @@ fn standard_payment(value: &str) -> Result<RuntimeArgs> {
 
 pub(crate) fn secret_key(value: &str) -> Result<SecretKey> {
     let path = PathBuf::from(value);
-    SecretKey::from_file(path).map_err(|error| Error::CryptoError("secret_key", error))
+    SecretKey::from_file(path).map_err(|error| Error::CryptoError {
+        context: "secret_key",
+        error,
+    })
 }
 
 fn args_from_simple_or_complex(
@@ -455,7 +460,10 @@ fn version(value: &str) -> Result<u32> {
 }
 
 fn account(value: &str) -> Result<NodePublicKey> {
-    NodePublicKey::from_hex(value).map_err(|error| Error::CryptoError("account", error))
+    NodePublicKey::from_hex(value).map_err(|error| Error::CryptoError {
+        context: "account",
+        error,
+    })
 }
 
 pub(crate) fn purse(value: &str) -> Result<URef> {
