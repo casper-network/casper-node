@@ -1,3 +1,5 @@
+use std::fs::File;
+
 use futures::executor;
 use jsonrpc_lite::{Id, JsonRpc, Params};
 use rand::Rng;
@@ -71,7 +73,10 @@ impl RpcCall {
     }
 
     pub(crate) fn get_deploy(self, deploy_hash: &str) -> Result<JsonRpc> {
-        let hash = Digest::from_hex(deploy_hash)?;
+        let hash = Digest::from_hex(deploy_hash).map_err(|error| Error::CryptoError {
+            context: "deploy_hash",
+            error,
+        })?;
         let params = GetDeployParams {
             deploy_hash: DeployHash::new(hash),
         };
@@ -79,7 +84,11 @@ impl RpcCall {
     }
 
     pub(crate) fn get_item(self, state_root_hash: &str, key: &str, path: &str) -> Result<JsonRpc> {
-        let state_root_hash = Digest::from_hex(state_root_hash)?;
+        let state_root_hash =
+            Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
+                context: "state_root_hash",
+                error,
+            })?;
 
         let key = {
             if let Ok(key) = Key::from_formatted_str(key) {
@@ -118,7 +127,11 @@ impl RpcCall {
     }
 
     pub(crate) fn get_balance(self, state_root_hash: &str, purse_uref: &str) -> Result<JsonRpc> {
-        let state_root_hash = Digest::from_hex(state_root_hash)?;
+        let state_root_hash =
+            Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
+                context: "state_root_hash",
+                error,
+            })?;
         let uref = URef::from_formatted_str(purse_uref)
             .map_err(|error| Error::FailedToParseURef("purse_uref", error))?;
         let key = Key::from(uref);
@@ -174,7 +187,11 @@ impl RpcCall {
     }
 
     pub(crate) fn send_deploy_file(self, input_path: &str) -> Result<JsonRpc> {
-        let deploy = Deploy::read_deploy(input_path)?;
+        let input = File::open(input_path).map_err(|error| Error::IoError {
+            context: format!("unable to read input file '{}'", input_path),
+            error,
+        })?;
+        let deploy = Deploy::read_deploy(input)?;
         let params = PutDeployParams { deploy };
         SendDeploy::request_with_map_params(self, params)
     }
@@ -203,7 +220,11 @@ impl RpcCall {
         }
 
         if maybe_block_identifier.len() == (Digest::LENGTH * 2) {
-            let hash = Digest::from_hex(maybe_block_identifier)?;
+            let hash =
+                Digest::from_hex(maybe_block_identifier).map_err(|error| Error::CryptoError {
+                    context: "block_identifier",
+                    error,
+                })?;
             Ok(Some(BlockIdentifier::Hash(BlockHash::new(hash))))
         } else {
             let height = maybe_block_identifier
