@@ -479,12 +479,6 @@ impl<C: Context> State<C> {
         // When unit gets endorsed, it becomes safe to cite.
         let creator = self.unit(&uhash).creator;
 
-        if self.citable_panorama().next_seq_num(self, creator) >= self.unit(&uhash).seq_number {
-            // Previous unit comes later than `uhash`.
-            // Endorsing later units also implicitly endorses past units by that creator.
-            return;
-        }
-
         let new_panorama = self
             .citable_panorama()
             .merge(self, &self.inclusive_panorama(&uhash));
