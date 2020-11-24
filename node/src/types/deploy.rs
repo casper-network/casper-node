@@ -44,9 +44,11 @@ lazy_static! {
         let payment = ExecutableDeployItem::StoredContractByName {
             name: String::from("casper-example"),
             entry_point: String::from("example-entry-point"),
-            args: vec![1, 1],
+            args: vec![1, 1].into(),
         };
-        let session = ExecutableDeployItem::Transfer { args: vec![2, 2] };
+        let session = ExecutableDeployItem::Transfer {
+            args: vec![2, 2].into(),
+        };
         let serialized_body = serialize_body(&payment, &session);
         let body_hash = hash::hash(&serialized_body);
 
@@ -658,6 +660,8 @@ impl FromBytes for Deploy {
 mod tests {
     use std::time::Duration;
 
+    use casper_types::bytesrepr::Bytes;
+
     use super::*;
 
     #[test]
@@ -707,10 +711,10 @@ mod tests {
             vec![],
             String::default(),
             ExecutableDeployItem::ModuleBytes {
-                module_bytes: vec![],
-                args: vec![],
+                module_bytes: Bytes::new(),
+                args: Bytes::new(),
             },
-            ExecutableDeployItem::Transfer { args: vec![] },
+            ExecutableDeployItem::Transfer { args: Bytes::new() },
             &SecretKey::generate_ed25519(),
             &mut crate::new_rng(),
         );

@@ -5,7 +5,7 @@
 //! initialization only happens at genesis.
 //!
 //! See
-//! https://casperlabs.atlassian.net/wiki/spaces/EN/pages/135528449/Genesis+Process+Specification
+//! <https://casperlabs.atlassian.net/wiki/spaces/EN/pages/135528449/Genesis+Process+Specification>
 //! for full details.
 
 mod chainspec;

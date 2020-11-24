@@ -938,7 +938,7 @@ where
     ) -> Result<GetModuleResult, Error> {
         let (contract_package, contract, base_key) = match deploy_item {
             ExecutableDeployItem::ModuleBytes { module_bytes, .. } => {
-                let module = preprocessor.preprocess(&module_bytes)?;
+                let module = preprocessor.preprocess(&module_bytes.as_ref())?;
                 return Ok(GetModuleResult::Session {
                     module,
                     contract_package: ContractPackage::default(),

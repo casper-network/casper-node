@@ -129,7 +129,7 @@ impl Transfer {
 
 impl FromBytes for Transfer {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (deploy_hash, rem) = DeployHash::from_bytes(bytes)?;
+        let (deploy_hash, rem) = FromBytes::from_bytes(bytes)?;
         let (from, rem) = AccountHash::from_bytes(rem)?;
         let (source, rem) = URef::from_bytes(rem)?;
         let (target, rem) = URef::from_bytes(rem)?;

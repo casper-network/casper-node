@@ -259,24 +259,25 @@ pub trait Auction:
             return Err(Error::InvalidCaller);
         }
 
-        detail::quash_bid(self, &validator_public_keys)?;
+        let mut burned_amount = detail::quash_bid(self, &validator_public_keys)?;
 
         let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
 
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
-            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
-                let size_before = unbonding_list.len();
-
-                unbonding_list.retain(|element| element.public_key != validator_public_key);
-
-                unbonding_purses_modified = size_before != unbonding_list.len();
+            // TODO: slash delegators properly
+            if let Some(unbonding_list) = unbonding_purses.remove(&validator_public_key) {
+                burned_amount += unbonding_list.iter().map(|x| x.amount).sum();
+                unbonding_purses_modified = true;
             }
         }
 
         if unbonding_purses_modified {
             detail::set_unbonding_purses(self, unbonding_purses)?;
         }
+
+        // call reduce total supply
+        self.reduce_total_supply(burned_amount)?;
 
         Ok(())
     }

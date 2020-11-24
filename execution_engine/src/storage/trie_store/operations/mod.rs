@@ -209,7 +209,7 @@ where
                 };
                 depth += affix.len();
                 current = next;
-                proof_steps.push_front(TrieMerkleProofStep::extension(affix));
+                proof_steps.push_front(TrieMerkleProofStep::extension(affix.into()));
             }
         }
     }

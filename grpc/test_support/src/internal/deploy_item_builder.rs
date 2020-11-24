@@ -37,8 +37,10 @@ impl DeployItemBuilder {
 
     pub fn with_payment_bytes(mut self, module_bytes: Vec<u8>, args: RuntimeArgs) -> Self {
         let args = Self::serialize_args(args);
-        self.deploy_item.payment_code =
-            Some(ExecutableDeployItem::ModuleBytes { module_bytes, args });
+        self.deploy_item.payment_code = Some(ExecutableDeployItem::ModuleBytes {
+            module_bytes: module_bytes.into(),
+            args: args.into(),
+        });
         self
     }
 
@@ -61,7 +63,7 @@ impl DeployItemBuilder {
         self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredContractByHash {
             hash,
             entry_point: entry_point.into(),
-            args,
+            args: args.into(),
         });
         self
     }
@@ -76,15 +78,17 @@ impl DeployItemBuilder {
         self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredContractByName {
             name: uref_name.to_owned(),
             entry_point: entry_point_name.into(),
-            args,
+            args: args.into(),
         });
         self
     }
 
     pub fn with_session_bytes(mut self, module_bytes: Vec<u8>, args: RuntimeArgs) -> Self {
         let args = Self::serialize_args(args);
-        self.deploy_item.session_code =
-            Some(ExecutableDeployItem::ModuleBytes { module_bytes, args });
+        self.deploy_item.session_code = Some(ExecutableDeployItem::ModuleBytes {
+            module_bytes: module_bytes.into(),
+            args: args.into(),
+        });
         self
     }
 
@@ -95,7 +99,7 @@ impl DeployItemBuilder {
 
     pub fn with_transfer_args(mut self, args: RuntimeArgs) -> Self {
         let args = Self::serialize_args(args);
-        self.deploy_item.session_code = Some(ExecutableDeployItem::Transfer { args });
+        self.deploy_item.session_code = Some(ExecutableDeployItem::Transfer { args: args.into() });
         self
     }
 
@@ -109,7 +113,7 @@ impl DeployItemBuilder {
         self.deploy_item.session_code = Some(ExecutableDeployItem::StoredContractByHash {
             hash,
             entry_point: entry_point.into(),
-            args,
+            args: args.into(),
         });
         self
     }
@@ -124,7 +128,7 @@ impl DeployItemBuilder {
         self.deploy_item.session_code = Some(ExecutableDeployItem::StoredContractByName {
             name: name.to_owned(),
             entry_point: entry_point.into(),
-            args,
+            args: args.into(),
         });
         self
     }
@@ -140,7 +144,10 @@ impl DeployItemBuilder {
             name: name.to_owned(),
             version,
             entry_point: entry_point.to_owned(),
-            args: args.to_bytes().expect("should serialize runtime args"),
+            args: args
+                .to_bytes()
+                .expect("should serialize runtime args")
+                .into(),
         });
         self
     }
@@ -156,7 +163,10 @@ impl DeployItemBuilder {
             hash,
             version,
             entry_point: entry_point.to_owned(),
-            args: args.to_bytes().expect("should serialize runtime args"),
+            args: args
+                .to_bytes()
+                .expect("should serialize runtime args")
+                .into(),
         });
         self
     }
@@ -172,7 +182,10 @@ impl DeployItemBuilder {
             name: key_name.to_owned(),
             version,
             entry_point: entry_point.to_owned(),
-            args: args.to_bytes().expect("should serialize runtime args"),
+            args: args
+                .to_bytes()
+                .expect("should serialize runtime args")
+                .into(),
         });
         self
     }
@@ -188,7 +201,10 @@ impl DeployItemBuilder {
             hash,
             version,
             entry_point: entry_point.to_owned(),
-            args: args.to_bytes().expect("should serialize runtime args"),
+            args: args
+                .to_bytes()
+                .expect("should serialize runtime args")
+                .into(),
         });
         self
     }

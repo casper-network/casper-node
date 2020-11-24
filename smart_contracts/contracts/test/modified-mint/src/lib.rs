@@ -93,6 +93,14 @@ pub fn mint() {
     runtime::ret(ret)
 }
 
+pub fn reduce_total_supply() {
+    let mut mint_contract = MintContract;
+    let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
+    let result: Result<(), Error> = mint_contract.reduce_total_supply(amount);
+    let ret = CLValue::from_t(result).unwrap_or_revert();
+    runtime::ret(ret)
+}
+
 pub fn create() {
     let mut mint_contract = MintContract;
     let uref = mint_contract.mint(U512::zero()).unwrap_or_revert();

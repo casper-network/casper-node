@@ -11,7 +11,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use serde_json::{json, Value};
 
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     CLType, CLTyped, Key, PublicKey, URef, U128, U256, U512,
 };
 
@@ -67,7 +67,7 @@ pub struct CLValue {
             description = "Hex-encoded value, serialized using ToBytes."
         )
     )]
-    bytes: Vec<u8>,
+    bytes: Bytes,
 }
 
 impl CLValue {
@@ -77,7 +77,7 @@ impl CLValue {
 
         Ok(CLValue {
             cl_type: T::cl_type(),
-            bytes,
+            bytes: bytes.into(),
         })
     }
 
@@ -86,7 +86,7 @@ impl CLValue {
         let expected = T::cl_type();
 
         if self.cl_type == expected {
-            Ok(bytesrepr::deserialize(self.bytes)?)
+            Ok(bytesrepr::deserialize(self.bytes.into())?)
         } else {
             Err(CLValueError::Type(CLTypeMismatch {
                 expected,
@@ -99,13 +99,16 @@ impl CLValue {
     // conversion from the Protobuf `CLValue`) in a separate module to this one.
     #[doc(hidden)]
     pub fn from_components(cl_type: CLType, bytes: Vec<u8>) -> Self {
-        Self { cl_type, bytes }
+        Self {
+            cl_type,
+            bytes: bytes.into(),
+        }
     }
 
     // This is only required in order to implement `From<CLValue> for state::CLValue` (i.e. the
     // conversion to the Protobuf `CLValue`) in a separate module to this one.
     #[doc(hidden)]
-    pub fn destructure(self) -> (CLType, Vec<u8>) {
+    pub fn destructure(self) -> (CLType, Bytes) {
         (self.cl_type, self.bytes)
     }
 
@@ -116,7 +119,7 @@ impl CLValue {
 
     /// Returns a reference to the serialized form of the underlying value held in this `CLValue`.
     pub fn inner_bytes(&self) -> &Vec<u8> {
-        &self.bytes
+        self.bytes.inner_bytes()
     }
 
     /// Returns the length of the `Vec<u8>` yielded after calling `self.to_bytes()`.
@@ -127,7 +130,10 @@ impl CLValue {
     }
 
     fn jsonify<T: FromBytes + Serialize>(&self) -> Option<Value> {
-        Some(json!(bytesrepr::deserialize::<T>(self.bytes.clone()).ok()?))
+        Some(json!(bytesrepr::deserialize::<T>(
+            self.bytes.clone().into()
+        )
+        .ok()?))
     }
 
     /// Returns a best-effort attempt to convert the `CLValue` into a meaningful JSON value.  For
@@ -249,8 +255,8 @@ impl ToBytes for CLValue {
 
 impl FromBytes for CLValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (bytes, remainder) = Vec::<u8>::from_bytes(bytes)?;
-        let (cl_type, remainder) = CLType::from_bytes(remainder)?;
+        let (bytes, remainder) = FromBytes::from_bytes(bytes)?;
+        let (cl_type, remainder) = FromBytes::from_bytes(remainder)?;
         let cl_value = CLValue { cl_type, bytes };
         Ok((cl_value, remainder))
     }
@@ -289,7 +295,10 @@ impl<'de> Deserialize<'de> for CLValue {
         } else {
             <(CLType, Vec<u8>)>::deserialize(deserializer)?
         };
-        Ok(CLValue { cl_type, bytes })
+        Ok(CLValue {
+            cl_type,
+            bytes: bytes.into(),
+        })
     }
 }
 

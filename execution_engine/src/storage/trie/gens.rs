@@ -33,7 +33,11 @@ pub fn trie_arb() -> impl Strategy<Value = Trie<Key, StoredValue>> {
         trie_pointer_block_arb().prop_map(|pointer_block| Trie::Node {
             pointer_block: Box::new(pointer_block)
         }),
-        (vec(any::<u8>(), 0..32), trie_pointer_arb())
-            .prop_map(|(affix, pointer)| Trie::Extension { affix, pointer })
+        (vec(any::<u8>(), 0..32), trie_pointer_arb()).prop_map(|(affix, pointer)| {
+            Trie::Extension {
+                affix: affix.into(),
+                pointer,
+            }
+        })
     ]
 }

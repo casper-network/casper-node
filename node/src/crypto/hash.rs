@@ -141,8 +141,7 @@ impl ToBytes for Digest {
 
 impl FromBytes for Digest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        <[u8; Digest::LENGTH]>::from_bytes(bytes)
-            .map(|(inner, remainder)| (Digest(inner), remainder))
+        FromBytes::from_bytes(bytes).map(|(inner, remainder)| (Digest(inner), remainder))
     }
 }
 

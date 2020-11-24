@@ -41,8 +41,8 @@ export enum CLTypeTag {
     Option = 13,
     /** A list of values */
     List = 14,
-    /** A fixed-length list of values */
-    Fixed_list = 15,
+    /** A fixed-length array of bytes */
+    ByteArray = 15,
     /**
      * A [[Result]], i.e. a type that can contain either a value representing success or one representing failure.
      */
@@ -73,11 +73,10 @@ export class CLType {
         }
     }
 
-    static fixedList(typeTag: CLType, size: u32): CLType {
-        let extra = typeTag.bytes;
-        extra = extra.concat(toBytesU32(size));
+    static byteArray(size: u32): CLType {
+        let extra = toBytesU32(size);
 
-        let clType = new CLType(CLTypeTag.Fixed_list, extra);
+        let clType = new CLType(CLTypeTag.ByteArray, extra);
 
         return clType;
     }
