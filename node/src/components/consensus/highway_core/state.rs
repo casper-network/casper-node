@@ -476,8 +476,6 @@ impl<C: Context> State<C> {
             .map(|vidx| fully_endorsed.remove(&vidx))
             .collect();
         self.endorsements.insert(uhash, endorsed_map);
-        // When unit gets endorsed, it becomes safe to cite.
-        let creator = self.unit(&uhash).creator;
 
         let new_panorama = self
             .citable_panorama()
