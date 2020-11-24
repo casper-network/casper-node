@@ -663,13 +663,9 @@ impl<C: Context> State<C> {
             let mut updated_panorama = self.citable_panorama.merge(self, &wunit.panorama);
             updated_panorama[wunit.creator] = new_obs;
             let endorsed = self.endorsements.keys().cloned().collect();
-            let cites_naively = updated_panorama
-                .enumerate()
-                .filter(|(_, obs)| obs.is_faulty())
-                .map(|(i, _)| i)
-                .any(|eq_idx| {
-                    !lnc::find_forks(&updated_panorama, &endorsed, eq_idx, self).is_none()
-                });
+            let cites_naively = updated_panorama.iter_faulty().any(|eq_idx| {
+                !lnc::find_forks(&updated_panorama, &endorsed, eq_idx, self).is_none()
+            });
 
             if !cites_naively {
                 self.citable_panorama = updated_panorama;
@@ -767,12 +763,8 @@ impl<C: Context> State<C> {
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
     /// `None` if the LNC is satisfied.
     fn validate_lnc(&self, wunit: &WireUnit<C>) -> Option<ValidatorIndex> {
-        wunit
-            .panorama
-            .enumerate()
-            .filter(|(_, obs)| obs.is_faulty())
-            .map(|(i, _)| i)
-            .find(|eq_idx| !self.satisfies_lnc_for(wunit, *eq_idx))
+        let violates_lnc = |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(wunit, *eq_idx);
+        wunit.panorama.iter_faulty().find(violates_lnc)
     }
 
     /// Returns `true` if there is at most one fork by the validator `eq_idx` that is cited naively
