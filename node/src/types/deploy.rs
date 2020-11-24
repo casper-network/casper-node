@@ -493,6 +493,14 @@ fn validate_deploy(deploy: &Deploy) -> bool {
     if hash != deploy.hash {
         warn!(?deploy, ?hash, "invalid deploy hash");
         println!("invalid deploy hash, {:?} {:?}", deploy, hash);
+        println!(
+            "serialized_header bytes, {:?}",
+            hex::encode(&serialized_header)
+        );
+        println!(
+            "serialized_header json, {:?}",
+            serde_json::to_string_pretty(&deploy.header).unwrap()
+        );
         return false;
     }
 
