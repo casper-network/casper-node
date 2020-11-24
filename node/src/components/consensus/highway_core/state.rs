@@ -158,12 +158,6 @@ impl<C: Context> Panoramas<C> {
         self.citable_panorama[idx] = Observation::Faulty;
     }
 
-    /// Updates latest observation of `creator` as `Correct(unit)`.
-    /// Once a unit is a endorsed it is safe to cite it.
-    fn endorsed(&mut self, creator: ValidatorIndex, uhash: C::Hash) {
-        self.citable_panorama[creator] = Observation::Correct(uhash);
-    }
-
     /// Returns the latest observation of `validator`.
     fn get(&self, validator: ValidatorIndex) -> &Observation<C> {
         self.panorama.get(validator)
@@ -363,11 +357,6 @@ impl<C: Context> State<C> {
     /// Returns whether validator nr. `idx` is known to be faulty.
     pub(crate) fn is_faulty(&self, idx: ValidatorIndex) -> bool {
         self.faults.contains_key(&idx)
-    }
-
-    /// Returns an iterator over all faulty validators.
-    pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
-        self.faults.keys().cloned()
     }
 
     /// Returns an iterator over latest unit hashes from honest validators.
@@ -916,30 +905,21 @@ impl<C: Context> State<C> {
         hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
     }
 
-    /// Returns the panorama of the confirmation for the leader unit `vhash`.
-    ///
-    /// Returns `None` if we are not supposed to confirm the proposal.
+    /// Returns the panorama of the confirmation unit for the leader unit `uhash`.
     pub(crate) fn confirmation_panorama(
         &self,
         own_idx: ValidatorIndex,
         uhash: &C::Hash,
-    ) -> Option<Panorama<C>> {
-        let proposal = self.unit(uhash);
-        if let Some(prev_hash) = self.citable_panorama().get(own_idx).correct() {
-            // If proposal doesn't see our own previous vote, don't confirm it.
-            if !proposal.panorama.sees(self, prev_hash) {
-                return None;
-            }
+    ) -> Panorama<C> {
+        let mut confirmation_panorama = self.inclusive_panorama(uhash);
+        if confirmation_panorama[own_idx] != self.citable_panorama()[own_idx] {
+            confirmation_panorama = self.citable_panorama().clone();
         }
-        let mut panorama = self.inclusive_panorama(uhash);
-        for faulty_v in self.faulty_validators() {
-            panorama[faulty_v] = Observation::Faulty;
-        }
-        Some(panorama)
+        confirmation_panorama
     }
 
     /// Returns panorama of a unit where latest entry of the creator is that unit's hash.
-    fn inclusive_panorama(&self, uhash: &C::Hash) -> Panorama<C> {
+    pub(crate) fn inclusive_panorama(&self, uhash: &C::Hash) -> Panorama<C> {
         let unit = self.unit(&uhash);
         let mut pan = unit.panorama.clone();
         pan[unit.creator] = Observation::Correct(*uhash);
