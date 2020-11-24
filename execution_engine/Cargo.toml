@@ -44,7 +44,6 @@ thiserror = "1.0.18"
 tracing = "0.1.18"
 uint = "0.8.3"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
-wabt = "0.10.0"
 wasmi = "0.6.2"
 
 [dev-dependencies]

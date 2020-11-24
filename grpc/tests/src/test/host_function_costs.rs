@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_types::{runtime_args, ContractHash, RuntimeArgs};
+use casper_types::{bytesrepr::Bytes, runtime_args, ContractHash, RuntimeArgs};
 
 const HOST_FUNCTION_COSTS_NAME: &str = "host_function_costs.wasm";
 const CONTRACT_KEY_NAME: &str = "contract";
@@ -225,7 +225,7 @@ fn should_measure_argument_size_in_host_function_call() {
         contract_hash,
         ARG_SIZE_FUNCTION_CALL_1_NAME,
         runtime_args! {
-            ARG_BYTES => b"".to_vec(),
+            ARG_BYTES => Bytes::new(),
         },
     )
     .build();

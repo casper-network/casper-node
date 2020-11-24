@@ -3,6 +3,8 @@ use std::{
     sync::{self, Arc, Mutex, MutexGuard},
 };
 
+use casper_types::bytesrepr::Bytes;
+
 use crate::storage::{
     error::in_memory::Error,
     transaction_source::{Readable, Transaction, TransactionSource, Writable},
@@ -14,7 +16,7 @@ struct WriteCapability;
 
 type WriteLock<'a> = MutexGuard<'a, WriteCapability>;
 
-type BytesMap = HashMap<Vec<u8>, Vec<u8>>;
+type BytesMap = HashMap<Bytes, Bytes>;
 
 type PoisonError<'a> = sync::PoisonError<MutexGuard<'a, HashMap<Option<String>, BytesMap>>>;
 
@@ -45,12 +47,12 @@ impl Transaction for InMemoryReadTransaction {
 }
 
 impl Readable for InMemoryReadTransaction {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
         let sub_view = match self.view.get(&handle) {
             Some(view) => view,
             None => return Ok(None),
         };
-        Ok(sub_view.get(&key.to_vec()).cloned())
+        Ok(sub_view.get(&Bytes::from(key)).cloned())
     }
 }
 
@@ -90,19 +92,19 @@ impl<'a> Transaction for InMemoryReadWriteTransaction<'a> {
 }
 
 impl<'a> Readable for InMemoryReadWriteTransaction<'a> {
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error> {
         let sub_view = match self.view.get(&handle) {
             Some(view) => view,
             None => return Ok(None),
         };
-        Ok(sub_view.get(&key.to_vec()).cloned())
+        Ok(sub_view.get(&Bytes::from(key)).cloned())
     }
 }
 
 impl<'a> Writable for InMemoryReadWriteTransaction<'a> {
     fn write(&mut self, handle: Self::Handle, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
         let sub_view = self.view.entry(handle).or_default();
-        sub_view.insert(key.to_vec(), value.to_vec());
+        sub_view.insert(Bytes::from(key), Bytes::from(value));
         Ok(())
     }
 }

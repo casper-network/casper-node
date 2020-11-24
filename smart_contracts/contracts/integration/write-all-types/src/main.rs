@@ -32,7 +32,7 @@ pub extern "C" fn call() {
     let v13: URef = storage::new_uref(());
     let v14: Option<u32> = Some(14);
     let v15: Vec<String> = vec![String::from("ABCD"), String::from("EFG")];
-    let v16: [Option<u8>; 4] = [None, Some(0), Some(1), None];
+    let v16: [u8; 4] = [0, 1, 2, 3];
     let v17: Result<U512, String> = Ok(U512::from(17));
     let v18: BTreeMap<i32, bool> = vec![(0, false), (1, true), (3, true)].into_iter().collect();
     let v19: (u64,) = (19,);

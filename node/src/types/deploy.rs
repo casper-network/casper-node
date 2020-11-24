@@ -613,6 +613,8 @@ impl FromBytes for Deploy {
 mod tests {
     use std::time::Duration;
 
+    use casper_types::bytesrepr::Bytes;
+
     use super::*;
 
     #[test]
@@ -662,10 +664,10 @@ mod tests {
             vec![],
             String::default(),
             ExecutableDeployItem::ModuleBytes {
-                module_bytes: vec![],
-                args: vec![],
+                module_bytes: Bytes::new(),
+                args: Bytes::new(),
             },
-            ExecutableDeployItem::Transfer { args: vec![] },
+            ExecutableDeployItem::Transfer { args: Bytes::new() },
             &SecretKey::generate_ed25519(),
             &mut crate::new_rng(),
         );

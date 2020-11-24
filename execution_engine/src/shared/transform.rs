@@ -331,7 +331,8 @@ mod tests {
     use num::{Bounded, Num};
 
     use casper_types::{
-        account::AccountHash, AccessRights, ContractWasm, Key, URef, U128, U256, U512,
+        account::AccountHash, bytesrepr::Bytes, AccessRights, ContractWasm, Key, URef, U128, U256,
+        U512,
     };
 
     use super::*;
@@ -498,8 +499,9 @@ mod tests {
             StoredValue::CLValue(CLValue::from_t(Some(ZERO_U8)).expect("should create CLValue"));
         assert_yields_type_mismatch_error(cl_option);
 
-        let cl_list =
-            StoredValue::CLValue(CLValue::from_t(vec![ZERO_U8]).expect("should create CLValue"));
+        let cl_list = StoredValue::CLValue(
+            CLValue::from_t(Bytes::from(vec![ZERO_U8])).expect("should create CLValue"),
+        );
         assert_yields_type_mismatch_error(cl_list);
 
         let cl_fixed_list =

@@ -75,4 +75,8 @@ pub trait MintProvider {
     /// Mints new token with given `initial_balance` balance. Returns new purse on success,
     /// otherwise an error.
     fn mint(&mut self, amount: U512) -> Result<URef, Error>;
+
+    /// Reduce total supply by `amount`. Returns unit on success, otherwise
+    /// an error.
+    fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error>;
 }
