@@ -7,7 +7,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
@@ -46,6 +45,10 @@ impl FinalitySignature {
 
     fn block_hash(&self) -> &BlockHash {
         &self.block_hash
+    }
+
+    fn signature(&self) -> &Signature {
+        &self.signature
     }
 
     fn public_key(&self) -> &PublicKey {
@@ -96,6 +99,7 @@ pub enum Event<I> {
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
+    BlockSignatureContinuation(Box<Option<Block>>, Box<FinalitySignature>),
     GossipFinalitySignature(Box<FinalitySignature>),
 }
 
@@ -138,6 +142,12 @@ impl<I: Display> Display for Event<I> {
                 "linear chain gossip finality signature for block: {}",
                 fs.block_hash()
             ),
+            Event::BlockSignatureContinuation(_, _) => {
+                write!(
+                    f,
+                    "linear chain get-block for new signature continuation result"
+                )
+            }
         }
     }
 }
@@ -287,26 +297,34 @@ where
                 let verified =
                     crypto::asymmetric_key::verify(block_hash.inner(), &signature, &public_key);
                 if let Err(err) = verified {
-                    error!(%block_hash, %public_key, %err, "Received invalid finality signature.");
+                    error!(%block_hash, %public_key, %err, "received invalid finality signature");
                     return Effects::new();
                 }
-                debug!(%block_hash, %public_key, "Received new finality signature.");
+                debug!(%block_hash, %public_key, "received new finality signature");
                 effect_builder
                     .get_block_from_storage(block_hash)
-                    .then(move |maybe_block| match maybe_block {
-                        Some(mut block) => {
-                            if !block.contains_proof(&signature) {
-                                block.append_proof(signature);
-                            }
-                            effect_builder.put_block_to_storage(Box::new(block))
-                        }
-                        None => {
-                            warn!("Received a signature for {} but block was not found in the Linear chain storage", block_hash);
-                            panic!("Unhandled")
-                        }
+                    .event(move |maybe_block| {
+                        Event::BlockSignatureContinuation(Box::new(maybe_block), fs)
                     })
-                    .event(|_| Event::GossipFinalitySignature(fs))
             }
+            Event::BlockSignatureContinuation(maybe_block, fs) => match *maybe_block {
+                None => {
+                    let block_hash = fs.block_hash();
+                    let public_key = fs.public_key();
+                    warn!(%block_hash, %public_key, "received a signature for a block that was not found in storage");
+                    Effects::new()
+                }
+                Some(mut block) => {
+                    if !block.contains_proof(fs.signature()) {
+                        block.append_proof(fs.signature);
+                        effect_builder
+                            .put_block_to_storage(Box::new(block))
+                            .event(move |_| Event::GossipFinalitySignature(fs))
+                    } else {
+                        Effects::new()
+                    }
+                }
+            },
             Event::GossipFinalitySignature(fs) => effect_builder
                 .broadcast_message(Message::FinalitySignature(*fs))
                 .ignore(),
