@@ -787,12 +787,8 @@ impl<C: Context> State<C> {
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
     /// `None` if the LNC is satisfied.
     fn validate_lnc(&self, wunit: &WireUnit<C>) -> Option<ValidatorIndex> {
-        wunit
-            .panorama
-            .enumerate()
-            .filter(|(_, obs)| obs.is_faulty())
-            .map(|(i, _)| i)
-            .find(|eq_idx| !self.satisfies_lnc_for(wunit, *eq_idx))
+        let violates_lnc = |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(wunit, *eq_idx);
+        wunit.panorama.iter_faulty().find(violates_lnc)
     }
 
     // Stub, replace with `_satisfies_lnc_for`

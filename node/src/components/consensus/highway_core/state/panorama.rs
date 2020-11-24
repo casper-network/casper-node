@@ -115,6 +115,13 @@ impl<C: Context> Panorama<C> {
         self.iter().filter_map(Observation::correct)
     }
 
+    /// Returns an iterator over all faulty validators' indices.
+    pub(crate) fn iter_faulty(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+        self.enumerate()
+            .filter(|(_, obs)| obs.is_faulty())
+            .map(|(i, _)| i)
+    }
+
     /// Returns the correct sequence number for a new unit by `vidx` with this panorama.
     pub(crate) fn next_seq_num(&self, state: &State<C>, vidx: ValidatorIndex) -> u64 {
         let add1 = |vh: &C::Hash| state.unit(vh).seq_number + 1;
