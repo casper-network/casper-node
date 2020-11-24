@@ -97,25 +97,17 @@ use casper_types::{
     Key, ProtocolVersion,
 };
 
-use crate::{
-    components::{
+use crate::{Chainspec, components::{
         chainspec_loader::ChainspecInfo,
         consensus::BlockContext,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
         small_network::GossipedAddress,
-    },
-    crypto::{asymmetric_key::Signature, hash::Digest},
-    effect::requests::LinearChainRequest,
-    reactor::{EventQueueHandle, QueueKind},
-    types::{
+    }, crypto::{asymmetric_key::Signature, hash::Digest}, effect::requests::LinearChainRequest, crypto::asymmetric_key::PublicKey, reactor::{EventQueueHandle, QueueKind}, types::{
         json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
         BlockLike, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
         ProtoBlock, Timestamp,
-    },
-    utils::Source,
-    Chainspec,
-};
+    }, utils::Source};
 use announcements::{
     BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
     GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
@@ -1138,7 +1130,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.
-    pub(crate) async fn handle_linear_chain_block(self, block_header: BlockHeader) -> Signature
+    pub(crate) async fn handle_linear_chain_block(self, block_header: BlockHeader) -> (PublicKey, Signature)
     where
         REv: From<ConsensusRequest>,
     {

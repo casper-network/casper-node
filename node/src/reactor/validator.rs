@@ -669,6 +669,7 @@ impl reactor::Reactor for Reactor {
                             return Effects::new();
                         }
                     },
+                    Message::FinalitySignature(fs) => Event::LinearChain(fs.into()),
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }

@@ -421,7 +421,7 @@ where
     pub(super) fn handle_linear_chain_block(
         &mut self,
         block_header: BlockHeader,
-        responder: Responder<Signature>,
+        responder: Responder<(PublicKey, Signature)>,
     ) -> Effects<Event<I>> {
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
@@ -430,7 +430,9 @@ where
             &self.era_supervisor.public_signing_key,
             self.rng,
         );
-        let mut effects = responder.respond(signature).ignore();
+        let mut effects = responder
+            .respond((self.era_supervisor.public_signing_key, signature))
+            .ignore();
         if block_header.era_id() < self.era_supervisor.current_era {
             trace!(era_id = %block_header.era_id(), "executed block in old era");
             return effects;

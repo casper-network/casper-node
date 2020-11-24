@@ -726,6 +726,10 @@ impl Block {
         self.proofs.push(proof)
     }
 
+    pub(crate) fn contains_proof(&self, proof: &Signature) -> bool {
+        self.proofs.iter().any(|s| s == proof)
+    }
+
     fn serialize_body(body: &()) -> Result<Vec<u8>, bytesrepr::Error> {
         body.to_bytes()
     }

@@ -35,22 +35,15 @@ use casper_types::{
 };
 
 use super::{Multiple, Responder};
-use crate::{
-    components::{
+use crate::{Chainspec, components::{
         chainspec_loader::ChainspecInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
-    },
-    crypto::{asymmetric_key::Signature, hash::Digest},
-    rpcs::chain::BlockIdentifier,
-    types::{
+    }, crypto::{asymmetric_key::Signature, hash::Digest}, rpcs::chain::BlockIdentifier, crypto::asymmetric_key::PublicKey, types::{
         json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
         Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, StatusFeed,
         Timestamp,
-    },
-    utils::DisplayIter,
-    Chainspec,
-};
+    }, utils::DisplayIter};
 
 /// A metrics request.
 #[derive(Debug)]
@@ -764,7 +757,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
 /// Consensus component requests.
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
-    HandleLinearBlock(Box<BlockHeader>, Responder<Signature>),
+    HandleLinearBlock(Box<BlockHeader>, Responder<(PublicKey, Signature)>),
 }
 
 /// ChainspecLoader componenent requests.
