@@ -40,7 +40,7 @@ pub enum Message {
     },
     /// Finality signature.
     #[from]
-    FinalitySignature(linear_chain::FinalitySignature),
+    FinalitySignature(Box<linear_chain::FinalitySignature>),
 }
 
 impl Message {

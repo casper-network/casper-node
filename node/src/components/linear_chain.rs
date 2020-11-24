@@ -72,6 +72,12 @@ impl<I> From<FinalitySignature> for Event<I> {
     }
 }
 
+impl<I> From<Box<FinalitySignature>> for Event<I> {
+    fn from(fs: Box<FinalitySignature>) -> Self {
+        Event::NewFinalitySignature(fs)
+    }
+}
+
 #[derive(Debug, From)]
 pub enum Event<I> {
     /// A linear chain request issued by another node in the network.
@@ -328,7 +334,7 @@ where
                 }
             },
             Event::GossipFinalitySignature(fs) => effect_builder
-                .broadcast_message(Message::FinalitySignature(*fs))
+                .broadcast_message(Message::FinalitySignature(fs))
                 .ignore(),
         }
     }
