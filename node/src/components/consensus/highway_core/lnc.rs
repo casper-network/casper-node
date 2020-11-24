@@ -33,13 +33,14 @@ pub(crate) fn find_forks<C: Context>(
     eq_idx: ValidatorIndex,
     state: &State<C>,
 ) -> LncForks<C> {
-    // Find all forks by eq_idx that are cited naively by wunit itself.
-    // * If it's more than one then LNC is violated.
+    // Find all forks by eq_idx that are cited naively in the `panorama`.
+    // * If it's more than one then LNC is violated, return `LncForks::Multiple`.
     // * If it's none, LNC is not violated: If the LNC were violated, it would be because of two
     //   naive citations by wunit.creator's earlier units. So the latest of those earlier units
     //   would already be violating the LNC itself, and thus would not have been added to the state.
-    // * Otherwise store the unique naively cited fork in naive_by_wunit.
-    let mut opt_naive_by_wunit = None;
+    //   Return `LncForks::None`.
+    // * Otherwise return `LncForks::Single(hash)` where `hash` is a unit that is cited naively.
+    let mut opt_naive = None;
 
     // Returns true if any endorsed unit cites the given unit.
     let seen_by_endorsed = |hash| endorsed.iter().any(|e_hash| state.sees(e_hash, hash));
@@ -59,14 +60,14 @@ pub(crate) fn find_forks<C: Context>(
                 // No need to traverse further downward.
                 if !seen_by_endorsed(eq_hash) {
                     // The fork is cited naively!
-                    match opt_naive_by_wunit {
+                    match opt_naive {
                         // It's the first naively cited fork we found.
-                        None => opt_naive_by_wunit = Some(eq_hash),
+                        None => opt_naive = Some(eq_hash),
                         Some(other_hash) => {
                             // If eq_hash is later than other_hash, it is the tip of the
                             // same fork. If it is earlier, then other_hash is the tip.
                             if state.sees_correct(eq_hash, other_hash) {
-                                opt_naive_by_wunit = Some(eq_hash);
+                                opt_naive = Some(eq_hash);
                             } else if !state.sees_correct(other_hash, eq_hash) {
                                 return LncForks::Multiple; // We found two incompatible forks!
                             }
@@ -86,7 +87,7 @@ pub(crate) fn find_forks<C: Context>(
         }
     }
 
-    match opt_naive_by_wunit {
+    match opt_naive {
         None => LncForks::None,
         Some(uhash) => LncForks::Single(*uhash),
     }

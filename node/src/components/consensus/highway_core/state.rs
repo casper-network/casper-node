@@ -143,37 +143,37 @@ impl<C: Context> Panoramas<C> {
     }
 
     /// Returns the complete protocol state's latest panorama.
-    pub(crate) fn panorama(&self) -> &Panorama<C> {
+    fn panorama(&self) -> &Panorama<C> {
         &self.panorama
     }
 
     /// Returns the citable panorama.
-    pub(crate) fn citable_panorama(&self) -> &Panorama<C> {
+    fn citable_panorama(&self) -> &Panorama<C> {
         &self.citable_panorama
     }
 
     /// Marks validator at `idx` as faulty.
-    pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
+    fn mark_faulty(&mut self, idx: ValidatorIndex) {
         self.panorama[idx] = Observation::Faulty;
         self.citable_panorama[idx] = Observation::Faulty;
     }
 
     /// Updates latest observation of `creator` as `Correct(unit)`.
     /// Once a unit is a endorsed it is safe to cite it.
-    pub(crate) fn endorsed(&mut self, creator: ValidatorIndex, uhash: C::Hash) {
+    fn endorsed(&mut self, creator: ValidatorIndex, uhash: C::Hash) {
         self.citable_panorama[creator] = Observation::Correct(uhash);
     }
 
     /// Returns the latest observation of `validator`.
-    pub(crate) fn get(&self, validator: ValidatorIndex) -> &Observation<C> {
+    fn get(&self, validator: ValidatorIndex) -> &Observation<C> {
         self.panorama.get(validator)
     }
 
-    pub(crate) fn citable_panorama_mut(&mut self) -> &mut Panorama<C> {
+    fn citable_panorama_mut(&mut self) -> &mut Panorama<C> {
         &mut self.citable_panorama
     }
 
-    pub(crate) fn panorama_mut(&mut self) -> &mut Panorama<C> {
+    fn panorama_mut(&mut self) -> &mut Panorama<C> {
         &mut self.panorama
     }
 }
@@ -491,8 +491,8 @@ impl<C: Context> State<C> {
         let creator = self.unit(&uhash).creator;
 
         if self.citable_panorama().next_seq_num(self, creator) >= self.unit(&uhash).seq_number {
-            // Previously endorsed unit comes later than `uhash`.
-            // We must have had endorsed it, and everything it sees, earlier.
+            // Previous unit comes later than `uhash`.
+            // Endorsing later units also implicitly endorses past units by that creator.
             return;
         }
 
@@ -755,7 +755,13 @@ impl<C: Context> State<C> {
                 .filter(|(_, obs)| obs.is_faulty())
                 .map(|(i, _)| i)
                 .any(|eq_idx| {
-                    !lnc::find_forks(&wunit.panorama, &wunit.endorsed, eq_idx, self).is_none()
+                    !lnc::find_forks(
+                        &updated_panorama,
+                        &self.endorsements.keys().cloned().collect(),
+                        eq_idx,
+                        self,
+                    )
+                    .is_none()
                 });
 
             if !cites_naively {
@@ -953,12 +959,19 @@ impl<C: Context> State<C> {
                 return None;
             }
         }
-        let mut panorama = proposal.panorama.clone();
-        panorama[proposal.creator] = Observation::Correct(*uhash);
+        let mut panorama = self.inclusive_panorama(uhash);
         for faulty_v in self.faulty_validators() {
             panorama[faulty_v] = Observation::Faulty;
         }
         Some(panorama)
+    }
+
+    /// Returns panorama of a unit where latest entry of the creator is that unit's hash.
+    fn inclusive_panorama(&self, uhash: &C::Hash) -> Panorama<C> {
+        let unit = self.unit(&uhash);
+        let mut pan = unit.panorama.clone();
+        pan[unit.creator] = Observation::Correct(*uhash);
+        pan
     }
 }
 
