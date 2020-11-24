@@ -18,7 +18,7 @@ const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";
 const GET_ITEM_RESULT_MERKLE_PROOF: &str = "merkle_proof";
 
-/// Error that can be returned by when validating a block returned from a JSON-RPC method.
+/// Error that can be returned when validating a block returned from a JSON-RPC method.
 #[derive(Error, Debug)]
 pub enum ValidateResponseError {
     /// Failed to marshall value.
