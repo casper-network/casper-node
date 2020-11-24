@@ -416,15 +416,15 @@ impl<C: Context> State<C> {
     /// The unit must be valid, and its dependencies satisfied.
     pub(crate) fn add_valid_unit(&mut self, swunit: SignedWireUnit<C>) {
         let wunit = &swunit.wire_unit;
-        self.update_panorama(&swunit);
         let hash = wunit.hash();
         let fork_choice = self.fork_choice(&wunit.panorama).cloned();
-        let (unit, opt_value) = Unit::new(swunit, fork_choice.as_ref(), self);
+        let (unit, opt_value) = Unit::new(swunit.clone(), fork_choice.as_ref(), self);
         if let Some(value) = opt_value {
             let block = Block::new(fork_choice, value, self);
             self.blocks.insert(hash, block);
         }
         self.units.insert(hash, unit);
+        self.update_panorama(&swunit);
     }
 
     /// Adds direct evidence proving a validator to be faulty, unless that validators is already
