@@ -28,9 +28,9 @@ pub enum Error {
     /// ABI serialization issue while reading or writing.
     #[fail(display = "Serialization error")]
     Serialization = 3,
-    /// Triggered when contract was unable to transfer desired amount of tokens.
-    #[fail(display = "Transfer error")]
-    Transfer = 4,
+    /// Triggered when contract was unable to transfer desired amount of tokens into a bid purse.
+    #[fail(display = "Transfer to bid purse error")]
+    TransferToBidPurse = 4,
     /// User passed invalid amount of tokens which might result in wrong values after calculation.
     #[fail(display = "Invalid amount")]
     InvalidAmount = 5,
@@ -100,11 +100,35 @@ pub enum Error {
     /// Failed to reduce total supply.
     #[fail(display = "Failed to reduce total supply")]
     MintReduceTotalSupply = 26,
+    /// Triggered when contract was unable to transfer desired amount of tokens into a delegators
+    /// purse.
+    #[fail(display = "Transfer to delegators purse error")]
+    TransferToDelegatorPurse = 27,
+    /// Triggered when contract was unable to perform a transfer to distribute validators reward.
+    #[fail(display = "Reward transfer to validator error")]
+    ValidatorRewardTransfer = 28,
+    /// Triggered when contract was unable to perform a transfer to distribute delegators rewards.
+    #[fail(display = "Rewards transfer to delegator error")]
+    DelegatorRewardTransfer = 29,
+    /// Failed to transfer desired amount while withdrawing delegators reward.
+    #[fail(display = "Withdraw delegator reward error")]
+    WithdrawDelegatorReward = 30,
+    /// Failed to transfer desired amount while withdrawing validators reward.
+    #[fail(display = "Withdraw validator reward error")]
+    WithdrawValidatorReward = 31,
+    /// Failed to transfer desired amount into unbonding purse.
+    #[fail(display = "Transfer to unbonding purse error")]
+    TransferToUnbondingPurse = 32,
+
+    #[cfg(test)]
+    #[doc(hidden)]
+    #[fail(display = "Sentinel error")]
+    Sentinel,
 }
 
-/// Used for testing; this should be set to the maximum value of the [`Error`] enum.
+/// Used for testing; this should be guaranteed to be the maximum valid value of [`Error`] enum.
 #[cfg(test)]
-const MAX_ERROR_VALUE: u8 = 25;
+const MAX_ERROR_VALUE: u8 = Error::Sentinel as u8;
 
 impl CLTyped for Error {
     fn cl_type() -> CLType {
@@ -127,7 +151,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::InvalidKeyVariant as u8 => Ok(Error::InvalidKeyVariant),
             d if d == Error::MissingValue as u8 => Ok(Error::MissingValue),
             d if d == Error::Serialization as u8 => Ok(Error::Serialization),
-            d if d == Error::Transfer as u8 => Ok(Error::Transfer),
+            d if d == Error::TransferToBidPurse as u8 => Ok(Error::TransferToBidPurse),
             d if d == Error::InvalidAmount as u8 => Ok(Error::InvalidAmount),
             d if d == Error::BidNotFound as u8 => Ok(Error::BidNotFound),
             d if d == Error::ValidatorNotFound as u8 => Ok(Error::ValidatorNotFound),
@@ -148,9 +172,17 @@ impl TryFrom<u8> for Error {
             d if d == Error::MissingDelegations as u8 => Ok(Error::MissingDelegations),
             d if d == Error::MismatchedEraValidators as u8 => Ok(Error::MismatchedEraValidators),
             d if d == Error::MintReward as u8 => Ok(Error::MintReward),
+            d if d == Error::MintReduceTotalSupply as u8 => Ok(Error::MintReduceTotalSupply),
             d if d == Error::InvalidValidatorSlotsValue as u8 => {
                 Ok(Error::InvalidValidatorSlotsValue)
             }
+            d if d == Error::TransferToDelegatorPurse as u8 => Ok(Error::TransferToDelegatorPurse),
+            d if d == Error::TransferToDelegatorPurse as u8 => Ok(Error::TransferToDelegatorPurse),
+            d if d == Error::ValidatorRewardTransfer as u8 => Ok(Error::ValidatorRewardTransfer),
+            d if d == Error::DelegatorRewardTransfer as u8 => Ok(Error::DelegatorRewardTransfer),
+            d if d == Error::WithdrawDelegatorReward as u8 => Ok(Error::WithdrawDelegatorReward),
+            d if d == Error::WithdrawValidatorReward as u8 => Ok(Error::WithdrawValidatorReward),
+            d if d == Error::TransferToUnbondingPurse as u8 => Ok(Error::TransferToUnbondingPurse),
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -185,7 +217,7 @@ impl From<bytesrepr::Error> for Error {
     }
 }
 
-/// An alias for `Result<T, auction::Error>`.
+/// An alias for `Result<T, Error>`.
 pub type Result<T> = result::Result<T, Error>;
 
 // This error type is not intended to be used by third party crates.
@@ -214,12 +246,12 @@ mod tests {
     fn error_round_trips() {
         for i in 0..=u8::max_value() {
             match Error::try_from(i) {
-                Ok(error) if i <= MAX_ERROR_VALUE => assert_eq!(error as u8, i),
+                Ok(error) if i < MAX_ERROR_VALUE => assert_eq!(error as u8, i),
                 Ok(error) => panic!(
                     "value of variant {} ({}) exceeds MAX_ERROR_VALUE ({})",
                     error, i, MAX_ERROR_VALUE
                 ),
-                Err(TryFromU8ForError(())) if i > MAX_ERROR_VALUE => (),
+                Err(TryFromU8ForError(())) if i >= MAX_ERROR_VALUE => (),
                 Err(TryFromU8ForError(())) => {
                     panic!("missing conversion from u8 to error value: {}", i)
                 }

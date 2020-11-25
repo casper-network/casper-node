@@ -129,11 +129,11 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 FunctionIndex::CreatePurseIndex.into(),
             ),
             "casper_transfer_to_account" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
+                Signature::new(&[ValueType::I32; 7][..], Some(ValueType::I32)),
                 FunctionIndex::TransferToAccountIndex.into(),
             ),
             "casper_transfer_from_purse_to_account" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
+                Signature::new(&[ValueType::I32; 9][..], Some(ValueType::I32)),
                 FunctionIndex::TransferFromPurseToAccountIndex.into(),
             ),
             "casper_transfer_from_purse_to_purse" => FuncInstance::alloc_host(

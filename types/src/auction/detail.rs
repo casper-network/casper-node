@@ -122,7 +122,7 @@ where
 /// This function can be called by the system only.
 pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> Result<()> {
     if provider.get_caller() != SYSTEM_ACCOUNT {
-        return Err(Error::InvalidCaller);
+        return Err(Error::InvalidCaller.into());
     }
 
     // Update `unbonding_purses` data
@@ -138,11 +138,13 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
             // calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_withdrawal as u64 {
                 // Move funds from bid purse to unbonding purse
-                provider.transfer_from_purse_to_purse(
-                    unbonding_purse.bonding_purse,
-                    unbonding_purse.unbonding_purse,
-                    unbonding_purse.amount,
-                )?;
+                provider
+                    .transfer_from_purse_to_purse(
+                        unbonding_purse.bonding_purse,
+                        unbonding_purse.unbonding_purse,
+                        unbonding_purse.amount,
+                    )
+                    .map_err(|_| Error::TransferToUnbondingPurse)?
             } else {
                 new_unbonding_list.push(*unbonding_purse);
             }
@@ -170,7 +172,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     amount: U512,
 ) -> Result<U512> {
     if provider.get_balance(bonding_purse)?.unwrap_or_default() < amount {
-        return Err(Error::UnbondTooLarge);
+        return Err(Error::UnbondTooLarge.into());
     }
 
     let mut unbonding_purses: UnbondingPurses = get_unbonding_purses(provider)?;
@@ -222,7 +224,7 @@ where
 
         let delegator = match delegators.get_mut(&delegator_key) {
             Some(delegator) => delegator,
-            None => return Err(Error::DelegatorNotFound),
+            None => return Err(Error::DelegatorNotFound.into()),
         };
 
         delegator.increase_reward(delegator_reward_trunc)?;

@@ -1,3 +1,4 @@
+use assert_matches::assert_matches;
 use lazy_static::lazy_static;
 
 use casper_engine_test_support::{
@@ -7,8 +8,16 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::CONV_RATE, shared::motes::Motes};
-use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
+use casper_execution_engine::{
+    core::{
+        engine_state::{Error as EngineError, CONV_RATE},
+        execution::Error,
+    },
+    shared::motes::Motes,
+};
+use casper_types::{
+    account::AccountHash, runtime_args, system_contract_errors::mint, ApiError, RuntimeArgs, U512,
+};
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -307,19 +316,19 @@ fn should_fail_when_insufficient_funds() {
         .exec(exec_request_2)
         .expect_success()
         .commit()
-        // // Exec transfer contract
+        // Exec transfer contract
         .exec(exec_request_3)
         .commit()
         .finish();
 
-    let error_msg = result
+    let exec_results = result
         .builder()
-        .exec_error_message(2)
-        .expect("should have error message");
-    assert!(
-        error_msg.contains(&format!("{:?}", ApiError::Transfer)),
-        error_msg
-    );
+        .get_exec_response(2)
+        .expect("should have exec response");
+    assert_eq!(exec_results.len(), 1);
+    let exec_result = exec_results[0].as_error().expect("should have error");
+    let error = assert_matches!(exec_result, EngineError::Exec(Error::Revert(e)) => *e, "{:?}", exec_result);
+    assert_eq!(error, ApiError::from(mint::Error::InsufficientFunds));
 }
 
 #[ignore]

@@ -1,6 +1,8 @@
 use std::convert::TryFrom;
 
-use casper_types::{runtime_args, ApiError, CLValue, Key, RuntimeArgs, U512};
+use casper_types::{
+    runtime_args, system_contract_errors::mint, ApiError, CLValue, Key, RuntimeArgs, U512,
+};
 
 use casper_engine_test_support::{
     internal::{
@@ -148,7 +150,10 @@ fn should_run_purse_to_purse_transfer_with_error() {
     // Main assertion for the result of `transfer_from_purse_to_purse`
     assert_eq!(
         purse_transfer_result,
-        format!("{:?}", Result::<(), _>::Err(ApiError::Transfer)),
+        format!(
+            "{:?}",
+            Result::<(), ApiError>::Err(mint::Error::InsufficientFunds.into())
+        ),
     );
 
     // Obtain main purse's balance

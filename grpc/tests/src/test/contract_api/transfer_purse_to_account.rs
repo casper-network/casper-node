@@ -10,8 +10,8 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_types::{
-    account::AccountHash, auction::ARG_AMOUNT, mint::ARG_TARGET, runtime_args, ApiError, CLValue,
-    RuntimeArgs, U512,
+    account::AccountHash, auction::ARG_AMOUNT, mint::ARG_TARGET, runtime_args,
+    system_contract_errors::mint, ApiError, CLValue, RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -108,9 +108,10 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     .expect("should be String");
 
     // Main assertion for the result of `transfer_from_purse_to_purse`
+    let expected_error: ApiError = mint::Error::InsufficientFunds.into();
     assert_eq!(
         transfer_result,
-        format!("{:?}", Result::<(), _>::Err(ApiError::Transfer)),
+        format!("{:?}", Result::<(), _>::Err(expected_error)),
         "Transfer Error incorrect"
     );
 }
