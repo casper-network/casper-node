@@ -272,11 +272,14 @@ impl HighwayValidator {
                     HighwayMessage::NewVertex(ref vertex) => {
                         match **vertex {
                             Vertex::Unit(ref swunit) => {
-                                // Create an equivocating message, with a different timestamp.
+                                // Create an equivocating message, with a different consensus value.
                                 // TODO: Don't send both messages to every peer. Add different
                                 // strategies.
                                 let mut wunit = swunit.wire_unit.clone();
-                                wunit.timestamp += 1.into();
+                                match wunit.value.as_mut() {
+                                    None => return vec![msg],
+                                    Some(v) => v.push(0),
+                                }
                                 let secret = TestSecret(wunit.creator.0.into());
                                 let swunit2 = SignedWireUnit::new(wunit, &secret, rng);
                                 vec![
