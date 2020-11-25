@@ -309,8 +309,8 @@ async fn propose_and_finalize(
         assert_eq!(block_header, reactor.expect_announce_block_handled().await);
         block_h.await.unwrap();
     };
-    let (_, sig) = receiver.await.unwrap().unwrap();
-    asymmetric_key::verify(block.hash(), &sig, &es.public_signing_key).unwrap();
+    let fs = receiver.await.unwrap().unwrap();
+    asymmetric_key::verify(block.hash(), &fs.signature(), &es.public_signing_key).unwrap();
 
     block
 }

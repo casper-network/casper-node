@@ -35,7 +35,7 @@ pub struct FinalitySignature {
 }
 
 impl FinalitySignature {
-    fn new(block_hash: BlockHash, signature: Signature, public_key: PublicKey) -> Self {
+    pub fn new(block_hash: BlockHash, signature: Signature, public_key: PublicKey) -> Self {
         FinalitySignature {
             block_hash,
             signature,
@@ -43,15 +43,15 @@ impl FinalitySignature {
         }
     }
 
-    fn block_hash(&self) -> &BlockHash {
+    pub fn block_hash(&self) -> &BlockHash {
         &self.block_hash
     }
 
-    fn signature(&self) -> &Signature {
+    pub fn signature(&self) -> &Signature {
         &self.signature
     }
 
-    fn public_key(&self) -> &PublicKey {
+    pub fn public_key(&self) -> &PublicKey {
         &self.public_key
     }
 }
@@ -211,19 +211,11 @@ where
                         Event::GetBlockByHeightResultLocal(height, block.map(Box::new), responder)
                     })
             }
-            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => {
-                // Treat `linear_chain` as a cache of least-recently asked for blocks.
-                // match self.linear_chain.get(height as usize).cloned() {
-                //     Some(block) => effect_builder
-                //         .immediately()
-                //         .event(move |_| Event::GetBlockByHeightResult(height, Some(block),
-                // sender)),     None =>
-                effect_builder
-                    .get_block_at_height(height)
-                    .event(move |maybe_block| {
-                        Event::GetBlockByHeightResult(height, maybe_block.map(Box::new), sender)
-                    })
-            }
+            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => effect_builder
+                .get_block_at_height(height)
+                .event(move |maybe_block| {
+                    Event::GetBlockByHeightResult(height, maybe_block.map(Box::new), sender)
+                }),
             Event::GetBlockByHeightResultLocal(_height, block, responder) => {
                 responder.respond(block.map(|boxed| *boxed)).ignore()
             }
@@ -283,11 +275,7 @@ where
                 effects.extend(
                     effect_builder
                         .handle_linear_chain_block(block_header.clone())
-                        .event(move |(pk, signature)| {
-                            Event::NewFinalitySignature(Box::new(FinalitySignature::new(
-                                block_hash, signature, pk,
-                            )))
-                        }),
+                        .event(move |fs| Event::NewFinalitySignature(Box::new(fs))),
                 );
                 effects.extend(
                     effect_builder

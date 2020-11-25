@@ -103,12 +103,10 @@ use crate::{
         consensus::BlockContext,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
+        linear_chain::FinalitySignature,
         small_network::GossipedAddress,
     },
-    crypto::{
-        asymmetric_key::{PublicKey, Signature},
-        hash::Digest,
-    },
+    crypto::hash::Digest,
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
@@ -1144,7 +1142,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn handle_linear_chain_block(
         self,
         block_header: BlockHeader,
-    ) -> (PublicKey, Signature)
+    ) -> FinalitySignature
     where
         REv: From<ConsensusRequest>,
     {

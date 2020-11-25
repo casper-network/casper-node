@@ -43,9 +43,10 @@ use crate::{
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
         },
+        linear_chain::FinalitySignature,
     },
     crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey, Signature},
+        asymmetric_key::{self, PublicKey, SecretKey},
         hash::Digest,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
@@ -421,7 +422,7 @@ where
     pub(super) fn handle_linear_chain_block(
         &mut self,
         block_header: BlockHeader,
-        responder: Responder<(PublicKey, Signature)>,
+        responder: Responder<FinalitySignature>,
     ) -> Effects<Event<I>> {
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
@@ -431,7 +432,11 @@ where
             self.rng,
         );
         let mut effects = responder
-            .respond((self.era_supervisor.public_signing_key, signature))
+            .respond(FinalitySignature::new(
+                block_header.hash(),
+                signature,
+                self.era_supervisor.public_signing_key,
+            ))
             .ignore();
         if block_header.era_id() < self.era_supervisor.current_era {
             trace!(era_id = %block_header.era_id(), "executed block in old era");
