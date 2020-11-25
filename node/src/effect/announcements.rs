@@ -8,11 +8,12 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use casper_types::ExecutionResult;
+
 use crate::{
     components::small_network::GossipedAddress,
     types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-        DeployHeader, FinalizedBlock, Item,
+        Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalizedBlock, Item,
     },
     utils::Source,
 };

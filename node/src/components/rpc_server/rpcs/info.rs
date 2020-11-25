@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
+use casper_types::ExecutionResult;
+
 use super::{
     docs::DocExample, Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
     RpcWithoutParams, RpcWithoutParamsExt,
@@ -23,10 +25,7 @@ use crate::{
     components::CLIENT_API_VERSION,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, GetStatusResult,
-        Item, PeersMap,
-    },
+    types::{Block, BlockHash, Deploy, DeployHash, GetStatusResult, Item, PeersMap},
 };
 
 lazy_static! {
@@ -38,7 +37,7 @@ lazy_static! {
         deploy: Deploy::doc_example().clone(),
         execution_results: vec![JsonExecutionResult {
             block_hash: Block::doc_example().id(),
-            result: ExecutionResult::doc_example().clone(),
+            result: ExecutionResult::example().clone(),
         }],
     };
     static ref GET_PEERS_RESULT: GetPeersResult = GetPeersResult {

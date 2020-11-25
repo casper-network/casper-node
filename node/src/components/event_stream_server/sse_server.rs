@@ -13,13 +13,12 @@ use warp::{
     Filter, Reply,
 };
 
+use casper_types::ExecutionResult;
+
 use crate::{
     components::CLIENT_API_VERSION,
     crypto::asymmetric_key::PublicKey,
-    types::{
-        json_compatibility::ExecutionResult, BlockHash, BlockHeader, DeployHash, FinalizedBlock,
-        TimeDiff, Timestamp,
-    },
+    types::{BlockHash, BlockHeader, DeployHash, FinalizedBlock, TimeDiff, Timestamp},
 };
 
 /// The URL path.
@@ -62,6 +61,7 @@ pub enum SseData {
         ttl: TimeDiff,
         dependencies: Vec<DeployHash>,
         block_hash: BlockHash,
+        #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
 }

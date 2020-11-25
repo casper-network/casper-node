@@ -1,14 +1,15 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use datasize::DataSize;
+#[cfg(feature = "std")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// A named key.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug, DataSize, JsonSchema)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct NamedKey {
     /// The name of the entry.
     pub name: String,

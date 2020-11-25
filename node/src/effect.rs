@@ -94,7 +94,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    Key, ProtocolVersion,
+    ExecutionResult, Key, ProtocolVersion,
 };
 
 use crate::{
@@ -109,9 +109,8 @@ use crate::{
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
-        BlockLike, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
-        ProtoBlock, Timestamp,
+        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader,
+        DeployMetadata, FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,

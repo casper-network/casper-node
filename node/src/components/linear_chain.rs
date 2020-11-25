@@ -10,6 +10,8 @@ use derive_more::From;
 use futures::FutureExt;
 use tracing::{debug, error, info, warn};
 
+use casper_types::ExecutionResult;
+
 use super::Component;
 use crate::{
     crypto::asymmetric_key::Signature,
@@ -19,7 +21,7 @@ use crate::{
         EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, DeployHash},
+    types::{Block, BlockByHeight, BlockHash, DeployHash},
     NodeRng,
 };
 

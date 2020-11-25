@@ -1,4 +1,10 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::vec::Vec;
+
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     account::AccountHash,
@@ -6,18 +12,18 @@ use crate::{
     DeployHash, TransferAddr, URef, U512,
 };
 
-/// Represents a transfer from one purse to another
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
+/// Information relating to the given Deploy.
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct DeployInfo {
-    /// Deploy
+    /// The relevant Deploy.
     pub deploy_hash: DeployHash,
-    /// Transfers
+    /// Transfers performed by the Deploy.
     pub transfers: Vec<TransferAddr>,
-    /// Account
+    /// Account identifier of the creator of the Deploy.
     pub from: AccountHash,
-    /// Source purse
+    /// Source purse used for payment of the Deploy.
     pub source: URef,
-    /// Gas
+    /// Gas cost of executing the Deploy.
     pub gas: U512,
 }
 

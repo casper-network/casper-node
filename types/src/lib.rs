@@ -34,10 +34,12 @@ mod cl_value;
 mod contract_wasm;
 pub mod contracts;
 mod deploy_info;
+mod execution_result;
 #[cfg(any(feature = "gens", test))]
 pub mod gens;
 mod key;
 pub mod mint;
+mod named_key;
 mod phase;
 pub mod proof_of_stake;
 mod protocol_version;
@@ -59,18 +61,21 @@ pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
+pub use contract_wasm::ContractWasm;
 pub use contracts::{
     Contract, ContractPackage, ContractVersion, ContractVersionKey, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, Group, Parameter,
 };
-//pub use contract_ref::ContractRef;
-pub use contract_wasm::ContractWasm;
 pub use deploy_info::DeployInfo;
+pub use execution_result::{
+    ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
+};
 #[doc(inline)]
 pub use key::{
     ContractHash, ContractPackageHash, ContractWasmHash, HashAddr, Key, BLAKE2B_DIGEST_LENGTH,
     KEY_HASH_LENGTH,
 };
+pub use named_key::NamedKey;
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use public_key::{PublicKey, Secp256k1Bytes, ED25519_PUBLIC_KEY_LENGTH};

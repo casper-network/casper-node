@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    CLValue, Transfer,
+    CLValue, DeployInfo, Transfer,
 };
 
-use super::{Account, DeployInfo};
+use super::Account;
 
 /// Representation of a value stored in global state.
 ///
@@ -59,7 +59,7 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
             }
             ExecutionEngineStoredValue::Transfer(transfer) => StoredValue::Transfer(*transfer),
             ExecutionEngineStoredValue::DeployInfo(deploy_info) => {
-                StoredValue::DeployInfo(deploy_info.into())
+                StoredValue::DeployInfo(deploy_info.clone())
             }
         };
 

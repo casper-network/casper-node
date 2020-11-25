@@ -23,9 +23,12 @@ use tracing::warn;
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    ExecutionResult,
+};
 
-use super::{json_compatibility::ExecutionResult, BlockHash, Item, Tag, TimeDiff, Timestamp};
+use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{

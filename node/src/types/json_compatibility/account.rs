@@ -6,9 +6,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::account::Account as ExecutionEngineAccount;
-use casper_types::{account::AccountHash, URef};
-
-use super::NamedKey;
+use casper_types::{account::AccountHash, NamedKey, URef};
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
 struct AssociatedKey {
@@ -27,6 +25,7 @@ struct ActionThresholds {
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
 pub struct Account {
     account_hash: AccountHash,
+    #[data_size(skip)]
     named_keys: Vec<NamedKey>,
     #[data_size(skip)]
     main_purse: URef,
