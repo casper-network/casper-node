@@ -14,15 +14,6 @@ pub(crate) enum LncForks<C: Context> {
     Multiple,
 }
 
-impl<C: Context> LncForks<C> {
-    pub(crate) fn is_none(&self) -> bool {
-        match self {
-            LncForks::None => true,
-            LncForks::Single(_) | LncForks::Multiple => false,
-        }
-    }
-}
-
 /// Looks for forks, created by `eq_idx` validator, that are visible in the past of the panorama.
 ///
 /// Exits early if more than one of these forks is naively cited, i.e. not seen by an endorsed unit,

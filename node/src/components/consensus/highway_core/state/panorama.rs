@@ -3,16 +3,13 @@ use std::{collections::HashSet, fmt::Debug};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    components::consensus::{
-        highway_core::{
-            highway::Dependency,
-            state::{State, Unit, UnitError},
-            validators::{ValidatorIndex, ValidatorMap},
-        },
-        traits::Context,
+use crate::components::consensus::{
+    highway_core::{
+        highway::Dependency,
+        state::{State, Unit, UnitError},
+        validators::{ValidatorIndex, ValidatorMap},
     },
-    types::Timestamp,
+    traits::Context,
 };
 
 /// The observed behavior of a validator at some point in time.
@@ -164,20 +161,6 @@ impl<C: Context> Panorama<C> {
         };
         let observations = self.iter().zip(other).map(merge_obs).collect_vec();
         Panorama::from(observations)
-    }
-
-    /// Returns the panorama seeing all units seen by `self` with a timestamp no later than
-    /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
-    pub(crate) fn cutoff(&self, state: &State<C>, timestamp: Timestamp) -> Panorama<C> {
-        let obs_cutoff = |obs: &Observation<C>| match obs {
-            Observation::Correct(vhash) => state
-                .swimlane(vhash)
-                .find(|(_, unit)| unit.timestamp <= timestamp)
-                .map(|(vh, _)| *vh)
-                .map_or(Observation::None, Observation::Correct),
-            obs @ Observation::None | obs @ Observation::Faulty => obs.clone(),
-        };
-        Panorama::from(self.iter().map(obs_cutoff).collect_vec())
     }
 
     /// Returns the first missing dependency, or `None` if all are satisfied.

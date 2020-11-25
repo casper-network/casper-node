@@ -121,11 +121,13 @@ impl<C: Context> ActiveValidator<C> {
         if timestamp == r_id && state.leader(r_id) == self.vidx {
             effects.extend(self.request_new_block(state, instance_id, timestamp, rng))
         } else if timestamp == r_id + self.witness_offset(r_len) {
-            let panorama = state.citable_panorama().cutoff(state, timestamp);
+            let panorama = state.citable_panorama(self.vidx);
             if panorama.has_correct() {
-                let witness_unit =
-                    self.new_unit(panorama, timestamp, None, state, instance_id, rng);
-                effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))))
+                if let Some(witness_unit) =
+                    self.new_unit(panorama, timestamp, None, state, instance_id, rng)
+                {
+                    effects.push(Effect::NewVertex(ValidVertex(Vertex::Unit(witness_unit))))
+                }
             }
         }
         effects
@@ -147,9 +149,12 @@ impl<C: Context> ActiveValidator<C> {
         if self.should_send_confirmation(uhash, now, state) {
             let panorama = state.confirmation_panorama(self.vidx, uhash);
             if panorama.has_correct() {
-                let confirmation_unit = self.new_unit(panorama, now, None, state, instance_id, rng);
-                let vv = ValidVertex(Vertex::Unit(confirmation_unit));
-                effects.push(Effect::NewVertex(vv))
+                if let Some(confirmation_unit) =
+                    self.new_unit(panorama, now, None, state, instance_id, rng)
+                {
+                    let vv = ValidVertex(Vertex::Unit(confirmation_unit));
+                    effects.push(Effect::NewVertex(vv));
+                }
             }
         };
         if self.should_endorse(uhash, state) {
@@ -199,11 +204,12 @@ impl<C: Context> ActiveValidator<C> {
             );
             return None;
         }
-        let panorama = state.citable_panorama().cutoff(state, timestamp);
+        let panorama = state.citable_panorama(self.vidx);
         let opt_parent_hash = state.fork_choice(&panorama);
         if opt_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
-            let proposal_unit = self.new_unit(panorama, timestamp, None, state, instance_id, rng);
-            return Some(Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))));
+            return self
+                .new_unit(panorama, timestamp, None, state, instance_id, rng)
+                .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))));
         }
         let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
         let height = opt_parent.map_or(0, |block| block.height);
@@ -243,9 +249,10 @@ impl<C: Context> ActiveValidator<C> {
             warn!("unexpected proposal value");
             return vec![];
         };
-        let proposal_unit =
-            self.new_unit(panorama, timestamp, Some(value), state, instance_id, rng);
-        vec![Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit)))]
+        self.new_unit(panorama, timestamp, Some(value), state, instance_id, rng)
+            .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))))
+            .into_iter()
+            .collect()
     }
 
     /// Returns whether the incoming message is a proposal that we need to send a confirmation for.
@@ -295,28 +302,32 @@ impl<C: Context> ActiveValidator<C> {
     /// Returns a new unit with the given data, and the correct sequence number.
     fn new_unit(
         &mut self,
-        mut panorama: Panorama<C>,
+        panorama: Panorama<C>,
         timestamp: Timestamp,
         value: Option<C::ConsensusValue>,
         state: &State<C>,
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
-    ) -> SignedWireUnit<C> {
+    ) -> Option<SignedWireUnit<C>> {
         if let Some((prop_time, _)) = self.next_proposal.take() {
             warn!(
                 ?timestamp,
                 "canceling proposal for {} due to unit", prop_time
             );
         }
-        // If the panorama doesn't cite our own previous vote, we equivocate.
-        // If it is not citable, we would be unable to add our own vote to citable_panorama.
-        // In those cases, use citable_panorama instead.
-        if panorama[self.vidx] != state.panorama()[self.vidx]
-            || !state.citable_panorama().geq(state, &panorama)
-        {
-            error!("replacing unit panorama to avoid equivocation");
-            panorama = state.citable_panorama().clone();
-            assert_eq!(panorama[self.vidx], state.panorama()[self.vidx]);
+        for hash in panorama.iter_correct_hashes() {
+            if timestamp < state.unit(hash).timestamp {
+                warn!(%timestamp, justification_timestamp = %state.unit(hash).timestamp,
+                "canceling unit creation because of outdated timestamp");
+                return None;
+            }
+        }
+        if panorama[self.vidx] != state.panorama()[self.vidx] {
+            error!(
+                ?panorama,
+                "panorama for new unit would be equivocation; canceling unit creation"
+            );
+            return None;
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let endorsed = state.seen_endorsed(&panorama);
@@ -330,7 +341,7 @@ impl<C: Context> ActiveValidator<C> {
             round_exp: self.round_exp(state, timestamp),
             endorsed,
         };
-        SignedWireUnit::new(wunit, &self.secret, rng)
+        Some(SignedWireUnit::new(wunit, &self.secret, rng))
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.

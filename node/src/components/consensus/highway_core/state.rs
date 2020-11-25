@@ -146,11 +146,8 @@ pub(crate) struct State<C: Context> {
     faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The full panorama, corresponding to the complete protocol state.
     panorama: Panorama<C>,
-    /// Panorama used when creating new units.
-    /// In the presence of faults may lag behind `panorama`.
-    /// Units, that if cited by a new unit would make that unit violate the LNC, are not added to
-    /// `citable_panorama`.
-    citable_panorama: Panorama<C>,
+    /// The merged panoramas of all endorsed units. This is always safe to cite.
+    endorsed_panorama: Panorama<C>,
     /// All currently endorsed units, by hash.
     endorsements: HashMap<C::Hash, ValidatorMap<Option<C::Signature>>>,
     /// Units that don't yet have 2/3 of stake endorsing them.
@@ -196,7 +193,7 @@ impl<C: Context> State<C> {
             units: HashMap::new(),
             blocks: HashMap::new(),
             faults,
-            citable_panorama: panorama.clone(),
+            endorsed_panorama: panorama.clone(),
             panorama,
             endorsements: HashMap::new(),
             incomplete_endorsements: HashMap::new(),
@@ -302,7 +299,6 @@ impl<C: Context> State<C> {
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
     pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
         self.panorama[idx] = Observation::Faulty;
-        self.citable_panorama[idx] = Observation::Faulty;
         self.faults.entry(idx).or_insert(Fault::Indirect);
     }
 
@@ -351,11 +347,6 @@ impl<C: Context> State<C> {
         &self.panorama
     }
 
-    /// Returns the "safe" panorama, that can be used when creating new units.
-    pub(crate) fn citable_panorama(&self) -> &Panorama<C> {
-        &self.citable_panorama
-    }
-
     /// Returns the leader in the specified time slot.
     pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
         let seed = self.params.seed().wrapping_add(timestamp.millis());
@@ -374,6 +365,7 @@ impl<C: Context> State<C> {
     pub(crate) fn add_valid_unit(&mut self, swunit: SignedWireUnit<C>) {
         let wunit = &swunit.wire_unit;
         let hash = wunit.hash();
+        let instance_id = wunit.instance_id;
         let fork_choice = self.fork_choice(&wunit.panorama).cloned();
         let (unit, opt_value) = Unit::new(swunit.clone(), fork_choice.as_ref(), self);
         if let Some(value) = opt_value {
@@ -381,7 +373,7 @@ impl<C: Context> State<C> {
             self.blocks.insert(hash, block);
         }
         self.units.insert(hash, unit);
-        self.update_panorama(&swunit);
+        self.update_panorama(hash, instance_id);
     }
 
     /// Adds direct evidence proving a validator to be faulty, unless that validators is already
@@ -396,7 +388,6 @@ impl<C: Context> State<C> {
         trace!(?evidence, "marking validator #{} as faulty", idx.0);
         self.faults.insert(idx, Fault::Direct(evidence));
         self.panorama[idx] = Observation::Faulty;
-        self.citable_panorama[idx] = Observation::Faulty;
         true
     }
 
@@ -433,13 +424,11 @@ impl<C: Context> State<C> {
             .keys()
             .map(|vidx| fully_endorsed.remove(&vidx))
             .collect();
-        self.endorsements.insert(uhash, endorsed_map);
-
         let new_panorama = self
-            .citable_panorama
-            .merge(self, &self.inclusive_panorama(&uhash));
-
-        self.citable_panorama = new_panorama;
+            .inclusive_panorama(&uhash)
+            .merge(self, &self.endorsed_panorama);
+        self.endorsed_panorama = new_panorama;
+        self.endorsements.insert(uhash, endorsed_map);
     }
 
     pub(crate) fn wire_unit(
@@ -629,48 +618,30 @@ impl<C: Context> State<C> {
 
     /// Updates `self.panorama` with an incoming unit. Panics if dependencies are missing.
     ///
-    /// If the new unit is valid, it will just add `Observation::Correct(wunit.hash())` to the
+    /// If the new unit is valid, it will just add `Observation::Correct(uhash)` to the
     /// panorama. If it represents an equivocation, it adds `Observation::Faulty` and updates
     /// `self.faults`.
     ///
-    /// Panics unless all dependencies of `wunit` have already been added to `self`.
-    fn update_panorama(&mut self, swunit: &SignedWireUnit<C>) {
-        let wunit = &swunit.wire_unit;
-        let creator = wunit.creator;
-        let new_obs = match (self.panorama.get(creator), wunit.panorama.get(creator)) {
+    /// Panics unless the unit has already been added to `self`.
+    fn update_panorama(&mut self, uhash: C::Hash, instance_id: C::InstanceId) {
+        let unit = self.unit(&uhash);
+        let creator = unit.creator;
+        let new_obs = match (self.panorama.get(creator), unit.panorama.get(creator)) {
             (Observation::Faulty, _) => Observation::Faulty,
-            (obs0, obs1) if obs0 == obs1 => Observation::Correct(wunit.hash()),
+            (obs0, obs1) if obs0 == obs1 => Observation::Correct(uhash),
             (Observation::None, _) => panic!("missing creator's previous unit"),
             (Observation::Correct(hash0), _) => {
                 // If we have all dependencies of wunit and still see the sender as correct, the
                 // predecessor of wunit must be a predecessor of hash0. So we already have a
                 // conflicting unit with the same sequence number:
-                let prev0 = self.find_in_swimlane(hash0, wunit.seq_number).unwrap();
-                let wunit0 = self.wire_unit(prev0, wunit.instance_id).unwrap();
-                self.add_evidence(Evidence::Equivocation(wunit0, swunit.clone()));
+                let prev0 = self.find_in_swimlane(hash0, unit.seq_number).unwrap();
+                let wunit0 = self.wire_unit(prev0, instance_id).unwrap();
+                let wunit1 = self.wire_unit(&uhash, instance_id).unwrap();
+                self.add_evidence(Evidence::Equivocation(wunit0, wunit1));
                 Observation::Faulty
             }
         };
-        self.panorama[creator] = new_obs.clone();
-
-        if new_obs.is_faulty() {
-            // If the new observation is `Faulty`, it is safe to update the `citable_panorama`
-            // b/c we won't violate LNC if we use it for our next unit.
-            self.citable_panorama[creator] = new_obs;
-        } else if new_obs.is_correct() {
-            // Check if citing new unit would introduce a new naively cited fork by an equivocator,
-            // so we'd be in danger of violating the LNC.
-            let mut updated_panorama = self.citable_panorama.merge(self, &wunit.panorama);
-            updated_panorama[wunit.creator] = new_obs;
-            let endorsed = self.seen_endorsed(&updated_panorama);
-            let cites_naively = updated_panorama.iter_faulty().any(|eq_idx| {
-                !lnc::find_forks(&updated_panorama, &endorsed, eq_idx, self).is_none()
-            });
-
-            if !cites_naively {
-                self.citable_panorama = updated_panorama;
-            }
-        }
+        self.panorama[creator] = new_obs;
     }
 
     /// Returns `true` if this is a proposal and the creator is not faulty.
@@ -849,24 +820,48 @@ impl<C: Context> State<C> {
         hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
     }
 
-    // Returns whether the units with `hash0` and `hash1` see each other or are equal.
-    fn is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
-        hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
+    /// Creates a panorama that sees `creator`'s latest unit and satisfies the LNC for `creator`.
+    ///
+    /// If that satisfies the LNC, this just returns `self.panorama()`, otherwise it makes a best
+    /// effort to cite as much as possible in addition to what is seen by `creator`'s latest unit.
+    pub(crate) fn citable_panorama(&self, creator: ValidatorIndex) -> Panorama<C> {
+        let endorsed: BTreeSet<C::Hash> = self.endorsements.keys().cloned().collect();
+        if self
+            .validate_lnc(creator, &self.panorama, &endorsed)
+            .is_none()
+        {
+            self.panorama.clone()
+        } else if let Some(panorama) = self.panorama[creator]
+            .correct()
+            .map(|hash| self.inclusive_panorama(hash))
+        {
+            self.endorsed_panorama.merge(self, &panorama)
+        } else {
+            self.endorsed_panorama.clone()
+        }
     }
 
-    /// Returns the panorama of the confirmation unit for the leader unit `uhash`.
+    /// Returns the panorama of the confirmation unit by `creator` for the leader unit `uhash`.
     pub(crate) fn confirmation_panorama(
         &self,
-        own_idx: ValidatorIndex,
+        creator: ValidatorIndex,
         uhash: &C::Hash,
     ) -> Panorama<C> {
-        let mut confirmation_panorama = self.inclusive_panorama(uhash);
-        if confirmation_panorama[own_idx] != self.citable_panorama[own_idx]
-            || !self.citable_panorama().geq(self, &confirmation_panorama)
-        {
-            confirmation_panorama = self.citable_panorama.clone();
+        if let Some(prev_hash) = self.panorama[creator].correct() {
+            if !self.sees_correct(uhash, prev_hash) {
+                return self.citable_panorama(creator);
+            }
         }
-        confirmation_panorama
+        let panorama = self.inclusive_panorama(uhash);
+        let prop_unit = self.unit(uhash);
+        if self
+            .validate_lnc(creator, &panorama, &prop_unit.endorsed)
+            .is_none()
+        {
+            panorama
+        } else {
+            self.citable_panorama(creator)
+        }
     }
 
     /// Returns panorama of a unit where latest entry of the creator is that unit's hash.
@@ -875,6 +870,11 @@ impl<C: Context> State<C> {
         let mut pan = unit.panorama.clone();
         pan[unit.creator] = Observation::Correct(*uhash);
         pan
+    }
+
+    // Returns whether the units with `hash0` and `hash1` see each other or are equal.
+    fn is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+        hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
     }
 }
 
