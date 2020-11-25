@@ -613,7 +613,7 @@ impl<C: Context> State<C> {
                 });
             }
         }
-        match self.validate_lnc(wunit) {
+        match self.validate_lnc(creator, panorama, &wunit.endorsed) {
             None => Ok(()),
             Some(vidx) => Err(UnitError::LncNaiveCitation(vidx)),
         }
@@ -759,27 +759,40 @@ impl<C: Context> State<C> {
         result
     }
 
-    /// Validates whether `wunit` violates the Limited Naïveté Criterion (LNC).
+    /// Validates whether a unit with the given panorama and `endorsed` set satsifies the
+    /// Limited Naïveté Criterion (LNC).
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
     /// `None` if the LNC is satisfied.
-    fn validate_lnc(&self, wunit: &WireUnit<C>) -> Option<ValidatorIndex> {
-        let violates_lnc = |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(wunit, *eq_idx);
-        wunit.panorama.iter_faulty().find(violates_lnc)
+    fn validate_lnc(
+        &self,
+        creator: ValidatorIndex,
+        panorama: &Panorama<C>,
+        endorsed: &BTreeSet<C::Hash>,
+    ) -> Option<ValidatorIndex> {
+        let violates_lnc =
+            |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(creator, panorama, endorsed, *eq_idx);
+        panorama.iter_faulty().find(violates_lnc)
     }
 
     /// Returns `true` if there is at most one fork by the validator `eq_idx` that is cited naively
-    /// by `wunit` or earlier units by the same creator.
-    fn satisfies_lnc_for(&self, wunit: &WireUnit<C>, eq_idx: ValidatorIndex) -> bool {
-        let naive_by_wunit = match lnc::find_forks(&wunit.panorama, &wunit.endorsed, eq_idx, self) {
+    /// by a unit with the given panorama and `endorsed` set, or earlier units by the same creator.
+    fn satisfies_lnc_for(
+        &self,
+        creator: ValidatorIndex,
+        panorama: &Panorama<C>,
+        endorsed: &BTreeSet<C::Hash>,
+        eq_idx: ValidatorIndex,
+    ) -> bool {
+        let naive_fork = match lnc::find_forks(panorama, endorsed, eq_idx, self) {
             LncForks::Multiple => return false, // More than one fork is cited naively by wunit.
             LncForks::None => return true,      // No forks are cited naively by wunit.
-            LncForks::Single(naive_by_wunit) => naive_by_wunit,
+            LncForks::Single(naive_fork) => naive_fork,
         };
 
         // Iterate over all earlier units by wunit.creator, and find all forks by eq_idx they
-        // naively cite. If any of those forks are incompatible with naive_by_wunit, the LNC is
+        // naively cite. If any of those forks are incompatible with naive_fork, the LNC is
         // violated.
-        let mut opt_pred_hash = wunit.panorama[wunit.creator].correct();
+        let mut opt_pred_hash = panorama[creator].correct();
         while let Some(pred_hash) = opt_pred_hash {
             let pred_unit = self.unit(pred_hash);
             // Returns true if any endorsed (according to pred_unit) unit cites the given unit.
@@ -800,9 +813,7 @@ impl<C: Context> State<C> {
                 let unit = self.unit(hash);
                 match &unit.panorama[eq_idx] {
                     Observation::Correct(eq_hash) => {
-                        if !seen_by_endorsed(eq_hash)
-                            && !self.is_compatible(eq_hash, &naive_by_wunit)
-                        {
+                        if !seen_by_endorsed(eq_hash) && !self.is_compatible(eq_hash, &naive_fork) {
                             return false;
                         }
                     }
@@ -822,7 +833,7 @@ impl<C: Context> State<C> {
                 // haven't found conflicting naively cited forks yet, there are none.
                 return true;
             }
-            opt_pred_hash = pred_unit.panorama[wunit.creator].correct();
+            opt_pred_hash = pred_unit.panorama[creator].correct();
         }
         true // No earlier messages, so no conflicting naively cited forks.
     }
