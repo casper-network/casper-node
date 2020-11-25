@@ -662,7 +662,7 @@ impl<C: Context> State<C> {
             // so we'd be in danger of violating the LNC.
             let mut updated_panorama = self.citable_panorama.merge(self, &wunit.panorama);
             updated_panorama[wunit.creator] = new_obs;
-            let endorsed = self.endorsements.keys().cloned().collect();
+            let endorsed = self.seen_endorsed(&updated_panorama);
             let cites_naively = updated_panorama.iter_faulty().any(|eq_idx| {
                 !lnc::find_forks(&updated_panorama, &endorsed, eq_idx, self).is_none()
             });
