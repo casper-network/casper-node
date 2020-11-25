@@ -310,7 +310,8 @@ mod tests {
     use crate::{
         account::{AccountHash, ACCOUNT_HASH_LENGTH},
         key::KEY_HASH_LENGTH,
-        AccessRights, DeployHash, DEPLOY_HASH_LENGTH, UREF_ADDR_LENGTH,
+        AccessRights, DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
+        UREF_ADDR_LENGTH,
     };
 
     #[test]
@@ -469,7 +470,7 @@ mod tests {
                 r#"{"cl_type":"Key","parsed_to_json":{"URef":"uref-0303030303030303030303030303030303030303030303030303030303030303-001"}}"#,
             );
 
-            let key_transfer = Key::Transfer([4; KEY_HASH_LENGTH]);
+            let key_transfer = Key::Transfer(TransferAddr::new([4; TRANSFER_ADDR_LENGTH]));
             check_to_json(
                 key_transfer,
                 r#"{"cl_type":"Key","parsed_to_json":{"Transfer":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}}"#,
@@ -707,7 +708,7 @@ mod tests {
                 r#"{"cl_type":{"Option":"Key"},"parsed_to_json":{"URef":"uref-0303030303030303030303030303030303030303030303030303030303030303-001"}}"#,
             );
 
-            let key_transfer = Key::Transfer([4; KEY_HASH_LENGTH]);
+            let key_transfer = Key::Transfer(TransferAddr::new([4; TRANSFER_ADDR_LENGTH]));
             check_to_json(
                 Some(key_transfer),
                 r#"{"cl_type":{"Option":"Key"},"parsed_to_json":{"Transfer":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}}"#,

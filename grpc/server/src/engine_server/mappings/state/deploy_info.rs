@@ -18,7 +18,7 @@ impl From<DeployInfo> for state::DeployInfo {
                 .into_iter()
                 .map(|transfer_addr| {
                     let mut pb_transfer_addr = state::TransferAddr::new();
-                    pb_transfer_addr.transfer_addr = transfer_addr.to_vec();
+                    pb_transfer_addr.transfer_addr = transfer_addr.value().to_vec();
                     pb_transfer_addr
                 })
                 .collect::<Vec<state::TransferAddr>>()
@@ -47,16 +47,14 @@ impl TryFrom<state::DeployInfo> for DeployInfo {
                 "Protobuf DeployInfo.deploy",
             )?)
         };
-        let transfers = pb_deploy_info
-            .get_transfers()
-            .iter()
-            .map(|pb_transfer_addr| {
-                mappings::vec_to_array(
-                    pb_transfer_addr.transfer_addr.to_owned(),
-                    "Protobuf DeployInfo.transfers",
-                )
-            })
-            .collect::<Result<Vec<TransferAddr>, Self::Error>>()?;
+        let mut transfers = vec![];
+        for pb_transfer_addr in pb_deploy_info.get_transfers().iter() {
+            let transfer_addr = TransferAddr::new(mappings::vec_to_array(
+                pb_transfer_addr.transfer_addr.to_owned(),
+                "Protobuf DeployInfo.transfers",
+            )?);
+            transfers.push(transfer_addr)
+        }
         let from = {
             let account_hash = pb_deploy_info.get_from();
             mappings::vec_to_array(

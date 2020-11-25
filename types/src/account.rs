@@ -344,7 +344,7 @@ impl Debug for AccountHash {
 
 impl CLTyped for AccountHash {
     fn cl_type() -> CLType {
-        CLType::ByteArray(32)
+        CLType::ByteArray(ACCOUNT_HASH_LENGTH as u32)
     }
 }
 

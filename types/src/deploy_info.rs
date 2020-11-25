@@ -3,8 +3,7 @@ use alloc::vec::Vec;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    key::TransferAddr,
-    DeployHash, URef, U512,
+    DeployHash, TransferAddr, URef, U512,
 };
 
 /// Represents a transfer from one purse to another
@@ -103,7 +102,7 @@ pub(crate) mod gens {
     }
 
     pub fn transfer_addr_arb() -> impl Strategy<Value = TransferAddr> {
-        array::uniform32(<u8>::arbitrary())
+        array::uniform32(<u8>::arbitrary()).prop_map(TransferAddr::new)
     }
 
     pub fn transfers_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<TransferAddr>> {

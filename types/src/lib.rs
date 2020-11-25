@@ -68,8 +68,8 @@ pub use contract_wasm::ContractWasm;
 pub use deploy_info::DeployInfo;
 #[doc(inline)]
 pub use key::{
-    ContractHash, ContractPackageHash, ContractWasmHash, HashAddr, Key, TransferAddr,
-    BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
+    ContractHash, ContractPackageHash, ContractWasmHash, HashAddr, Key, BLAKE2B_DIGEST_LENGTH,
+    KEY_HASH_LENGTH,
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
@@ -77,6 +77,6 @@ pub use public_key::{PublicKey, Secp256k1Bytes, ED25519_PUBLIC_KEY_LENGTH};
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use system_contract_type::SystemContractType;
-pub use transfer::{DeployHash, Transfer, DEPLOY_HASH_LENGTH};
+pub use transfer::{DeployHash, Transfer, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH};
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{FromStrError as URefFromStrError, URef, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH};

@@ -8,7 +8,6 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use datasize::DataSize;
-use hex_buffer_serde::{Hex, HexForm};
 use lazy_static::lazy_static;
 use log::info;
 #[cfg(test)]
@@ -25,7 +24,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    CLValue, KEY_HASH_LENGTH, U128, U256, U512,
+    CLValue, TransferAddr, KEY_HASH_LENGTH, U128, U256, U512,
 };
 
 use super::NamedKey;
@@ -73,7 +72,7 @@ lazy_static! {
 
         let mut transforms = Vec::new();
         transforms.push(TransformEntry {
-            key: "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
+            key: "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007"
                 .to_string(),
             transform: Transform::AddUInt64(8u64),
         });
@@ -89,8 +88,8 @@ lazy_static! {
         };
 
         let transfers = vec![
-            TransferAddress([89; KEY_HASH_LENGTH]),
-            TransferAddress([130; KEY_HASH_LENGTH]),
+            TransferAddr::new([89; KEY_HASH_LENGTH]),
+            TransferAddr::new([130; KEY_HASH_LENGTH]),
         ];
 
         ExecutionResult {
@@ -108,51 +107,11 @@ impl DocExample for ExecutionResult {
     }
 }
 
-/// The hash digest; a wrapped `u8` array.
-#[derive(
-    Copy,
-    Clone,
-    DataSize,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Serialize,
-    Deserialize,
-    Default,
-    Debug,
-    JsonSchema,
-)]
-#[schemars(with = "String", description = "Hex-encoded transfer address.")]
-pub struct TransferAddress(
-    #[serde(with = "HexForm::<[u8; KEY_HASH_LENGTH]>")]
-    #[schemars(skip, with = "String")]
-    [u8; KEY_HASH_LENGTH],
-);
-
-impl ToBytes for TransferAddress {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for TransferAddress {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (address, remainder) = <[u8; KEY_HASH_LENGTH]>::from_bytes(bytes)?;
-        Ok((TransferAddress(address), remainder))
-    }
-}
-
 /// The result of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, DataSize, JsonSchema)]
 pub struct ExecutionResult {
     effect: ExecutionEffect,
-    transfers: Vec<TransferAddress>,
+    transfers: Vec<TransferAddr>,
     cost: U512,
     error_message: Option<String>,
 }
@@ -190,7 +149,7 @@ impl ExecutionResult {
         let transfer_count = rng.gen_range(0, 6);
         let mut transfers = vec![];
         for _ in 0..transfer_count {
-            transfers.push(TransferAddress(rng.gen()))
+            transfers.push(TransferAddr::new(rng.gen()))
         }
 
         let error_message = if rng.gen() {
@@ -217,10 +176,7 @@ impl From<&EngineExecutionResult> for ExecutionResult {
                 cost,
             } => ExecutionResult {
                 effect: effect.into(),
-                transfers: transfers
-                    .iter()
-                    .map(|transfer| TransferAddress(*transfer))
-                    .collect(),
+                transfers: transfers.clone(),
                 cost: cost.value(),
                 error_message: None,
             },
@@ -231,10 +187,7 @@ impl From<&EngineExecutionResult> for ExecutionResult {
                 cost,
             } => ExecutionResult {
                 effect: effect.into(),
-                transfers: transfers
-                    .iter()
-                    .map(|transfer| TransferAddress(*transfer))
-                    .collect(),
+                transfers: transfers.clone(),
                 cost: cost.value(),
                 error_message: Some(error.to_string()),
             },
@@ -263,7 +216,7 @@ impl ToBytes for ExecutionResult {
 impl FromBytes for ExecutionResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (effect, remainder) = ExecutionEffect::from_bytes(bytes)?;
-        let (transfers, remainder) = Vec::<TransferAddress>::from_bytes(remainder)?;
+        let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
         let (cost, remainder) = U512::from_bytes(remainder)?;
         let (error_message, remainder) = Option::<String>::from_bytes(remainder)?;
         let execution_result = ExecutionResult {

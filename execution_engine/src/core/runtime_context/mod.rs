@@ -354,7 +354,7 @@ where
             .transfer_address_generator
             .borrow_mut()
             .create_address();
-        Ok(transfer_addr)
+        Ok(TransferAddr::new(transfer_addr))
     }
 
     /// Puts `key` to the map of named keys of current context.

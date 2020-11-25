@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use casper_types::{account::AccountHash, DeployHash, Key};
+use casper_types::{account::AccountHash, DeployHash, Key, TransferAddr};
 
 use crate::engine_server::{
     mappings::{self, ParsingError},
@@ -31,7 +31,7 @@ impl From<Key> for state::Key {
             }
             Key::Transfer(transfer_addr) => {
                 let mut pb_transfer_addr = state::TransferAddr::new();
-                pb_transfer_addr.set_transfer_addr(transfer_addr.to_vec());
+                pb_transfer_addr.set_transfer_addr(transfer_addr.value().to_vec());
                 pb_key.set_transfer(pb_transfer_addr)
             }
         }
@@ -61,10 +61,10 @@ impl TryFrom<state::Key> for Key {
                 Key::URef(uref)
             }
             Key_oneof_value::transfer(pb_transfer_addr) => {
-                let transfer_addr = mappings::vec_to_array(
+                let transfer_addr = TransferAddr::new(mappings::vec_to_array(
                     pb_transfer_addr.transfer_addr,
                     "Protobuf Key::Transfer",
-                )?;
+                )?);
                 Key::Transfer(transfer_addr)
             }
             Key_oneof_value::deploy_info(pb_deploy_hash) => {
