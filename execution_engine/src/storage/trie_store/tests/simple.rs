@@ -1,7 +1,7 @@
 use lmdb::DatabaseFlags;
 use tempfile::tempdir;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 use super::TestData;
 use crate::storage::{
@@ -89,7 +89,7 @@ fn in_memory_put_get_succeeds() {
     let store = InMemoryTrieStore::new(&env, None);
     let data = &super::create_data()[0..1];
 
-    let expected: Vec<Trie<Vec<u8>, Vec<u8>>> =
+    let expected: Vec<Trie<Bytes, Bytes>> =
         data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
@@ -97,7 +97,7 @@ fn in_memory_put_get_succeeds() {
         put_get_succeeds::<_, _, _, _, in_memory::Error>(&store, &env, data)
             .expect("put_get_succeeds failed")
             .into_iter()
-            .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
             .expect("one of the outputs was empty")
     )
 }
@@ -114,7 +114,7 @@ fn lmdb_put_get_succeeds() {
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = &super::create_data()[0..1];
 
-    let expected: Vec<Trie<Vec<u8>, Vec<u8>>> =
+    let expected: Vec<Trie<Bytes, Bytes>> =
         data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
@@ -122,7 +122,7 @@ fn lmdb_put_get_succeeds() {
         put_get_succeeds::<_, _, _, _, error::Error>(&store, &env, data)
             .expect("put_get_succeeds failed")
             .into_iter()
-            .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
             .expect("one of the outputs was empty")
     );
 
@@ -135,7 +135,7 @@ fn in_memory_put_get_many_succeeds() {
     let store = InMemoryTrieStore::new(&env, None);
     let data = super::create_data();
 
-    let expected: Vec<Trie<Vec<u8>, Vec<u8>>> =
+    let expected: Vec<Trie<Bytes, Bytes>> =
         data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
@@ -143,7 +143,7 @@ fn in_memory_put_get_many_succeeds() {
         put_get_succeeds::<_, _, _, _, in_memory::Error>(&store, &env, &data)
             .expect("put_get failed")
             .into_iter()
-            .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
             .expect("one of the outputs was empty")
     )
 }
@@ -160,7 +160,7 @@ fn lmdb_put_get_many_succeeds() {
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = super::create_data();
 
-    let expected: Vec<Trie<Vec<u8>, Vec<u8>>> =
+    let expected: Vec<Trie<Bytes, Bytes>> =
         data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
@@ -168,7 +168,7 @@ fn lmdb_put_get_many_succeeds() {
         put_get_succeeds::<_, _, _, _, error::Error>(&store, &env, &data)
             .expect("put_get failed")
             .into_iter()
-            .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
             .expect("one of the outputs was empty")
     );
 
@@ -215,7 +215,7 @@ fn in_memory_uncommitted_read_write_txn_does_not_persist() {
         )
         .expect("uncommitted_read_write_txn_does_not_persist failed")
         .into_iter()
-        .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+        .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
     )
 }
 
@@ -238,7 +238,7 @@ fn lmdb_uncommitted_read_write_txn_does_not_persist() {
         )
         .expect("uncommitted_read_write_txn_does_not_persist failed")
         .into_iter()
-        .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+        .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
     );
 
     tmp_dir.close().unwrap();
@@ -282,7 +282,7 @@ fn lmdb_read_write_transaction_does_not_block_read_transaction() {
 
 fn reads_are_isolated<'a, S, X, E>(store: &S, env: &'a X) -> Result<(), E>
 where
-    S: TrieStore<Vec<u8>, Vec<u8>>,
+    S: TrieStore<Bytes, Bytes>,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -339,7 +339,7 @@ fn lmdb_reads_are_isolated() {
 
 fn reads_are_isolated_2<'a, S, X, E>(store: &S, env: &'a X) -> Result<(), E>
 where
-    S: TrieStore<Vec<u8>, Vec<u8>>,
+    S: TrieStore<Bytes, Bytes>,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -400,7 +400,7 @@ fn lmdb_reads_are_isolated_2() {
 
 fn dbs_are_isolated<'a, S, X, E>(env: &'a X, store_a: &S, store_b: &S) -> Result<(), E>
 where
-    S: TrieStore<Vec<u8>, Vec<u8>>,
+    S: TrieStore<Bytes, Bytes>,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -472,7 +472,7 @@ fn transactions_can_be_used_across_sub_databases<'a, S, X, E>(
     store_b: &S,
 ) -> Result<(), E>
 where
-    S: TrieStore<Vec<u8>, Vec<u8>>,
+    S: TrieStore<Bytes, Bytes>,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -540,7 +540,7 @@ fn uncommitted_transactions_across_sub_databases_do_not_persist<'a, S, X, E>(
     store_b: &S,
 ) -> Result<(), E>
 where
-    S: TrieStore<Vec<u8>, Vec<u8>>,
+    S: TrieStore<Bytes, Bytes>,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,

@@ -611,7 +611,7 @@ impl<C: Context> State<C> {
     /// Returns `true` if the `bhash` is a block that can have no children.
     pub(crate) fn is_terminal_block(&self, bhash: &C::Hash) -> bool {
         self.blocks.get(bhash).map_or(false, |block| {
-            block.height >= self.params.end_height()
+            block.height + 1 >= self.params.end_height()
                 && self.unit(bhash).timestamp >= self.params.end_timestamp()
         })
     }

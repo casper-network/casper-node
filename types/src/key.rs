@@ -328,7 +328,7 @@ impl FromBytes for Key {
                 Ok((Key::Account(account_hash), rem))
             }
             HASH_ID => {
-                let (hash, rem) = <[u8; KEY_HASH_LENGTH]>::from_bytes(remainder)?;
+                let (hash, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::Hash(hash), rem))
             }
             UREF_ID => {
@@ -336,11 +336,11 @@ impl FromBytes for Key {
                 Ok((Key::URef(uref), rem))
             }
             TRANSFER_ID => {
-                let (transfer_addr, rem) = TransferAddr::from_bytes(remainder)?;
+                let (transfer_addr, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::Transfer(transfer_addr), rem))
             }
             DEPLOY_INFO_ID => {
-                let (deploy_hash, rem) = DeployHash::from_bytes(remainder)?;
+                let (deploy_hash, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::DeployInfo(deploy_hash), rem))
             }
             _ => Err(Error::Formatting),

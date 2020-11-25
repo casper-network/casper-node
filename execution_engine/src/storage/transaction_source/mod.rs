@@ -1,3 +1,5 @@
+use casper_types::bytesrepr::Bytes;
+
 pub mod in_memory;
 pub mod lmdb;
 
@@ -24,7 +26,7 @@ pub trait Transaction: Sized {
 /// A transaction with the capability to read from a given [`Handle`](Transaction::Handle).
 pub trait Readable: Transaction {
     /// Returns the value from the corresponding key from a given [`Transaction::Handle`].
-    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
+    fn read(&self, handle: Self::Handle, key: &[u8]) -> Result<Option<Bytes>, Self::Error>;
 }
 
 /// A transaction with the capability to write to a given [`Handle`](Transaction::Handle).

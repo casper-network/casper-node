@@ -1,6 +1,6 @@
 //! Contains types and constants associated with user accounts.
 
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
     convert::TryFrom,
@@ -190,9 +190,6 @@ impl CLTyped for Weight {
 /// The length in bytes of a [`AccountHash`].
 pub const ACCOUNT_HASH_LENGTH: usize = 32;
 
-/// The number of bytes in a serialized [`AccountHash`].
-pub const ACCOUNT_HASH_SERIALIZED_LENGTH: usize = 32;
-
 /// A type alias for the raw bytes of an Account Hash.
 pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 
@@ -337,23 +334,25 @@ impl Debug for AccountHash {
 
 impl CLTyped for AccountHash {
     fn cl_type() -> CLType {
-        CLType::FixedList(Box::new(CLType::U8), 32)
+        CLType::ByteArray(32)
     }
 }
 
 impl ToBytes for AccountHash {
+    #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         self.0.to_bytes()
     }
 
+    #[inline(always)]
     fn serialized_length(&self) -> usize {
-        ACCOUNT_HASH_SERIALIZED_LENGTH
+        self.0.serialized_length()
     }
 }
 
 impl FromBytes for AccountHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (bytes, rem) = <[u8; 32]>::from_bytes(bytes)?;
+        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
         Ok((AccountHash::new(bytes), rem))
     }
 }

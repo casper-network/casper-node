@@ -5,7 +5,6 @@ extern crate alloc;
 
 use alloc::{string::ToString, vec};
 
-use alloc::boxed::Box;
 use casper_contract::contract_api::{runtime, storage};
 
 use casper_types::{
@@ -34,7 +33,7 @@ pub extern "C" fn call() {
         let entry_point = EntryPoint::new(
             ENTRY_FUNCTION_NAME.to_string(),
             vec![
-                Parameter::new(ARG_0_NAME, CLType::FixedList(Box::new(CLType::U8), 32)),
+                Parameter::new(ARG_0_NAME, CLType::ByteArray(32)),
                 Parameter::new(ARG_1_NAME, CLType::U512),
             ],
             CLType::Unit,

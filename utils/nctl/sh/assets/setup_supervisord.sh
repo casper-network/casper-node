@@ -61,6 +61,7 @@ autorestart=false
 command=$1/bin/casper-node validator $path_node/config/node-config.toml \
     --config-ext consensus.secret_key_path=$path_node_secret_key \
     --config-ext event_stream_server.address=0.0.0.0:$port_node_api_event \
+    --config-ext logging.format="json" \
     --config-ext network.bind_address=$network_bind_address \
     --config-ext network.known_addresses=[$network_known_addresses] \
     --config-ext node.chainspec_config_path=$path_net_chainspec \

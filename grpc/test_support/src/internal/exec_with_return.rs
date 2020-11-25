@@ -15,8 +15,9 @@ use casper_execution_engine::{
     storage::{global_state::StateProvider, protocol_data::ProtocolData},
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, BlockTime, CLTyped, EntryPointType, Key, Phase,
-    ProtocolVersion, RuntimeArgs, URef, U512,
+    account::AccountHash,
+    bytesrepr::{Bytes, FromBytes},
+    BlockTime, CLTyped, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
@@ -121,8 +122,8 @@ where
 
     let wasm_bytes = utils::read_wasm_file_bytes(wasm_file);
     let deploy_item = ExecutableDeployItem::ModuleBytes {
-        module_bytes: wasm_bytes,
-        args: Vec::new(),
+        module_bytes: wasm_bytes.into(),
+        args: Bytes::new(),
     };
 
     let wasm_config = *DEFAULT_WASM_CONFIG;

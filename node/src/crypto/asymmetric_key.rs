@@ -739,24 +739,23 @@ impl ToBytes for PublicKey {
         match self {
             PublicKey::Ed25519(public_key) => {
                 buffer.insert(0, ED25519_TAG);
-                buffer.extend(public_key.as_ref().to_vec().into_bytes()?);
+                let ed25519_bytes = public_key.as_bytes();
+                buffer.extend_from_slice(ed25519_bytes);
             }
             PublicKey::Secp256k1(public_key) => {
                 buffer.insert(0, SECP256K1_TAG);
-                buffer.extend(public_key.as_ref().to_vec().into_bytes()?);
+                let secp256k1_bytes = public_key.as_bytes();
+                buffer.extend_from_slice(secp256k1_bytes);
             }
         }
         Ok(buffer)
     }
 
-    // TODO: implement ToBytes for `&[u8]` to avoid allocating via `to_vec()` here.
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
-                PublicKey::Ed25519(public_key) => public_key.as_ref().to_vec().serialized_length(),
-                PublicKey::Secp256k1(public_key) => {
-                    public_key.as_ref().to_vec().serialized_length()
-                }
+                PublicKey::Ed25519(_) => Self::ED25519_LENGTH,
+                PublicKey::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
     }
 }
@@ -766,16 +765,18 @@ impl FromBytes for PublicKey {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             ED25519_TAG => {
-                let (raw_bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
-                let public_key = Self::ed25519_from_bytes(&raw_bytes).map_err(|error| {
+                let (raw_bytes, remainder): ([u8; Self::ED25519_LENGTH], _) =
+                    FromBytes::from_bytes(remainder)?;
+                let public_key = Self::new_ed25519(raw_bytes).map_err(|error| {
                     info!("failed deserializing to public key: {}", error);
                     bytesrepr::Error::Formatting
                 })?;
                 Ok((public_key, remainder))
             }
             SECP256K1_TAG => {
-                let (raw_bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
-                let public_key = Self::secp256k1_from_bytes(&raw_bytes).map_err(|error| {
+                let (raw_bytes, remainder): ([u8; Self::SECP256K1_LENGTH], _) =
+                    FromBytes::from_bytes(remainder)?;
+                let public_key = Self::new_secp256k1(raw_bytes).map_err(|error| {
                     info!("failed deserializing to public key: {}", error);
                     bytesrepr::Error::Formatting
                 })?;
@@ -998,7 +999,7 @@ impl ToBytes for Signature {
             }
             Signature::Secp256k1(signature) => {
                 buffer.insert(0, SECP256K1_TAG);
-                buffer.extend(signature.as_ref().to_vec().into_bytes()?);
+                buffer.extend_from_slice(signature.as_ref());
             }
         }
         Ok(buffer)
@@ -1007,8 +1008,8 @@ impl ToBytes for Signature {
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
-                Signature::Ed25519(signature) => signature.serialized_length(),
-                Signature::Secp256k1(signature) => signature.as_ref().to_vec().serialized_length(),
+                Signature::Ed25519(_) => Self::ED25519_LENGTH,
+                Signature::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
     }
 }
@@ -1028,9 +1029,10 @@ impl FromBytes for Signature {
                 Ok((ed25519_signature, remainder))
             }
             SECP256K1_TAG => {
-                let (secp256k1_signature_bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
-                let secp256k1_signature = Self::secp256k1_from_bytes(secp256k1_signature_bytes)
-                    .map_err(|error| {
+                let (secp256k1_signature_bytes, remainder): ([u8; Self::SECP256K1_LENGTH], &[u8]) =
+                    FromBytes::from_bytes(remainder)?;
+                let secp256k1_signature =
+                    Self::new_secp256k1(secp256k1_signature_bytes).map_err(|error| {
                         info!("failed to deserialize secp256k1 signature: {}", error);
                         bytesrepr::Error::Formatting
                     })?;

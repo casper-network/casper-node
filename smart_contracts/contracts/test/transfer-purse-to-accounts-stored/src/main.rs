@@ -40,7 +40,7 @@ pub extern "C" fn call() {
                 Parameter::new(
                     ARG_TARGETS,
                     CLType::Map {
-                        key: Box::new(CLType::FixedList(Box::new(CLType::U8), 32)),
+                        key: Box::new(CLType::ByteArray(32)),
                         value: Box::new(CLType::U512),
                     },
                 ),

@@ -88,8 +88,13 @@ pub enum Error {
     ToBytesError(ToBytesError),
 
     /// Cryptographic error.
-    #[error("Crypto error: {0}")]
-    CryptoError(#[from] CryptoError),
+    #[error("Crypto error: {context} - {error}")]
+    CryptoError {
+        /// Contextual text, such as callsite.
+        context: &'static str,
+        /// Underlying Cryptoerror.
+        error: CryptoError,
+    },
 
     /// Invalid `CLValue`.
     #[error("Invalid CLValue error {0}")]

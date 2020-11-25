@@ -56,6 +56,38 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         Ok(purse_uref)
     }
 
+    /// Reduce total supply by `amount`. Returns unit on success, otherwise
+    /// an error.
+    fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
+        // only system may reduce total supply
+        let caller = self.get_caller();
+        if caller != SYSTEM_ACCOUNT {
+            return Err(Error::InvalidTotalSupplyReductionAttempt);
+        }
+
+        if amount.is_zero() {
+            return Ok(()); // no change to supply
+        }
+
+        // get total supply or error
+        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
+            Some(Key::URef(uref)) => uref,
+            Some(_) => return Err(Error::MissingKey), // TODO
+            None => return Err(Error::MissingKey),
+        };
+        let total_supply: U512 = self
+            .read(total_supply_uref)?
+            .ok_or(Error::TotalSupplyNotFound)?;
+
+        // decrease total supply
+        let reduced_total_supply = total_supply - amount;
+
+        // update total supply
+        self.write(total_supply_uref, reduced_total_supply)?;
+
+        Ok(())
+    }
+
     /// Read balance of given `purse`.
     fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
         let balance_uref: URef = match self.read_local(&purse.addr())? {

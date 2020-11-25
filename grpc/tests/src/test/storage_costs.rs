@@ -25,7 +25,10 @@ use casper_types::{
     runtime_args,
     system_contract_type::AUCTION,
 };
-use casper_types::{bytesrepr::ToBytes, CLValue, ContractHash, ProtocolVersion, RuntimeArgs, U512};
+use casper_types::{
+    bytesrepr::{Bytes, ToBytes},
+    CLValue, ContractHash, ProtocolVersion, RuntimeArgs, U512,
+};
 
 use num_rational::Ratio;
 
@@ -284,7 +287,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
     };
 
     let expected_small_write_data =
-        StoredValue::from(CLValue::from_t(WRITE_SMALL_VALUE.to_vec()).unwrap());
+        StoredValue::from(CLValue::from_t(Bytes::from(WRITE_SMALL_VALUE.to_vec())).unwrap());
 
     let expected_small_cost = U512::from(expected_small_write_data.serialized_length());
 
@@ -325,7 +328,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
     };
 
     let expected_large_write_data =
-        StoredValue::from(CLValue::from_t(WRITE_LARGE_VALUE.to_vec()).unwrap());
+        StoredValue::from(CLValue::from_t(Bytes::from(WRITE_LARGE_VALUE.to_vec())).unwrap());
     let expected_large_cost = U512::from(expected_large_write_data.serialized_length());
 
     let large_write_cost = Ratio::new(large_write_function_cost.value(), cost_per_byte);
@@ -394,7 +397,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     };
 
     let expected_small_write_data =
-        StoredValue::from(CLValue::from_t(WRITE_SMALL_VALUE.to_vec()).unwrap());
+        StoredValue::from(CLValue::from_t(Bytes::from(WRITE_SMALL_VALUE.to_vec())).unwrap());
 
     let expected_small_cost = U512::from(expected_small_write_data.serialized_length());
 
@@ -434,7 +437,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     };
 
     let expected_large_write_data =
-        StoredValue::from(CLValue::from_t(WRITE_LARGE_VALUE.to_vec()).unwrap());
+        StoredValue::from(CLValue::from_t(Bytes::from(WRITE_LARGE_VALUE.to_vec())).unwrap());
     let expected_large_cost = U512::from(expected_large_write_data.serialized_length());
 
     let large_write_cost = Ratio::new(large_write_function_cost.value(), cost_per_byte);

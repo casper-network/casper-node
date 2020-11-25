@@ -97,6 +97,9 @@ pub enum Error {
     /// Invalid number of validator slots.
     #[fail(display = "Invalid number of validator slots")]
     InvalidValidatorSlotsValue = 25,
+    /// Failed to reduce total supply.
+    #[fail(display = "Failed to reduce total supply")]
+    MintReduceTotalSupply = 26,
 }
 
 /// Used for testing; this should be set to the maximum value of the [`Error`] enum.

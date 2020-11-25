@@ -578,10 +578,30 @@ where
             .wait_drop_metadata()
             .expect("should step");
 
+        if !response.has_step_result() {
+            panic!("Expected step result");
+        }
+
         let result = response.get_step_result();
-        let success = result.get_success();
-        self.post_state_hash = Some(success.get_poststate_hash().to_vec());
-        self
+
+        if result.has_success() {
+            let success = result.get_success();
+            self.post_state_hash = Some(success.get_poststate_hash().to_vec());
+            return self;
+        } else if result.has_error() {
+            let error = result.get_error();
+            panic!(
+                "Expected successful step result, but instead got error: {:?}",
+                error,
+            );
+        } else if result.has_missing_parent() {
+            let missing_parent = result.get_missing_parent();
+            panic!(
+                "Expected successful step result, but instead got missing_parent: {:?}",
+                missing_parent,
+            );
+        }
+        panic!("Expected one of the supported step result options (this should be unreachable).");
     }
 
     /// Expects a successful run and caches transformations

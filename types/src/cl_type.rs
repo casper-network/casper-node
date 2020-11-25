@@ -29,7 +29,7 @@ const CL_TYPE_TAG_KEY: u8 = 11;
 const CL_TYPE_TAG_UREF: u8 = 12;
 const CL_TYPE_TAG_OPTION: u8 = 13;
 const CL_TYPE_TAG_LIST: u8 = 14;
-const CL_TYPE_TAG_FIXED_LIST: u8 = 15;
+const CL_TYPE_TAG_BYTE_ARRAY: u8 = 15;
 const CL_TYPE_TAG_RESULT: u8 = 16;
 const CL_TYPE_TAG_MAP: u8 = 17;
 const CL_TYPE_TAG_TUPLE1: u8 = 18;
@@ -76,7 +76,7 @@ pub enum CLType {
     /// Variable-length list of a single `CLType` (comparable to a `Vec`).
     List(Box<CLType>),
     /// Fixed-length list of a single `CLType` (comparable to a Rust array).
-    FixedList(Box<CLType>, u32),
+    ByteArray(u32),
     /// `Result` with `Ok` and `Err` variants of `CLType`s.
     #[allow(missing_docs)] // generated docs are explicit enough.
     Result { ok: Box<CLType>, err: Box<CLType> },
@@ -117,9 +117,7 @@ impl CLType {
                 | CLType::PublicKey
                 | CLType::Any => 0,
                 CLType::Option(cl_type) | CLType::List(cl_type) => cl_type.serialized_length(),
-                CLType::FixedList(cl_type, list_len) => {
-                    cl_type.serialized_length() + list_len.to_le_bytes().len()
-                }
+                CLType::ByteArray(list_len) => list_len.serialized_length(),
                 CLType::Result { ok, err } => ok.serialized_length() + err.serialized_length(),
                 CLType::Map { key, value } => key.serialized_length() + value.serialized_length(),
                 CLType::Tuple1(cl_type_array) => serialized_length_of_cl_tuple_type(cl_type_array),
@@ -159,9 +157,8 @@ impl CLType {
                 stream.push(CL_TYPE_TAG_LIST);
                 cl_type.append_bytes(stream);
             }
-            CLType::FixedList(cl_type, len) => {
-                stream.push(CL_TYPE_TAG_FIXED_LIST);
-                cl_type.append_bytes(stream);
+            CLType::ByteArray(len) => {
+                stream.push(CL_TYPE_TAG_BYTE_ARRAY);
                 stream.append(&mut len.to_bytes().unwrap());
             }
             CLType::Result { ok, err } => {
@@ -217,10 +214,9 @@ impl FromBytes for CLType {
                 let cl_type = CLType::List(Box::new(inner_type));
                 Ok((cl_type, remainder))
             }
-            CL_TYPE_TAG_FIXED_LIST => {
-                let (inner_type, remainder) = CLType::from_bytes(remainder)?;
+            CL_TYPE_TAG_BYTE_ARRAY => {
                 let (len, remainder) = u32::from_bytes(remainder)?;
-                let cl_type = CLType::FixedList(Box::new(inner_type), len);
+                let cl_type = CLType::ByteArray(len);
                 Ok((cl_type, remainder))
             }
             CL_TYPE_TAG_RESULT => {
@@ -408,9 +404,9 @@ impl<T: CLTyped> CLTyped for Vec<T> {
 macro_rules! impl_cl_typed_for_array {
     ($($N:literal)+) => {
         $(
-            impl<T: CLTyped> CLTyped for [T; $N] {
+            impl CLTyped for [u8; $N] {
                 fn cl_type() -> CLType {
-                    CLType::FixedList(Box::new(T::cl_type()), $N as u32)
+                    CLType::ByteArray($N as u32)
                 }
             }
         )+
@@ -576,13 +572,13 @@ mod tests {
 
     #[test]
     #[allow(clippy::cognitive_complexity)]
-    fn small_array_of_cl_type_should_work() {
+    fn small_array_of_u8_should_work() {
         macro_rules! test_small_array {
             ($($N:literal)+) => {
                 $(
-                    let mut array = [0u64; $N];
+                    let mut array: [u8; $N] = Default::default();
                     for i in 0..$N {
-                        array[i] = i as u64;
+                        array[i] = i as u8;
                     }
                     round_trip(&array);
                 )+
@@ -603,9 +599,9 @@ mod tests {
             ($($N:literal)+) => {
                 $(
                     let array = {
-                        let mut tmp = [0u64; $N];
+                        let mut tmp = [0u8; $N];
                         for i in 0..$N {
-                            tmp[i] = i as u64;
+                            tmp[i] = i as u8;
                         }
                         tmp
                     };
@@ -616,7 +612,7 @@ mod tests {
                     let parsed_cl_value: CLValue = bytesrepr::deserialize(serialized_cl_value).unwrap();
                     assert_eq!(cl_value, parsed_cl_value);
 
-                    let parsed_value: [u64; $N] = CLValue::into_t(cl_value).unwrap();
+                    let parsed_value: [u8; $N] = CLValue::into_t(cl_value).unwrap();
                     for i in 0..$N {
                         assert_eq!(array[i], parsed_value[i]);
                     }
