@@ -37,7 +37,7 @@ where
         let mint_contract_hash = self.get_mint_contract();
         match self.mint_transfer(mint_contract_hash, source, target, amount, None) {
             Ok(Ok(_)) => Ok(()),
-            Ok(Err(mint_error)) => Err(ApiError::from(mint_error)),
+            Ok(Err(api_error)) => Err(api_error),
             Err(_) => Err(ApiError::Transfer),
         }
     }

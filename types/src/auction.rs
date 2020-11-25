@@ -360,7 +360,7 @@ pub trait Auction:
             for era_validator in winners.keys() {
                 let seigniorage_recipient = match bids.get(era_validator) {
                     Some(bid) => bid.into(),
-                    None => return Err(Error::BidNotFound.into()),
+                    None => return Err(Error::BidNotFound),
                 };
                 recipients.insert(*era_validator, seigniorage_recipient);
             }
@@ -493,12 +493,12 @@ pub trait Auction:
 
         let bid = match bids.get_mut(&validator_public_key) {
             Some(bid) => bid,
-            None => return Err(Error::ValidatorNotFound.into()),
+            None => return Err(Error::ValidatorNotFound),
         };
 
         let delegator = match bid.delegators_mut().get_mut(&delegator_public_key) {
             Some(delegator) => delegator,
-            None => return Err(Error::DelegatorNotFound.into()),
+            None => return Err(Error::DelegatorNotFound),
         };
 
         let reward_amount = *delegator.reward();
@@ -539,7 +539,7 @@ pub trait Auction:
 
         let bid = match bids.get_mut(&validator_public_key) {
             Some(bid) => bid,
-            None => return Err(Error::ValidatorNotFound.into()),
+            None => return Err(Error::ValidatorNotFound),
         };
 
         let reward_amount = *bid.reward();

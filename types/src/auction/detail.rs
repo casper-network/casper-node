@@ -122,7 +122,7 @@ where
 /// This function can be called by the system only.
 pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> Result<()> {
     if provider.get_caller() != SYSTEM_ACCOUNT {
-        return Err(Error::InvalidCaller.into());
+        return Err(Error::InvalidCaller);
     }
 
     // Update `unbonding_purses` data
@@ -172,7 +172,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     amount: U512,
 ) -> Result<U512> {
     if provider.get_balance(bonding_purse)?.unwrap_or_default() < amount {
-        return Err(Error::UnbondTooLarge.into());
+        return Err(Error::UnbondTooLarge);
     }
 
     let mut unbonding_purses: UnbondingPurses = get_unbonding_purses(provider)?;
@@ -224,7 +224,7 @@ where
 
         let delegator = match delegators.get_mut(&delegator_key) {
             Some(delegator) => delegator,
-            None => return Err(Error::DelegatorNotFound.into()),
+            None => return Err(Error::DelegatorNotFound),
         };
 
         delegator.increase_reward(delegator_reward_trunc)?;
