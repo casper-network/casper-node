@@ -8,11 +8,13 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use alloc::{
+    format,
     string::{String, ToString},
     vec,
     vec::Vec,
 };
 
+#[cfg(feature = "std")]
 use lazy_static::lazy_static;
 use rand::{
     distributions::{Distribution, Standard},
@@ -23,10 +25,12 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "std")]
+use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, KEY_HASH_LENGTH, U128, U256, U512,
+    CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
 
 /// Constants to track ExecutionResult serialization.
@@ -56,6 +60,7 @@ const TRANSFORM_ADD_UINT512_TAG: u8 = 12;
 const TRANSFORM_ADD_KEYS_TAG: u8 = 13;
 const TRANSFORM_FAILURE_TAG: u8 = 14;
 
+#[cfg(feature = "std")]
 lazy_static! {
     static ref EXECUTION_RESULT: ExecutionResult = {
         let mut operations = Vec::new();
@@ -129,6 +134,7 @@ pub enum ExecutionResult {
 impl ExecutionResult {
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
+    #[cfg(feature = "std")]
     pub fn example() -> &'static Self {
         &*EXECUTION_RESULT
     }

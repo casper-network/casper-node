@@ -3,6 +3,7 @@
 
 use alloc::vec::Vec;
 
+#[cfg(feature = "std")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +14,8 @@ use crate::{
 };
 
 /// Information relating to the given Deploy.
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct DeployInfo {
     /// The relevant Deploy.
     pub deploy_hash: DeployHash,
