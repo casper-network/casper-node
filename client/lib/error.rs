@@ -104,6 +104,15 @@ pub enum Error {
     #[error("Invalid argument '{0}' {1}")]
     InvalidArgument(&'static str, String),
 
+    /// Conflicting arguments.
+    #[error("Conflicting Arguments passed '{context}' {args:?}")]
+    ConflictingArguments {
+        /// Contextual text, such as callsite.
+        context: &'static str,
+        /// Arguments passed, with their values.
+        args: Vec<String>,
+    },
+
     /// Failed to validate response.
     #[error("Invalid response {0}")]
     InvalidResponse(#[from] ValidateResponseError),

@@ -53,6 +53,7 @@ pub enum casper_error_t {
     CASPER_INVALID_RESPONSE = -20,
     CASPER_FFI_SETUP_NOT_CALLED = -21,
     CASPER_FFI_PTR_NULL_BUT_REQUIRED = -22,
+    CASPER_CONFLICTING_ARGUMENTS = -23,
 }
 
 trait AsFFIError {
@@ -84,6 +85,7 @@ impl AsFFIError for Error {
             Error::InvalidResponse(_) => casper_error_t::CASPER_INVALID_RESPONSE,
             Error::FFISetupNotCalled => casper_error_t::CASPER_FFI_SETUP_NOT_CALLED,
             Error::FFIPtrNullButRequired(_) => casper_error_t::CASPER_FFI_PTR_NULL_BUT_REQUIRED,
+            Error::ConflictingArguments { .. } => casper_error_t::CASPER_CONFLICTING_ARGUMENTS,
         }
     }
 }

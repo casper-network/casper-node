@@ -244,6 +244,44 @@ fn args_from_simple_or_complex(
     }
 }
 
+macro_rules! stringify_if_not_empty {
+    ($e: expr) => {
+        if !$e.is_empty() {
+            format!("{}={}", stringify!($e), $e)
+        } else {
+            "".to_string()
+        }
+    };
+}
+
+macro_rules! params_with_values {
+    ($($x:expr),+ $(,)?) => (vec![$((stringify_if_not_empty!($x))),+])
+}
+
+/// Private macro for enforcing that there are no conflicting arguments, including missing a
+/// required one. This is intended to make debugging the parse_*_info methods easier for callers.
+macro_rules! try_conflicting_params {
+    (context: $site: expr, $($x:expr),+ $(,)?) => {{
+        let required_arguments = params_with_values![$($x),+]
+            .iter()
+            .filter(|item| !item.is_empty())
+            .map(<_>::to_string)
+            .collect::<Vec<_>>();
+        if required_arguments.is_empty() {
+            return Err(Error::InvalidArgument(
+                $site,
+                "No arguments passed.".to_string(),
+            ));
+        }
+        if required_arguments.len() > 1 {
+            return Err(Error::ConflictingArguments {
+                context: $site,
+                args: required_arguments,
+            });
+        }
+    }}
+}
+
 pub(super) fn parse_deploy_params(
     secret_key: &str,
     timestamp: &str,
@@ -281,6 +319,22 @@ pub(super) fn parse_session_info(
     session_version: &str,
     session_entry_point: &str,
 ) -> Result<ExecutableDeployItem> {
+    if !session_args.is_empty() && !session_args_complex.is_empty() {
+        return Err(Error::ConflictingArguments {
+            context: "parse_session_info",
+            args: vec!["session_args".to_owned(), "session_args_complex".to_owned()],
+        });
+    }
+
+    try_conflicting_params!(
+        context: "parse_session_info",
+        session_name,
+        session_hash,
+        session_package_hash,
+        session_package_name,
+        session_path
+    );
+
     let session_args = args_from_simple_or_complex(
         arg_simple::session::parse(session_args)?,
         args_complex::session::parse(session_args_complex).ok(),
@@ -322,13 +376,6 @@ pub(super) fn parse_session_info(
         );
     }
 
-    if session_path.is_empty() {
-        return Err(Error::InvalidArgument(
-            "session_path",
-            "<empty>".to_string(),
-        ));
-    }
-
     let module_bytes = fs::read(session_path).map_err(|error| Error::IoError {
         context: format!("unable to read session file at '{}'", session_path),
         error,
@@ -349,6 +396,22 @@ pub(super) fn parse_payment_info(
     payment_version: &str,
     payment_entry_point: &str,
 ) -> Result<ExecutableDeployItem> {
+    if !payment_args.is_empty() && !payment_args_complex.is_empty() {
+        return Err(Error::ConflictingArguments {
+            context: "parse_payment_info",
+            args: vec!["payment_args".to_owned(), "payment_args_complex".to_owned()],
+        });
+    }
+    try_conflicting_params!(
+        context: "parse_payment_info",
+        standard_payment_amount,
+        payment_hash,
+        payment_name,
+        payment_package_hash,
+        payment_package_name,
+        payment_path,
+    );
+
     if let Ok(payment_args) = standard_payment(standard_payment_amount) {
         return ExecutableDeployItem::new_module_bytes(vec![], payment_args);
     }
@@ -394,13 +457,6 @@ pub(super) fn parse_payment_info(
             entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
         );
-    }
-
-    if payment_path.is_empty() {
-        return Err(Error::InvalidArgument(
-            "payment_path",
-            "<empty>".to_string(),
-        ));
     }
 
     let module_bytes = fs::read(payment_path).map_err(|error| Error::IoError {
@@ -491,6 +547,55 @@ mod tests {
         account::AccountHash, bytesrepr::ToBytes, AccessRights, CLTyped, CLValue, NamedArg,
         PublicKey, RuntimeArgs, U128, U256, U512,
     };
+
+    #[derive(Debug)]
+    struct ErrWrapper(pub Error);
+
+    impl PartialEq for ErrWrapper {
+        fn eq(&self, other: &ErrWrapper) -> bool {
+            format!("{:?}", self.0) == format!("{:?}", other.0)
+        }
+    }
+
+    impl Into<ErrWrapper> for Error {
+        fn into(self) -> ErrWrapper {
+            ErrWrapper(self)
+        }
+    }
+
+    mod bad {
+        pub const EMPTY: &str = "";
+        pub const ARG_UNQUOTED: &str = "name:u32=0"; // value needs single quotes to be valid
+        pub const ARG_BAD_TYPE: &str = "name:wat='false'";
+        pub const ARG_GIBBERISH: &str = "asdf|1234(..)";
+        pub const LARGE_2K_INPUT: &str = "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";
+    }
+
+    mod happy {
+        pub const HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
+        pub const NAME: &str = "session_name";
+        pub const PACKAGE_HASH: &str =
+            "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
+        pub const PACKAGE_NAME: &str = "session_package_name";
+        pub const PATH: &str = "./session.wasm";
+    }
+
+    fn invalid_simple_args_test(cli_string: &str) {
+        assert!(
+            arg_simple::payment::parse(&[cli_string])
+                .map_err(ErrWrapper)
+                .is_err(),
+            "{} should be an error",
+            cli_string
+        );
+        assert!(
+            arg_simple::session::parse(&[cli_string])
+                .map_err(ErrWrapper)
+                .is_err(),
+            "{} should be an error",
+            cli_string
+        );
+    }
 
     fn valid_simple_args_test<T: CLTyped + ToBytes>(cli_string: &str, expected: T) {
         let expected = Some(RuntimeArgs::from(vec![NamedArg::new(
@@ -665,5 +770,110 @@ mod tests {
         valid_simple_args_test(&format!("x:public_key='{}'", hex_value), value);
         valid_simple_args_test(&format!("x:opt_public_key='{}'", hex_value), Some(value));
         valid_simple_args_test::<Option<PublicKey>>("x:opt_public_key=null", None);
+    }
+
+    #[test]
+    fn should_fail_to_parse_bad_args() {
+        invalid_simple_args_test(bad::ARG_BAD_TYPE);
+        invalid_simple_args_test(bad::ARG_GIBBERISH);
+        invalid_simple_args_test(bad::ARG_UNQUOTED);
+        invalid_simple_args_test(bad::EMPTY);
+        invalid_simple_args_test(bad::LARGE_2K_INPUT);
+    }
+
+    #[test]
+    fn should_fail_to_parse_conflicting_arg_types() {
+        assert_eq!(
+            parse_session_info(
+                "",
+                "",
+                "",
+                "",
+                "",
+                &["something:u32='0'"],
+                "path_to/file",
+                "",
+                "",
+            )
+            .map(|_| ())
+            .map_err(ErrWrapper),
+            Err(Error::ConflictingArguments {
+                context: "parse_session_info",
+                args: vec!["session_args".to_owned(), "session_args_complex".to_owned()]
+            }
+            .into())
+        );
+        assert_eq!(
+            parse_payment_info(
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                &["something:u32='0'"],
+                "path_to/file",
+                "",
+                "",
+            )
+            .map(|_| ())
+            .map_err(ErrWrapper),
+            Err(Error::ConflictingArguments {
+                context: "parse_payment_info",
+                args: vec!["payment_args".to_owned(), "payment_args_complex".to_owned()]
+            }
+            .into())
+        );
+    }
+
+    #[test]
+    fn should_fail_to_parse_conflicting_session_parameters() {
+        assert_eq!(
+            parse_session_info(
+                happy::HASH,
+                happy::NAME,
+                happy::PACKAGE_HASH,
+                happy::PACKAGE_NAME,
+                happy::PATH,
+                &[],
+                "",
+                "",
+                "",
+            )
+            .map(|_| ())
+            .map_err(ErrWrapper),
+            Err(Error::ConflictingArguments {
+                context: "parse_session_info",
+                args: vec![
+                    "session_name=session_name".into(),
+                    "session_hash=09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6".into(),
+                    "session_package_hash=09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6".into(),
+                    "session_package_name=session_package_name".into(),
+                    "session_path=./session.wasm".into()
+                ]
+            }
+            .into())
+        );
+    }
+
+    #[test]
+    fn should_fail_to_parse_conflicting_payment_parameters() {
+        assert_eq!(
+            parse_payment_info("12345", happy::HASH, happy::NAME, happy::PACKAGE_HASH, happy::PACKAGE_NAME, happy::PATH, &[], "", "", "",)
+                .map(|_| ())
+                .map_err(ErrWrapper),
+            Err(Error::ConflictingArguments {
+                context: "parse_payment_info",
+                args: vec![
+                    "standard_payment_amount=12345".into(),
+                    "payment_hash=09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6".into(),
+                    "payment_name=session_name".into(),
+                    "payment_package_hash=09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6".into(),
+                    "payment_package_name=session_package_name".into(),
+                    "payment_path=./session.wasm".into()
+                ]
+            }
+            .into())
+        );
     }
 }
