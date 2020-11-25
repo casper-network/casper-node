@@ -17,7 +17,7 @@ use blake2::{
 use datasize::DataSize;
 use failure::Fail;
 #[cfg(feature = "std")]
-use schemars::JsonSchema;
+use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -201,12 +201,7 @@ pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 /// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
 #[derive(DataSize, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
-#[cfg_attr(
-    feature = "std",
-    schemars(with = "String", description = "Hex-encoded account hash.")
-)]
-pub struct AccountHash(#[cfg_attr(feature = "std", schemars(skip))] AccountHashBytes);
+pub struct AccountHash(AccountHashBytes);
 
 impl AccountHash {
     /// Constructs a new `AccountHash` instance from the raw bytes of an Public Key Account Hash.
@@ -267,6 +262,20 @@ impl AccountHash {
         // Hash the preimage data using blake2b256 and return it.
         let digest = blake2b_hash_fn(preimage);
         Self::new(digest)
+    }
+}
+
+#[cfg(feature = "std")]
+impl JsonSchema for AccountHash {
+    fn schema_name() -> String {
+        String::from("AccountHash")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Hex-encoded account hash.".to_string());
+        schema_object.into()
     }
 }
 
