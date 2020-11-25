@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
@@ -33,21 +33,25 @@ const ENDLESS_LOOP_WASM: &str = "endless_loop.wasm";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
-lazy_static! {
-    static ref EXHAUSTIVE_HOST_FUNCTION_COSTS: HostFunctionCosts = HostFunctionCosts {
+#[allow(dead_code)]
+static EXHAUSTIVE_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| {
+    HostFunctionCosts {
         // Settings where all opcodes are so expensive so we can run out of gas very quickly
         get_main_purse: HostFunction::fixed(Cost::max_value()),
-        .. Default::default()
-    };
+        ..Default::default()
+    }
+});
 
-    static ref EXHAUSTIVE_WASM_CONFIG: WasmConfig = WasmConfig::new(
+#[allow(dead_code)]
+static EXHAUSTIVE_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(|| {
+    WasmConfig::new(
         DEFAULT_INITIAL_MEMORY,
         DEFAULT_MAX_STACK_HEIGHT,
         OpcodeCosts::default(),
         StorageCosts::new(u32::max_value()),
         *EXHAUSTIVE_HOST_FUNCTION_COSTS,
-    );
-}
+    )
+});
 
 #[ignore]
 #[test]

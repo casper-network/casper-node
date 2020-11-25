@@ -2,7 +2,7 @@
 
 use datasize::DataSize;
 use futures::{Stream, StreamExt};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
@@ -29,13 +29,11 @@ pub const SSE_API_PATH: &str = "events";
 /// for further details.
 const BROADCAST_CHANNEL_SIZE: usize = 10;
 
-lazy_static! {
-    /// The first event sent to every subscribing client.
-    pub(super) static ref SSE_INITIAL_EVENT: ServerSentEvent = ServerSentEvent {
-        id: None,
-        data: SseData::ApiVersion(CLIENT_API_VERSION.clone())
-    };
-}
+/// The first event sent to every subscribing client.
+pub(super) static SSE_INITIAL_EVENT: Lazy<ServerSentEvent> = Lazy::new(|| ServerSentEvent {
+    id: None,
+    data: SseData::ApiVersion(CLIENT_API_VERSION.clone()),
+});
 
 /// The "id" field of the events sent on the event stream to clients.
 type Id = u32;

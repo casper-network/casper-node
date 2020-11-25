@@ -23,9 +23,9 @@ use std::{
     rc::Rc,
 };
 
-use lazy_static::lazy_static;
 use num_rational::Ratio;
 use num_traits::Zero;
+use once_cell::sync::Lazy;
 use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
 
@@ -95,9 +95,10 @@ use crate::{
 /// motes / CONV_RATE = gas
 pub const CONV_RATE: u64 = 1;
 
-lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(2_500_000_000 * CONV_RATE);
-}
+pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| {
+    let value = 2_500_000_000;
+    U512::from(value * CONV_RATE)
+});
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 

@@ -1,7 +1,7 @@
 use std::process;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_client::{
     keygen::{self, FILES, PUBLIC_KEY_HEX},
@@ -10,15 +10,15 @@ use casper_client::{
 
 use crate::{command::ClientCommand, common};
 
-lazy_static! {
-    static ref MORE_ABOUT: String = format!(
+static MORE_ABOUT: Lazy<String> = Lazy::new(|| {
+    format!(
         "{}. Creates {:?}. \"{}\" contains the hex-encoded key's bytes with the hex-encoded \
         algorithm tag prefixed",
         Keygen::ABOUT,
         FILES,
         PUBLIC_KEY_HEX
-    );
-}
+    )
+});
 
 /// This struct defines the order in which the args are shown for this subcommand's help message.
 enum DisplayOrder {

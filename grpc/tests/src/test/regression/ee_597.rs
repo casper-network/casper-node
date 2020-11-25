@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
@@ -14,9 +14,10 @@ const CONTRACT_EE_597_REGRESSION: &str = "ee_597_regression.wasm";
 const VALID_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([42; 32]);
 const VALID_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
-lazy_static! {
-    static ref VALID_ADDR: AccountHash = VALID_PUBLIC_KEY.into();
-}
+static VALID_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let valid_key = VALID_PUBLIC_KEY;
+    valid_key.into()
+});
 
 #[ignore]
 #[test]

@@ -684,7 +684,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "colour",
- "lazy_static",
+ "once_cell",
  "tempfile",
  "toml",
 ]
@@ -706,6 +706,7 @@ dependencies = [
  "hyper",
  "jsonrpc-lite",
  "lazy_static",
+ "once_cell",
  "rand 0.7.3",
  "reqwest",
  "semver 0.11.0",
@@ -759,11 +760,11 @@ dependencies = [
  "casper-execution-engine",
  "casper-types",
  "grpc",
- "lazy_static",
  "lmdb",
  "log 0.4.11",
  "num-rational 0.3.1",
  "num-traits",
+ "once_cell",
  "protobuf",
  "rand 0.7.3",
  "version-sync",
@@ -785,10 +786,10 @@ dependencies = [
  "crossbeam-channel 0.5.0",
  "env_logger",
  "grpc",
- "lazy_static",
  "log 0.4.11",
  "num-rational 0.3.1",
  "num-traits",
+ "once_cell",
  "parity-wasm 0.41.0",
  "rand 0.7.3",
  "serde_json",
@@ -814,7 +815,6 @@ dependencies = [
  "hex_fmt",
  "hostname",
  "itertools 0.9.0",
- "lazy_static",
  "libc",
  "linked-hash-map",
  "lmdb",
@@ -823,6 +823,7 @@ dependencies = [
  "num-derive",
  "num-rational 0.3.1",
  "num-traits",
+ "once_cell",
  "parity-wasm 0.41.0",
  "proptest",
  "pwasm-utils 0.12.0",
@@ -885,6 +886,7 @@ dependencies = [
  "num-derive",
  "num-rational 0.3.1",
  "num-traits",
+ "once_cell",
  "openssl",
  "parity-wasm 0.42.1",
  "parking_lot 0.11.0",
@@ -970,7 +972,7 @@ name = "casper-updater"
 version = "0.2.0"
 dependencies = [
  "clap",
- "lazy_static",
+ "once_cell",
  "regex",
  "semver 0.11.0",
 ]
@@ -3884,9 +3886,9 @@ checksum = "8d3b63360ec3cb337817c2dbd47ab4a0f170d285d8e5a2064600f3def1402397"
 
 [[package]]
 name = "once_cell"
-version = "1.4.1"
+version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "260e51e7efe62b592207e9e13a68e43692a7a279171d6ba57abd208bf23645ad"
+checksum = "13bd41f508810a131401606d54ac32a467c97172d74ba7662562ebba5ad07fa0"
 
 [[package]]
 name = "oorandom"

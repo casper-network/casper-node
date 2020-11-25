@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS},
@@ -29,28 +29,87 @@ const DELEGATOR_3: PublicKey = PublicKey::Ed25519([208; 32]);
 
 // These values were chosen to correspond to the values in accounts.csv
 // at the time of their introduction.
-lazy_static! {
-    static ref FAUCET_ADDR: AccountHash = FAUCET.into();
-    static ref VALIDATOR_1_ADDR: AccountHash = VALIDATOR_1.into();
-    static ref VALIDATOR_2_ADDR: AccountHash = VALIDATOR_2.into();
-    static ref VALIDATOR_3_ADDR: AccountHash = VALIDATOR_3.into();
-    static ref FAUCET_BALANCE: U512 = U512::from(100_000_000_000_000_000u64);
-    static ref VALIDATOR_1_BALANCE: U512 = U512::from(1_000_000_000_000_000u64);
-    static ref VALIDATOR_2_BALANCE: U512 = U512::from(1_000_000_000_000_000u64);
-    static ref VALIDATOR_3_BALANCE: U512 = U512::from(1_000_000_000_000_000u64);
-    static ref VALIDATOR_1_STAKE: U512 = U512::from(500_000_000_000_000u64);
-    static ref VALIDATOR_2_STAKE: U512 = U512::from(400_000_000_000_000u64);
-    static ref VALIDATOR_3_STAKE: U512 = U512::from(300_000_000_000_000u64);
-    static ref DELEGATOR_1_ADDR: AccountHash = DELEGATOR_1.into();
-    static ref DELEGATOR_2_ADDR: AccountHash = DELEGATOR_2.into();
-    static ref DELEGATOR_3_ADDR: AccountHash = DELEGATOR_3.into();
-    static ref DELEGATOR_1_BALANCE: U512 = U512::from(1_000_000_000_000_000u64);
-    static ref DELEGATOR_2_BALANCE: U512 = U512::from(1_000_000_000_000_000u64);
-    static ref DELEGATOR_3_BALANCE: U512 = U512::from(1_000_000_000_000_000u64);
-    static ref DELEGATOR_1_STAKE: U512 = U512::from(500_000_000_000_000u64);
-    static ref DELEGATOR_2_STAKE: U512 = U512::from(400_000_000_000_000u64);
-    static ref DELEGATOR_3_STAKE: U512 = U512::from(300_000_000_000_000u64);
-}
+
+static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let key = FAUCET;
+    key.into()
+});
+static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let validator = VALIDATOR_1;
+    validator.into()
+});
+static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let validator = VALIDATOR_2;
+    validator.into()
+});
+static VALIDATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let validator = VALIDATOR_3;
+    validator.into()
+});
+static FAUCET_BALANCE: Lazy<U512> = Lazy::new(|| {
+    let val = 100_000_000_000_000_000u64;
+    U512::from(val)
+});
+static VALIDATOR_1_BALANCE: Lazy<U512> = Lazy::new(|| {
+    let val = 100_000_000_000_000_000u64;
+    U512::from(val)
+});
+static VALIDATOR_2_BALANCE: Lazy<U512> = Lazy::new(|| {
+    let val = 100_000_000_000_000_000u64;
+    U512::from(val)
+});
+static VALIDATOR_3_BALANCE: Lazy<U512> = Lazy::new(|| {
+    let val = 100_000_000_000_000_000u64;
+    U512::from(val)
+});
+static VALIDATOR_1_STAKE: Lazy<U512> = Lazy::new(|| {
+    let val = 500_000_000_000_000_000u64;
+    U512::from(val)
+});
+static VALIDATOR_2_STAKE: Lazy<U512> = Lazy::new(|| {
+    let val = 400_000_000_000_000u64;
+    U512::from(val)
+});
+static VALIDATOR_3_STAKE: Lazy<U512> = Lazy::new(|| {
+    let val = 300_000_000_000_000u64;
+    U512::from(val)
+});
+static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let delegator = DELEGATOR_1;
+    delegator.into()
+});
+static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let delegator = DELEGATOR_2;
+    delegator.into()
+});
+static DELEGATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let delegator = DELEGATOR_3;
+    delegator.into()
+});
+static DELEGATOR_1_BALANCE: Lazy<U512> = Lazy::new(|| {
+    let val = 1_000_000_000_000_000u64;
+    U512::from(val)
+});
+static DELEGATOR_2_BALANCE: Lazy<U512> = Lazy::new(|| {
+    let val = 1_000_000_000_000_000u64;
+    U512::from(val)
+});
+static DELEGATOR_3_BALANCE: Lazy<U512> = Lazy::new(|| {
+    let val = 1_000_000_000_000_000u64;
+    U512::from(val)
+});
+static DELEGATOR_1_STAKE: Lazy<U512> = Lazy::new(|| {
+    let val = 500_000_000_000_000u64;
+    U512::from(val)
+});
+static DELEGATOR_2_STAKE: Lazy<U512> = Lazy::new(|| {
+    let val = 400_000_000_000_000u64;
+    U512::from(val)
+});
+static DELEGATOR_3_STAKE: Lazy<U512> = Lazy::new(|| {
+    let val = 300_000_000_000_000u64;
+    U512::from(val)
+});
 
 #[ignore]
 #[test]

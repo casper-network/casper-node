@@ -8,15 +8,19 @@ use std::{
     sync::Mutex,
 };
 
-use lazy_static::lazy_static;
 use tokio::runtime;
 
 use super::error::{Error, Result};
+use once_cell::sync::Lazy;
 
-lazy_static! {
-    static ref LAST_ERROR: Mutex<Option<Error>> = Mutex::new(None);
-    static ref RUNTIME: Mutex<Option<runtime::Runtime>> = Mutex::new(None);
-}
+static LAST_ERROR: Lazy<Mutex<Option<Error>>> = Lazy::new(|| {
+    let val = None;
+    Mutex::new(val)
+});
+static RUNTIME: Lazy<Mutex<Option<runtime::Runtime>>> = Lazy::new(|| {
+    let val = None;
+    Mutex::new(val)
+});
 
 fn set_last_error(error: Error) {
     let last_error = &mut *LAST_ERROR.lock().expect("should lock");

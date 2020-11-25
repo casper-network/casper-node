@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
@@ -17,9 +17,10 @@ const EXPECTED_ERROR: &str = "InvalidContext";
 const TRANSFER_FUNDS_KEY: &str = "transfer_funds";
 const VICTIM_ADDR: AccountHash = AccountHash::new([42; 32]);
 
-lazy_static! {
-    static ref VICTIM_INITIAL_FUNDS: U512 = *DEFAULT_PAYMENT * 10;
-}
+static VICTIM_INITIAL_FUNDS: Lazy<U512> = Lazy::new(|| {
+    let val = *DEFAULT_PAYMENT;
+    val * 10
+});
 
 fn setup() -> InMemoryWasmTestBuilder {
     // Creates victim account

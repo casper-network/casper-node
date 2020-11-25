@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use lazy_static::lazy_static;
 use num_rational::Ratio;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
@@ -39,18 +39,36 @@ const DELEGATOR_1: PublicKey = PublicKey::Ed25519([204; 32]);
 const DELEGATOR_2: PublicKey = PublicKey::Ed25519([206; 32]);
 const DELEGATOR_3: PublicKey = PublicKey::Ed25519([208; 32]);
 
-lazy_static! {
-    static ref VALIDATOR_1_ADDR: AccountHash = VALIDATOR_1.into();
-    static ref VALIDATOR_2_ADDR: AccountHash = VALIDATOR_2.into();
-    static ref VALIDATOR_3_ADDR: AccountHash = VALIDATOR_3.into();
-    static ref DELEGATOR_1_ADDR: AccountHash = DELEGATOR_1.into();
-    static ref DELEGATOR_2_ADDR: AccountHash = DELEGATOR_2.into();
-    static ref DELEGATOR_3_ADDR: AccountHash = DELEGATOR_3.into();
-    static ref GENESIS_ROUND_SEIGNIORAGE_RATE: Ratio<U512> = Ratio::new(
+static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let validator = VALIDATOR_1;
+    validator.into()
+});
+static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let validator = VALIDATOR_2;
+    validator.into()
+});
+static VALIDATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let validator = VALIDATOR_3;
+    validator.into()
+});
+static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let delegator = DELEGATOR_1;
+    delegator.into()
+});
+static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let delegator = DELEGATOR_2;
+    delegator.into()
+});
+static DELEGATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let delegator = DELEGATOR_3;
+    delegator.into()
+});
+static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
+    Ratio::new(
         U512::from(*DEFAULT_ROUND_SEIGNIORAGE_RATE.numer()),
-        U512::from(*DEFAULT_ROUND_SEIGNIORAGE_RATE.denom())
-    );
-}
+        U512::from(*DEFAULT_ROUND_SEIGNIORAGE_RATE.denom()),
+    )
+});
 
 fn withdraw_validator_reward(
     builder: &mut InMemoryWasmTestBuilder,

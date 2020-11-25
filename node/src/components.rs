@@ -24,7 +24,7 @@ pub(crate) mod metrics;
 pub(crate) mod small_network;
 pub(crate) mod storage;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use semver::Version;
 
 use crate::{
@@ -33,9 +33,12 @@ use crate::{
 };
 
 // TODO - confirm if we want to use the protocol version for this.
-lazy_static! {
-    pub(crate) static ref CLIENT_API_VERSION: Version = Version::new(1, 0, 0);
-}
+pub(crate) static CLIENT_API_VERSION: Lazy<Version> = Lazy::new(|| {
+    let major = 1;
+    let minor = 0;
+    let patch = 0;
+    Version::new(major, minor, patch)
+});
 
 /// Core Component.
 ///

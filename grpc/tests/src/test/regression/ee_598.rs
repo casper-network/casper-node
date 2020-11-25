@@ -1,9 +1,8 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_PAYMENT,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
@@ -24,12 +23,22 @@ const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([4; 32]);
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 
-lazy_static! {
-    static ref ACCOUNT_1_ADDR: AccountHash = ACCOUNT_1_PK.into();
-    static ref ACCOUNT_1_FUND: U512 = *DEFAULT_PAYMENT;
-    static ref ACCOUNT_1_BALANCE: U512 = *ACCOUNT_1_FUND + 100_000;
-    static ref ACCOUNT_1_BOND: U512 = 25_000.into();
-}
+static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| {
+    let account = ACCOUNT_1_PK;
+    account.into()
+});
+static ACCOUNT_1_FUND: Lazy<U512> = Lazy::new(|| {
+    let val = 1_500_000_000_000u64;
+    U512::from(val)
+});
+static ACCOUNT_1_BALANCE: Lazy<U512> = Lazy::new(|| {
+    let val = *ACCOUNT_1_FUND;
+    val + 100_000
+});
+static ACCOUNT_1_BOND: Lazy<U512> = Lazy::new(|| {
+    let val = 25_000;
+    U512::from(val)
+});
 
 #[ignore]
 #[test]

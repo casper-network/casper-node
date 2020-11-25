@@ -22,12 +22,12 @@ use crate::{
     tls,
 };
 
+/// Path to bundled resources.
 #[cfg(test)]
-lazy_static::lazy_static! {
-    /// Path to bundled resources.
-    pub static ref RESOURCES_PATH: PathBuf =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../resources");
-}
+pub static RESOURCES_PATH: once_cell::sync::Lazy<PathBuf> = once_cell::sync::Lazy::new(|| {
+    let path = env!("CARGO_MANIFEST_DIR");
+    PathBuf::from(path).join("../resources")
+});
 
 /// External resource.
 ///

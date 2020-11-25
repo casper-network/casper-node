@@ -6,8 +6,8 @@ use std::{
 };
 
 use chrono::{DateTime, SecondsFormat, Utc};
-use lazy_static::lazy_static;
 use log::kv::{self, Key, Value, Visitor};
+use once_cell::sync::Lazy;
 use serde::{Serialize, Serializer};
 
 use casper_types::SemVer;
@@ -17,22 +17,27 @@ use crate::shared::{
     utils,
 };
 
-lazy_static! {
-    static ref PROCESS_ID: u32 = process::id();
-    static ref PROCESS_NAME: String = env::current_exe()
+static PROCESS_ID: Lazy<u32> = Lazy::new(process::id);
+static PROCESS_NAME: Lazy<String> = Lazy::new(|| {
+    env::current_exe()
         .ok()
         .and_then(|full_path| {
             full_path
                 .file_stem()
                 .map(|file_stem| file_stem.to_string_lossy().to_string())
         })
-        .unwrap_or_else(|| "unknown-process".to_string());
-    static ref HOST_NAME: String = hostname::get()
+        .unwrap_or_else(|| "unknown-process".to_string())
+});
+static HOST_NAME: Lazy<String> = Lazy::new(|| {
+    hostname::get()
         .map(|host_name| host_name.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "unknown-host".to_string());
-    static ref MESSAGE_TYPE: String = "ee-structured".to_string();
-    static ref MESSAGE_TYPE_VERSION: MessageTypeVersion = MessageTypeVersion::default();
-}
+        .unwrap_or_else(|_| "unknown-host".to_string())
+});
+static MESSAGE_TYPE: Lazy<String> = Lazy::new(|| {
+    let message = "ee-structured";
+    message.to_string()
+});
+static MESSAGE_TYPE_VERSION: Lazy<MessageTypeVersion> = Lazy::new(MessageTypeVersion::default);
 
 /// container for log message data
 #[derive(Clone, Debug, Serialize)]
