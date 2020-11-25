@@ -1,14 +1,7 @@
 import { Pair } from "./pair";
 import { typedToArray, encodeUTF8 } from "./utils";
 import { ErrorCode, Error as StdError } from "./error";
-
-/**
- * Boxes a value which could then be nullable in any context.
- */
-export class Ref<T> {
-    constructor(public value: T) {}
-}
-
+import { Ref } from "./ref";
 
 /**
  * Enum representing possible results of deserialization.

@@ -76,13 +76,13 @@ export function call(): void {
   ]);
   CL.callContract(proofOfStake, SET_REFUND_PURSE, runtimeArgs);
 
-  let ret = transferFromPurseToPurse(
+  let error = transferFromPurseToPurse(
     purseURef,
     paymentPurse,
     amount,
   );
-  if (ret > 0) {
-    Error.fromErrorCode(ErrorCode.Transfer).revert();
+  if (error !== null) {
+    error.revert();
     return;
   }
 }

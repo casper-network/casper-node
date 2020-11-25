@@ -6,15 +6,12 @@ import {UREF_SERIALIZED_LENGTH} from "./constants";
 import {URef} from "./uref";
 import {toBytesU64} from "./bytesrepr";
 import {Option} from "./option";
+import {Ref} from "./ref";
 
 /**
  * The result of a successful transfer between purses.
  */
 export enum TransferredTo {
-    /**
-     * The transfer operation resulted in an error.
-     */
-    TransferError = -1,
     /**
      * The destination account already existed.
      */
@@ -23,6 +20,53 @@ export enum TransferredTo {
      * The destination account was created.
      */
     NewAccount = 1,
+}
+
+/**
+ * The result of a transfer between purse and account.
+ */
+export class TransferResult {
+    public errValue: Error | null = null;
+    public okValue: Ref<TransferredTo> | null = null;
+
+    static makeErr(err: Error): TransferResult {
+        let transferResult = new TransferResult();
+        transferResult.errValue = err;
+        return transferResult;
+    }
+
+    static makeOk(ok: Ref<TransferredTo>): TransferResult {
+        let transferResult = new TransferResult();
+        transferResult.okValue = ok;
+        return transferResult;
+    }
+
+    get isErr(): bool {
+        return this.errValue !== null;
+    }
+
+    get isOk(): bool {
+        return this.okValue !== null;
+    }
+
+    get ok(): TransferredTo {
+        assert(this.okValue !== null);
+        const ok = <Ref<i32>>this.okValue;
+        return ok.value;
+    }
+
+    get err(): Error {
+        assert(this.errValue !== null);
+        return <Error>this.errValue;
+    }
+}
+
+function makeTransferredTo(value: u32): Ref<TransferredTo> | null {
+    if (value == <u32>TransferredTo.ExistingAccount)
+        return new Ref(TransferredTo.ExistingAccount);
+    if (value == <u32>TransferredTo.NewAccount)
+        return new Ref(TransferredTo.NewAccount);
+    return null;
 }
 
 /**
@@ -88,14 +132,15 @@ export function getPurseBalance(purse: URef): U512 | null {
  * case of transfer error, in case of any other variant the transfer itself
  * can be considered successful.
  */
-export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uint8Array, amount: U512): TransferredTo {
+export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uint8Array, amount: U512): TransferResult {
     let purseBytes = sourcePurse.toBytes();
     let targetBytes = new Array<u8>(targetAccount.length);
     for (let i = 0; i < targetAccount.length; i++) {
         targetBytes[i] = targetAccount[i];
     }
     let amountBytes = amount.toBytes();
-    let idBytes = new Option(null).toBytes()
+    let idBytes = new Option(null).toBytes();
+    let resultPtr = new Uint32Array(1);
 
     let ret = externals.transfer_from_purse_to_account(
         purseBytes.dataStart,
@@ -106,13 +151,19 @@ export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uin
         amountBytes.length,
         idBytes.dataStart,
         idBytes.length,
+        resultPtr.dataStart,
     );
 
-    if (ret == TransferredTo.ExistingAccount)
-        return TransferredTo.ExistingAccount;
-    if (ret == TransferredTo.NewAccount)
-        return TransferredTo.NewAccount;
-    return TransferredTo.TransferError;
+    const error = Error.fromResult(ret);
+    if (error !== null) {
+        return TransferResult.makeErr(error);
+    }
+
+    const transferredTo = makeTransferredTo(resultPtr[0]);
+    if (transferredTo !== null) {
+        return TransferResult.makeOk(transferredTo);
+    }
+    return TransferResult.makeErr(Error.fromErrorCode(ErrorCode.Transfer));
 }
 
 /**
@@ -121,11 +172,11 @@ export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uin
  *
  * @returns This function returns non-zero value on error.
  */
-export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, amount: U512): i32 {
+export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, amount: U512): Error | null {
     let sourceBytes = sourcePurse.toBytes();
     let targetBytes = targetPurse.toBytes();
     let amountBytes = amount.toBytes();
-    let idBytes = new Option(null).toBytes()
+    let idBytes = new Option(null).toBytes();
 
     let ret = externals.transfer_from_purse_to_purse(
         sourceBytes.dataStart,
@@ -137,5 +188,6 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
         idBytes.dataStart,
         idBytes.length,
     );
-    return ret;
+
+    return Error.fromResult(ret);
 }

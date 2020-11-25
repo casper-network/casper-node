@@ -35,16 +35,20 @@ export function delegate(): void {
     let amount = amountResult.value;
     let message = "";
     const result = transferFromPurseToAccount(<URef>mainPurse, <Uint8Array>destinationAccountAddrArg, amount);
-    switch (result) {
-        case TransferredTo.NewAccount:
-            message = "Ok(NewAccount)";
-            break;
-        case TransferredTo.ExistingAccount:
-            message = "Ok(ExistingAccount)";
-            break;
-        case TransferredTo.TransferError:
-            message = "Err(ApiError::Transfer [" + ErrorCode.Transfer.toString() + "])";
-            break;
+    if (result.isOk) {
+        const foo = result.ok;
+        switch (result.ok) {
+            case TransferredTo.NewAccount:
+                message = "Ok(NewAccount)";
+                break;
+            case TransferredTo.ExistingAccount:
+                message = "Ok(ExistingAccount)";
+                break;
+        }
+    }
+    
+    if (result.isErr) {
+        message = "Err(ApiError::Mint(0) [65024])";
     }
     const transferResultKey = Key.create(CLValue.fromString(message));
     putKey(TRANSFER_RESULT_UREF_NAME, <Key>transferResultKey);
