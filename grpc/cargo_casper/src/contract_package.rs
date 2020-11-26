@@ -50,18 +50,12 @@ const CONFIG_TOML_CONTENTS: &str = r#"[build]
 target = "wasm32-unknown-unknown"
 "#;
 
-static CARGO_TOML: Lazy<PathBuf> = Lazy::new(|| {
-    let value = "Cargo.toml";
-    ARGS.root_path().join(PACKAGE_NAME).join(value)
-});
-static RUST_TOOLCHAIN: Lazy<PathBuf> = Lazy::new(|| {
-    let tool_chain = "rust-toolchain";
-    ARGS.root_path().join(PACKAGE_NAME).join(tool_chain)
-});
-static MAIN_RS: Lazy<PathBuf> = Lazy::new(|| {
-    let path = "src/main.rs";
-    ARGS.root_path().join(PACKAGE_NAME).join(path)
-});
+static CARGO_TOML: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("Cargo.toml"));
+static RUST_TOOLCHAIN: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("rust-toolchain"));
+static MAIN_RS: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("src/main.rs"));
 static CONFIG_TOML: Lazy<PathBuf> = Lazy::new(|| {
     ARGS.root_path()
         .join(PACKAGE_NAME)

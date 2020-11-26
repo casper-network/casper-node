@@ -30,26 +30,14 @@ const CALL_RESTRICTED_ENTRY_POINTS: &str = "call_restricted_entry_points";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
-static TRANSFER_1_AMOUNT: Lazy<U512> = Lazy::new(|| {
-    let val = MINIMUM_ACCOUNT_CREATION_BALANCE;
-    U512::from(val) + 1000
-});
+static TRANSFER_1_AMOUNT: Lazy<U512> =
+    Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000);
 #[allow(dead_code)]
-static TRANSFER_2_AMOUNT: Lazy<U512> = Lazy::new(|| {
-    let val = 750;
-    U512::from(val)
-});
+static TRANSFER_2_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(750));
 #[allow(dead_code)]
-static TRANSFER_2_AMOUNT_WITH_ADV: Lazy<U512> = Lazy::new(|| {
-    let val_1 = *DEFAULT_PAYMENT;
-    let val_2 = *TRANSFER_2_AMOUNT;
-    val_1 + val_2
-});
+static TRANSFER_2_AMOUNT_WITH_ADV: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + *TRANSFER_2_AMOUNT);
 #[allow(dead_code)]
-static TRANSFER_TOO_MUCH: Lazy<U512> = Lazy::new(|| {
-    let val = u64::max_value();
-    U512::from(val)
-});
+static TRANSFER_TOO_MUCH: Lazy<U512> = Lazy::new(|| U512::from(u64::max_value()));
 #[allow(dead_code)]
 static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT);
 

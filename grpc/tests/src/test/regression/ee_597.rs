@@ -14,10 +14,7 @@ const CONTRACT_EE_597_REGRESSION: &str = "ee_597_regression.wasm";
 const VALID_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([42; 32]);
 const VALID_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
-static VALID_ADDR: Lazy<AccountHash> = Lazy::new(|| {
-    let valid_key = VALID_PUBLIC_KEY;
-    valid_key.into()
-});
+static VALID_ADDR: Lazy<AccountHash> = Lazy::new(|| VALID_PUBLIC_KEY.into());
 
 #[ignore]
 #[test]

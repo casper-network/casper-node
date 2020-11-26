@@ -95,10 +95,7 @@ use crate::{
 /// motes / CONV_RATE = gas
 pub const CONV_RATE: u64 = 1;
 
-pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| {
-    let value = 2_500_000_000;
-    U512::from(value * CONV_RATE)
-});
+pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000 * CONV_RATE));
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 

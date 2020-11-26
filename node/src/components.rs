@@ -33,12 +33,7 @@ use crate::{
 };
 
 // TODO - confirm if we want to use the protocol version for this.
-pub(crate) static CLIENT_API_VERSION: Lazy<Version> = Lazy::new(|| {
-    let major = 1;
-    let minor = 0;
-    let patch = 0;
-    Version::new(major, minor, patch)
-});
+pub(crate) static CLIENT_API_VERSION: Lazy<Version> = Lazy::new(|| Version::new(1, 0, 0));
 
 /// Core Component.
 ///

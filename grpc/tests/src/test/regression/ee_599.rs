@@ -17,10 +17,7 @@ const EXPECTED_ERROR: &str = "InvalidContext";
 const TRANSFER_FUNDS_KEY: &str = "transfer_funds";
 const VICTIM_ADDR: AccountHash = AccountHash::new([42; 32]);
 
-static VICTIM_INITIAL_FUNDS: Lazy<U512> = Lazy::new(|| {
-    let val = *DEFAULT_PAYMENT;
-    val * 10
-});
+static VICTIM_INITIAL_FUNDS: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT * 10);
 
 fn setup() -> InMemoryWasmTestBuilder {
     // Creates victim account

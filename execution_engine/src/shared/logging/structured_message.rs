@@ -33,10 +33,7 @@ static HOST_NAME: Lazy<String> = Lazy::new(|| {
         .map(|host_name| host_name.to_string_lossy().to_string())
         .unwrap_or_else(|_| "unknown-host".to_string())
 });
-static MESSAGE_TYPE: Lazy<String> = Lazy::new(|| {
-    let message = "ee-structured";
-    message.to_string()
-});
+static MESSAGE_TYPE: Lazy<String> = Lazy::new(|| "ee-structured".to_string());
 static MESSAGE_TYPE_VERSION: Lazy<MessageTypeVersion> = Lazy::new(MessageTypeVersion::default);
 
 /// container for log message data

@@ -105,33 +105,20 @@ fn main() {
 }
 "#;
 
-static CARGO_TOML: Lazy<PathBuf> = Lazy::new(|| {
-    let path = "Cargo.toml";
-    ARGS.root_path().join(PACKAGE_NAME).join(path)
-});
-static RUST_TOOLCHAIN: Lazy<PathBuf> = Lazy::new(|| {
-    let path = "rust-toolchain";
-    ARGS.root_path().join(PACKAGE_NAME).join(path)
-});
-static BUILD_RS: Lazy<PathBuf> = Lazy::new(|| {
-    let path = "build.rs";
-    ARGS.root_path().join(PACKAGE_NAME).join(path)
-});
-static MAIN_RS: Lazy<PathBuf> = Lazy::new(|| {
-    let path = "src/main.rs";
-    ARGS.root_path().join(PACKAGE_NAME).join(path)
-});
+static CARGO_TOML: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("Cargo.toml"));
+static RUST_TOOLCHAIN: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("rust-toolchain"));
+static BUILD_RS: Lazy<PathBuf> = Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("build.rs"));
+static MAIN_RS: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("src/main.rs"));
 static INTEGRATION_TESTS_RS: Lazy<PathBuf> = Lazy::new(|| {
     ARGS.root_path()
         .join(PACKAGE_NAME)
         .join("src/integration_tests.rs")
 });
-static ENGINE_TEST_SUPPORT: Lazy<Dependency> = Lazy::new(|| {
-    let name = "casper-engine-test-support";
-    let version = "0.2.0";
-    let path = "grpc/test_support";
-    Dependency::new(name, version, path)
-});
+static ENGINE_TEST_SUPPORT: Lazy<Dependency> =
+    Lazy::new(|| Dependency::new("casper-engine-test-support", "0.2.0", "grpc/test_support"));
 static CARGO_TOML_ADDITIONAL_CONTENTS: Lazy<String> = Lazy::new(|| {
     format!(
         r#"
@@ -149,15 +136,10 @@ default = ["casper-contract/std", "casper-types/std", "casper-engine-test-suppor
         *CL_CONTRACT, *CL_TYPES, *ENGINE_TEST_SUPPORT,
     )
 });
-static WASM_SRC_DIR: Lazy<PathBuf> = Lazy::new(|| {
-    let env = env!("CARGO_MANIFEST_DIR");
-    let path = "wasm";
-    Path::new(env).join(path)
-});
-static WASM_DEST_DIR: Lazy<PathBuf> = Lazy::new(|| {
-    let path = "wasm";
-    ARGS.root_path().join(PACKAGE_NAME).join(path)
-});
+static WASM_SRC_DIR: Lazy<PathBuf> =
+    Lazy::new(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("wasm"));
+static WASM_DEST_DIR: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("wasm"));
 
 pub fn run_cargo_new() {
     common::run_cargo_new(PACKAGE_NAME);

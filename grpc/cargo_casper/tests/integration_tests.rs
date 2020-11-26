@@ -10,14 +10,9 @@ const SUCCESS_EXIT_CODE: i32 = 0;
 const USE_SYSTEM_CONTRACTS: &str = "--use-system-contracts";
 const TURBO: &str = "turbo";
 
-static WORKSPACE_PATH_ARG: Lazy<String> = Lazy::new(|| {
-    let env = env!("CARGO_MANIFEST_DIR");
-    format!("--workspace-path={}/../../", env)
-});
-static TEST_DIR: Lazy<TempDir> = Lazy::new(|| {
-    let tempfile = tempfile::tempdir();
-    tempfile.unwrap()
-});
+static WORKSPACE_PATH_ARG: Lazy<String> =
+    Lazy::new(|| format!("--workspace-path={}/../../", env!("CARGO_MANIFEST_DIR")));
+static TEST_DIR: Lazy<TempDir> = Lazy::new(|| tempfile::tempdir().unwrap());
 
 #[test]
 fn should_fail_when_target_path_already_exists() {

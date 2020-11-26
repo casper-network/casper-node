@@ -18,10 +18,7 @@ const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 const ARG_ACCOUNT: &str = "account";
 
-static ACCOUNT_1_INITIAL_FUND: Lazy<U512> = Lazy::new(|| {
-    let val = *DEFAULT_PAYMENT;
-    val * 10
-});
+static ACCOUNT_1_INITIAL_FUND: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT * 10);
 
 #[ignore]
 #[test]

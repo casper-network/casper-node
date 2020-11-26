@@ -17,9 +17,7 @@ use casper_execution_engine::{
     },
     shared::{motes::Motes, newtypes::Blake2bHash, wasm_config::WasmConfig},
 };
-use casper_types::{
-    account::AccountHash, auction::EraId, ProtocolVersion, PublicKey, SemVer, U512,
-};
+use casper_types::{account::AccountHash, auction::EraId, ProtocolVersion, PublicKey, U512};
 
 use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 pub use additive_map_diff::AdditiveMapDiff;
@@ -57,33 +55,16 @@ pub const ARG_AMOUNT: &str = "amount";
 
 // NOTE: Those values could be constants but are kept as lazy statics to avoid changes of `*FOO`
 // into `FOO` back and forth.
-pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Blake2bHash> = Lazy::new(|| {
-    const BYTE: u8 = 42;
-    const LENGTH: usize = 32;
-    [BYTE; LENGTH].into()
-});
-pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    const BYTE: u8 = 199;
-    const LENGTH: usize = 32;
-    PublicKey::Ed25519([BYTE; LENGTH])
-});
-pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> = Lazy::new(|| {
-    let key: PublicKey = *DEFAULT_ACCOUNT_PUBLIC_KEY;
-    AccountHash::from(key)
-});
-pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> = Lazy::new(|| {
-    let public_key: PublicKey = *DEFAULT_ACCOUNT_PUBLIC_KEY;
-    AccountHash::from(public_key)
-});
-pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    const BYTE: u8 = 198;
-    const LENGTH: usize = 32;
-    PublicKey::Ed25519([BYTE; LENGTH])
-});
-pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> = Lazy::new(|| {
-    let key = *DEFAULT_PROPOSER_PUBLIC_KEY;
-    AccountHash::from(key)
-});
+pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Blake2bHash> = Lazy::new(|| [42; 32].into());
+pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::Ed25519([199; 32]));
+pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
+    Lazy::new(|| AccountHash::from(*DEFAULT_ACCOUNT_PUBLIC_KEY));
+pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> = Lazy::new(|| *DEFAULT_ACCOUNT_KEY);
+pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::Ed25519([198; 32]));
+pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
+    Lazy::new(|| AccountHash::from(*DEFAULT_PROPOSER_PUBLIC_KEY));
 pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut ret = Vec::new();
     let genesis_account = GenesisAccount::new(
@@ -102,18 +83,8 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     ret.push(proposer_account);
     ret
 });
-pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
-    let version = SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    };
-    ProtocolVersion::new(version)
-});
-pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| {
-    let value = 1_500_000_000_000u64;
-    U512::from(value)
-});
+pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V1_0_0);
+pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
 pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
     let mint_installer_bytes;

@@ -312,7 +312,7 @@ dependencies = [
  "memchr",
  "num_cpus",
  "once_cell",
- "pin-project-lite",
+ "pin-project-lite 0.1.11",
  "pin-utils",
  "slab 0.4.2",
  "wasm-bindgen-futures",
@@ -743,7 +743,7 @@ dependencies = [
  "lmdb",
  "log 0.4.11",
  "num",
- "num-rational 0.3.1",
+ "num-rational 0.3.2",
  "parity-wasm 0.42.1",
  "proptest",
  "protobuf",
@@ -762,7 +762,7 @@ dependencies = [
  "grpc",
  "lmdb",
  "log 0.4.11",
- "num-rational 0.3.1",
+ "num-rational 0.3.2",
  "num-traits",
  "once_cell",
  "protobuf",
@@ -787,7 +787,7 @@ dependencies = [
  "env_logger",
  "grpc",
  "log 0.4.11",
- "num-rational 0.3.1",
+ "num-rational 0.3.2",
  "num-traits",
  "once_cell",
  "parity-wasm 0.41.0",
@@ -821,7 +821,7 @@ dependencies = [
  "log 0.4.11",
  "num",
  "num-derive",
- "num-rational 0.3.1",
+ "num-rational 0.3.2",
  "num-traits",
  "once_cell",
  "parity-wasm 0.41.0",
@@ -884,7 +884,7 @@ dependencies = [
  "multihash",
  "num",
  "num-derive",
- "num-rational 0.3.1",
+ "num-rational 0.3.2",
  "num-traits",
  "once_cell",
  "openssl",
@@ -957,7 +957,7 @@ dependencies = [
  "hex_fmt",
  "num-derive",
  "num-integer",
- "num-rational 0.3.1",
+ "num-rational 0.3.2",
  "num-traits",
  "proptest",
  "serde",
@@ -1007,9 +1007,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.61"
+version = "1.0.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed67cbde08356238e75fc4656be4749481eeffb09e19f320a25237d5221c985d"
+checksum = "95752358c8f7552394baf48cd82695b345628ad3f170d607de3ca03b8dacca15"
 
 [[package]]
 name = "cfg-if"
@@ -1517,9 +1517,9 @@ checksum = "993a608597367c6377b258c25d7120740f00ed23a2252b729b1932dd7866f908"
 
 [[package]]
 name = "datasize"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58c5e012182a90c786b933cba854193b6db170aae744e60402708e9f64c73af2"
+checksum = "260bd519e19b6c95226b63f25735720710478e932d20532f5bd68c1b943c030f"
 dependencies = [
  "datasize_derive",
  "fake_instant",
@@ -1530,9 +1530,9 @@ dependencies = [
 
 [[package]]
 name = "datasize_derive"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90d9852b02b1de08b03b3c447bdfea28e1c45b469bc1df0fd33d35c1965cf4af"
+checksum = "a582fafd70b48023173797a2d8c77342f8e9ed3cf9d619cead0f82f2bf003c33"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2193,7 +2193,7 @@ dependencies = [
  "futures-io",
  "memchr",
  "parking",
- "pin-project-lite",
+ "pin-project-lite 0.1.11",
  "waker-fn",
 ]
 
@@ -3534,7 +3534,7 @@ dependencies = [
  "casper-contract",
  "casper-types",
  "mint-token",
- "num-rational 0.3.1",
+ "num-rational 0.3.2",
 ]
 
 [[package]]
@@ -3767,7 +3767,7 @@ dependencies = [
  "num-complex",
  "num-integer",
  "num-iter",
- "num-rational 0.3.1",
+ "num-rational 0.3.2",
  "num-traits",
 ]
 
@@ -3848,9 +3848,9 @@ dependencies = [
 
 [[package]]
 name = "num-rational"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5fa6d5f418879385b213d905f7cf5bf4aa553d4c380f0152d1d4f2749186fa9"
+checksum = "12ac428b1cb17fce6f731001d307d351ec70a6d202fc2e60f7d4c5e42d8f4f07"
 dependencies = [
  "autocfg 1.0.1",
  "num-bigint 0.3.1",
@@ -4160,6 +4160,12 @@ name = "pin-project-lite"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c917123afa01924fc84bb20c4c03f004d9c38e5127e3c039bbf7f4b9c76a2f6b"
+
+[[package]]
+name = "pin-project-lite"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b063f57ec186e6140e2b8b6921e5f1bd89c7356dda5b33acc5401203ca6131c"
 
 [[package]]
 name = "pin-utils"
@@ -4960,7 +4966,7 @@ dependencies = [
  "mime_guess",
  "native-tls",
  "percent-encoding",
- "pin-project-lite",
+ "pin-project-lite 0.1.11",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -5579,9 +5585,9 @@ checksum = "343f3f510c2915908f155e94f17220b19ccfacf2a64a2a5d8004f2c3e311e7fd"
 
 [[package]]
 name = "syn"
-version = "1.0.48"
+version = "1.0.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc371affeffc477f42a221a1e4297aedcea33d47d19b61455588bd9d8f6b19ac"
+checksum = "3b4f34193997d92804d359ed09953e25d5138df6bcc055a71bf68ee89fdf9223"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5839,7 +5845,7 @@ dependencies = [
  "memchr",
  "mio",
  "num_cpus",
- "pin-project-lite",
+ "pin-project-lite 0.1.11",
  "slab 0.4.2",
  "tokio-macros",
 ]
@@ -6127,7 +6133,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "log 0.4.11",
- "pin-project-lite",
+ "pin-project-lite 0.1.11",
  "tokio 0.2.22",
 ]
 
@@ -6148,13 +6154,13 @@ checksum = "e987b6bf443f4b5b3b6f38704195592cca41c5bb7aedd3c3693c7081f8289860"
 
 [[package]]
 name = "tracing"
-version = "0.1.21"
+version = "0.1.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0987850db3733619253fe60e17cb59b82d37c7e6c0236bb81e4d6b87c879f27"
+checksum = "9f47026cdc4080c07e49b37087de021820269d996f581aac150ef9e5583eefe3"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "log 0.4.11",
- "pin-project-lite",
+ "pin-project-lite 0.2.0",
  "tracing-attributes",
  "tracing-core",
 ]

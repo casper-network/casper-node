@@ -24,10 +24,8 @@ use crate::{
 
 /// Path to bundled resources.
 #[cfg(test)]
-pub static RESOURCES_PATH: once_cell::sync::Lazy<PathBuf> = once_cell::sync::Lazy::new(|| {
-    let path = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(path).join("../resources")
-});
+pub static RESOURCES_PATH: once_cell::sync::Lazy<PathBuf> =
+    once_cell::sync::Lazy::new(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../resources"));
 
 /// External resource.
 ///

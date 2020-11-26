@@ -13,14 +13,8 @@ use tokio::runtime;
 use super::error::{Error, Result};
 use once_cell::sync::Lazy;
 
-static LAST_ERROR: Lazy<Mutex<Option<Error>>> = Lazy::new(|| {
-    let val = None;
-    Mutex::new(val)
-});
-static RUNTIME: Lazy<Mutex<Option<runtime::Runtime>>> = Lazy::new(|| {
-    let val = None;
-    Mutex::new(val)
-});
+static LAST_ERROR: Lazy<Mutex<Option<Error>>> = Lazy::new(|| Mutex::new(None));
+static RUNTIME: Lazy<Mutex<Option<runtime::Runtime>>> = Lazy::new(|| Mutex::new(None));
 
 fn set_last_error(error: Error) {
     let last_error = &mut *LAST_ERROR.lock().expect("should lock");

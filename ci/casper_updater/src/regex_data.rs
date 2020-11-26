@@ -5,22 +5,14 @@ use regex::Regex;
 
 use crate::dependent_file::DependentFile;
 
-pub static MANIFEST_NAME_REGEX: Lazy<Regex> = Lazy::new(|| {
-    let regex = Regex::new(r#"(?m)(^name = )"([^"]+)"#);
-    regex.unwrap()
-});
-pub static MANIFEST_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| {
-    let regex = Regex::new(r#"(?m)(^version = )"([^"]+)"#);
-    regex.unwrap()
-});
-pub static PACKAGE_JSON_NAME_REGEX: Lazy<Regex> = Lazy::new(|| {
-    let regex = Regex::new(r#"(?m)(^  "name": )"([^"]+)"#);
-    regex.unwrap()
-});
-pub static PACKAGE_JSON_VERSION_REGEX: Lazy<Regex> = Lazy::new(|| {
-    let regex = Regex::new(r#"(?m)(^  "version": )"([^"]+)"#);
-    regex.unwrap()
-});
+pub static MANIFEST_NAME_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?m)(^name = )"([^"]+)"#).unwrap());
+pub static MANIFEST_VERSION_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?m)(^version = )"([^"]+)"#).unwrap());
+pub static PACKAGE_JSON_NAME_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?m)(^  "name": )"([^"]+)"#).unwrap());
+pub static PACKAGE_JSON_VERSION_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?m)(^  "version": )"([^"]+)"#).unwrap());
 
 fn replacement(updated_version: &str) -> String {
     format!(r#"$1"{}"#, updated_version)

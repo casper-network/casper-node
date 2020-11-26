@@ -23,10 +23,8 @@ mod output_file {
         "Path to output file. If the path's parent folder doesn't exist, the command will fail. \
         Default path normally requires running the command with sudo";
 
-    static ARG_DEFAULT: Lazy<String> = Lazy::new(|| {
-        let name = crate_name!();
-        format!("/usr/share/bash-completion/completions/{}", name)
-    });
+    static ARG_DEFAULT: Lazy<String> =
+        Lazy::new(|| format!("/usr/share/bash-completion/completions/{}", crate_name!()));
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)

@@ -28,30 +28,12 @@ const ALICE_KEY: PublicKey = PublicKey::Ed25519([3; 32]);
 const BOB_KEY: PublicKey = PublicKey::Ed25519([5; 32]);
 const CAROL_KEY: PublicKey = PublicKey::Ed25519([7; 32]);
 
-static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| {
-    let key = ALICE_KEY;
-    key.into()
-});
-static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| {
-    let key = BOB_KEY;
-    key.into()
-});
-static CAROL_ADDR: Lazy<AccountHash> = Lazy::new(|| {
-    let key = CAROL_KEY;
-    key.into()
-});
-static TRANSFER_AMOUNT_1: Lazy<U512> = Lazy::new(|| {
-    let val = 100_100_000;
-    U512::from(val)
-});
-static TRANSFER_AMOUNT_2: Lazy<U512> = Lazy::new(|| {
-    let val = 200_100_000;
-    U512::from(val)
-});
-static TRANSFER_AMOUNT_3: Lazy<U512> = Lazy::new(|| {
-    let val = 300_100_000;
-    U512::from(val)
-});
+static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| ALICE_KEY.into());
+static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| BOB_KEY.into());
+static CAROL_ADDR: Lazy<AccountHash> = Lazy::new(|| CAROL_KEY.into());
+static TRANSFER_AMOUNT_1: Lazy<U512> = Lazy::new(|| U512::from(100_100_000));
+static TRANSFER_AMOUNT_2: Lazy<U512> = Lazy::new(|| U512::from(200_100_000));
+static TRANSFER_AMOUNT_3: Lazy<U512> = Lazy::new(|| U512::from(300_100_000));
 
 #[ignore]
 #[test]

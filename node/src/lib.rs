@@ -89,22 +89,14 @@ fn version_string(color: bool) -> String {
 
 /// Color version string for the compiled node. Filled in at build time, output allocated at
 /// runtime.
-pub static VERSION_STRING_COLOR: Lazy<String> = Lazy::new(|| {
-    let color = true;
-    version_string(color)
-});
+pub static VERSION_STRING_COLOR: Lazy<String> = Lazy::new(|| version_string(true));
 
 /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
-pub static VERSION_STRING: Lazy<String> = Lazy::new(|| {
-    let color = false;
-    version_string(color)
-});
+pub static VERSION_STRING: Lazy<String> = Lazy::new(|| version_string(false));
 
 /// Global flag that indicates the currently running reactor should dump its event queue.
-pub static QUEUE_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> = Lazy::new(|| {
-    let data = AtomicBool::new(false);
-    Arc::new(data)
-});
+pub static QUEUE_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> =
+    Lazy::new(|| Arc::new(AtomicBool::new(false)));
 
 /// Setup UNIX signal hooks for current application.
 pub fn setup_signal_hooks() {

@@ -11,18 +11,10 @@ use once_cell::sync::Lazy;
 
 use crate::{dependency::Dependency, ARGS, FAILURE_EXIT_CODE};
 
-pub static CL_CONTRACT: Lazy<Dependency> = Lazy::new(|| {
-    let name = "casper-contract";
-    let version = "0.2.0";
-    let relative_path = "smart_contracts/contract";
-    Dependency::new(name, version, relative_path)
-});
-pub static CL_TYPES: Lazy<Dependency> = Lazy::new(|| {
-    let name = "casper-types";
-    let version = "0.2.0";
-    let relative_path = "types";
-    Dependency::new(name, version, relative_path)
-});
+pub static CL_CONTRACT: Lazy<Dependency> =
+    Lazy::new(|| Dependency::new("casper-contract", "0.2.0", "smart_contracts/contract"));
+pub static CL_TYPES: Lazy<Dependency> =
+    Lazy::new(|| Dependency::new("casper-types", "0.2.0", "types"));
 
 pub fn print_error_and_exit(msg: &str) -> ! {
     e_red!("error");

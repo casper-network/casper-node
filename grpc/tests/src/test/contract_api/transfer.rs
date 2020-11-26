@@ -13,23 +13,11 @@ use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U5
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 
-static TRANSFER_1_AMOUNT: Lazy<U512> = Lazy::new(|| {
-    let val = MINIMUM_ACCOUNT_CREATION_BALANCE;
-    U512::from(val) + 1000
-});
-static TRANSFER_2_AMOUNT: Lazy<U512> = Lazy::new(|| {
-    let val = 750;
-    U512::from(val)
-});
-static TRANSFER_2_AMOUNT_WITH_ADV: Lazy<U512> = Lazy::new(|| {
-    let val_1 = *DEFAULT_PAYMENT;
-    let val_2 = *TRANSFER_2_AMOUNT;
-    val_1 + val_2
-});
-static TRANSFER_TOO_MUCH: Lazy<U512> = Lazy::new(|| {
-    let val = u64::max_value();
-    U512::from(val)
-});
+static TRANSFER_1_AMOUNT: Lazy<U512> =
+    Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000);
+static TRANSFER_2_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(750));
+static TRANSFER_2_AMOUNT_WITH_ADV: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + *TRANSFER_2_AMOUNT);
+static TRANSFER_TOO_MUCH: Lazy<U512> = Lazy::new(|| U512::from(u64::max_value()));
 static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT);
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);

@@ -23,22 +23,10 @@ const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([4; 32]);
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 
-static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| {
-    let account = ACCOUNT_1_PK;
-    account.into()
-});
-static ACCOUNT_1_FUND: Lazy<U512> = Lazy::new(|| {
-    let val = 1_500_000_000_000u64;
-    U512::from(val)
-});
-static ACCOUNT_1_BALANCE: Lazy<U512> = Lazy::new(|| {
-    let val = *ACCOUNT_1_FUND;
-    val + 100_000
-});
-static ACCOUNT_1_BOND: Lazy<U512> = Lazy::new(|| {
-    let val = 25_000;
-    U512::from(val)
-});
+static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PK.into());
+static ACCOUNT_1_FUND: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
+static ACCOUNT_1_BALANCE: Lazy<U512> = Lazy::new(|| *ACCOUNT_1_FUND + 100_000);
+static ACCOUNT_1_BOND: Lazy<U512> = Lazy::new(|| U512::from(25_000));
 
 #[ignore]
 #[test]
