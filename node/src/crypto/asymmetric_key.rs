@@ -1,5 +1,8 @@
 //! Asymmetric-key types and functions.
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{
     cmp::Ordering,
     convert::TryFrom,
@@ -17,9 +20,11 @@ use hex_fmt::HexFmt;
 use k256::ecdsa::{
     Signature as Secp256k1Signature, Signer as Secp256k1Signer, Verifier as Secp256k1Verifier,
 };
+use lazy_static::lazy_static;
 use pem::Pem;
 #[cfg(test)]
 use rand::{Rng, RngCore};
+use schemars::{gen, schema::Schema, JsonSchema};
 use serde::{
     de::{Deserializer, Error as SerdeError},
     Deserialize, Serialize, Serializer,
@@ -30,11 +35,12 @@ use untrusted::Input;
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
-use super::{Error, Result};
+pub use super::{Error, Result};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
     crypto::hash::hash,
+    rpcs::docs::DocExample,
     utils::{read_file, write_file},
     NodeRng,
 };
@@ -61,6 +67,13 @@ const EC_PUBLIC_KEY_OBJECT_IDENTIFIER: [u8; 7] = [42, 134, 72, 206, 61, 2, 1];
 const SECP256K1_OBJECT_IDENTIFIER: [u8; 5] = [43, 129, 4, 0, 10];
 const SECP256K1_PEM_SECRET_KEY_TAG: &str = "EC PRIVATE KEY";
 const SECP256K1_PEM_PUBLIC_KEY_TAG: &str = "PUBLIC KEY";
+
+lazy_static! {
+    static ref ED25519_KEY: SecretKey = {
+        let bytes = [15u8; SecretKey::ED25519_LENGTH];
+        SecretKey::new_ed25519(bytes)
+    };
+}
 
 /// A secret or private asymmetric key.
 #[derive(DataSize)]
@@ -372,6 +385,12 @@ impl Debug for SecretKey {
             SecretKey::Ed25519(_) => write!(formatter, "SecretKey::{}(...)", ED25519),
             SecretKey::Secp256k1(_) => write!(formatter, "SecretKey::{}(...)", SECP256K1),
         }
+    }
+}
+
+impl DocExample for SecretKey {
+    fn doc_example() -> &'static Self {
+        &*ED25519_KEY
     }
 }
 
@@ -790,6 +809,21 @@ impl FromBytes for PublicKey {
     }
 }
 
+impl JsonSchema for PublicKey {
+    fn schema_name() -> String {
+        String::from("PublicKey")
+    }
+
+    fn json_schema(gen: &mut gen::SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "Hex-encoded cryptographic public key, including the algorithm tag prefix.".to_string(),
+        );
+        schema_object.into()
+    }
+}
+
 /// Generates an Ed25519 keypair using the operating system's cryptographically secure random number
 /// generator.
 pub fn generate_ed25519_keypair() -> (SecretKey, PublicKey) {
@@ -1055,6 +1089,21 @@ impl Serialize for Signature {
 impl<'de> Deserialize<'de> for Signature {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
         deserialize(deserializer)
+    }
+}
+
+impl JsonSchema for Signature {
+    fn schema_name() -> String {
+        String::from("Signature")
+    }
+
+    fn json_schema(gen: &mut gen::SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "Hex-encoded cryptographic signature, including the algorithm tag prefix.".to_string(),
+        );
+        schema_object.into()
     }
 }
 

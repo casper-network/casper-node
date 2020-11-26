@@ -38,6 +38,7 @@ proptest = { version = "0.10.0", optional = true }
 pwasm-utils = "0.12.0"
 rand = "0.7.3"
 rand_chacha = "0.2.2"
+schemars = { version = "0.8.0", features = ["preserve_order"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1.0.18"

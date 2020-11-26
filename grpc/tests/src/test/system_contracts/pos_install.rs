@@ -8,13 +8,13 @@ use casper_engine_test_support::{
 use casper_execution_engine::core::engine_state::EngineConfig;
 use casper_types::{
     account::AccountHash, contracts::NamedKeys, runtime_args, ContractHash, ContractPackageHash,
-    RuntimeArgs, URef, U512,
+    DeployHash, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
-const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
+const DEPLOY_HASH_2: DeployHash = DeployHash::new([2u8; 32]);
 
 const EXPECTED_KNOWN_KEYS_LEN: usize = 1;
 

@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
@@ -7,6 +10,8 @@ use core::{
 };
 
 use hex_fmt::HexFmt;
+#[cfg(feature = "std")]
+use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -169,6 +174,20 @@ impl URef {
         let access_rights = AccessRights::from_bits(access_rights_value)
             .ok_or(FromStrError::InvalidAccessRights)?;
         Ok(URef(addr, access_rights))
+    }
+}
+
+#[cfg(feature = "std")]
+impl JsonSchema for URef {
+    fn schema_name() -> String {
+        String::from("URef")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Hex-encoded, formatted URef.".to_string());
+        schema_object.into()
     }
 }
 

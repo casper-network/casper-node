@@ -16,6 +16,7 @@ use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
+use lazy_static::lazy_static;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace};
@@ -29,11 +30,19 @@ use crate::{
         requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    rpcs::docs::DocExample,
     NodeRng,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{DeployConfig, HighwayConfig};
 pub use error::Error;
+
+lazy_static! {
+    static ref CHAINSPEC_INFO: ChainspecInfo = ChainspecInfo {
+        name: String::from("casper-example"),
+        root_hash: Some(Digest::from([2u8; Digest::LENGTH])),
+    };
+}
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
@@ -63,7 +72,7 @@ impl Display for Event {
     }
 }
 
-#[derive(DataSize, Debug, Serialize, Deserialize)]
+#[derive(DataSize, Debug, Serialize, Deserialize, Clone)]
 pub struct ChainspecInfo {
     // Name of the chainspec.
     name: String,
@@ -82,6 +91,12 @@ impl ChainspecInfo {
 
     pub fn root_hash(&self) -> Option<Digest> {
         self.root_hash
+    }
+}
+
+impl DocExample for ChainspecInfo {
+    fn doc_example() -> &'static Self {
+        &*CHAINSPEC_INFO
     }
 }
 

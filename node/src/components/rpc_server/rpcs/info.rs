@@ -1,38 +1,68 @@
 //! RPCs returning ancillary information.
 
-use std::{collections::BTreeMap, net::SocketAddr, str};
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
+use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
+use lazy_static::lazy_static;
+use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
+use casper_types::ExecutionResult;
+
 use super::{
-    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt, RpcWithoutParams,
-    RpcWithoutParamsExt,
+    docs::DocExample, Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
+    RpcWithoutParams, RpcWithoutParamsExt,
 };
 use crate::{
     components::CLIENT_API_VERSION,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{
-        json_compatibility::ExecutionResult, BlockHash, Deploy, DeployHash, GetStatusResult,
-        PeersMap,
-    },
+    types::{Block, BlockHash, Deploy, DeployHash, GetStatusResult, Item, PeersMap},
 };
 
+lazy_static! {
+    static ref GET_DEPLOY_PARAMS: GetDeployParams = GetDeployParams {
+        deploy_hash: *Deploy::doc_example().id(),
+    };
+    static ref GET_DEPLOY_RESULT: GetDeployResult = GetDeployResult {
+        api_version: CLIENT_API_VERSION.clone(),
+        deploy: Deploy::doc_example().clone(),
+        execution_results: vec![JsonExecutionResult {
+            block_hash: Block::doc_example().id(),
+            result: ExecutionResult::example().clone(),
+        }],
+    };
+    static ref GET_PEERS_RESULT: GetPeersResult = GetPeersResult {
+        api_version: CLIENT_API_VERSION.clone(),
+        peers: GetStatusResult::doc_example().peers.clone(),
+    };
+}
+
 /// Params for "info_get_deploy" RPC request.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetDeployParams {
     /// The deploy hash.
     pub deploy_hash: DeployHash,
 }
 
+impl DocExample for GetDeployParams {
+    fn doc_example() -> &'static Self {
+        &*GET_DEPLOY_PARAMS
+    }
+}
+
 /// The execution result of a single deploy.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct JsonExecutionResult {
     /// The block hash.
     pub block_hash: BlockHash,
@@ -41,14 +71,22 @@ pub struct JsonExecutionResult {
 }
 
 /// Result for "info_get_deploy" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetDeployResult {
     /// The RPC API version.
+    #[schemars(with = "String")]
     pub api_version: Version,
     /// The deploy.
     pub deploy: Deploy,
     /// The map of block hash to execution result.
     pub execution_results: Vec<JsonExecutionResult>,
+}
+
+impl DocExample for GetDeployResult {
+    fn doc_example() -> &'static Self {
+        &*GET_DEPLOY_RESULT
+    }
 }
 
 /// "info_get_deploy" RPC.
@@ -111,12 +149,20 @@ impl RpcWithParamsExt for GetDeploy {
 }
 
 /// Result for "info_get_peers" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetPeersResult {
     /// The RPC API version.
+    #[schemars(with = "String")]
     pub api_version: Version,
     /// The node ID and network address of each connected peer.
-    pub peers: BTreeMap<String, SocketAddr>,
+    pub peers: PeersMap,
+}
+
+impl DocExample for GetPeersResult {
+    fn doc_example() -> &'static Self {
+        &*GET_PEERS_RESULT
+    }
 }
 
 /// "info_get_peers" RPC.
@@ -140,10 +186,9 @@ impl RpcWithoutParamsExt for GetPeers {
                 )
                 .await;
 
-            let peers = PeersMap::from(peers).into();
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                peers,
+                peers: PeersMap::from(peers),
             };
             Ok(response_builder.success(result)?)
         }

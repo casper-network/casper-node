@@ -94,7 +94,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    Key, ProtocolVersion,
+    ExecutionResult, Key, ProtocolVersion,
 };
 
 use crate::{
@@ -103,15 +103,15 @@ use crate::{
         consensus::BlockContext,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
+        linear_chain::FinalitySignature,
         small_network::GossipedAddress,
     },
-    crypto::{asymmetric_key::Signature, hash::Digest},
+    crypto::hash::Digest,
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, BlockHeader,
-        BlockLike, Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item,
-        ProtoBlock, Timestamp,
+        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader,
+        DeployMetadata, FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,
@@ -384,17 +384,13 @@ impl<REv> EffectBuilder<REv> {
     #[inline(always)]
     pub async fn immediately(self) {}
 
-    /// Reports a fatal error.
+    /// Reports a fatal error.  Normally called via the `crate::fatal!()` macro.
     ///
     /// Usually causes the node to cease operations quickly and exit/crash.
-    pub fn fatal<M: Display + ?Sized>(
-        self,
-        file: &str,
-        line: u32,
-        msg: &M,
-    ) -> impl Future<Output = ()> + Send {
-        // Note: This function is implemented manually without `async` sugar because the `Send`
-        // inferrence seems to not work in all cases otherwise.
+    //
+    // Note: This function is implemented manually without `async` sugar because the `Send`
+    // inferrence seems to not work in all cases otherwise.
+    pub fn fatal(self, file: &str, line: u32, msg: String) -> impl Future<Output = ()> + Send {
         panic!("fatal error [{}:{}]: {}", file, line, msg);
         #[allow(unreachable_code)]
         async {} // The compiler will complain about an incorrect return value otherwise.
@@ -1138,7 +1134,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.
-    pub(crate) async fn handle_linear_chain_block(self, block_header: BlockHeader) -> Signature
+    pub(crate) async fn handle_linear_chain_block(
+        self,
+        block_header: BlockHeader,
+    ) -> FinalitySignature
     where
         REv: From<ConsensusRequest>,
     {
@@ -1156,7 +1155,7 @@ impl<REv> EffectBuilder<REv> {
 /// `line!()` number automatically.
 #[macro_export]
 macro_rules! fatal {
-    ($effect_builder:expr, $msg:expr) => {
-        $effect_builder.fatal(file!(), line!(), &$msg).ignore()
+    ($effect_builder:expr, $($arg:tt)*) => {
+        $effect_builder.fatal(file!(), line!(), format_args!($($arg)*).to_string()).ignore()
     };
 }

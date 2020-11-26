@@ -72,12 +72,7 @@ fn compute_rewards_for<C: Context>(
         }
     }
 
-    let faulty_w: Weight = panorama
-        .iter()
-        .zip(state.weights())
-        .filter(|(obs, _)| obs.is_faulty())
-        .map(|(_, w)| w)
-        .sum();
+    let faulty_w: Weight = panorama.iter_faulty().map(|vidx| state.weight(vidx)).sum();
 
     // Collect the block rewards for each validator who is a member of at least one summit.
     max_quorum

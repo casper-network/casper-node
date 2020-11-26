@@ -13,7 +13,7 @@ use super::{
 use crate::{
     components::consensus::{
         consensus_protocol::BlockContext,
-        highway_core::highway::SignedWireUnit,
+        highway_core::{highway::SignedWireUnit, state::Fault},
         traits::{Context, ValidatorSecret},
     },
     types::{TimeDiff, Timestamp},
@@ -30,10 +30,10 @@ pub(crate) enum Effect<C: Context> {
     /// `propose` needs to be called with a value for a new block with the specified block context
     /// and parent value.
     RequestNewBlock(BlockContext),
-    /// This validator produced an equivocation.
+    /// This validator is faulty.
     ///
     /// When this is returned, the validator automatically deactivates.
-    WeEquivocated(Evidence<C>),
+    WeAreFaulty(Fault<C>),
 }
 
 /// A validator that actively participates in consensus by creating new vertices.
@@ -121,7 +121,7 @@ impl<C: Context> ActiveValidator<C> {
         if timestamp == r_id && state.leader(r_id) == self.vidx {
             effects.extend(self.request_new_block(state, instance_id, timestamp, rng))
         } else if timestamp == r_id + self.witness_offset(r_len) {
-            let panorama = state.citable_panorama().cutoff(state, timestamp);
+            let panorama = state.panorama().cutoff(state, timestamp);
             if panorama.has_correct() {
                 let witness_unit =
                     self.new_unit(panorama, timestamp, None, state, instance_id, rng);
@@ -134,26 +134,26 @@ impl<C: Context> ActiveValidator<C> {
     /// Returns actions a validator needs to take upon receiving a new unit.
     pub(crate) fn on_new_unit(
         &mut self,
-        vhash: &C::Hash,
+        uhash: &C::Hash,
         now: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
-        if let Some(evidence) = state.opt_evidence(self.vidx) {
-            return vec![Effect::WeEquivocated(evidence.clone())];
+        if let Some(fault) = state.opt_fault(self.vidx) {
+            return vec![Effect::WeAreFaulty(fault.clone())];
         }
         let mut effects = vec![];
-        if self.should_send_confirmation(vhash, now, state) {
-            let panorama = state.confirmation_panorama(self.vidx, vhash);
+        if self.should_send_confirmation(uhash, now, state) {
+            let panorama = state.confirmation_panorama(self.vidx, uhash);
             if panorama.has_correct() {
                 let confirmation_unit = self.new_unit(panorama, now, None, state, instance_id, rng);
                 let vv = ValidVertex(Vertex::Unit(confirmation_unit));
                 effects.extend(vec![Effect::NewVertex(vv)])
             }
         };
-        if self.should_endorse(vhash, state) {
-            let endorsement = self.endorse(vhash, rng);
+        if self.should_endorse(uhash, state) {
+            let endorsement = self.endorse(uhash, rng);
             effects.extend(vec![Effect::NewVertex(ValidVertex(endorsement))]);
         }
         effects
@@ -199,7 +199,7 @@ impl<C: Context> ActiveValidator<C> {
             );
             return None;
         }
-        let panorama = state.citable_panorama().cutoff(state, timestamp);
+        let panorama = state.panorama().cutoff(state, timestamp);
         let opt_parent_hash = state.fork_choice(&panorama);
         if opt_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
             let proposal_unit = self.new_unit(panorama, timestamp, None, state, instance_id, rng);
@@ -276,7 +276,7 @@ impl<C: Context> ActiveValidator<C> {
             return false;
         }
         if let Some(unit) = self.latest_unit(state) {
-            if unit.panorama._sees_correct(state, vhash) {
+            if unit.panorama.sees_correct(state, vhash) {
                 error!(%vhash, "called on_new_unit with already confirmed proposal");
                 return false; // We already sent a confirmation.
             }
@@ -310,7 +310,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         if panorama[self.vidx] != state.panorama()[self.vidx] {
             error!("replacing unit panorama to avoid equivocation");
-            panorama = state.citable_panorama().clone();
+            panorama = state.panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let endorsed = state.seen_endorsed(&panorama);

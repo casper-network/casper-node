@@ -6,6 +6,7 @@ use std::{
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use itertools::Itertools;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
@@ -20,8 +21,20 @@ use crate::{
 };
 
 #[derive(
-    DataSize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+    DataSize,
+    Debug,
+    Clone,
+    Copy,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 pub struct EraId(pub(crate) u64);
 
 impl EraId {
