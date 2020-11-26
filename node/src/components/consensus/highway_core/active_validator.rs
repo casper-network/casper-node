@@ -121,7 +121,7 @@ impl<C: Context> ActiveValidator<C> {
         if timestamp == r_id && state.leader(r_id) == self.vidx {
             effects.extend(self.request_new_block(state, instance_id, timestamp, rng))
         } else if timestamp == r_id + self.witness_offset(r_len) {
-            let panorama = state.citable_panorama().cutoff(state, timestamp);
+            let panorama = state.panorama().cutoff(state, timestamp);
             if panorama.has_correct() {
                 let witness_unit =
                     self.new_unit(panorama, timestamp, None, state, instance_id, rng);
@@ -199,7 +199,7 @@ impl<C: Context> ActiveValidator<C> {
             );
             return None;
         }
-        let panorama = state.citable_panorama().cutoff(state, timestamp);
+        let panorama = state.panorama().cutoff(state, timestamp);
         let opt_parent_hash = state.fork_choice(&panorama);
         if opt_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
             let proposal_unit = self.new_unit(panorama, timestamp, None, state, instance_id, rng);
@@ -310,7 +310,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         if panorama[self.vidx] != state.panorama()[self.vidx] {
             error!("replacing unit panorama to avoid equivocation");
-            panorama = state.citable_panorama().clone();
+            panorama = state.panorama().clone();
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let endorsed = state.seen_endorsed(&panorama);
