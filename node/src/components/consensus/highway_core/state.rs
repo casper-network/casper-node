@@ -622,8 +622,8 @@ impl<C: Context> State<C> {
             (obs0, obs1) if obs0 == obs1 => Observation::Correct(uhash),
             (Observation::None, _) => panic!("missing creator's previous unit"),
             (Observation::Correct(hash0), _) => {
-                // If we have all dependencies of wunit and still see the sender as correct, the
-                // predecessor of wunit must be a predecessor of hash0. So we already have a
+                // If we have all dependencies of unit and still see the sender as correct, the
+                // predecessor of unit must be a predecessor of hash0. So we already have a
                 // conflicting unit with the same sequence number:
                 let prev0 = self.find_in_swimlane(hash0, unit.seq_number).unwrap();
                 let wunit0 = self.wire_unit(prev0, instance_id).unwrap();
