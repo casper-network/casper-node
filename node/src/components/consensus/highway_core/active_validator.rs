@@ -134,7 +134,7 @@ impl<C: Context> ActiveValidator<C> {
     /// Returns actions a validator needs to take upon receiving a new unit.
     pub(crate) fn on_new_unit(
         &mut self,
-        vhash: &C::Hash,
+        uhash: &C::Hash,
         now: Timestamp,
         state: &State<C>,
         instance_id: C::InstanceId,
@@ -144,16 +144,16 @@ impl<C: Context> ActiveValidator<C> {
             return vec![Effect::WeEquivocated(evidence.clone())];
         }
         let mut effects = vec![];
-        if self.should_send_confirmation(vhash, now, state) {
-            let panorama = state.confirmation_panorama(self.vidx, vhash);
+        if self.should_send_confirmation(uhash, now, state) {
+            let panorama = state.confirmation_panorama(self.vidx, uhash);
             if panorama.has_correct() {
                 let confirmation_unit = self.new_unit(panorama, now, None, state, instance_id, rng);
                 let vv = ValidVertex(Vertex::Unit(confirmation_unit));
                 effects.extend(vec![Effect::NewVertex(vv)])
             }
         };
-        if self.should_endorse(vhash, state) {
-            let endorsement = self.endorse(vhash, rng);
+        if self.should_endorse(uhash, state) {
+            let endorsement = self.endorse(uhash, rng);
             effects.extend(vec![Effect::NewVertex(ValidVertex(endorsement))]);
         }
         effects
@@ -276,7 +276,7 @@ impl<C: Context> ActiveValidator<C> {
             return false;
         }
         if let Some(unit) = self.latest_unit(state) {
-            if unit.panorama._sees_correct(state, vhash) {
+            if unit.panorama.sees_correct(state, vhash) {
                 error!(%vhash, "called on_new_unit with already confirmed proposal");
                 return false; // We already sent a confirmation.
             }

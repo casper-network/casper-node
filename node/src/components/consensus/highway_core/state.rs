@@ -586,7 +586,7 @@ impl<C: Context> State<C> {
             }
         }
         for hash in &wunit.endorsed {
-            if !wunit.panorama._sees(self, hash) {
+            if !wunit.panorama.sees(self, hash) {
                 return Err(UnitError::EndorsedButUnseen {
                     hash: format!("{:?}", hash),
                     wire_unit: format!("{:?}", wunit),
@@ -714,7 +714,7 @@ impl<C: Context> State<C> {
         // Now add all remaining endorsed units. Since the pan.sees check is expensive, do it only
         // for the ones that are actually new.
         for hash in self.endorsements.keys() {
-            if !result.contains(hash) && pan._sees(self, hash) {
+            if !result.contains(hash) && pan.sees(self, hash) {
                 result.insert(*hash);
             }
         }
@@ -850,19 +850,19 @@ impl<C: Context> State<C> {
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`),
     /// and sees `hash1`'s creator as correct.
     fn _sees_correct(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
-        hash0 == hash1 || self.unit(hash0).panorama._sees_correct(self, hash1)
+        hash0 == hash1 || self.unit(hash0).panorama.sees_correct(self, hash1)
     }
 
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`).
     fn _sees(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
-        hash0 == hash1 || self.unit(hash0).panorama._sees(self, hash1)
+        hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
     }
 
     // Returns whether the units with `hash0` and `hash1` see each other or are equal.
     fn _is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
         hash0 == hash1
-            || self.unit(hash0).panorama._sees(self, hash1)
-            || self.unit(hash1).panorama._sees(self, hash0)
+            || self.unit(hash0).panorama.sees(self, hash1)
+            || self.unit(hash1).panorama.sees(self, hash0)
     }
 
     /// Returns the panorama of the confirmation for the leader unit `vhash`.
