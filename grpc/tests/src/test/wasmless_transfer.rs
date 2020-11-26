@@ -1,5 +1,3 @@
-use once_cell::sync::Lazy;
-
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
@@ -16,17 +14,6 @@ use casper_types::{
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const TRANSFER_RESULT_NAMED_KEY: &str = "transfer_result";
-
-#[allow(dead_code)]
-static TRANSFER_1_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(250_000_000) + 1000);
-#[allow(dead_code)]
-static TRANSFER_2_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(750));
-#[allow(dead_code)]
-static TRANSFER_2_AMOUNT_WITH_ADV: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + *TRANSFER_2_AMOUNT);
-#[allow(dead_code)]
-static TRANSFER_TOO_MUCH: Lazy<U512> = Lazy::new(|| U512::from(u64::max_value()));
-#[allow(dead_code)]
-static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT);
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([2u8; 32]);

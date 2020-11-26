@@ -60,7 +60,9 @@ pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::Ed25519([199; 32]));
 pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(*DEFAULT_ACCOUNT_PUBLIC_KEY));
-pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> = Lazy::new(|| *DEFAULT_ACCOUNT_KEY);
+// Declaring DEFAULT_ACCOUNT_KEY as *DEFAULT_ACCOUNT_ADDR causes tests to stall.
+pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
+    Lazy::new(|| AccountHash::from(*DEFAULT_ACCOUNT_PUBLIC_KEY));
 pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::Ed25519([198; 32]));
 pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
