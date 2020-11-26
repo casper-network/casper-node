@@ -11,7 +11,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::{Add, AddAssign, From, Shl, Shr, Sub, SubAssign};
 use humantime::{DurationError, TimestampError};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
 use schemars::JsonSchema;
@@ -24,12 +24,10 @@ use crate::rpcs::docs::DocExample;
 #[cfg(test)]
 use crate::testing::TestRng;
 
-lazy_static! {
-    static ref TIMESTAMP_EXAMPLE: Timestamp = {
-        let example_str: &str = "2020-11-17T00:39:24.072Z";
-        Timestamp::from_str(example_str).unwrap()
-    };
-}
+static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
+    let example_str: &str = "2020-11-17T00:39:24.072Z";
+    Timestamp::from_str(example_str).unwrap()
+});
 
 /// A timestamp type, representing a concrete moment in time.
 #[derive(

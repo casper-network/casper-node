@@ -15,12 +15,13 @@ use alloc::{
 };
 
 #[cfg(feature = "std")]
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use rand::{
     distributions::{Distribution, Standard},
     seq::SliceRandom,
     Rng,
 };
+
 #[cfg(feature = "std")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -61,49 +62,45 @@ const TRANSFORM_ADD_KEYS_TAG: u8 = 13;
 const TRANSFORM_FAILURE_TAG: u8 = 14;
 
 #[cfg(feature = "std")]
-lazy_static! {
-    static ref EXECUTION_RESULT: ExecutionResult = {
-        let mut operations = Vec::new();
-        operations.push(Operation {
-            key: "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
-                .to_string(),
-            kind: OpKind::Write,
-        });
-        operations.push(Operation {
-            key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
-                .to_string(),
-            kind: OpKind::Read,
-        });
+static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
+    let mut operations = Vec::new();
+    operations.push(Operation {
+        key: "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
+            .to_string(),
+        kind: OpKind::Write,
+    });
+    operations.push(Operation {
+        key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+        kind: OpKind::Read,
+    });
 
-        let mut transforms = Vec::new();
-        transforms.push(TransformEntry {
-            key: "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007"
-                .to_string(),
-            transform: Transform::AddUInt64(8u64),
-        });
-        transforms.push(TransformEntry {
-            key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
-                .to_string(),
-            transform: Transform::Identity,
-        });
+    let mut transforms = Vec::new();
+    transforms.push(TransformEntry {
+        key: "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007"
+            .to_string(),
+        transform: Transform::AddUInt64(8u64),
+    });
+    transforms.push(TransformEntry {
+        key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+        transform: Transform::Identity,
+    });
 
-        let effect = ExecutionEffect {
-            operations,
-            transforms,
-        };
-
-        let transfers = vec![
-            TransferAddr::new([89; KEY_HASH_LENGTH]),
-            TransferAddr::new([130; KEY_HASH_LENGTH]),
-        ];
-
-        ExecutionResult::Success {
-            effect,
-            transfers,
-            cost: U512::from(123_456),
-        }
+    let effect = ExecutionEffect {
+        operations,
+        transforms,
     };
-}
+
+    let transfers = vec![
+        TransferAddr::new([89; KEY_HASH_LENGTH]),
+        TransferAddr::new([130; KEY_HASH_LENGTH]),
+    ];
+
+    ExecutionResult::Success {
+        effect,
+        transfers,
+        cost: U512::from(123_456),
+    }
+});
 
 /// The result of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
