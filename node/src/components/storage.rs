@@ -179,7 +179,7 @@ impl<REv> Component<REv> for Storage {
         // anyway, it should not matter.
         match result {
             Ok(effects) => effects,
-            Err(err) => fatal!(effect_builder, format!("storage error: {}", err)),
+            Err(err) => fatal!(effect_builder, "storage error: {}", err),
         }
     }
 }
