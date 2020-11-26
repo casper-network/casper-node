@@ -16,6 +16,7 @@ use crate::{
 /// Represents a party delegating their stake to a validator (or "delegatee")
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct Delegator {
     staked_amount: U512,
     bonding_purse: URef,

@@ -16,6 +16,7 @@ use crate::{
 /// Information relating to the given Deploy.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct DeployInfo {
     /// The relevant Deploy.
     pub deploy_hash: DeployHash,

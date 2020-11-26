@@ -9,6 +9,7 @@ use casper_execution_engine::shared::account::Account as ExecutionEngineAccount;
 use casper_types::{account::AccountHash, NamedKey, URef};
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct AssociatedKey {
     account_hash: AccountHash,
     weight: u8,
@@ -16,6 +17,7 @@ struct AssociatedKey {
 
 /// Thresholds that have to be met when executing an action of a certain type.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ActionThresholds {
     deployment: u8,
     key_management: u8,
@@ -23,6 +25,7 @@ struct ActionThresholds {
 
 /// Structure representing a user's account, stored in global state.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Account {
     account_hash: AccountHash,
     #[data_size(skip)]

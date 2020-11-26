@@ -76,6 +76,7 @@ lazy_static! {
 
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetItemParams {
     /// Hash of the state root.
     pub state_root_hash: Digest,
@@ -93,6 +94,7 @@ impl DocExample for GetItemParams {
 
 /// Result for "state_get_item" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetItemResult {
     /// The RPC API version.
     #[schemars(with = "String")]
@@ -204,6 +206,7 @@ impl RpcWithParamsExt for GetItem {
 
 /// Params for "state_get_balance" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetBalanceParams {
     /// The hash of state root.
     pub state_root_hash: Digest,
@@ -219,6 +222,7 @@ impl DocExample for GetBalanceParams {
 
 /// Result for "state_get_balance" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetBalanceResult {
     /// The RPC API version.
     #[schemars(with = "String")]
@@ -325,6 +329,7 @@ impl RpcWithParamsExt for GetBalance {
 
 /// Result for "state_get_auction_info" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetAuctionInfoResult {
     /// The RPC API version.
     #[schemars(with = "String")]

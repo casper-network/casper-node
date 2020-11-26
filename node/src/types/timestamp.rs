@@ -35,6 +35,7 @@ lazy_static! {
 #[derive(
     DataSize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shr, Shl, JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Timestamp formatted as per RFC 3339")]
 pub struct Timestamp(u64);
 
@@ -214,6 +215,7 @@ impl From<u64> for Timestamp {
     From,
     JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Human-readable duration.")]
 pub struct TimeDiff(u64);
 

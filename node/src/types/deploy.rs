@@ -143,6 +143,7 @@ impl From<TryFromSliceError> for Error {
     Default,
     JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Hex-encoded deploy hash.")]
 pub struct DeployHash(#[schemars(skip)] Digest);
 
@@ -203,6 +204,7 @@ impl FromBytes for DeployHash {
 #[derive(
     Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 pub struct DeployHeader {
     account: PublicKey,
     timestamp: Timestamp,
@@ -329,6 +331,7 @@ impl Display for DeployHeader {
 #[derive(
     Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 pub struct Approval {
     signer: PublicKey,
     signature: Signature,
@@ -378,6 +381,7 @@ impl FromBytes for Approval {
 #[derive(
     Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 pub struct Deploy {
     hash: DeployHash,
     header: DeployHeader,

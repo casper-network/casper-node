@@ -263,6 +263,7 @@ impl FromBytes for CLValue {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CLValueJson {
     cl_type: CLType,
     serialized_bytes: String,

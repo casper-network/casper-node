@@ -48,6 +48,7 @@ const CL_TYPE_TAG_PUBLIC_KEY: u8 = 22;
 /// Provides a description of the underlying data type of a [`CLValue`](crate::CLValue).
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub enum CLType {
     /// `bool` primitive.
     Bool,

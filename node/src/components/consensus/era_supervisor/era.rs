@@ -34,6 +34,7 @@ use crate::{
     Deserialize,
     JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 pub struct EraId(pub(crate) u64);
 
 impl EraId {

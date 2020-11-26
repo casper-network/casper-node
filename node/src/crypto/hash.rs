@@ -43,6 +43,7 @@ use crate::testing::TestRng;
     Default,
     JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 #[schemars(with = "String", description = "Hex-encoded hash digest.")]
 pub struct Digest(
     #[serde(with = "HexForm::<[u8; Digest::LENGTH]>")]

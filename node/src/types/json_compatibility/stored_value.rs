@@ -24,6 +24,7 @@ use super::Account;
 ///
 /// `Account` has its own `json_compatibility` representation (see its docs for further info).
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub enum StoredValue {
     /// A CasperLabs value.
     CLValue(CLValue),

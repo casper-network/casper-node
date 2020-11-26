@@ -442,6 +442,7 @@ impl Display for FinalizedBlock {
     Debug,
     JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 pub struct BlockHash(Digest);
 
 impl BlockHash {
@@ -1000,6 +1001,7 @@ pub(crate) mod json_compatibility {
     use super::*;
 
     #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[serde(deny_unknown_fields)]
     struct Reward {
         validator: PublicKey,
         amount: u64,
@@ -1007,6 +1009,7 @@ pub(crate) mod json_compatibility {
 
     /// Equivocation and reward information to be included in the terminal block.
     #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[serde(deny_unknown_fields)]
     struct JsonEraEnd {
         equivocators: Vec<PublicKey>,
         rewards: Vec<Reward>,
@@ -1026,6 +1029,7 @@ pub(crate) mod json_compatibility {
     }
 
     #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[serde(deny_unknown_fields)]
     struct JsonBlockHeader {
         parent_hash: BlockHash,
         state_root_hash: Digest,
@@ -1060,6 +1064,7 @@ pub(crate) mod json_compatibility {
 
     /// A JSON-friendly representation of `Block`.
     #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[serde(deny_unknown_fields)]
     pub struct JsonBlock {
         hash: BlockHash,
         header: JsonBlockHeader,

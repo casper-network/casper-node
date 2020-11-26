@@ -66,6 +66,7 @@ impl<I> StatusFeed<I> {
 
 /// Minimal info of a `Block`.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct MinimalBlockInfo {
     hash: BlockHash,
     timestamp: Timestamp,
@@ -86,6 +87,7 @@ impl From<Block> for MinimalBlockInfo {
 
 /// Result for "info_get_status" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetStatusResult {
     /// The RPC API version.
     #[schemars(with = "String")]

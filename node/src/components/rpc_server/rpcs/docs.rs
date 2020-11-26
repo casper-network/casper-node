@@ -365,6 +365,7 @@ struct Components {
 //
 // Fields named as per https://spec.open-rpc.org/#service-discovery-method.
 #[derive(Clone, Serialize, Deserialize, JsonSchema, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct ListRpcsResult {
     /// The RPC API version.
     #[schemars(with = "String")]

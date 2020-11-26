@@ -103,6 +103,7 @@ impl<'de> Deserialize<'de> for DeployHash {
 /// Represents a transfer from one purse to another
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct Transfer {
     /// Deploy that created the transfer
     pub deploy_hash: DeployHash,

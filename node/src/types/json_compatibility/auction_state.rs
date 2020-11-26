@@ -55,6 +55,7 @@ lazy_static! {
 
 /// A validator's weight.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct JsonValidatorWeights {
     public_key: PublicKey,
     weight: U512,
@@ -62,6 +63,7 @@ pub struct JsonValidatorWeights {
 
 /// The validators for the given era.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct JsonEraValidators {
     era_id: EraId,
     validator_weights: Vec<JsonValidatorWeights>,
@@ -69,6 +71,7 @@ pub struct JsonEraValidators {
 
 /// A delegator associated with the given validator.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct JsonDelegator {
     public_key: PublicKey,
     delegator: Delegator,
@@ -76,6 +79,7 @@ pub struct JsonDelegator {
 
 /// An entry in a founding validator map representing a bid.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct JsonBid {
     /// The purse that was used for bonding.
     bonding_purse: URef,
@@ -116,6 +120,7 @@ impl From<Bid> for JsonBid {
 
 /// A Json representation of a single bid.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct JsonBids {
     public_key: PublicKey,
     bid: JsonBid,
@@ -123,6 +128,7 @@ pub struct JsonBids {
 
 /// Data structure summarizing auction contract data.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AuctionState {
     /// Global state hash.
     pub state_root_hash: Digest,

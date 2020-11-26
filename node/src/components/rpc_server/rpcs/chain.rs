@@ -46,6 +46,7 @@ lazy_static! {
 
 /// Identifier for possible ways to retrieve a block.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub enum BlockIdentifier {
     /// Identify and retrieve the block with its hash.
     Hash(BlockHash),
@@ -55,6 +56,7 @@ pub enum BlockIdentifier {
 
 /// Params for "chain_get_block" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetBlockParams {
     /// The block hash.
     pub block_identifier: BlockIdentifier,
@@ -68,6 +70,7 @@ impl DocExample for GetBlockParams {
 
 /// Result for "chain_get_block" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetBlockResult {
     /// The RPC API version.
     #[schemars(with = "String")]
@@ -108,7 +111,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                block: Some(maybe_block.unwrap().into()),
+                block: maybe_block.map(Into::into),
             };
             Ok(response_builder.success(result)?)
         }
@@ -118,6 +121,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
 
 /// Params for "chain_get_state_root_hash" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetStateRootHashParams {
     /// The block hash.
     pub block_identifier: BlockIdentifier,
@@ -131,6 +135,7 @@ impl DocExample for GetStateRootHashParams {
 
 /// Result for "chain_get_state_root_hash" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetStateRootHashResult {
     /// The RPC API version.
     #[schemars(with = "String")]

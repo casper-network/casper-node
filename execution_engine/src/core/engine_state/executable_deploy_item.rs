@@ -33,6 +33,7 @@ const TRANSFER_TAG: u8 = 5;
 #[derive(
     Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 pub enum ExecutableDeployItem {
     ModuleBytes {
         #[serde(with = "HexForm")]

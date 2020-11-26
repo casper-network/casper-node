@@ -48,6 +48,7 @@ lazy_static! {
 
 /// Params for "info_get_deploy" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetDeployParams {
     /// The deploy hash.
     pub deploy_hash: DeployHash,
@@ -61,6 +62,7 @@ impl DocExample for GetDeployParams {
 
 /// The execution result of a single deploy.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct JsonExecutionResult {
     /// The block hash.
     pub block_hash: BlockHash,
@@ -70,6 +72,7 @@ pub struct JsonExecutionResult {
 
 /// Result for "info_get_deploy" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetDeployResult {
     /// The RPC API version.
     #[schemars(with = "String")]
@@ -147,6 +150,7 @@ impl RpcWithParamsExt for GetDeploy {
 
 /// Result for "info_get_peers" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetPeersResult {
     /// The RPC API version.
     #[schemars(with = "String")]

@@ -34,6 +34,7 @@ lazy_static! {
 
 /// Params for "account_put_deploy" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PutDeployParams {
     /// The `Deploy`.
     pub deploy: Deploy,
@@ -47,6 +48,7 @@ impl DocExample for PutDeployParams {
 
 /// Result for "account_put_deploy" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PutDeployResult {
     /// The RPC API version.
     #[schemars(with = "String")]

@@ -108,6 +108,7 @@ lazy_static! {
 /// The result of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub enum ExecutionResult {
     /// The result of a failed execution.
     Failure {
@@ -284,6 +285,7 @@ impl FromBytes for ExecutionResult {
 /// The effect of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct ExecutionEffect {
     /// The resulting operations.
     pub operations: Vec<Operation>,
@@ -319,6 +321,7 @@ impl FromBytes for ExecutionEffect {
 /// An operation performed while executing a deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct Operation {
     /// The formatted string of the `Key`.
     pub key: String,
@@ -351,6 +354,7 @@ impl FromBytes for Operation {
 /// The type of operation performed while executing a deploy.
 #[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub enum OpKind {
     /// A read operation.
     Read,
@@ -393,6 +397,7 @@ impl FromBytes for OpKind {
 /// A transformation performed while executing a deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct TransformEntry {
     /// The formatted string of the `Key`.
     pub key: String,
@@ -425,6 +430,7 @@ impl FromBytes for TransformEntry {
 /// The actual transformation performed while executing a deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub enum Transform {
     /// A transform having no effect.
     Identity,
