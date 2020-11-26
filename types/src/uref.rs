@@ -11,7 +11,7 @@ use core::{
 
 use hex_fmt::HexFmt;
 #[cfg(feature = "std")]
-use schemars::{JsonSchema, schema::Schema, gen::SchemaGenerator};
+use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -88,10 +88,7 @@ impl Display for FromStrError {
 ///
 /// A `URef` can be used to index entities such as [`CLValue`](crate::CLValue)s, or smart contracts.
 #[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct URef(
-    URefAddr,
-    AccessRights,
-);
+pub struct URef(URefAddr, AccessRights);
 
 impl URef {
     /// Constructs a [`URef`] from an address and access rights.
@@ -180,7 +177,7 @@ impl URef {
     }
 }
 
-#[cfg(feature="std")]
+#[cfg(feature = "std")]
 impl JsonSchema for URef {
     fn schema_name() -> String {
         String::from("URef")

@@ -266,7 +266,7 @@ impl TransferAddr {
     }
 }
 
-#[cfg(feature="std")]
+#[cfg(feature = "std")]
 impl JsonSchema for TransferAddr {
     fn schema_name() -> String {
         String::from("TransferAddr")
