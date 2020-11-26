@@ -289,7 +289,7 @@ where
                 );
                 effects
             }
-            Event::NewFinalitySignature(fs) => async move {
+            Event::NewFinalitySignature(fs) => {
                 let FinalitySignature {
                     block_hash,
                     public_key,
