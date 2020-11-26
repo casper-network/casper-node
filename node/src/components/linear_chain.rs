@@ -54,6 +54,11 @@ impl FinalitySignature {
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
     }
+
+    /// Verifies whether the signature is correct.
+    pub fn verify(&self) -> crypto::asymmetric_key::Result<()> {
+        crypto::asymmetric_key::verify(self.block_hash.inner(), &self.signature, &self.public_key)
+    }
 }
 
 impl Display for FinalitySignature {
@@ -284,15 +289,13 @@ where
                 );
                 effects
             }
-            Event::NewFinalitySignature(fs) => {
+            Event::NewFinalitySignature(fs) => async move {
                 let FinalitySignature {
                     block_hash,
-                    signature,
                     public_key,
+                    ..
                 } = *fs;
-                let verified =
-                    crypto::asymmetric_key::verify(block_hash.inner(), &signature, &public_key);
-                if let Err(err) = verified {
+                if let Err(err) = fs.verify() {
                     error!(%block_hash, %public_key, %err, "received invalid finality signature");
                     return Effects::new();
                 }
