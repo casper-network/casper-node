@@ -300,6 +300,8 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns a new unit with the given data, and the correct sequence number.
+    ///
+    /// Returns `None` if it's not possible to create a valid unit with the given panorama.
     fn new_unit(
         &mut self,
         panorama: Panorama<C>,
@@ -443,7 +445,12 @@ impl<C: Context> ActiveValidator<C> {
 
     /// Returns a panorama that is valid to use in our own unit at the given timestamp.
     fn panorama_at(&self, state: &State<C>, timestamp: Timestamp) -> Panorama<C> {
-        state.to_valid_panorama(self.vidx, state.panorama().cutoff(state, timestamp))
+        // Take the panorama of all units at or before the given timestamp, because it's invalid to
+        // cite units newer than that. This is only relevant if we added units to the state whose
+        // timestamp is newer than the one of the unit we are creating, but it can happen due to
+        // delayed timer events.
+        let past_panorama = state.panorama().cutoff(state, timestamp);
+        state.valid_panorama(self.vidx, past_panorama)
     }
 }
 

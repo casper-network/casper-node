@@ -876,14 +876,14 @@ impl<C: Context> State<C> {
         creator: ValidatorIndex,
         vhash: &C::Hash,
     ) -> Panorama<C> {
-        self.to_valid_panorama(creator, self.inclusive_panorama(vhash))
+        self.valid_panorama(creator, self.inclusive_panorama(vhash))
     }
 
     /// Creates a panorama that is valid for use in `creator`'s next unit, and as close as possible
     /// to the given one. It is only modified if necessary for validity:
     /// * Cite `creator`'s previous unit, i.e. don't equivocate.
     /// * Satisfy the LNC, i.e. don't add new naively cited forks.
-    pub(crate) fn to_valid_panorama(
+    pub(crate) fn valid_panorama(
         &self,
         creator: ValidatorIndex,
         mut pan: Panorama<C>,
