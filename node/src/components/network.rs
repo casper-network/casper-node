@@ -255,31 +255,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         Effects::new()
     }
 
-    fn handle_connection_closed(
-        &mut self,
-        peer_id: NodeId,
-        endpoint: ConnectedPoint,
-        num_established: u32,
-        cause: Option<String>,
-    ) -> Effects<Event<P>> {
-        if num_established == 0 {
-            let _ = self.peers.remove(&peer_id);
-        }
-        debug!(%peer_id, ?endpoint, %num_established, ?cause, "{}: connection closed", self.our_id);
-        Effects::new()
-    }
-
-    fn handle_unreachable_address(
-        &mut self,
-        peer_id: NodeId,
-        address: Multiaddr,
-        error: PendingConnectionError<io::Error>,
-        attempts_remaining: u32,
-    ) -> Effects<Event<P>> {
-        debug!(%peer_id, %address, %error, %attempts_remaining, "{}: failed to connect", self.our_id);
-        Effects::new()
-    }
-
     fn handle_unknown_peer_unreachable_address(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -311,51 +286,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 );
             }
         }
-        Effects::new()
-    }
-
-    fn handle_new_listen_address(&mut self, address: Multiaddr) -> Effects<Event<P>> {
-        self.listening_addresses.push(address);
-        info!(
-            "{}: listening on {}",
-            self.our_id,
-            DisplayIter::new(self.listening_addresses.iter())
-        );
-        Effects::new()
-    }
-
-    fn handle_expired_listen_address(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        address: Multiaddr,
-    ) -> Effects<Event<P>> {
-        self.listening_addresses.retain(|addr| *addr != address);
-        if self.listening_addresses.is_empty() {
-            return fatal!(effect_builder, "no remaining listening addresses");
-        }
-        debug!(%address, "{}: listening address expired", self.our_id);
-        Effects::new()
-    }
-
-    fn handle_listener_closed(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        _addresses: Vec<Multiaddr>,
-        reason: Result<(), io::Error>,
-    ) -> Effects<Event<P>> {
-        // If the listener closed without an error, we're already shutting down the server.
-        // Otherwise, we need to kill the node as it cannot function without a listener.
-        match reason {
-            Err(error) => fatal!(effect_builder, "listener closed: {}", error),
-            Ok(()) => {
-                debug!("{}: listener closed", self.our_id);
-                Effects::new()
-            }
-        }
-    }
-
-    fn handle_listener_error(&self, error: io::Error) -> Effects<Event<P>> {
-        debug!(%error, "{}: non-fatal listener error", self.our_id);
         Effects::new()
     }
 
@@ -536,24 +466,57 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 endpoint,
                 num_established,
                 cause,
-            } => self.handle_connection_closed(peer_id, endpoint, num_established, cause),
+            } => {
+                if num_established == 0 {
+                    let _ = self.peers.remove(&peer_id);
+                }
+                debug!(%peer_id, ?endpoint, %num_established, ?cause, "{}: connection closed", self.our_id);
+                Effects::new()
+            }
             Event::UnreachableAddress {
                 peer_id,
                 address,
                 error,
                 attempts_remaining,
-            } => self.handle_unreachable_address(peer_id, address, error, attempts_remaining),
+            } => {
+                debug!(%peer_id, %address, %error, %attempts_remaining, "{}: failed to connect", self.our_id);
+                Effects::new()
+            }
             Event::UnknownPeerUnreachableAddress { address, error } => {
                 self.handle_unknown_peer_unreachable_address(effect_builder, address, error)
             }
-            Event::NewListenAddress(address) => self.handle_new_listen_address(address),
+            Event::NewListenAddress(address) => {
+                self.listening_addresses.push(address);
+                info!(
+                    "{}: listening on {}",
+                    self.our_id,
+                    DisplayIter::new(self.listening_addresses.iter())
+                );
+                Effects::new()
+            }
             Event::ExpiredListenAddress(address) => {
-                self.handle_expired_listen_address(effect_builder, address)
+                self.listening_addresses.retain(|addr| *addr != address);
+                if self.listening_addresses.is_empty() {
+                    return fatal!(effect_builder, "no remaining listening addresses");
+                }
+                debug!(%address, "{}: listening address expired", self.our_id);
+                Effects::new()
             }
-            Event::ListenerClosed { addresses, reason } => {
-                self.handle_listener_closed(effect_builder, addresses, reason)
+            Event::ListenerClosed { reason, .. } => {
+                // If the listener closed without an error, we're already shutting down the server.
+                // Otherwise, we need to kill the node as it cannot function without a listener.
+                match reason {
+                    Err(error) => fatal!(effect_builder, "listener closed: {}", error),
+                    Ok(()) => {
+                        debug!("{}: listener closed", self.our_id);
+                        Effects::new()
+                    }
+                }
             }
-            Event::ListenerError { error } => self.handle_listener_error(error),
+            Event::ListenerError { error } => {
+                debug!(%error, "{}: non-fatal listener error", self.our_id);
+                Effects::new()
+            }
 
             Event::IncomingMessage { peer_id, msg: _ } => {
                 trace!(%peer_id, "{}: incoming message", self.our_id);
