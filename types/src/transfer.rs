@@ -10,7 +10,7 @@ use core::{
 
 use datasize::DataSize;
 #[cfg(feature = "std")]
-use schemars::JsonSchema;
+use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -27,12 +27,7 @@ const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
 
 /// A newtype wrapping a [`[u8; DEPLOY_HASH_LENGTH]`] which is the raw bytes of the deploy hash.
 #[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Debug)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
-#[cfg_attr(
-    feature = "std",
-    schemars(with = "String", description = "Hex-encoded deploy hash.")
-)]
-pub struct DeployHash(#[cfg_attr(feature = "std", schemars(skip))] [u8; DEPLOY_HASH_LENGTH]);
+pub struct DeployHash([u8; DEPLOY_HASH_LENGTH]);
 
 impl DeployHash {
     /// Constructs a new `DeployHash` instance from the raw bytes of a deploy hash.
@@ -48,6 +43,20 @@ impl DeployHash {
     /// Returns the raw bytes of the deploy hash as a `slice`.
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
+    }
+}
+
+#[cfg(feature = "std")]
+impl JsonSchema for DeployHash {
+    fn schema_name() -> String {
+        String::from("DeployHash")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Hex-encoded deploy hash.".to_string());
+        schema_object.into()
     }
 }
 
@@ -220,12 +229,7 @@ impl Display for FromStrError {
 /// A newtype wrapping a [`[u8; TRANSFER_ADDR_LENGTH]`] which is the raw bytes of the transfer
 /// address.
 #[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
-#[cfg_attr(feature = "std", derive(JsonSchema))]
-#[cfg_attr(
-    feature = "std",
-    schemars(with = "String", description = "Hex-encoded transfer address.")
-)]
-pub struct TransferAddr(#[cfg_attr(feature = "std", schemars(skip))] [u8; TRANSFER_ADDR_LENGTH]);
+pub struct TransferAddr([u8; TRANSFER_ADDR_LENGTH]);
 
 impl TransferAddr {
     /// Constructs a new `TransferAddr` instance from the raw bytes.
@@ -259,6 +263,20 @@ impl TransferAddr {
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = <[u8; TRANSFER_ADDR_LENGTH]>::try_from(base16::decode(remainder)?.as_ref())?;
         Ok(TransferAddr(bytes))
+    }
+}
+
+#[cfg(feature="std")]
+impl JsonSchema for TransferAddr {
+    fn schema_name() -> String {
+        String::from("TransferAddr")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Hex-encoded transfer address.".to_string());
+        schema_object.into()
     }
 }
 
