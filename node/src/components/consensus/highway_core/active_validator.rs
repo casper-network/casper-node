@@ -13,7 +13,7 @@ use super::{
 use crate::{
     components::consensus::{
         consensus_protocol::BlockContext,
-        highway_core::highway::SignedWireUnit,
+        highway_core::{highway::SignedWireUnit, state::Fault},
         traits::{Context, ValidatorSecret},
     },
     types::{TimeDiff, Timestamp},
@@ -30,10 +30,10 @@ pub(crate) enum Effect<C: Context> {
     /// `propose` needs to be called with a value for a new block with the specified block context
     /// and parent value.
     RequestNewBlock(BlockContext),
-    /// This validator produced an equivocation.
+    /// This validator is faulty.
     ///
     /// When this is returned, the validator automatically deactivates.
-    WeEquivocated(Evidence<C>),
+    WeAreFaulty(Fault<C>),
 }
 
 /// A validator that actively participates in consensus by creating new vertices.
@@ -140,8 +140,8 @@ impl<C: Context> ActiveValidator<C> {
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
-        if let Some(evidence) = state.opt_evidence(self.vidx) {
-            return vec![Effect::WeEquivocated(evidence.clone())];
+        if let Some(fault) = state.opt_fault(self.vidx) {
+            return vec![Effect::WeAreFaulty(fault.clone())];
         }
         let mut effects = vec![];
         if self.should_send_confirmation(vhash, now, state) {
