@@ -593,7 +593,7 @@ impl<C: Context> State<C> {
                 });
             }
         }
-        match self.validate_lnc(wunit) {
+        match self.validate_lnc(creator, panorama, &wunit.endorsed) {
             None => Ok(()),
             Some(vidx) => Err(UnitError::LncNaiveCitation(vidx)),
         }
@@ -721,36 +721,43 @@ impl<C: Context> State<C> {
         result
     }
 
-    /// Validates whether `wunit` violates the Limited Naïveté Criterion (LNC).
+    /// Validates whether a unit with the given panorama and `endorsed` set satsifies the
+    /// Limited Naïveté Criterion (LNC).
     /// Returns index of the first equivocator that was cited naively in violation of the LNC, or
     /// `None` if the LNC is satisfied.
-    fn validate_lnc(&self, wunit: &WireUnit<C>) -> Option<ValidatorIndex> {
-        let violates_lnc = |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(wunit, *eq_idx);
-        wunit.panorama.iter_faulty().find(violates_lnc)
-    }
-
-    // Stub, replace with `_satisfies_lnc_for`
-    fn satisfies_lnc_for(&self, _wunit: &WireUnit<C>, _eq_idx: ValidatorIndex) -> bool {
-        true
+    fn validate_lnc(
+        &self,
+        creator: ValidatorIndex,
+        panorama: &Panorama<C>,
+        endorsed: &BTreeSet<C::Hash>,
+    ) -> Option<ValidatorIndex> {
+        let violates_lnc =
+            |eq_idx: &ValidatorIndex| !self.satisfies_lnc_for(creator, panorama, endorsed, *eq_idx);
+        panorama.iter_faulty().find(violates_lnc)
     }
 
     /// Returns `true` if there is at most one fork by the validator `eq_idx` that is cited naively
-    /// by `wunit` or earlier units by the same creator.
-    fn _satisfies_lnc_for(&self, wunit: &WireUnit<C>, eq_idx: ValidatorIndex) -> bool {
-        // Find all forks by eq_idx that are cited naively by wunit itself.
+    /// by a unit with the given panorama and `endorsed` set, or earlier units by the same creator.
+    fn satisfies_lnc_for(
+        &self,
+        creator: ValidatorIndex,
+        panorama: &Panorama<C>,
+        endorsed: &BTreeSet<C::Hash>,
+        eq_idx: ValidatorIndex,
+    ) -> bool {
+        // Find all forks by eq_idx that are cited naively by the panorama itself.
         // * If it's more than one, return false: the LNC is violated.
         // * If it's none, return true: If the LNC were violated, it would be because of two naive
-        //   citations by wunit.creator's earlier units. So the latest of those earlier units would
+        //   citations by creator's earlier units. So the latest of those earlier units would
         //   already be violating the LNC itself, and thus would not have been added to the state.
-        // * Otherwise store the unique naively cited fork in naive_by_wunit.
-        let mut opt_naive_by_wunit = None;
+        // * Otherwise store the unique naively cited fork in naive_fork.
+        let mut opt_naive_fork = None;
         {
-            // Returns true if any endorsed (according to wunit) unit cites the given unit.
-            let seen_by_endorsed =
-                |hash| wunit.endorsed.iter().any(|e_hash| self._sees(e_hash, hash));
+            // Returns true if any endorsed unit cites the given unit.
+            let seen_by_endorsed = |hash| endorsed.iter().any(|e_hash| self.sees(e_hash, hash));
 
-            // Iterate over all units cited by wunit.
-            let mut to_visit: Vec<_> = wunit.panorama.iter_correct_hashes().collect();
+            // Iterate over all units cited by the panorama.
+            let mut to_visit: Vec<_> = panorama.iter_correct_hashes().collect();
             // This set is a filter so that units don't get added to to_visit twice.
             let mut added_to_to_visit: HashSet<_> = to_visit.iter().cloned().collect();
             while let Some(hash) = to_visit.pop() {
@@ -764,15 +771,15 @@ impl<C: Context> State<C> {
                         // No need to traverse further downward.
                         if !seen_by_endorsed(eq_hash) {
                             // The fork is cited naively!
-                            match opt_naive_by_wunit {
+                            match opt_naive_fork {
                                 // It's the first naively cited fork we found.
-                                None => opt_naive_by_wunit = Some(eq_hash),
+                                None => opt_naive_fork = Some(eq_hash),
                                 Some(other_hash) => {
                                     // If eq_hash is later than other_hash, it is the tip of the
                                     // same fork. If it is earlier, then other_hash is the tip.
-                                    if self._sees_correct(eq_hash, other_hash) {
-                                        opt_naive_by_wunit = Some(eq_hash);
-                                    } else if !self._sees_correct(other_hash, eq_hash) {
+                                    if self.sees_correct(eq_hash, other_hash) {
+                                        opt_naive_fork = Some(eq_hash);
+                                    } else if !self.sees_correct(other_hash, eq_hash) {
                                         return false; // We found two incompatible forks!
                                     }
                                 }
@@ -791,15 +798,15 @@ impl<C: Context> State<C> {
                 }
             }
         }
-        let naive_by_wunit = match opt_naive_by_wunit {
-            None => return true, // No forks are cited naively by wunit.
-            Some(naive_by_wunit) => naive_by_wunit,
+        let naive_fork = match opt_naive_fork {
+            None => return true, // No forks are cited naively.
+            Some(naive_fork) => naive_fork,
         };
 
-        // Iterate over all earlier units by wunit.creator, and find all forks by eq_idx they
-        // naively cite. If any of those forks are incompatible with naive_by_wunit, the LNC is
+        // Iterate over all earlier units by creator, and find all forks by eq_idx they
+        // naively cite. If any of those forks are incompatible with naive_fork, the LNC is
         // violated.
-        let mut opt_pred_hash = wunit.panorama[wunit.creator].correct();
+        let mut opt_pred_hash = panorama[creator].correct();
         while let Some(pred_hash) = opt_pred_hash {
             let pred_unit = self.unit(pred_hash);
             // Returns true if any endorsed (according to pred_unit) unit cites the given unit.
@@ -807,7 +814,7 @@ impl<C: Context> State<C> {
                 pred_unit
                     .endorsed
                     .iter()
-                    .any(|e_hash| self._sees(e_hash, hash))
+                    .any(|e_hash| self.sees(e_hash, hash))
             };
             // Iterate over all units seen by pred_unit.
             let mut to_visit = vec![pred_hash];
@@ -820,9 +827,7 @@ impl<C: Context> State<C> {
                 let unit = self.unit(hash);
                 match &unit.panorama[eq_idx] {
                     Observation::Correct(eq_hash) => {
-                        if !seen_by_endorsed(eq_hash)
-                            && !self._is_compatible(eq_hash, naive_by_wunit)
-                        {
+                        if !seen_by_endorsed(eq_hash) && !self.is_compatible(eq_hash, &naive_fork) {
                             return false;
                         }
                     }
@@ -842,24 +847,24 @@ impl<C: Context> State<C> {
                 // haven't found conflicting naively cited forks yet, there are none.
                 return true;
             }
-            opt_pred_hash = pred_unit.panorama[wunit.creator].correct();
+            opt_pred_hash = pred_unit.panorama[creator].correct();
         }
         true // No earlier messages, so no conflicting naively cited forks.
     }
 
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`),
     /// and sees `hash1`'s creator as correct.
-    fn _sees_correct(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+    pub(crate) fn sees_correct(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
         hash0 == hash1 || self.unit(hash0).panorama.sees_correct(self, hash1)
     }
 
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`).
-    fn _sees(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+    pub(crate) fn sees(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
         hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
     }
 
     // Returns whether the units with `hash0` and `hash1` see each other or are equal.
-    fn _is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+    fn is_compatible(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
         hash0 == hash1
             || self.unit(hash0).panorama.sees(self, hash1)
             || self.unit(hash1).panorama.sees(self, hash0)
@@ -868,24 +873,55 @@ impl<C: Context> State<C> {
     /// Returns the panorama of the confirmation for the leader unit `vhash`.
     pub(crate) fn confirmation_panorama(
         &self,
-        own_idx: ValidatorIndex,
+        creator: ValidatorIndex,
         vhash: &C::Hash,
     ) -> Panorama<C> {
-        let unit = self.unit(vhash);
-        let mut panorama;
-        // TODO(HWY-167): Confirmation panorama.
-        if let Some(prev_hash) = self.panorama().get(own_idx).correct().cloned() {
-            let own_unit = self.unit(&prev_hash);
-            panorama = unit.panorama.merge(self, &own_unit.panorama);
-            panorama[own_idx] = Observation::Correct(prev_hash);
-        } else {
-            panorama = unit.panorama.clone();
+        self.to_valid_panorama(creator, self.inclusive_panorama(vhash))
+    }
+
+    /// Creates a panorama that is valid for use in `creator`'s next unit, and as close as possible
+    /// to the given one. It is only modified if necessary for validity:
+    /// * Cite `creator`'s previous unit, i.e. don't equivocate.
+    /// * Satisfy the LNC, i.e. don't add new naively cited forks.
+    pub(crate) fn to_valid_panorama(
+        &self,
+        creator: ValidatorIndex,
+        mut pan: Panorama<C>,
+    ) -> Panorama<C> {
+        // Make sure the panorama sees the creator's own previous unit.
+        let opt_prev_uhash = self.panorama()[creator].correct();
+        if let Some(prev_uhash) = opt_prev_uhash {
+            if pan[creator].correct() != Some(prev_uhash) {
+                pan = pan.merge(self, &self.inclusive_panorama(prev_uhash));
+            }
         }
-        panorama[unit.creator] = Observation::Correct(*vhash);
+        let endorsed = self.seen_endorsed(&pan);
+        if self.validate_lnc(creator, &pan, &endorsed).is_none() {
+            return pan;
+        }
+        // This violates the LNC. Start from the creator's previous unit, mark all faulty
+        // validators as faulty, and add only endorsed units from correct validators.
+        pan = opt_prev_uhash.map_or_else(
+            || Panorama::new(self.validator_count()),
+            |prev_uhash| self.inclusive_panorama(prev_uhash),
+        );
         for faulty_v in self.faulty_validators() {
-            panorama[faulty_v] = Observation::Faulty;
+            pan[faulty_v] = Observation::Faulty;
         }
-        panorama
+        for endorsed_hash in &endorsed {
+            if !pan.sees_correct(self, endorsed_hash) {
+                pan = pan.merge(self, &self.inclusive_panorama(endorsed_hash));
+            }
+        }
+        pan
+    }
+
+    /// Returns panorama of a unit where latest entry of the creator is that unit's hash.
+    pub(crate) fn inclusive_panorama(&self, uhash: &C::Hash) -> Panorama<C> {
+        let unit = self.unit(&uhash);
+        let mut pan = unit.panorama.clone();
+        pan[unit.creator] = Observation::Correct(*uhash);
+        pan
     }
 }
 
