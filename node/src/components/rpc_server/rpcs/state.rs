@@ -83,6 +83,7 @@ pub struct GetItemParams {
     /// `casper_types::Key` as formatted string.
     pub key: String,
     /// The path components starting from the key as base.
+    #[serde(default)]
     pub path: Vec<String>,
 }
 

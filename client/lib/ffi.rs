@@ -78,7 +78,7 @@ impl AsFFIError for Error {
             Error::FailedSending(_) => casper_error_t::CASPER_FAILED_SENDING,
             Error::IoError { .. } => casper_error_t::CASPER_IO_ERROR,
             Error::ToBytesError(_) => casper_error_t::CASPER_TO_BYTES_ERROR,
-            Error::CryptoError(_) => casper_error_t::CASPER_CRYPTO_ERROR,
+            Error::CryptoError { .. } => casper_error_t::CASPER_CRYPTO_ERROR,
             Error::InvalidCLValue(_) => casper_error_t::CASPER_INVALID_CL_VALUE,
             Error::InvalidArgument(_, _) => casper_error_t::CASPER_INVALID_ARGUMENT,
             Error::InvalidResponse(_) => casper_error_t::CASPER_INVALID_RESPONSE,

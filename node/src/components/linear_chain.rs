@@ -7,14 +7,17 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use futures::FutureExt;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
 use casper_types::ExecutionResult;
 
 use super::Component;
 use crate::{
-    crypto::asymmetric_key::Signature,
+    crypto::{
+        self,
+        asymmetric_key::{PublicKey, Signature},
+    },
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{ConsensusRequest, LinearChainRequest, NetworkRequest, StorageRequest},
@@ -24,6 +27,63 @@ use crate::{
     types::{Block, BlockByHeight, BlockHash, DeployHash},
     NodeRng,
 };
+
+/// Finality signature that can be gossiped between nodes or sent to clients.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FinalitySignature {
+    block_hash: BlockHash,
+    signature: Signature,
+    public_key: PublicKey,
+}
+
+impl FinalitySignature {
+    pub fn new(block_hash: BlockHash, signature: Signature, public_key: PublicKey) -> Self {
+        FinalitySignature {
+            block_hash,
+            signature,
+            public_key,
+        }
+    }
+
+    pub fn block_hash(&self) -> &BlockHash {
+        &self.block_hash
+    }
+
+    pub fn signature(&self) -> &Signature {
+        &self.signature
+    }
+
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
+
+    /// Verifies whether the signature is correct.
+    pub fn verify(&self) -> crypto::asymmetric_key::Result<()> {
+        crypto::asymmetric_key::verify(self.block_hash.inner(), &self.signature, &self.public_key)
+    }
+}
+
+impl Display for FinalitySignature {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "finality signature for block hash {}, from {}",
+            &self.block_hash, &self.public_key
+        )
+    }
+}
+
+impl<I> From<FinalitySignature> for Event<I> {
+    fn from(fs: FinalitySignature) -> Self {
+        Event::NewFinalitySignature(Box::new(fs))
+    }
+}
+
+impl<I> From<Box<FinalitySignature>> for Event<I> {
+    fn from(fs: Box<FinalitySignature>) -> Self {
+        Event::NewFinalitySignature(fs)
+    }
+}
 
 #[derive(Debug, From)]
 pub enum Event<I> {
@@ -44,7 +104,7 @@ pub enum Event<I> {
     /// A continuation for `BlockAtHeightLocal` scenario.
     GetBlockByHeightResultLocal(u64, Option<Box<Block>>, Responder<Option<Block>>),
     /// New finality signature.
-    NewFinalitySignature(BlockHash, Signature),
+    NewFinalitySignature(Box<FinalitySignature>),
     /// The result of putting a block to storage.
     PutBlockResult {
         /// The block.
@@ -68,10 +128,11 @@ impl<I: Display> Display for Event<I> {
                 peer,
                 maybe_block.is_some()
             ),
-            Event::NewFinalitySignature(block_hash, _) => write!(
+            Event::NewFinalitySignature(fs) => write!(
                 f,
-                "linear-chain new finality signature for block: {}",
-                block_hash
+                "linear-chain new finality signature for block: {}, from: {}",
+                fs.block_hash(),
+                fs.public_key(),
             ),
             Event::PutBlockResult { .. } => write!(f, "linear-chain put-block result"),
             Event::GetBlockByHeightResult(height, result, peer) => write!(
@@ -134,23 +195,21 @@ where
         match event {
             Event::Request(LinearChainRequest::BlockRequest(block_hash, sender)) => effect_builder
                 .get_block_from_storage(block_hash)
-                .event(move |maybe_block| Event::GetBlockResult(block_hash, maybe_block.map(Box::new), sender)),
+                .event(move |maybe_block| {
+                    Event::GetBlockResult(block_hash, maybe_block.map(Box::new), sender)
+                }),
             Event::Request(LinearChainRequest::BlockAtHeightLocal(height, responder)) => {
                 effect_builder
                     .get_block_at_height(height)
-                    .event(move |block| Event::GetBlockByHeightResultLocal(height, block.map(Box::new), responder))
+                    .event(move |block| {
+                        Event::GetBlockByHeightResultLocal(height, block.map(Box::new), responder)
+                    })
             }
-            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => {
-                // Treat `linear_chain` as a cache of least-recently asked for blocks.
-                // match self.linear_chain.get(height as usize).cloned() {
-                //     Some(block) => effect_builder
-                //         .immediately()
-                //         .event(move |_| Event::GetBlockByHeightResult(height, Some(block), sender)),
-                //     None =>
-                effect_builder
-                    .get_block_at_height(height)
-                    .event(move |maybe_block| Event::GetBlockByHeightResult(height, maybe_block.map(Box::new), sender))
-            }
+            Event::Request(LinearChainRequest::BlockAtHeight(height, sender)) => effect_builder
+                .get_block_at_height(height)
+                .event(move |maybe_block| {
+                    Event::GetBlockByHeightResult(height, maybe_block.map(Box::new), sender)
+                }),
             Event::GetBlockByHeightResultLocal(_height, block, responder) => {
                 responder.respond(block.map(|boxed| *boxed)).ignore()
             }
@@ -159,7 +218,7 @@ where
                     None => {
                         debug!("failed to get {} for {}", block_height, sender);
                         BlockByHeight::Absent(block_height)
-                    },
+                    }
                     Some(block) => BlockByHeight::new(*block),
                 };
                 match Message::new_get_response(&block_at_height) {
@@ -170,27 +229,32 @@ where
                     }
                 }
             }
-            Event::GetBlockResult(block_hash, maybe_block, sender) => {
-                match maybe_block {
-                    None => {
-                        debug!("failed to get {} for {}", block_hash, sender);
-                        Effects::new()
-                    },
-                    Some(block) => match Message::new_get_response(&*block) {
-                        Ok(message) => effect_builder.send_message(sender, message).ignore(),
-                        Err(error) => {
-                            error!("failed to create get-response {}", error);
-                            Effects::new()
-                        }
-                    }
+            Event::GetBlockResult(block_hash, maybe_block, sender) => match maybe_block {
+                None => {
+                    debug!("failed to get {} for {}", block_hash, sender);
+                    Effects::new()
                 }
-            }
-            Event::LinearChainBlock { block, execution_results } => {
-                effect_builder
-                .put_block_to_storage(block.clone())
-                .event(move |_| Event::PutBlockResult{ block, execution_results })
+                Some(block) => match Message::new_get_response(&*block) {
+                    Ok(message) => effect_builder.send_message(sender, message).ignore(),
+                    Err(error) => {
+                        error!("failed to create get-response {}", error);
+                        Effects::new()
+                    }
+                },
             },
-            Event::PutBlockResult { block, execution_results } => {
+            Event::LinearChainBlock {
+                block,
+                execution_results,
+            } => effect_builder
+                .put_block_to_storage(block.clone())
+                .event(move |_| Event::PutBlockResult {
+                    block,
+                    execution_results,
+                }),
+            Event::PutBlockResult {
+                block,
+                execution_results,
+            } => {
                 // TODO: Remove once we can return all linear chain blocks from persistent storage.
                 self.linear_chain.push(*block.clone());
 
@@ -199,28 +263,56 @@ where
                 let era_id = block_header.era_id();
                 let height = block_header.height();
                 info!(?block_hash, ?era_id, ?height, "Linear chain block stored.");
-                let mut effects = effect_builder.put_execution_results_to_storage(block_hash, execution_results).ignore();
+                let mut effects = effect_builder
+                    .put_execution_results_to_storage(block_hash, execution_results)
+                    .ignore();
                 effects.extend(
-                    effect_builder.handle_linear_chain_block(block_header.clone())
-                    .event(move |signature| Event::NewFinalitySignature(block_hash, signature)));
-                effects.extend(effect_builder.announce_block_added(block_hash, block_header).ignore());
+                    effect_builder
+                        .handle_linear_chain_block(block_header.clone())
+                        .event(move |fs| Event::NewFinalitySignature(Box::new(fs))),
+                );
+                effects.extend(
+                    effect_builder
+                        .announce_block_added(block_hash, block_header)
+                        .ignore(),
+                );
                 effects
-            },
-            Event::NewFinalitySignature(block_hash, signature) => {
-                effect_builder
-                    .get_block_from_storage(block_hash)
-                    .then(move |maybe_block| match maybe_block {
-                        Some(mut block) => {
-                            block.append_proof(signature);
-                            effect_builder.put_block_to_storage(Box::new(block))
-                        }
+            }
+            Event::NewFinalitySignature(fs) => {
+                let FinalitySignature {
+                    block_hash,
+                    public_key,
+                    ..
+                } = *fs;
+                if let Err(err) = fs.verify() {
+                    error!(%block_hash, %public_key, %err, "received invalid finality signature");
+                    return Effects::new();
+                }
+                debug!(%block_hash, %public_key, "received new finality signature");
+                async move {
+                    let maybe_block = effect_builder
+                        .get_block_from_storage(block_hash)
+                        .await;
+                    match maybe_block {
                         None => {
-                            warn!("Received a signature for {} but block was not found in the Linear chain storage", block_hash);
-                            panic!("Unhandled")
+                            let block_hash = fs.block_hash();
+                            let public_key = fs.public_key();
+                            warn!(%block_hash, %public_key, "received a signature for a block that was not found in storage");
                         }
-                    })
-                    .ignore()
-            },
+                        Some(mut block) => {
+                            if !block.proofs().iter().any(|proof| proof == fs.signature()) {
+                                block.append_proof(fs.signature);
+                                let _ = effect_builder
+                                    .put_block_to_storage(Box::new(block))
+                                    .await;
+                                let _ = effect_builder
+                                    .broadcast_message(Message::FinalitySignature(fs))
+                                    .await;
+                            }
+                        }
+                    }
+                }.ignore()
+            }
         }
     }
 }

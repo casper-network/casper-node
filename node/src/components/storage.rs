@@ -276,7 +276,7 @@ impl Storage {
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
                 let mut txn = self.env.begin_rw_txn()?;
-                let outcome = txn.put_value(self.block_db, block.hash(), &block, false)?;
+                let outcome = txn.put_value(self.block_db, block.hash(), &block, true)?;
                 txn.commit()?;
 
                 if outcome {
