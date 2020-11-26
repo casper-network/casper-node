@@ -1,5 +1,8 @@
 //! Contains types and constants associated with user accounts.
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
@@ -13,6 +16,8 @@ use blake2::{
 };
 use datasize::DataSize;
 use failure::Fail;
+#[cfg(feature = "std")]
+use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -260,6 +265,20 @@ impl AccountHash {
     }
 }
 
+#[cfg(feature = "std")]
+impl JsonSchema for AccountHash {
+    fn schema_name() -> String {
+        String::from("AccountHash")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Hex-encoded account hash.".to_string());
+        schema_object.into()
+    }
+}
+
 impl Serialize for AccountHash {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
@@ -334,7 +353,7 @@ impl Debug for AccountHash {
 
 impl CLTyped for AccountHash {
     fn cl_type() -> CLType {
-        CLType::ByteArray(32)
+        CLType::ByteArray(ACCOUNT_HASH_LENGTH as u32)
     }
 }
 

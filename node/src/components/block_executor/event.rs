@@ -12,14 +12,12 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
+use casper_types::ExecutionResult;
 
 use crate::{
     crypto::hash::Digest,
     effect::requests::BlockExecutorRequest,
-    types::{
-        json_compatibility::ExecutionResult, BlockHash, Deploy, DeployHash, DeployHeader,
-        FinalizedBlock,
-    },
+    types::{BlockHash, Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
 
 /// Block executor component event.

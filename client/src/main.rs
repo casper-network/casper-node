@@ -2,6 +2,7 @@ mod block;
 mod command;
 mod common;
 mod deploy;
+mod docs;
 mod generate_completion;
 mod get_auction_info;
 mod get_balance;
@@ -14,6 +15,7 @@ use clap::{crate_description, crate_version, App};
 use casper_node::rpcs::{
     account::PutDeploy,
     chain::{GetBlock, GetStateRootHash},
+    docs::ListRpcs,
     info::GetDeploy,
     state::{GetAuctionInfo, GetBalance, GetItem as QueryState},
 };
@@ -43,6 +45,7 @@ enum DisplayOrder {
     GetAuctionInfo,
     Keygen,
     GenerateCompletion,
+    GetRpcs,
 }
 
 fn cli<'a, 'b>() -> App<'a, 'b> {
@@ -67,6 +70,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(GenerateCompletion::build(
             DisplayOrder::GenerateCompletion as usize,
         ))
+        .subcommand(ListRpcs::build(DisplayOrder::GetRpcs as usize))
 }
 
 #[tokio::main]
@@ -87,6 +91,7 @@ async fn main() {
         (GetAuctionInfo::NAME, Some(matches)) => GetAuctionInfo::run(matches),
         (Keygen::NAME, Some(matches)) => Keygen::run(matches),
         (GenerateCompletion::NAME, Some(matches)) => GenerateCompletion::run(matches),
+        (ListRpcs::NAME, Some(matches)) => ListRpcs::run(matches),
         _ => {
             let _ = cli().print_long_help();
             println!();

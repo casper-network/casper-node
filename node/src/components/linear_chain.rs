@@ -10,6 +10,8 @@ use derive_more::From;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
+use casper_types::ExecutionResult;
+
 use super::Component;
 use crate::{
     crypto::{
@@ -22,7 +24,7 @@ use crate::{
         EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{json_compatibility::ExecutionResult, Block, BlockByHeight, BlockHash, DeployHash},
+    types::{Block, BlockByHeight, BlockHash, DeployHash},
     NodeRng,
 };
 
@@ -298,7 +300,7 @@ where
                             warn!(%block_hash, %public_key, "received a signature for a block that was not found in storage");
                         }
                         Some(mut block) => {
-                            if !block.contains_proof(fs.signature()) {
+                            if !block.proofs().iter().any(|proof| proof == fs.signature()) {
                                 block.append_proof(fs.signature);
                                 let _ = effect_builder
                                     .put_block_to_storage(Box::new(block))

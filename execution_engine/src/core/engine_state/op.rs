@@ -43,3 +43,14 @@ impl Default for Op {
         Op::NoOp
     }
 }
+
+impl From<&Op> for casper_types::OpKind {
+    fn from(op: &Op) -> Self {
+        match op {
+            Op::Read => casper_types::OpKind::Read,
+            Op::Write => casper_types::OpKind::Write,
+            Op::Add => casper_types::OpKind::Add,
+            Op::NoOp => casper_types::OpKind::NoOp,
+        }
+    }
+}

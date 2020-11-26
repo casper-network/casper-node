@@ -31,7 +31,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    Key, ProtocolVersion, URef,
+    ExecutionResult, Key, ProtocolVersion, URef,
 };
 
 use super::{Multiple, Responder};
@@ -45,9 +45,8 @@ use crate::{
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, StatusFeed,
-        Timestamp,
+        Block as LinearBlock, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader,
+        DeployMetadata, FinalizedBlock, Item, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,

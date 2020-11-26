@@ -828,6 +828,7 @@ dependencies = [
  "pwasm-utils 0.12.0",
  "rand 0.7.3",
  "rand_chacha 0.2.2",
+ "schemars",
  "serde",
  "serde_json",
  "tempfile",
@@ -900,6 +901,7 @@ dependencies = [
  "rand_pcg 0.2.1",
  "regex",
  "reqwest",
+ "schemars",
  "sd-notify",
  "semver 0.11.0",
  "serde",
@@ -952,12 +954,16 @@ dependencies = [
  "criterion",
  "datasize",
  "failure",
+ "getrandom 0.2.0",
  "hex_fmt",
+ "lazy_static",
  "num-derive",
  "num-integer",
  "num-rational 0.3.1",
  "num-traits",
  "proptest",
+ "rand 0.7.3",
+ "schemars",
  "serde",
  "serde_json",
  "serde_test",
@@ -1698,6 +1704,12 @@ name = "dtoa"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "134951f4028bdadb9b84baf4232681efbf277da25144b9b0ad65df75946c422b"
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d55796afa1b20c2945ca8eabfc421839f2b766619209f1ede813cf2484f31804"
 
 [[package]]
 name = "ecdsa"
@@ -2740,6 +2752,7 @@ checksum = "55e2e4c765aa53a0424761bf9f41aa7a6ac1efa87238f59560640e27fca028f2"
 dependencies = [
  "autocfg 1.0.1",
  "hashbrown",
+ "serde",
 ]
 
 [[package]]
@@ -5125,6 +5138,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "schemars"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "763f667253711994847f7e73befe859d6fff7bea2b7a7f01669d2c5b60765c37"
+dependencies = [
+ "dyn-clone",
+ "indexmap",
+ "schemars_derive",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1d457e2e37415f32b7628ddc5a7fea06ef63bd029ed180d65166e87ca25ce21"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn",
+]
+
+[[package]]
 name = "scoped-tls"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5254,6 +5292,17 @@ name = "serde_derive"
 version = "1.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cbd1ae72adb44aab48f325a02444a5fc079349a8d804c1fc922aed3f7454c74e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "serde_derive_internals"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dbab34ca63057a1f15280bdf3c39f2b1eb1b54c17e98360e511637aef7418c6"
 dependencies = [
  "proc-macro2",
  "quote",

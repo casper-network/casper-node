@@ -14,8 +14,8 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
-    AccessRights, BlockTime, CLValue, Contract, EntryPointType, EntryPoints, Key, Phase,
-    ProtocolVersion, RuntimeArgs, URef, KEY_HASH_LENGTH, U512,
+    AccessRights, BlockTime, CLValue, Contract, DeployHash, EntryPointType, EntryPoints, Key,
+    Phase, ProtocolVersion, RuntimeArgs, URef, KEY_HASH_LENGTH, U512,
 };
 
 use super::{Address, Error, RuntimeContext};
@@ -141,7 +141,7 @@ fn mock_runtime_context<'a>(
         &account,
         base_key,
         BlockTime::new(0),
-        [1u8; 32],
+        DeployHash::new([1u8; 32]),
         Gas::new(U512::from(GAS_LIMIT)),
         Gas::default(),
         Rc::new(RefCell::new(hash_address_generator)),
@@ -375,7 +375,7 @@ fn contract_key_addable_valid() {
         &account,
         contract_key,
         BlockTime::new(0),
-        DEPLOY_HASH,
+        DeployHash::new(DEPLOY_HASH),
         Gas::new(U512::from(GAS_LIMIT)),
         Gas::default(),
         Rc::new(RefCell::new(hash_address_generator)),
@@ -448,7 +448,7 @@ fn contract_key_addable_invalid() {
         &account,
         other_contract_key,
         BlockTime::new(0),
-        DEPLOY_HASH,
+        DeployHash::new(DEPLOY_HASH),
         Gas::default(),
         Gas::default(),
         Rc::new(RefCell::new(hash_address_generator)),

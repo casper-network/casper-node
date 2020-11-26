@@ -12,10 +12,11 @@ use casper_execution_engine::{
 };
 use casper_types::{
     contracts::CONTRACT_INITIAL_VERSION, mint::ARG_ROUND_SEIGNIORAGE_RATE, runtime_args,
-    ContractHash, ContractPackageHash, ContractVersionKey, ProtocolVersion, RuntimeArgs, U512,
+    ContractHash, ContractPackageHash, ContractVersionKey, DeployHash, ProtocolVersion,
+    RuntimeArgs, U512,
 };
 
-const DEPLOY_HASH_1: [u8; 32] = [1u8; 32];
+const DEPLOY_HASH_1: DeployHash = DeployHash::new([1u8; 32]);
 
 #[ignore]
 #[test]

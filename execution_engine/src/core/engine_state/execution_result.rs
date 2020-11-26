@@ -281,6 +281,33 @@ impl ExecutionResult {
     }
 }
 
+impl From<&ExecutionResult> for casper_types::ExecutionResult {
+    fn from(ee_execution_result: &ExecutionResult) -> Self {
+        match ee_execution_result {
+            ExecutionResult::Success {
+                effect,
+                transfers,
+                cost,
+            } => casper_types::ExecutionResult::Success {
+                effect: effect.into(),
+                transfers: transfers.clone(),
+                cost: cost.value(),
+            },
+            ExecutionResult::Failure {
+                error,
+                effect,
+                transfers,
+                cost,
+            } => casper_types::ExecutionResult::Failure {
+                effect: effect.into(),
+                transfers: transfers.clone(),
+                cost: cost.value(),
+                error_message: error.to_string(),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ExecutionResultBuilderError {
     MissingPaymentExecutionResult,
