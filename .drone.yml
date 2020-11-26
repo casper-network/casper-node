@@ -99,8 +99,10 @@ steps:
   image: casperlabs/node-build-u1804
   commands:
   - make setup-rs
+  - conan install -if target/build client/examples/ffi --build=missing
   - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
   - cmake --build target/build
+  - ./target/build/tests
   - ./target/build/get-auction-info
   - ./target/build/put-deploy
 

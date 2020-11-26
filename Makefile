@@ -2,6 +2,7 @@
 CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
+CONAN  = $(or $(shell which conan),  /usr/bin/conan)
 
 RUST_TOOLCHAIN := $(shell cat rust-toolchain)
 

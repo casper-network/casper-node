@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.10)
 project(CasperClientWrapper C)
 
+# Conan is used to gather any C/C++ dependencies needed.
+# For the time being, this is only used for unit testing.
+# See ./conanfile.txt
+include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+conan_basic_setup()
+
 find_program(CARGO cargo HINTS $ENV{HOME}/.cargo/bin)
 if(NOT CARGO)
     message(FATAL_ERROR "cargo not found")
@@ -42,3 +48,7 @@ add_dependencies(put-deploy ClientSharedLibrary)
 add_executable(get-auction-info src/get_auction_info.c)
 target_link_libraries(get-auction-info PRIVATE ${CLIENT_BUILT_LIB_TARGET})
 add_dependencies(get-auction-info ClientSharedLibrary)
+
+add_executable(ffi_tests tests/ffi_tests.c)
+target_link_libraries(ffi_tests PRIVATE ${CLIENT_BUILT_LIB_TARGET} ${CONAN_LIBS})
+add_dependencies(ffi_tests ClientSharedLibrary)

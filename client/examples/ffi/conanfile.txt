@@ -1,0 +1,5 @@
+[requires]
+cunit/2.1.3
+
+[generators]
+cmake
