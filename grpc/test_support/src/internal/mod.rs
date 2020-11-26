@@ -53,8 +53,8 @@ pub const MOCKED_ACCOUNT_ADDRESS: AccountHash = AccountHash::new([48u8; 32]);
 
 pub const ARG_AMOUNT: &str = "amount";
 
-// NOTE: Those values could be constants but are kept as lazy statics to avoid changes of `*FOO`
-// into `FOO` back and forth.
+// NOTE: Those values could be constants but are kept as once_cell::sync::Lazy to avoid changes of
+// `*FOO` into `FOO` back and forth.
 pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Blake2bHash> = Lazy::new(|| [42; 32].into());
 pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::Ed25519([199; 32]));
