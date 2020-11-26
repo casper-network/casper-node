@@ -525,6 +525,9 @@ impl ToBytes for Transform {
     fn serialized_length(&self) -> usize {
         match self {
             Transform::WriteCLValue(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
+            Transform::WriteAccount(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
+            Transform::WriteDeployInfo(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
+            Transform::WriteTransfer(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::AddInt32(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::AddUInt64(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::AddUInt128(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
