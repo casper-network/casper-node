@@ -103,9 +103,10 @@ use crate::{
         consensus::BlockContext,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
+        linear_chain::FinalitySignature,
         small_network::GossipedAddress,
     },
-    crypto::{asymmetric_key::Signature, hash::Digest},
+    crypto::hash::Digest,
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
@@ -1138,7 +1139,10 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Request consensus to sign a block from the linear chain and possibly start a new era.
-    pub(crate) async fn handle_linear_chain_block(self, block_header: BlockHeader) -> Signature
+    pub(crate) async fn handle_linear_chain_block(
+        self,
+        block_header: BlockHeader,
+    ) -> FinalitySignature
     where
         REv: From<ConsensusRequest>,
     {

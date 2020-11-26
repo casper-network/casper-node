@@ -30,7 +30,7 @@ use untrusted::Input;
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
-use super::{Error, Result};
+pub use super::{Error, Result};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{

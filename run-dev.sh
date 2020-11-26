@@ -67,11 +67,11 @@ run_node() {
         --property=TimeoutSec=600 \
         --property=WorkingDirectory=${BASEDIR} \
         $DEPS \
-        --setenv=RUST_LOG=trace \
+        --setenv=RUST_LOG=casper=trace \
         --property=StandardOutput=file:${LOGFILE} \
         --property=StandardError=file:${LOGFILE}.stderr \
         -- \
-        cargo run -p casper-node \
+        cargo run -p casper-node -- \
         validator \
         resources/local/config.toml \
         --config-ext=network.systemd_support=true \
