@@ -110,8 +110,6 @@ pub enum Event<I> {
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
-    BlockSignatureContinuation(Box<Option<Block>>, Box<FinalitySignature>),
-    GossipFinalitySignature(Box<FinalitySignature>),
 }
 
 impl<I: Display> Display for Event<I> {
@@ -148,17 +146,6 @@ impl<I: Display> Display for Event<I> {
                 height,
                 block.is_some()
             ),
-            Event::GossipFinalitySignature(fs) => write!(
-                f,
-                "linear chain gossip finality signature for block: {}",
-                fs.block_hash()
-            ),
-            Event::BlockSignatureContinuation(_, _) => {
-                write!(
-                    f,
-                    "linear chain get-block for new signature continuation result"
-                )
-            }
         }
     }
 }
@@ -300,33 +287,30 @@ where
                     return Effects::new();
                 }
                 debug!(%block_hash, %public_key, "received new finality signature");
-                effect_builder
-                    .get_block_from_storage(block_hash)
-                    .event(move |maybe_block| {
-                        Event::BlockSignatureContinuation(Box::new(maybe_block), fs)
-                    })
-            }
-            Event::BlockSignatureContinuation(maybe_block, fs) => match *maybe_block {
-                None => {
-                    let block_hash = fs.block_hash();
-                    let public_key = fs.public_key();
-                    warn!(%block_hash, %public_key, "received a signature for a block that was not found in storage");
-                    Effects::new()
-                }
-                Some(mut block) => {
-                    if !block.contains_proof(fs.signature()) {
-                        block.append_proof(fs.signature);
-                        effect_builder
-                            .put_block_to_storage(Box::new(block))
-                            .event(move |_| Event::GossipFinalitySignature(fs))
-                    } else {
-                        Effects::new()
+                async move {
+                    let maybe_block = effect_builder
+                        .get_block_from_storage(block_hash)
+                        .await;
+                    match maybe_block {
+                        None => {
+                            let block_hash = fs.block_hash();
+                            let public_key = fs.public_key();
+                            warn!(%block_hash, %public_key, "received a signature for a block that was not found in storage");
+                        }
+                        Some(mut block) => {
+                            if !block.contains_proof(fs.signature()) {
+                                block.append_proof(fs.signature);
+                                let _ = effect_builder
+                                    .put_block_to_storage(Box::new(block))
+                                    .await;
+                                let _ = effect_builder
+                                    .broadcast_message(Message::FinalitySignature(fs))
+                                    .await;
+                            }
+                        }
                     }
-                }
-            },
-            Event::GossipFinalitySignature(fs) => effect_builder
-                .broadcast_message(Message::FinalitySignature(fs))
-                .ignore(),
+                }.ignore()
+            }
         }
     }
 }
