@@ -234,7 +234,7 @@ where
         self.current_era = era_id;
         let instance_id = instance_id(&self.chainspec, state_root_hash, start_height);
 
-        validator_stakes.sort();
+        validator_stakes.sort_by_cached_key(|(pub_key, _)| *pub_key);
         info!(
             ?validator_stakes,
             %start_time,
