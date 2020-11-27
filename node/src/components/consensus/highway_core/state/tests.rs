@@ -319,7 +319,6 @@ fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
     let mut rng = crate::new_rng();
@@ -339,7 +338,6 @@ fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
     // Equivocation cited by one honest validator in the vote's panorama.
     // Does NOT violate LNC.
@@ -362,7 +360,6 @@ fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
     // Equivocation cited by two honest validators in the vote's panorama – their votes need to
     // be endorsed.
@@ -400,7 +397,6 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
     // Multiple equivocators and indirect equivocations.
     // Votes are seen as endorsed by `state` – does not violate LNC.
@@ -442,7 +438,6 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
     //           a0'<-----+
     // Alice              |
@@ -481,7 +476,6 @@ fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
     // Eric's vote should not require an endorsement as his unit e0 cites equivocator Carol before
     // the fork.
@@ -524,7 +518,6 @@ fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>> {
     // Endorsements should be transitive to descendants.
     // c1 doesn't have to be endorsed, it is enough that c0 is.
@@ -561,7 +554,6 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<TestContext>> {
     // a0 cites a descendant b1 of an eqiuvocation vote (b0 and b0').
     // This is still detected as violation of the LNC.
@@ -596,7 +588,6 @@ fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<Tes
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_endorse_mix_pairs.png
@@ -632,7 +623,6 @@ fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_shared_equiv_unit.png
@@ -678,7 +668,6 @@ fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_four_forks.png
