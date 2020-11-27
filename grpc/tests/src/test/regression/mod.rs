@@ -20,3 +20,4 @@ mod ee_599;
 mod ee_601;
 mod ee_771;
 mod ee_890;
+mod ee_966;
