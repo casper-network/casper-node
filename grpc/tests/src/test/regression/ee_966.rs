@@ -1,5 +1,6 @@
 use assert_matches::assert_matches;
 use lazy_static::lazy_static;
+use parity_wasm::builder;
 
 use casper_engine_test_support::{
     internal::{
@@ -10,7 +11,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{upgrade::ActivationPoint, Error},
+        engine_state::{upgrade::ActivationPoint, Error, ExecuteRequest},
         execution::Error as ExecError,
     },
     shared::{
@@ -23,7 +24,6 @@ use casper_execution_engine::{
 use casper_types::{
     contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, ProtocolVersion, RuntimeArgs,
 };
-use parity_wasm::builder;
 
 const CONTRACT_EE_966_REGRESSION: &str = "ee_966_regression.wasm";
 const MINIMUM_INITIAL_MEMORY: u32 = 16;
@@ -67,31 +67,33 @@ fn make_session_code_with_memory_pages(initial_pages: u32, max_pages: Option<u32
     parity_wasm::serialize(module).expect("should serialize")
 }
 
+fn make_request_with_session_bytes(session_code: Vec<u8>) -> ExecuteRequest {
+    let deploy = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(session_code, RuntimeArgs::new())
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
+
+    ExecuteRequestBuilder::new().push_deploy(deploy).build()
+}
+
 #[ignore]
 #[test]
-fn should_run_ee_966_cant_have_too_small_initial_memory() {
+fn should_run_ee_966_with_zero_min_and_zero_max_memory() {
+    // A contract that has initial memory pages of 0 and maximum memory pages of 0 is valid
     let session_code = make_session_code_with_memory_pages(0, Some(0));
 
-    let exec_request_1 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            // .with_session_code(session_file, session_args)
-            .with_session_bytes(session_code, RuntimeArgs::new())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = make_request_with_session_bytes(session_code);
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit().expect_success();
+    builder.exec(exec_request).commit().expect_success();
 }
 
 #[ignore]
@@ -99,26 +101,13 @@ fn should_run_ee_966_cant_have_too_small_initial_memory() {
 fn should_run_ee_966_cant_have_too_much_initial_memory() {
     let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY + 1, None);
 
-    let exec_request_1 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            // .with_session_code(session_file, session_args)
-            .with_session_bytes(session_code, RuntimeArgs::new())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = make_request_with_session_bytes(session_code);
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request).commit();
 
     let exec_response = &builder
         .get_exec_response(0)
@@ -133,26 +122,13 @@ fn should_run_ee_966_should_request_exactly_maximum() {
     let session_code =
         make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, Some(DEFAULT_WASM_MAX_MEMORY));
 
-    let exec_request_1 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            // .with_session_code(session_file, session_args)
-            .with_session_bytes(session_code, RuntimeArgs::new())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = make_request_with_session_bytes(session_code);
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit().expect_success();
+    builder.exec(exec_request).commit().expect_success();
 }
 
 #[ignore]
@@ -160,26 +136,13 @@ fn should_run_ee_966_should_request_exactly_maximum() {
 fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
     let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, None);
 
-    let exec_request_1 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            // .with_session_code(session_file, session_args)
-            .with_session_bytes(session_code, RuntimeArgs::new())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = make_request_with_session_bytes(session_code);
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit().expect_success();
+    builder.exec(exec_request).commit().expect_success();
 }
 
 #[ignore]
@@ -190,26 +153,13 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
         Some(DEFAULT_WASM_MAX_MEMORY + 1),
     );
 
-    let exec_request_1 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            // .with_session_code(session_file, session_args)
-            .with_session_bytes(session_code, RuntimeArgs::new())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = make_request_with_session_bytes(session_code);
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request).commit();
 
     let exec_response = &builder
         .get_exec_response(0)
@@ -226,26 +176,13 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
         Some(DEFAULT_WASM_MAX_MEMORY + 42),
     );
 
-    let exec_request_1 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            // .with_session_code(session_file, session_args)
-            .with_session_bytes(session_code, RuntimeArgs::new())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = make_request_with_session_bytes(session_code);
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request).commit();
 
     let exec_response = &builder
         .get_exec_response(0)
@@ -260,26 +197,13 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
     let session_code =
         make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, Some(MINIMUM_INITIAL_MEMORY));
 
-    let exec_request_1 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            // .with_session_code(session_file, session_args)
-            .with_session_bytes(session_code, RuntimeArgs::new())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = make_request_with_session_bytes(session_code);
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request).commit();
 
     let exec_response = &builder
         .get_exec_response(0)
@@ -290,8 +214,8 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
 
 #[ignore]
 #[test]
-fn should_run_ee_966_regression_when_growing_mem_past_max() {
-    let exec_request_1 = ExecuteRequestBuilder::standard(
+fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
+    let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_EE_966_REGRESSION,
         RuntimeArgs::default(),
@@ -302,7 +226,7 @@ fn should_run_ee_966_regression_when_growing_mem_past_max() {
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit();
+    builder.exec(exec_request).commit();
 
     let results = &builder
         .get_exec_response(0)
@@ -328,7 +252,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
     builder.exec(exec_request_1).commit();
 
     //
-    // This request should fail - as its exceeding default memory limit
+    // This request should fail - as it's exceeding default memory limit
     //
 
     let results = &builder
@@ -350,7 +274,11 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
-    let exec_request_1 = ExecuteRequestBuilder::standard(
+    //
+    // Now this request is working as the maximum memory limit is doubled.
+    //
+
+    let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_EE_966_REGRESSION,
         RuntimeArgs::default(),
@@ -358,5 +286,5 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(exec_request_1).commit().expect_success();
+    builder.exec(exec_request_2).commit().expect_success();
 }

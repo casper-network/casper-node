@@ -431,7 +431,7 @@ message ChainSpec {
             HostFunction blake2b = 42;
         }
 
-        // Memory stipend. Amount of free memory (in 64kb pages) each contract can use for stack.
+        // Maximum amount of a heap memory (represented in 64kb pages) each contract can use.
         uint32 max_memory = 1;
         // Max stack height (native WebAssembly stack limiter)
         uint32 max_stack_height = 2;

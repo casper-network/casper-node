@@ -4,6 +4,9 @@
 
 extern crate core;
 
+#[cfg(target_arch = "wasm32")]
+use core::arch::wasm32;
+
 const MAX_MEMORY_PAGES: usize = 64;
 const GROW_MARGIN: usize = 2;
 
@@ -24,9 +27,6 @@ fn revert(value: ApiError) -> ! {
         internal_ffi::casper_revert(value as u32);
     }
 }
-
-#[cfg(target_arch = "wasm32")]
-use core::arch::wasm32;
 
 #[cfg(target_arch = "wasm32")]
 const DEFAULT_MEMORY_INDEX: u32 = 0; // currently wasm spec supports only single memory

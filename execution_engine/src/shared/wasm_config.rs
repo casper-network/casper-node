@@ -13,8 +13,7 @@ pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 64 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct WasmConfig {
-    /// Memory stipend. Amount of free memory (in 64kb pages) each contract can
-    /// use for stack.
+    /// Maximum amount of a heap memory (represented in 64kb pages) each contract can use.
     pub max_memory: u32,
     /// Max stack height (native WebAssembly stack limiter)
     pub max_stack_height: u32,
