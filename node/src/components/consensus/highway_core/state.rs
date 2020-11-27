@@ -899,7 +899,8 @@ impl<C: Context> State<C> {
         if self.validate_lnc(creator, &pan, &endorsed).is_none() {
             return pan;
         }
-        // This violates the LNC. Start from the creator's previous unit, mark all faulty
+        // `pan` violates the LNC. 
+        // Start from the creator's previous unit, mark all faulty
         // validators as faulty, and add only endorsed units from correct validators.
         pan = opt_prev_uhash.map_or_else(
             || Panorama::new(self.validator_count()),
