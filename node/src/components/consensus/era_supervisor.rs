@@ -221,7 +221,7 @@ where
         &mut self,
         era_id: EraId,
         timestamp: Timestamp,
-        validator_stakes: Vec<(PublicKey, Motes)>,
+        mut validator_stakes: Vec<(PublicKey, Motes)>,
         newly_slashed: Vec<PublicKey>,
         seed: u64,
         start_time: Timestamp,
@@ -232,12 +232,15 @@ where
             panic!("{} already exists", era_id);
         }
         self.current_era = era_id;
+        let instance_id = instance_id(&self.chainspec, state_root_hash, start_height);
 
+        validator_stakes.sort();
         info!(
             ?validator_stakes,
             %start_time,
             %timestamp,
             %start_height,
+            %instance_id,
             era = era_id.0,
             "starting era",
         );
@@ -271,7 +274,7 @@ where
             .and_then(|last_era_id| self.active_eras.get(&last_era_id));
 
         let mut consensus = (self.new_consensus)(
-            instance_id(&self.chainspec, state_root_hash, start_height),
+            instance_id,
             validator_stakes,
             &slashed,
             &self.chainspec,
