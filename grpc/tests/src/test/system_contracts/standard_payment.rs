@@ -20,7 +20,7 @@ use casper_execution_engine::{
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         transform::Transform,
-        wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
 use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
@@ -41,7 +41,7 @@ lazy_static! {
     };
 
     static ref EXHAUSTIVE_WASM_CONFIG: WasmConfig = WasmConfig::new(
-        DEFAULT_INITIAL_MEMORY,
+        DEFAULT_WASM_MAX_MEMORY,
         DEFAULT_MAX_STACK_HEIGHT,
         OpcodeCosts::default(),
         StorageCosts::new(u32::max_value()),

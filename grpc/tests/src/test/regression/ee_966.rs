@@ -17,7 +17,7 @@ use casper_execution_engine::{
         host_function_costs::HostFunctionCosts,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
-        wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
 use casper_types::{
@@ -31,7 +31,7 @@ const DEFAULT_ACTIVATION_POINT: ActivationPoint = 0;
 
 lazy_static! {
     static ref DOUBLED_WASM_MEMORY_LIMIT: WasmConfig = WasmConfig::new(
-        DEFAULT_INITIAL_MEMORY * 2,
+        DEFAULT_WASM_MAX_MEMORY * 2,
         DEFAULT_MAX_STACK_HEIGHT,
         OpcodeCosts::default(),
         StorageCosts::default(),
@@ -97,7 +97,7 @@ fn should_run_ee_966_cant_have_too_small_initial_memory() {
 #[ignore]
 #[test]
 fn should_run_ee_966_cant_have_too_much_initial_memory() {
-    let session_code = make_session_code_with_memory_pages(DEFAULT_INITIAL_MEMORY + 1, None);
+    let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY + 1, None);
 
     let exec_request_1 = {
         let deploy = DeployItemBuilder::new()
@@ -131,7 +131,7 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
 #[test]
 fn should_run_ee_966_should_request_exactly_maximum() {
     let session_code =
-        make_session_code_with_memory_pages(DEFAULT_INITIAL_MEMORY, Some(DEFAULT_INITIAL_MEMORY));
+        make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, Some(DEFAULT_WASM_MAX_MEMORY));
 
     let exec_request_1 = {
         let deploy = DeployItemBuilder::new()
@@ -158,7 +158,7 @@ fn should_run_ee_966_should_request_exactly_maximum() {
 #[ignore]
 #[test]
 fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
-    let session_code = make_session_code_with_memory_pages(DEFAULT_INITIAL_MEMORY, None);
+    let session_code = make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, None);
 
     let exec_request_1 = {
         let deploy = DeployItemBuilder::new()
@@ -187,7 +187,7 @@ fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
 fn should_run_ee_966_cant_have_too_much_max_memory() {
     let session_code = make_session_code_with_memory_pages(
         MINIMUM_INITIAL_MEMORY,
-        Some(DEFAULT_INITIAL_MEMORY + 1),
+        Some(DEFAULT_WASM_MAX_MEMORY + 1),
     );
 
     let exec_request_1 = {
@@ -223,7 +223,7 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
 fn should_run_ee_966_cant_have_way_too_much_max_memory() {
     let session_code = make_session_code_with_memory_pages(
         MINIMUM_INITIAL_MEMORY,
-        Some(DEFAULT_INITIAL_MEMORY + 42),
+        Some(DEFAULT_WASM_MAX_MEMORY + 42),
     );
 
     let exec_request_1 = {
@@ -258,7 +258,7 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
 #[test]
 fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
     let session_code =
-        make_session_code_with_memory_pages(DEFAULT_INITIAL_MEMORY, Some(MINIMUM_INITIAL_MEMORY));
+        make_session_code_with_memory_pages(DEFAULT_WASM_MAX_MEMORY, Some(MINIMUM_INITIAL_MEMORY));
 
     let exec_request_1 = {
         let deploy = DeployItemBuilder::new()

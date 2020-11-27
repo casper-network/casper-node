@@ -20,7 +20,7 @@ use casper_execution_engine::{
             DEFAULT_UNREACHABLE_COST,
         },
         storage_costs::StorageCosts,
-        wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
 use casper_types::{
@@ -65,7 +65,7 @@ fn get_upgraded_wasm_config() -> WasmConfig {
     let storage_costs = StorageCosts::default();
     let host_function_costs = HostFunctionCosts::default();
     WasmConfig::new(
-        DEFAULT_INITIAL_MEMORY,
+        DEFAULT_WASM_MAX_MEMORY,
         DEFAULT_MAX_STACK_HEIGHT * 2,
         opcode_cost,
         storage_costs,

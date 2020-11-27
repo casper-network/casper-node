@@ -491,7 +491,7 @@ mod tests {
             blake2b: HostFunction::new(133,  [0, 1, 2, 3]),
         };
         static ref EXPECTED_GENESIS_WASM_CONFIG: WasmConfig = WasmConfig::new(
-            17, // initial_memory
+            17, // max_memory
             19, // max_stack_height
             EXPECTED_GENESIS_COSTS,
             EXPECTED_GENESIS_STORAGE_COSTS,
@@ -632,7 +632,7 @@ mod tests {
             EXPECTED_UPGRADE_COSTS,
         );
 
-        assert_eq!(new_wasm_config.initial_memory, 17);
+        assert_eq!(new_wasm_config.max_memory, 17);
         assert_eq!(new_wasm_config.max_stack_height, 19);
 
         assert_eq!(

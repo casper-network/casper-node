@@ -16,7 +16,7 @@ use casper_execution_engine::{
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         stored_value::StoredValue,
-        wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
 #[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
@@ -124,7 +124,7 @@ lazy_static! {
         blake2b: HostFunction::fixed(0),
     };
     static ref STORAGE_COSTS_ONLY: WasmConfig = WasmConfig::new(
-        DEFAULT_INITIAL_MEMORY,
+        DEFAULT_WASM_MAX_MEMORY,
         DEFAULT_MAX_STACK_HEIGHT,
         NEW_OPCODE_COSTS,
         StorageCosts::default(),
