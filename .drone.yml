@@ -101,7 +101,7 @@ steps:
   - make setup-rs
   - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
   - cmake --build target/build
-  - ./target/build/tests
+  - ./target/build/ffi-tests
   - ./target/build/get-auction-info
   - ./target/build/put-deploy
 
