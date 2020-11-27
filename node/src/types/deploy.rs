@@ -598,11 +598,11 @@ impl FromBytes for Deploy {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::time::Duration;
 
     use casper_types::bytesrepr::Bytes;
+
+    use super::*;
 
     #[test]
     fn json_roundtrip() {

@@ -95,7 +95,7 @@ steps:
   - make test
   - make test-contracts
 
-- name: client-ffi-examples
+- name: client-ffi-tests-and-examples
   image: casperlabs/node-build-u1804
   commands:
   - make setup-rs
