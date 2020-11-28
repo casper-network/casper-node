@@ -74,7 +74,7 @@ static MAYBE_CARGO_TARGET_DIR_WASM_PATH: Lazy<Option<PathBuf>> = Lazy::new(|| {
 });
 // The location of compiled Wasm files if compiled from the Rust sources within the casper-node
 // repo, i.e. 'casper-node/target/wasm32-unknown-unknown/release/'.
-#[allow(dead_code)]
+#[cfg(feature = "use-as-wasm")]
 static ASSEMBLY_SCRIPT_WORKSPACE_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
     let path = RUST_WORKSPACE_PATH.join("target_as");
 
