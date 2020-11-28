@@ -9,6 +9,7 @@ mod wasm_test_builder;
 
 use num_rational::Ratio;
 use num_traits::identities::Zero;
+use once_cell::sync::Lazy;
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -23,7 +24,6 @@ use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
 pub use additive_map_diff::AdditiveMapDiff;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
-use once_cell::sync::Lazy;
 pub use step_request_builder::{RewardItem, SlashItem, StepRequestBuilder};
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{

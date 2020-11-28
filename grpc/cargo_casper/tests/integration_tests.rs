@@ -1,7 +1,6 @@
 use std::process::Output;
 
 use assert_cmd::Command;
-
 use once_cell::sync::Lazy;
 use tempfile::TempDir;
 

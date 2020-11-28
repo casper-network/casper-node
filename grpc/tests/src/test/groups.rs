@@ -1,4 +1,5 @@
 use assert_matches::assert_matches;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
@@ -11,7 +12,6 @@ use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
     account::AccountHash, contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
 };
-use once_cell::sync::Lazy;
 
 const CONTRACT_GROUPS: &str = "groups.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

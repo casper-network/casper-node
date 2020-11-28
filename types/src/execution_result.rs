@@ -21,7 +21,6 @@ use rand::{
     seq::SliceRandom,
     Rng,
 };
-
 #[cfg(feature = "std")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

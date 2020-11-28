@@ -8,10 +8,10 @@ use std::{
     sync::Mutex,
 };
 
+use once_cell::sync::Lazy;
 use tokio::runtime;
 
 use super::error::{Error, Result};
-use once_cell::sync::Lazy;
 
 static LAST_ERROR: Lazy<Mutex<Option<Error>>> = Lazy::new(|| Mutex::new(None));
 static RUNTIME: Lazy<Mutex<Option<runtime::Runtime>>> = Lazy::new(|| Mutex::new(None));

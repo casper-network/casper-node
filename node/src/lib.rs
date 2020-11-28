@@ -55,7 +55,6 @@ pub use components::{
     small_network::{Config as SmallNetworkConfig, Error as SmallNetworkError},
     storage::{Config as StorageConfig, Error as StorageError},
 };
-
 pub use types::NodeRng;
 pub use utils::OS_PAGE_SIZE;
 
