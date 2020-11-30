@@ -40,47 +40,47 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
         _signature: &Signature,
     ) -> Result<FuncRef, InterpreterError> {
         let func_ref = match field_name {
-            "read_value" => FuncInstance::alloc_host(
+            "casper_read_value" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::ReadFuncIndex.into(),
             ),
-            "read_value_local" => FuncInstance::alloc_host(
+            "casper_read_value_local" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::ReadLocalFuncIndex.into(),
             ),
-            "load_named_keys" => FuncInstance::alloc_host(
+            "casper_load_named_keys" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::LoadNamedKeysFuncIndex.into(),
             ),
-            "write" => FuncInstance::alloc_host(
+            "casper_write" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], None),
                 FunctionIndex::WriteFuncIndex.into(),
             ),
-            "write_local" => FuncInstance::alloc_host(
+            "casper_write_local" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], None),
                 FunctionIndex::WriteLocalFuncIndex.into(),
             ),
-            "add" => FuncInstance::alloc_host(
+            "casper_add" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], None),
                 FunctionIndex::AddFuncIndex.into(),
             ),
-            "new_uref" => FuncInstance::alloc_host(
+            "casper_new_uref" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], None),
                 FunctionIndex::NewFuncIndex.into(),
             ),
-            "ret" => FuncInstance::alloc_host(
+            "casper_ret" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], None),
                 FunctionIndex::RetFuncIndex.into(),
             ),
-            "get_key" => FuncInstance::alloc_host(
+            "casper_get_key" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 5][..], Some(ValueType::I32)),
                 FunctionIndex::GetKeyFuncIndex.into(),
             ),
-            "has_key" => FuncInstance::alloc_host(
+            "casper_has_key" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::HasKeyFuncIndex.into(),
             ),
-            "put_key" => FuncInstance::alloc_host(
+            "casper_put_key" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], None),
                 FunctionIndex::PutKeyFuncIndex.into(),
             ),
@@ -88,132 +88,132 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 1][..], None),
                 FunctionIndex::GasFuncIndex.into(),
             ),
-            "is_valid_uref" => FuncInstance::alloc_host(
+            "casper_is_valid_uref" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::IsValidURefFnIndex.into(),
             ),
-            "revert" => FuncInstance::alloc_host(
+            "casper_revert" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 1][..], None),
                 FunctionIndex::RevertFuncIndex.into(),
             ),
-            "add_associated_key" => FuncInstance::alloc_host(
+            "casper_add_associated_key" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::AddAssociatedKeyFuncIndex.into(),
             ),
-            "remove_associated_key" => FuncInstance::alloc_host(
+            "casper_remove_associated_key" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::RemoveAssociatedKeyFuncIndex.into(),
             ),
-            "update_associated_key" => FuncInstance::alloc_host(
+            "casper_update_associated_key" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::UpdateAssociatedKeyFuncIndex.into(),
             ),
-            "set_action_threshold" => FuncInstance::alloc_host(
+            "casper_set_action_threshold" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::SetActionThresholdFuncIndex.into(),
             ),
-            "remove_key" => FuncInstance::alloc_host(
+            "casper_remove_key" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], None),
                 FunctionIndex::RemoveKeyFuncIndex.into(),
             ),
-            "get_caller" => FuncInstance::alloc_host(
+            "casper_get_caller" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 1][..], Some(ValueType::I32)),
                 FunctionIndex::GetCallerIndex.into(),
             ),
-            "get_blocktime" => FuncInstance::alloc_host(
+            "casper_get_blocktime" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 1][..], None),
                 FunctionIndex::GetBlocktimeIndex.into(),
             ),
-            "create_purse" => FuncInstance::alloc_host(
+            "casper_create_purse" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::CreatePurseIndex.into(),
             ),
-            "transfer_to_account" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+            "casper_transfer_to_account" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
                 FunctionIndex::TransferToAccountIndex.into(),
             ),
-            "transfer_from_purse_to_account" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
+            "casper_transfer_from_purse_to_account" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
                 FunctionIndex::TransferFromPurseToAccountIndex.into(),
             ),
-            "transfer_from_purse_to_purse" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
+            "casper_transfer_from_purse_to_purse" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
                 FunctionIndex::TransferFromPurseToPurseIndex.into(),
             ),
-            "get_balance" => FuncInstance::alloc_host(
+            "casper_get_balance" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::GetBalanceIndex.into(),
             ),
-            "get_phase" => FuncInstance::alloc_host(
+            "casper_get_phase" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 1][..], None),
                 FunctionIndex::GetPhaseIndex.into(),
             ),
-            "get_system_contract" => FuncInstance::alloc_host(
+            "casper_get_system_contract" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::GetSystemContractIndex.into(),
             ),
-            "get_main_purse" => FuncInstance::alloc_host(
+            "casper_get_main_purse" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 1][..], None),
                 FunctionIndex::GetMainPurseIndex.into(),
             ),
-            "read_host_buffer" => FuncInstance::alloc_host(
+            "casper_read_host_buffer" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::ReadHostBufferIndex.into(),
             ),
-            "create_contract_package_at_hash" => FuncInstance::alloc_host(
+            "casper_create_contract_package_at_hash" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], None),
                 FunctionIndex::CreateContractPackageAtHash.into(),
             ),
-            "create_contract_user_group" => FuncInstance::alloc_host(
+            "casper_create_contract_user_group" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
                 FunctionIndex::CreateContractUserGroup.into(),
             ),
-            "add_contract_version" => FuncInstance::alloc_host(
+            "casper_add_contract_version" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 10][..], Some(ValueType::I32)),
                 FunctionIndex::AddContractVersion.into(),
             ),
-            "disable_contract_version" => FuncInstance::alloc_host(
+            "casper_disable_contract_version" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::DisableContractVersion.into(),
             ),
-            "call_contract" => FuncInstance::alloc_host(
+            "casper_call_contract" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 7][..], Some(ValueType::I32)),
                 FunctionIndex::CallContractFuncIndex.into(),
             ),
-            "call_versioned_contract" => FuncInstance::alloc_host(
+            "casper_call_versioned_contract" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 9][..], Some(ValueType::I32)),
                 FunctionIndex::CallVersionedContract.into(),
             ),
-            "get_named_arg_size" => FuncInstance::alloc_host(
+            "casper_get_named_arg_size" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 3][..], Some(ValueType::I32)),
                 FunctionIndex::GetRuntimeArgsizeIndex.into(),
             ),
-            "get_named_arg" => FuncInstance::alloc_host(
+            "casper_get_named_arg" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::GetRuntimeArgIndex.into(),
             ),
-            "remove_contract_user_group" => FuncInstance::alloc_host(
+            "casper_remove_contract_user_group" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::RemoveContractUserGroupIndex.into(),
             ),
-            "provision_contract_user_group_uref" => FuncInstance::alloc_host(
+            "casper_provision_contract_user_group_uref" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 5][..], Some(ValueType::I32)),
                 FunctionIndex::ExtendContractUserGroupURefsIndex.into(),
             ),
-            "remove_contract_user_group_urefs" => FuncInstance::alloc_host(
+            "casper_remove_contract_user_group_urefs" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
                 FunctionIndex::RemoveContractUserGroupURefsIndex.into(),
             ),
-            "blake2b" => FuncInstance::alloc_host(
+            "casper_blake2b" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::Blake2b.into(),
             ),
-            "record_transfer" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 6][..], Some(ValueType::I32)),
+            "casper_record_transfer" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
                 FunctionIndex::RecordTransfer.into(),
             ),
             #[cfg(feature = "test-support")]
-            "print" => FuncInstance::alloc_host(
+            "casper_print" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], None),
                 FunctionIndex::PrintIndex.into(),
             ),

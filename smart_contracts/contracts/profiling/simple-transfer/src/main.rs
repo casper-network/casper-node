@@ -19,7 +19,7 @@ enum Error {
 pub extern "C" fn call() {
     let account_hash: AccountHash = runtime::get_named_arg(ARG_ACCOUNT_HASH);
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
-    match system::transfer_to_account(account_hash, amount).unwrap_or_revert() {
+    match system::transfer_to_account(account_hash, amount, None).unwrap_or_revert() {
         TransferredTo::NewAccount => {
             runtime::revert(ApiError::User(Error::NonExistentAccount as u16))
         }

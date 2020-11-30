@@ -9,20 +9,20 @@
 //! use casper_execution_engine::storage::trie::{Pointer, PointerBlock, Trie};
 //! use casper_execution_engine::storage::trie_store::lmdb::LmdbTrieStore;
 //! use casper_execution_engine::shared::newtypes::Blake2bHash;
-//! use casper_types::bytesrepr::ToBytes;
+//! use casper_types::bytesrepr::{ToBytes, Bytes};
 //! use lmdb::DatabaseFlags;
 //! use tempfile::tempdir;
 //!
 //! // Create some leaves
-//! let leaf_1 = Trie::Leaf { key: vec![0u8, 0, 0], value: b"val_1".to_vec() };
-//! let leaf_2 = Trie::Leaf { key: vec![1u8, 0, 0], value: b"val_2".to_vec() };
+//! let leaf_1 = Trie::Leaf { key: Bytes::from(vec![0u8, 0, 0]), value: Bytes::from(b"val_1".to_vec()) };
+//! let leaf_2 = Trie::Leaf { key: Bytes::from(vec![1u8, 0, 0]), value: Bytes::from(b"val_2".to_vec()) };
 //!
 //! // Get their hashes
 //! let leaf_1_hash = Blake2bHash::new(&leaf_1.to_bytes().unwrap());
 //! let leaf_2_hash = Blake2bHash::new(&leaf_2.to_bytes().unwrap());
 //!
 //! // Create a node
-//! let node: Trie<Vec<u8>, Vec<u8>> = {
+//! let node: Trie<Bytes, Bytes> = {
 //!     let mut pointer_block = PointerBlock::new();
 //!     pointer_block[0] = Some(Pointer::LeafPointer(leaf_1_hash));
 //!     pointer_block[1] = Some(Pointer::LeafPointer(leaf_2_hash));
@@ -38,7 +38,8 @@
 //! // transactions.
 //! let tmp_dir = tempdir().unwrap();
 //! let map_size = 4096 * 2560;  // map size should be a multiple of OS page size
-//! let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), map_size).unwrap();
+//! let max_readers = 512;
+//! let env = LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), map_size, max_readers).unwrap();
 //! let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 //!
 //! // First let's create a read-write transaction, persist the values, but
@@ -64,7 +65,7 @@
 //!     for hash in vec![&leaf_1_hash, &leaf_2_hash, &node_hash].iter() {
 //!         // We need to use a type annotation here to help the compiler choose
 //!         // a suitable FromBytes instance
-//!         let maybe_trie: Option<Trie<Vec<u8>, Vec<u8>>> = store.get(&txn, hash).unwrap();
+//!         let maybe_trie: Option<Trie<Bytes, Bytes>> = store.get(&txn, hash).unwrap();
 //!         assert!(maybe_trie.is_none());
 //!     }
 //!

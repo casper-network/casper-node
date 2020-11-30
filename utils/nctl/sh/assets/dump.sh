@@ -5,10 +5,7 @@
 #   NCTL - path to nctl home directory.
 #   NCTL_DAEMON_TYPE - type of daemon service manager.
 # Arguments:
-#   Network ordinal identifer.
-
-# Import utils.
-source $NCTL/sh/utils/misc.sh
+#   Network ordinal identifier.
 
 #######################################
 # Destructure input args.
@@ -34,6 +31,12 @@ net=${net:-1}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
 log "network #$net: dumping transient assets ... please wait"
 
 # Set paths.
@@ -45,9 +48,6 @@ if [ -d $path_dump ]; then
     rm -rf $path_dump
 fi
 mkdir -p $path_dump
-
-# Set net vars.
-source $path_assets/vars
 
 # Dump chainspec.
 cp $path_assets/chainspec/accounts.csv $path_dump/accounts.csv

@@ -3,6 +3,7 @@ use std::{
     thread,
 };
 
+use casper_types::bytesrepr::Bytes;
 use tempfile::tempdir;
 
 use super::TestData;
@@ -13,14 +14,19 @@ use crate::storage::{
     },
     trie::Trie,
     trie_store::{in_memory::InMemoryTrieStore, lmdb::LmdbTrieStore},
-    DEFAULT_TEST_MAX_DB_SIZE,
+    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 
 #[test]
 fn lmdb_writer_mutex_does_not_collide_with_readers() {
     let dir = tempdir().unwrap();
     let env = Arc::new(
-        LmdbEnvironment::new(&dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap(),
+        LmdbEnvironment::new(
+            &dir.path().to_path_buf(),
+            DEFAULT_TEST_MAX_DB_SIZE,
+            DEFAULT_TEST_MAX_READERS,
+        )
+        .unwrap(),
     );
     let store = Arc::new(LmdbTrieStore::new(&env, None, Default::default()).unwrap());
     let num_threads = 10;
@@ -39,7 +45,7 @@ fn lmdb_writer_mutex_does_not_collide_with_readers() {
         handles.push(thread::spawn(move || {
             {
                 let txn = reader_env.create_read_txn().unwrap();
-                let result: Option<Trie<Vec<u8>, Vec<u8>>> =
+                let result: Option<Trie<Bytes, Bytes>> =
                     reader_store.get(&txn, &leaf_1_hash).unwrap();
                 assert_eq!(result, None);
                 txn.commit().unwrap();
@@ -51,7 +57,7 @@ fn lmdb_writer_mutex_does_not_collide_with_readers() {
             reader_barrier.wait();
             {
                 let txn = reader_env.create_read_txn().unwrap();
-                let result: Option<Trie<Vec<u8>, Vec<u8>>> =
+                let result: Option<Trie<Bytes, Bytes>> =
                     reader_store.get(&txn, &leaf_1_hash).unwrap();
                 txn.commit().unwrap();
                 result.unwrap() == leaf_1
@@ -90,7 +96,7 @@ fn in_memory_writer_mutex_does_not_collide_with_readers() {
         handles.push(thread::spawn(move || {
             {
                 let txn = reader_env.create_read_txn().unwrap();
-                let result: Option<Trie<Vec<u8>, Vec<u8>>> =
+                let result: Option<Trie<Bytes, Bytes>> =
                     reader_store.get(&txn, &leaf_1_hash).unwrap();
                 assert_eq!(result, None);
                 txn.commit().unwrap();
@@ -102,7 +108,7 @@ fn in_memory_writer_mutex_does_not_collide_with_readers() {
             reader_barrier.wait();
             {
                 let txn = reader_env.create_read_txn().unwrap();
-                let result: Option<Trie<Vec<u8>, Vec<u8>>> =
+                let result: Option<Trie<Bytes, Bytes>> =
                     reader_store.get(&txn, &leaf_1_hash).unwrap();
                 txn.commit().unwrap();
                 result.unwrap() == leaf_1

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 use crate::{
     shared::newtypes::Blake2bHash,
@@ -11,7 +11,7 @@ const TRIE_MERKLE_PROOF_STEP_NODE_ID: u8 = 0;
 const TRIE_MERKLE_PROOF_STEP_EXTENSION_ID: u8 = 1;
 
 /// A component of a proof that an entry exists in the Merkle trie.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrieMerkleProofStep {
     /// Corresponds to [`Trie::Node`]
     Node {
@@ -19,7 +19,7 @@ pub enum TrieMerkleProofStep {
         indexed_pointers_with_hole: Vec<(u8, Pointer)>,
     },
     /// Corresponds to [`Trie::Extension`]
-    Extension { affix: Vec<u8> },
+    Extension { affix: Bytes },
 }
 
 impl TrieMerkleProofStep {
@@ -33,7 +33,9 @@ impl TrieMerkleProofStep {
 
     /// Constructor for  [`TrieMerkleProofStep::Extension`]
     pub fn extension(affix: Vec<u8>) -> Self {
-        Self::Extension { affix }
+        Self::Extension {
+            affix: affix.into(),
+        }
     }
 }
 
@@ -47,11 +49,11 @@ impl ToBytes for TrieMerkleProofStep {
             } => {
                 ret.push(TRIE_MERKLE_PROOF_STEP_NODE_ID);
                 ret.push(*hole_index);
-                ret.extend(indexed_pointers_with_hole.to_bytes()?)
+                ret.append(&mut indexed_pointers_with_hole.to_bytes()?)
             }
             TrieMerkleProofStep::Extension { affix } => {
                 ret.push(TRIE_MERKLE_PROOF_STEP_EXTENSION_ID);
-                ret.extend(affix.to_bytes()?)
+                ret.append(&mut affix.to_bytes()?)
             }
         };
         Ok(ret)
@@ -89,7 +91,7 @@ impl FromBytes for TrieMerkleProofStep {
                 ))
             }
             TRIE_MERKLE_PROOF_STEP_EXTENSION_ID => {
-                let (affix, rem): (Vec<u8>, &[u8]) = FromBytes::from_bytes(rem)?;
+                let (affix, rem): (_, &[u8]) = FromBytes::from_bytes(rem)?;
                 Ok((TrieMerkleProofStep::Extension { affix }, rem))
             }
             _ => Err(bytesrepr::Error::Formatting),
@@ -99,7 +101,7 @@ impl FromBytes for TrieMerkleProofStep {
 
 /// A proof that a node with a specified `key` and `value` is present in the Merkle trie.
 /// Given a state hash `x`, one can validate a proof `p` by checking `x == p.compute_state_hash()`.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrieMerkleProof<K, V> {
     key: K,
     value: V,
@@ -116,16 +118,31 @@ impl<K, V> TrieMerkleProof<K, V> {
         }
     }
 
+    /// Getter for the key in [`TrieMerkleProof`]
+    pub fn key(&self) -> &K {
+        &self.key
+    }
+
     /// Getter for the value in [`TrieMerkleProof`]
     pub fn value(&self) -> &V {
         &self.value
+    }
+
+    /// Getter for the proof steps in [`TrieMerkleProof`]
+    pub fn proof_steps(&self) -> &VecDeque<TrieMerkleProofStep> {
+        &self.proof_steps
+    }
+
+    /// Transforms a [`TrieMerkleProof`] into the value it contains
+    pub fn into_value(self) -> V {
+        self.value
     }
 }
 
 impl<K, V> TrieMerkleProof<K, V>
 where
-    K: ToBytes + Copy,
-    V: ToBytes + Copy,
+    K: ToBytes + Copy + Clone,
+    V: ToBytes + Clone,
 {
     /// Recomputes a state root hash from a [`TrieMerkleProof`].
     /// This is done in the following steps:
@@ -141,7 +158,7 @@ where
     /// The steps in this function reflect `operations::rehash`.
     pub fn compute_state_hash(&self) -> Result<Blake2bHash, bytesrepr::Error> {
         let mut hash = {
-            let leaf_bytes = Trie::leaf(self.key, self.value).to_bytes()?;
+            let leaf_bytes = Trie::leaf(self.key, self.value.to_owned()).to_bytes()?;
             Blake2bHash::new(&leaf_bytes)
         };
 
@@ -163,7 +180,7 @@ where
                     Trie::<K, V>::node(&indexed_pointers).to_bytes()?
                 }
                 TrieMerkleProofStep::Extension { affix } => {
-                    Trie::<K, V>::extension(affix.to_owned(), pointer).to_bytes()?
+                    Trie::<K, V>::extension(affix.clone().into(), pointer).to_bytes()?
                 }
             };
             hash = Blake2bHash::new(&proof_step_bytes);
@@ -179,9 +196,9 @@ where
 {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret: Vec<u8> = bytesrepr::allocate_buffer(self)?;
-        ret.extend(self.key.to_bytes()?);
-        ret.extend(self.value.to_bytes()?);
-        ret.extend(self.proof_steps.to_bytes()?);
+        ret.append(&mut self.key.to_bytes()?);
+        ret.append(&mut self.value.to_bytes()?);
+        ret.append(&mut self.proof_steps.to_bytes()?);
         Ok(ret)
     }
 
@@ -244,8 +261,11 @@ mod gens {
                         indexed_pointers_with_hole,
                     }
                 }),
-            vec(<u8>::arbitrary(), AFFIX_SIZE)
-                .prop_map(|affix| { TrieMerkleProofStep::Extension { affix } })
+            vec(<u8>::arbitrary(), AFFIX_SIZE).prop_map(|affix| {
+                TrieMerkleProofStep::Extension {
+                    affix: affix.into(),
+                }
+            })
         ]
     }
 

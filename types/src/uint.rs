@@ -21,6 +21,7 @@ use crate::bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[allow(
     clippy::assign_op_pattern,
     clippy::ptr_offset_with_cast,
+    clippy::manual_range_contains,
     clippy::range_plus_one,
     clippy::transmute_ptr_to_ptr,
     clippy::clippy::reversed_empty_ranges
@@ -409,6 +410,23 @@ macro_rules! impl_traits_for_uint {
         impl Sum for $type {
             fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
                 iter.fold($type::zero(), Add::add)
+            }
+        }
+
+        #[cfg(feature = "std")]
+        impl schemars::JsonSchema for $type {
+            fn schema_name() -> String {
+                format!("U{}", $total_bytes * 8)
+            }
+
+            fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+                let schema = gen.subschema_for::<String>();
+                let mut schema_object = schema.into_object();
+                schema_object.metadata().description = Some(format!(
+                    "Decimal representation of a {}-bit integer.",
+                    $total_bytes * 8
+                ));
+                schema_object.into()
             }
         }
 

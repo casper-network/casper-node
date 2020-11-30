@@ -1,24 +1,32 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    key::TransferAddr,
-    DeployHash, URef, U512,
+    DeployHash, TransferAddr, URef, U512,
 };
 
-/// Represents a transfer from one purse to another
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
+/// Information relating to the given Deploy.
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct DeployInfo {
-    /// Deploy
+    /// The relevant Deploy.
     pub deploy_hash: DeployHash,
-    /// Transfers
+    /// Transfers performed by the Deploy.
     pub transfers: Vec<TransferAddr>,
-    /// Account
+    /// Account identifier of the creator of the Deploy.
     pub from: AccountHash,
-    /// Source purse
+    /// Source purse used for payment of the Deploy.
     pub source: URef,
-    /// Gas
+    /// Gas cost of executing the Deploy.
     pub gas: U512,
 }
 
@@ -84,6 +92,8 @@ impl ToBytes for DeployInfo {
 
 #[cfg(test)]
 pub(crate) mod gens {
+    use alloc::vec::Vec;
+
     use proptest::{
         array,
         collection::{self, SizeRange},
@@ -97,11 +107,11 @@ pub(crate) mod gens {
     };
 
     pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
-        array::uniform32(<u8>::arbitrary())
+        array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::new)
     }
 
     pub fn transfer_addr_arb() -> impl Strategy<Value = TransferAddr> {
-        array::uniform32(<u8>::arbitrary())
+        array::uniform32(<u8>::arbitrary()).prop_map(TransferAddr::new)
     }
 
     pub fn transfers_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<TransferAddr>> {

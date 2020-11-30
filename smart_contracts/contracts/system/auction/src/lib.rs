@@ -15,7 +15,7 @@ use casper_types::{
     auction::{
         Auction, DelegationRate, MintProvider, RuntimeProvider, SeigniorageRecipients,
         StorageProvider, SystemProvider, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_ERA_ID, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
+        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
         ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_UNBOND_PURSE, ARG_VALIDATOR,
         ARG_VALIDATOR_PUBLIC_KEY, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_DELEGATE,
         METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
@@ -23,7 +23,7 @@ use casper_types::{
         METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     bytesrepr::{FromBytes, ToBytes},
-    mint::{METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD},
+    mint::{METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD, METHOD_REDUCE_TOTAL_SUPPLY},
     system_contract_errors,
     system_contract_errors::auction::Error,
     CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
@@ -58,7 +58,8 @@ impl SystemProvider for AuctionContract {
         target: URef,
         amount: U512,
     ) -> StdResult<(), Error> {
-        system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| Error::Transfer)
+        system::transfer_from_purse_to_purse(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 }
 
@@ -87,7 +88,7 @@ impl MintProvider for AuctionContract {
         target: AccountHash,
         amount: U512,
     ) -> TransferResult {
-        system::transfer_from_purse_to_account(source, target, amount)
+        system::transfer_from_purse_to_account(source, target, amount, None)
     }
 
     fn transfer_purse_to_purse(
@@ -95,8 +96,9 @@ impl MintProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ()> {
-        system::transfer_from_purse_to_purse(source, target, amount).map_err(|_| ())
+    ) -> Result<(), Error> {
+        system::transfer_from_purse_to_purse(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
     fn balance(&mut self, purse: URef) -> Option<U512> {
@@ -122,17 +124,25 @@ impl MintProvider for AuctionContract {
             runtime::call_contract(mint_contract, METHOD_MINT, runtime_args);
         result.map_err(|_| Error::MintReward)
     }
+
+    fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
+        let mint_contract = system::get_mint();
+        let runtime_args = {
+            let mut tmp = RuntimeArgs::new();
+            tmp.insert(ARG_AMOUNT, amount);
+            tmp
+        };
+        let result: Result<(), system_contract_errors::mint::Error> =
+            runtime::call_contract(mint_contract, METHOD_REDUCE_TOTAL_SUPPLY, runtime_args);
+        result.map_err(|_| Error::MintReduceTotalSupply)
+    }
 }
 
 impl Auction for AuctionContract {}
 
 #[no_mangle]
 pub extern "C" fn get_era_validators() {
-    let era_id = runtime::get_named_arg(ARG_ERA_ID);
-
-    let result = AuctionContract
-        .get_era_validators(era_id)
-        .unwrap_or_revert();
+    let result = AuctionContract.get_era_validators().unwrap_or_revert();
 
     let cl_value = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(cl_value)

@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -36,6 +33,9 @@ node=${node:-"all"}
 #######################################
 # Main
 #######################################
+
+# Import utils.
+source $NCTL/sh/utils.sh
 
 source $NCTL/sh/node/stop.sh net=$net node=$node
 source $NCTL/sh/node/start.sh net=$net node=$node

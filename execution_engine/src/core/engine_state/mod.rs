@@ -24,6 +24,7 @@ use std::{
 };
 
 use lazy_static::lazy_static;
+use num_rational::Ratio;
 use num_traits::Zero;
 use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
@@ -31,16 +32,18 @@ use tracing::{debug, error, warn};
 use casper_types::{
     account::AccountHash,
     auction::{
-        ValidatorWeights, ARG_ERA_ID, ARG_GENESIS_VALIDATORS, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, VALIDATOR_SLOTS_KEY,
+        EraValidators, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
+        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
+        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
-    mint, proof_of_stake, runtime_args,
+    mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY},
+    proof_of_stake, runtime_args,
     system_contract_errors::mint::Error as MintError,
     AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractVersionKey, DeployInfo, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
-    RuntimeArgs, URef, U512,
+    ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType, Key, Phase,
+    ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -86,12 +89,14 @@ use crate::{
     },
 };
 
-// TODO?: MAX_PAYMENT && CONV_RATE values are currently arbitrary w/ real values
-// TBD gas * CONV_RATE = motes
-pub const CONV_RATE: u64 = 10;
+/// Rate for motes/gas conversion.
+///
+/// gas * CONV_RATE = motes
+/// motes / CONV_RATE = gas
+pub const CONV_RATE: u64 = 1;
 
 lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(200_000_000_000u64 * CONV_RATE);
+    pub static ref MAX_PAYMENT: U512 = U512::from(2_500_000_000 * CONV_RATE);
 }
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -244,9 +249,21 @@ where
         let (mint_package_hash, mint_hash): (ContractPackageHash, ContractHash) = {
             let mint_installer_bytes = ee_config.mint_installer_bytes();
             let mint_installer_module = preprocessor.preprocess(mint_installer_bytes)?;
-            let args = RuntimeArgs::new();
+
+            let arg_round_seigniorage_rate: Ratio<U512> = {
+                let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
+                    ee_config.round_seigniorage_rate().into();
+                Ratio::new(
+                    round_seigniorage_rate_numer.into(),
+                    round_seigniorage_rate_denom.into(),
+                )
+            };
+
+            let args = runtime_args! {
+                ARG_ROUND_SEIGNIORAGE_RATE => arg_round_seigniorage_rate,
+            };
             let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
-            let install_deploy_hash = genesis_config_hash.value();
+            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
             let transfer_address_generator = Rc::clone(&transfer_address_generator);
@@ -285,7 +302,7 @@ where
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
             let transfer_address_generator = Rc::clone(&transfer_address_generator);
-            let install_deploy_hash = genesis_config_hash.value();
+            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             // Constructs a partial protocol data with already known uref to pass the validation
@@ -348,7 +365,7 @@ where
                 preprocessor.preprocess(standard_payment_installer_bytes)?;
             let args = RuntimeArgs::new();
             let authorization_keys = BTreeSet::new();
-            let install_deploy_hash = genesis_config_hash.value();
+            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
             let transfer_address_generator = Rc::clone(&transfer_address_generator);
@@ -406,14 +423,18 @@ where
             };
 
             let validator_slots = ee_config.validator_slots();
+            let auction_delay = ee_config.auction_delay();
+            let locked_funds_period = ee_config.locked_funds_period();
             let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
             let args = runtime_args! {
                 ARG_MINT_CONTRACT_PACKAGE_HASH => mint_package_hash,
                 ARG_GENESIS_VALIDATORS => bonded_validators,
                 ARG_VALIDATOR_SLOTS => validator_slots,
+                ARG_AUCTION_DELAY => auction_delay,
+                ARG_LOCKED_FUNDS_PERIOD => locked_funds_period,
             };
             let authorization_keys = BTreeSet::new();
-            let install_deploy_hash = genesis_config_hash.value();
+            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
             let transfer_address_generator = Rc::clone(&uref_address_generator);
@@ -507,7 +528,7 @@ where
                 let base_key = mint_hash;
                 let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
                 let account_hash = account.account_hash();
-                let purse_creation_deploy_hash = account_hash.value();
+                let purse_creation_deploy_hash = DeployHash::new(account_hash.value());
                 let hash_address_generator = Rc::clone(&hash_address_generator);
                 let uref_address_generator = {
                     let generator = AddressGeneratorBuilder::new()
@@ -694,7 +715,7 @@ where
                         .value()
                         .into_bytes()?
                         .to_vec();
-                    Blake2bHash::new(&bytes).value()
+                    DeployHash::new(Blake2bHash::new(&bytes).value())
                 };
 
                 // upgrade has no gas limit; approximating with MAX
@@ -760,6 +781,54 @@ where
                     .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
             );
             tracking_copy.borrow_mut().write(validator_slots_key, value);
+        }
+
+        if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.auction())?;
+
+            let auction_delay_key = auction_contract.named_keys()[AUCTION_DELAY_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_auction_delay)
+                    .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
+            );
+            tracking_copy.borrow_mut().write(auction_delay_key, value);
+        }
+
+        if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period() {
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.auction())?;
+
+            let locked_funds_period_key = auction_contract.named_keys()[LOCKED_FUNDS_PERIOD_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_locked_funds_period)
+                    .map_err(|_| Error::Bytesrepr("new_locked_funds_period".to_string()))?,
+            );
+            tracking_copy
+                .borrow_mut()
+                .write(locked_funds_period_key, value);
+        }
+
+        if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
+            let new_round_seigniorage_rate: Ratio<U512> = {
+                let (numer, denom) = new_round_seigniorage_rate.into();
+                Ratio::new(numer.into(), denom.into())
+            };
+
+            let mint_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.mint())?;
+
+            let locked_funds_period_key = mint_contract.named_keys()[ROUND_SEIGNIORAGE_RATE_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_round_seigniorage_rate)
+                    .map_err(|_| Error::Bytesrepr("new_round_seigniorage_rate".to_string()))?,
+            );
+            tracking_copy
+                .borrow_mut()
+                .write(locked_funds_period_key, value);
         }
 
         let effects = tracking_copy.borrow().effect();
@@ -869,7 +938,7 @@ where
     ) -> Result<GetModuleResult, Error> {
         let (contract_package, contract, base_key) = match deploy_item {
             ExecutableDeployItem::ModuleBytes { module_bytes, .. } => {
-                let module = preprocessor.preprocess(&module_bytes)?;
+                let module = preprocessor.preprocess(&module_bytes.as_ref())?;
                 return Ok(GetModuleResult::Session {
                     module,
                     contract_package: ContractPackage::default(),
@@ -912,11 +981,9 @@ where
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| contract_package.current_contract_version())
-                    .ok_or_else(|| {
-                        error::Error::Exec(execution::Error::NoActiveContractVersions(
-                            contract_package_hash,
-                        ))
-                    })?;
+                    .ok_or(error::Error::Exec(
+                        execution::Error::NoActiveContractVersions(contract_package_hash),
+                    ))?;
 
                 if !contract_package.is_version_enabled(contract_version_key) {
                     return Err(error::Error::Exec(
@@ -926,11 +993,9 @@ where
 
                 let contract_hash = *contract_package
                     .lookup_contract_hash(contract_version_key)
-                    .ok_or_else(|| {
-                        error::Error::Exec(execution::Error::InvalidContractVersion(
-                            contract_version_key,
-                        ))
-                    })?;
+                    .ok_or(error::Error::Exec(
+                        execution::Error::InvalidContractVersion(contract_version_key),
+                    ))?;
 
                 let contract = tracking_copy
                     .borrow_mut()
@@ -1042,13 +1107,22 @@ where
         state_hash: Blake2bHash,
         purse_uref: URef,
     ) -> Result<BalanceResult, Error> {
-        let mut tracking_copy = match self.tracking_copy(state_hash)? {
+        let tracking_copy = match self.tracking_copy(state_hash)? {
             Some(tracking_copy) => tracking_copy,
             None => return Ok(BalanceResult::RootNotFound),
         };
-        let balance_key = tracking_copy.get_purse_balance_key(correlation_id, purse_uref.into())?;
-        let balance = tracking_copy.get_purse_balance(correlation_id, balance_key)?;
-        Ok(BalanceResult::Success(balance.value()))
+        let (purse_balance_key, purse_proof) =
+            tracking_copy.get_purse_balance_key_with_proof(correlation_id, purse_uref.into())?;
+        let (balance, balance_proof) =
+            tracking_copy.get_purse_balance_with_proof(correlation_id, purse_balance_key)?;
+        let purse_proof = Box::new(purse_proof);
+        let balance_proof = Box::new(balance_proof);
+        let motes = balance.value();
+        Ok(BalanceResult::Success {
+            motes,
+            purse_proof,
+            balance_proof,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1438,7 +1512,7 @@ where
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
         };
 
-        let max_payment_cost: Motes = Motes::new(*MAX_PAYMENT);
+        let max_payment_cost = Motes::new(*MAX_PAYMENT);
 
         // Enforce minimum main purse balance validation
         // validation_spec_5: account main purse minimum balance
@@ -1587,15 +1661,15 @@ where
             } else {
                 // use host side standard payment
                 let hash_address_generator = {
-                    let generator = AddressGenerator::new(&deploy_hash, phase);
+                    let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
                     Rc::new(RefCell::new(generator))
                 };
                 let uref_address_generator = {
-                    let generator = AddressGenerator::new(&deploy_hash, phase);
+                    let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
                     Rc::new(RefCell::new(generator))
                 };
                 let transfer_address_generator = {
-                    let generator = AddressGenerator::new(&deploy_hash, phase);
+                    let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
                     Rc::new(RefCell::new(generator))
                 };
 
@@ -1924,7 +1998,7 @@ where
         &self,
         correlation_id: CorrelationId,
         get_era_validators_request: GetEraValidatorsRequest,
-    ) -> Result<Option<ValidatorWeights>, GetEraValidatorsError> {
+    ) -> Result<EraValidators, GetEraValidatorsError> {
         let protocol_version = get_era_validators_request.protocol_version();
 
         let tracking_copy = match self.tracking_copy(get_era_validators_request.state_hash())? {
@@ -1962,10 +2036,6 @@ where
 
         let executor = Executor::new(self.config);
 
-        let auction_args = runtime_args! {
-            ARG_ERA_ID => get_era_validators_request.era_id(),
-        };
-
         let mut named_keys = auction_contract.named_keys().to_owned();
         let base_key = Key::from(protocol_data.auction());
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
@@ -1984,37 +2054,38 @@ where
                 .into_bytes()
                 .map_err(Error::from)?
                 .to_vec();
-            Blake2bHash::new(&bytes).value()
+            DeployHash::new(Blake2bHash::new(&bytes).value())
         };
 
-        let (era_validators, execution_result): (
-            Option<Option<ValidatorWeights>>,
-            ExecutionResult,
-        ) = executor.exec_system_contract(
-            DirectSystemContractCall::GetEraValidators,
-            auction_module,
-            auction_args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            &virtual_system_account,
-            authorization_keys,
-            blocktime,
-            deploy_hash,
-            gas_limit,
-            protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            protocol_data,
-            SystemContractCache::clone(&self.system_contract_cache),
-        );
+        let (era_validators, execution_result): (Option<EraValidators>, ExecutionResult) = executor
+            .exec_system_contract(
+                DirectSystemContractCall::GetEraValidators,
+                auction_module,
+                runtime_args! {},
+                &mut named_keys,
+                Default::default(),
+                base_key,
+                &virtual_system_account,
+                authorization_keys,
+                blocktime,
+                deploy_hash,
+                gas_limit,
+                protocol_version,
+                correlation_id,
+                Rc::clone(&tracking_copy),
+                Phase::Session,
+                protocol_data,
+                SystemContractCache::clone(&self.system_contract_cache),
+            );
 
         if let Some(error) = execution_result.take_error() {
             return Err(error.into());
         }
 
-        Ok(era_validators.flatten())
+        match era_validators {
+            None => Err(GetEraValidatorsError::EraValidatorsMissing),
+            Some(era_validators) => Ok(era_validators),
+        }
     }
 
     pub fn commit_step(
@@ -2092,7 +2163,7 @@ where
         let deploy_hash = {
             // seeds address generator w/ protocol version
             let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();
-            Blake2bHash::new(&bytes).value()
+            DeployHash::new(Blake2bHash::new(&bytes).value())
         };
 
         let base_key = Key::from(protocol_data.auction());
@@ -2130,8 +2201,10 @@ where
             SystemContractCache::clone(&self.system_contract_cache),
         );
 
-        if execution_result.has_precondition_failure() {
-            return Ok(StepResult::PreconditionError);
+        if execution_result.is_failure() {
+            return Ok(StepResult::SlashingError(
+                execution_result.take_error().unwrap(),
+            ));
         }
 
         if step_request.run_auction {
@@ -2158,8 +2231,10 @@ where
                     SystemContractCache::clone(&self.system_contract_cache),
                 );
 
-            if execution_result.has_precondition_failure() {
-                return Ok(StepResult::PreconditionError);
+            if execution_result.is_failure() {
+                return Ok(StepResult::AuctionError(
+                    execution_result.take_error().unwrap(),
+                ));
             }
         }
 
@@ -2196,8 +2271,10 @@ where
             SystemContractCache::clone(&self.system_contract_cache),
         );
 
-        if execution_result.has_precondition_failure() {
-            return Ok(StepResult::PreconditionError);
+        if execution_result.is_failure() {
+            return Ok(StepResult::DistributeError(
+                execution_result.take_error().unwrap(),
+            ));
         }
 
         let effects = tracking_copy.borrow().effect();

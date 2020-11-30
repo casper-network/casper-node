@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use casper_engine_test_support::internal::{
     utils, InMemoryWasmTestBuilder, RewardItem, SlashItem, StepRequestBuilder, WasmTestBuilder,
     DEFAULT_ACCOUNTS,
@@ -9,10 +11,11 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        BidPurses, Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BID_PURSES_KEY, BLOCK_REWARD,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_PURSE,
+        Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_PURSE_KEY,
     },
-    ContractHash, Key, ProtocolVersion, PublicKey,
+    mint::TOTAL_SUPPLY_KEY,
+    CLValue, ContractHash, Key, ProtocolVersion, PublicKey, U512,
 };
 
 const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([200; 32]);
@@ -80,7 +83,7 @@ fn should_step() {
 
     let auction_hash = builder.get_auction_contract_hash();
 
-    let reward_purse_key = get_named_key(&mut builder, auction_hash, VALIDATOR_REWARD_PURSE)
+    let reward_purse_key = get_named_key(&mut builder, auction_hash, VALIDATOR_REWARD_PURSE_KEY)
         .into_uref()
         .expect("should be uref");
 
@@ -95,11 +98,11 @@ fn should_step() {
         bids_before_slashing
     );
 
-    let bid_purses_before_slashing: BidPurses = builder.get_value(auction_hash, BID_PURSES_KEY);
+    let bids_before_slashing: Bids = builder.get_value(auction_hash, BIDS_KEY);
     assert!(
-        bid_purses_before_slashing.contains_key(&ACCOUNT_1_PK),
-        "should have bid purse in the bids purses table {:?}",
-        bid_purses_before_slashing
+        bids_before_slashing.contains_key(&ACCOUNT_1_PK),
+        "should have entry in bids table before slashing {:?}",
+        bids_before_slashing
     );
 
     builder.step(step_request);
@@ -109,13 +112,6 @@ fn should_step() {
         !bids_after_slashing.contains_key(&ACCOUNT_1_PK),
         "should not have entry in bids table after slashing {:?}",
         bids_after_slashing
-    );
-
-    // bid purses should not have slashed validator after slashing
-    let bid_purses_after_slashing: BidPurses = builder.get_value(auction_hash, BID_PURSES_KEY);
-    assert!(
-        !bid_purses_after_slashing.contains_key(&ACCOUNT_1_PK),
-        "should not contain slashed validator)"
     );
 
     // reward purse balance should not be the same after reward distribution
@@ -139,5 +135,57 @@ fn should_step() {
             .keys()
             .all(|key| after_auction_seigniorage.contains_key(key)),
         "run auction should have changed seigniorage keys"
+    );
+}
+
+/// Should be able to step slashing, rewards, and run auction.
+#[ignore]
+#[test]
+fn should_adjust_total_supply() {
+    let mut builder = initialize_builder();
+    let maybe_post_state_hash = Some(builder.get_post_state_hash());
+
+    let mint_hash = builder.get_mint_contract_hash();
+
+    // should check total supply before step
+    let total_supply_key = get_named_key(&mut builder, mint_hash, TOTAL_SUPPLY_KEY)
+        .into_uref()
+        .expect("should be uref");
+
+    let starting_total_supply = CLValue::try_from(
+        builder
+            .query(maybe_post_state_hash, total_supply_key.into(), &[])
+            .expect("should have total supply"),
+    )
+    .expect("should be a CLValue")
+    .into_t::<U512>()
+    .expect("should be U512");
+
+    // slash
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_slash_item(SlashItem::new(ACCOUNT_1_PK))
+        .with_slash_item(SlashItem::new(ACCOUNT_2_PK))
+        .with_reward_item(RewardItem::new(ACCOUNT_1_PK, 0))
+        .with_reward_item(RewardItem::new(ACCOUNT_2_PK, BLOCK_REWARD / 2))
+        .build();
+
+    builder.step(step_request);
+    let maybe_post_state_hash = Some(builder.get_post_state_hash());
+
+    // should check total supply after step
+    let modified_total_supply = CLValue::try_from(
+        builder
+            .query(maybe_post_state_hash, total_supply_key.into(), &[])
+            .expect("should have total supply"),
+    )
+    .expect("should be a CLValue")
+    .into_t::<U512>()
+    .expect("should be U512");
+
+    assert!(
+        modified_total_supply < starting_total_supply,
+        "total supply should be reduced due to slashing"
     );
 }

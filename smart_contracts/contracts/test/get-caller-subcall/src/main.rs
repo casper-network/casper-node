@@ -5,7 +5,6 @@ extern crate alloc;
 
 use alloc::{string::ToString, vec::Vec};
 
-use alloc::boxed::Box;
 use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
@@ -41,7 +40,7 @@ pub extern "C" fn call() {
         let entry_point = EntryPoint::new(
             ENTRY_POINT_NAME.to_string(),
             Vec::new(),
-            CLType::FixedList(Box::new(CLType::U8), 32),
+            CLType::ByteArray(32),
             EntryPointAccess::Public,
             EntryPointType::Contract,
         );

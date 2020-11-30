@@ -3,14 +3,16 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use serde::Serialize;
+
 use super::{Item, Message};
 use crate::{
-    components::small_network::NodeId,
+    types::NodeId,
     utils::{DisplayIter, Source},
 };
 
 /// `Gossiper` events.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Event<T: Item> {
     /// A new item has been received to be gossiped.
     ItemReceived {

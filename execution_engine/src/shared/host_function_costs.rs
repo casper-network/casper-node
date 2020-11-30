@@ -2,73 +2,75 @@ use datasize::DataSize;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH};
 
 use super::gas::Gas;
 
 /// Representation of argument's cost.
 pub type Cost = u32;
 
+const COST_SERIALIZED_LENGTH: usize = U32_SERIALIZED_LENGTH;
+
 /// An identifier that represents an unused argument.
 const NOT_USED: Cost = 0;
 
 /// An arbitrary default fixed cost for host functions that were not researched yet.
-const DEFAULT_FIXED_COST: Cost = 200_000;
+const DEFAULT_FIXED_COST: Cost = 200;
 
-const DEFAULT_ADD_ASSOCIATED_KEY_COST: u32 = 9_000_000;
-const DEFAULT_ADD_COST: u32 = 5_800_000;
+const DEFAULT_ADD_ASSOCIATED_KEY_COST: u32 = 9_000;
+const DEFAULT_ADD_COST: u32 = 5_800;
 
-const DEFAULT_CALL_CONTRACT_COST: u32 = 4_500_000;
+const DEFAULT_CALL_CONTRACT_COST: u32 = 4_500;
 const DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT: u32 = 420;
 
-const DEFAULT_CREATE_PURSE_COST: u32 = 170_000_000;
-const DEFAULT_GET_BALANCE_COST: u32 = 3_800_000;
-const DEFAULT_GET_BLOCKTIME_COST: u32 = 330_000;
-const DEFAULT_GET_CALLER_COST: u32 = 380_000;
-const DEFAULT_GET_KEY_COST: u32 = 2_000_000;
+const DEFAULT_CREATE_PURSE_COST: u32 = 170_000;
+const DEFAULT_GET_BALANCE_COST: u32 = 3_800;
+const DEFAULT_GET_BLOCKTIME_COST: u32 = 330;
+const DEFAULT_GET_CALLER_COST: u32 = 380;
+const DEFAULT_GET_KEY_COST: u32 = 2_000;
 const DEFAULT_GET_KEY_NAME_SIZE_WEIGHT: u32 = 440;
-const DEFAULT_GET_MAIN_PURSE_COST: u32 = 1_300_000;
-const DEFAULT_GET_PHASE_COST: u32 = 710_000;
-const DEFAULT_GET_SYSTEM_CONTRACT_COST: u32 = 1_100_000;
-const DEFAULT_HAS_KEY_COST: u32 = 1_500_000;
+const DEFAULT_GET_MAIN_PURSE_COST: u32 = 1_300;
+const DEFAULT_GET_PHASE_COST: u32 = 710;
+const DEFAULT_GET_SYSTEM_CONTRACT_COST: u32 = 1_100;
+const DEFAULT_HAS_KEY_COST: u32 = 1_500;
 const DEFAULT_HAS_KEY_NAME_SIZE_WEIGHT: u32 = 840;
-const DEFAULT_IS_VALID_UREF_COST: u32 = 760_000;
-const DEFAULT_LOAD_NAMED_KEYS_COST: u32 = 42_000_000;
-const DEFAULT_NEW_UREF_COST: u32 = 17_000_000;
+const DEFAULT_IS_VALID_UREF_COST: u32 = 760;
+const DEFAULT_LOAD_NAMED_KEYS_COST: u32 = 42_000;
+const DEFAULT_NEW_UREF_COST: u32 = 17_000;
 const DEFAULT_NEW_UREF_VALUE_SIZE_WEIGHT: u32 = 590;
 
-const DEFAULT_PRINT_COST: u32 = 20_000_000;
+const DEFAULT_PRINT_COST: u32 = 20_000;
 const DEFAULT_PRINT_TEXT_SIZE_WEIGHT: u32 = 4_600;
 
-const DEFAULT_PUT_KEY_COST: u32 = 38_000_000;
+const DEFAULT_PUT_KEY_COST: u32 = 38_000;
 const DEFAULT_PUT_KEY_NAME_SIZE_WEIGHT: u32 = 1_100;
 
-const DEFAULT_READ_HOST_BUFFER_COST: u32 = 3_500_000;
+const DEFAULT_READ_HOST_BUFFER_COST: u32 = 3_500;
 const DEFAULT_READ_HOST_BUFFER_DEST_SIZE_WEIGHT: u32 = 310;
 
-const DEFAULT_READ_VALUE_COST: u32 = 6_000_000;
-const DEFAULT_READ_VALUE_LOCAL_COST: u32 = 5_500_000;
+const DEFAULT_READ_VALUE_COST: u32 = 6_000;
+const DEFAULT_READ_VALUE_LOCAL_COST: u32 = 5_500;
 const DEFAULT_READ_VALUE_LOCAL_KEY_SIZE_WEIGHT: u32 = 590;
 
-const DEFAULT_REMOVE_ASSOCIATED_KEY_COST: u32 = 4_200_000;
+const DEFAULT_REMOVE_ASSOCIATED_KEY_COST: u32 = 4_200;
 
-const DEFAULT_REMOVE_KEY_COST: u32 = 61_000_000;
+const DEFAULT_REMOVE_KEY_COST: u32 = 61_000;
 const DEFAULT_REMOVE_KEY_NAME_SIZE_WEIGHT: u32 = 3_200;
 
-const DEFAULT_RET_COST: u32 = 23_000_000;
-const DEFAULT_RET_VALUE_SIZE_WEIGHT: u32 = 420_000;
+const DEFAULT_RET_COST: u32 = 23_000;
+const DEFAULT_RET_VALUE_SIZE_WEIGHT: u32 = 420;
 
-const DEFAULT_REVERT_COST: u32 = 500_000;
-const DEFAULT_SET_ACTION_THRESHOLD_COST: u32 = 74_000_000;
-const DEFAULT_TRANSFER_FROM_PURSE_TO_ACCOUNT_COST: u32 = 160_000_000;
-const DEFAULT_TRANSFER_FROM_PURSE_TO_PURSE_COST: u32 = 82_000_000;
-const DEFAULT_TRANSFER_TO_ACCOUNT_COST: u32 = 24_000_000;
-const DEFAULT_UPDATE_ASSOCIATED_KEY_COST: u32 = 4_200_000;
+const DEFAULT_REVERT_COST: u32 = 500;
+const DEFAULT_SET_ACTION_THRESHOLD_COST: u32 = 74_000;
+const DEFAULT_TRANSFER_FROM_PURSE_TO_ACCOUNT_COST: u32 = 160_000;
+const DEFAULT_TRANSFER_FROM_PURSE_TO_PURSE_COST: u32 = 82_000;
+const DEFAULT_TRANSFER_TO_ACCOUNT_COST: u32 = 24_000;
+const DEFAULT_UPDATE_ASSOCIATED_KEY_COST: u32 = 4_200;
 
-const DEFAULT_WRITE_COST: u32 = 14_000_000;
+const DEFAULT_WRITE_COST: u32 = 14_000;
 const DEFAULT_WRITE_VALUE_SIZE_WEIGHT: u32 = 980;
 
-const DEFAULT_WRITE_LOCAL_COST: u32 = 9_500_000;
+const DEFAULT_WRITE_LOCAL_COST: u32 = 9_500;
 const DEFAULT_WRITE_LOCAL_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
 const DEFAULT_WRITE_LOCAL_VALUE_SIZE_WEIGHT: u32 = 520;
 
@@ -148,27 +150,35 @@ where
 
 impl<T> ToBytes for HostFunction<T>
 where
-    T: ToBytes + AsRef<[Cost]>,
+    T: AsRef<[Cost]>,
 {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.cost.to_bytes()?);
-        ret.append(&mut self.arguments.to_bytes()?);
+        for value in self.arguments.as_ref().iter() {
+            ret.append(&mut value.to_bytes()?);
+        }
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
-        self.cost.serialized_length() + self.arguments.serialized_length()
+        self.cost.serialized_length() + (COST_SERIALIZED_LENGTH * self.arguments.as_ref().len())
     }
 }
 
 impl<T> FromBytes for HostFunction<T>
 where
-    T: FromBytes + Default,
+    T: Default + AsMut<[Cost]>,
 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (cost, bytes) = FromBytes::from_bytes(bytes)?;
-        let (arguments, bytes) = FromBytes::from_bytes(bytes)?;
+        let (cost, mut bytes) = FromBytes::from_bytes(bytes)?;
+        let mut arguments = T::default();
+        let arguments_mut = arguments.as_mut();
+        for ith_argument in arguments_mut {
+            let (cost, rem) = FromBytes::from_bytes(bytes)?;
+            *ith_argument = cost;
+            bytes = rem;
+        }
         Ok((Self { cost, arguments }, bytes))
     }
 }
@@ -196,9 +206,9 @@ pub struct HostFunctionCosts {
     pub get_caller: HostFunction<[Cost; 1]>,
     pub get_blocktime: HostFunction<[Cost; 1]>,
     pub create_purse: HostFunction<[Cost; 2]>,
-    pub transfer_to_account: HostFunction<[Cost; 4]>,
-    pub transfer_from_purse_to_account: HostFunction<[Cost; 6]>,
-    pub transfer_from_purse_to_purse: HostFunction<[Cost; 6]>,
+    pub transfer_to_account: HostFunction<[Cost; 6]>,
+    pub transfer_from_purse_to_account: HostFunction<[Cost; 8]>,
+    pub transfer_from_purse_to_purse: HostFunction<[Cost; 8]>,
     pub get_balance: HostFunction<[Cost; 3]>,
     pub get_phase: HostFunction<[Cost; 1]>,
     pub get_system_contract: HostFunction<[Cost; 3]>,

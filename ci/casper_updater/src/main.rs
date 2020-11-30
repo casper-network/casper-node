@@ -24,7 +24,6 @@
     arithmetic_overflow,
     invalid_type_param_default,
     macro_expanded_macro_exports_accessed_by_absolute_paths,
-    missing_fragment_specifier,
     mutable_transmutes,
     no_mangle_const_items,
     order_dependent_trait_objects,
@@ -170,6 +169,9 @@ fn main() {
         &*regex_data::execution_engine::DEPENDENT_FILES,
     );
     execution_engine.update();
+
+    let node_macros = Package::cargo("node_macros", &*regex_data::node_macros::DEPENDENT_FILES);
+    node_macros.update();
 
     let node = Package::cargo("node", &*regex_data::node::DEPENDENT_FILES);
     node.update();

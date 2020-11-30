@@ -1,6 +1,8 @@
 use std::fmt;
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub struct TypeMismatch {
     pub expected: String,
     pub found: String,

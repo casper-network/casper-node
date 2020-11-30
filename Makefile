@@ -66,6 +66,10 @@ CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE := $(patsubst %, doc-stable/%, $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE))
 
+.PHONY: list
+list:
+	@$(MAKE) -pRrq -f $(lastword $(MAKEFILE_LIST)) : 2>/dev/null | awk -v RS= -F: '/^# File/,/^# Finished Make data base/ {if ($$1 !~ "^[#.]") {print $$1}}' | sort | egrep -v -e '^[^[:alnum:]]' -e '^$@$$'
+
 .PHONY: all
 all: build build-contracts
 
@@ -113,8 +117,11 @@ build-contracts-as: \
 .PHONY: build-contracts
 build-contracts: build-contracts-rs build-contracts-as
 
+resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.toml.in
+	@./$<
+
 .PHONY: test-rs
-test-rs: build-system-contracts
+test-rs: build-system-contracts resources/local/chainspec.toml
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --workspace
 
 .PHONY: test-as
@@ -129,13 +136,13 @@ test-contracts-rs: build-contracts-rs
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-system-contracts" -- --ignored
 
-.PHONY: test-contracts_as
-test-contracts_as: build-contracts-rs build-contracts-as
+.PHONY: test-contracts-as
+test-contracts-as: build-contracts-rs build-contracts-as
 	@# see https://github.com/rust-lang/cargo/issues/5015#issuecomment-515544290
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
 
 .PHONY: test-contracts
-test-contracts: test-contracts-rs test-contracts_as
+test-contracts: test-contracts-rs test-contracts-as
 
 .PHONY: check-format
 check-format:
@@ -182,6 +189,7 @@ check: \
 
 .PHONY: clean
 clean:
+	rm -rf resources/local/chainspec.toml
 	rm -rf $(CONTRACT_TARGET_DIR_AS)
 	rm -rf $(TOOL_TARGET_DIR)
 	rm -rf $(TOOL_WASM_DIR)

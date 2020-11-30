@@ -33,7 +33,7 @@ pub extern "C" fn call() {
     );
 
     // can deposit
-    system::transfer_from_purse_to_purse(source_purse, payment_purse, payment_amount)
+    system::transfer_from_purse_to_purse(source_purse, payment_purse, payment_amount, None)
         .unwrap_or_revert_with(ApiError::User(Error::TransferFromSourceToPayment as u16));
 
     let payment_balance = system::get_balance(payment_purse)
@@ -44,7 +44,9 @@ pub extern "C" fn call() {
     }
 
     // cannot withdraw
-    if system::transfer_from_purse_to_purse(payment_purse, source_purse, payment_amount).is_ok() {
+    if system::transfer_from_purse_to_purse(payment_purse, source_purse, payment_amount, None)
+        .is_ok()
+    {
         runtime::revert(ApiError::User(Error::TransferFromPaymentToSource as u16));
     }
 }

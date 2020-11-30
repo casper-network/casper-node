@@ -5,7 +5,7 @@ A client for interacting with the Casper network.
 
 ## Running the client
 
-The client runs in one of several modes, each mode performing a single action.  To see all available commands:
+The client runs in one of several modes, each mode performing a single action. To see all available commands:
 
 ```
 cd client
@@ -15,37 +15,35 @@ cargo run --release -- help
 <details><summary>example output</summary>
 
 ```commandline
-Casper client 0.1.0
+Casper client 1.5.0
 A client for interacting with the Casper network
 
 USAGE:
     casper-client [SUBCOMMAND]
 
 FLAGS:
-    -h, --help
-            Prints help information
-
-    -V, --version
-            Prints version information
-
+    -h, --help       Prints help information
+    -V, --version    Prints version information
 
 SUBCOMMANDS:
-    put-deploy               Creates a new deploy and sends it to the network for execution
-    make-deploy              Constructs a deploy and outputs it to a file or stdout. As a file, the deploy can
-                             subsequently be signed by other parties and sent to a node, or signed with the sign-
-                             deploy subcommand
-    sign-deploy              Cryptographically signs a deploy and appends signature to existing approvals
-    send-deploy              Sends a deploy to the network for execution
-    transfer                 Transfers funds between purses
-    get-deploy               Retrieves a stored deploy
-    get-block                Retrieves a block
-    list-deploys             Gets the list of all deploy hashes from a given block
-    get-balance              Retrieves a stored balance
-    get-global-state-hash    Retrieves a global state hash
-    query-state              Retrieves a stored value from global state
-    keygen                   Generates account key files in the given directory
-    generate-completion      Generates a shell completion script
-    help                     Prints this message or the help of the given subcommand(s)
+    put-deploy             Creates a deploy and sends it to the network for execution
+    make-deploy            Creates a deploy and outputs it to a file or stdout. As a file, the deploy can
+                           subsequently be signed by other parties using the 'sign-deploy' subcommand and then sent
+                           to the network for execution using the 'send-deploy' subcommand
+    sign-deploy            Reads a previously-saved deploy from a file, cryptographically signs it, and outputs it
+                           to a file or stdout
+    send-deploy            Reads a previously-saved deploy from a file and sends it to the network for execution
+    transfer               Transfers funds between purses
+    get-deploy             Retrieves a deploy from the network
+    get-block              Retrieves a block from the network
+    list-deploys           Retrieves the list of all deploy hashes in a given block
+    get-state-root-hash    Retrieves a state root hash at a given block
+    query-state            Retrieves a stored value from the network
+    get-balance            Retrieves a purse's balance from the network
+    get-auction-info       Retrieves the bids and validators as of the most recently added block
+    keygen                 Generates account key files in the given directory
+    generate-completion    Generates a shell completion script
+    help                   Prints this message or the help of the given subcommand(s)
 ```
 </details>
 
@@ -58,8 +56,8 @@ cargo run --release -- help keygen
 <details><summary>example output</summary>
 
 ```commandline
-casper-client-keygen
-Generates account key files in the given directory. Creates ["public_key_hex", "secret_key.pem", "public_key.pem"].
+casper-client-keygen 
+Generates account key files in the given directory. Creates ["secret_key.pem", "public_key.pem", "public_key_hex"].
 "public_key_hex" contains the hex-encoded key's bytes with the hex-encoded algorithm tag prefixed
 
 USAGE:
@@ -83,7 +81,7 @@ ARGS:
 
 ### Generate asymmetric signing keys
 
-Some commands require the use of a secret key for signing data.  To generate a secret and public key pair:
+Some commands require the use of a secret key for signing data. To generate a secret and public key pair:
 
 ```
 cargo run --release -- keygen $HOME/.client_keys
@@ -92,10 +90,10 @@ cargo run --release -- keygen $HOME/.client_keys
 
 ## Interacting with a local node
 
-Many client commands require to send HTTP requests and receive responses.  To do this with a local node running on the
+Many client commands require to send HTTP requests and receive responses. To do this with a local node running on the
 same machine, follow the instructions in [the `nctl` README](../utils/nctl/README.md) to set up a local test network.
 
-Ensure the network has fully started before running client commands.  This can be determined by running
+Ensure the network has fully started before running client commands. This can be determined by running
 `nctl-view-node-peers` and checking each node has connections to all others.
 
 For client commands requiring a node address (specified via the `--node-address` or `-n` arg), the default value is
@@ -105,18 +103,18 @@ can usually be omitted.
 
 ### Transfer funds between purses
 
-The testnet will be set up so that the nodes each have an initial balance of tokens in their main purses.  Let's say we
-want to create a new purse under the public key we just created (in the "Generate asymmetric signing keys" section).  We
-can do this by creating a new deploy which will transfer funds between two purses once executed.  The simplest way to
+The testnet will be set up so that the nodes each have an initial balance of tokens in their main purses. Let's say we
+want to create a new purse under the public key we just created (in the "Generate asymmetric signing keys" section). We
+can do this by creating a new deploy which will transfer funds between two purses once executed. The simplest way to
 achieve this is via the `transfer` subcommand.
 
-First, set the contents of the `public_key_hex` file to a variable.  We'll use this as the target account:
+First, set the contents of the `public_key_hex` file to a variable. We'll use this as the target account:
 
 ```
 PUBLIC_KEY=$(cat $HOME/.client_keys/public_key_hex)
 ```
 
-Then execute the `transfer` subcommand.  We'll specify that we want to transfer 1,234,567 tokens from the main purse of
+Then execute the `transfer` subcommand. We'll specify that we want to transfer 1,234,567 tokens from the main purse of
 node 3, and that we'll pay a maximum of 10,000 tokens to execute this deploy: 
 
 ```
@@ -252,13 +250,13 @@ cargo run --release -- get-deploy c42210759368a07a1b1ff4f019f7e77e7c9eaf2961b8c9
 </details>
 
 The `block_hash` in the response's `execution_results` is worth noting, as it can be used to identify the block in which
-the deploy is included.  If the deploy was successfully received and parsed by the node, but failed to execute, the
+the deploy is included. If the deploy was successfully received and parsed by the node, but failed to execute, the
 `error_message` in `execution_results` may provide useful information.
 
 
 ### Get details of a `Block`
 
-To see information about a `Block` created by the network, you can use `get-block`.  For example:
+To see information about a `Block` created by the network, you can use `get-block`. For example:
 
 ```
 cargo run --release -- get-block --block-hash=80a09df67f45bfb290c8f36021daf2fb898587a48fa0e4f7c506202ae8f791b8
@@ -282,7 +280,7 @@ cargo run --release -- get-block --block-hash=80a09df67f45bfb290c8f36021daf2fb89
         ],
         "era_end": null,
         "era_id": 89,
-        "global_state_hash": "c79f4c9a017532fe265593d86d3917581479fd1601093e16d17ec90aeaa63b83",
+        "state_root_hash": "c79f4c9a017532fe265593d86d3917581479fd1601093e16d17ec90aeaa63b83",
         "height": 987,
         "parent_hash": "ffb95eac42eae1112d37797a1ecc67860e88a9364c44845cb7a96eb426dca502",
         "proposer": "015b7723f1d9499fa02bd17dfe4e1315cfe1660a071e27ab1f29d6ceb6e2abcd73",
@@ -299,18 +297,18 @@ cargo run --release -- get-block --block-hash=80a09df67f45bfb290c8f36021daf2fb89
 ```
 </details>
 
-The `global_state_hash` in the response's `header` is worth noting, as it can be used to identify the state root hash
+The `state_root_hash` in the response's `header` is worth noting, as it can be used to identify the state root hash
 for the purposes of querying the global state.
 
 
 ### Query the global state
 
-To view data stored to global state after executing a deploy, you can use `query-state`.  For example, to see the value
+To view data stored to global state after executing a deploy, you can use `query-state`. For example, to see the value
 stored under our new account's public key:
 
 ```
 cargo run --release -- query-state \
-    --global-state-hash=242666f5959e6a51b7a75c23264f3cb326eecd6bec6dbab147f5801ec23daed6 \
+    --state-root-hash=242666f5959e6a51b7a75c23264f3cb326eecd6bec6dbab147f5801ec23daed6 \
     --key=$PUBLIC_KEY
 ```
 
@@ -349,11 +347,11 @@ This yields details of the newly-created account object, including the `URef` of
 
 ### Get the balance of a purse
 
-This can be done via `get-balance`.  For example, to get the balance of the main purse of our newly-created account:
+This can be done via `get-balance`. For example, to get the balance of the main purse of our newly-created account:
 
 ```
 cargo run --release -- get-balance \
-    --global-state-hash=242666f5959e6a51b7a75c23264f3cb326eecd6bec6dbab147f5801ec23daed6 \
+    --state-root-hash=242666f5959e6a51b7a75c23264f3cb326eecd6bec6dbab147f5801ec23daed6 \
     --purse-uref=uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007
 ```
 
@@ -371,6 +369,24 @@ cargo run --release -- get-balance \
 ```
 </details>
 
-Note that the system mint contract is required to retrieve the balance of any given purse.  If you execute a
-`query-state` specifying a purse `URef` as the `--key` argument, you'll find that the actual value stored there is a unit
-value `()`.  This makes the `get-balance` subcommand particularly useful. 
+Note that the system mint contract is required to retrieve the balance of any given purse. If you execute a
+`query-state` specifying a purse `URef` as the `--key` argument, you'll find that the actual value stored there is a
+unit value `()`. This makes the `get-balance` subcommand particularly useful. 
+
+---
+
+
+## Client library
+
+The `lib` directory contains source for the client library, which may be called directly rather than through the CLI
+binary. The CLI app `casper-client` makes use of this library to implement its functionality.
+
+
+## Client library C wrapper
+
+An optional feature of the client library is to use `cbindgen` to build a C wrapper for functions in the library. This
+can then be leveraged to build bindings for the library in any language that can access an `extern "C"` interface.
+
+The feature is named `ffi` and is enabled by default.
+
+See `examples/ffi/README.md` for more information.

@@ -7,25 +7,21 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Displays to stdout current node metrics.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifer.
-#   Node ordinal identifer.
+#   Network ordinal identifier.
+#   Node ordinal identifier.
 #   Metric name.
 #######################################
 function _view_metrics() {
-    node_address=$(get_node_address $1 $2)
-    log "network #$1 :: node #$2 :: $node_address :: metrics:"
+    endpoint=$(get_node_address_rest $1 $2)/metrics
     if [ $3 = "all" ]; then
-        exec_node_rest_get $1 $2 "metrics"
+        curl -s --location --request GET $endpoint  
     else
-        exec_node_rest_get $1 $2 "metrics" | grep $3 | tail -n 1 
+        echo "network #$1 :: node #$2 :: "$(curl -s --location --request GET $endpoint | grep $3 | tail -n 1)
     fi
 }
 
@@ -59,12 +55,17 @@ node=${node:-"all"}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Render metrics.
 if [ $node = "all" ]; then
-    source $NCTL/assets/net-$net/vars
-    for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        _view_metrics $net $node_idx $metric
-        echo "------------------------------------------------------------------------------------------------------------------------------------"
+        _view_metrics $net $idx $metric
     done
 else
     _view_metrics $net $node $metric

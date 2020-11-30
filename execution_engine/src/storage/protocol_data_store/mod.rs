@@ -1,4 +1,4 @@
-//! A store for persisting [`ProtocolData`](contract::value::ProtocolVersion) values at their
+//! A store for persisting `ProtocolData` values at their
 //! protocol versions.
 use casper_types::ProtocolVersion;
 
@@ -11,5 +11,5 @@ use crate::storage::{protocol_data::ProtocolData, store::Store};
 
 const NAME: &str = "PROTOCOL_DATA_STORE";
 
-/// An entity which persists [`ProtocolData`] values at their protocol versions.
+/// An entity which persists `ProtocolData` values at their protocol versions.
 pub trait ProtocolDataStore: Store<ProtocolVersion, ProtocolData> {}

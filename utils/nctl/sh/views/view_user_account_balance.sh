@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 #
-# Renders a network faucet account key.
+# Renders a user's account balance.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
-
-# Import utils.
-source $NCTL/sh/utils/misc.sh
 
 #######################################
 # Destructure input args.
@@ -33,25 +30,24 @@ done
 # Set defaults.
 net=${net:-1}
 node=${node:-1}
-user=${user:-1}
+user=${user:-"all"}
 
 #######################################
 # Main
 #######################################
 
-state_root_hash=$(source $NCTL/sh/views/view_chain_state_root_hash.sh)
-account_key=$(cat $NCTL/assets/net-$net/users/user-$user/public_key_hex)
-purse_uref=$(
-    source $NCTL/sh/views/view_chain_account.sh net=$net root-hash=$state_root_hash account-key=$account_key \
-    | jq '.Account.main_purse' \
-    | sed -e 's/^"//' -e 's/"$//'
-    ) 
-balance=$(
-    $NCTL/assets/net-$net/bin/casper-client get-balance \
-        --node-address $(get_node_address $net $node) \
-        --state-root-hash $state_root_hash \
-        --purse-uref $purse_uref \
-        | jq '.result.balance_value' \
-        | sed -e 's/^"//' -e 's/"$//'
-    )
-log "user balance = "$balance
+# Import utils.
+source $NCTL/sh/utils.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Render account balance(s).
+if [ $user = "all" ]; then
+    for idx in $(seq 1 $NCTL_NET_USER_COUNT)
+    do
+        render_account_balance $net $idx $NCTL_ACCOUNT_TYPE_USER $idx
+    done
+else
+    render_account_balance $net $node $NCTL_ACCOUNT_TYPE_USER $node
+fi

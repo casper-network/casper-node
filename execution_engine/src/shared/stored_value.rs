@@ -79,6 +79,32 @@ impl StoredValue {
     }
 }
 
+impl From<CLValue> for StoredValue {
+    fn from(value: CLValue) -> StoredValue {
+        StoredValue::CLValue(value)
+    }
+}
+impl From<Account> for StoredValue {
+    fn from(value: Account) -> StoredValue {
+        StoredValue::Account(value)
+    }
+}
+impl From<ContractWasm> for StoredValue {
+    fn from(value: ContractWasm) -> StoredValue {
+        StoredValue::ContractWasm(value)
+    }
+}
+impl From<Contract> for StoredValue {
+    fn from(value: Contract) -> StoredValue {
+        StoredValue::Contract(value)
+    }
+}
+impl From<ContractPackage> for StoredValue {
+    fn from(value: ContractPackage) -> StoredValue {
+        StoredValue::ContractPackage(value)
+    }
+}
+
 impl TryFrom<StoredValue> for CLValue {
     type Error = TypeMismatch;
 

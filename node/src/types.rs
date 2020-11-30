@@ -5,20 +5,38 @@ mod deploy;
 mod item;
 pub mod json_compatibility;
 mod node_config;
+mod node_id;
+mod peers_map;
 mod status_feed;
 mod timestamp;
 
 use rand::{CryptoRng, RngCore};
+#[cfg(not(test))]
+use rand_chacha::ChaCha20Rng;
 
-pub use block::{Block, BlockHash, BlockHeader};
-pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock, ProtoBlockHash};
-pub use deploy::{Approval, Deploy, DeployHash, DeployHeader, Error as DeployError};
+pub use block::{
+    json_compatibility::JsonBlock, Block, BlockHash, BlockHeader, BlockValidationError,
+};
+pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock};
+pub use deploy::{
+    Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, Error as DeployError,
+};
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;
-pub use status_feed::StatusFeed;
+pub(crate) use node_id::NodeId;
+pub use peers_map::PeersMap;
+pub use status_feed::{GetStatusResult, StatusFeed};
 pub use timestamp::{TimeDiff, Timestamp};
 
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.
 pub trait CryptoRngCore: CryptoRng + RngCore {}
 
 impl<T> CryptoRngCore for T where T: CryptoRng + RngCore + ?Sized {}
+
+/// The cryptographically secure RNG used throughout the node.
+#[cfg(not(test))]
+pub type NodeRng = ChaCha20Rng;
+
+/// The RNG used throughout the node for testing.
+#[cfg(test)]
+pub type NodeRng = crate::testing::TestRng;

@@ -7,14 +7,14 @@ use semver::Version;
 use tracing::{debug, error, warn};
 
 use crate::{
-    components::{chainspec_loader::Chainspec, storage::Storage, Component},
+    components::{chainspec_loader::Chainspec, Component},
     effect::{
         announcements::DeployAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
         EffectExt, Effects,
     },
-    small_network::NodeId,
-    types::{CryptoRngCore, Deploy},
+    types::{Deploy, NodeId},
     utils::Source,
+    NodeRng,
 };
 
 pub use event::Event;
@@ -23,15 +23,12 @@ use super::chainspec_loader::DeployConfig;
 
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
 pub trait ReactorEventT:
-    From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest<Storage>> + Send
+    From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest> + Send
 {
 }
 
 impl<REv> ReactorEventT for REv where
-    REv: From<Event>
-        + From<DeployAcceptorAnnouncement<NodeId>>
-        + From<StorageRequest<Storage>>
-        + Send
+    REv: From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest> + Send
 {
 }
 
@@ -94,7 +91,7 @@ impl DeployAcceptor {
                     deploy,
                     source,
                     chainspec_version,
-                    maybe_deploy_config: Box::new(maybe_chainspec.map(|c| c.into())),
+                    maybe_deploy_config: Box::new(maybe_chainspec.map(|c| (*c).clone().into())),
                 }),
         }
     }
@@ -155,7 +152,7 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");

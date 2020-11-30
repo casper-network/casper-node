@@ -9,9 +9,6 @@
 #   Chain root state hash.
 #   Account key.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -38,13 +35,18 @@ done
 # Set defaults.
 net=${net:-1}
 node=${node:-1}
+state_root_hash=${state_root_hash:-$(get_state_root_hash $net $node)}
 
 #######################################
 # Main
 #######################################
 
-$NCTL/assets/net-$net/bin/casper-client query-state \
-    --node-address $(get_node_address $net $node) \
+# Import utils.
+source $NCTL/sh/utils.sh
+
+# Render node API result.
+$(get_path_to_client $net) query-state \
+    --node-address $(get_node_address_rpc $net $node) \
     --state-root-hash $state_root_hash \
     --key $account_key \
-    | jq '.result.stored_value'
+    | jq '.result'

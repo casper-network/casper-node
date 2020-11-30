@@ -7,6 +7,7 @@ use std::{
 
 use csv::ReaderBuilder;
 use datasize::DataSize;
+use num::rational::Ratio;
 use num_traits::Zero;
 #[cfg(test)]
 use rand::Rng;
@@ -18,7 +19,7 @@ use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
     shared::{motes::Motes, wasm_config::WasmConfig},
 };
-use casper_types::U512;
+use casper_types::{auction::EraId, U512};
 
 use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
@@ -91,10 +92,11 @@ pub(crate) struct HighwayConfig {
     pub(crate) booking_duration: TimeDiff,
     pub(crate) entropy_duration: TimeDiff,
     // TODO: Do we need this? When we see the switch block finalized it should suffice to keep
-    // gossiping, without producing new votes. Everyone else will eventually see the same finality.
+    // gossiping, without producing new units. Everyone else will eventually see the same finality.
     pub(crate) voting_period_duration: TimeDiff,
     pub(crate) finality_threshold_percent: u8,
     pub(crate) minimum_round_exponent: u8,
+    pub(crate) maximum_round_exponent: u8,
 }
 
 impl Default for HighwayConfig {
@@ -108,6 +110,7 @@ impl Default for HighwayConfig {
             voting_period_duration: TimeDiff::from_str("2days").unwrap(),
             finality_threshold_percent: 10,
             minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
+            maximum_round_exponent: 19, // 2**19 ms = ~8.7 minutes
         }
     }
 }
@@ -122,6 +125,16 @@ impl HighwayConfig {
             && self.era_duration.millis() < self.minimum_era_height * min_era_ms
         {
             warn!("Era duration is less than minimum era height * round length!");
+        }
+
+        if self.minimum_round_exponent > self.maximum_round_exponent {
+            panic!(
+                "Minimum round exponent is greater than the maximum round exponent.\n\
+                 Minimum round exponent: {min},\n\
+                 Maximum round exponent: {max}",
+                min = self.minimum_round_exponent,
+                max = self.maximum_round_exponent
+            );
         }
     }
 }
@@ -138,7 +151,8 @@ impl HighwayConfig {
             entropy_duration: TimeDiff::from(rng.gen_range(600_000, 10_800_000)),
             voting_period_duration: TimeDiff::from(rng.gen_range(600_000, 172_800_000)),
             finality_threshold_percent: rng.gen_range(0, 101),
-            minimum_round_exponent: rng.gen_range(0, 20),
+            minimum_round_exponent: rng.gen_range(0, 16),
+            maximum_round_exponent: rng.gen_range(16, 22),
         }
     }
 }
@@ -180,6 +194,17 @@ pub struct GenesisConfig {
     pub(crate) name: String,
     pub(crate) timestamp: Timestamp,
     pub(crate) validator_slots: u32,
+    /// Number of eras before an auction actually defines the set of validators.
+    /// If you bond with a sufficient bid in era N, you will be a validator in era N +
+    /// auction_delay + 1
+    pub(crate) auction_delay: u64,
+    /// The delay for the payout of funds, in eras. If a withdraw request is included in a block in
+    /// era N (other than the last one), they are paid out in the last block of era N +
+    /// locked_funds_period.
+    pub(crate) locked_funds_period: EraId,
+    /// Round seigniorage rate represented as a fractional number.
+    #[data_size(skip)]
+    pub(crate) round_seigniorage_rate: Ratio<u64>,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -260,6 +285,12 @@ impl GenesisConfig {
         let name = rng.gen::<char>().to_string();
         let timestamp = Timestamp::random(rng);
         let validator_slots = rng.gen::<u32>();
+        let auction_delay = rng.gen::<u64>();
+        let locked_funds_period: EraId = rng.gen::<u64>();
+        let round_seigniorage_rate = Ratio::new(
+            rng.gen_range(1, 1_000_000_000),
+            rng.gen_range(1, 1_000_000_000),
+        );
         let protocol_version = Version::new(
             rng.gen_range(0, 10),
             rng.gen::<u8>() as u64,
@@ -278,6 +309,9 @@ impl GenesisConfig {
             name,
             timestamp,
             validator_slots,
+            auction_delay,
+            locked_funds_period,
+            round_seigniorage_rate,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
@@ -293,7 +327,7 @@ impl GenesisConfig {
 
 #[derive(Copy, Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ActivationPoint {
-    pub(crate) rank: u64,
+    pub(crate) height: u64,
 }
 
 #[derive(Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -313,7 +347,7 @@ impl UpgradePoint {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let activation_point = ActivationPoint {
-            rank: rng.gen::<u8>() as u64,
+            height: rng.gen::<u8>() as u64,
         };
         let protocol_version = Version::new(
             rng.gen_range(10, 20),
@@ -393,6 +427,9 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.accounts,
             self.genesis.wasm_config,
             self.genesis.validator_slots,
+            self.genesis.auction_delay,
+            self.genesis.locked_funds_period,
+            self.genesis.round_seigniorage_rate,
         )
     }
 }
@@ -431,9 +468,9 @@ mod tests {
             get_caller: HostFunction::new(112,  [0]),
             get_blocktime: HostFunction::new(111,  [0]),
             create_purse: HostFunction::new(108,  [0, 1]),
-            transfer_to_account: HostFunction::new(138,  [0, 1, 2, 3]),
-            transfer_from_purse_to_account: HostFunction::new(136,  [0, 1, 2, 3, 4, 5]),
-            transfer_from_purse_to_purse: HostFunction::new(137,  [0, 1, 2, 3, 4, 5]),
+            transfer_to_account: HostFunction::new(138,  [0, 1, 2, 3, 4, 5]),
+            transfer_from_purse_to_account: HostFunction::new(136,  [0, 1, 2, 3, 4, 5, 6, 7]),
+            transfer_from_purse_to_purse: HostFunction::new(137,  [0, 1, 2, 3, 4, 5, 6, 7]),
             get_balance: HostFunction::new(110,  [0, 1, 2]),
             get_phase: HostFunction::new(117,  [0]),
             get_system_contract: HostFunction::new(118,  [0, 1, 2]),
@@ -461,7 +498,7 @@ mod tests {
             *EXPECTED_GENESIS_HOST_FUNCTION_COSTS,
         );
     }
-    const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts { gas_per_byte: 101 };
+    const EXPECTED_GENESIS_STORAGE_COSTS: StorageCosts = StorageCosts::new(101);
 
     const EXPECTED_GENESIS_COSTS: OpcodeCosts = OpcodeCosts {
         bit: 13,
@@ -503,7 +540,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::testing::{self, TestRng};
+    use crate::testing;
 
     fn check_spec(spec: Chainspec) {
         assert_eq!(spec.genesis.name, "test-chain");
@@ -556,7 +593,8 @@ mod tests {
             TimeDiff::from(3628800000)
         );
         assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
-        assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 13);
+        assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 14);
+        assert_eq!(spec.genesis.highway_config.maximum_round_exponent, 19);
 
         assert_eq!(
             spec.genesis.deploy_config.max_payment_cost,
@@ -576,7 +614,7 @@ mod tests {
         assert_eq!(spec.upgrades.len(), 2);
 
         let upgrade0 = &spec.upgrades[0];
-        assert_eq!(upgrade0.activation_point, ActivationPoint { rank: 23 });
+        assert_eq!(upgrade0.activation_point, ActivationPoint { height: 23 });
         assert_eq!(upgrade0.protocol_version, Version::from((0, 2, 0)));
         assert_eq!(
             upgrade0.upgrade_installer_bytes,
@@ -614,7 +652,7 @@ mod tests {
         assert_eq!(upgrade0.new_deploy_config.unwrap().block_gas_limit, 38);
 
         let upgrade1 = &spec.upgrades[1];
-        assert_eq!(upgrade1.activation_point, ActivationPoint { rank: 39 });
+        assert_eq!(upgrade1.activation_point, ActivationPoint { height: 39 });
         assert_eq!(upgrade1.protocol_version, Version::from((0, 3, 0)));
         assert!(upgrade1.upgrade_installer_bytes.is_none());
         assert!(upgrade1.upgrade_installer_args.is_none());
@@ -630,7 +668,7 @@ mod tests {
 
     #[test]
     fn bincode_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let chainspec = Chainspec::random(&mut rng);
         testing::bincode_roundtrip(&chainspec);
     }

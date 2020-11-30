@@ -88,18 +88,12 @@ use crate::{
     },
     fatal,
     reactor::{EventQueueHandle, Finalize, QueueKind},
-    tls::{self, KeyFingerprint, TlsCert},
-    types::CryptoRngCore,
-    utils,
+    tls::{self, TlsCert},
+    types::NodeId,
+    utils, NodeRng,
 };
-
 pub use config::Config;
 pub use error::Error;
-
-/// A node ID.
-///
-/// The key fingerprint found on TLS certificates.
-pub(crate) type NodeId = KeyFingerprint;
 
 const MAX_ASYMMETRIC_CONNECTION_SEEN: u16 = 3;
 
@@ -136,6 +130,8 @@ where
     public_address: SocketAddr,
     /// Our node ID,
     our_id: NodeId,
+    /// If we connect to ourself, this flag is set to true.
+    is_bootstrap_node: bool,
     /// Handle to event queue.
     event_queue: EventQueueHandle<REv>,
 
@@ -220,7 +216,7 @@ where
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
         // which we need to shutdown cleanly later on.
-        let our_id = certificate.public_key_fingerprint();
+        let our_id = NodeId::from(certificate.public_key_fingerprint());
         info!(%local_address, %public_address, "{}: starting server background task", our_id);
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
         let shutdown_receiver = server_shutdown_receiver.clone();
@@ -231,11 +227,13 @@ where
             our_id,
         ));
 
+        let our_id = NodeId::from(certificate.public_key_fingerprint());
         let mut model = SmallNetwork {
             certificate,
             secret_key: Arc::new(secret_key),
             public_address,
             our_id,
+            is_bootstrap_node: false,
             event_queue,
             incoming: HashMap::new(),
             outgoing: HashMap::new(),
@@ -302,14 +300,14 @@ where
     /// Queues a message to be sent to all nodes.
     fn broadcast_message(&self, msg: Message<P>) {
         for peer_id in self.outgoing.keys() {
-            self.send_message(*peer_id, msg.clone());
+            self.send_message(peer_id.clone(), msg.clone());
         }
     }
 
     /// Queues a message to `count` random nodes on the network.
     fn gossip_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         msg: Message<P>,
         count: usize,
         exclude: HashSet<NodeId>,
@@ -333,10 +331,10 @@ where
         }
 
         for &peer_id in &peer_ids {
-            self.send_message(*peer_id, msg.clone());
+            self.send_message(peer_id.clone(), msg.clone());
         }
 
-        peer_ids.into_iter().copied().collect()
+        peer_ids.into_iter().cloned().collect()
     }
 
     /// Queues a message to be sent to a specific node.
@@ -363,6 +361,7 @@ where
             Ok((peer_id, transport)) => {
                 // If we have connected to ourself, allow the connection to drop.
                 if peer_id == self.our_id {
+                    self.is_bootstrap_node = true;
                     debug!(
                         %peer_address,
                         local_address=?transport.get_ref().local_addr(),
@@ -389,7 +388,7 @@ where
                 let (_sink, stream) = framed::<P>(transport).split();
 
                 let _ = self.incoming.insert(
-                    peer_id,
+                    peer_id.clone(),
                     IncomingConnection {
                         peer_address,
                         times_seen_asymmetric: 0,
@@ -397,15 +396,15 @@ where
                 );
 
                 // If the connection is now complete, announce the new peer before starting reader.
-                let mut effects = self.check_connection_complete(effect_builder, peer_id);
+                let mut effects = self.check_connection_complete(effect_builder, peer_id.clone());
 
                 effects.extend(
                     message_reader(
                         self.event_queue,
                         stream,
                         self.shutdown_receiver.clone(),
-                        self.our_id,
-                        peer_id,
+                        self.our_id.clone(),
+                        peer_id.clone(),
                     )
                     .event(move |result| Event::IncomingClosed {
                         result,
@@ -436,14 +435,18 @@ where
             .peer_addr()
             .expect("should have peer address");
 
-        assert!(
-            self.pending.remove(&peer_address),
-            "should always add outgoing connect attempts to pendings: {:?}",
-            self
-        );
+        if !self.pending.remove(&peer_address) {
+            info!(
+                %peer_address,
+                "{}: this peer's incoming connection has dropped, so don't establish an outgoing",
+                self.our_id
+            );
+            return Effects::new();
+        }
 
         // If we have connected to ourself, allow the connection to drop.
         if peer_id == self.our_id {
+            self.is_bootstrap_node = true;
             debug!(
                 peer_address=?transport.get_ref().peer_addr(),
                 local_address=?transport.get_ref().local_addr(),
@@ -462,14 +465,14 @@ where
             sender,
             times_seen_asymmetric: 0,
         };
-        if self.outgoing.insert(peer_id, connection).is_some() {
+        if self.outgoing.insert(peer_id.clone(), connection).is_some() {
             // We assume that for a reconnect to have happened, the outgoing entry must have
             // been either non-existent yet or cleaned up by the handler of the connection
             // closing event. If this is not the case, an assumed invariant has been violated.
             error!(%peer_id, "{}: did not expect leftover channel in outgoing map", self.our_id);
         }
 
-        let mut effects = self.check_connection_complete(effect_builder, peer_id);
+        let mut effects = self.check_connection_complete(effect_builder, peer_id.clone());
 
         effects.extend(
             message_sender(receiver, sink).event(move |result| Event::OutgoingFailed {
@@ -543,7 +546,7 @@ where
         for (node_id, conn) in self.incoming.iter_mut() {
             if !self.outgoing.contains_key(node_id) {
                 if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    remove.push(Node::Outgoing(*node_id, conn.peer_address));
+                    remove.push(Node::Outgoing(node_id.clone(), conn.peer_address));
                 } else {
                     conn.times_seen_asymmetric += 1;
                 }
@@ -554,7 +557,7 @@ where
         for (node_id, conn) in self.outgoing.iter_mut() {
             if !self.incoming.contains_key(node_id) {
                 if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    remove.push(Node::Incoming(*node_id));
+                    remove.push(Node::Incoming(node_id.clone()));
                 } else {
                     conn.times_seen_asymmetric += 1;
                 }
@@ -639,11 +642,12 @@ where
     /// Returns the set of connected nodes.
     pub(crate) fn peers(&self) -> HashMap<NodeId, SocketAddr> {
         let mut ret: HashMap<NodeId, SocketAddr> = HashMap::new();
-        for x in &self.outgoing {
-            ret.insert(*x.0, x.1.peer_address);
+        for (node_id, connection) in &self.outgoing {
+            ret.insert(node_id.clone(), connection.peer_address);
         }
-        for x in &self.incoming {
-            ret.entry(*x.0).or_insert(x.1.peer_address);
+        for (node_id, connection) in &self.incoming {
+            ret.entry(node_id.clone())
+                .or_insert(connection.peer_address);
         }
         ret
     }
@@ -660,7 +664,7 @@ where
     /// - Used in validator test.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
-        self.our_id
+        self.our_id.clone()
     }
 }
 
@@ -700,11 +704,10 @@ where
     type Event = Event<P>;
     type ConstructionError = Infallible;
 
-    #[allow(clippy::cognitive_complexity)]
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -720,17 +723,23 @@ where
                     "Bootstrap failed for node, but it was not in the set of pending connections"
                 );
 
-                // Exit with a fatal error if bootstrapping failed entirely.
                 if self.is_isolated() {
-                    // Note that we could retry the connection to other nodes, but for now we just
-                    // leave it up to the node operator to restart.
-                    fatal!(
-                        effect_builder,
-                        "failed to connect to any known node, now isolated"
-                    )
-                } else {
-                    Effects::new()
+                    if self.is_bootstrap_node {
+                        info!(
+                            "{}: failed to bootstrap to any other nodes, but continuing to run as we are a \
+                            bootstrap node", self.our_id
+                        );
+                    } else {
+                        // Note that we could retry the connection to other nodes, but for now we
+                        // just leave it up to the node operator to restart.
+                        return fatal!(
+                            effect_builder,
+                            "{}: failed to connect to any known node, now isolated",
+                            self.our_id
+                        );
+                    }
                 }
+                Effects::new()
             }
             Event::IncomingNew {
                 stream,
@@ -837,6 +846,7 @@ async fn server_task<P, REv>(
     // stay open, preventing reuse.
 
     // We first create a future that never terminates, handling incoming connections:
+    let cloned_our_id = our_id.clone();
     let accept_connections = async move {
         loop {
             // We handle accept errors here, since they can be caused by a temporary resource
@@ -860,7 +870,9 @@ async fn server_task<P, REv>(
                 //
                 //       The code in its current state will consume 100% CPU if local resource
                 //       exhaustion happens, as no distinction is made and no delay introduced.
-                Err(err) => warn!(%err, "{}: dropping incoming connection during accept", our_id),
+                Err(err) => {
+                    warn!(%err, "{}: dropping incoming connection during accept", cloned_our_id)
+                }
             }
         }
     };
@@ -897,10 +909,10 @@ async fn setup_tls(
     let peer_cert = tls_stream
         .ssl()
         .peer_certificate()
-        .ok_or_else(|| Error::NoClientCertificate)?;
+        .ok_or(Error::NoClientCertificate)?;
 
     Ok((
-        tls::validate_cert(peer_cert)?.public_key_fingerprint(),
+        NodeId::from(tls::validate_cert(peer_cert)?.public_key_fingerprint()),
         tls_stream,
     ))
 }
@@ -919,21 +931,26 @@ where
     P: DeserializeOwned + Send + Display,
     REv: From<Event<P>>,
 {
+    let our_id_ref = &our_id;
+    let peer_id_cloned = peer_id.clone();
     let read_messages = async move {
         while let Some(msg_result) = stream.next().await {
             match msg_result {
                 Ok(msg) => {
-                    debug!(%msg, %peer_id, "{}: message received", our_id);
+                    debug!(%msg, peer_id=%peer_id_cloned, "{}: message received", our_id_ref);
                     // We've received a message, push it to the reactor.
                     event_queue
                         .schedule(
-                            Event::IncomingMessage { peer_id, msg },
+                            Event::IncomingMessage {
+                                peer_id: peer_id_cloned.clone(),
+                                msg,
+                            },
                             QueueKind::NetworkIncoming,
                         )
                         .await;
                 }
                 Err(err) => {
-                    warn!(%err, %peer_id, "{}: receiving message failed, closing connection", our_id);
+                    warn!(%err, peer_id=%peer_id_cloned, "{}: receiving message failed, closing connection", our_id_ref);
                     return Err(err);
                 }
             }
@@ -949,7 +966,7 @@ where
         Either::Left(_) => info!(
             %peer_id,
             "{}: shutting down incoming connection message reader",
-            our_id
+            &our_id
         ),
         Either::Right(_) => (),
     }
@@ -1018,7 +1035,7 @@ async fn connect_outgoing(
     let peer_cert = tls_stream
         .ssl()
         .peer_certificate()
-        .ok_or_else(|| Error::NoServerCertificate)?;
+        .ok_or(Error::NoServerCertificate)?;
 
     let peer_id = tls::validate_cert(peer_cert)?.public_key_fingerprint();
 
@@ -1030,7 +1047,7 @@ async fn connect_outgoing(
         );
         Err(Error::ServerStopped)
     } else {
-        Ok((peer_id, tls_stream))
+        Ok((NodeId::from(peer_id), tls_stream))
     }
 }
 

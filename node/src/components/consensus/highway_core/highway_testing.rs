@@ -16,9 +16,10 @@ use super::{
     evidence::Evidence,
     finality_detector::{FinalityDetector, FttExceeded},
     highway::{
-        Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, SignedWireVote,
-        ValidVertex, Vertex, VertexError,
+        Dependency, Endorsements, GetDepOutcome, Highway, Params, PreValidatedVertex,
+        SignedWireUnit, ValidVertex, Vertex, VertexError,
     },
+    state::Fault,
     validators::Validators,
     Weight,
 };
@@ -27,20 +28,22 @@ use crate::{
         consensus_protocol::FinalizedBlock,
         tests::{
             consensus_des_testing::{
-                DeliverySchedule, Fault, Message, Node, Target, TargetedMessage, ValidatorId,
-                VirtualNet,
+                DeliverySchedule, Fault as DesFault, Message, Node, Target, TargetedMessage,
+                ValidatorId, VirtualNet,
             },
             queue::QueueEntry,
         },
         traits::{Context, ValidatorSecret},
         BlockContext,
     },
-    types::{CryptoRngCore, Timestamp},
+    types::Timestamp,
+    NodeRng,
 };
 
 type ConsensusValue = Vec<u32>;
 
 const TEST_MIN_ROUND_EXP: u8 = 12;
+const TEST_MAX_ROUND_EXP: u8 = 19;
 const TEST_END_HEIGHT: u64 = 100000;
 pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
@@ -48,9 +51,9 @@ pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
 #[derive(Clone, Eq, PartialEq)]
 enum HighwayMessage {
     Timer(Timestamp),
-    NewVertex(Vertex<TestContext>),
+    NewVertex(Box<Vertex<TestContext>>),
     RequestBlock(BlockContext),
-    WeEquivocated(Evidence<TestContext>),
+    WeAreFaulty(Box<Fault<TestContext>>),
 }
 
 impl Debug for HighwayMessage {
@@ -64,7 +67,7 @@ impl Debug for HighwayMessage {
             HighwayMessage::NewVertex(v) => {
                 f.debug_struct("NewVertex").field("vertex", &v).finish()
             }
-            HighwayMessage::WeEquivocated(ev) => f.debug_tuple("WeEquivocated").field(&ev).finish(),
+            HighwayMessage::WeAreFaulty(ft) => f.debug_tuple("WeAreFaulty").field(&ft).finish(),
         }
     }
 }
@@ -79,17 +82,14 @@ impl HighwayMessage {
             }
             HighwayMessage::Timer(_)
             | HighwayMessage::RequestBlock(_)
-            | HighwayMessage::WeEquivocated(_) => {
+            | HighwayMessage::WeAreFaulty(_) => {
                 TargetedMessage::new(create_msg(self), Target::SingleValidator(creator))
             }
         }
     }
 
     fn is_new_vertex(&self) -> bool {
-        match self {
-            HighwayMessage::NewVertex(_) => true,
-            _ => false,
-        }
+        matches!(self, HighwayMessage::NewVertex(_))
     }
 }
 
@@ -98,10 +98,10 @@ impl From<Effect<TestContext>> for HighwayMessage {
         match eff {
             // The effect is `ValidVertex` but we want to gossip it to other
             // validators so for them it's just `Vertex` that needs to be validated.
-            Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(v),
+            Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(Box::new(v)),
             Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
             Effect::RequestNewBlock(block_context) => HighwayMessage::RequestBlock(block_context),
-            Effect::WeEquivocated(evidence) => HighwayMessage::WeEquivocated(evidence),
+            Effect::WeAreFaulty(fault) => HighwayMessage::WeAreFaulty(Box::new(fault)),
         }
     }
 }
@@ -114,33 +114,56 @@ impl PartialOrd for HighwayMessage {
 
 impl Ord for HighwayMessage {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self == other {
+            return std::cmp::Ordering::Equal;
+        }
         match (self, other) {
             (HighwayMessage::Timer(t1), HighwayMessage::Timer(t2)) => t1.cmp(&t2),
-            (HighwayMessage::NewVertex(v1), HighwayMessage::NewVertex(v2)) => match (v1, v2) {
-                (Vertex::Vote(swv1), Vertex::Vote(swv2)) => swv1.hash().cmp(&swv2.hash()),
-                (Vertex::Vote(_), _) => std::cmp::Ordering::Less,
-                (
-                    Vertex::Evidence(Evidence::Equivocation(ev1_a, ev1_b)),
-                    Vertex::Evidence(Evidence::Equivocation(ev2_a, ev2_b)),
-                ) => ev1_a
-                    .hash()
-                    .cmp(&ev2_a.hash())
-                    .then_with(|| ev1_b.hash().cmp(&ev2_b.hash())),
-                (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
-            },
+            (HighwayMessage::NewVertex(v1), HighwayMessage::NewVertex(v2)) => {
+                match (&**v1, &**v2) {
+                    (Vertex::Unit(swv1), Vertex::Unit(swv2)) => swv1.hash().cmp(&swv2.hash()),
+                    (Vertex::Unit(_), _) => std::cmp::Ordering::Less,
+                    (
+                        Vertex::Evidence(Evidence::Equivocation(ev1_a, ev1_b)),
+                        Vertex::Evidence(Evidence::Equivocation(ev2_a, ev2_b)),
+                    ) => ev1_a
+                        .hash()
+                        .cmp(&ev2_a.hash())
+                        .then_with(|| ev1_b.hash().cmp(&ev2_b.hash())),
+                    (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
+                    (
+                        Vertex::Endorsements(Endorsements {
+                            unit: l_hash,
+                            endorsers: l_vid,
+                        }),
+                        Vertex::Endorsements(Endorsements {
+                            unit: r_hash,
+                            endorsers: r_vid,
+                        }),
+                    ) => l_hash.cmp(r_hash).then_with(|| l_vid.cmp(r_vid)),
+                    (Vertex::Endorsements(_), _) => std::cmp::Ordering::Less,
+                }
+            }
             (HighwayMessage::RequestBlock(bc1), HighwayMessage::RequestBlock(bc2)) => bc1.cmp(&bc2),
-            (HighwayMessage::WeEquivocated(ev1), HighwayMessage::WeEquivocated(ev2)) => {
-                let Evidence::Equivocation(ev1_a, ev1_b) = ev1;
-                let Evidence::Equivocation(ev2_a, ev2_b) = ev2;
-                ev1_a
-                    .hash()
-                    .cmp(&ev2_a.hash())
-                    .then_with(|| ev1_b.hash().cmp(&ev2_b.hash()))
+            (HighwayMessage::WeAreFaulty(ev1), HighwayMessage::WeAreFaulty(ev2)) => {
+                match (&**ev1, &**ev2) {
+                    (Fault::Banned, _) => std::cmp::Ordering::Greater,
+                    (Fault::Indirect, _) => std::cmp::Ordering::Greater,
+                    (Fault::Direct(ev1), Fault::Direct(ev2)) => {
+                        let Evidence::Equivocation(ev1_a, ev1_b) = ev1;
+                        let Evidence::Equivocation(ev2_a, ev2_b) = ev2;
+                        ev1_a
+                            .hash()
+                            .cmp(&ev2_a.hash())
+                            .then_with(|| ev1_b.hash().cmp(&ev2_b.hash()))
+                    }
+                    (_, _) => std::cmp::Ordering::Less,
+                }
             }
             (HighwayMessage::Timer(_), _) => std::cmp::Ordering::Less,
             (HighwayMessage::NewVertex(_), _) => std::cmp::Ordering::Less,
             (HighwayMessage::RequestBlock(_), _) => std::cmp::Ordering::Less,
-            (HighwayMessage::WeEquivocated(_), _) => std::cmp::Ordering::Greater,
+            (HighwayMessage::WeAreFaulty(_), _) => std::cmp::Ordering::Greater,
         }
     }
 }
@@ -181,13 +204,7 @@ enum Distribution {
 
 impl Distribution {
     /// Returns vector of `count` elements of random values between `lower` and `uppwer`.
-    fn gen_range_vec(
-        &self,
-        rng: &mut dyn CryptoRngCore,
-        lower: u64,
-        upper: u64,
-        count: u8,
-    ) -> Vec<u64> {
+    fn gen_range_vec(&self, rng: &mut NodeRng, lower: u64, upper: u64, count: u8) -> Vec<u64> {
         match self {
             Distribution::Uniform => (0..count).map(|_| rng.gen_range(lower, upper)).collect(),
         }
@@ -197,7 +214,7 @@ impl Distribution {
 trait DeliveryStrategy {
     fn gen_delay(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         message: &HighwayMessage,
         distributon: &Distribution,
         base_delivery_timestamp: Timestamp,
@@ -207,14 +224,14 @@ trait DeliveryStrategy {
 struct HighwayValidator {
     highway: Highway<TestContext>,
     finality_detector: FinalityDetector<TestContext>,
-    fault: Option<Fault>,
+    fault: Option<DesFault>,
 }
 
 impl HighwayValidator {
     fn new(
         highway: Highway<TestContext>,
         finality_detector: FinalityDetector<TestContext>,
-        fault: Option<Fault>,
+        fault: Option<DesFault>,
     ) -> Self {
         HighwayValidator {
             highway,
@@ -231,17 +248,11 @@ impl HighwayValidator {
         &self.highway
     }
 
-    fn run_finality(
-        &mut self,
-    ) -> Result<Vec<FinalizedBlock<ConsensusValue, ValidatorId>>, FttExceeded> {
+    fn run_finality(&mut self) -> Result<Vec<FinalizedBlock<TestContext>>, FttExceeded> {
         Ok(self.finality_detector.run(&self.highway)?.collect())
     }
 
-    fn post_hook(
-        &mut self,
-        rng: &mut dyn CryptoRngCore,
-        msg: HighwayMessage,
-    ) -> Vec<HighwayMessage> {
+    fn post_hook(&mut self, rng: &mut NodeRng, msg: HighwayMessage) -> Vec<HighwayMessage> {
         match self.fault.as_ref() {
             None => {
                 // Honest validator.
@@ -249,12 +260,12 @@ impl HighwayValidator {
                     HighwayMessage::NewVertex(_)
                     | HighwayMessage::Timer(_)
                     | HighwayMessage::RequestBlock(_) => vec![msg],
-                    HighwayMessage::WeEquivocated(ev) => {
+                    HighwayMessage::WeAreFaulty(ev) => {
                         panic!("validator equivocated unexpectedly: {:?}", ev);
                     }
                 }
             }
-            Some(Fault::Mute) => {
+            Some(DesFault::Mute) => {
                 // For mute validators we add it to the state but not gossip.
                 match msg {
                     HighwayMessage::NewVertex(_) => {
@@ -262,25 +273,33 @@ impl HighwayValidator {
                         vec![]
                     }
                     HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
-                    HighwayMessage::WeEquivocated(ev) => {
+                    HighwayMessage::WeAreFaulty(ev) => {
                         panic!("validator equivocated unexpectedly: {:?}", ev);
                     }
                 }
             }
-            Some(Fault::Equivocate) => {
+            Some(DesFault::Equivocate) => {
                 match msg {
-                    HighwayMessage::NewVertex(Vertex::Vote(ref swvote)) => {
-                        // Create an equivocating message, with a different timestamp.
-                        // TODO: Don't send both messages to every peer. Add different strategies.
-                        let mut wvote = swvote.wire_vote.clone();
-                        wvote.timestamp += 1.into();
-                        let secret = TestSecret(wvote.creator.0.into());
-                        let swvote2 = SignedWireVote::new(wvote, &secret, rng);
-                        vec![msg, HighwayMessage::NewVertex(Vertex::Vote(swvote2))]
+                    HighwayMessage::NewVertex(ref vertex) => {
+                        match **vertex {
+                            Vertex::Unit(ref swunit) => {
+                                // Create an equivocating message, with a different timestamp.
+                                // TODO: Don't send both messages to every peer. Add different
+                                // strategies.
+                                let mut wunit = swunit.wire_unit.clone();
+                                wunit.timestamp += 1.into();
+                                let secret = TestSecret(wunit.creator.0.into());
+                                let swunit2 = SignedWireUnit::new(wunit, &secret, rng);
+                                vec![
+                                    msg,
+                                    HighwayMessage::NewVertex(Box::new(Vertex::Unit(swunit2))),
+                                ]
+                            }
+                            _ => vec![msg],
+                        }
                     }
-                    HighwayMessage::NewVertex(_)
-                    | HighwayMessage::RequestBlock(_)
-                    | HighwayMessage::WeEquivocated(_)
+                    HighwayMessage::RequestBlock(_)
+                    | HighwayMessage::WeAreFaulty(_)
                     | HighwayMessage::Timer(_) => vec![msg],
                 }
             }
@@ -321,7 +340,7 @@ where
     /// Pops one message from the message queue (if there are any)
     /// and pass it to the recipient validator for execution.
     /// Messages returned from the execution are scheduled for later delivery.
-    pub(crate) fn crank(&mut self, rng: &mut dyn CryptoRngCore) -> TestResult<()> {
+    pub(crate) fn crank(&mut self, rng: &mut NodeRng) -> TestResult<()> {
         let QueueEntry {
             delivery_time,
             recipient,
@@ -382,12 +401,12 @@ where
 
     fn call_validator<F>(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         validator_id: &ValidatorId,
         f: F,
     ) -> TestResult<Vec<HighwayMessage>>
     where
-        F: FnOnce(&mut HighwayValidator, &mut dyn CryptoRngCore) -> Vec<Effect<TestContext>>,
+        F: FnOnce(&mut HighwayValidator, &mut NodeRng) -> Vec<Effect<TestContext>>,
     {
         let validator_node = self.node_mut(validator_id)?;
         let res = f(validator_node.validator_mut(), rng);
@@ -407,7 +426,7 @@ where
     /// message.
     fn process_message(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         validator_id: ValidatorId,
         message: Message<HighwayMessage>,
         delivery_time: Timestamp,
@@ -427,7 +446,13 @@ where
                     })?
                 }
                 HighwayMessage::NewVertex(v) => {
-                    match self.add_vertex(rng, validator_id, sender_id, v.clone(), delivery_time)? {
+                    match self.add_vertex(
+                        rng,
+                        validator_id,
+                        sender_id,
+                        *v.clone(),
+                        delivery_time,
+                    )? {
                         Ok(msgs) => {
                             trace!("{:?} successfuly added to the state.", v);
                             msgs
@@ -452,7 +477,7 @@ where
                             .propose(consensus_value, block_context, rng)
                     })?
                 }
-                HighwayMessage::WeEquivocated(_evidence) => vec![],
+                HighwayMessage::WeAreFaulty(_evidence) => vec![],
             }
         };
 
@@ -478,6 +503,7 @@ where
             timestamp: _,
             height,
             rewards,
+            equivocators: _,
             proposer: _,
         } in finalized_values
         {
@@ -501,7 +527,7 @@ where
     // From the POV of the test system, synchronization is immediate.
     fn add_vertex(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         recipient: ValidatorId,
         sender: ValidatorId,
         vertex: Vertex<TestContext>,
@@ -555,7 +581,7 @@ where
     /// it's returned and the original vertex mustn't be added to the state.
     fn synchronize_validator(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         recipient: ValidatorId,
         sender: ValidatorId,
         pvv: PreValidatedVertex<TestContext>,
@@ -566,7 +592,7 @@ where
             let validator = self
                 .virtual_net
                 .validator(&recipient)
-                .ok_or_else(|| TestRunError::MissingValidator(recipient))?
+                .ok_or(TestRunError::MissingValidator(recipient))?
                 .validator();
 
             let mut messages = vec![];
@@ -594,11 +620,11 @@ where
     //
     // If validator has missing dependencies then we have to add them first.
     // We don't want to test synchronization, and the Highway theory assumes
-    // that when votes are added then all their dependencies are satisfied.
+    // that when units are added then all their dependencies are satisfied.
     #[allow(clippy::type_complexity)]
     fn synchronize_dependency(
         &mut self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         missing_dependency: Dependency<TestContext>,
         recipient: ValidatorId,
         sender: ValidatorId,
@@ -628,7 +654,7 @@ where
 
 fn crank_until<F, DS: DeliveryStrategy>(
     htt: &mut HighwayTestHarness<DS>,
-    rng: &mut dyn CryptoRngCore,
+    rng: &mut NodeRng,
     f: F,
 ) -> TestResult<()>
 where
@@ -665,7 +691,7 @@ struct HighwayTestHarnessBuilder<DS: DeliveryStrategy> {
     /// Percentage of faulty validators' (i.e. equivocators) weight.
     /// Defaults to 0 (network is perfectly secure).
     faulty_percent: u64,
-    fault_type: Option<Fault>,
+    fault_type: Option<DesFault>,
     /// FTT value for the finality detector.
     /// If not given, defaults to 1/3 of total validators' weight.
     ftt: Option<u64>,
@@ -695,7 +721,7 @@ struct InstantDeliveryNoDropping;
 impl DeliveryStrategy for InstantDeliveryNoDropping {
     fn gen_delay(
         &mut self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         message: &HighwayMessage,
         _distributon: &Distribution,
         base_delivery_timestamp: Timestamp,
@@ -706,7 +732,7 @@ impl DeliveryStrategy for InstantDeliveryNoDropping {
             HighwayMessage::NewVertex(_) => {
                 DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into())
             }
-            HighwayMessage::WeEquivocated(_) => {
+            HighwayMessage::WeAreFaulty(_) => {
                 DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into())
             }
         }
@@ -739,7 +765,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
-    fn fault_type(mut self, fault_type: Fault) -> Self {
+    fn fault_type(mut self, fault_type: DesFault) -> Self {
         self.fault_type = Some(fault_type);
         self
     }
@@ -764,7 +790,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
         self
     }
 
-    fn build(self, rng: &mut dyn CryptoRngCore) -> Result<HighwayTestHarness<DS>, BuilderError> {
+    fn build(self, rng: &mut NodeRng) -> Result<HighwayTestHarness<DS>, BuilderError> {
         let consensus_values = (0..self.consensus_values_count as u32)
             .map(|el| vec![el])
             .collect::<VecDeque<ConsensusValue>>();
@@ -849,10 +875,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                 .map(|(i, weight)| (ValidatorId(i as u64), *weight)),
         );
 
-        trace!(
-            "Weights: {:?}",
-            validators.iter().map(|v| v).collect::<Vec<_>>()
-        );
+        trace!("Weights: {:?}", validators.iter().collect::<Vec<_>>());
 
         let mut secrets = validators
             .iter()
@@ -874,7 +897,10 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     TEST_BLOCK_REWARD,
                     TEST_REDUCED_BLOCK_REWARD,
                     TEST_MIN_ROUND_EXP,
+                    TEST_MAX_ROUND_EXP,
+                    TEST_MIN_ROUND_EXP,
                     TEST_END_HEIGHT,
+                    Timestamp::now(),
                     Timestamp::zero(), // Length depends only on block number.
                 );
                 let mut highway = Highway::new(instance_id, validators.clone(), params);
@@ -945,7 +971,7 @@ pub(crate) struct TestSecret(pub(crate) u64);
 
 // Newtype wrapper for test signature.
 // Added so that we can use custom Debug impl.
-#[derive(Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Hash, PartialOrd, Ord, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct SignatureWrapper(u64);
 
 impl Debug for SignatureWrapper {
@@ -956,7 +982,7 @@ impl Debug for SignatureWrapper {
 
 // Newtype wrapper for test hash.
 // Added so that we can use custom Debug impl.
-#[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct HashWrapper(u64);
 
 impl Debug for HashWrapper {
@@ -975,7 +1001,7 @@ impl ValidatorSecret for TestSecret {
     type Hash = HashWrapper;
     type Signature = SignatureWrapper;
 
-    fn sign(&self, data: &Self::Hash, _rng: &mut dyn CryptoRngCore) -> Self::Signature {
+    fn sign(&self, data: &Self::Hash, _rng: &mut NodeRng) -> Self::Signature {
         SignatureWrapper(data.0 + self.0)
     }
 }
@@ -1012,15 +1038,14 @@ mod test_harness {
         InstantDeliveryNoDropping, TestRunError,
     };
     use crate::{
-        components::consensus::tests::consensus_des_testing::{Fault, ValidatorId},
+        components::consensus::tests::consensus_des_testing::{Fault as DesFault, ValidatorId},
         logging,
-        testing::TestRng,
     };
     use logging::{LoggingConfig, LoggingFormat};
 
     #[test]
     fn on_empty_queue_error() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let mut highway_test_harness: HighwayTestHarness<InstantDeliveryNoDropping> =
             HighwayTestHarnessBuilder::new()
                 .consensus_values_count(1)
@@ -1050,7 +1075,7 @@ mod test_harness {
     fn liveness_test_no_faults() {
         let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let cv_count = 10;
 
         let mut highway_test_harness = HighwayTestHarnessBuilder::new()
@@ -1114,14 +1139,14 @@ mod test_harness {
     fn liveness_test_some_mute() {
         let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let cv_count = 10;
         let fault_perc = 30;
 
         let mut highway_test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)
             .faulty_weight_perc(fault_perc)
-            .fault_type(Fault::Mute)
+            .fault_type(DesFault::Mute)
             .consensus_values_count(cv_count)
             .weight_limits(100, 120)
             .build(&mut rng)
@@ -1152,17 +1177,18 @@ mod test_harness {
     }
 
     #[test]
+    #[ignore] // TODO(HWY-206)
     fn liveness_test_some_equivocate() {
         let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let cv_count = 10;
         let fault_perc = 10;
 
         let mut highway_test_harness = HighwayTestHarnessBuilder::new()
             .max_faulty_validators(3)
             .faulty_weight_perc(fault_perc)
-            .fault_type(Fault::Equivocate)
+            .fault_type(DesFault::Equivocate)
             .consensus_values_count(cv_count)
             .weight_limits(100, 150)
             .build(&mut rng)

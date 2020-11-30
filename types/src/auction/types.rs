@@ -1,18 +1,30 @@
-use alloc::collections::BTreeMap;
+use alloc::{collections::BTreeMap, vec::Vec};
 
-use crate::{PublicKey, U512};
+use crate::{
+    auction::{Bid, SeigniorageRecipient, UnbondingPurse},
+    PublicKey, U512,
+};
 
 /// Representation of delegation rate of tokens. Fraction of 1 in trillionths (12 decimal places).
 pub type DelegationRate = u64;
 
-/// Delegators and associated bid "top-ups".
-pub type DelegatedAmounts = BTreeMap<PublicKey, U512>;
+/// Validators mapped to their bids.
+pub type Bids = BTreeMap<PublicKey, Bid>;
 
-/// Validators, mapped to a list of delegators and associated bid "top-ups".
-pub type Delegators = BTreeMap<PublicKey, DelegatedAmounts>;
+/// Weights of validators. "Weight" in this context means a sum of their stakes.
+pub type ValidatorWeights = BTreeMap<PublicKey, U512>;
 
-/// Validators mapped to Delegators mapped to their reward amounts.
-pub type DelegatorRewardMap = BTreeMap<PublicKey, BTreeMap<PublicKey, U512>>;
+/// Era index type.
+pub type EraId = u64;
 
-/// Validators mapped to their reward amounts.
-pub type ValidatorRewardMap = BTreeMap<PublicKey, U512>;
+/// List of era validators
+pub type EraValidators = BTreeMap<EraId, ValidatorWeights>;
+
+/// Collection of seigniorage recipients.
+pub type SeigniorageRecipients = BTreeMap<PublicKey, SeigniorageRecipient>;
+
+/// Snapshot of `SeigniorageRecipients` for a given era.
+pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
+
+/// Validators and delegators mapped to their unbonding purses.
+pub type UnbondingPurses = BTreeMap<PublicKey, Vec<UnbondingPurse>>;

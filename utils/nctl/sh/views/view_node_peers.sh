@@ -7,29 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
-#######################################
-# Displays to stdout current node peers.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifer.
-#   Node ordinal identifer.
-#######################################
-function _view_peers() {
-    node_address=$(get_node_address $1 $2)
-    log "network #$1 :: node #$2 :: $node_address :: peers:"
-    curl -s --header 'Content-Type: application/json' \
-        --request POST $(get_node_address_rpc $1 $2) \
-        --data-raw '{
-            "id": 1,
-            "jsonrpc": "2.0",
-            "method": "info_get_peers"
-        }' | jq '.result.peers'
-}
-
 #######################################
 # Destructure input args.
 #######################################
@@ -57,14 +34,20 @@ node=${node:-"all"}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils.sh
+
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Render peer set.
 if [ $node = "all" ]; then
-    source $NCTL/assets/net-$net/vars
-    for node_idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        _view_peers $net $node_idx
         echo "------------------------------------------------------------------------------------------------------------------------------------"
-        echo "------------------------------------------------------------------------------------------------------------------------------------"
+        render_node_peers $net $idx
     done
+    echo "------------------------------------------------------------------------------------------------------------------------------------"
 else
-    _view_peers $net $node
+    render_node_peers $net $node
 fi

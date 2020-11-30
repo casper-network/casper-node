@@ -10,8 +10,8 @@ use wasmi::ModuleRef;
 
 use casper_types::{
     account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, AccessRights,
-    BlockTime, CLTyped, CLValue, ContractPackage, EntryPoint, EntryPointType, Key, Phase,
-    ProtocolVersion, RuntimeArgs,
+    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
+    Phase, ProtocolVersion, RuntimeArgs,
 };
 
 use crate::{
@@ -100,7 +100,7 @@ impl Executor {
         named_keys: &mut NamedKeys,
         authorization_keys: BTreeSet<AccountHash>,
         blocktime: BlockTime,
-        deploy_hash: [u8; 32],
+        deploy_hash: DeployHash,
         gas_limit: Gas,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
@@ -127,15 +127,15 @@ impl Executor {
         };
 
         let hash_address_generator = {
-            let generator = AddressGenerator::new(&deploy_hash, phase);
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
         let uref_address_generator = {
-            let generator = AddressGenerator::new(&deploy_hash, phase);
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
         let target_address_generator = {
-            let generator = AddressGenerator::new(&deploy_hash, phase);
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
         let gas_counter: Gas = Gas::default();
@@ -282,7 +282,7 @@ impl Executor {
         account: &Account,
         authorization_keys: BTreeSet<AccountHash>,
         blocktime: BlockTime,
-        deploy_hash: [u8; 32],
+        deploy_hash: DeployHash,
         gas_limit: Gas,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
@@ -334,15 +334,15 @@ impl Executor {
         }
 
         let hash_address_generator = {
-            let generator = AddressGenerator::new(&deploy_hash, phase);
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
         let uref_address_generator = {
-            let generator = AddressGenerator::new(&deploy_hash, phase);
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
         let transfer_address_generator = {
-            let generator = AddressGenerator::new(&deploy_hash, phase);
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
             Rc::new(RefCell::new(generator))
         };
         let gas_counter = Gas::default(); // maybe const?
@@ -481,7 +481,7 @@ impl Executor {
         account: &mut Account,
         authorization_keys: BTreeSet<AccountHash>,
         blocktime: BlockTime,
-        deploy_hash: [u8; 32],
+        deploy_hash: DeployHash,
         gas_limit: Gas,
         hash_address_generator: Rc<RefCell<AddressGenerator>>,
         uref_address_generator: Rc<RefCell<AddressGenerator>>,
@@ -568,7 +568,7 @@ impl Executor {
         account: &'a Account,
         authorization_keys: BTreeSet<AccountHash>,
         blocktime: BlockTime,
-        deploy_hash: [u8; 32],
+        deploy_hash: DeployHash,
         gas_limit: Gas,
         hash_address_generator: Rc<RefCell<AddressGenerator>>,
         uref_address_generator: Rc<RefCell<AddressGenerator>>,

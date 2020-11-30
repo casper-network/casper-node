@@ -18,14 +18,17 @@ Who uses nctl ?
 
 CSPR network community.  This encompasses developers, validators, evaluators ... etc.
 
+
 Requirements
 --------------------------------------
-
     - python3 + pip
     - make
     - cargo
     - bash
     - jq (bash utility library for parsing json)
+
+
+Plus the requirements to build [casper-node](https://github.com/CasperLabs/casper-node#pre-requisites-for-building)
 
 Setup
 --------------------------------------

@@ -5,14 +5,14 @@ use std::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::{
     components::{
         chainspec_loader::{self, ChainspecLoader},
         contract_runtime::{self, ContractRuntime},
-        small_network::NodeId,
-        storage::{self, Storage, StorageType},
+        storage::{self, Storage},
         Component,
     },
     effect::{
@@ -21,12 +21,13 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, validator, EventQueueHandle},
-    types::CryptoRngCore,
+    types::NodeId,
     utils::WithDir,
+    NodeRng,
 };
 
 /// Top-level event for the reactor.
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 #[must_use]
 pub enum Event {
     /// Chainspec handler event.
@@ -35,16 +36,16 @@ pub enum Event {
 
     /// Storage event.
     #[from]
-    Storage(storage::Event<Storage>),
+    Storage(#[serde(skip_serializing)] storage::Event),
 
     /// Contract runtime event.
     #[from]
     ContractRuntime(contract_runtime::Event),
 }
 
-impl From<StorageRequest<Storage>> for Event {
-    fn from(request: StorageRequest<Storage>) -> Self {
-        Event::Storage(storage::Event::Request(request))
+impl From<StorageRequest> for Event {
+    fn from(request: StorageRequest) -> Self {
+        Event::Storage(storage::Event::StorageRequest(request))
     }
 }
 
@@ -119,7 +120,7 @@ impl reactor::Reactor for Reactor {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Error> {
         let chainspec = config
             .value()
@@ -134,7 +135,7 @@ impl reactor::Reactor for Reactor {
         let effect_builder = EffectBuilder::new(event_queue);
 
         let storage_config = config.map_ref(|cfg| cfg.storage.clone());
-        let storage = Storage::new(storage_config.clone())?;
+        let storage = Storage::new(&storage_config)?;
 
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
@@ -157,7 +158,7 @@ impl reactor::Reactor for Reactor {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Event,
     ) -> Effects<Self::Event> {
         match event {

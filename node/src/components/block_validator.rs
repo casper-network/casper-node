@@ -25,9 +25,12 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{BlockLike, CryptoRngCore, Deploy, DeployHash},
+    types::{BlockLike, Deploy, DeployHash},
+    NodeRng,
 };
 use keyed_counter::KeyedCounter;
+
+use super::fetcher::FetchResult;
 
 /// Block validator component event.
 #[derive(Debug, From, Display)]
@@ -94,7 +97,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -102,6 +105,7 @@ where
                 block,
                 sender,
                 responder,
+                block_timestamp,
             }) => {
                 if block.deploys().is_empty() {
                     // If there are no deploys, return early.
@@ -125,7 +129,16 @@ where
                         effect_builder
                             .fetch_deploy(*deploy_hash, sender.clone())
                             .option(
-                                move |_value| Event::DeployFound(dh_found),
+                                move |result: FetchResult<Deploy>| match result {
+                                    FetchResult::FromStorage(deploy)
+                                    | FetchResult::FromPeer(deploy, _) => {
+                                        if deploy.header().timestamp() > block_timestamp {
+                                            Event::DeployMissing(dh_found)
+                                        } else {
+                                            Event::DeployFound(dh_found)
+                                        }
+                                    }
+                                },
                                 move || Event::DeployMissing(dh_not_found),
                             )
                     })

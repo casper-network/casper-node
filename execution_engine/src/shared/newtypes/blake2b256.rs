@@ -5,11 +5,12 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+use serde::Serialize;
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Represents a 32-byte BLAKE2b hash digest
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize)]
 pub struct Blake2bHash([u8; Blake2bHash::LENGTH]);
 
 impl Blake2bHash {
@@ -97,16 +98,19 @@ impl Into<[u8; Blake2bHash::LENGTH]> for Blake2bHash {
 }
 
 impl ToBytes for Blake2bHash {
+    #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
     }
 
+    #[inline(always)]
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
 }
 
 impl FromBytes for Blake2bHash {
+    #[inline(always)]
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         FromBytes::from_bytes(bytes).map(|(arr, rem)| (Blake2bHash(arr), rem))
     }

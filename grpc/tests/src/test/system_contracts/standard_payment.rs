@@ -1,4 +1,5 @@
 use assert_matches::assert_matches;
+use lazy_static::lazy_static;
 
 use casper_engine_test_support::{
     internal::{
@@ -12,7 +13,15 @@ use casper_execution_engine::{
         engine_state::{Error, CONV_RATE, MAX_PAYMENT},
         execution,
     },
-    shared::{motes::Motes, transform::Transform},
+    shared::{
+        gas::Gas,
+        host_function_costs::{Cost, HostFunction, HostFunctionCosts},
+        motes::Motes,
+        opcode_costs::OpcodeCosts,
+        storage_costs::StorageCosts,
+        transform::Transform,
+        wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
+    },
 };
 use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
@@ -23,6 +32,22 @@ const REVERT_WASM: &str = "revert.wasm";
 const ENDLESS_LOOP_WASM: &str = "endless_loop.wasm";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
+
+lazy_static! {
+    static ref EXHAUSTIVE_HOST_FUNCTION_COSTS: HostFunctionCosts = HostFunctionCosts {
+        // Settings where all opcodes are so expensive so we can run out of gas very quickly
+        get_main_purse: HostFunction::fixed(Cost::max_value()),
+        .. Default::default()
+    };
+
+    static ref EXHAUSTIVE_WASM_CONFIG: WasmConfig = WasmConfig::new(
+        DEFAULT_INITIAL_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT,
+        OpcodeCosts::default(),
+        StorageCosts::new(u32::max_value()),
+        *EXHAUSTIVE_HOST_FUNCTION_COSTS,
+    );
+}
 
 #[ignore]
 #[test]
@@ -117,7 +142,7 @@ fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
     );
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let penalty_payment_amount: U512 = *MAX_PAYMENT;
+    let penalty_payment_amount = *MAX_PAYMENT;
 
     assert_eq!(
         modified_balance,
@@ -302,6 +327,10 @@ fn should_forward_payment_execution_gas_limit_error() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let transferred_amount = U512::from(1);
 
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
     let exec_request = {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
@@ -316,10 +345,6 @@ fn should_forward_payment_execution_gas_limit_error() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -360,6 +385,13 @@ fn should_forward_payment_execution_gas_limit_error() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    let payment_gas_limit =
+        Gas::from_motes(Motes::new(*MAX_PAYMENT), CONV_RATE).expect("should convert to gas");
+    assert_eq!(
+        execution_result.cost(),
+        payment_gas_limit,
+        "cost should equal gas limit"
+    );
 }
 
 #[ignore]
@@ -400,6 +432,13 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), CONV_RATE)
+        .expect("should convert to gas");
+    assert_eq!(
+        execution_result.cost(),
+        session_gas_limit,
+        "cost should equal gas limit"
+    );
 }
 
 #[ignore]
@@ -456,6 +495,13 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), CONV_RATE)
+        .expect("should convert to gas");
+    assert_eq!(
+        execution_result.cost(),
+        session_gas_limit,
+        "cost should equal gas limit"
+    );
 }
 
 #[ignore]
@@ -686,13 +732,13 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
 
     // confirm the two deploys have no overlapping writes
     let common_write_keys = transforms_from_genesis.keys().filter(|k| {
-        match (
-            transforms_from_genesis.get(k),
-            transforms_from_account_1.get(k),
-        ) {
-            (Some(Transform::Write(_)), Some(Transform::Write(_))) => true,
-            _ => false,
-        }
+        matches!(
+            (
+                transforms_from_genesis.get(k),
+                transforms_from_account_1.get(k),
+            ),
+            (Some(Transform::Write(_)), Some(Transform::Write(_)))
+        )
     });
 
     assert_eq!(common_write_keys.count(), 0);

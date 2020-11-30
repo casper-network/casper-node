@@ -3,7 +3,7 @@ use casper_engine_test_support::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
@@ -22,7 +22,11 @@ fn should_run_pos_refund_purse_contract_default_account() {
 #[test]
 fn should_run_pos_refund_purse_contract_account_1() {
     let mut builder = initialize();
-    transfer(&mut builder, ACCOUNT_1_ADDR, *DEFAULT_PAYMENT * 2);
+    transfer(
+        &mut builder,
+        ACCOUNT_1_ADDR,
+        U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+    );
     refund_tests(&mut builder, ACCOUNT_1_ADDR);
 }
 

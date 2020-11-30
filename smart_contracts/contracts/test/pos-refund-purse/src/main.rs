@@ -42,7 +42,7 @@ fn get_payment_purse(pos: ContractHash) -> URef {
 fn submit_payment(pos: ContractHash, amount: U512) {
     let payment_purse = get_payment_purse(pos);
     let main_purse = account::get_main_purse();
-    system::transfer_from_purse_to_purse(main_purse, payment_purse, amount).unwrap_or_revert()
+    system::transfer_from_purse_to_purse(main_purse, payment_purse, amount, None).unwrap_or_revert()
 }
 
 #[no_mangle]

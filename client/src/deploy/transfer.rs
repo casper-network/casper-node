@@ -1,14 +1,9 @@
 use clap::{App, Arg, ArgGroup, ArgMatches, SubCommand};
 
-use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
-use casper_node::{
-    crypto::asymmetric_key::PublicKey,
-    rpcs::{account::PutDeploy, RpcWithParams},
-};
-use casper_types::{bytesrepr::ToBytes, RuntimeArgs, URef, U512};
+use casper_client::DeployStrParams;
 
 use super::creation_common::{self, DisplayOrder};
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// Handles providing the arg for and retrieval of the transfer amount.
 pub(super) mod amount {
@@ -29,13 +24,10 @@ pub(super) mod amount {
             .display_order(DisplayOrder::TransferAmount as usize)
     }
 
-    pub(in crate::deploy) fn get(matches: &ArgMatches) -> U512 {
-        let value = matches
+    pub(in crate::deploy) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches
             .value_of(ARG_NAME)
-            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME));
-        U512::from_dec_str(value).unwrap_or_else(|error| {
-            panic!("can't parse --{} {} as U512: {}", ARG_NAME, value, error)
-        })
+            .unwrap_or_else(|| panic!("should have {} arg", ARG_NAME))
     }
 }
 
@@ -44,10 +36,10 @@ mod source_purse {
     use super::*;
 
     pub(super) const ARG_NAME: &str = "source-purse";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
+    const ARG_VALUE_NAME: &str = "UREF";
     const ARG_HELP: &str =
-        "Hex-encoded URef of the source purse. If this is omitted, the main purse of the account \
-        creating this transfer will be used as the source purse";
+        "URef of the source purse. If this is omitted, the main purse of the account creating this \
+        transfer will be used as the source purse";
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -58,17 +50,13 @@ mod source_purse {
             .display_order(DisplayOrder::TransferSourcePurse as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Option<URef> {
-        matches.value_of(ARG_NAME).map(|value| {
-            URef::from_formatted_str(value).unwrap_or_else(|error| {
-                panic!("can't parse --{} {} as URef: {:?}", ARG_NAME, value, error)
-            })
-        })
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
 /// Handles providing the arg for and retrieval of the target account.
-mod target_account {
+pub(super) mod target_account {
     use super::*;
 
     pub(super) const ARG_NAME: &str = "target-account";
@@ -78,7 +66,7 @@ mod target_account {
         "Hex-encoded public key of the account from which the main purse will be used as the \
         target.";
 
-    // Conflicts with --target-purse, but that's handled via an `ArgGroup` in the subcommand.  Don't
+    // Conflicts with --target-purse, but that's handled via an `ArgGroup` in the subcommand. Don't
     // add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)
@@ -90,25 +78,18 @@ mod target_account {
             .display_order(DisplayOrder::TransferTargetAccount as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Option<PublicKey> {
-        matches.value_of(ARG_NAME).map(|value| {
-            PublicKey::from_hex(value).unwrap_or_else(|error| {
-                panic!(
-                    "can't parse --{} {} as PublicKey: {:?}",
-                    ARG_NAME, value, error
-                )
-            })
-        })
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
 /// Handles providing the arg for and retrieval of the target purse.
-mod target_purse {
+pub(super) mod target_purse {
     use super::*;
 
     pub(super) const ARG_NAME: &str = "target-purse";
-    const ARG_VALUE_NAME: &str = "HEX STRING";
-    const ARG_HELP: &str = "Hex-encoded URef of the target purse";
+    const ARG_VALUE_NAME: &str = "UREF";
+    const ARG_HELP: &str = "URef of the target purse";
 
     // Conflicts with --target-account, but that's handled via an `ArgGroup` in the subcommand.
     // Don't add a `conflicts_with()` to the arg or the `ArgGroup` fails to work correctly.
@@ -121,46 +102,34 @@ mod target_purse {
             .display_order(DisplayOrder::TransferTargetPurse as usize)
     }
 
-    pub(super) fn get(matches: &ArgMatches) -> Option<URef> {
-        matches.value_of(ARG_NAME).map(|value| {
-            URef::from_formatted_str(value).unwrap_or_else(|error| {
-                panic!("can't parse --{} {} as URef: {:?}", ARG_NAME, value, error)
-            })
-        })
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
 }
 
-fn create_transfer_args(matches: &ArgMatches) -> RuntimeArgs {
-    const TRANSFER_ARG_AMOUNT: &str = "amount";
-    const TRANSFER_ARG_SOURCE: &str = "source";
-    const TRANSFER_ARG_TARGET: &str = "target";
+/// Handles providing the arg for and retrieval of the transfer id.
+pub(super) mod transfer_id {
+    use super::*;
 
-    let mut runtime_args = RuntimeArgs::new();
-    runtime_args.insert(TRANSFER_ARG_AMOUNT, amount::get(matches));
+    pub(super) const ARG_NAME: &str = "transfer-id";
+    const ARG_VALUE_NAME: &str = "64-BIT INTEGER";
+    const ARG_HELP: &str = "user-defined transfer id";
 
-    if let Some(source_purse) = source_purse::get(matches) {
-        runtime_args.insert(TRANSFER_ARG_SOURCE, source_purse);
+    pub(super) fn arg() -> Arg<'static, 'static> {
+        Arg::with_name(ARG_NAME)
+            .long(ARG_NAME)
+            .required(false)
+            .value_name(ARG_VALUE_NAME)
+            .help(ARG_HELP)
+            .display_order(DisplayOrder::TransferId as usize)
     }
 
-    match (target_account::get(matches), target_purse::get(matches)) {
-        (Some(target_account), None) => {
-            let target_account_hash = target_account.to_account_hash().value();
-            runtime_args.insert(TRANSFER_ARG_TARGET, target_account_hash);
-        }
-        (None, Some(target_purse)) => {
-            runtime_args.insert(TRANSFER_ARG_TARGET, target_purse);
-        }
-        _ => unreachable!("should have a target"),
+    pub(super) fn get<'a>(matches: &'a ArgMatches) -> &'a str {
+        matches.value_of(ARG_NAME).unwrap_or_default()
     }
-
-    runtime_args
 }
 
 pub struct Transfer {}
-
-impl RpcClient for Transfer {
-    const RPC_METHOD: &'static str = PutDeploy::METHOD;
-}
 
 impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
     const NAME: &'static str = "transfer";
@@ -176,6 +145,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
             .arg(source_purse::arg())
             .arg(target_account::arg())
             .arg(target_purse::arg())
+            .arg(transfer_id::arg())
             // Group the target args to ensure exactly one is required.
             .group(
                 ArgGroup::with_name("required-target-args")
@@ -191,20 +161,45 @@ impl<'a, 'b> ClientCommand<'a, 'b> for Transfer {
     fn run(matches: &ArgMatches<'_>) {
         creation_common::show_arg_examples_and_exit_if_required(matches);
 
-        let verbose = common::verbose::get(matches);
+        let amount = amount::get(matches);
+        let source_purse = source_purse::get(matches);
+        let target_purse = target_purse::get(matches);
+        let target_account = target_account::get(matches);
+        let transfer_id = transfer_id::get(matches);
+
+        let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
+        let verbose = common::verbose::get(matches);
 
-        let transfer_args = create_transfer_args(matches)
-            .to_bytes()
-            .expect("should serialize");
-        let session = ExecutableDeployItem::Transfer {
-            args: transfer_args,
-        };
+        let secret_key = common::secret_key::get(matches);
+        let timestamp = creation_common::timestamp::get(matches);
+        let ttl = creation_common::ttl::get(matches);
+        let gas_price = creation_common::gas_price::get(matches);
+        let dependencies = creation_common::dependencies::get(matches);
+        let chain_name = creation_common::chain_name::get(matches);
 
-        let params = creation_common::construct_deploy(matches, session);
+        let payment_str_params = creation_common::payment_str_params(matches);
 
-        let response = Self::request_with_map_params(verbose, &node_address, rpc_id, params);
+        let response = casper_client::transfer(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            amount,
+            source_purse,
+            target_purse,
+            target_account,
+            transfer_id,
+            DeployStrParams {
+                secret_key,
+                timestamp,
+                ttl,
+                dependencies,
+                gas_price,
+                chain_name,
+            },
+            payment_str_params,
+        )
+        .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")

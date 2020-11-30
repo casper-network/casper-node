@@ -32,7 +32,7 @@ where
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).unwrap();
         self.context
-            .write_gs(uref.into(), StoredValue::CLValue(cl_value))
+            .metered_write_gs(uref.into(), StoredValue::CLValue(cl_value))
             .map_err(|_| Error::Storage)
     }
 }
@@ -57,7 +57,7 @@ where
         amount: U512,
     ) -> Result<(), Error> {
         let mint_contract_hash = self.get_mint_contract();
-        self.mint_transfer(mint_contract_hash, source, target, amount)
+        self.mint_transfer(mint_contract_hash, source, target, amount, None)
             .map_err(|_| Error::Transfer)
     }
 }
@@ -97,7 +97,7 @@ where
         target: AccountHash,
         amount: U512,
     ) -> Result<TransferredTo, ApiError> {
-        self.transfer_from_purse_to_account(source, target, amount)
+        self.transfer_from_purse_to_account(source, target, amount, None)
             .expect("should transfer from purse to account")
     }
 
@@ -106,15 +106,15 @@ where
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ()> {
+    ) -> Result<(), Error> {
         let mint_contract_key = self.get_mint_contract();
         if self
-            .mint_transfer(mint_contract_key, source, target, amount)
+            .mint_transfer(mint_contract_key, source, target, amount, None)
             .is_ok()
         {
             Ok(())
         } else {
-            Err(())
+            Err(Error::Transfer)
         }
     }
 
@@ -132,6 +132,12 @@ where
         let mint_contract = self.get_mint_contract();
         self.mint_mint(mint_contract, amount)
             .map_err(|_| Error::MintReward)
+    }
+
+    fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
+        let mint_contract = self.get_mint_contract();
+        self.mint_reduce_total_supply(mint_contract, amount)
+            .map_err(|_| Error::MintReduceTotalSupply)
     }
 }
 

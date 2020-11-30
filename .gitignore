@@ -131,11 +131,16 @@ dist
 
 resources/production/*.wasm
 resources/node-storage/*
+resources/local/chainspec.toml
 
 # CLion
 .idea/
+cmake-build-debug/
 
 # NCTL transient assets
 /utils/nctl/assets
 /utils/nctl/dumps
 /utils/nctl/templates/node-config-*.toml
+
+# client c headers
+client/headers/**

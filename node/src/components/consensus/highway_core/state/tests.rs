@@ -1,6 +1,9 @@
 #![allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
 
-use std::{collections::hash_map::DefaultHasher, hash::Hasher};
+use std::{
+    collections::{hash_map::DefaultHasher, BTreeSet},
+    hash::Hasher,
+};
 
 use rand::{Rng, RngCore};
 
@@ -10,8 +13,7 @@ use crate::{
         highway_core::{highway::Dependency, highway_testing::TEST_BLOCK_REWARD},
         traits::ValidatorSecret,
     },
-    testing::TestRng,
-    types::CryptoRngCore,
+    NodeRng,
 };
 
 pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
@@ -19,9 +21,19 @@ pub(crate) const WEIGHTS: &[Weight] = &[Weight(3), Weight(4), Weight(5)];
 pub(crate) const ALICE: ValidatorIndex = ValidatorIndex(0);
 pub(crate) const BOB: ValidatorIndex = ValidatorIndex(1);
 pub(crate) const CAROL: ValidatorIndex = ValidatorIndex(2);
+pub(crate) const DAN: ValidatorIndex = ValidatorIndex(3);
+pub(crate) const ERIC: ValidatorIndex = ValidatorIndex(4);
+pub(crate) const FRANK: ValidatorIndex = ValidatorIndex(5);
+pub(crate) const GINA: ValidatorIndex = ValidatorIndex(6);
+pub(crate) const HANNA: ValidatorIndex = ValidatorIndex(7);
 
 pub(crate) const N: Observation<TestContext> = Observation::None;
 pub(crate) const F: Observation<TestContext> = Observation::Faulty;
+
+const TEST_MIN_ROUND_EXP: u8 = 4;
+const TEST_MAX_ROUND_EXP: u8 = 19;
+const TEST_INIT_ROUND_EXP: u8 = 4;
+const TEST_ERA_HEIGHT: u64 = 5;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TestContext;
@@ -33,7 +45,7 @@ impl ValidatorSecret for TestSecret {
     type Hash = u64;
     type Signature = u64;
 
-    fn sign(&self, data: &Self::Hash, _rng: &mut dyn CryptoRngCore) -> Self::Signature {
+    fn sign(&self, data: &Self::Hash, _rng: &mut NodeRng) -> Self::Signature {
         data + u64::from(self.0)
     }
 }
@@ -72,26 +84,26 @@ impl From<<TestContext as Context>::Hash> for Observation<TestContext> {
     }
 }
 
-/// Returns the cause of the error, dropping the `WireVote`.
-fn vote_err(err: AddVoteError<TestContext>) -> VoteError {
+/// Returns the cause of the error, dropping the `WireUnit`.
+fn unit_err(err: AddUnitError<TestContext>) -> UnitError {
     err.cause
 }
 
-/// An error that occurred when trying to add a vote.
+/// An error that occurred when trying to add a unit.
 #[derive(Debug, Error)]
 #[error("{:?}", .cause)]
-pub(crate) struct AddVoteError<C: Context> {
-    /// The invalid vote that was not added to the protocol state.
-    pub(crate) swvote: SignedWireVote<C>,
-    /// The reason the vote is invalid.
+pub(crate) struct AddUnitError<C: Context> {
+    /// The invalid unit that was not added to the protocol state.
+    pub(crate) swunit: SignedWireUnit<C>,
+    /// The reason the unit is invalid.
     #[source]
-    pub(crate) cause: VoteError,
+    pub(crate) cause: UnitError,
 }
 
-impl<C: Context> SignedWireVote<C> {
-    fn with_error(self, cause: VoteError) -> AddVoteError<C> {
-        AddVoteError {
-            swvote: self,
+impl<C: Context> SignedWireUnit<C> {
+    fn with_error(self, cause: UnitError) -> AddUnitError<C> {
+        AddUnitError {
+            swunit: self,
             cause,
         }
     }
@@ -104,50 +116,55 @@ impl State<TestContext> {
             seed,
             TEST_BLOCK_REWARD,
             TEST_BLOCK_REWARD / 5,
-            4,
-            u64::MAX,
-            Timestamp::from(u64::MAX),
+            TEST_MIN_ROUND_EXP,
+            TEST_MAX_ROUND_EXP,
+            TEST_INIT_ROUND_EXP,
+            TEST_ERA_HEIGHT,
+            Timestamp::from(0),
+            Timestamp::from(0),
         );
         State::new(weights, params, vec![])
     }
 
-    /// Adds the vote to the protocol state, or returns an error if it is invalid.
+    /// Adds the unit to the protocol state, or returns an error if it is invalid.
     /// Panics if dependencies are not satisfied.
-    pub(crate) fn add_vote(
+    pub(crate) fn add_unit(
         &mut self,
-        swvote: SignedWireVote<TestContext>,
-    ) -> Result<(), AddVoteError<TestContext>> {
+        swunit: SignedWireUnit<TestContext>,
+    ) -> Result<(), AddUnitError<TestContext>> {
         if let Err(err) = self
-            .pre_validate_vote(&swvote)
-            .and_then(|()| self.validate_vote(&swvote))
+            .pre_validate_unit(&swunit)
+            .and_then(|()| self.validate_unit(&swunit))
         {
-            return Err(swvote.with_error(err));
+            return Err(swunit.with_error(err));
         }
-        self.add_valid_vote(swvote);
+        assert_eq!(None, swunit.wire_unit.panorama.missing_dependency(self));
+        assert_eq!(None, self.needs_endorsements(&swunit));
+        self.add_valid_unit(swunit);
         Ok(())
     }
 }
 
 #[test]
-fn add_vote() -> Result<(), AddVoteError<TestContext>> {
+fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
-    // Create votes as follows; a0, b0 are blocks:
+    // Create units as follows; a0, b0 are blocks:
     //
     // Alice: a0 ————— a1
     //                /
     // Bob:   b0 —— b1
     //          \  /
     // Carol:    c0
-    let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
-    let b0 = add_vote!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
-    let c0 = add_vote!(state, rng, CAROL, 49, 4u8, None; N, b0, N)?;
-    let b1 = add_vote!(state, rng, BOB, None; N, b0, c0)?;
-    let _a1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 48, 4u8, 0xB; N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 49, 4u8, None; N, b0, N)?;
+    let b1 = add_unit!(state, rng, BOB, 49, 4u8, None; N, b0, c0)?;
+    let _a1 = add_unit!(state, rng, ALICE, None; a0, b1, c0)?;
 
     // Wrong sequence number: Bob hasn't produced b2 yet.
-    let mut wvote = WireVote {
+    let mut wunit = WireUnit {
         panorama: panorama!(N, b1, c0),
         creator: BOB,
         instance_id: 1u64,
@@ -155,37 +172,43 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
         seq_number: 3,
         timestamp: 51.into(),
         round_exp: 4u8,
+        endorsed: BTreeSet::new(),
     };
-    let vote = SignedWireVote::new(wvote.clone(), &BOB_SEC, &mut rng);
-    let opt_err = state.add_vote(vote).err().map(vote_err);
-    assert_eq!(Some(VoteError::SequenceNumber), opt_err);
-    // Still not valid: This would be the third vote in the first round.
-    wvote.seq_number = 2;
-    let vote = SignedWireVote::new(wvote, &BOB_SEC, &mut rng);
-    let opt_err = state.add_vote(vote).err().map(vote_err);
-    assert_eq!(Some(VoteError::ThreeVotesInRound), opt_err);
+    let unit = SignedWireUnit::new(wunit.clone(), &BOB_SEC, &mut rng);
+    let opt_err = state.add_unit(unit).err().map(unit_err);
+    assert_eq!(Some(UnitError::SequenceNumber), opt_err);
+    // Still not valid: This would be the third unit in the first round.
+    wunit.seq_number = 2;
+    let unit = SignedWireUnit::new(wunit, &BOB_SEC, &mut rng);
+    let opt_err = state.add_unit(unit).err().map(unit_err);
+    assert_eq!(Some(UnitError::ThreeUnitsInRound), opt_err);
 
     // Inconsistent panorama: If you see b1, you have to see c0, too.
-    let opt_err = add_vote!(state, rng, CAROL, None; N, b1, N)
+    let opt_err = add_unit!(state, rng, CAROL, None; N, b1, N)
         .err()
-        .map(vote_err);
-    assert_eq!(Some(VoteError::InconsistentPanorama(BOB)), opt_err);
-    // And you can't change the round exponent within a round.
-    let opt_err = add_vote!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
+        .map(unit_err);
+    assert_eq!(Some(UnitError::InconsistentPanorama(BOB)), opt_err);
+    // And you can't make the round exponent too small
+    let opt_err = add_unit!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
         .err()
-        .map(vote_err);
-    assert_eq!(Some(VoteError::RoundLength), opt_err);
+        .map(unit_err);
+    assert_eq!(Some(UnitError::RoundLengthExpChangedWithinRound), opt_err);
+    // And you can't make the round exponent too big
+    let opt_err = add_unit!(state, rng, CAROL, 50, 40u8, None; N, b1, c0)
+        .err()
+        .map(unit_err);
+    assert_eq!(Some(UnitError::RoundLengthExpGreaterThanMaximum), opt_err);
     // After the round from 48 to 64 has ended, the exponent can change.
-    let c1 = add_vote!(state, rng, CAROL, 65, 5u8, None; N, b1, c0)?;
+    let c1 = add_unit!(state, rng, CAROL, 65, 5u8, None; N, b1, c0)?;
 
     // Alice has not equivocated yet, and not produced message A1.
     let missing = panorama!(F, b1, c0).missing_dependency(&state);
     assert_eq!(Some(Dependency::Evidence(ALICE)), missing);
     let missing = panorama!(42, b1, c0).missing_dependency(&state);
-    assert_eq!(Some(Dependency::Vote(42)), missing);
+    assert_eq!(Some(Dependency::Unit(42)), missing);
 
     // Alice equivocates: A1 doesn't see a1.
-    let ae1 = add_vote!(state, rng, ALICE, None; a0, b1, c0)?;
+    let ae1 = add_unit!(state, rng, ALICE, None; a0, b1, c0)?;
     assert!(state.has_evidence(ALICE));
     assert_eq!(panorama![F, b1, c1], *state.panorama());
 
@@ -195,22 +218,25 @@ fn add_vote() -> Result<(), AddVoteError<TestContext>> {
     assert_eq!(None, missing);
 
     // Bob can see the equivocation.
-    let b2 = add_vote!(state, rng, BOB, None; F, b1, c0)?;
+    let b2 = add_unit!(state, rng, BOB, None; F, b1, c0)?;
 
     // The state's own panorama has been updated correctly.
-    assert_eq!(state.panorama, panorama!(F, b2, c1));
+    assert_eq!(*state.panorama(), panorama!(F, b2, c1));
     Ok(())
 }
 
 #[test]
-fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
-    let mut rng = TestRng::new();
+fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
+    let mut rng = crate::new_rng();
     let params = Params::new(
         0,
         TEST_BLOCK_REWARD,
         TEST_BLOCK_REWARD / 5,
         4,
+        19,
+        4,
         u64::MAX,
+        Timestamp::from(u64::MAX),
         Timestamp::from(u64::MAX),
     );
     // Everyone already knows Alice is faulty, so she is banned.
@@ -218,14 +244,14 @@ fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
 
     assert_eq!(panorama![F, N, N], *state.panorama());
     assert_eq!(Some(&Fault::Banned), state.opt_fault(ALICE));
-    let err = vote_err(add_vote!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
-    assert_eq!(VoteError::Banned, err);
+    let err = unit_err(add_unit!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
+    assert_eq!(UnitError::Banned, err);
 
     state.mark_faulty(ALICE); // No change: Banned state is permanent.
     assert_eq!(panorama![F, N, N], *state.panorama());
     assert_eq!(Some(&Fault::Banned), state.opt_fault(ALICE));
-    let err = vote_err(add_vote!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
-    assert_eq!(VoteError::Banned, err);
+    let err = unit_err(add_unit!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
+    assert_eq!(UnitError::Banned, err);
 
     // Now we also received external evidence (i.e. not in this instance) that Bob is faulty.
     state.mark_faulty(BOB);
@@ -233,18 +259,18 @@ fn ban_and_mark_faulty() -> Result<(), AddVoteError<TestContext>> {
     assert_eq!(Some(&Fault::Indirect), state.opt_fault(BOB));
 
     // However, we still accept messages from Bob, since he is not banned.
-    add_vote!(state, rng, BOB, 0xB; F, N, N)?;
+    add_unit!(state, rng, BOB, 0xB; F, N, N)?;
     Ok(())
 }
 
 #[test]
-fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
+fn find_in_swimlane() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = TestRng::new();
-    let a0 = add_vote!(state, rng, ALICE, 0xA; N, N, N)?;
+    let mut rng = crate::new_rng();
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
     let mut a = vec![a0];
     for i in 1..10 {
-        let ai = add_vote!(state, rng, ALICE, None; a[i - 1], N, N)?;
+        let ai = add_unit!(state, rng, ALICE, None; a[i - 1], N, N)?;
         a.push(ai);
     }
 
@@ -256,18 +282,18 @@ fn find_in_swimlane() -> Result<(), AddVoteError<TestContext>> {
     }
 
     // The skip list index of a[k] includes a[k - 2^i] for each i such that 2^i divides k.
-    assert_eq!(&[a[8]], &state.vote(&a[9]).skip_idx.as_ref());
+    assert_eq!(&[a[8]], &state.unit(&a[9]).skip_idx.as_ref());
     assert_eq!(
         &[a[7], a[6], a[4], a[0]],
-        &state.vote(&a[8]).skip_idx.as_ref()
+        &state.unit(&a[8]).skip_idx.as_ref()
     );
     Ok(())
 }
 
 #[test]
-fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
+fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     // Create blocks with scores as follows:
     //
@@ -276,19 +302,441 @@ fn fork_choice() -> Result<(), AddVoteError<TestContext>> {
     // b0: 12           b2: 4
     //        \
     //          c0: 5 — c1: 5
-    let b0 = add_vote!(state, rng, BOB, 0xB0; N, N, N)?;
-    let c0 = add_vote!(state, rng, CAROL, 0xC0; N, b0, N)?;
-    let c1 = add_vote!(state, rng, CAROL, 0xC1; N, b0, c0)?;
-    let a0 = add_vote!(state, rng, ALICE, 0xA0; N, b0, N)?;
-    let b1 = add_vote!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
-    let a1 = add_vote!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
-    let b2 = add_vote!(state, rng, BOB, 0xB2; a0, b1, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB0; N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 0xC0; N, b0, N)?;
+    let c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0, c0)?;
+    let a0 = add_unit!(state, rng, ALICE, 0xA0; N, b0, N)?;
+    let b1 = add_unit!(state, rng, BOB, None; a0, b0, N)?; // Just a ballot; not shown above.
+    let a1 = add_unit!(state, rng, ALICE, 0xA1; a0, b1, c1)?;
+    let b2 = add_unit!(state, rng, BOB, 0xB2; a0, b1, N)?;
 
     // Alice built `a1` on top of `a0`, which had already 7 points.
-    assert_eq!(Some(&a0), state.block(&state.vote(&a1).block).parent());
+    assert_eq!(Some(&a0), state.block(&state.unit(&a1).block).parent());
     // The fork choice is now `b2`: At height 1, `a0` wins against `c0`.
     // At height 2, `b2` wins against `a1`. `c1` has most points but is not a child of `a0`.
-    assert_eq!(Some(&b2), state.fork_choice(&state.panorama));
+    assert_eq!(Some(&b2), state.fork_choice(state.panorama()));
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
+    let mut state = State::new_test(WEIGHTS, 0);
+    let mut rng = crate::new_rng();
+
+    // No equivocations – incoming vote doesn't violate LNC.
+    // Create votes as follows; a0, b0 are blocks:
+    //
+    // Alice: a0 — a1
+    //           /
+    // Bob:   b0
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB; N, N, N)?;
+
+    // a1 does not violate LNC
+    add_unit!(state, rng, ALICE, None; a0, b0, N)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
+    // Equivocation cited by one honest validator in the vote's panorama.
+    // Does NOT violate LNC.
+    //
+    // Bob:      b0
+    //          / |
+    // Alice: a0  |
+    //            |
+    //        a0' |
+    //           \|
+    // Carol:    c0
+    let mut state = State::new_test(WEIGHTS, 0);
+    let mut rng = crate::new_rng();
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB; a0, N, N)?;
+    let _a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N)?;
+    // c0 does not violate LNC b/c it sees Alice as faulty.
+    add_unit!(state, rng, CAROL, None; F, b0, N)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
+    // Equivocation cited by two honest validators in the vote's panorama – their votes need to
+    // be endorsed.
+    //
+    // Bob:      b0
+    //          / \
+    // Alice: a0   \
+    //              \
+    //        a0'    \
+    //           \   |
+    // Carol:    c0  |
+    //             \ |
+    // Dan:         d0
+
+    let weights4 = &[Weight(3), Weight(4), Weight(5), Weight(5)];
+    let mut state = State::new_test(weights4, 0);
+    let mut rng = crate::new_rng();
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N)?;
+    let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB; a0, N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 0xB2; a0_prime, N, N, N)?;
+    // d0 violates LNC b/c it naively cites Alice's equivocation.
+    // None of the votes is marked as being endorsed – violates LNC.
+    assert_eq!(
+        add_unit!(state, rng, DAN, None; F, b0, c0, N)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(ALICE)
+    );
+    endorse!(state, rng, CAROL, c0);
+    endorse!(state, rng, c0; BOB, DAN);
+    // Now d0 cites non-naively b/c c0 is endorsed.
+    add_unit!(state, rng, DAN, None; F, b0, c0, N; c0)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
+    // Multiple equivocators and indirect equivocations.
+    // Votes are seen as endorsed by `state` – does not violate LNC.
+    //
+    // Alice   a0<---------+
+    //                     |
+    //         a0'<--+     |
+    //               |     |
+    // Bob          b0<-----------+
+    //               |     |      |
+    // Carol   c0<---+     |      |
+    //                     |      |
+    //         c0'<--------+      |
+    //                     |      |
+    // Dan                 d0<----+
+    //                            |
+    // Eric                       e0
+
+    let weights5 = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
+    let mut state = State::new_test(weights5, 0);
+    let mut rng = crate::new_rng();
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N, N)?;
+    let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 0xC; N, N, N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB; a0_prime, N, c0, N, N)?;
+    let c0_prime = add_unit!(state, rng, CAROL, 0xC2; N, N, N, N, N)?;
+    let d0 = add_unit!(state, rng, DAN, 0xD; a0, N, c0_prime, N, N)?;
+    // e0 violates LNC b/c it naively cites Alice's & Carol's equivocations.
+    assert_eq!(
+        add_unit!(state, rng, ERIC, None; F, b0, F, d0, N)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(ALICE)
+    );
+    // Endorse b0.
+    endorse!(state, rng, b0; BOB, DAN, ERIC);
+    add_unit!(state,rng, ERIC, None; F, b0, F, d0, N; b0)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
+    //           a0'<-----+
+    // Alice              |
+    //           a0 <--+  |
+    //                 |  |
+    // Bob             |  +--b0<--+--b1
+    //                 |  |       |
+    // Carol           |  +--c0<--+
+    //                 |          |
+    // Dan             +-----d0<--+
+    let weights4 = &[Weight(3), Weight(4), Weight(5), Weight(5)];
+    let mut state = State::new_test(weights4, 0);
+    let mut rng = crate::new_rng();
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, N, N, N)?;
+    let a0_prime = add_unit!(state, rng, ALICE, 0xA2; N, N, N, N)?;
+
+    // Bob and Carol don't see a0 yet, so they cite a0_prime naively. Dan cites a0 naively.
+    let b0 = add_unit!(state, rng, BOB, None; a0_prime, N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, None; a0_prime, N, N, N)?;
+    let d0 = add_unit!(state, rng, DAN, None; a0, N, N, N)?;
+    endorse!(state, rng, c0; ALICE, BOB, CAROL, DAN); // Everyone endorses c0.
+    endorse!(state, rng, d0; ALICE, BOB, CAROL, DAN); // Everyone endorses d0.
+
+    // The fact that c0 is endorsed is not enough. Bob would violate the LNC because his new unit
+    // cites a0 naively, and his previous unit b0 cited a0_prime naively.
+    assert_eq!(
+        add_unit!(state, rng, BOB, None; F, b0, c0, d0; c0)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(ALICE)
+    );
+    // The fact that d0 is endorsed makes both of Bob's units cite only one of Alice's forks
+    // naively (namely a0_prime), which is fine.
+    add_unit!(state, rng, BOB, None; F, b0, c0, d0; d0)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
+    // Eric's vote should not require an endorsement as his unit e0 cites equivocator Carol before
+    // the fork.
+    //
+    // Alice                              +a0+
+    //                                    ++ |
+    //                                    || |
+    //                                    || |
+    // Bob                     b0<---------+ |
+    //                          +          | |
+    //                          |          | |
+    //                    +c1<--+          | |
+    // Carol         c0<--+                | |
+    //                ^   +c1'<-+          | |
+    //                |         +          | |
+    // Dan            |        d0<---------+ |
+    //                |                      |
+    // Eric           +--+e0<----------------+
+    //
+    let weights5 = &[Weight(3), Weight(4), Weight(5), Weight(5), Weight(6)];
+    let mut state = State::new_test(weights5, 0);
+    let mut rng = crate::new_rng();
+    let c0 = add_unit!(state, rng, CAROL, 0xC; N, N, N, N, N)?;
+    let c1 = add_unit!(state, rng, CAROL, 0xC1; N, N, c0, N, N)?;
+    let c1_prime = add_unit!(state, rng, CAROL, 0xC1B; N, N, c0, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, 0xB; N, N, c1, N, N)?;
+    let d0 = add_unit!(state, rng, DAN, 0xD; N, N, c1_prime, N, N)?;
+    // Should not require endorsements b/c e0 sees Carol as correct.
+    let e0 = add_unit!(state, rng, ERIC, 0xE; N, N, c0, N, N)?;
+    assert_eq!(
+        add_unit!(state, rng, ALICE, None; N, b0, F, d0, e0)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(CAROL)
+    );
+    // We pick b0 to be endorsed.
+    endorse!(state, rng, b0; ALICE, BOB, ERIC);
+    add_unit!(state, rng, ALICE, None; N, b0, F, d0, e0; b0)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>> {
+    // Endorsements should be transitive to descendants.
+    // c1 doesn't have to be endorsed, it is enough that c0 is.
+    //
+    // Alice           a0<-----------+
+    //                 +             |
+    //          b0<----+             |
+    // Bob                           |
+    //                               |
+    //          b0'<---+             |
+    //                 +             |
+    // Carol           c0<---+c1<----+
+    //                               |
+    //                               |
+    // Dan                          d0
+
+    let weights_dan = &[Weight(3), Weight(4), Weight(5), Weight(5)];
+    let mut state = State::new_test(weights_dan, 0);
+    let mut rng = crate::new_rng();
+    let b0 = add_unit!(state, rng, BOB, 0xB; N, N, N, N)?;
+    let b0_prime = add_unit!(state, rng, BOB, 0xB1; N, N, N, N)?;
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, b0, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 0xC; N, b0_prime, N, N)?;
+    let c1 = add_unit!(state, rng, CAROL, 0xC1; N, b0_prime, c0, N)?;
+    assert_eq!(
+        add_unit!(state, rng, DAN, None; a0, F, c1, N)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(BOB)
+    );
+    endorse!(state, rng, c0; CAROL, DAN, ALICE);
+    add_unit!(state, rng, DAN, None; a0, F, c1, N; c0)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<TestContext>> {
+    // a0 cites a descendant b1 of an eqiuvocation vote (b0 and b0').
+    // This is still detected as violation of the LNC.
+    //
+    // Alice                  a0<----+
+    //                        +      |
+    //          b0<---+b1<----+      |
+    // Bob                           |
+    //                               |
+    //          b0'<---+             |
+    //                 +             |
+    // Carol           c0            |
+    //                  ^            +
+    // Dan              +----------+d0
+    let weights_dan = &[Weight(3), Weight(4), Weight(5), Weight(5)];
+    let mut state = State::new_test(weights_dan, 0);
+    let mut rng = crate::new_rng();
+    let b0 = add_unit!(state, rng, BOB, 0xB; N, N, N, N)?;
+    let b0_prime = add_unit!(state, rng, BOB, 0xBA; N, N, N, N)?;
+    let b1 = add_unit!(state, rng, BOB, 0xB1; N, b0, N, N)?;
+    let a0 = add_unit!(state, rng, ALICE, 0xA; N, b1, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, 0xC; N, b0_prime, N, N)?;
+    assert_eq!(
+        add_unit!(state, rng, DAN, None; a0, F, c0, N)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(BOB)
+    );
+    endorse!(state, rng, c0; ALICE, CAROL, DAN);
+    add_unit!(state, rng, DAN, None; a0, F, c0, N; c0)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
+    // Diagram of the DAG can be found under
+    // /resources/test/dags/validate_lnc_endorse_mix_pairs.png
+    //
+    // Both c0 and g0 need only one of their descendants votes endorsed to not validate LNC.
+    // Since endorsements are monotonic (c0's and g0' endorsements are also endorsed by h0),
+    // h0 does not violate LNC b/c it cites at most one fork naively.
+    let weights = &[
+        Weight(3),
+        Weight(4),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+    ];
+    let mut state = State::new_test(weights, 0);
+    let mut rng = crate::new_rng();
+    let d0 = add_unit!(state, rng, DAN, 0xBA; N, N, N, N, N, N, N, N)?;
+    let d0_prime = add_unit!(state, rng, DAN, 0xBB; N, N, N, N, N, N, N, N)?;
+    let a0 = add_unit!(state, rng, ALICE, None; N, N, N, d0, N, N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, None; N, N, N, d0_prime, N, N, N, N)?;
+    endorse!(state, rng, a0; ALICE, BOB, CAROL, ERIC, FRANK, GINA);
+    let c0 = add_unit!(state, rng, CAROL, None; a0, b0, N, F, N, N, N, N; a0)?;
+    let e0 = add_unit!(state, rng, ERIC, None; N, N, N, d0, N, N, N, N)?;
+    let f0 = add_unit!(state, rng, FRANK, None; N, N, N, d0_prime, N, N, N, N)?;
+    endorse!(state, rng, f0; ALICE, BOB, CAROL, ERIC, FRANK, GINA);
+    let g0 = add_unit!(state, rng, GINA, None; N, N, N, F, e0, f0, N, N; f0)?;
+    // Should pass the LNC validation test.
+    add_unit!(state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; a0, f0)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
+    // Diagram of the DAG can be found under
+    // /resources/test/dags/validate_lnc_shared_equiv_unit.png
+    let weights = &[
+        Weight(3),
+        Weight(4),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+    ];
+    let mut state = State::new_test(weights, 0);
+    let mut rng = crate::new_rng();
+    let d0 = add_unit!(state, rng, DAN, 0xDA; N, N, N, N, N, N, N, N)?;
+    let d0_prime = add_unit!(state, rng, DAN, 0xDB; N, N, N, N, N, N, N, N)?;
+    let d0_bis = add_unit!(state, rng, DAN, 0xDC; N, N, N, N, N, N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, None; N, N, N, d0, N, N, N, N)?;
+    let c0 = add_unit!(state, rng, CAROL, None; N, N, N, d0_prime, N, N, N, N)?;
+    let e0 = add_unit!(state, rng, ERIC, None; N, N, N, d0_prime, N, N, N, N)?;
+    let f0 = add_unit!(state, rng, FRANK, None; N, N, N, d0_bis, N, N, N, N)?;
+    endorse!(state, rng, c0; ALICE, BOB, CAROL, ERIC, FRANK);
+    let a0 = add_unit!(state, rng, ALICE, None; N, b0, c0, F, N, N, N, N; c0)?;
+    endorse!(state, rng, e0; ALICE, BOB, CAROL, ERIC, FRANK);
+    let g0 = add_unit!(state, rng, GINA, None; N, N, N, F, e0, f0, N, N; e0)?;
+    assert_eq!(
+        add_unit!(state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(DAN)
+    );
+    // Even though both a0 and g0 cite DAN non-naively, for h0 to be valid
+    // we need to endorse either b0 or f0.
+    let mut pre_endorse_state = state.clone();
+    // Endorse b0 first.
+    endorse!(state, rng, b0; ALICE, BOB, CAROL, ERIC, FRANK);
+    add_unit!(state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0, b0)?;
+    // Should also pass if e0 is endorsed.
+    endorse!(pre_endorse_state, rng, f0; ALICE, BOB, CAROL, ERIC, FRANK);
+    add_unit!(pre_endorse_state, rng, HANNA, None; a0, b0, c0, F, e0, f0, g0, N; c0, e0, f0)?;
+    Ok(())
+}
+
+#[test]
+fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
+    // Diagram of the DAG can be found under
+    // /resources/test/dags/validate_lnc_four_forks.png
+    let weights = &[
+        Weight(3),
+        Weight(4),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+        Weight(5),
+    ];
+    let mut state = State::new_test(weights, 0);
+    let mut rng = crate::new_rng();
+    let e0 = add_unit!(state, rng, ERIC, 0xEA; N, N, N, N, N, N, N, N)?;
+    let e0_prime = add_unit!(state, rng, ERIC, 0xEB; N, N, N, N, N, N, N, N)?;
+    let e0_bis = add_unit!(state, rng, ERIC, 0xEC; N, N, N, N, N, N, N, N)?;
+    let e0_cis = add_unit!(state, rng, ERIC, 0xED; N, N, N, N, N, N, N, N)?;
+    let a0 = add_unit!(state, rng, ALICE, None; N, N, N, N, e0, N, N, N)?;
+    let b0 = add_unit!(state, rng, BOB, None; N, N, N, N, e0_prime, N, N, N)?;
+    let g0 = add_unit!(state, rng, GINA, None; N, N, N, N, e0_bis, N, N, N)?;
+    let h0 = add_unit!(state, rng, HANNA, None; N, N, N, N, e0_cis, N, N, N)?;
+    endorse!(state, rng, a0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
+    let c0 = add_unit!(state, rng, CAROL, None; a0, b0, N, N, F, N, N, N; a0)?;
+    endorse!(state, rng, g0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
+    let f0 = add_unit!(state, rng, FRANK, None; N, N, N, N, F, N, g0, h0; g0)?;
+    let d0 = add_unit!(state, rng, DAN, None; N, N, N, N, F, f0, g0, h0; g0)?;
+    assert_eq!(
+        add_unit!(state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0)
+            .unwrap_err()
+            .cause,
+        UnitError::LncNaiveCitation(ERIC)
+    );
+    let mut pre_endorse_state = state.clone();
+    // If we endorse h0, then d1 still violates the LNC: d0 cited e0_cis naively and d1 cites
+    // e0_prime naively.
+    endorse!(state, rng, h0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
+    let result = add_unit!(state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, h0);
+    assert_eq!(result.unwrap_err().cause, UnitError::LncNaiveCitation(ERIC));
+    // It should work if we had endorsed b0 instead.
+    endorse!(pre_endorse_state, rng, b0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
+    add_unit!(pre_endorse_state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, b0)?;
+    // And it should still work if both were endorsed.
+    endorse!(pre_endorse_state, rng, h0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
+    add_unit!(pre_endorse_state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, b0, h0)?;
+    Ok(())
+}
+
+#[test]
+fn is_terminal_block() -> Result<(), AddUnitError<TestContext>> {
+    let mut state = State::new_test(WEIGHTS, 0);
+    let mut rng = crate::new_rng();
+
+    let a0 = add_unit!(state, rng, ALICE, 0x00; N, N, N)?;
+    assert!(!state.is_terminal_block(&a0)); // height 0
+    let b0 = add_unit!(state, rng, BOB, 0x01; a0, N, N)?;
+    assert!(!state.is_terminal_block(&b0)); // height 1
+    let c0 = add_unit!(state, rng, CAROL, 0x02; a0, b0, N)?;
+    assert!(!state.is_terminal_block(&c0)); // height 2
+    let a1 = add_unit!(state, rng, ALICE, 0x03; a0, b0, c0)?;
+    assert!(!state.is_terminal_block(&a1)); // height 3
+    let a2 = add_unit!(state, rng, ALICE, None; a1, b0, c0)?;
+    assert!(!state.is_terminal_block(&a2)); // not a block
+    let a3 = add_unit!(state, rng, ALICE, 0x04; a2, b0, c0)?;
+    assert!(state.is_terminal_block(&a3)); // height 4, i.e. the fifth block and thus the last one
+    assert_eq!(TEST_ERA_HEIGHT - 1, state.block(&a3).height);
+    let a4 = add_unit!(state, rng, ALICE, None; a3, b0, c0)?;
+    assert!(!state.is_terminal_block(&a4)); // not a block
     Ok(())
 }
 
@@ -302,7 +750,7 @@ fn test_log2() {
 
 #[test]
 fn test_leader_prng() {
-    let mut rng = TestRng::new();
+    let mut rng = crate::new_rng();
 
     // Repeat a few times to make it likely that the inner loop runs more than once.
     for _ in 0..10 {

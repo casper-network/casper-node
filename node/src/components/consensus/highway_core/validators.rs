@@ -99,7 +99,7 @@ impl<VID: Eq + Hash> Validators<VID> {
 impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Validators<VID> {
     fn from_iter<I: IntoIterator<Item = (VID, W)>>(ii: I) -> Validators<VID> {
         let mut validators: Vec<_> = ii.into_iter().map(Validator::from).collect();
-        validators.sort_by(|val0, val1| val0.id.cmp(&val1.id));
+        validators.sort_by_cached_key(|val| val.id.clone());
         let index_by_id = validators
             .iter()
             .enumerate()
@@ -146,6 +146,11 @@ impl<T> ValidatorMap<T> {
         self.iter()
             .enumerate()
             .map(|(idx, value)| (ValidatorIndex(idx as u32), value))
+    }
+
+    /// Returns an iterator over all validator indices.
+    pub(crate) fn keys(&self) -> impl Iterator<Item = ValidatorIndex> {
+        (0..self.len()).map(|idx| ValidatorIndex(idx as u32))
     }
 
     /// Binary searches this sorted `ValidatorMap` for `x`.
@@ -213,10 +218,14 @@ impl<Rhs, T: Copy + Add<Rhs, Output = T>> Add<ValidatorMap<Rhs>> for ValidatorMa
 
 impl<T> ValidatorMap<Option<T>> {
     /// Returns the keys of all validators whose value is `Some`.
-    pub(crate) fn keys_some<'a>(&'a self) -> impl Iterator<Item = ValidatorIndex> + 'a {
+    pub(crate) fn keys_some(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+        self.iter_some().map(|(vidx, _)| vidx)
+    }
+
+    /// Returns an iterator over all values that are present, together with their index.
+    pub(crate) fn iter_some(&self) -> impl Iterator<Item = (ValidatorIndex, &T)> + '_ {
         self.enumerate()
-            .filter(|(_, opt)| opt.is_some())
-            .map(|(vidx, _)| vidx)
+            .filter_map(|(vidx, opt)| opt.as_ref().map(|val| (vidx, val)))
     }
 }
 

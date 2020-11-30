@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use super::{Bid, DelegatedAmounts, DelegationRate, EraId};
 use crate::{
+    auction::{Bid, DelegationRate, Delegator},
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, PublicKey, U512,
 };
@@ -11,14 +11,29 @@ use crate::{
 #[derive(Default, PartialEq, Clone)]
 pub struct SeigniorageRecipient {
     /// Validator stake (not including delegators)
-    pub stake: U512,
+    stake: U512,
     /// Delegation rate of a seigniorage recipient.
-    pub delegation_rate: DelegationRate,
+    delegation_rate: DelegationRate,
     /// List of delegators and their accumulated bids.
-    pub delegators: DelegatedAmounts,
+    delegators: BTreeMap<PublicKey, Delegator>,
 }
 
 impl SeigniorageRecipient {
+    /// Returns stake of the provided recipient
+    pub fn stake(&self) -> &U512 {
+        &self.stake
+    }
+
+    /// Returns delegation rate of the provided recipient
+    pub fn delegation_rate(&self) -> &DelegationRate {
+        &self.delegation_rate
+    }
+
+    /// Returns delegators of the provided recipient
+    pub fn delegators(&self) -> &BTreeMap<PublicKey, Delegator> {
+        &self.delegators
+    }
+
     /// Calculates total stake, including delegators' total stake
     pub fn total_stake(&self) -> U512 {
         self.stake + self.delegator_total_stake()
@@ -26,7 +41,11 @@ impl SeigniorageRecipient {
 
     /// Caculates total stake for all delegators
     pub fn delegator_total_stake(&self) -> U512 {
-        self.delegators.values().cloned().sum()
+        self.delegators
+            .values()
+            .map(Delegator::staked_amount)
+            .cloned()
+            .sum()
     }
 }
 
@@ -69,38 +88,44 @@ impl FromBytes for SeigniorageRecipient {
 }
 
 impl From<&Bid> for SeigniorageRecipient {
-    fn from(founding_validator: &Bid) -> Self {
+    fn from(bid: &Bid) -> Self {
         Self {
-            stake: founding_validator.staked_amount,
-            delegation_rate: founding_validator.delegation_rate,
-            ..Default::default()
+            stake: *bid.staked_amount(),
+            delegation_rate: *bid.delegation_rate(),
+            delegators: bid.delegators().clone(),
         }
     }
 }
-
-/// Collection of seigniorage recipients.
-pub type SeigniorageRecipients = BTreeMap<PublicKey, SeigniorageRecipient>;
-
-/// Snapshot of `SeigniorageRecipients` for a given era.
-pub type SeigniorageRecipientsSnapshot = BTreeMap<EraId, SeigniorageRecipients>;
 
 #[cfg(test)]
 mod tests {
     use alloc::collections::BTreeMap;
     use core::iter::FromIterator;
 
-    use super::SeigniorageRecipient;
-    use crate::{auction::DelegationRate, bytesrepr, PublicKey, U512};
+    use crate::{
+        auction::{DelegationRate, Delegator, SeigniorageRecipient},
+        bytesrepr, AccessRights, PublicKey, URef, U512,
+    };
 
     #[test]
     fn serialization_roundtrip() {
+        let uref = URef::new([0; 32], AccessRights::READ_ADD_WRITE);
         let seigniorage_recipient = SeigniorageRecipient {
             stake: U512::max_value(),
             delegation_rate: DelegationRate::max_value(),
             delegators: BTreeMap::from_iter(vec![
-                (PublicKey::Ed25519([42; 32]), U512::one()),
-                (PublicKey::Ed25519([43; 32]), U512::max_value()),
-                (PublicKey::Ed25519([44; 32]), U512::zero()),
+                (
+                    PublicKey::Ed25519([1; 32]),
+                    Delegator::new(U512::max_value(), uref, PublicKey::Ed25519([42; 32])),
+                ),
+                (
+                    PublicKey::Ed25519([1; 32]),
+                    Delegator::new(U512::max_value(), uref, PublicKey::Ed25519([43; 32])),
+                ),
+                (
+                    PublicKey::Ed25519([1; 32]),
+                    Delegator::new(U512::zero(), uref, PublicKey::Ed25519([44; 32])),
+                ),
             ]),
         };
         bytesrepr::test_serialization_roundtrip(&seigniorage_recipient);

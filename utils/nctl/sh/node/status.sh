@@ -6,9 +6,6 @@
 # Arguments:
 #   Network ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -33,9 +30,12 @@ net=${net:-1}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils.sh
+
 # Set daemon handler.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    daemon_mgr=$NCTL/sh/daemon/supervisord/node_status.sh
+    daemon_mgr=$NCTL/sh/daemons/supervisord/node_status.sh
 fi
 
 # Invoke daemon handler.

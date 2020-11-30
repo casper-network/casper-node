@@ -4,7 +4,7 @@ use parity_wasm::elements::Module;
 
 use casper_types::{
     account::AccountHash, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, Key, U512,
+    ContractWasm, ContractWasmHash, Key,
 };
 
 use crate::{
@@ -18,20 +18,20 @@ use crate::{
         wasm_prep::{self, Preprocessor},
         TypeMismatch,
     },
-    storage::global_state::StateReader,
+    storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
 pub trait TrackingCopyExt<R> {
     type Error;
 
-    /// Gets the account at a given account address.
+    /// Gets the account at a given account address
     fn get_account(
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
     ) -> Result<Account, Self::Error>;
 
-    /// Reads the account at a given account address.
+    /// Reads the account at a given account address
     fn read_account(
         &mut self,
         correlation_id: CorrelationId,
@@ -51,6 +51,20 @@ pub trait TrackingCopyExt<R> {
         correlation_id: CorrelationId,
         balance_key: Key,
     ) -> Result<Motes, Self::Error>;
+
+    /// Gets the purse balance key for a given purse id and provides a Merkle proof
+    fn get_purse_balance_key_with_proof(
+        &self,
+        correlation_id: CorrelationId,
+        purse_key: Key,
+    ) -> Result<(Key, TrieMerkleProof<Key, StoredValue>), Self::Error>;
+
+    /// Gets the balance at a given balance key and provides a Merkle proof
+    fn get_purse_balance_with_proof(
+        &self,
+        correlation_id: CorrelationId,
+        balance_key: Key,
+    ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
     /// Gets a contract by Key
     fn get_contract_wasm(
@@ -129,25 +143,18 @@ where
         correlation_id: CorrelationId,
         purse_key: Key,
     ) -> Result<Key, Self::Error> {
-        let uref = purse_key
-            .as_uref()
-            .ok_or_else(|| execution::Error::URefNotFound("public purse balance 1".to_string()))?;
-        let local_key_bytes = uref.addr();
-        let balance_mapping_key = Key::Hash(local_key_bytes);
-        match self
-            .read(correlation_id, &balance_mapping_key)
+        let balance_key: Key = purse_key
+            .uref_to_hash()
+            .ok_or(execution::Error::KeyIsNotAURef(purse_key))?;
+        let stored_value: StoredValue = self
+            .read(correlation_id, &balance_key)
             .map_err(Into::into)?
-        {
-            Some(stored_value) => {
-                let cl_value: CLValue = stored_value
-                    .try_into()
-                    .map_err(execution::Error::TypeMismatch)?;
-                Ok(cl_value.into_t()?)
-            }
-            None => Err(execution::Error::URefNotFound(
-                "public purse balance 21".to_string(),
-            )),
-        }
+            .ok_or(execution::Error::KeyNotFound(purse_key))?;
+        let cl_value: CLValue = stored_value
+            .try_into()
+            .map_err(execution::Error::TypeMismatch)?;
+        let balance_key: Key = cl_value.into_t()?;
+        Ok(balance_key)
     }
 
     fn get_purse_balance(
@@ -155,20 +162,54 @@ where
         correlation_id: CorrelationId,
         key: Key,
     ) -> Result<Motes, Self::Error> {
-        let read_result = match self.read(correlation_id, &key) {
-            Ok(read_result) => read_result,
-            Err(_) => return Err(execution::Error::KeyNotFound(key)),
-        };
-        match read_result {
-            Some(stored_value) => {
-                let cl_value: CLValue = stored_value
-                    .try_into()
-                    .map_err(execution::Error::TypeMismatch)?;
-                let balance: U512 = cl_value.into_t()?;
-                Ok(Motes::new(balance))
-            }
-            None => Err(execution::Error::KeyNotFound(key)),
-        }
+        let stored_value: StoredValue = self
+            .read(correlation_id, &key)
+            .map_err(Into::into)?
+            .ok_or(execution::Error::KeyNotFound(key))?;
+        let cl_value: CLValue = stored_value
+            .try_into()
+            .map_err(execution::Error::TypeMismatch)?;
+        let balance = Motes::new(cl_value.into_t()?);
+        Ok(balance)
+    }
+
+    fn get_purse_balance_key_with_proof(
+        &self,
+        correlation_id: CorrelationId,
+        purse_key: Key,
+    ) -> Result<(Key, TrieMerkleProof<Key, StoredValue>), Self::Error> {
+        let balance_key: Key = purse_key
+            .uref_to_hash()
+            .ok_or(execution::Error::KeyIsNotAURef(purse_key))?;
+        let proof: TrieMerkleProof<Key, StoredValue> = self
+            .read_with_proof(correlation_id, &balance_key) // Key::Hash, so no need to normalize
+            .map_err(Into::into)?
+            .ok_or(execution::Error::KeyNotFound(purse_key))?;
+        let stored_value_ref: &StoredValue = proof.value();
+        let cl_value: CLValue = stored_value_ref
+            .to_owned()
+            .try_into()
+            .map_err(execution::Error::TypeMismatch)?;
+        let balance_key: Key = cl_value.into_t()?;
+        Ok((balance_key, proof))
+    }
+
+    fn get_purse_balance_with_proof(
+        &self,
+        correlation_id: CorrelationId,
+        key: Key,
+    ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error> {
+        let proof: TrieMerkleProof<Key, StoredValue> = self
+            .read_with_proof(correlation_id, &key.normalize())
+            .map_err(Into::into)?
+            .ok_or(execution::Error::KeyNotFound(key))?;
+        let cl_value: CLValue = proof
+            .value()
+            .to_owned()
+            .try_into()
+            .map_err(execution::Error::TypeMismatch)?;
+        let balance = Motes::new(cl_value.into_t()?);
+        Ok((balance, proof))
     }
 
     /// Gets a contract wasm by Key

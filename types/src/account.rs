@@ -1,10 +1,13 @@
 //! Contains types and constants associated with user accounts.
 
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
+use alloc::{format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
     convert::TryFrom,
-    fmt::{Debug, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
 };
 
 use blake2::{
@@ -13,7 +16,9 @@ use blake2::{
 };
 use datasize::DataSize;
 use failure::Fail;
-use serde::{Deserialize, Serialize};
+#[cfg(feature = "std")]
+use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -51,6 +56,18 @@ impl From<base16::DecodeError> for FromStrError {
 impl From<TryFromSliceError> for FromStrError {
     fn from(error: TryFromSliceError) -> Self {
         FromStrError::Hash(error)
+    }
+}
+
+impl Display for FromStrError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            FromStrError::InvalidPrefix => write!(f, "prefix is not 'account-hash-'"),
+            FromStrError::Hex(error) => {
+                write!(f, "failed to decode address portion from hex: {}", error)
+            }
+            FromStrError::Hash(error) => write!(f, "address portion is wrong length: {}", error),
+        }
     }
 }
 
@@ -137,7 +154,7 @@ pub const MAX_ASSOCIATED_KEYS: usize = 10;
 pub const WEIGHT_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
 /// The weight attributed to a given [`AccountHash`] in an account's associated keys.
-#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Weight(u8);
 
 impl Weight {
@@ -178,15 +195,12 @@ impl CLTyped for Weight {
 /// The length in bytes of a [`AccountHash`].
 pub const ACCOUNT_HASH_LENGTH: usize = 32;
 
-/// The number of bytes in a serialized [`AccountHash`].
-pub const ACCOUNT_HASH_SERIALIZED_LENGTH: usize = 32;
-
 /// A type alias for the raw bytes of an Account Hash.
 pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 
 /// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
-#[derive(DataSize, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(DataSize, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct AccountHash(AccountHashBytes);
 
 impl AccountHash {
@@ -218,7 +232,7 @@ impl AccountHash {
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
             .strip_prefix(FORMATTED_STRING_PREFIX)
-            .ok_or_else(|| FromStrError::InvalidPrefix)?;
+            .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = AccountHashBytes::try_from(base16::decode(remainder)?.as_ref())?;
         Ok(AccountHash(bytes))
     }
@@ -248,6 +262,42 @@ impl AccountHash {
         // Hash the preimage data using blake2b256 and return it.
         let digest = blake2b_hash_fn(preimage);
         Self::new(digest)
+    }
+}
+
+#[cfg(feature = "std")]
+impl JsonSchema for AccountHash {
+    fn schema_name() -> String {
+        String::from("AccountHash")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Hex-encoded account hash.".to_string());
+        schema_object.into()
+    }
+}
+
+impl Serialize for AccountHash {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            self.to_formatted_string().serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AccountHash {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let formatted_string = String::deserialize(deserializer)?;
+            AccountHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+        } else {
+            let bytes = AccountHashBytes::deserialize(deserializer)?;
+            Ok(AccountHash(bytes))
+        }
     }
 }
 
@@ -303,23 +353,25 @@ impl Debug for AccountHash {
 
 impl CLTyped for AccountHash {
     fn cl_type() -> CLType {
-        CLType::FixedList(Box::new(CLType::U8), 32)
+        CLType::ByteArray(ACCOUNT_HASH_LENGTH as u32)
     }
 }
 
 impl ToBytes for AccountHash {
+    #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         self.0.to_bytes()
     }
 
+    #[inline(always)]
     fn serialized_length(&self) -> usize {
-        ACCOUNT_HASH_SERIALIZED_LENGTH
+        self.0.serialized_length()
     }
 }
 
 impl FromBytes for AccountHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (bytes, rem) = <[u8; 32]>::from_bytes(bytes)?;
+        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
         Ok((AccountHash::new(bytes), rem))
     }
 }
@@ -531,5 +583,21 @@ mod tests {
         let invalid_hex =
             "account-hash-000000000000000000000000000000000000000000000000000000000000000g";
         assert!(AccountHash::from_formatted_str(invalid_hex).is_err());
+    }
+
+    #[test]
+    fn account_hash_serde_roundtrip() {
+        let account_hash = AccountHash([255; 32]);
+        let serialized = bincode::serialize(&account_hash).unwrap();
+        let decoded = bincode::deserialize(&serialized).unwrap();
+        assert_eq!(account_hash, decoded);
+    }
+
+    #[test]
+    fn account_hash_json_roundtrip() {
+        let account_hash = AccountHash([255; 32]);
+        let json_string = serde_json::to_string_pretty(&account_hash).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(account_hash, decoded);
     }
 }

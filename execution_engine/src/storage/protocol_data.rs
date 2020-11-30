@@ -34,7 +34,7 @@ impl Default for ProtocolData {
 }
 
 impl ProtocolData {
-    /// Creates a new [`ProtocolData`] value from a given [`WasmCosts`] value.
+    /// Creates a new `ProtocolData` value from a given `WasmCosts` value.
     pub fn new(
         wasm_config: WasmConfig,
         mint: ContractHash,
@@ -78,7 +78,7 @@ impl ProtocolData {
         }
     }
 
-    /// Gets the [`WasmCosts`] value from a given [`ProtocolData`] value.
+    /// Gets the `WasmCosts` value from a given [`ProtocolData`] value.
     pub fn wasm_config(&self) -> &WasmConfig {
         &self.wasm_config
     }
@@ -232,7 +232,7 @@ mod tests {
 
         let actual = {
             let mut items = protocol_data.system_contracts();
-            items.sort();
+            items.sort_unstable();
             items
         };
 
@@ -265,7 +265,7 @@ mod tests {
 
         let actual = {
             let mut items = protocol_data.system_contracts();
-            items.sort();
+            items.sort_unstable();
             items
         };
 

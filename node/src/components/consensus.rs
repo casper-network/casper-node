@@ -1,6 +1,7 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
 mod candidate_block;
+mod cl_context;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
@@ -17,35 +18,37 @@ use std::{
 };
 
 use datasize::DataSize;
+use derive_more::From;
+use hex_fmt::HexFmt;
+use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
 use casper_types::auction::ValidatorWeights;
 
 use crate::{
-    components::{storage::Storage, Component},
+    components::Component,
     crypto::{asymmetric_key::PublicKey, hash::Digest},
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
-            self, BlockExecutorRequest, BlockValidationRequest, ContractRuntimeRequest,
-            DeployBufferRequest, NetworkRequest, StorageRequest,
+            self, BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
+            ContractRuntimeRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
     protocol::Message,
-    types::{BlockHash, BlockHeader, CryptoRngCore, ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, ProtoBlock, Timestamp},
+    NodeRng,
 };
 
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraEnd};
-use derive_more::From;
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
-use hex_fmt::HexFmt;
-use serde::{Deserialize, Serialize};
-use tracing::error;
+pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
 
-#[derive(Debug, DataSize, Clone, Serialize, Deserialize)]
+#[derive(DataSize, Clone, Serialize, Deserialize)]
 pub enum ConsensusMessage {
     /// A protocol message, to be handled by the instance in the specified era.
     Protocol { era_id: EraId, payload: Vec<u8> },
@@ -87,6 +90,23 @@ pub enum Event<I> {
         key_block_seed: Result<Digest, u64>,
         get_validators_result: Result<Option<ValidatorWeights>, GetEraValidatorsError>,
     },
+    /// An event instructing us to shutdown if the latest era received no votes
+    Shutdown,
+}
+
+impl Debug for ConsensusMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConsensusMessage::Protocol { era_id, payload: _ } => {
+                write!(f, "Protocol {{ era_id.0: {}, .. }}", era_id.0)
+            }
+            ConsensusMessage::EvidenceRequest { era_id, pub_key } => f
+                .debug_struct("EvidenceRequest")
+                .field("era_id.0", &era_id.0)
+                .field("pub_key", pub_key)
+                .finish(),
+        }
+    }
 }
 
 impl Display for ConsensusMessage {
@@ -151,6 +171,7 @@ impl<I: Debug> Display for Event<I> {
                 response to get_validators from the contract runtime: {:?}",
                 booking_block_hash, key_block_seed, get_validators_result
             ),
+            Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
         }
     }
 }
@@ -161,11 +182,11 @@ pub trait ReactorEventT<I>:
     From<Event<I>>
     + Send
     + From<NetworkRequest<I, Message>>
-    + From<DeployBufferRequest>
+    + From<BlockProposerRequest>
     + From<ConsensusAnnouncement>
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
-    + From<StorageRequest<Storage>>
+    + From<StorageRequest>
     + From<ContractRuntimeRequest>
 {
 }
@@ -174,11 +195,11 @@ impl<REv, I> ReactorEventT<I> for REv where
     REv: From<Event<I>>
         + Send
         + From<NetworkRequest<I, Message>>
-        + From<DeployBufferRequest>
+        + From<BlockProposerRequest>
         + From<ConsensusAnnouncement>
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
-        + From<StorageRequest<Storage>>
+        + From<StorageRequest>
         + From<ContractRuntimeRequest>
 {
 }
@@ -194,7 +215,7 @@ where
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        mut rng: &mut dyn CryptoRngCore,
+        mut rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
@@ -257,6 +278,7 @@ where
                     validators,
                 )
             }
+            Event::Shutdown => handling_es.shutdown_if_necessary(),
         }
     }
 }

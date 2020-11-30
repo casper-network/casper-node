@@ -32,7 +32,7 @@ pub extern "C" fn call() {
             RuntimeArgs::default(),
         );
 
-        system::transfer_from_purse_to_purse(account::get_main_purse(), payment_purse, amount)
+        system::transfer_from_purse_to_purse(account::get_main_purse(), payment_purse, amount, None)
             .unwrap_or_revert()
     }
 
@@ -46,7 +46,7 @@ pub extern "C" fn call() {
     let value = value.unwrap_or_revert_with(ApiError::User(Error::InvalidPhase as u16));
     let result_key = storage::new_uref(value.to_string()).into();
     let mut uref_name: String = NEW_UREF_RESULT_UREF_NAME.to_string();
-    uref_name.push_str("-");
+    uref_name.push('-');
     uref_name.push_str(value);
     runtime::put_key(&uref_name, result_key);
 }

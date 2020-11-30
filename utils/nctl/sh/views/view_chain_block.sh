@@ -8,9 +8,6 @@
 #   Node ordinal identifier.
 #   Block hash (optional).
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -41,16 +38,8 @@ node=${node:-1}
 # Main
 #######################################
 
-node_address=$(get_node_address $net $node)
-log "network #$net :: node #$node :: $node_address :: block:"
-curl -s --header 'Content-Type: application/json' \
-    --request POST $(get_node_address_rpc $net $node) \
-    --data-raw '{
-        "id": 1,
-        "jsonrpc": "2.0",
-        "method": "chain_get_block",
-        "params": {
-            "block_hash":"'$block_hash'"
-        }
-    }' \
-    | jq '.result.block'
+# Import utils.
+source $NCTL/sh/utils.sh
+
+# Render on-chain block information.
+render_chain_block $net $node $block_hash

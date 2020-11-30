@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -37,9 +34,12 @@ node=${node:-"all"}
 # Main
 #######################################
 
+# Import utils.
+source $NCTL/sh/utils.sh
+
 # Set daemon handler.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    daemon_mgr=$NCTL/sh/daemon/supervisord/node_stop.sh
+    daemon_mgr=$NCTL/sh/daemons/supervisord/node_stop.sh
 fi
 
 # Stop node(s).
@@ -48,4 +48,4 @@ source $daemon_mgr $net $node
 
 # Display status.
 sleep 1.0
-source $NCTL/sh/node/status.sh $net
+source $NCTL/sh/node/status.sh net=$net

@@ -209,7 +209,7 @@ where
                 };
                 depth += affix.len();
                 current = next;
-                proof_steps.push_front(TrieMerkleProofStep::extension(affix));
+                proof_steps.push_front(TrieMerkleProofStep::extension(affix.into()));
             }
         }
     }
@@ -778,12 +778,7 @@ where
                                 return Some(Err(e));
                             }
                         };
-                        debug_assert!({
-                            match &maybe_next_trie {
-                                Some(Trie::Node { .. }) => true,
-                                _ => false,
-                            }
-                        });
+                        debug_assert!({ matches!(&maybe_next_trie, Some(Trie::Node { .. })) });
                         path.extend(affix);
                     }
                 }

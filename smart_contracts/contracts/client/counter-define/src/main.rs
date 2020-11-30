@@ -6,7 +6,6 @@ extern crate alloc;
 use alloc::{string::String, vec, vec::Vec};
 use core::convert::TryInto;
 
-use alloc::boxed::Box;
 use casper_contract::{
     contract_api::{self, runtime, storage},
     ext_ffi,
@@ -105,7 +104,7 @@ fn get_entry_points() -> EntryPoints {
         ENTRYPOINT_SESSION,
         vec![Parameter::new(
             ARG_CONTRACT_HASH_NAME,
-            CLType::FixedList(Box::new(CLType::U8), 32),
+            CLType::ByteArray(32),
         )],
         CLType::Unit,
         EntryPointAccess::Public,
@@ -121,7 +120,7 @@ fn get_counter_key() -> Key {
     let arg = {
         let mut arg_size: usize = 0;
         let ret = unsafe {
-            ext_ffi::get_named_arg_size(
+            ext_ffi::casper_get_named_arg_size(
                 name.as_bytes().as_ptr(),
                 name.len(),
                 &mut arg_size as *mut usize,
@@ -146,7 +145,7 @@ fn get_counter_key() -> Key {
                 let res = {
                     let data_non_null_ptr = contract_api::alloc_bytes(arg_size);
                     let ret = unsafe {
-                        ext_ffi::get_named_arg(
+                        ext_ffi::casper_get_named_arg(
                             name.as_bytes().as_ptr(),
                             name.len(),
                             data_non_null_ptr.as_ptr(),

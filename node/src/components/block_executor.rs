@@ -21,10 +21,10 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
-use casper_types::ProtocolVersion;
+use casper_types::{ExecutionResult, ProtocolVersion};
 
 use crate::{
-    components::{block_executor::event::State, storage::Storage, Component},
+    components::{block_executor::event::State, Component},
     crypto::hash::Digest,
     effect::{
         announcements::BlockExecutorAnnouncement,
@@ -33,11 +33,8 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    small_network::NodeId,
-    types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, CryptoRngCore, Deploy, DeployHash,
-        FinalizedBlock,
-    },
+    types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalizedBlock, NodeId},
+    NodeRng,
 };
 pub(crate) use event::Event;
 
@@ -45,7 +42,7 @@ pub(crate) use event::Event;
 /// can work with.
 pub trait ReactorEventT:
     From<Event>
-    + From<StorageRequest<Storage>>
+    + From<StorageRequest>
     + From<LinearChainRequest<NodeId>>
     + From<ContractRuntimeRequest>
     + From<BlockExecutorAnnouncement>
@@ -55,7 +52,7 @@ pub trait ReactorEventT:
 
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
-        + From<StorageRequest<Storage>>
+        + From<StorageRequest>
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
         + From<BlockExecutorAnnouncement>
@@ -185,7 +182,7 @@ impl BlockExecutor {
         let next_deploy = match state.remaining_deploys.pop_front() {
             Some(deploy) => deploy,
             None => {
-                let era_end = match state.finalized_block.era_end().as_ref() {
+                let era_end = match state.finalized_block.era_end() {
                     Some(era_end) => era_end,
                     None => return self.finalize_block_execution(effect_builder, state),
                 };
@@ -212,6 +209,7 @@ impl BlockExecutor {
             }
         };
         let deploy_hash = *next_deploy.id();
+        let deploy_header = next_deploy.header().clone();
         let deploy_item = DeployItem::from(next_deploy);
 
         let execute_request = ExecuteRequest::new(
@@ -227,6 +225,7 @@ impl BlockExecutor {
             .event(move |result| Event::DeployExecutionResult {
                 state,
                 deploy_hash,
+                deploy_header,
                 result,
             })
     }
@@ -276,9 +275,20 @@ impl BlockExecutor {
             None => {
                 let height = finalized_block.height();
                 debug!("no pre-state hash for height {}", height);
-                // The parent block has not been executed yet; delay handling.
-                self.exec_queue.insert(height, (finalized_block, deploys));
-                Effects::new()
+                // re-check the parent map - the parent might have been executed in the meantime!
+                if let Some(state_root_hash) = self.pre_state_hash(&finalized_block) {
+                    let state = Box::new(State {
+                        finalized_block,
+                        remaining_deploys: deploys,
+                        execution_results: HashMap::new(),
+                        state_root_hash,
+                    });
+                    self.execute_next_deploy_or_create_block(effect_builder, state)
+                } else {
+                    // The parent block has not been executed yet; delay handling.
+                    self.exec_queue.insert(height, (finalized_block, deploys));
+                    Effects::new()
+                }
             }
             Some(parent_summary) => {
                 // Parent found in the storage.
@@ -297,6 +307,7 @@ impl BlockExecutor {
         effect_builder: EffectBuilder<REv>,
         mut state: Box<State>,
         deploy_hash: DeployHash,
+        deploy_header: DeployHeader,
         execution_results: ExecutionResults,
     ) -> Effects<Event> {
         let ee_execution_result = execution_results
@@ -306,11 +317,13 @@ impl BlockExecutor {
         let execution_result = ExecutionResult::from(&ee_execution_result);
         let _ = state
             .execution_results
-            .insert(deploy_hash, execution_result);
+            .insert(deploy_hash, (deploy_header, execution_result));
 
         let execution_effect = match ee_execution_result {
             EngineExecutionResult::Success { effect, cost, .. } => {
-                debug!(?effect, %cost, "execution succeeded");
+                // We do want to see the deploy hash and cost in the logs.
+                // We don't need to see the effects in the logs.
+                debug!(?deploy_hash, %cost, "execution succeeded");
                 effect
             }
             EngineExecutionResult::Failure {
@@ -319,7 +332,10 @@ impl BlockExecutor {
                 cost,
                 ..
             } => {
-                error!(?error, ?effect, %cost, "execution failure");
+                // Failure to execute a contract is a user error, not a system error.
+                // We do want to see the deploy hash, error, and cost in the logs.
+                // We don't need to see the effects in the logs.
+                debug!(?deploy_hash, ?error, %cost, "execution failure");
                 effect
             }
         };
@@ -380,7 +396,7 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
@@ -431,12 +447,19 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
             Event::DeployExecutionResult {
                 state,
                 deploy_hash,
+                deploy_header,
                 result,
             } => {
                 trace!(?state, %deploy_hash, ?result, "deploy execution result");
                 // As for now a given state is expected to exist.
                 let execution_results = result.unwrap();
-                self.commit_execution_effects(effect_builder, state, deploy_hash, execution_results)
+                self.commit_execution_effects(
+                    effect_builder,
+                    state,
+                    deploy_hash,
+                    deploy_header,
+                    execution_results,
+                )
             }
 
             Event::CommitExecutionEffects {
@@ -470,6 +493,7 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         self.finalize_block_execution(effect_builder, state)
                     }
                     _ => {
+                        // When step fails, the auction process is broken and we should panic.
                         error!(?result, "run step failed - internal contract runtime error");
                         panic!("unable to run step");
                     }

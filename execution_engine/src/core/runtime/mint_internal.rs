@@ -88,14 +88,14 @@ where
     fn write<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).expect("should convert");
         self.context
-            .write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
+            .metered_write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
             .map_err(|_| Error::Storage)
     }
 
     fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).expect("should convert");
         self.context
-            .add_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
+            .metered_add_gs(uref, cl_value)
             .map_err(|_| Error::Storage)
     }
 }
@@ -105,8 +105,14 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn record_transfer(&mut self, source: URef, target: URef, amount: U512) -> Result<(), Error> {
-        let result = Runtime::record_transfer(self, source, target, amount);
+    fn record_transfer(
+        &mut self,
+        source: URef,
+        target: URef,
+        amount: U512,
+        id: Option<u64>,
+    ) -> Result<(), Error> {
+        let result = Runtime::record_transfer(self, source, target, amount, id);
         result.map_err(|_| Error::RecordTransferFailure)
     }
 }

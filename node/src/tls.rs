@@ -143,15 +143,25 @@ impl Debug for CertFingerprint {
 #[derive(Copy, Clone, DataSize, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct KeyFingerprint(Sha512);
 
+impl KeyFingerprint {
+    /// Size of digest in bytes.
+    pub const LENGTH: usize = Sha512::SIZE;
+}
+
+impl AsRef<[u8]> for KeyFingerprint {
+    fn as_ref(&self) -> &[u8] {
+        self.0.bytes()
+    }
+}
+
 impl Debug for KeyFingerprint {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "KeyFingerprint({:10})", HexFmt(self.0.bytes()))
     }
 }
 
-#[cfg(test)]
-impl From<[u8; Sha512::SIZE]> for KeyFingerprint {
-    fn from(raw_bytes: [u8; Sha512::SIZE]) -> Self {
+impl From<[u8; KeyFingerprint::LENGTH]> for KeyFingerprint {
+    fn from(raw_bytes: [u8; KeyFingerprint::LENGTH]) -> Self {
         KeyFingerprint(Sha512(raw_bytes))
     }
 }
@@ -325,20 +335,32 @@ fn set_context_options(
 }
 
 /// Error during certificate validation.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Serialize)]
 pub enum ValidationError {
     /// Failed to read public key from certificate.
     #[error("error reading public key from certificate: {0:?}")]
-    CannotReadPublicKey(#[source] ErrorStack),
+    CannotReadPublicKey(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Failed to read subject or issuer name.
     #[error("error reading subject or issuer name: {0:?}")]
-    CorruptSubjectOrIssuer(#[source] ErrorStack),
+    CorruptSubjectOrIssuer(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Wrong signature scheme.
     #[error("wrong signature scheme")]
     WrongSignatureAlgorithm,
     /// Failed to read or convert times.
     #[error("there was an issue reading or converting times: {0:?}")]
-    TimeIssue(#[source] ErrorStack),
+    TimeIssue(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Certificate not yet valid.
     #[error("the certificate is not yet valid")]
     NotYetValid,
@@ -347,16 +369,28 @@ pub enum ValidationError {
     Expired,
     /// Serial number could not be compared to the reference.
     #[error("the serial number could not be compared to the reference: {0:?}")]
-    InvalidSerialNumber(#[source] ErrorStack),
+    InvalidSerialNumber(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Wrong serial number.
     #[error("wrong serial number")]
     WrongSerialNumber,
     /// No valid elliptic curve key could be extracted from certificate.
     #[error("no valid elliptic curve key could be extracted from certificate: {0:?}")]
-    CouldNotExtractEcKey(#[source] ErrorStack),
+    CouldNotExtractEcKey(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Public key failed sanity check.
     #[error("the given public key fails basic sanity checks: {0:?}")]
-    KeyFailsCheck(#[source] ErrorStack),
+    KeyFailsCheck(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Wrong elliptic curve.
     #[error("underlying elliptic curve is wrong")]
     WrongCurve,
@@ -365,19 +399,35 @@ pub enum ValidationError {
     NotSelfSigned,
     /// Failed to validate signature.
     #[error("the signature could not be validated")]
-    FailedToValidateSignature(#[source] ErrorStack),
+    FailedToValidateSignature(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Invalid signature.
     #[error("the signature is invalid")]
     InvalidSignature,
     /// Invalid fingerprint.
     #[error("failed to read fingerprint")]
-    InvalidFingerprint(#[source] ErrorStack),
+    InvalidFingerprint(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Failed to create a big num context.
     #[error("could not create a big num context")]
-    BigNumContextNotAvailable(#[source] ErrorStack),
+    BigNumContextNotAvailable(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
     /// Failed to encode public key.
     #[error("could not encode public key as bytes")]
-    PublicKeyEncodingFailed(#[source] ErrorStack),
+    PublicKeyEncodingFailed(
+        #[serde(skip_serializing)]
+        #[source]
+        ErrorStack,
+    ),
 }
 
 /// Checks that the cryptographic parameters on a certificate are correct and returns the
@@ -562,9 +612,9 @@ fn name_to_string(name: &X509NameRef) -> SslResult<String> {
 
     for entry in name.entries() {
         output.push_str(entry.object().nid().long_name()?);
-        output.push_str("=");
+        output.push('=');
         output.push_str(entry.data().as_utf8()?.as_ref());
-        output.push_str(" ");
+        output.push(' ');
     }
 
     Ok(output)

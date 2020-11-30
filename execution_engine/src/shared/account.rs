@@ -3,6 +3,8 @@ mod associated_keys;
 
 use std::collections::BTreeSet;
 
+use serde::{Deserialize, Serialize};
+
 use casper_types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
@@ -16,7 +18,7 @@ use casper_types::{
 pub use action_thresholds::ActionThresholds;
 pub use associated_keys::AssociatedKeys;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct Account {
     account_hash: AccountHash,
     named_keys: NamedKeys,
@@ -79,7 +81,7 @@ impl Account {
         URef::new(self.main_purse.addr(), AccessRights::ADD)
     }
 
-    pub fn get_associated_keys(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
+    pub fn associated_keys(&self) -> impl Iterator<Item = (&AccountHash, &Weight)> {
         self.associated_keys.iter()
     }
 

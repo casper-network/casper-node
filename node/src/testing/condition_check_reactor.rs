@@ -7,7 +7,7 @@ use super::network::NetworkedReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{EventQueueHandle, Finalize, Reactor},
-    types::CryptoRngCore,
+    NodeRng,
 };
 
 /// A reactor wrapping an inner reactor, and which has an optional hook into
@@ -58,7 +58,7 @@ impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
         config: Self::Config,
         registry: &Registry,
         event_queue: EventQueueHandle<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let (reactor, effects) = R::new(config, registry, event_queue, rng)?;
         Ok((
@@ -74,7 +74,7 @@ impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
     fn dispatch_event(
         &mut self,
         effect_builder: EffectBuilder<Self::Event>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
         self.condition_result = self

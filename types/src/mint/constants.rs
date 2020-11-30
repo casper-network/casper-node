@@ -2,13 +2,19 @@
 pub const ARG_PURSE: &str = "purse";
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
+/// Named constant for `id`.
+pub const ARG_ID: &str = "id";
 /// Named constant for `source`.
 pub const ARG_SOURCE: &str = "source";
 /// Named constant for `target`.
 pub const ARG_TARGET: &str = "target";
+/// Named constant for `round_seigniorage_rate` used in installer.
+pub const ARG_ROUND_SEIGNIORAGE_RATE: &str = "round_seigniorage_rate";
 
 /// Named constant for method `mint`.
 pub const METHOD_MINT: &str = "mint";
+/// Named constant for method `reduce_total_supply`.
+pub const METHOD_REDUCE_TOTAL_SUPPLY: &str = "reduce_total_supply";
 /// Named constant for (synthetic) method `create`
 pub const METHOD_CREATE: &str = "create";
 /// Named constant for method `balance`.
@@ -26,3 +32,5 @@ pub const ACCESS_KEY: &str = "mint_access";
 pub const BASE_ROUND_REWARD_KEY: &str = "mint_base_round_reward";
 /// Storage for mint total supply key.
 pub const TOTAL_SUPPLY_KEY: &str = "total_supply";
+/// Storage for mint round seigniorage rate.
+pub const ROUND_SEIGNIORAGE_RATE_KEY: &str = "round_seigniorage_rate";

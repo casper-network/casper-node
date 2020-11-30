@@ -17,10 +17,11 @@ use casper_types::{
         UpdateKeyFailure, Weight,
     },
     bytesrepr,
+    bytesrepr::ToBytes,
     contracts::NamedKeys,
     AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
-    DeployInfo, EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
-    Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
+    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion,
+    RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
 };
 
 use crate::{
@@ -96,7 +97,7 @@ pub struct RuntimeContext<'a, R> {
     //(could point at an account or contract in the global state)
     base_key: Key,
     blocktime: BlockTime,
-    deploy_hash: [u8; KEY_HASH_LENGTH],
+    deploy_hash: DeployHash,
     gas_limit: Gas,
     gas_counter: Gas,
     hash_address_generator: Rc<RefCell<AddressGenerator>>,
@@ -126,7 +127,7 @@ where
         account: &'a Account,
         base_key: Key,
         blocktime: BlockTime,
-        deploy_hash: [u8; KEY_HASH_LENGTH],
+        deploy_hash: DeployHash,
         gas_limit: Gas,
         gas_counter: Gas,
         hash_address_generator: Rc<RefCell<AddressGenerator>>,
@@ -192,8 +193,7 @@ where
         if contract.remove_named_key(name).is_none() {
             return Ok(());
         }
-        let contract_value = StoredValue::Contract(contract);
-        self.tracking_copy.borrow_mut().write(key, contract_value);
+        self.metered_write_gs_unsafe(key, contract)?;
         Ok(())
     }
 
@@ -211,9 +211,7 @@ where
                 };
                 self.named_keys.remove(name);
                 let account_value = self.account_to_validated_value(account)?;
-                self.tracking_copy
-                    .borrow_mut()
-                    .write(account_hash, account_value);
+                self.metered_write_gs_unsafe(account_hash, account_value)?;
                 Ok(())
             }
             contract_uref @ Key::URef(_) => {
@@ -223,7 +221,7 @@ where
                         .borrow_mut()
                         .read(self.correlation_id, &contract_uref)
                         .map_err(Into::into)?
-                        .ok_or_else(|| Error::KeyNotFound(contract_uref))?;
+                        .ok_or(Error::KeyNotFound(contract_uref))?;
 
                     value.try_into().map_err(Error::TypeMismatch)?
                 };
@@ -259,7 +257,7 @@ where
         self.blocktime
     }
 
-    pub fn get_deploy_hash(&self) -> [u8; KEY_HASH_LENGTH] {
+    pub fn get_deploy_hash(&self) -> DeployHash {
         self.deploy_hash
     }
 
@@ -291,7 +289,7 @@ where
         Rc::clone(&self.transfer_address_generator)
     }
 
-    pub fn state(&self) -> Rc<RefCell<TrackingCopy<R>>> {
+    pub(super) fn state(&self) -> Rc<RefCell<TrackingCopy<R>>> {
         Rc::clone(&self.tracking_copy)
     }
 
@@ -341,7 +339,7 @@ where
         };
         let key = Key::URef(uref);
         self.insert_uref(uref);
-        self.write_gs(key, value)?;
+        self.metered_write_gs(key, value)?;
         Ok(uref)
     }
 
@@ -356,7 +354,7 @@ where
             .transfer_address_generator
             .borrow_mut()
             .create_address();
-        Ok(transfer_addr)
+        Ok(TransferAddr::new(transfer_addr))
     }
 
     /// Puts `key` to the map of named keys of current context.
@@ -365,7 +363,7 @@ where
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
         self.validate_value(&named_key_value)?;
-        self.add_unsafe(self.base_key(), named_key_value)?;
+        self.metered_add_gs_unsafe(self.base_key(), named_key_value)?;
         self.insert_key(name, key);
         Ok(())
     }
@@ -402,9 +400,7 @@ where
             });
         }
         let hash: [u8; KEY_HASH_LENGTH] = key_bytes.try_into().unwrap();
-        self.tracking_copy
-            .borrow_mut()
-            .write(hash.into(), StoredValue::CLValue(cl_value));
+        self.metered_write_gs_unsafe(hash, cl_value)?;
         Ok(())
     }
 
@@ -448,14 +444,6 @@ where
         })
     }
 
-    pub fn write_gs(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
-        self.validate_writeable(&key)?;
-        self.validate_key(&key)?;
-        self.validate_value(&value)?;
-        self.tracking_copy.borrow_mut().write(key, value);
-        Ok(())
-    }
-
     pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
         if let Key::Account(_) = key {
             self.validate_key(key)?;
@@ -472,7 +460,7 @@ where
         if let Key::Account(_) = key {
             self.validate_key(&key)?;
             let account_value = self.account_to_validated_value(account)?;
-            self.tracking_copy.borrow_mut().write(key, account_value);
+            self.metered_write_gs_unsafe(key, account_value)?;
             Ok(())
         } else {
             panic!("Do not use this function for writing non-account keys")
@@ -503,8 +491,7 @@ where
     ) -> Result<[u8; KEY_HASH_LENGTH], Error> {
         let new_hash = self.new_hash_address()?;
         self.validate_value(&contract)?;
-        let hash_key = Key::Hash(new_hash);
-        self.tracking_copy.borrow_mut().write(hash_key, contract);
+        self.metered_write_gs_unsafe(new_hash, contract)?;
         Ok(new_hash)
     }
 
@@ -553,7 +540,7 @@ where
                 | CLType::String
                 | CLType::Option(_)
                 | CLType::List(_)
-                | CLType::FixedList(..)
+                | CLType::ByteArray(..)
                 | CLType::Result { .. }
                 | CLType::Map { .. }
                 | CLType::Tuple1(_)
@@ -699,19 +686,74 @@ where
         }
     }
 
-    /// Adds `value` to the `key`. The premise for being able to `add` value is
-    /// that the type of it [value] can be added (is a Monoid). If the
-    /// values can't be added, either because they're not a Monoid or if the
-    /// value stored under `key` has different type, then `TypeMismatch`
-    /// errors is returned.
-    pub fn add_gs(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
-        self.validate_addable(&key)?;
-        self.validate_key(&key)?;
-        self.validate_value(&value)?;
-        self.add_unsafe(key, value)
+    /// Safely charge the specified amount of gas, up to the available gas limit.
+    ///
+    /// Returns [`Error::GasLimit`] if gas limit exceeded and `()` if not.
+    /// Intuition about the return value sense is to answer the question 'are we
+    /// allowed to continue?'
+    pub(crate) fn charge_gas(&mut self, amount: Gas) -> Result<(), Error> {
+        let prev = self.gas_counter();
+        let gas_limit = self.gas_limit();
+        // gas charge overflow protection
+        match prev.checked_add(amount) {
+            None => {
+                self.set_gas_counter(gas_limit);
+                Err(Error::GasLimit)
+            }
+            Some(val) if val > gas_limit => {
+                self.set_gas_counter(gas_limit);
+                Err(Error::GasLimit)
+            }
+            Some(val) => {
+                self.set_gas_counter(val);
+                Ok(())
+            }
+        }
     }
 
-    fn add_unsafe(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
+    /// Charges gas for specified amount of bytes used.
+    fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
+        let storage_costs = self.protocol_data().wasm_config().storage_costs();
+
+        let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
+
+        self.charge_gas(gas_cost)
+    }
+
+    /// Writes data to global state with a measurement
+    pub(crate) fn metered_write_gs_unsafe<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
+    where
+        K: Into<Key>,
+        V: Into<StoredValue>,
+    {
+        let stored_value = value.into();
+
+        // Charge for amount as measured by serialized length
+        let bytes_count = stored_value.serialized_length();
+        self.charge_gas_storage(bytes_count)?;
+
+        self.tracking_copy
+            .borrow_mut()
+            .write(key.into(), stored_value);
+        Ok(())
+    }
+
+    pub fn metered_write_gs<T>(&mut self, key: Key, value: T) -> Result<(), Error>
+    where
+        T: Into<StoredValue>,
+    {
+        let stored_value = value.into();
+        self.validate_writeable(&key)?;
+        self.validate_key(&key)?;
+        self.validate_value(&stored_value)?;
+        self.metered_write_gs_unsafe(key, stored_value)?;
+        Ok(())
+    }
+
+    fn metered_add_gs_unsafe(&mut self, key: Key, value: StoredValue) -> Result<(), Error> {
+        let value_bytes_count = value.serialized_length();
+        self.charge_gas_storage(value_bytes_count)?;
+
         match self
             .tracking_copy
             .borrow_mut()
@@ -723,6 +765,24 @@ where
             Ok(AddResult::TypeMismatch(type_mismatch)) => Err(Error::TypeMismatch(type_mismatch)),
             Ok(AddResult::Serialization(error)) => Err(Error::BytesRepr(error)),
         }
+    }
+
+    /// Adds `value` to the `key`. The premise for being able to `add` value is
+    /// that the type of it value can be added (is a Monoid). If the
+    /// values can't be added, either because they're not a Monoid or if the
+    /// value stored under `key` has different type, then `TypeMismatch`
+    /// errors is returned.
+    pub(crate) fn metered_add_gs<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
+    where
+        K: Into<Key>,
+        V: Into<StoredValue>,
+    {
+        let key = key.into();
+        let value = value.into();
+        self.validate_addable(&key)?;
+        self.validate_key(&key)?;
+        self.validate_value(&value)?;
+        self.metered_add_gs_unsafe(key, value)
     }
 
     pub fn add_associated_key(
@@ -760,7 +820,7 @@ where
 
         let account_value = self.account_to_validated_value(account)?;
 
-        self.tracking_copy.borrow_mut().write(key, account_value);
+        self.metered_write_gs_unsafe(key, account_value)?;
 
         Ok(())
     }
@@ -794,7 +854,7 @@ where
 
         let account_value = self.account_to_validated_value(account)?;
 
-        self.tracking_copy.borrow_mut().write(key, account_value);
+        self.metered_write_gs_unsafe(key, account_value)?;
 
         Ok(())
     }
@@ -832,7 +892,7 @@ where
 
         let account_value = self.account_to_validated_value(account)?;
 
-        self.tracking_copy.borrow_mut().write(key, account_value);
+        self.metered_write_gs_unsafe(key, account_value)?;
 
         Ok(())
     }
@@ -870,7 +930,7 @@ where
 
         let account_value = self.account_to_validated_value(account)?;
 
-        self.tracking_copy.borrow_mut().write(key, account_value);
+        self.metered_write_gs_unsafe(key, account_value)?;
 
         Ok(())
     }

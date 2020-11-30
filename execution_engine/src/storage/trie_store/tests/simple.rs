@@ -1,7 +1,7 @@
 use lmdb::DatabaseFlags;
 use tempfile::tempdir;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 use super::TestData;
 use crate::storage::{
@@ -12,7 +12,7 @@ use crate::storage::{
     },
     trie::Trie,
     trie_store::{in_memory::InMemoryTrieStore, lmdb::LmdbTrieStore, TrieStore},
-    DEFAULT_TEST_MAX_DB_SIZE,
+    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
 
 fn put_succeeds<'a, K, V, S, X, E>(
@@ -47,8 +47,12 @@ fn in_memory_put_succeeds() {
 #[test]
 fn lmdb_put_succeeds() {
     let tmp_dir = tempdir().unwrap();
-    let env =
-        LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &tmp_dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = &super::create_data()[0..1];
 
@@ -85,7 +89,7 @@ fn in_memory_put_get_succeeds() {
     let store = InMemoryTrieStore::new(&env, None);
     let data = &super::create_data()[0..1];
 
-    let expected: Vec<Trie<Vec<u8>, Vec<u8>>> =
+    let expected: Vec<Trie<Bytes, Bytes>> =
         data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
@@ -93,7 +97,7 @@ fn in_memory_put_get_succeeds() {
         put_get_succeeds::<_, _, _, _, in_memory::Error>(&store, &env, data)
             .expect("put_get_succeeds failed")
             .into_iter()
-            .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
             .expect("one of the outputs was empty")
     )
 }
@@ -101,12 +105,16 @@ fn in_memory_put_get_succeeds() {
 #[test]
 fn lmdb_put_get_succeeds() {
     let tmp_dir = tempdir().unwrap();
-    let env =
-        LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &tmp_dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = &super::create_data()[0..1];
 
-    let expected: Vec<Trie<Vec<u8>, Vec<u8>>> =
+    let expected: Vec<Trie<Bytes, Bytes>> =
         data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
@@ -114,7 +122,7 @@ fn lmdb_put_get_succeeds() {
         put_get_succeeds::<_, _, _, _, error::Error>(&store, &env, data)
             .expect("put_get_succeeds failed")
             .into_iter()
-            .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
             .expect("one of the outputs was empty")
     );
 
@@ -127,7 +135,7 @@ fn in_memory_put_get_many_succeeds() {
     let store = InMemoryTrieStore::new(&env, None);
     let data = super::create_data();
 
-    let expected: Vec<Trie<Vec<u8>, Vec<u8>>> =
+    let expected: Vec<Trie<Bytes, Bytes>> =
         data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
@@ -135,7 +143,7 @@ fn in_memory_put_get_many_succeeds() {
         put_get_succeeds::<_, _, _, _, in_memory::Error>(&store, &env, &data)
             .expect("put_get failed")
             .into_iter()
-            .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
             .expect("one of the outputs was empty")
     )
 }
@@ -143,12 +151,16 @@ fn in_memory_put_get_many_succeeds() {
 #[test]
 fn lmdb_put_get_many_succeeds() {
     let tmp_dir = tempdir().unwrap();
-    let env =
-        LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &tmp_dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = super::create_data();
 
-    let expected: Vec<Trie<Vec<u8>, Vec<u8>>> =
+    let expected: Vec<Trie<Bytes, Bytes>> =
         data.to_vec().into_iter().map(|TestData(_, v)| v).collect();
 
     assert_eq!(
@@ -156,7 +168,7 @@ fn lmdb_put_get_many_succeeds() {
         put_get_succeeds::<_, _, _, _, error::Error>(&store, &env, &data)
             .expect("put_get failed")
             .into_iter()
-            .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+            .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
             .expect("one of the outputs was empty")
     );
 
@@ -203,15 +215,19 @@ fn in_memory_uncommitted_read_write_txn_does_not_persist() {
         )
         .expect("uncommitted_read_write_txn_does_not_persist failed")
         .into_iter()
-        .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+        .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
     )
 }
 
 #[test]
 fn lmdb_uncommitted_read_write_txn_does_not_persist() {
     let tmp_dir = tempdir().unwrap();
-    let env =
-        LmdbEnvironment::new(&tmp_dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &tmp_dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = super::create_data();
 
@@ -222,7 +238,7 @@ fn lmdb_uncommitted_read_write_txn_does_not_persist() {
         )
         .expect("uncommitted_read_write_txn_does_not_persist failed")
         .into_iter()
-        .collect::<Option<Vec<Trie<Vec<u8>, Vec<u8>>>>>()
+        .collect::<Option<Vec<Trie<Bytes, Bytes>>>>()
     );
 
     tmp_dir.close().unwrap();
@@ -254,14 +270,19 @@ fn in_memory_read_write_transaction_does_not_block_read_transaction() {
 #[test]
 fn lmdb_read_write_transaction_does_not_block_read_transaction() {
     let dir = tempdir().unwrap();
-    let env = LmdbEnvironment::new(&dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
 
     assert!(read_write_transaction_does_not_block_read_transaction::<_, error::Error>(&env).is_ok())
 }
 
 fn reads_are_isolated<'a, S, X, E>(store: &S, env: &'a X) -> Result<(), E>
 where
-    S: TrieStore<Vec<u8>, Vec<u8>>,
+    S: TrieStore<Bytes, Bytes>,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -305,7 +326,12 @@ fn in_memory_reads_are_isolated() {
 #[test]
 fn lmdb_reads_are_isolated() {
     let dir = tempdir().unwrap();
-    let env = LmdbEnvironment::new(&dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 
     assert!(reads_are_isolated::<_, _, error::Error>(&store, &env).is_ok())
@@ -313,7 +339,7 @@ fn lmdb_reads_are_isolated() {
 
 fn reads_are_isolated_2<'a, S, X, E>(store: &S, env: &'a X) -> Result<(), E>
 where
-    S: TrieStore<Vec<u8>, Vec<u8>>,
+    S: TrieStore<Bytes, Bytes>,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -361,7 +387,12 @@ fn in_memory_reads_are_isolated_2() {
 #[test]
 fn lmdb_reads_are_isolated_2() {
     let dir = tempdir().unwrap();
-    let env = LmdbEnvironment::new(&dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
 
     assert!(reads_are_isolated_2::<_, _, error::Error>(&store, &env).is_ok())
@@ -369,7 +400,7 @@ fn lmdb_reads_are_isolated_2() {
 
 fn dbs_are_isolated<'a, S, X, E>(env: &'a X, store_a: &S, store_b: &S) -> Result<(), E>
 where
-    S: TrieStore<Vec<u8>, Vec<u8>>,
+    S: TrieStore<Bytes, Bytes>,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -423,7 +454,12 @@ fn in_memory_dbs_are_isolated() {
 #[test]
 fn lmdb_dbs_are_isolated() {
     let dir = tempdir().unwrap();
-    let env = LmdbEnvironment::new(&dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
     let store_a = LmdbTrieStore::new(&env, Some("a"), DatabaseFlags::empty()).unwrap();
     let store_b = LmdbTrieStore::new(&env, Some("b"), DatabaseFlags::empty()).unwrap();
 
@@ -436,7 +472,7 @@ fn transactions_can_be_used_across_sub_databases<'a, S, X, E>(
     store_b: &S,
 ) -> Result<(), E>
 where
-    S: TrieStore<Vec<u8>, Vec<u8>>,
+    S: TrieStore<Bytes, Bytes>,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -481,7 +517,12 @@ fn in_memory_transactions_can_be_used_across_sub_databases() {
 #[test]
 fn lmdb_transactions_can_be_used_across_sub_databases() {
     let dir = tempdir().unwrap();
-    let env = LmdbEnvironment::new(&dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
     let store_a = LmdbTrieStore::new(&env, Some("a"), DatabaseFlags::empty()).unwrap();
     let store_b = LmdbTrieStore::new(&env, Some("b"), DatabaseFlags::empty()).unwrap();
 
@@ -499,7 +540,7 @@ fn uncommitted_transactions_across_sub_databases_do_not_persist<'a, S, X, E>(
     store_b: &S,
 ) -> Result<(), E>
 where
-    S: TrieStore<Vec<u8>, Vec<u8>>,
+    S: TrieStore<Bytes, Bytes>,
     X: TransactionSource<'a, Handle = S::Handle>,
     S::Error: From<X::Error>,
     E: From<S::Error> + From<X::Error> + From<bytesrepr::Error>,
@@ -543,7 +584,12 @@ fn in_memory_uncommitted_transactions_across_sub_databases_do_not_persist() {
 #[test]
 fn lmdb_uncommitted_transactions_across_sub_databases_do_not_persist() {
     let dir = tempdir().unwrap();
-    let env = LmdbEnvironment::new(&dir.path().to_path_buf(), DEFAULT_TEST_MAX_DB_SIZE).unwrap();
+    let env = LmdbEnvironment::new(
+        &dir.path().to_path_buf(),
+        DEFAULT_TEST_MAX_DB_SIZE,
+        DEFAULT_TEST_MAX_READERS,
+    )
+    .unwrap();
     let store_a = LmdbTrieStore::new(&env, Some("a"), DatabaseFlags::empty()).unwrap();
     let store_b = LmdbTrieStore::new(&env, Some("b"), DatabaseFlags::empty()).unwrap();
 

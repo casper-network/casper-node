@@ -7,9 +7,6 @@
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -37,15 +34,44 @@ loglevel=${loglevel:-debug}
 net=${net:-1}
 node=${node:-1}
 
+# Set rust log level.
+export RUST_LOG=$loglevel
+
 #######################################
 # Main
 #######################################
 
-# Set rust log level.
-export RUST_LOG=$loglevel
+# Import utils.
+source $NCTL/sh/utils.sh
 
-# Set path -> node config.
-path_config=$NCTL/assets/net-$net/nodes/node-$node/config/node-config.toml
+# Import vars.
+source $(get_path_to_net_vars $net)
+
+# Set paths.
+path_net=$NCTL/assets/net-$net
+path_net_chainspec=$path_net/chainspec/chainspec.toml
+path_node=$path_net/nodes/node-$node
+path_node_config=$path_net/nodes/node-$node/config/node-config.toml
+path_node_storage=$path_node/storage
+path_node_secret_key=$path_node/keys/secret_key.pem
+
+# Set ports.
+node_api_port_event=$(get_node_port $NCTL_BASE_PORT_EVENT $net $node)
+node_api_port_rest=$(get_node_port $NCTL_BASE_PORT_REST $net $node)
+node_api_port_rpc=$(get_node_port $NCTL_BASE_PORT_RPC $net $node)
+
+# Set validator network addresses.
+network_bind_address=$(get_network_bind_address $net $node $NCTL_NET_BOOTSTRAP_COUNT)
+network_known_addresses=$(get_network_known_addresses $net $node $NCTL_NET_BOOTSTRAP_COUNT)
 
 # Start node in validator mode.
-$NCTL/assets/net-$net/bin/casper-node validator $path_config
+$NCTL/assets/net-$net/bin/casper-node validator $path_node_config \
+    --config-ext=consensus.secret_key_path=$path_node_secret_key  \
+    --config-ext=event_stream_server.address=0.0.0.0:$node_api_port_event  \
+    --config-ext logging.format="json" \
+    --config-ext network.bind_address=$network_bind_address  \
+    --config-ext network.known_addresses=[$network_known_addresses]  \
+    --config-ext=node.chainspec_config_path=$path_net_chainspec  \
+    --config-ext=rest_server.address=0.0.0.0:$node_api_port_rest  \
+    --config-ext=rpc_server.address=0.0.0.0:$node_api_port_rpc  \
+    --config-ext=storage.path=$path_node_storage ;

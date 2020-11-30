@@ -2,12 +2,14 @@
 
 use std::path::Path;
 
+use num_rational::Ratio;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
     core::engine_state::genesis::GenesisAccount, shared::wasm_config::WasmConfig,
 };
+use casper_types::auction::EraId;
 
 use super::{chainspec, DeployConfig, Error, HighwayConfig};
 use crate::{
@@ -23,13 +25,26 @@ const DEFAULT_AUCTION_INSTALLER_PATH: &str = "auction_install.wasm";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
 const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
+const DEFAULT_AUCTION_DELAY: u64 = 3;
+const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
+/// Round seigniorage rate represented as a fractional number
+///
+/// Annual issuance: 2%
+/// Minimum round exponent: 14
+/// Ticks per year: 31536000000
+///
+/// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
+const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 struct Genesis {
     name: String,
     timestamp: Timestamp,
     validator_slots: u32,
+    auction_delay: u64,
+    locked_funds_period: EraId,
     protocol_version: Version,
+    round_seigniorage_rate: Ratio<u64>,
     mint_installer_path: External<Vec<u8>>,
     pos_installer_path: External<Vec<u8>>,
     standard_payment_installer_path: External<Vec<u8>>,
@@ -43,7 +58,10 @@ impl Default for Genesis {
             name: String::from(DEFAULT_CHAIN_NAME),
             timestamp: Timestamp::zero(),
             validator_slots: DEFAULT_VALIDATOR_SLOTS,
+            auction_delay: DEFAULT_AUCTION_DELAY,
+            locked_funds_period: DEFAULT_LOCKED_FUNDS_PERIOD,
             protocol_version: Version::from((1, 0, 0)),
+            round_seigniorage_rate: DEFAULT_ROUND_SEIGNIORAGE_RATE,
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
             standard_payment_installer_path: External::path(
@@ -121,6 +139,9 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             name: chainspec.genesis.name.clone(),
             timestamp: chainspec.genesis.timestamp,
             validator_slots: chainspec.genesis.validator_slots,
+            auction_delay: chainspec.genesis.auction_delay,
+            locked_funds_period: chainspec.genesis.locked_funds_period,
+            round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
             protocol_version: chainspec.genesis.protocol_version.clone(),
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
@@ -199,6 +220,9 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         name: chainspec.genesis.name,
         timestamp: chainspec.genesis.timestamp,
         validator_slots: chainspec.genesis.validator_slots,
+        auction_delay: chainspec.genesis.auction_delay,
+        locked_funds_period: chainspec.genesis.locked_funds_period,
+        round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
         protocol_version: chainspec.genesis.protocol_version,
         mint_installer_bytes,
         pos_installer_bytes,

@@ -26,7 +26,7 @@ use casper_execution_engine::{
         engine_state::{
             era_validators::GetEraValidatorsRequest, execute_request::ExecuteRequest,
             execution_result::ExecutionResult, run_genesis_request::RunGenesisRequest,
-            EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
+            BalanceResult, EngineConfig, EngineState, SYSTEM_ACCOUNT_ADDR,
         },
         execution,
     },
@@ -44,24 +44,34 @@ use casper_execution_engine::{
         global_state::{in_memory::InMemoryGlobalState, lmdb::LmdbGlobalState, StateProvider},
         protocol_data_store::lmdb::LmdbProtocolDataStore,
         transaction_source::lmdb::LmdbEnvironment,
+        trie::merkle_proof::TrieMerkleProof,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{
     account::AccountHash,
-    auction::{EraId, ValidatorWeights},
+    auction::{
+        EraId, EraValidators, ValidatorWeights, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
+    },
     bytesrepr::{self},
     mint::TOTAL_SUPPLY_KEY,
-    CLTyped, CLValue, Contract, ContractHash, ContractWasm, DeployHash, DeployInfo, Key, Transfer,
-    TransferAddr, URef, U512,
+    runtime_args, CLTyped, CLValue, Contract, ContractHash, ContractWasm, DeployHash, DeployInfo,
+    Key, RuntimeArgs, Transfer, TransferAddr, URef, U512,
 };
 
-use crate::internal::{utils, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION};
+use crate::internal::{
+    utils, ExecuteRequestBuilder, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
+};
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
 ///
 /// This default value should give 50MiB initial map size by default.
 const DEFAULT_LMDB_PAGES: usize = 128_000;
+
+/// LDMB max readers
+///
+/// The default value is chosen to be the same as the node itself.
+const DEFAULT_MAX_READERS: u32 = 512;
 
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder` in order to match
 /// the behavior of `get_data_dir()` in "engine-grpc-server/src/main.rs".
@@ -187,8 +197,12 @@ impl LmdbWasmTestBuilder {
         let page_size = *OS_PAGE_SIZE;
         let global_state_dir = Self::create_and_get_global_state_dir(data_dir);
         let environment = Arc::new(
-            LmdbEnvironment::new(&global_state_dir, page_size * DEFAULT_LMDB_PAGES)
-                .expect("should create LmdbEnvironment"),
+            LmdbEnvironment::new(
+                &global_state_dir,
+                page_size * DEFAULT_LMDB_PAGES,
+                DEFAULT_MAX_READERS,
+            )
+            .expect("should create LmdbEnvironment"),
         );
         let trie_store = Arc::new(
             LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())
@@ -249,8 +263,12 @@ impl LmdbWasmTestBuilder {
         let page_size = *OS_PAGE_SIZE;
         let global_state_dir = Self::create_and_get_global_state_dir(data_dir);
         let environment = Arc::new(
-            LmdbEnvironment::new(&global_state_dir, page_size * DEFAULT_LMDB_PAGES)
-                .expect("should create LmdbEnvironment"),
+            LmdbEnvironment::new(
+                &global_state_dir,
+                page_size * DEFAULT_LMDB_PAGES,
+                DEFAULT_MAX_READERS,
+            )
+            .expect("should create LmdbEnvironment"),
         );
         let trie_store =
             Arc::new(LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore"));
@@ -383,21 +401,27 @@ where
         if query_response.has_failure() {
             return Err(query_response.take_failure());
         }
-        bytesrepr::deserialize(query_response.take_success()).map_err(|err| format!("{}", err))
+
+        let (value, _proofs): (StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>) =
+            bytesrepr::deserialize(query_response.take_success())
+                .map_err(|err| format!("{:?}", err))?;
+
+        Ok(value)
     }
 
-    pub fn total_supply(&self, maybe_post_state: Option<Vec<u8>>) -> U512 {
+    pub fn query_with_proof(
+        &self,
+        maybe_post_state: Option<Vec<u8>>,
+        base_key: Key,
+        path: &[String],
+    ) -> Result<(StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>), String> {
         let post_state = maybe_post_state
             .or_else(|| self.post_state_hash.clone())
             .expect("builder must have a post-state hash");
 
-        let mint_key: Key = self
-            .mint_contract_hash
-            .expect("should have mint_contract_hash")
-            .into();
+        let path_vec: Vec<String> = path.to_vec();
 
-        let query_request =
-            create_query_request(post_state, mint_key, vec![TOTAL_SUPPLY_KEY.to_string()]);
+        let query_request = create_query_request(post_state, base_key, path_vec);
 
         let mut query_response = self
             .engine_state
@@ -406,10 +430,23 @@ where
             .expect("should get query response");
 
         if query_response.has_failure() {
-            panic!("mint error: {}", query_response.take_failure());
+            return Err(query_response.take_failure());
         }
 
-        let result = bytesrepr::deserialize(query_response.take_success());
+        let (value, proofs): (StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>) =
+            bytesrepr::deserialize(query_response.take_success())
+                .map_err(|err| format!("{:?}", err))?;
+
+        Ok((value, proofs))
+    }
+
+    pub fn total_supply(&self, maybe_post_state: Option<Vec<u8>>) -> U512 {
+        let mint_key: Key = self
+            .mint_contract_hash
+            .expect("should have mint_contract_hash")
+            .into();
+
+        let result = self.query(maybe_post_state, mint_key, &[TOTAL_SUPPLY_KEY]);
 
         let total_supply: U512 = if let Ok(StoredValue::CLValue(total_supply)) = result {
             total_supply.into_t().expect("total supply should be U512")
@@ -519,6 +556,21 @@ where
         self
     }
 
+    pub fn run_auction(&mut self) -> &mut Self {
+        const ARG_ENTRY_POINT: &str = "entry_point";
+        const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
+        const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
+        let run_request = ExecuteRequestBuilder::standard(
+            SYSTEM_ADDR,
+            CONTRACT_AUCTION_BIDS,
+            runtime_args! {
+                ARG_ENTRY_POINT => METHOD_RUN_AUCTION
+            },
+        )
+        .build();
+        self.exec(run_request).commit().expect_success()
+    }
+
     pub fn step(&mut self, step_request: StepRequest) -> &mut Self {
         let response = self
             .engine_state
@@ -526,10 +578,30 @@ where
             .wait_drop_metadata()
             .expect("should step");
 
+        if !response.has_step_result() {
+            panic!("Expected step result");
+        }
+
         let result = response.get_step_result();
-        let success = result.get_success();
-        self.post_state_hash = Some(success.get_poststate_hash().to_vec());
-        self
+
+        if result.has_success() {
+            let success = result.get_success();
+            self.post_state_hash = Some(success.get_poststate_hash().to_vec());
+            return self;
+        } else if result.has_error() {
+            let error = result.get_error();
+            panic!(
+                "Expected successful step result, but instead got error: {:?}",
+                error,
+            );
+        } else if result.has_missing_parent() {
+            let missing_parent = result.get_missing_parent();
+            panic!(
+                "Expected successful step result, but instead got missing_parent: {:?}",
+                missing_parent,
+            );
+        }
+        panic!("Expected one of the supported step result options (this should be unreachable).");
     }
 
     /// Expects a successful run and caches transformations
@@ -664,6 +736,21 @@ where
             .expect("should parse balance into a U512")
     }
 
+    pub fn get_purse_balance_result(&self, purse: URef) -> BalanceResult {
+        let correlation_id = CorrelationId::new();
+        let state_root_hash_slice: &Vec<u8> = self
+            .post_state_hash
+            .as_ref()
+            .expect("should have post_state_hash");
+        let state_root_hash: Blake2bHash = state_root_hash_slice
+            .as_slice()
+            .try_into()
+            .expect("should convert");
+        self.engine_state
+            .get_purse_balance(correlation_id, state_root_hash, purse)
+            .expect("should get purse balance")
+    }
+
     pub fn get_proposer_purse_balance(&self) -> U512 {
         let proposer_account = self
             .get_account(*DEFAULT_PROPOSER_ADDR)
@@ -757,14 +844,19 @@ where
             .finish()
     }
 
-    pub fn get_era_validators(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
+    pub fn get_era_validators(&mut self) -> EraValidators {
         let correlation_id = CorrelationId::new();
         let state_hash = Blake2bHash::try_from(self.get_post_state_hash().as_slice())
             .expect("should create state hash");
-        let request = GetEraValidatorsRequest::new(state_hash, era_id, *DEFAULT_PROTOCOL_VERSION);
+        let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
         self.engine_state
             .get_era_validators(correlation_id, request)
-            .expect("should get era validators")
+            .expect("get era validators should not error")
+    }
+
+    pub fn get_validator_weights(&mut self, era_id: EraId) -> Option<ValidatorWeights> {
+        let mut result = self.get_era_validators();
+        result.remove(&era_id)
     }
 
     pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
@@ -782,6 +874,16 @@ where
             .expect("should be cl value");
         let result: T = cl_value.into_t().expect("should convert");
         result
+    }
+
+    pub fn get_era(&mut self) -> EraId {
+        let auction_contract = self.get_auction_contract_hash();
+        self.get_value(auction_contract, ERA_ID_KEY)
+    }
+
+    pub fn get_auction_delay(&mut self) -> u64 {
+        let auction_contract = self.get_auction_contract_hash();
+        self.get_value(auction_contract, AUCTION_DELAY_KEY)
     }
 }
 

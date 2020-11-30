@@ -20,11 +20,11 @@ TIMESTAMP=${GENESIS_TIMESTAMP:-$TIMESTAMP}
 
 echo "GENESIS_TIMESTAMP=${TIMESTAMP}"
 
+export BASEDIR
+export TIMESTAMP
+
 # Update the chainspec to use the current time as the genesis timestamp.
-cp ${BASEDIR}/resources/local/chainspec.toml ${CHAINSPEC}
-sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = \"${TIMESTAMP}\"/" ${CHAINSPEC}
-sed -i 's|\.\./\.\.|'"$BASEDIR"'|' ${CHAINSPEC}
-sed -i 's|accounts\.csv|'"$BASEDIR"'/resources/local/accounts.csv|' ${CHAINSPEC}
+envsubst < ${BASEDIR}/resources/local/chainspec.toml.in > ${CHAINSPEC}
 
 # If no nodes defined, start all.
 NODES="${@:-1 2 3 4 5}"
@@ -67,11 +67,11 @@ run_node() {
         --property=TimeoutSec=600 \
         --property=WorkingDirectory=${BASEDIR} \
         $DEPS \
-        --setenv=RUST_LOG=trace \
+        --setenv=RUST_LOG=casper=trace \
         --property=StandardOutput=file:${LOGFILE} \
         --property=StandardError=file:${LOGFILE}.stderr \
         -- \
-        cargo run -p casper-node \
+        cargo run -p casper-node -- \
         validator \
         resources/local/config.toml \
         --config-ext=network.systemd_support=true \

@@ -57,12 +57,14 @@ pub trait MintProvider {
     ) -> TransferResult;
 
     /// Transfers `amount` from `source` purse to a `target` purse.
+    // TODO - remove the lint relaxation.
+    #[allow(clippy::result_unit_err)]
     fn transfer_purse_to_purse(
         &mut self,
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ()>;
+    ) -> Result<(), Error>;
 
     /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
     fn balance(&mut self, purse: URef) -> Option<U512>;
@@ -73,4 +75,8 @@ pub trait MintProvider {
     /// Mints new token with given `initial_balance` balance. Returns new purse on success,
     /// otherwise an error.
     fn mint(&mut self, amount: U512) -> Result<URef, Error>;
+
+    /// Reduce total supply by `amount`. Returns unit on success, otherwise
+    /// an error.
+    fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error>;
 }

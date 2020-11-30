@@ -56,7 +56,7 @@
 //! assert_eq!(expected_value, returned_value);
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/0.8.0")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/0.2.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -92,7 +92,7 @@ pub type Hash = [u8; 32];
 pub use crate::internal::DEFAULT_ACCOUNT_ADDR;
 
 /// Default initial balance of a test account in motes.
-pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 50_000_000_000_000_000u64;
+pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000u64;
 
 /// Minimal amount for a transfer that creates new accounts.
-pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 500_000_000_000_000u64;
+pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000u64;

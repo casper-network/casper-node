@@ -1,4 +1,4 @@
-# Cosy macros
+# casper-node-macros
 
 The `casper-node-macros` crate offers an easy-to-use macro to create reactor implementations for the component system. It enforces a set of convention and allows generating a large amount of otherwise boilerplate heavy setup code comfortably.
 

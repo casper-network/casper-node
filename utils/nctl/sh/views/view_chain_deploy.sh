@@ -8,9 +8,6 @@
 #   Node ordinal identifier.
 #   Deploy hash.
 
-# Import utils.
-source $NCTL/sh/utils/misc.sh
-
 #######################################
 # Destructure input args.
 #######################################
@@ -40,16 +37,8 @@ node=${node:-1}
 # Main
 #######################################
 
-node_address=$(get_node_address $net $node)
-log "network #$net :: node #$node :: $node_address :: deploy:"
-curl -s --header 'Content-Type: application/json' \
-    --request POST $(get_node_address_rpc $net $node) \
-    --data-raw '{
-        "id": 1,
-        "jsonrpc": "2.0",
-        "method": "info_get_deploy",
-        "params": {
-            "deploy_hash":"'$deploy_hash'"
-        }
-    }' \
-    | jq '.result'
+# Import utils.
+source $NCTL/sh/utils.sh
+
+# Render on-chain deploy information.
+render_chain_deploy $net $node $deploy_hash

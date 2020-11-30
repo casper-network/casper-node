@@ -10,7 +10,7 @@ use crate::ApiError;
 /// System contract types.
 ///
 /// Used by converting to a `u32` and passing as the `system_contract_index` argument of
-/// `ext_ffi::get_system_contract()`.
+/// `ext_ffi::casper_get_system_contract()`.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum SystemContractType {
     /// Mint contract.

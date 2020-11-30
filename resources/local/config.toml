@@ -58,7 +58,7 @@ bind_address = '0.0.0.0:34553'
 #
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
-known_addresses = ['127.0.0.1:34553']
+known_addresses = ['127.0.0.1:34553', '127.0.0.1:34653']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 30000
@@ -72,19 +72,45 @@ systemd_support = false
 
 
 # =============================================
-# Configuration options for the HTTP API server
+# Configuration options for the JSON-RPC HTTP server
 # =============================================
-[http_server]
+[rpc_server]
 
-# Listening address for HTTP server.  If the port is set to 0, a random port will be used.
+# Listening address for JSON-RPC HTTP server.  If the port is set to 0, a random port will be used.
 #
 # If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
-# the HTTP server will not run, but the node will be otherwise unaffected.
+# the JSON-RPC HTTP server will not run, but the node will be otherwise unaffected.
 #
 # The actual bound address will be reported via a log line if logging is enabled.
 address = '0.0.0.0:7777'
 
-# The number of event-stream events to buffer.
+# =============================================
+# Configuration options for the REST HTTP server
+# =============================================
+[rest_server]
+
+# Listening address for REST HTTP server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the REST HTTP server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:8888'
+
+# =============================================
+# Configuration options for the SSE HTTP event stream server
+# =============================================
+[event_stream_server]
+
+# Listening address for SSE HTTP event stream server.  If the port is set to 0, a random port will be used.
+#
+# If the specified port cannot be bound to, a random port will be tried instead.  If binding fails,
+# the SSE HTTP event stream server will not run, but the node will be otherwise unaffected.
+#
+# The actual bound address will be reported via a log line if logging is enabled.
+address = '0.0.0.0:9999'
+
+# The number of event stream events to buffer.
 event_stream_buffer_length = 100
 
 
@@ -101,33 +127,26 @@ event_stream_buffer_length = 100
 # If unset, the path must be supplied as an argument via the CLI.
 path = '../node-storage'
 
-# Optional maximum size of the database to use for the block store.
-#
-# If unset, defaults to 483,183,820,800 == 450 GiB.
+# Maximum size of the database to use for the block store.
 #
 # The size should be a multiple of the OS page size.
-#max_block_store_size = 483183820800
+#
+# 483_183_820_800 == 18 GiB.
+max_block_store_size = 19_327_352_832
 
-# Optional maximum size of the database to use for the deploy store.
-#
-# If unset, defaults to 322,122,547,200 == 300 GiB.
+# Maximum size of the database to use for the deploy store.
 #
 # The size should be a multiple of the OS page size.
-#max_deploy_store_size = 322122547200
+#
+# 322_122_547_200 == 12 GiB.
+max_deploy_store_size = 12_884_901_888
 
-# Optional maximum size of the database to use for the block height store.
-#
-# If unset, defaults to 10,485,100 == 10 MiB.
+# Maximum size of the database to use for the deploy metadata.
 #
 # The size should be a multiple of the OS page size.
-#max_block_height_store_size = 10485100
-
-# Optional maximum size of the database to use for the chainspec store.
 #
-# If unset, defaults to 1,073,741,824 == 1 GiB.
-#
-# The size should be a multiple of the OS page size.
-#max_chainspec_store_size = 1073741824
+# 322_122_547_200 == 12 GiB.
+max_deploy_metadata_store_size = 12_884_901_888
 
 
 # ===================================
@@ -162,6 +181,17 @@ gossip_request_timeout_secs = 10
 get_remainder_timeout_secs = 5
 
 
+# ===================================
+# Configuration options for fetcher
+# ===================================
+[fetcher]
+
+# The timeout duration in seconds for a single fetcher request, i.e. for a single fetcher message
+# sent from this node to another node, it will be considered timed out if the expected response from that peer is
+# not received within this specified duration.
+get_from_peer_timeout = 3
+
+
 # ========================================================
 # Configuration options for the contract runtime component
 # ========================================================
@@ -175,7 +205,7 @@ get_remainder_timeout_secs = 5
 
 # Optional maximum size of the database to use for the global state store.
 #
-# If unset, defaults to 805,306,368,000 == 750 GiB.
+# If unset, defaults to 32,212,254,720 == 30 GiB.
 #
 # The size should be a multiple of the OS page size.
-#max_global_state_size = 805306368000
+#max_global_state_size = 32_212_254_720

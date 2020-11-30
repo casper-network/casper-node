@@ -1,21 +1,37 @@
-//! This file provides types to allow conversion from an EE `Account` into a similar type
-//! which can be serialized to a valid JSON representation.
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
 
-use std::collections::BTreeMap;
-
+use datasize::DataSize;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::shared::account::{
-    Account as ExecutionEngineAccount, ActionThresholds as ExecutionEngineActionThresholds,
-};
-use casper_types::account::{AccountHash, Weight};
+use casper_execution_engine::shared::account::Account as ExecutionEngineAccount;
+use casper_types::{account::AccountHash, NamedKey, URef};
 
-/// Representation of a client's account.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct AssociatedKey {
+    account_hash: AccountHash,
+    weight: u8,
+}
+
+/// Thresholds that have to be met when executing an action of a certain type.
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ActionThresholds {
+    deployment: u8,
+    key_management: u8,
+}
+
+/// Structure representing a user's account, stored in global state.
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Account {
-    account_hash: String,
-    named_keys: BTreeMap<String, String>,
-    main_purse: String,
+    account_hash: AccountHash,
+    #[data_size(skip)]
+    named_keys: Vec<NamedKey>,
+    #[data_size(skip)]
+    main_purse: URef,
     associated_keys: Vec<AssociatedKey>,
     action_thresholds: ActionThresholds,
 }
@@ -23,44 +39,27 @@ pub struct Account {
 impl From<&ExecutionEngineAccount> for Account {
     fn from(ee_account: &ExecutionEngineAccount) -> Self {
         Account {
-            account_hash: hex::encode(ee_account.account_hash().as_bytes()),
-            named_keys: super::convert_named_keys(ee_account.named_keys()),
-            main_purse: ee_account.main_purse().to_formatted_string(),
-            associated_keys: ee_account
-                .get_associated_keys()
-                .map(AssociatedKey::from)
+            account_hash: ee_account.account_hash(),
+            named_keys: ee_account
+                .named_keys()
+                .iter()
+                .map(|(name, key)| NamedKey {
+                    name: name.clone(),
+                    key: key.to_formatted_string(),
+                })
                 .collect(),
-            action_thresholds: ActionThresholds::from(ee_account.action_thresholds()),
-        }
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
-pub struct AssociatedKey {
-    account_hash: String,
-    weight: u8,
-}
-
-impl From<(&AccountHash, &Weight)> for AssociatedKey {
-    fn from((ee_account_hash, ee_weight): (&AccountHash, &Weight)) -> Self {
-        AssociatedKey {
-            account_hash: hex::encode(ee_account_hash.as_bytes()),
-            weight: ee_weight.value(),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Debug)]
-pub struct ActionThresholds {
-    deployment: u8,
-    key_management: u8,
-}
-
-impl From<&ExecutionEngineActionThresholds> for ActionThresholds {
-    fn from(ee_action_thresholds: &ExecutionEngineActionThresholds) -> Self {
-        ActionThresholds {
-            deployment: ee_action_thresholds.deployment().value(),
-            key_management: ee_action_thresholds.key_management().value(),
+            main_purse: ee_account.main_purse(),
+            associated_keys: ee_account
+                .associated_keys()
+                .map(|(account_hash, weight)| AssociatedKey {
+                    account_hash: *account_hash,
+                    weight: weight.value(),
+                })
+                .collect(),
+            action_thresholds: ActionThresholds {
+                deployment: ee_account.action_thresholds().deployment().value(),
+                key_management: ee_account.action_thresholds().key_management().value(),
+            },
         }
     }
 }

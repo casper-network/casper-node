@@ -2,28 +2,21 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_node::rpcs::{
-    chain::{GetBlock, GetBlockParams},
-    RpcWithOptionalParams,
-};
+use casper_node::rpcs::chain::GetBlock;
 
-use crate::{command::ClientCommand, common, RpcClient};
+use crate::{command::ClientCommand, common};
 
 /// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
     Verbose,
     NodeAddress,
     RpcId,
-    BlockHash,
-}
-
-impl RpcClient for GetBlock {
-    const RPC_METHOD: &'static str = Self::METHOD;
+    BlockIdentifier,
 }
 
 impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
     const NAME: &'static str = "get-block";
-    const ABOUT: &'static str = "Retrieves a block";
+    const ABOUT: &'static str = "Retrieves a block from the network";
 
     fn build(display_order: usize) -> App<'a, 'b> {
         SubCommand::with_name(Self::NAME)
@@ -34,22 +27,20 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetBlock {
                 DisplayOrder::NodeAddress as usize,
             ))
             .arg(common::rpc_id::arg(DisplayOrder::RpcId as usize))
-            .arg(common::block_hash::arg(DisplayOrder::BlockHash as usize))
+            .arg(common::block_identifier::arg(
+                DisplayOrder::BlockIdentifier as usize,
+            ))
     }
 
     fn run(matches: &ArgMatches<'_>) {
-        let verbose = common::verbose::get(matches);
+        let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let rpc_id = common::rpc_id::get(matches);
-        let maybe_block_hash = common::block_hash::get(matches);
+        let verbose = common::verbose::get(matches);
+        let maybe_block_id = common::block_identifier::get(matches);
 
-        let response = match maybe_block_hash {
-            Some(block_hash) => {
-                let params = GetBlockParams { block_hash };
-                Self::request_with_map_params(verbose, &node_address, rpc_id, params)
-            }
-            None => Self::request(verbose, &node_address, rpc_id),
-        };
+        let response =
+            casper_client::get_block(maybe_rpc_id, node_address, verbose, maybe_block_id)
+                .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")

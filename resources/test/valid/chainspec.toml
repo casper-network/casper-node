@@ -8,6 +8,10 @@ standard_payment_installer_path = 'standard_payment.wasm'
 auction_installer_path = 'auction_install.wasm'
 accounts_path = 'accounts.csv'
 validator_slots = 5
+auction_delay = 3
+locked_funds_period = 0
+# (1+0.02)^((2^14)/31536000000)-1 is expressed as a fractional number below.
+round_seigniorage_rate = [6_414, 623_437_335_209]
 
 [highway]
 genesis_era_start_timestamp = '2020-09-18T18:45:00Z'
@@ -17,7 +21,8 @@ booking_duration = '4hours'
 entropy_duration = '5days'
 voting_period_duration = '6weeks'
 finality_threshold_percent = 8
-minimum_round_exponent = 13
+minimum_round_exponent = 14
+maximum_round_exponent = 19
 
 [deploys]
 max_payment_cost = '9'
@@ -108,9 +113,9 @@ remove_key = { cost = 132, arguments = [0, 1] }
 ret = { cost = 133, arguments = [0, 1] }
 revert = { cost = 134, arguments = [0] }
 set_action_threshold = { cost = 135, arguments = [0, 1] }
-transfer_from_purse_to_account = { cost = 136, arguments = [0, 1, 2, 3, 4, 5] }
-transfer_from_purse_to_purse = { cost = 137, arguments = [0, 1, 2, 3, 4, 5] }
-transfer_to_account = { cost = 138, arguments = [0, 1, 2, 3] }
+transfer_from_purse_to_account = { cost = 136, arguments = [0, 1, 2, 3, 4, 5, 6, 7] }
+transfer_from_purse_to_purse = { cost = 137, arguments = [0, 1, 2, 3, 4, 5, 6, 7] }
+transfer_to_account = { cost = 138, arguments = [0, 1, 2, 3, 4, 5] }
 update_associated_key = { cost = 139, arguments = [0, 1, 2] }
 write = { cost = 140,  arguments = [0, 1, 0, 2] }
 write_local = { cost = 141, arguments = [0, 1, 2, 3] }
@@ -120,7 +125,7 @@ protocol_version = '0.2.0'
 upgrade_installer_path = 'upgrade.wasm'
 
 [upgrade.activation_point]
-rank = 23
+height = 23
 
 [upgrade.new_wasm_config]
 initial_memory = 17
@@ -202,9 +207,9 @@ remove_key = { cost = 1032, arguments = [0, 1] }
 ret = { cost = 1033, arguments = [0, 1] }
 revert = { cost = 1034, arguments = [0] }
 set_action_threshold = { cost = 1035, arguments = [0, 1] }
-transfer_from_purse_to_account = { cost = 1036, arguments = [0, 1, 2, 3, 4, 5] }
-transfer_from_purse_to_purse = { cost = 1037, arguments = [0, 1, 2, 3, 4, 5] }
-transfer_to_account = { cost = 1038, arguments = [0, 1, 2, 3] }
+transfer_from_purse_to_account = { cost = 1036, arguments = [0, 1, 2, 3, 4, 5, 6, 7] }
+transfer_from_purse_to_purse = { cost = 1037, arguments = [0, 1, 2, 3, 4, 5, 6, 7] }
+transfer_to_account = { cost = 1038, arguments = [0, 1, 2, 3, 4, 5] }
 update_associated_key = { cost = 1039, arguments = [0, 1, 2] }
 write = { cost = 1040,  arguments = [0, 1, 0, 2] }
 write_local = { cost = 1041, arguments = [0, 1, 2, 3] }
@@ -221,4 +226,4 @@ block_gas_limit = 38
 protocol_version = '0.3.0'
 
 [upgrade.activation_point]
-rank = 39
+height = 39

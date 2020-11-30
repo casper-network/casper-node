@@ -19,7 +19,7 @@ pub extern "C" fn call() {
     let accounts: Vec<AccountHash> = runtime::get_named_arg(ARG_ACCOUNTS);
     let seed_amount: U512 = runtime::get_named_arg(ARG_SEED_AMOUNT);
     for account_hash in accounts {
-        system::transfer_to_account(account_hash, seed_amount)
+        system::transfer_to_account(account_hash, seed_amount, None)
             .unwrap_or_revert_with(ApiError::Transfer);
     }
 }

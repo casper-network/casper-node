@@ -1,6 +1,5 @@
 //! Contains implementation of a Mint contract functionality.
 mod constants;
-mod round_reward;
 mod runtime_provider;
 mod storage_provider;
 mod system_provider;
@@ -11,8 +10,8 @@ use num_rational::Ratio;
 use crate::{account::AccountHash, system_contract_errors::mint::Error, Key, URef, U512};
 
 pub use crate::mint::{
-    constants::*, round_reward::*, runtime_provider::RuntimeProvider,
-    storage_provider::StorageProvider, system_provider::SystemProvider,
+    constants::*, runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    system_provider::SystemProvider,
 };
 
 const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
@@ -57,6 +56,38 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         Ok(purse_uref)
     }
 
+    /// Reduce total supply by `amount`. Returns unit on success, otherwise
+    /// an error.
+    fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
+        // only system may reduce total supply
+        let caller = self.get_caller();
+        if caller != SYSTEM_ACCOUNT {
+            return Err(Error::InvalidTotalSupplyReductionAttempt);
+        }
+
+        if amount.is_zero() {
+            return Ok(()); // no change to supply
+        }
+
+        // get total supply or error
+        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
+            Some(Key::URef(uref)) => uref,
+            Some(_) => return Err(Error::MissingKey), // TODO
+            None => return Err(Error::MissingKey),
+        };
+        let total_supply: U512 = self
+            .read(total_supply_uref)?
+            .ok_or(Error::TotalSupplyNotFound)?;
+
+        // decrease total supply
+        let reduced_total_supply = total_supply - amount;
+
+        // update total supply
+        self.write(total_supply_uref, reduced_total_supply)?;
+
+        Ok(())
+    }
+
     /// Read balance of given `purse`.
     fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
         let balance_uref: URef = match self.read_local(&purse.addr())? {
@@ -70,7 +101,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     }
 
     /// Transfers `amount` of tokens from `source` purse to a `target` purse.
-    fn transfer(&mut self, source: URef, target: URef, amount: U512) -> Result<(), Error> {
+    fn transfer(
+        &mut self,
+        source: URef,
+        target: URef,
+        amount: U512,
+        id: Option<u64>,
+    ) -> Result<(), Error> {
         if !source.is_writeable() || !target.is_addable() {
             return Err(Error::InvalidAccessRights);
         }
@@ -91,7 +128,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         };
         self.write(source_balance, source_value - amount)?;
         self.add(target_balance, amount)?;
-        self.record_transfer(source, target, amount)?;
+        self.record_transfer(source, target, amount, id)?;
         Ok(())
     }
 
@@ -106,7 +143,14 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .read(total_supply_uref)?
             .ok_or(Error::TotalSupplyNotFound)?;
 
-        let round_seigniorage_rate = round_reward::round_seigniorage_rate();
+        let round_seigniorage_rate_uref = match self.get_key(ROUND_SEIGNIORAGE_RATE_KEY) {
+            Some(Key::URef(uref)) => uref,
+            Some(_) => return Err(Error::MissingKey), // TODO
+            None => return Err(Error::MissingKey),
+        };
+        let round_seigniorage_rate: Ratio<U512> = self
+            .read(round_seigniorage_rate_uref)?
+            .ok_or(Error::TotalSupplyNotFound)?;
 
         let ret = (round_seigniorage_rate * Ratio::from(total_supply)).to_integer();
 

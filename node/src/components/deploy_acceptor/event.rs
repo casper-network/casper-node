@@ -3,7 +3,10 @@ use std::fmt::{self, Display, Formatter};
 use semver::Version;
 
 use super::{DeployAcceptorConfig, Source};
-use crate::{effect::announcements::ApiServerAnnouncement, small_network::NodeId, types::Deploy};
+use crate::{
+    effect::announcements::RpcServerAnnouncement,
+    types::{Deploy, NodeId},
+};
 
 /// `DeployAcceptor` events.
 #[derive(Debug)]
@@ -28,10 +31,10 @@ pub enum Event {
     },
 }
 
-impl From<ApiServerAnnouncement> for Event {
-    fn from(announcement: ApiServerAnnouncement) -> Self {
+impl From<RpcServerAnnouncement> for Event {
+    fn from(announcement: RpcServerAnnouncement) -> Self {
         match announcement {
-            ApiServerAnnouncement::DeployReceived { deploy } => Event::Accept {
+            RpcServerAnnouncement::DeployReceived { deploy } => Event::Accept {
                 deploy,
                 source: Source::<NodeId>::Client,
             },

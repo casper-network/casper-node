@@ -35,11 +35,12 @@ mod test_macros;
 pub(crate) mod active_validator;
 pub(crate) mod finality_detector;
 pub(crate) mod highway;
+pub(crate) mod state;
 pub(crate) mod validators;
 
+mod endorsement;
 mod evidence;
 #[cfg(test)]
-mod highway_testing;
-mod state;
+pub(crate) mod highway_testing;
 
-pub(crate) use state::Weight;
+pub(crate) use state::{round_id, State, Weight};

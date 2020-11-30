@@ -21,7 +21,6 @@ use std::{
     convert::{TryFrom, TryInto},
     fmt::Debug,
     io::ErrorKind,
-    iter::FromIterator,
     marker::{Send, Sync},
 };
 
@@ -36,7 +35,7 @@ use casper_execution_engine::{
             genesis::GenesisResult,
             query::{QueryRequest, QueryResult},
             run_genesis_request::RunGenesisRequest,
-            step::StepResult,
+            step::{StepRequest, StepResult},
             upgrade::{UpgradeConfig, UpgradeResult},
             EngineState, Error as EngineError,
         },
@@ -45,10 +44,14 @@ use casper_execution_engine::{
     shared::{
         logging::{self},
         newtypes::{Blake2bHash, CorrelationId},
+        stored_value::StoredValue,
     },
-    storage::global_state::{CommitResult, StateProvider},
+    storage::{
+        global_state::{CommitResult, StateProvider},
+        trie::merkle_proof::TrieMerkleProof,
+    },
 };
-use casper_types::bytesrepr::ToBytes;
+use casper_types::{bytesrepr::ToBytes, Key};
 
 use self::{
     ipc::{
@@ -58,7 +61,6 @@ use self::{
     ipc_grpc::{ExecutionEngineService, ExecutionEngineServiceServer},
     mappings::{ParsingError, TransformMap},
 };
-use casper_execution_engine::core::engine_state::step::StepRequest;
 
 // Idea is that Engine will represent the core of the execution engine project.
 // It will act as an entry point for execution of Wasm binaries.
@@ -92,15 +94,18 @@ where
         let result = self.run_query(correlation_id, request);
 
         let response = match result {
-            Ok(QueryResult::Success(value)) => {
+            Ok(QueryResult::Success { value, proofs }) => {
+                let success: (StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>) =
+                    (*value, proofs);
                 let mut result = ipc::QueryResponse::new();
-                match value.to_bytes() {
+                match success.to_bytes() {
                     Ok(serialized_value) => {
                         info!("query successful; correlation_id: {}", correlation_id);
                         result.set_success(serialized_value);
                     }
                     Err(error_msg) => {
-                        let log_message = format!("Failed to serialize StoredValue: {}", error_msg);
+                        let log_message =
+                            format!("Failed to serialize StoredValue: {:?}", error_msg);
                         warn!("{}", log_message);
                         result.set_failure(log_message);
                     }
@@ -166,7 +171,7 @@ where
         let protobuf_results_iter = results.into_iter().map(Into::into);
         exec_response
             .mut_success()
-            .set_deploy_results(FromIterator::from_iter(protobuf_results_iter));
+            .set_deploy_results(protobuf_results_iter.collect());
         SingleResponse::completed(exec_response)
     }
 
@@ -377,33 +382,36 @@ where
     ) -> SingleResponse<ipc::GetEraValidatorsResponse> {
         let correlation_id = CorrelationId::new();
 
-        let get_era_validators_request: GetEraValidatorsRequest =
-            match get_era_validators_request.try_into() {
-                Ok(result) => result,
-                Err(error) => {
-                    let err_msg = format!("{}", error);
-                    warn!("get era validators request error: {}", err_msg);
-                    let mut get_era_validators_response = ipc::GetEraValidatorsResponse::new();
-                    get_era_validators_response.mut_error().set_message(err_msg);
-                    return SingleResponse::completed(get_era_validators_response);
-                }
-            };
+        let era_id = get_era_validators_request.get_era_id();
 
-        let pre_state_hash = get_era_validators_request.state_hash();
+        let request: GetEraValidatorsRequest = match get_era_validators_request.try_into() {
+            Ok(result) => result,
+            Err(error) => {
+                let err_msg = format!("{}", error);
+                warn!("get era validators request error: {}", err_msg);
+                let mut get_era_validators_response = ipc::GetEraValidatorsResponse::new();
+                get_era_validators_response.mut_error().set_message(err_msg);
+                return SingleResponse::completed(get_era_validators_response);
+            }
+        };
+
+        let pre_state_hash = request.state_hash();
 
         let mut response = ipc::GetEraValidatorsResponse::new();
 
-        match self.get_era_validators(correlation_id, get_era_validators_request) {
-            Ok(Some(validator_weights)) => {
-                match ipc::GetEraValidatorsResponse_ValidatorWeights::try_from(validator_weights) {
-                    Ok(pb_validator_weights) => response.set_success(pb_validator_weights),
-                    Err(mapping_error) => {
-                        response.mut_error().set_message(mapping_error.to_string())
+        match self.get_era_validators(correlation_id, request) {
+            Ok(era_validators) => {
+                if let Some(validator_weights) = era_validators.get(&era_id) {
+                    match ipc::GetEraValidatorsResponse_ValidatorWeights::try_from(
+                        validator_weights.clone(),
+                    ) {
+                        Ok(pb_validator_weights) => response.set_success(pb_validator_weights),
+                        Err(mapping_error) => {
+                            response.mut_error().set_message(mapping_error.to_string())
+                        }
                     }
                 }
             }
-
-            Ok(None) => {}
 
             Err(GetEraValidatorsError::RootNotFound) => response
                 .mut_missing_prestate()

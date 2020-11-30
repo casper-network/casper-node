@@ -3,16 +3,17 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
 };
 
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
+use itertools::Itertools;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use crate::{
     components::consensus::{
-        candidate_block::CandidateBlock,
-        consensus_protocol::ConsensusProtocol,
-        era_supervisor::BONDED_ERAS,
-        protocols::highway::{HighwayContext, HighwayProtocol},
+        candidate_block::CandidateBlock, cl_context::ClContext,
+        consensus_protocol::ConsensusProtocol, protocols::highway::HighwayProtocol,
         ConsensusMessage,
     },
     crypto::asymmetric_key::PublicKey,
@@ -20,8 +21,20 @@ use crate::{
 };
 
 #[derive(
-    DataSize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+    DataSize,
+    Debug,
+    Clone,
+    Copy,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 pub struct EraId(pub(crate) u64);
 
 impl EraId {
@@ -37,13 +50,13 @@ impl EraId {
     }
 
     /// Returns an iterator over all eras that are still bonded in this one, including this one.
-    pub(crate) fn iter_bonded(&self) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(BONDED_ERAS)..=self.0).map(EraId)
+    pub(crate) fn iter_bonded(&self, bonded_eras: u64) -> impl Iterator<Item = EraId> {
+        (self.0.saturating_sub(bonded_eras)..=self.0).map(EraId)
     }
 
     /// Returns an iterator over all eras that are still bonded in this one, excluding this one.
-    pub(crate) fn iter_other_bonded(&self) -> impl Iterator<Item = EraId> {
-        (self.0.saturating_sub(BONDED_ERAS)..self.0).map(EraId)
+    pub(crate) fn iter_other(&self, count: u64) -> impl Iterator<Item = EraId> {
+        (self.0.saturating_sub(count)..self.0).map(EraId)
     }
 
     /// Returns the current era minus `x`, or `None` if that would be less than `0`.
@@ -55,6 +68,30 @@ impl EraId {
 impl Display for EraId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "era {}", self.0)
+    }
+}
+
+impl From<EraId> for u64 {
+    fn from(era_id: EraId) -> Self {
+        era_id.0
+    }
+}
+
+impl ToBytes for EraId {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for EraId {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (id_value, remainder) = u64::from_bytes(bytes)?;
+        let era_id = EraId(id_value);
+        Ok((era_id, remainder))
     }
 }
 
@@ -85,33 +122,36 @@ impl PendingCandidate {
 
 pub struct Era<I> {
     /// The consensus protocol instance.
-    pub(crate) consensus: Box<dyn ConsensusProtocol<I, CandidateBlock, PublicKey>>,
+    pub(crate) consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
     /// The height of this era's first block.
     pub(crate) start_height: u64,
     /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
     /// has been validated; the vector contains the list of accused validators missing evidence.
-    pub(crate) candidates: Vec<PendingCandidate>,
+    candidates: Vec<PendingCandidate>,
     /// Validators banned in this and the next BONDED_ERAS eras, because they were slashed in the
     /// previous switch block.
     pub(crate) newly_slashed: Vec<PublicKey>,
     /// Validators that have been slashed in any of the recent BONDED_ERAS switch blocks. This
     /// includes `newly_slashed`.
     pub(crate) slashed: HashSet<PublicKey>,
+    /// Accusations collected in this era so far.
+    accusations: HashSet<PublicKey>,
 }
 
 impl<I> Era<I> {
-    pub(crate) fn new<C: 'static + ConsensusProtocol<I, CandidateBlock, PublicKey>>(
-        consensus: C,
+    pub(crate) fn new(
+        consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
         start_height: u64,
         newly_slashed: Vec<PublicKey>,
         slashed: HashSet<PublicKey>,
     ) -> Self {
         Era {
-            consensus: Box::new(consensus),
+            consensus,
             start_height,
             candidates: Vec::new(),
             newly_slashed,
             slashed,
+            accusations: HashSet::new(),
         }
     }
 
@@ -172,6 +212,20 @@ impl<I> Era<I> {
         invalid.into_iter().map(|pc| pc.candidate).collect()
     }
 
+    /// Adds new accusations from a finalized block.
+    pub(crate) fn add_accusations(&mut self, accusations: &[PublicKey]) {
+        for pub_key in accusations {
+            if !self.slashed.contains(pub_key) {
+                self.accusations.insert(*pub_key);
+            }
+        }
+    }
+
+    /// Returns all accusations from finalized blocks so far.
+    pub(crate) fn accusations(&self) -> Vec<PublicKey> {
+        self.accusations.iter().cloned().sorted().collect()
+    }
+
     /// Removes and returns all candidate blocks with no missing dependencies.
     fn remove_complete_candidates(&mut self) -> Vec<CandidateBlock> {
         let (complete, candidates): (Vec<_>, Vec<_>) = self
@@ -200,6 +254,7 @@ where
             candidates,
             newly_slashed,
             slashed,
+            accusations,
         } = self;
 
         // `DataSize` cannot be made object safe due its use of associated constants. We implement
@@ -208,12 +263,12 @@ where
         let consensus_heap_size = {
             let any_ref = consensus.as_any();
 
-            if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, HighwayContext>>() {
+            if let Some(highway) = any_ref.downcast_ref::<HighwayProtocol<I, ClContext>>() {
                 highway.estimate_heap_size()
             } else {
                 warn!(
                     "could not downcast consensus protocol to \
-                    HighwayProtocol<I, HighwayContext> to determine heap allocation size"
+                    HighwayProtocol<I, ClContext> to determine heap allocation size"
                 );
                 0
             }
@@ -224,5 +279,21 @@ where
             + candidates.estimate_heap_size()
             + newly_slashed.estimate_heap_size()
             + slashed.estimate_heap_size()
+            + accusations.estimate_heap_size()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::Rng;
+
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let era_id = EraId(rng.gen());
+        bytesrepr::test_serialization_roundtrip(&era_id);
     }
 }

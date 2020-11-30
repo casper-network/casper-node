@@ -1,125 +1,164 @@
 ---
-platform:
-  os: linux
-  arch: amd64
-
-# Begin
-clone:
-  git-clone:
-    commands: |
-      set -ex
-      git clone -b ${DRONE_TAG:-$DRONE_BRANCH} $DRONE_REMOTE_URL .
-      if [ x$DRONE_PULL_REQUEST != x ]; then
-          git fetch origin refs/pull/$DRONE_PULL_REQUEST/head
-          EMAIL=ci git merge --no-edit FETCH_HEAD
-      fi
-      git rev-parse HEAD
-    image: "casperlabs/buildenv:latest"
-
-# NOTE: Anchors are per document
-# Anchor for default buildenv
-__buildenv: &buildenv
-  image: "casperlabs/buildenv:latest"
-  environment:
-    CARGO_HOME: ".cargo"
-
-# Anchor for cache plugin
-# Caching based on https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
-__cache: &cache
-  image: drillster/drone-volume-cache
-  volumes:
-  - name: cache
-    path: /cache
-  settings:
-    mount:
-      - ./.cargo/bin/
-      - ./.cargo/registry/index/
-      - ./.cargo/registry/cache/
-      - ./.cargo/git/db/
-      - ./.cargo/.crates.toml
-
+# Quick checks to make before spending time on test and package.clone:
+# on failure -> failed-pre-checks pipeline
+# on success --> cargo-test (parallel) ---> [ test-package-success | test-package-failure ]
+#            \-> package  (parallel) ----/
 kind: pipeline
-name: cargo
+type: docker
+name: pre-checks
+
+# Steps perform as fast serially, due to file thrashing.
+steps:
+  - name: verify-genesis-checksums
+    image: casperlabs/node-build-u1804
+    commands:
+      - "./ci/check_genesis_validation.sh $(pwd)/resources/production"
+
+  - name: cargo-fmt
+    image: casperlabs/node-build-u1804
+    commands:
+      - rustup component add rustfmt
+      - cargo fmt --all -- --check
+
+  - name: cargo-clippy
+    image: casperlabs/node-build-u1804
+    environment:
+      RUSTFLAGS: '-D warnings'
+    commands:
+      - make setup-rs
+      - rustup component add clippy
+      - cargo clippy --all-targets --all-features --workspace
+
+  - name: cargo-audit
+    image: casperlabs/node-build-u1804
+    commands:
+      - cargo install cargo-audit
+      - cargo generate-lockfile
+      - cargo audit
+
+trigger:
+  branch:
+    - master
+    - trying
+    - staging
+    - "release-*"
+
+---
+# Failure state from pre-checks pipeline
+kind: pipeline
+type: docker
+name: failed-pre-checks
+
+clone:
+  disable: true
 
 steps:
-- name: restore-cache
-  <<: *cache
-  settings:
-    restore: true
+  - name: notify
+    image: plugins/slack
+    settings:
+      webhook:
+        from_secret: slack_webhook
+      template:
+        - |
+          casper-node build status: *{{ uppercasefirst build.status }}*
+          Author: {{ build.author }}
+          Drone Build: <{{ build.link }}|#{{ build.number }}>
+          Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+trigger:
+  status:
+    - failure
+  branch:
+    - master
+    - trying
+    - staging
+    - "release-*"
 
-- name: build-deb-update-revision
-  <<: *buildenv
-  commands:
-    - "./update-rev.sh" 
+depends_on:
+  - pre-checks
 
-- name: cargo-fmt
-  <<: *buildenv
-  commands:
-  - rustup component add rustfmt
-  - cargo fmt --all -- --check
-  depends_on:
-  - build-deb-update-revision
+---
+# Testing pipeline, runs in parallel with package pipeline
+kind: pipeline
+type: docker
+name: cargo-test
 
-- name: cargo-clippy
-  <<: *buildenv
-  environment:
-    RUSTFLAGS: '-D warnings'
-  commands:
-  - make setup-rs
-  - rustup component add clippy
-  - cargo clippy --all-targets --all-features --workspace
-  depends_on:
-  - build-deb-update-revision
-
-- name: cargo-audit
-  <<: *buildenv
-  commands:
-  - cargo install cargo-audit
-  - cargo generate-lockfile
-  - cargo audit
-  depends_on:
-  - build-deb-update-revision
-
+steps:
 - name: updater-dry-run
-  <<: *buildenv
+  image: casperlabs/node-build-u1804
   commands:
   - cargo run --package=casper-updater -- --root-dir=. --dry-run
-  depends_on:
-  - build-deb-update-revision
 
 - name: cargo-test
-  <<: *buildenv
+  image: casperlabs/node-build-u1804
   commands:
   - make setup
   - make test
   - make test-contracts
-  depends_on:
-  - build-deb-update-revision
 
-- name: rebuild-cache
-  <<: *cache
-  settings:
-    rebuild: true
-  when:
-    branch:
+- name: client-ffi-examples
+  image: casperlabs/node-build-u1804
+  commands:
+  - make setup-rs
+  - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
+  - cmake --build target/build
+  - ./target/build/get-auction-info
+  - ./target/build/put-deploy
+
+depends_on:
+  - pre-checks
+
+trigger:
+  branch:
     - master
-    event:
-    - push
+    - trying
+    - staging
+    - "release-*"
+
+---
+# Packaging pipeline, runs in parallel with cargo-test pipeline
+kind: pipeline
+type: docker
+name: package
+
+steps:
+- name: build-deb-update-revision
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./update-rev.sh"
 
 - name: build-deb
-  <<: *buildenv
+  image: casperlabs/node-build-u1804
   commands:
+    - make setup-rs
     - "make deb"
-  depends_on:
-  - cargo-test
 
-# we want to publish to the test repo, only when code is pushed to master or release-* branch. 
-# bors should make sure, that it has passed on staging or trying branches
-- name: publish-test-bintray
-  <<: *buildenv
+- name: test-deb
+  image: ubuntu:bionic
   commands:
-  - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
-  - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
+    - "apt update"
+    - "$(pwd)/ci/test_deb.sh $(pwd) casper-client"
+    - "$(pwd)/ci/test_deb.sh $(pwd) casper-node"
+
+- name: put-drone-s3-cache
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - ./ci/drone_s3_storage.sh put $(pwd)/target/debian/ debian/
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
+
+- name: build-wasm-package-push-to-s3
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - "./build_wasm_package.sh"
   environment:
     CL_VAULT_TOKEN:
       from_secret: vault_token
@@ -130,97 +169,153 @@ steps:
     - master
     - "release-*"
     event:
-    - push  
-  depends_on:
-  - build-deb
+    - push
 
-volumes:
-  - name: cache
-    host:
-      path: /tmp/cache
+depends_on:
+  - pre-checks
 
 trigger:
   branch:
-  - master
-  - trying
-  - staging
-  - "release-*"
+    - master
+    - trying
+    - staging
+    - "release-*"
 
 ---
-# Anchor for default buildenv
-__buildenv: &buildenv
-  image: "casperlabs/buildenv:latest"
+# Run on success of cargo-test and package pipelines.
+kind: pipeline
+type: docker
+name: test-package-success
+
+steps:
+  # Retrieving packages built and put in s3 from package pipeline.
+- name: get-and-del-drone-s3-cache
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - ./ci/drone_s3_storage.sh get debian/ $(pwd)/target/debian/
+    - ./ci/drone_s3_storage.sh del
   environment:
-    CARGO_HOME: ".cargo"
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
+
+  # we want to publish to the test repo, only when code is pushed to master or release-* branch.
+  # bors should make sure, that it has passed on staging or trying branches
+- name: publish-test-bintray
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./upload.sh --repo-name casper-debian-tests --package-name casper-node"
+    - "./upload.sh --repo-name casper-debian-tests --package-name casper-client"
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
+
+depends_on:
+  - cargo-test
+  - package
+
+trigger:
+  branch:
+    - master
+    - trying
+    - staging
+    - "release-*"
+
+
+---
+# Runs on failure of cargo-test or package pipelines.
+kind: pipeline
+type: docker
+name: test-package-failure
+
+clone:
+  disable: true
+
+steps:
+- name: del-s3-cache
+  image: casperlabs/s3cmd-build:latest
+  commands:
+    - ./ci/drone_s3_storage.sh del
+  environment:
+    CL_VAULT_TOKEN:
+      from_secret: vault_token
+    CL_VAULT_HOST:
+      from_secret: vault_host
+  when:
+    branch:
+      - master
+      - "release-*"
+    event:
+      - push
+
+- name: notify
+  image: plugins/slack
+  settings:
+    webhook:
+      from_secret: slack_webhook
+    template:
+      - |
+        casper-node build status: *{{ uppercasefirst build.status }}*
+        Author: {{ build.author }}
+        Drone Build: <{{ build.link }}|#{{ build.number }}>
+        Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
+
+trigger:
+  status:
+    - failure
+  branch:
+    - master
+    - trying
+    - staging
+    - "release-*"
+
+depends_on:
+  - cargo-test
+  - package
+
+# TAGGING PIPELINES
+# release-by-tag
+#      | (failure)
+# failed-tag
+---
 # act on release - when the tag is created
 kind: pipeline
+type: docker
 name: release-by-tag
 
 steps:
-- name: restore-cache-tag
-  image: drillster/drone-volume-cache
-  volumes:
-  - name: cache
-    path: /cache
-  settings:
-    mount:
-      - ./.cargo/bin/
-      - ./.cargo/registry/index/
-      - ./.cargo/registry/cache/
-      - ./.cargo/git/db/
-      - ./.cargo/.crates.toml
-    restore: true
-
 - name: update-revision
-  <<: *buildenv
+  image: casperlabs/node-build-u1804
   commands:
     - "./update-rev.sh"
 
-- name: cargo-fmt
-  <<: *buildenv
-  commands:
-  - rustup component add rustfmt
-  - cargo fmt --all -- --check
-  depends_on:
-    - update-revision
-
-- name: cargo-clippy
-  <<: *buildenv
-  environment:
-    RUSTFLAGS: '-D warnings'
-  commands:
-  - make setup-rs
-  - rustup component add clippy
-  - cargo clippy --all-targets --all-features --workspace
-  depends_on:
-    - update-revision
-
-- name: cargo-audit
-  <<: *buildenv
-  commands:
-  - cargo install cargo-audit
-  - cargo generate-lockfile
-  - cargo audit
-  depends_on:
-  - cargo-clippy
-
 - name: build-deb
-  <<: *buildenv
+  image: casperlabs/node-build-u1804
   commands:
-    - "make setup-rs"
     - "make deb"
-  depends_on:
-  - cargo-audit
 
 - name: publish-crate-tag-TODO
-  <<: *buildenv
+  image: casperlabs/node-build-u1804
   commands:
   - "echo TODO"
-  depends_on:
-  - cargo-audit
 
 - name: publish-prod-bintray
-  <<: *buildenv
+  image: casperlabs/node-build-u1804
   commands:
   - "./upload.sh --repo-name debian --package-name casper-node"
   - "./upload.sh --repo-name debian --package-name casper-client"
@@ -229,8 +324,6 @@ steps:
       from_secret: vault_token
     CL_VAULT_HOST:
       from_secret: vault_host
-  depends_on:
-  - build-deb
 
 - name: publish-github-pre-release
   image: plugins/github-release
@@ -244,23 +337,18 @@ steps:
     - "./target/debian/*.deb"
     prerelease:
     - true
-  depends_on:
-  - build-deb
   when:
     ref:
     - refs/tags/v*
 
-volumes:
-  - name: cache
-    host:
-      path: /tmp/cache
 # push to test repo every time we are going to merge to master (via staging), trying or pushing to release (hot fix)
 trigger:
   ref:
   - refs/tags/v*
 ---
 kind: pipeline
-name: failed-build-alert
+type: docker
+name: failed-tag
 
 clone:
   disable: true
@@ -280,11 +368,8 @@ steps:
 trigger:
   status:
   - failure
-  branch:
-  - master
-  - trying
-  - staging
-  - "release-*"
+  ref:
+    - refs/tags/v*
 
 depends_on:
-- cargo
+- release-by-tag

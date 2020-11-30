@@ -7,8 +7,6 @@ pub mod arglang;
 use std::{env, fs, path::PathBuf, str::FromStr};
 
 use anyhow::{self, bail, Context};
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 use regex::Regex;
 use structopt::StructOpt;
 use toml::{value::Table, Value};
@@ -18,6 +16,7 @@ use crate::config;
 use casper_node::{
     logging,
     reactor::{initializer, joiner, validator, Runner},
+    setup_signal_hooks,
     utils::WithDir,
 };
 use prometheus::Registry;
@@ -114,6 +113,9 @@ impl Cli {
     pub async fn run(self) -> anyhow::Result<()> {
         match self {
             Cli::Validator { config, config_ext } => {
+                // Setup UNIX signal hooks.
+                setup_signal_hooks();
+
                 // Determine the parent directory of the configuration file, if any.
                 // Otherwise, we default to `/`.
                 let root = config
@@ -145,7 +147,7 @@ impl Cli {
                 // eliminate any chance of runtime failures, regardless of how small (these
                 // exist with `OsRng`). Additionally, we want to limit the number of syscalls for
                 // performance reasons.
-                let mut rng = ChaCha20Rng::from_entropy();
+                let mut rng = casper_node::new_rng();
 
                 // The metrics are shared across all reactors.
                 let registry = Registry::new();

@@ -1,8 +1,10 @@
-use crate::{
-    crypto::hash::Digest,
-    effect::requests::BlockExecutorRequest,
-    types::{json_compatibility::ExecutionResult, BlockHash, Deploy, DeployHash, FinalizedBlock},
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::Display,
 };
+
+use derive_more::From;
+
 use casper_execution_engine::{
     core::{
         engine_state,
@@ -10,10 +12,12 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
-use derive_more::From;
-use std::{
-    collections::{HashMap, VecDeque},
-    fmt::Display,
+use casper_types::ExecutionResult;
+
+use crate::{
+    crypto::hash::Digest,
+    effect::requests::BlockExecutorRequest,
+    types::{BlockHash, Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
 
 /// Block executor component event.
@@ -44,6 +48,8 @@ pub enum Event {
         state: Box<State>,
         /// The ID of the deploy currently being executed.
         deploy_hash: DeployHash,
+        /// The header of the deploy currently being executed.
+        deploy_header: DeployHeader,
         /// Result of deploy execution.
         result: Result<ExecutionResults, RootNotFound>,
     },
@@ -90,6 +96,7 @@ impl Display for Event {
                 state,
                 deploy_hash,
                 result: Ok(_),
+                ..
             } => write!(
                 f,
                 "execution result for {} of finalized block with height {} with \
@@ -102,6 +109,7 @@ impl Display for Event {
                 state,
                 deploy_hash,
                 result: Err(_),
+                ..
             } => write!(
                 f,
                 "execution result for {} of finalized block with height {} with \
@@ -151,7 +159,7 @@ pub struct State {
     /// Deploys which have still to be executed.
     pub remaining_deploys: VecDeque<Deploy>,
     /// A collection of results of executing the deploys.
-    pub execution_results: HashMap<DeployHash, ExecutionResult>,
+    pub execution_results: HashMap<DeployHash, (DeployHeader, ExecutionResult)>,
     /// Current state root hash of global storage.  Is initialized with the parent block's
     /// state hash, and is updated after each commit.
     pub state_root_hash: Digest,

@@ -19,13 +19,18 @@ use casper_execution_engine::{
             DEFAULT_MUL_COST, DEFAULT_NOP_COST, DEFAULT_REGULAR_COST, DEFAULT_STORE_COST,
             DEFAULT_UNREACHABLE_COST,
         },
-        storage_costs::{StorageCosts, DEFAULT_GAS_PER_BYTE_COST},
+        storage_costs::StorageCosts,
         wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
     },
 };
-use casper_types::{auction::VALIDATOR_SLOTS_KEY, ProtocolVersion};
+use casper_types::{
+    auction::{EraId, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, VALIDATOR_SLOTS_KEY},
+    mint::ROUND_SEIGNIORAGE_RATE_KEY,
+    ProtocolVersion, U512,
+};
 #[cfg(feature = "use-system-contracts")]
-use casper_types::{runtime_args, CLValue, Key, RuntimeArgs, U512};
+use casper_types::{runtime_args, CLValue, Key, RuntimeArgs};
+use num_rational::Ratio;
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
@@ -57,9 +62,7 @@ fn get_upgraded_wasm_config() -> WasmConfig {
         grow_memory: DEFAULT_GROW_MEMORY_COST + 1,
         regular: DEFAULT_REGULAR_COST + 1,
     };
-    let storage_costs = StorageCosts {
-        gas_per_byte: DEFAULT_GAS_PER_BYTE_COST,
-    };
+    let storage_costs = StorageCosts::default();
     let host_function_costs = HostFunctionCosts::default();
     WasmConfig::new(
         DEFAULT_INITIAL_MEMORY,
@@ -736,4 +739,188 @@ fn should_upgrade_only_validator_slots() {
         new_validator_slots, after_validator_slots,
         "should have upgraded validator slots to expected value"
     )
+}
+
+#[ignore]
+#[test]
+fn should_upgrade_only_auction_delay() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    let auction_delay_key = builder
+        .get_contract(builder.get_auction_contract_hash())
+        .expect("auction should exist")
+        .named_keys()[AUCTION_DELAY_KEY];
+
+    let before_auction_delay: u64 = builder
+        .query(None, auction_delay_key, &[])
+        .expect("should have auction delay")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    let new_auction_delay = before_auction_delay + 1;
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_new_auction_delay(new_auction_delay)
+            .build()
+    };
+
+    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+
+    let upgrade_response = builder
+        .get_upgrade_response(0)
+        .expect("should have response");
+
+    assert!(upgrade_response.has_success(), "expected success");
+
+    let after_auction_delay: u64 = builder
+        .query(None, auction_delay_key, &[])
+        .expect("should have auction delay")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    assert_eq!(
+        new_auction_delay, after_auction_delay,
+        "should hae upgrade version auction delay"
+    )
+}
+
+#[ignore]
+#[test]
+fn should_upgrade_only_locked_funds_period() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    let locked_funds_period_key = builder
+        .get_contract(builder.get_auction_contract_hash())
+        .expect("auction should exist")
+        .named_keys()[LOCKED_FUNDS_PERIOD_KEY];
+
+    let before_locked_funds_period: EraId = builder
+        .query(None, locked_funds_period_key, &[])
+        .expect("should have locked funds period")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    let new_locked_funds_period = before_locked_funds_period + 1;
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_new_locked_funds_period(new_locked_funds_period)
+            .build()
+    };
+
+    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+
+    let upgrade_response = builder
+        .get_upgrade_response(0)
+        .expect("should have response");
+
+    assert!(upgrade_response.has_success(), "expected success");
+
+    let after_locked_funds_period: EraId = builder
+        .query(None, locked_funds_period_key, &[])
+        .expect("should have locked funds period")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    assert_eq!(
+        new_locked_funds_period, after_locked_funds_period,
+        "Should have upgraded locked funds period"
+    )
+}
+
+#[ignore]
+#[test]
+fn should_upgrade_only_round_seigniorage_rate() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let sem_ver = PROTOCOL_VERSION.value();
+    let new_protocol_version =
+        ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
+
+    let round_seigniorage_rate_key = builder
+        .get_contract(builder.get_mint_contract_hash())
+        .expect("auction should exist")
+        .named_keys()[ROUND_SEIGNIORAGE_RATE_KEY];
+
+    let before_round_seigniorage_rate: Ratio<U512> = builder
+        .query(None, round_seigniorage_rate_key, &[])
+        .expect("should have locked funds period")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    let new_round_seigniorage_rate = Ratio::new(1, 1_000_000_000);
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_new_round_seigniorage_rate(new_round_seigniorage_rate)
+            .build()
+    };
+
+    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+
+    let upgrade_response = builder
+        .get_upgrade_response(0)
+        .expect("should have response");
+
+    assert!(upgrade_response.has_success(), "expected success");
+
+    let after_round_seigniorage_rate: Ratio<U512> = builder
+        .query(None, round_seigniorage_rate_key, &[])
+        .expect("should have locked funds period")
+        .as_cl_value()
+        .expect("should be a CLValue")
+        .clone()
+        .into_t()
+        .expect("should be u64");
+
+    assert_ne!(before_round_seigniorage_rate, after_round_seigniorage_rate);
+
+    let expected_round_seigniorage_rate = Ratio::new(
+        U512::from(*new_round_seigniorage_rate.numer()),
+        U512::from(*new_round_seigniorage_rate.denom()),
+    );
+
+    assert_eq!(
+        expected_round_seigniorage_rate, after_round_seigniorage_rate,
+        "Should have upgraded locked funds period"
+    );
 }

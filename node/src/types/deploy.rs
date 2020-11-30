@@ -1,6 +1,9 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{
     array::TryFromSliceError,
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
     iter::FromIterator,
@@ -9,8 +12,10 @@ use std::{
 use datasize::DataSize;
 use hex::FromHexError;
 use itertools::Itertools;
+use lazy_static::lazy_static;
 #[cfg(test)]
 use rand::{Rng, RngCore};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::warn;
@@ -18,20 +23,72 @@ use tracing::warn;
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    ExecutionResult,
+};
 
-use super::{CryptoRngCore, Item, Tag, TimeDiff, Timestamp};
+use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::storage::Value,
     crypto::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
         Error as CryptoError,
     },
+    rpcs::docs::DocExample,
     utils::DisplayIter,
+    NodeRng,
 };
+
+lazy_static! {
+    static ref DEPLOY: Deploy = {
+        let payment = ExecutableDeployItem::StoredContractByName {
+            name: String::from("casper-example"),
+            entry_point: String::from("example-entry-point"),
+            args: vec![1, 1].into(),
+        };
+        let session = ExecutableDeployItem::Transfer {
+            args: vec![2, 2].into(),
+        };
+        let serialized_body = serialize_body(&payment, &session);
+        let body_hash = hash::hash(&serialized_body);
+
+        let secret_key = SecretKey::doc_example();
+        let header = DeployHeader {
+            account: PublicKey::from(secret_key),
+            timestamp: *Timestamp::doc_example(),
+            ttl: TimeDiff::from(3_600_000),
+            gas_price: 1,
+            body_hash,
+            dependencies: vec![DeployHash::new(Digest::from([1u8; Digest::LENGTH]))],
+            chain_name: String::from("casper-example"),
+        };
+        let serialized_header = serialize_header(&header);
+        let hash = DeployHash::new(hash::hash(&serialized_header));
+
+        let signature = Signature::from_hex(
+            "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d976\
+            1185c961daee1adab0649912a6477bcd2e69bd91bd08"
+                .as_bytes(),
+        )
+        .unwrap();
+        let approval = Approval {
+            signer: PublicKey::from(secret_key),
+            signature,
+        };
+
+        Deploy {
+            hash,
+            header,
+            payment,
+            session,
+            approvals: vec![approval],
+            is_valid: None,
+        }
+    };
+}
 
 /// Error returned from constructing or validating a `Deploy`.
 #[derive(Debug, Error)]
@@ -84,8 +141,11 @@ impl From<TryFromSliceError> for Error {
     Deserialize,
     Debug,
     Default,
+    JsonSchema,
 )]
-pub struct DeployHash(Digest);
+#[serde(deny_unknown_fields)]
+#[schemars(with = "String", description = "Hex-encoded deploy hash.")]
+pub struct DeployHash(#[schemars(skip)] Digest);
 
 impl DeployHash {
     /// Constructs a new `DeployHash`.
@@ -96,6 +156,13 @@ impl DeployHash {
     /// Returns the wrapped inner hash.
     pub fn inner(&self) -> &Digest {
         &self.0
+    }
+
+    /// Creates a random deploy hash.
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let hash = Digest::random(rng);
+        DeployHash(hash)
     }
 }
 
@@ -134,7 +201,10 @@ impl FromBytes for DeployHash {
 }
 
 /// The header portion of a [`Deploy`](struct.Deploy.html).
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
+)]
+#[serde(deny_unknown_fields)]
 pub struct DeployHeader {
     account: PublicKey,
     timestamp: Timestamp,
@@ -258,7 +328,10 @@ impl Display for DeployHeader {
 }
 
 /// A struct containing a signature and the public key of the signer.
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
+)]
+#[serde(deny_unknown_fields)]
 pub struct Approval {
     signer: PublicKey,
     signature: Signature,
@@ -282,8 +355,33 @@ impl Display for Approval {
     }
 }
 
+impl ToBytes for Approval {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.signer.to_bytes()?);
+        buffer.extend(self.signature.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.signer.serialized_length() + self.signature.serialized_length()
+    }
+}
+
+impl FromBytes for Approval {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (signer, remainder) = PublicKey::from_bytes(bytes)?;
+        let (signature, remainder) = Signature::from_bytes(remainder)?;
+        let approval = Approval { signer, signature };
+        Ok((approval, remainder))
+    }
+}
+
 /// A deploy; an item containing a smart contract along with the requester's signature(s).
-#[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[derive(
+    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
+)]
+#[serde(deny_unknown_fields)]
 pub struct Deploy {
     hash: DeployHash,
     header: DeployHeader,
@@ -295,7 +393,7 @@ pub struct Deploy {
 }
 
 impl Deploy {
-    /// Constructs a new `Deploy`.
+    /// Constructs a new signed `Deploy`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         timestamp: Timestamp,
@@ -306,7 +404,7 @@ impl Deploy {
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
         secret_key: &SecretKey,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
     ) -> Deploy {
         let serialized_body = serialize_body(&payment, &session);
         let body_hash = hash::hash(&serialized_body);
@@ -340,7 +438,7 @@ impl Deploy {
     }
 
     /// Adds a signature of this deploy's hash to its approvals.
-    pub fn sign(&mut self, secret_key: &SecretKey, rng: &mut dyn CryptoRngCore) {
+    pub fn sign(&mut self, secret_key: &SecretKey, rng: &mut NodeRng) {
         let signer = PublicKey::from(secret_key);
         let signature = asymmetric_key::sign(&self.hash, secret_key, &signer, rng);
         let approval = Approval { signer, signature };
@@ -372,10 +470,15 @@ impl Deploy {
         &self.session
     }
 
-    /// Returns true iff:
+    /// Returns the `Approval`s for this deploy.
+    pub fn approvals(&self) -> &[Approval] {
+        &self.approvals
+    }
+
+    /// Returns true if and only if:
     ///   * the deploy hash is correct (should be the hash of the header), and
     ///   * the body hash is correct (should be the hash of the body), and
-    ///   * the approvals are all valid signatures of the deploy hash
+    ///   * all approvals are valid signatures of the deploy hash
     ///
     /// Note: this is a relatively expensive operation, requiring re-serialization of the deploy,
     ///       hashing, and signature checking, so should be called as infrequently as possible.
@@ -393,8 +496,7 @@ impl Deploy {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        // TODO - make Timestamp deterministic.
-        let timestamp = Timestamp::now();
+        let timestamp = Timestamp::random(rng);
         let ttl = TimeDiff::from(rng.gen_range(60_000, 3_600_000));
         let gas_price = rng.gen_range(1, 100);
 
@@ -421,6 +523,12 @@ impl Deploy {
             &secret_key,
             rng,
         )
+    }
+}
+
+impl DocExample for Deploy {
+    fn doc_example() -> &'static Self {
+        &*DEPLOY
     }
 }
 
@@ -459,6 +567,9 @@ fn validate_deploy(deploy: &Deploy) -> bool {
         return false;
     }
 
+    // We don't need to check for an empty set here. EE checks that the correct number and weight of
+    // signatures are provided when executing the deploy, so all we need to do here is check that
+    // any provided signatures are valid.
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) =
             asymmetric_key::verify(&deploy.hash, &approval.signature, &approval.signer)
@@ -469,24 +580,6 @@ fn validate_deploy(deploy: &Deploy) -> bool {
     }
 
     true
-}
-
-/// Trait to allow `Deploy`s to be used by the storage component.
-impl Value for Deploy {
-    type Id = DeployHash;
-    type Header = DeployHeader;
-
-    fn id(&self) -> &Self::Id {
-        self.id()
-    }
-
-    fn header(&self) -> &Self::Header {
-        self.header()
-    }
-
-    fn take_header(self) -> Self::Header {
-        self.take_header()
-    }
 }
 
 impl Item for Deploy {
@@ -523,8 +616,58 @@ impl From<Deploy> for DeployItem {
             deploy.payment().clone(),
             deploy.header().gas_price(),
             BTreeSet::from_iter(vec![account_hash]),
-            deploy.id().inner().to_array(),
+            casper_types::DeployHash::new(deploy.id().inner().to_array()),
         )
+    }
+}
+
+/// The deploy mutable metadata.
+///
+/// Currently a stop-gap measure to associate an immutable deploy with additional metadata. Holds
+/// execution results.
+#[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq)]
+pub struct DeployMetadata {
+    /// The block hashes of blocks containing the related deploy, along with the results of
+    /// executing the related deploy in the context of one or more blocks.
+    pub execution_results: HashMap<BlockHash, ExecutionResult>,
+}
+
+impl ToBytes for Deploy {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.header.to_bytes()?);
+        buffer.extend(self.hash.to_bytes()?);
+        buffer.extend(self.payment.to_bytes()?);
+        buffer.extend(self.session.to_bytes()?);
+        buffer.extend(self.approvals.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.header.serialized_length()
+            + self.hash.serialized_length()
+            + self.payment.serialized_length()
+            + self.session.serialized_length()
+            + self.approvals.serialized_length()
+    }
+}
+
+impl FromBytes for Deploy {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (header, remainder) = DeployHeader::from_bytes(bytes)?;
+        let (hash, remainder) = DeployHash::from_bytes(remainder)?;
+        let (payment, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
+        let (session, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
+        let (approvals, remainder) = Vec::<Approval>::from_bytes(remainder)?;
+        let maybe_valid_deploy = Deploy {
+            header,
+            hash,
+            payment,
+            session,
+            approvals,
+            is_valid: None,
+        };
+        Ok((maybe_valid_deploy, remainder))
     }
 }
 
@@ -532,12 +675,13 @@ impl From<Deploy> for DeployItem {
 mod tests {
     use std::time::Duration;
 
+    use casper_types::bytesrepr::Bytes;
+
     use super::*;
-    use crate::testing::TestRng;
 
     #[test]
     fn json_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let deploy = Deploy::random(&mut rng);
         let json_string = serde_json::to_string_pretty(&deploy).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
@@ -546,7 +690,7 @@ mod tests {
 
     #[test]
     fn bincode_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let deploy = Deploy::random(&mut rng);
         let serialized = bincode::serialize(&deploy).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
@@ -555,17 +699,18 @@ mod tests {
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let hash = DeployHash(Digest::random(&mut rng));
         bytesrepr::test_serialization_roundtrip(&hash);
 
         let deploy = Deploy::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(deploy.header());
+        bytesrepr::test_serialization_roundtrip(&deploy);
     }
 
     #[test]
     fn is_valid() {
-        let mut rng = TestRng::new();
+        let mut rng = crate::new_rng();
         let mut deploy = Deploy::random(&mut rng);
         assert_eq!(deploy.is_valid, None, "is valid should initially be None");
         assert!(deploy.is_valid());
@@ -581,12 +726,12 @@ mod tests {
             vec![],
             String::default(),
             ExecutableDeployItem::ModuleBytes {
-                module_bytes: vec![],
-                args: vec![],
+                module_bytes: Bytes::new(),
+                args: Bytes::new(),
             },
-            ExecutableDeployItem::Transfer { args: vec![] },
+            ExecutableDeployItem::Transfer { args: Bytes::new() },
             &SecretKey::generate_ed25519(),
-            &mut TestRng::new(),
+            &mut crate::new_rng(),
         );
         deploy.header.gas_price = 1;
         assert_eq!(deploy.is_valid, None, "is valid should initially be None");
