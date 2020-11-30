@@ -59,13 +59,13 @@ export function call(): void {
     let mainPurse = getMainPurse();
     let bondingPurse = createPurse();
 
-    let ret = transferFromPurseToPurse(
+    let error = transferFromPurseToPurse(
         mainPurse,
         bondingPurse,
         amount,
     );
-    if (ret > 0) {
-        Error.fromErrorCode(ErrorCode.Transfer).revert();
+    if (error !== null) {
+        error.revert();
         return;
     }
 

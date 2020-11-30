@@ -138,11 +138,13 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
             // calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_withdrawal as u64 {
                 // Move funds from bid purse to unbonding purse
-                provider.transfer_from_purse_to_purse(
-                    unbonding_purse.bonding_purse,
-                    unbonding_purse.unbonding_purse,
-                    unbonding_purse.amount,
-                )?;
+                provider
+                    .transfer_from_purse_to_purse(
+                        unbonding_purse.bonding_purse,
+                        unbonding_purse.unbonding_purse,
+                        unbonding_purse.amount,
+                    )
+                    .map_err(|_| Error::TransferToUnbondingPurse)?
             } else {
                 new_unbonding_list.push(*unbonding_purse);
             }

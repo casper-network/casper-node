@@ -14,7 +14,7 @@ const PURSE_MAIN = "purse:main";
 const PURSE_TRANSFER_RESULT = "purse_transfer_result";
 const MAIN_PURSE_BALANCE = "main_purse_balance";
 const SUCCESS_MESSAGE = "Ok(())";
-const TRANSFER_ERROR_MESSAGE = "Err(ApiError::Transfer [14])";
+const TRANSFER_ERROR_MESSAGE = "Err(ApiError::Mint(0) [65024])";
 
 const ARG_SOURCE = "source";
 const ARG_TARGET = "target";
@@ -101,9 +101,9 @@ export function call(): void {
     }
     const amount = amountResult.value;
 
-    const result = transferFromPurseToPurse(<URef>sourcePurse, <URef>destinationPurse, amount);
+    const error = transferFromPurseToPurse(<URef>sourcePurse, <URef>destinationPurse, amount);
     let message = SUCCESS_MESSAGE;
-    if (result > 0){
+    if (error !== null){
         message = TRANSFER_ERROR_MESSAGE;
     }
     const resultKey = Key.create(CLValue.fromString(message));

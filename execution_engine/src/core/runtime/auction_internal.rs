@@ -55,10 +55,13 @@ where
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ApiError> {
         let mint_contract_hash = self.get_mint_contract();
-        self.mint_transfer(mint_contract_hash, source, target, amount, None)
-            .map_err(|_| Error::Transfer)
+        match self.mint_transfer(mint_contract_hash, source, target, amount, None) {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(api_error)) => Err(api_error),
+            Err(_) => Err(ApiError::Transfer),
+        }
     }
 }
 
@@ -106,15 +109,12 @@ where
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), Error> {
-        let mint_contract_key = self.get_mint_contract();
-        if self
-            .mint_transfer(mint_contract_key, source, target, amount, None)
-            .is_ok()
-        {
-            Ok(())
-        } else {
-            Err(Error::Transfer)
+    ) -> Result<(), ApiError> {
+        let mint_contract_hash = self.get_mint_contract();
+        match self.mint_transfer(mint_contract_hash, source, target, amount, None) {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(api_error)) => Err(api_error),
+            Err(_) => Err(ApiError::Transfer),
         }
     }
 

@@ -12,7 +12,7 @@ use casper_types::{
     proof_of_stake::{
         MintProvider, ProofOfStake, RuntimeProvider, ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE,
     },
-    BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
+    ApiError, BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
 };
 
 pub struct ProofOfStakeContract;
@@ -32,8 +32,8 @@ impl MintProvider for ProofOfStakeContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ()> {
-        system::transfer_from_purse_to_purse(source, target, amount, None).map_err(|_| ())
+    ) -> Result<(), ApiError> {
+        system::transfer_from_purse_to_purse(source, target, amount, None)
     }
 
     fn balance(&mut self, purse: URef) -> Option<U512> {
