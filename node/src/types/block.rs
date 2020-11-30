@@ -19,7 +19,7 @@ use blake2::{
 use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::{HexFmt, HexList};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
 use schemars::JsonSchema;
@@ -44,58 +44,56 @@ use crate::{
 #[cfg(test)]
 use crate::{crypto::asymmetric_key, testing::TestRng};
 
-lazy_static! {
-    static ref ERA_END: EraEnd = {
-        let secret_key_1 = SecretKey::new_ed25519([0; 32]);
-        let public_key_1 = PublicKey::from(&secret_key_1);
-        let equivocators = vec![public_key_1];
+static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
+    let secret_key_1 = SecretKey::new_ed25519([0; 32]);
+    let public_key_1 = PublicKey::from(&secret_key_1);
+    let equivocators = vec![public_key_1];
 
-        let secret_key_2 = SecretKey::new_ed25519([1; 32]);
-        let public_key_2 = PublicKey::from(&secret_key_2);
-        let mut rewards = BTreeMap::new();
-        rewards.insert(public_key_2, 1000);
+    let secret_key_2 = SecretKey::new_ed25519([1; 32]);
+    let public_key_2 = PublicKey::from(&secret_key_2);
+    let mut rewards = BTreeMap::new();
+    rewards.insert(public_key_2, 1000);
 
-        EraEnd {
-            equivocators,
-            rewards,
-        }
-    };
-    static ref FINALIZED_BLOCK: FinalizedBlock = {
-        let deploy_hashes = vec![*Deploy::doc_example().id()];
-        let random_bit = true;
-        let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
-        let timestamp = *Timestamp::doc_example();
-        let era_end = Some(EraEnd::doc_example().clone());
-        let era: u64 = 1;
-        let secret_key = SecretKey::doc_example();
-        let public_key = PublicKey::from(secret_key);
+    EraEnd {
+        equivocators,
+        rewards,
+    }
+});
+static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
+    let deploy_hashes = vec![*Deploy::doc_example().id()];
+    let random_bit = true;
+    let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
+    let timestamp = *Timestamp::doc_example();
+    let era_end = Some(EraEnd::doc_example().clone());
+    let era: u64 = 1;
+    let secret_key = SecretKey::doc_example();
+    let public_key = PublicKey::from(secret_key);
 
-        FinalizedBlock::new(
-            proto_block,
-            timestamp,
-            era_end,
-            EraId(era),
-            era * 10,
-            public_key,
-        )
-    };
-    static ref BLOCK: Block = {
-        let parent_hash = BlockHash::new(Digest::from([7u8; Digest::LENGTH]));
-        let state_root_hash = Digest::from([8u8; Digest::LENGTH]);
-        let finalized_block = FinalizedBlock::doc_example().clone();
-        let parent_seed = Digest::from([9u8; Digest::LENGTH]);
+    FinalizedBlock::new(
+        proto_block,
+        timestamp,
+        era_end,
+        EraId(era),
+        era * 10,
+        public_key,
+    )
+});
+static BLOCK: Lazy<Block> = Lazy::new(|| {
+    let parent_hash = BlockHash::new(Digest::from([7u8; Digest::LENGTH]));
+    let state_root_hash = Digest::from([8u8; Digest::LENGTH]);
+    let finalized_block = FinalizedBlock::doc_example().clone();
+    let parent_seed = Digest::from([9u8; Digest::LENGTH]);
 
-        let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
-        let signature = Signature::from_hex(
-            "01bd9a3d1fe100345702c4631ce1e22b7dd7c2cd5b3808744efd36fdfc900bff30b19d4fdc369c104924a9\
+    let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
+    let signature = Signature::from_hex(
+        "01bd9a3d1fe100345702c4631ce1e22b7dd7c2cd5b3808744efd36fdfc900bff30b19d4fdc369c104924a9\
             f62ccfa91f3a9fc013b9066224a7ebdfe39579892200"
-                .as_bytes(),
-        )
-        .unwrap();
-        block.append_proof(signature);
-        block
-    };
-}
+            .as_bytes(),
+    )
+    .unwrap();
+    block.append_proof(signature);
+    block
+});
 
 /// Error returned from constructing or validating a `Block`.
 #[derive(Debug, Error)]

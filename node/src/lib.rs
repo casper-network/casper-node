@@ -39,7 +39,7 @@ pub mod utils;
 use std::sync::{atomic::AtomicBool, Arc};
 
 use ansi_term::Color::Red;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 #[cfg(not(test))]
 use rand::SeedableRng;
 
@@ -86,17 +86,16 @@ fn version_string(color: bool) -> String {
     version
 }
 
-lazy_static! {
-    /// Color version string for the compiled node. Filled in at build time, output allocated at
-    /// runtime.
-    pub static ref VERSION_STRING_COLOR: String = version_string(true);
+/// Color version string for the compiled node. Filled in at build time, output allocated at
+/// runtime.
+pub static VERSION_STRING_COLOR: Lazy<String> = Lazy::new(|| version_string(true));
 
-    /// Version string for the compiled node. Filled in at build time, output allocated at runtime.
-    pub static ref VERSION_STRING: String = version_string(false);
+/// Version string for the compiled node. Filled in at build time, output allocated at runtime.
+pub static VERSION_STRING: Lazy<String> = Lazy::new(|| version_string(false));
 
-    /// Global flag that indicates the currently running reactor should dump its event queue.
-    pub static ref QUEUE_DUMP_REQUESTED: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-}
+/// Global flag that indicates the currently running reactor should dump its event queue.
+pub static QUEUE_DUMP_REQUESTED: Lazy<Arc<AtomicBool>> =
+    Lazy::new(|| Arc::new(AtomicBool::new(false)));
 
 /// Setup UNIX signal hooks for current application.
 pub fn setup_signal_hooks() {

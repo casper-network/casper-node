@@ -44,7 +44,7 @@ use std::{
 };
 
 use clap::{crate_version, App, Arg};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use package::Package;
 
@@ -99,9 +99,7 @@ pub(crate) fn is_dry_run() -> bool {
     ARGS.dry_run
 }
 
-lazy_static! {
-    static ref ARGS: Args = get_args();
-}
+static ARGS: Lazy<Args> = Lazy::new(get_args);
 
 fn get_args() -> Args {
     let arg_matches = App::new(APP_NAME)

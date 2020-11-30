@@ -16,7 +16,7 @@ use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace};
@@ -37,12 +37,10 @@ pub use chainspec::Chainspec;
 pub(crate) use chainspec::{DeployConfig, HighwayConfig};
 pub use error::Error;
 
-lazy_static! {
-    static ref CHAINSPEC_INFO: ChainspecInfo = ChainspecInfo {
-        name: String::from("casper-example"),
-        root_hash: Some(Digest::from([2u8; Digest::LENGTH])),
-    };
-}
+static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| ChainspecInfo {
+    name: String::from("casper-example"),
+    root_hash: Some(Digest::from([2u8; Digest::LENGTH])),
+});
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]

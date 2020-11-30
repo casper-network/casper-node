@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use crate::{
     common::{self, CL_CONTRACT, CL_TYPES},
@@ -50,15 +50,19 @@ const CONFIG_TOML_CONTENTS: &str = r#"[build]
 target = "wasm32-unknown-unknown"
 "#;
 
-lazy_static! {
-    static ref CARGO_TOML: PathBuf = ARGS.root_path().join(PACKAGE_NAME).join("Cargo.toml");
-    static ref RUST_TOOLCHAIN: PathBuf = ARGS.root_path().join(PACKAGE_NAME).join("rust-toolchain");
-    static ref MAIN_RS: PathBuf = ARGS.root_path().join(PACKAGE_NAME).join("src/main.rs");
-    static ref CONFIG_TOML: PathBuf = ARGS
-        .root_path()
+static CARGO_TOML: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("Cargo.toml"));
+static RUST_TOOLCHAIN: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("rust-toolchain"));
+static MAIN_RS: Lazy<PathBuf> =
+    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("src/main.rs"));
+static CONFIG_TOML: Lazy<PathBuf> = Lazy::new(|| {
+    ARGS.root_path()
         .join(PACKAGE_NAME)
-        .join(".cargo/config.toml");
-    static ref CARGO_TOML_ADDITIONAL_CONTENTS: String = format!(
+        .join(".cargo/config.toml")
+});
+static CARGO_TOML_ADDITIONAL_CONTENTS: Lazy<String> = Lazy::new(|| {
+    format!(
         r#"{}
 {}
 
@@ -76,8 +80,8 @@ default = ["casper-contract/std", "casper-types/std", "casper-contract/test-supp
 lto = true
 "#,
         *CL_CONTRACT, *CL_TYPES, PACKAGE_NAME
-    );
-}
+    )
+});
 
 pub fn run_cargo_new() {
     common::run_cargo_new(PACKAGE_NAME);

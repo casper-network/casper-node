@@ -1,5 +1,4 @@
 use assert_matches::assert_matches;
-use lazy_static::lazy_static;
 
 use casper_engine_test_support::{
     internal::{
@@ -13,15 +12,7 @@ use casper_execution_engine::{
         engine_state::{Error, CONV_RATE, MAX_PAYMENT},
         execution,
     },
-    shared::{
-        gas::Gas,
-        host_function_costs::{Cost, HostFunction, HostFunctionCosts},
-        motes::Motes,
-        opcode_costs::OpcodeCosts,
-        storage_costs::StorageCosts,
-        transform::Transform,
-        wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
-    },
+    shared::{gas::Gas, motes::Motes, transform::Transform},
 };
 use casper_types::{account::AccountHash, runtime_args, ApiError, RuntimeArgs, U512};
 
@@ -32,22 +23,6 @@ const REVERT_WASM: &str = "revert.wasm";
 const ENDLESS_LOOP_WASM: &str = "endless_loop.wasm";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
-
-lazy_static! {
-    static ref EXHAUSTIVE_HOST_FUNCTION_COSTS: HostFunctionCosts = HostFunctionCosts {
-        // Settings where all opcodes are so expensive so we can run out of gas very quickly
-        get_main_purse: HostFunction::fixed(Cost::max_value()),
-        .. Default::default()
-    };
-
-    static ref EXHAUSTIVE_WASM_CONFIG: WasmConfig = WasmConfig::new(
-        DEFAULT_INITIAL_MEMORY,
-        DEFAULT_MAX_STACK_HEIGHT,
-        OpcodeCosts::default(),
-        StorageCosts::new(u32::max_value()),
-        *EXHAUSTIVE_HOST_FUNCTION_COSTS,
-    );
-}
 
 #[ignore]
 #[test]

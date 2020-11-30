@@ -39,7 +39,7 @@ impl SystemContractCache {
 mod tests {
     use std::sync::Mutex;
 
-    use lazy_static::lazy_static;
+    use once_cell::sync::Lazy;
     use parity_wasm::elements::{Module, ModuleNameSubsection, NameSection, Section};
 
     use crate::core::{
@@ -48,13 +48,13 @@ mod tests {
     };
     use casper_types::ContractHash;
 
-    lazy_static! {
-        static ref ADDRESS_GENERATOR: Mutex<AddressGenerator> = Mutex::new(
+    static ADDRESS_GENERATOR: Lazy<Mutex<AddressGenerator>> = Lazy::new(|| {
+        Mutex::new(
             AddressGeneratorBuilder::new()
                 .seed_with(b"test_seed")
-                .build()
-        );
-    }
+                .build(),
+        )
+    });
 
     #[test]
     fn should_insert_module() {

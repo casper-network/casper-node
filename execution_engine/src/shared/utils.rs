@@ -1,23 +1,21 @@
-use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use tracing::warn;
 
 /// Sensible default for many if not all systems.
 const DEFAULT_PAGE_SIZE: usize = 4096;
 
-lazy_static! {
-    /// OS page size.
-    pub static ref OS_PAGE_SIZE: usize = {
-        // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
-        let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
-        if value <= 0 {
-            DEFAULT_PAGE_SIZE
-        } else {
-            value as usize
-        }
-    };
-}
+/// OS page size.
+pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
+    // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
+    let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
+    if value <= 0 {
+        DEFAULT_PAGE_SIZE
+    } else {
+        value as usize
+    }
+});
 
 /// Warns if `value` is not a multiple of the OS page size.
 pub fn check_multiple_of_page_size(value: usize) {
