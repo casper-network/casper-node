@@ -43,7 +43,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
 use quanta::IntoNanoseconds;
 use tracing::{debug, debug_span, info, trace, warn};
@@ -64,8 +64,8 @@ use tokio::time::{Duration, Instant};
 const DEFAULT_DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_secs(1);
 const DISPATCH_EVENT_THRESHOLD_ENV_VAR: &str = "CL_EVENT_MAX_MICROSECS";
 
-lazy_static! {
-    static ref DISPATCH_EVENT_THRESHOLD: Duration = env::var(DISPATCH_EVENT_THRESHOLD_ENV_VAR)
+static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
+    env::var(DISPATCH_EVENT_THRESHOLD_ENV_VAR)
         .map(|threshold_str| {
             let threshold_microsecs = u64::from_str(&threshold_str).unwrap_or_else(|error| {
                 panic!(
@@ -75,8 +75,8 @@ lazy_static! {
             });
             Duration::from_micros(threshold_microsecs)
         })
-        .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD);
-}
+        .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
+});
 
 /// Event scheduler
 ///

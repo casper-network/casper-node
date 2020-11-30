@@ -8,7 +8,7 @@ use std::str;
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -22,15 +22,13 @@ use crate::{
     types::{Deploy, DeployHash},
 };
 
-lazy_static! {
-    static ref PUT_DEPLOY_PARAMS: PutDeployParams = PutDeployParams {
-        deploy: Deploy::doc_example().clone(),
-    };
-    static ref PUT_DEPLOY_RESULT: PutDeployResult = PutDeployResult {
-        api_version: CLIENT_API_VERSION.clone(),
-        deploy_hash: *Deploy::doc_example().id(),
-    };
-}
+static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
+    deploy: Deploy::doc_example().clone(),
+});
+static PUT_DEPLOY_RESULT: Lazy<PutDeployResult> = Lazy::new(|| PutDeployResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    deploy_hash: *Deploy::doc_example().id(),
+});
 
 /// Params for "account_put_deploy" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]

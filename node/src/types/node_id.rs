@@ -5,8 +5,8 @@ use std::{
 
 use datasize::DataSize;
 use hex_fmt::HexFmt;
-use lazy_static::lazy_static;
 use libp2p::PeerId;
+use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::{Rng, RngCore};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -117,9 +117,9 @@ impl<'de> Deserialize<'de> for NodeId {
         }
     }
 }
-lazy_static! {
-    static ref NODE_ID: NodeId = NodeId::Tls(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH]));
-}
+
+static NODE_ID: Lazy<NodeId> =
+    Lazy::new(|| NodeId::Tls(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH])));
 
 impl DocExample for NodeId {
     fn doc_example() -> &'static Self {

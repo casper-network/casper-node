@@ -1,7 +1,6 @@
 use std::{fs::File, path::PathBuf, process, str::FromStr};
 
 use clap::{crate_name, App, Arg, ArgMatches, Shell, SubCommand};
-use lazy_static::lazy_static;
 
 use crate::{command::ClientCommand, common};
 
@@ -15,6 +14,7 @@ enum DisplayOrder {
 /// Handles providing the arg for and retrieval of the output file.
 mod output_file {
     use super::*;
+    use once_cell::sync::Lazy;
 
     const ARG_NAME: &str = "output";
     const ARG_NAME_SHORT: &str = "o";
@@ -23,10 +23,8 @@ mod output_file {
         "Path to output file. If the path's parent folder doesn't exist, the command will fail. \
         Default path normally requires running the command with sudo";
 
-    lazy_static! {
-        static ref ARG_DEFAULT: String =
-            format!("/usr/share/bash-completion/completions/{}", crate_name!());
-    }
+    static ARG_DEFAULT: Lazy<String> =
+        Lazy::new(|| format!("/usr/share/bash-completion/completions/{}", crate_name!()));
 
     pub(super) fn arg() -> Arg<'static, 'static> {
         Arg::with_name(ARG_NAME)

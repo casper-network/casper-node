@@ -12,7 +12,7 @@ use std::{
 use datasize::DataSize;
 use hex::FromHexError;
 use itertools::Itertools;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::{Rng, RngCore};
 use schemars::JsonSchema;
@@ -42,53 +42,51 @@ use crate::{
     NodeRng,
 };
 
-lazy_static! {
-    static ref DEPLOY: Deploy = {
-        let payment = ExecutableDeployItem::StoredContractByName {
-            name: String::from("casper-example"),
-            entry_point: String::from("example-entry-point"),
-            args: vec![1, 1].into(),
-        };
-        let session = ExecutableDeployItem::Transfer {
-            args: vec![2, 2].into(),
-        };
-        let serialized_body = serialize_body(&payment, &session);
-        let body_hash = hash::hash(&serialized_body);
-
-        let secret_key = SecretKey::doc_example();
-        let header = DeployHeader {
-            account: PublicKey::from(secret_key),
-            timestamp: *Timestamp::doc_example(),
-            ttl: TimeDiff::from(3_600_000),
-            gas_price: 1,
-            body_hash,
-            dependencies: vec![DeployHash::new(Digest::from([1u8; Digest::LENGTH]))],
-            chain_name: String::from("casper-example"),
-        };
-        let serialized_header = serialize_header(&header);
-        let hash = DeployHash::new(hash::hash(&serialized_header));
-
-        let signature = Signature::from_hex(
-            "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d976\
-            1185c961daee1adab0649912a6477bcd2e69bd91bd08"
-                .as_bytes(),
-        )
-        .unwrap();
-        let approval = Approval {
-            signer: PublicKey::from(secret_key),
-            signature,
-        };
-
-        Deploy {
-            hash,
-            header,
-            payment,
-            session,
-            approvals: vec![approval],
-            is_valid: None,
-        }
+static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
+    let payment = ExecutableDeployItem::StoredContractByName {
+        name: String::from("casper-example"),
+        entry_point: String::from("example-entry-point"),
+        args: vec![1, 1].into(),
     };
-}
+    let session = ExecutableDeployItem::Transfer {
+        args: vec![2, 2].into(),
+    };
+    let serialized_body = serialize_body(&payment, &session);
+    let body_hash = hash::hash(&serialized_body);
+
+    let secret_key = SecretKey::doc_example();
+    let header = DeployHeader {
+        account: PublicKey::from(secret_key),
+        timestamp: *Timestamp::doc_example(),
+        ttl: TimeDiff::from(3_600_000),
+        gas_price: 1,
+        body_hash,
+        dependencies: vec![DeployHash::new(Digest::from([1u8; Digest::LENGTH]))],
+        chain_name: String::from("casper-example"),
+    };
+    let serialized_header = serialize_header(&header);
+    let hash = DeployHash::new(hash::hash(&serialized_header));
+
+    let signature = Signature::from_hex(
+        "012dbf03817a51794a8e19e0724884075e6d1fbec326b766ecfa6658b41f81290da85e23b24e88b1c8d976\
+            1185c961daee1adab0649912a6477bcd2e69bd91bd08"
+            .as_bytes(),
+    )
+    .unwrap();
+    let approval = Approval {
+        signer: PublicKey::from(secret_key),
+        signature,
+    };
+
+    Deploy {
+        hash,
+        header,
+        payment,
+        session,
+        approvals: vec![approval],
+        is_valid: None,
+    }
+});
 
 /// Error returned from constructing or validating a `Deploy`.
 #[derive(Debug, Error)]

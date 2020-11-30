@@ -8,7 +8,7 @@ use std::str;
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -27,22 +27,22 @@ use crate::{
     types::{Block, BlockHash, Item, JsonBlock},
 };
 
-lazy_static! {
-    static ref GET_BLOCK_PARAMS: GetBlockParams = GetBlockParams {
-        block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
-    };
-    static ref GET_BLOCK_RESULT: GetBlockResult = GetBlockResult {
-        api_version: CLIENT_API_VERSION.clone(),
-        block: Some(Block::doc_example().clone().into()),
-    };
-    static ref GET_STATE_ROOT_HASH_PARAMS: GetStateRootHashParams = GetStateRootHashParams {
+static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
+    block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
+});
+static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    block: Some(Block::doc_example().clone().into()),
+});
+static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
+    Lazy::new(|| GetStateRootHashParams {
         block_identifier: BlockIdentifier::Height(Block::doc_example().header().height()),
-    };
-    static ref GET_STATE_ROOT_HASH_RESULT: GetStateRootHashResult = GetStateRootHashResult {
+    });
+static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
+    Lazy::new(|| GetStateRootHashResult {
         api_version: CLIENT_API_VERSION.clone(),
         state_root_hash: Some(*Block::doc_example().header().state_root_hash()),
-    };
-}
+    });
 
 /// Identifier for possible ways to retrieve a block.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, JsonSchema)]

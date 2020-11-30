@@ -6,7 +6,7 @@
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use schemars::{
     gen::{SchemaGenerator, SchemaSettings},
     schema::Schema,
@@ -29,62 +29,61 @@ use crate::{components::CLIENT_API_VERSION, effect::EffectBuilder};
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
-lazy_static! {
-    // As per https://spec.open-rpc.org/#service-discovery-method.
-    static ref OPEN_RPC_SCHEMA: OpenRpcSchema = {
-        let contact = OpenRpcContactField {
-            name: "CasperLabs".to_string(),
-            url: "https://casperlabs.io".to_string(),
-        };
-        let license = OpenRpcLicenseField {
-            name: "CasperLabs Open Source License Version 1.0".to_string(),
-            url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE".to_string(),
-        };
-        let info = OpenRpcInfoField {
-            version: CLIENT_API_VERSION.to_string(),
-            title: "Client API of Casper Node".to_string(),
-            description: "This describes the JSON-RPC 2.0 API of a node on the Casper network.".to_string(),
-            contact,
-            license
-        };
-
-        let server = OpenRpcServerEntry {
-            name: "any Casper Network node".to_string(),
-            url: "http://IP:PORT/rpc/".to_string(),
-        };
-
-        let mut schema = OpenRpcSchema {
-            openrpc: "1.0.0-rc1".to_string(),
-            info,
-            servers: vec![server],
-            methods: vec![],
-            components: Components {
-                schemas: Map::new()
-            }
-        };
-
-        schema.push_with_params::<PutDeploy>("receives a Deploy to be executed by the network");
-        schema.push_with_params::<GetDeploy>("returns a Deploy from the network");
-        schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
-        schema.push_without_params::<GetStatus>("returns the current status of the node");
-        schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
-        schema.push_with_optional_params::<GetStateRootHash>(
-            "returns a state root hash at a given Block"
-        );
-        schema.push_with_params::<GetItem>("returns a stored value from the network");
-        schema.push_with_params::<GetBalance>("returns a purse's balance from the network");
-        schema.push_without_params::<GetAuctionInfo>(
-            "returns the bids and validators as of the most recently added Block"
-        );
-
-        schema
+// As per https://spec.open-rpc.org/#service-discovery-method.
+static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
+    let contact = OpenRpcContactField {
+        name: "CasperLabs".to_string(),
+        url: "https://casperlabs.io".to_string(),
     };
-    static ref LIST_RPCS_RESULT: ListRpcsResult = ListRpcsResult {
-        api_version: CLIENT_API_VERSION.clone(),
-        name: "OpenRPC Schema".to_string(),
-        schema: OPEN_RPC_SCHEMA.clone(),
+    let license = OpenRpcLicenseField {
+        name: "CasperLabs Open Source License Version 1.0".to_string(),
+        url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE".to_string(),
     };
-}
+    let info = OpenRpcInfoField {
+        version: CLIENT_API_VERSION.to_string(),
+        title: "Client API of Casper Node".to_string(),
+        description: "This describes the JSON-RPC 2.0 API of a node on the Casper network."
+            .to_string(),
+        contact,
+        license,
+    };
+
+    let server = OpenRpcServerEntry {
+        name: "any Casper Network node".to_string(),
+        url: "http://IP:PORT/rpc/".to_string(),
+    };
+
+    let mut schema = OpenRpcSchema {
+        openrpc: "1.0.0-rc1".to_string(),
+        info,
+        servers: vec![server],
+        methods: vec![],
+        components: Components {
+            schemas: Map::new(),
+        },
+    };
+
+    schema.push_with_params::<PutDeploy>("receives a Deploy to be executed by the network");
+    schema.push_with_params::<GetDeploy>("returns a Deploy from the network");
+    schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
+    schema.push_without_params::<GetStatus>("returns the current status of the node");
+    schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
+    schema.push_with_optional_params::<GetStateRootHash>(
+        "returns a state root hash at a given Block",
+    );
+    schema.push_with_params::<GetItem>("returns a stored value from the network");
+    schema.push_with_params::<GetBalance>("returns a purse's balance from the network");
+    schema.push_without_params::<GetAuctionInfo>(
+        "returns the bids and validators as of the most recently added Block",
+    );
+
+    schema
+});
+static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    name: "OpenRPC Schema".to_string(),
+    schema: OPEN_RPC_SCHEMA.clone(),
+});
 
 /// A trait used to generate a static hardcoded example of `Self`.
 pub trait DocExample {
