@@ -21,6 +21,7 @@ lazy_static! {
 }
 
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.
+/// The test `Chainspec` returned has eras with exactly three blocks.
 pub fn new_test_chainspec(stakes: Vec<(PublicKey, u64)>) -> Chainspec {
     let mut chainspec = Chainspec::from_resources("test/valid/chainspec.toml");
     chainspec.genesis.accounts = stakes
