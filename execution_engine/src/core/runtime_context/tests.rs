@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use rand::RngCore;
 
 use casper_types::{
@@ -14,8 +14,8 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     contracts::NamedKeys,
-    AccessRights, BlockTime, CLValue, Contract, EntryPointType, EntryPoints, Key, Phase,
-    ProtocolVersion, RuntimeArgs, URef, KEY_HASH_LENGTH, U512,
+    AccessRights, BlockTime, CLValue, Contract, DeployHash, EntryPointType, EntryPoints, Key,
+    Phase, ProtocolVersion, RuntimeArgs, URef, KEY_HASH_LENGTH, U512,
 };
 
 use super::{Address, Error, RuntimeContext};
@@ -45,9 +45,7 @@ const DEPLOY_HASH: [u8; 32] = [1u8; 32];
 const PHASE: Phase = Phase::Session;
 const GAS_LIMIT: u64 = 500_000_000_000_000u64;
 
-lazy_static! {
-    static ref TEST_PROTOCOL_DATA: ProtocolData = ProtocolData::default();
-}
+static TEST_PROTOCOL_DATA: Lazy<ProtocolData> = Lazy::new(ProtocolData::default);
 
 fn mock_tracking_copy(
     init_key: Key,
@@ -141,7 +139,7 @@ fn mock_runtime_context<'a>(
         &account,
         base_key,
         BlockTime::new(0),
-        [1u8; 32],
+        DeployHash::new([1u8; 32]),
         Gas::new(U512::from(GAS_LIMIT)),
         Gas::default(),
         Rc::new(RefCell::new(hash_address_generator)),
@@ -375,7 +373,7 @@ fn contract_key_addable_valid() {
         &account,
         contract_key,
         BlockTime::new(0),
-        DEPLOY_HASH,
+        DeployHash::new(DEPLOY_HASH),
         Gas::new(U512::from(GAS_LIMIT)),
         Gas::default(),
         Rc::new(RefCell::new(hash_address_generator)),
@@ -448,7 +446,7 @@ fn contract_key_addable_invalid() {
         &account,
         other_contract_key,
         BlockTime::new(0),
-        DEPLOY_HASH,
+        DeployHash::new(DEPLOY_HASH),
         Gas::default(),
         Gas::default(),
         Rc::new(RefCell::new(hash_address_generator)),

@@ -4,6 +4,7 @@
 //! top-level module documentation for details.
 
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
@@ -31,8 +32,9 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    Key, ProtocolVersion, URef,
+    ExecutionResult, Key, ProtocolVersion, URef,
 };
+use hex_fmt::HexFmt;
 
 use super::{Multiple, Responder};
 use crate::{
@@ -40,13 +42,13 @@ use crate::{
         chainspec_loader::ChainspecInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
+        linear_chain::FinalitySignature,
     },
-    crypto::{asymmetric_key::Signature, hash::Digest},
+    crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
-        json_compatibility::ExecutionResult, Block as LinearBlock, Block, BlockHash, BlockHeader,
-        Deploy, DeployHash, DeployHeader, DeployMetadata, FinalizedBlock, Item, StatusFeed,
-        Timestamp,
+        Block as LinearBlock, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader,
+        DeployMetadata, FinalizedBlock, Item, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -321,6 +323,41 @@ impl Display for StorageRequest {
     }
 }
 
+/// State store request.
+#[derive(DataSize, Debug, Serialize)]
+pub enum StateStoreRequest {
+    /// Stores a piece of state to storage.
+    Save {
+        /// Key to store under.
+        key: Cow<'static, [u8]>,
+        /// Value to store, already serialized.
+        #[serde(skip_serializing)]
+        data: Vec<u8>,
+        /// Notification when storing is complete.
+        responder: Responder<()>,
+    },
+    /// Loads a piece of state from storage.
+    Load {
+        /// Key to load from.
+        key: Cow<'static, [u8]>,
+        /// Responder for value, if found, returning the previously passed in serialization form.
+        responder: Responder<Option<Vec<u8>>>,
+    },
+}
+
+impl Display for StateStoreRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            StateStoreRequest::Save { key, data, .. } => {
+                write!(f, "save data under {} ({} bytes)", HexFmt(key), data.len())
+            }
+            StateStoreRequest::Load { key, .. } => {
+                write!(f, "load data from key {}", HexFmt(key))
+            }
+        }
+    }
+}
+
 /// Details of a request for a list of deploys to propose in a new block.
 #[derive(DataSize, Debug)]
 pub struct ListForInclusionRequest {
@@ -338,7 +375,7 @@ pub struct ListForInclusionRequest {
 }
 
 /// A `BlockProposer` request.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 #[must_use]
 pub enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
@@ -764,7 +801,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
 /// Consensus component requests.
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
-    HandleLinearBlock(Box<BlockHeader>, Responder<Signature>),
+    HandleLinearBlock(Box<BlockHeader>, Responder<FinalitySignature>),
 }
 
 /// ChainspecLoader componenent requests.

@@ -154,9 +154,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             AvEffect::RequestNewBlock(block_context) => {
                 vec![ProtocolOutcome::CreateNewBlock { block_context }]
             }
-            AvEffect::WeEquivocated(evidence) => {
-                panic!("this validator equivocated: {:?}", evidence);
-            }
+            AvEffect::WeAreFaulty(fault) => panic!("this validator is faulty: {:?}", fault),
         }
     }
 

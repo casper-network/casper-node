@@ -52,7 +52,9 @@ use std::{collections::BTreeSet, convert::TryFrom};
 
 use datasize::DataSize;
 use derive_more::From;
-use lmdb::{Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction};
+use lmdb::{
+    Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
+};
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use tempfile::TempDir;
@@ -63,7 +65,10 @@ use super::Component;
 #[cfg(test)]
 use crate::crypto::hash::Digest;
 use crate::{
-    effect::{requests::StorageRequest, EffectBuilder, EffectExt, Effects},
+    effect::{
+        requests::{StateStoreRequest, StorageRequest},
+        EffectBuilder, EffectExt, Effects,
+    },
     fatal,
     types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
@@ -84,6 +89,8 @@ const DEFAULT_MAX_BLOCK_STORE_SIZE: usize = 450 * GIB;
 const DEFAULT_MAX_DEPLOY_STORE_SIZE: usize = 300 * GIB;
 /// Default max deploy metadata store size.
 const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
+/// Default max state store size.
+const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -100,6 +107,9 @@ pub enum Event {
     /// Incoming storage request.
     #[from]
     StorageRequest(StorageRequest),
+    /// Incoming state storage request.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
 }
 
 /// A storage component initialization error.
@@ -154,6 +164,9 @@ pub struct Storage {
     /// The deploy metadata database.
     #[data_size(skip)]
     deploy_metadata_db: Database,
+    /// The state storage database.
+    #[data_size(skip)]
+    state_store_db: Database,
     /// Block height index.
     block_height_index: BTreeMap<u64, BlockHash>,
     /// Chainspec cache.
@@ -171,7 +184,10 @@ impl<REv> Component<REv> for Storage {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let result = match event {
-            Event::StorageRequest(req) => self.handle_storage_request::<REv>(effect_builder, req),
+            Event::StorageRequest(req) => self.handle_storage_request::<REv>(req),
+            Event::StateStoreRequest(req) => {
+                self.handle_state_store_request::<REv>(effect_builder, req)
+            }
         };
 
         // Any error is turned into a fatal effect, the component itself does not panic. Note that
@@ -179,7 +195,7 @@ impl<REv> Component<REv> for Storage {
         // anyway, it should not matter.
         match result {
             Ok(effects) => effects,
-            Err(err) => fatal!(effect_builder, format!("storage error: {}", err)),
+            Err(err) => fatal!(effect_builder, "storage error: {}", err),
         }
     }
 }
@@ -212,13 +228,14 @@ impl Storage {
                     | EnvironmentFlags::NO_TLS,
             )
             .set_max_readers(MAX_TRANSACTIONS)
-            .set_max_dbs(3)
+            .set_max_dbs(4)
             .set_map_size(total_size)
             .open(&root.join("storage.lmdb"))?;
 
         let block_db = env.create_db(Some("blocks"), DatabaseFlags::empty())?;
         let deploy_db = env.create_db(Some("deploys"), DatabaseFlags::empty())?;
         let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
+        let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
 
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("reindexing block store");
@@ -256,17 +273,48 @@ impl Storage {
             block_db,
             deploy_db,
             deploy_metadata_db,
+            state_store_db,
             block_height_index,
             chainspec_cache: None,
         })
     }
 
-    /// Handles a storage request.
-    fn handle_storage_request<REv>(
+    /// Handles a state store request.
+    fn handle_state_store_request<REv>(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
-        req: StorageRequest,
+        req: StateStoreRequest,
     ) -> Result<Effects<Event>, Error>
+    where
+        Self: Component<REv>,
+    {
+        // Incoming requests are fairly simple database write. Errors are handled one level above on
+        // the call stack, so all we have to do is load or store a value.
+        match req {
+            StateStoreRequest::Save {
+                key,
+                data,
+                responder,
+            } => {
+                let mut txn = self.env.begin_rw_txn()?;
+                txn.put(self.state_store_db, &key, &data, WriteFlags::default())?;
+                txn.commit()?;
+                Ok(responder.respond(()).ignore())
+            }
+            StateStoreRequest::Load { key, responder } => {
+                let txn = self.env.begin_ro_txn()?;
+                let bytes = match txn.get(self.state_store_db, &key) {
+                    Ok(slice) => Some(slice.to_owned()),
+                    Err(lmdb::Error::NotFound) => None,
+                    Err(err) => return Err(err.into()),
+                };
+                Ok(responder.respond(bytes).ignore())
+            }
+        }
+    }
+
+    /// Handles a storage request.
+    fn handle_storage_request<REv>(&mut self, req: StorageRequest) -> Result<Effects<Event>, Error>
     where
         Self: Component<REv>,
     {
@@ -276,7 +324,7 @@ impl Storage {
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
                 let mut txn = self.env.begin_rw_txn()?;
-                let outcome = txn.put_value(self.block_db, block.hash(), &block, false)?;
+                let outcome = txn.put_value(self.block_db, block.hash(), &block, true)?;
                 txn.commit()?;
 
                 if outcome {
@@ -493,6 +541,10 @@ pub struct Config {
     ///
     /// The size should be a multiple of the OS page size.
     max_deploy_metadata_store_size: usize,
+    /// The maximum size of the database to use for the component state store.
+    ///
+    /// The size should be a multiple of the OS page size.
+    max_state_store_size: usize,
 }
 
 impl Default for Config {
@@ -503,6 +555,7 @@ impl Default for Config {
             max_block_store_size: DEFAULT_MAX_BLOCK_STORE_SIZE,
             max_deploy_store_size: DEFAULT_MAX_DEPLOY_STORE_SIZE,
             max_deploy_metadata_store_size: DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE,
+            max_state_store_size: DEFAULT_MAX_STATE_STORE_SIZE,
         }
     }
 }
@@ -527,6 +580,7 @@ impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::StorageRequest(req) => req.fmt(f),
+            Event::StateStoreRequest(req) => req.fmt(f),
         }
     }
 }

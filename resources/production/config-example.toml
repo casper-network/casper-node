@@ -147,6 +147,12 @@ max_deploy_store_size = 322_122_547_200
 # 322_122_547_200 == 300 GiB.
 max_deploy_metadata_store_size = 322_122_547_200
 
+# Maximum size of the database to use for the state snapshots.
+#
+# The size should be a multiple of the OS page size.
+#
+# 10_737_418_240 == 10 GiB.
+max_state_store_size = 10_737_418_240
 
 # ===================================
 # Configuration options for gossiping

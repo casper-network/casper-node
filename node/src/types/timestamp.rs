@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{
     fmt::{self, Display, Formatter},
     ops::{Add, AddAssign, Div, Mul, Rem, Sub},
@@ -8,17 +11,30 @@ use std::{
 use datasize::DataSize;
 use derive_more::{Add, AddAssign, From, Shl, Shr, Sub, SubAssign};
 use humantime::{DurationError, TimestampError};
+use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
+use crate::rpcs::docs::DocExample;
+
 #[cfg(test)]
 use crate::testing::TestRng;
 
+static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
+    let example_str: &str = "2020-11-17T00:39:24.072Z";
+    Timestamp::from_str(example_str).unwrap()
+});
+
 /// A timestamp type, representing a concrete moment in time.
-#[derive(DataSize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shr, Shl)]
+#[derive(
+    DataSize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Shr, Shl, JsonSchema,
+)]
+#[serde(deny_unknown_fields)]
+#[schemars(with = "String", description = "Timestamp formatted as per RFC 3339")]
 pub struct Timestamp(u64);
 
 impl Timestamp {
@@ -66,6 +82,12 @@ impl Display for Timestamp {
             .checked_add(Duration::from_millis(self.0))
             .expect("should be within system time limits");
         write!(f, "{}", humantime::format_rfc3339_millis(system_time))
+    }
+}
+
+impl DocExample for Timestamp {
+    fn doc_example() -> &'static Self {
+        &*TIMESTAMP_EXAMPLE
     }
 }
 
@@ -189,7 +211,10 @@ impl From<u64> for Timestamp {
     Sub,
     SubAssign,
     From,
+    JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
+#[schemars(with = "String", description = "Human-readable duration.")]
 pub struct TimeDiff(u64);
 
 impl Display for TimeDiff {

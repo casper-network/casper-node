@@ -1,18 +1,22 @@
 //! Unit tests for the storage component.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
-use rand::prelude::SliceRandom;
+use rand::{prelude::SliceRandom, Rng};
 use semver::Version;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
+
+use casper_types::ExecutionResult;
 
 use super::{Config, Storage};
 use crate::{
-    effect::{requests::StorageRequest, Multiple},
-    testing::{ComponentHarness, TestRng},
-    types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, DeployMetadata,
+    effect::{
+        requests::{StateStoreRequest, StorageRequest},
+        Multiple,
     },
+    testing::{ComponentHarness, TestRng},
+    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
     Chainspec,
 };
@@ -33,6 +37,7 @@ fn storage_fixture(harness: &mut ComponentHarness<()>) -> Storage {
         max_block_store_size: 50 * MIB,
         max_deploy_store_size: 50 * MIB,
         max_deploy_metadata_store_size: 50 * MIB,
+        max_state_store_size: 50 * MIB,
     };
 
     Storage::new(&WithDir::new(harness.tmp.path(), cfg)).expect(
@@ -134,6 +139,24 @@ fn get_highest_block(harness: &mut ComponentHarness<()>, storage: &mut Storage) 
     response
 }
 
+/// Loads state from the storage component.
+fn load_state<T>(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    key: Cow<'static, [u8]>,
+) -> Option<T>
+where
+    T: DeserializeOwned,
+{
+    let response: Option<Vec<u8>> = harness.send_request(storage, move |responder| {
+        StateStoreRequest::Load { key, responder }.into()
+    });
+    assert!(harness.is_idle());
+
+    // NOTE: Unfortunately, the deserialization logic is duplicated here from the effect builder.
+    response.map(|raw| bincode::deserialize(&raw).expect("deserialization failed"))
+}
+
 /// Stores a block in a storage component.
 fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: Box<Block>) -> bool {
     let response = harness.send_request(storage, move |responder| {
@@ -187,6 +210,28 @@ fn put_execution_results(
     response
 }
 
+/// Saves state from the storage component.
+fn save_state<T>(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    key: Cow<'static, [u8]>,
+    value: &T,
+) where
+    T: Serialize,
+{
+    // NOTE: Unfortunately, the serialization logic is duplicated here from the effect builder.
+    let data = bincode::serialize(value).expect("serialization failed");
+    harness.send_request(storage, move |responder| {
+        StateStoreRequest::Save {
+            key,
+            responder,
+            data,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
+}
+
 #[test]
 fn get_block_of_non_existing_block_returns_none() {
     let mut harness = ComponentHarness::default();
@@ -210,11 +255,11 @@ fn can_put_and_get_block() {
     let was_new = put_block(&mut harness, &mut storage, block.clone());
     assert!(was_new, "putting block should have returned `true`");
 
-    // Storing the same block again should work, but yield a result of `false`.
+    // Storing the same block again should work, but yield a result of `true`.
     let was_new_second_time = put_block(&mut harness, &mut storage, block.clone());
     assert!(
-        !was_new_second_time,
-        "storing block the second time should have returned `false`"
+        was_new_second_time,
+        "storing block the second time should have returned `true`"
     );
 
     let response = get_block(&mut harness, &mut storage, *block.hash());
@@ -321,7 +366,7 @@ fn different_block_at_height_is_fatal() {
     assert!(was_new);
 
     let was_new = put_block(&mut harness, &mut storage, block_44_a);
-    assert!(!was_new);
+    assert!(was_new);
 
     // Putting a different block with the same height should now crash.
     put_block(&mut harness, &mut storage, block_44_b);
@@ -435,7 +480,7 @@ fn store_execution_results_for_two_blocks() {
     );
 
     // Put first execution result.
-    let first_result = ExecutionResult::random(&mut harness.rng);
+    let first_result: ExecutionResult = harness.rng.gen();
     let mut first_results = HashMap::new();
     first_results.insert(*deploy.id(), first_result.clone());
     put_execution_results(&mut harness, &mut storage, block_hash_a, first_results);
@@ -450,7 +495,7 @@ fn store_execution_results_for_two_blocks() {
     assert_eq!(first_metadata.execution_results, expected_per_block_results);
 
     // Add second result for the same deploy, different block.
-    let second_result = ExecutionResult::random(&mut harness.rng);
+    let second_result: ExecutionResult = harness.rng.gen();
     let mut second_results = HashMap::new();
     second_results.insert(*deploy.id(), second_result.clone());
     put_execution_results(&mut harness, &mut storage, block_hash_b, second_results);
@@ -511,7 +556,7 @@ fn store_random_execution_results() {
             // Store unique deploy.
             put_deploy(harness, storage, Box::new(deploy.clone()));
 
-            let execution_result = ExecutionResult::random(&mut harness.rng);
+            let execution_result: ExecutionResult = harness.rng.gen();
 
             // Insert deploy results for the unique block-deploy combination.
             let mut map = HashMap::new();
@@ -524,7 +569,7 @@ fn store_random_execution_results() {
 
         // Insert the shared deploys as well.
         for shared_deploy in shared_deploys {
-            let execution_result = ExecutionResult::random(&mut harness.rng);
+            let execution_result: ExecutionResult = harness.rng.gen();
 
             // Insert the new result and ensure it is not present yet.
             let result = block_results.insert(*shared_deploy.id(), execution_result.clone());
@@ -582,10 +627,10 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     let deploy_hash = DeployHash::random(&mut harness.rng);
 
     let mut exec_result_1 = HashMap::new();
-    exec_result_1.insert(deploy_hash, ExecutionResult::random(&mut harness.rng));
+    exec_result_1.insert(deploy_hash, harness.rng.gen());
 
     let mut exec_result_2 = HashMap::new();
-    exec_result_2.insert(deploy_hash, ExecutionResult::random(&mut harness.rng));
+    exec_result_2.insert(deploy_hash, harness.rng.gen());
 
     put_execution_results(&mut harness, &mut storage, block_hash, exec_result_1);
 
@@ -602,7 +647,7 @@ fn store_identical_execution_results() {
     let deploy_hash = DeployHash::random(&mut harness.rng);
 
     let mut exec_result = HashMap::new();
-    exec_result.insert(deploy_hash, ExecutionResult::random(&mut harness.rng));
+    exec_result.insert(deploy_hash, harness.rng.gen());
 
     put_execution_results(&mut harness, &mut storage, block_hash, exec_result.clone());
 
@@ -628,6 +673,86 @@ fn store_and_load_chainspec() {
     // Compare returned chainspec.
     let response = get_chainspec(&mut harness, &mut storage, version);
     assert_eq!(response, Some(Arc::new(chainspec)));
+}
+
+/// Example state used in storage.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct StateData {
+    a: Vec<u32>,
+    b: i32,
+}
+
+#[test]
+fn store_and_load_state_data() {
+    let key1 = b"sample-key-1".to_vec();
+    let key2 = b"exkey-2".to_vec();
+
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&mut harness);
+
+    // Initially, both keys should return nothing.
+    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.clone().into());
+    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.clone().into());
+
+    assert!(load1.is_none());
+    assert!(load2.is_none());
+
+    let data1 = StateData { a: vec![1], b: -1 };
+    let data2 = StateData { a: vec![], b: 2 };
+
+    // Store one after another.
+    save_state(&mut harness, &mut storage, key1.clone().into(), &data1);
+    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.clone().into());
+    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.clone().into());
+
+    assert_eq!(load1, Some(data1.clone()));
+    assert!(load2.is_none());
+
+    save_state(&mut harness, &mut storage, key2.clone().into(), &data2);
+    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.clone().into());
+    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.clone().into());
+
+    assert_eq!(load1, Some(data1));
+    assert_eq!(load2, Some(data2.clone()));
+
+    // Overwrite `data1` in store.
+    save_state(&mut harness, &mut storage, key1.clone().into(), &data2);
+    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.into());
+    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.into());
+
+    assert_eq!(load1, Some(data2.clone()));
+    assert_eq!(load2, Some(data2));
+}
+
+#[test]
+fn persist_state_data() {
+    let key = b"sample-key-1".to_vec();
+
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&mut harness);
+
+    let load = load_state::<StateData>(&mut harness, &mut storage, key.clone().into());
+    assert!(load.is_none());
+
+    let data = StateData {
+        a: vec![1, 2, 3, 4, 5, 6],
+        b: -1,
+    };
+
+    // Store one after another.
+    save_state(&mut harness, &mut storage, key.clone().into(), &data);
+    let load = load_state::<StateData>(&mut harness, &mut storage, key.clone().into());
+    assert_eq!(load, Some(data.clone()));
+
+    let (on_disk, rng) = harness.into_parts();
+    let mut harness = ComponentHarness::builder()
+        .on_disk(on_disk)
+        .rng(rng)
+        .build();
+    let mut storage = storage_fixture(&mut harness);
+
+    let load = load_state::<StateData>(&mut harness, &mut storage, key.into());
+    assert_eq!(load, Some(data));
 }
 
 #[test]
@@ -657,7 +782,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
     let block = random_block_at_height(&mut harness.rng, 42);
-    let execution_result = ExecutionResult::random(&mut harness.rng);
+    let execution_result: ExecutionResult = harness.rng.gen();
 
     put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
     put_block(&mut harness, &mut storage, block.clone());

@@ -23,9 +23,9 @@ use std::{
     rc::Rc,
 };
 
-use lazy_static::lazy_static;
 use num_rational::Ratio;
 use num_traits::Zero;
+use once_cell::sync::Lazy;
 use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
 
@@ -42,8 +42,8 @@ use casper_types::{
     proof_of_stake, runtime_args,
     system_contract_errors::mint::Error as MintError,
     AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractVersionKey, DeployInfo, EntryPoint, EntryPointType, Key, Phase, ProtocolVersion,
-    RuntimeArgs, URef, U512,
+    ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType, Key, Phase,
+    ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -95,9 +95,7 @@ use crate::{
 /// motes / CONV_RATE = gas
 pub const CONV_RATE: u64 = 1;
 
-lazy_static! {
-    pub static ref MAX_PAYMENT: U512 = U512::from(2_500_000_000 * CONV_RATE);
-}
+pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000 * CONV_RATE));
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
@@ -263,7 +261,7 @@ where
                 ARG_ROUND_SEIGNIORAGE_RATE => arg_round_seigniorage_rate,
             };
             let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
-            let install_deploy_hash = genesis_config_hash.value();
+            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
             let transfer_address_generator = Rc::clone(&transfer_address_generator);
@@ -302,7 +300,7 @@ where
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
             let transfer_address_generator = Rc::clone(&transfer_address_generator);
-            let install_deploy_hash = genesis_config_hash.value();
+            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             // Constructs a partial protocol data with already known uref to pass the validation
@@ -365,7 +363,7 @@ where
                 preprocessor.preprocess(standard_payment_installer_bytes)?;
             let args = RuntimeArgs::new();
             let authorization_keys = BTreeSet::new();
-            let install_deploy_hash = genesis_config_hash.value();
+            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
             let transfer_address_generator = Rc::clone(&transfer_address_generator);
@@ -434,7 +432,7 @@ where
                 ARG_LOCKED_FUNDS_PERIOD => locked_funds_period,
             };
             let authorization_keys = BTreeSet::new();
-            let install_deploy_hash = genesis_config_hash.value();
+            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
             let hash_address_generator = Rc::clone(&hash_address_generator);
             let uref_address_generator = Rc::clone(&uref_address_generator);
             let transfer_address_generator = Rc::clone(&uref_address_generator);
@@ -528,7 +526,7 @@ where
                 let base_key = mint_hash;
                 let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
                 let account_hash = account.account_hash();
-                let purse_creation_deploy_hash = account_hash.value();
+                let purse_creation_deploy_hash = DeployHash::new(account_hash.value());
                 let hash_address_generator = Rc::clone(&hash_address_generator);
                 let uref_address_generator = {
                     let generator = AddressGeneratorBuilder::new()
@@ -715,7 +713,7 @@ where
                         .value()
                         .into_bytes()?
                         .to_vec();
-                    Blake2bHash::new(&bytes).value()
+                    DeployHash::new(Blake2bHash::new(&bytes).value())
                 };
 
                 // upgrade has no gas limit; approximating with MAX
@@ -1661,15 +1659,15 @@ where
             } else {
                 // use host side standard payment
                 let hash_address_generator = {
-                    let generator = AddressGenerator::new(&deploy_hash, phase);
+                    let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
                     Rc::new(RefCell::new(generator))
                 };
                 let uref_address_generator = {
-                    let generator = AddressGenerator::new(&deploy_hash, phase);
+                    let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
                     Rc::new(RefCell::new(generator))
                 };
                 let transfer_address_generator = {
-                    let generator = AddressGenerator::new(&deploy_hash, phase);
+                    let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
                     Rc::new(RefCell::new(generator))
                 };
 
@@ -2054,7 +2052,7 @@ where
                 .into_bytes()
                 .map_err(Error::from)?
                 .to_vec();
-            Blake2bHash::new(&bytes).value()
+            DeployHash::new(Blake2bHash::new(&bytes).value())
         };
 
         let (era_validators, execution_result): (Option<EraValidators>, ExecutionResult) = executor
@@ -2163,7 +2161,7 @@ where
         let deploy_hash = {
             // seeds address generator w/ protocol version
             let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();
-            Blake2bHash::new(&bytes).value()
+            DeployHash::new(Blake2bHash::new(&bytes).value())
         };
 
         let base_key = Key::from(protocol_data.auction());

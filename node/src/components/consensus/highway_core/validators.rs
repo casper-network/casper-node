@@ -99,7 +99,7 @@ impl<VID: Eq + Hash> Validators<VID> {
 impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Validators<VID> {
     fn from_iter<I: IntoIterator<Item = (VID, W)>>(ii: I) -> Validators<VID> {
         let mut validators: Vec<_> = ii.into_iter().map(Validator::from).collect();
-        validators.sort_by(|val0, val1| val0.id.cmp(&val1.id));
+        validators.sort_by_cached_key(|val| val.id.clone());
         let index_by_id = validators
             .iter()
             .enumerate()

@@ -4,7 +4,7 @@ use std::{
 };
 
 use casper_execution_engine::core::engine_state::deploy_item::DeployItem;
-use casper_types::account::AccountHash;
+use casper_types::{account::AccountHash, DeployHash};
 
 use crate::engine_server::{ipc, mappings::MappingError};
 
@@ -38,9 +38,10 @@ impl TryFrom<ipc::DeployItem> for DeployItem {
             })
             .collect::<Result<BTreeSet<AccountHash>, Self::Error>>()?;
 
-        let deploy_hash = pb_deploy_item.get_deploy_hash().try_into().map_err(|_| {
-            MappingError::invalid_deploy_hash_length(pb_deploy_item.deploy_hash.len())
-        })?;
+        let deploy_hash =
+            DeployHash::new(pb_deploy_item.get_deploy_hash().try_into().map_err(|_| {
+                MappingError::invalid_deploy_hash_length(pb_deploy_item.deploy_hash.len())
+            })?);
 
         Ok(DeployItem::new(
             address,
@@ -67,7 +68,7 @@ impl From<DeployItem> for ipc::DeployItem {
                 .map(|key| key.as_bytes().to_vec())
                 .collect(),
         );
-        result.set_deploy_hash(deploy_item.deploy_hash.to_vec());
+        result.set_deploy_hash(deploy_item.deploy_hash.value().to_vec());
         result
     }
 }

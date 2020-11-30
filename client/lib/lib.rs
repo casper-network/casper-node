@@ -334,6 +334,18 @@ pub fn get_auction_info(maybe_rpc_id: &str, node_address: &str, verbose: bool) -
     RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_auction_info()
 }
 
+/// Retrieves information and examples for all currently supported RPCs.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbose)?.list_rpcs()
+}
+
 /// Container for `Deploy` construction options.
 #[derive(Default)]
 pub struct DeployStrParams<'a> {

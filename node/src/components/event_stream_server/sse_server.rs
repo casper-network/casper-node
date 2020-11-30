@@ -2,7 +2,7 @@
 
 use datasize::DataSize;
 use futures::{Stream, StreamExt};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
@@ -13,13 +13,12 @@ use warp::{
     Filter, Reply,
 };
 
+use casper_types::ExecutionResult;
+
 use crate::{
     components::CLIENT_API_VERSION,
     crypto::asymmetric_key::PublicKey,
-    types::{
-        json_compatibility::ExecutionResult, BlockHash, BlockHeader, DeployHash, FinalizedBlock,
-        TimeDiff, Timestamp,
-    },
+    types::{BlockHash, BlockHeader, DeployHash, FinalizedBlock, TimeDiff, Timestamp},
 };
 
 /// The URL path.
@@ -29,13 +28,11 @@ pub const SSE_API_PATH: &str = "events";
 /// for further details.
 const BROADCAST_CHANNEL_SIZE: usize = 10;
 
-lazy_static! {
-    /// The first event sent to every subscribing client.
-    pub(super) static ref SSE_INITIAL_EVENT: ServerSentEvent = ServerSentEvent {
-        id: None,
-        data: SseData::ApiVersion(CLIENT_API_VERSION.clone())
-    };
-}
+/// The first event sent to every subscribing client.
+pub(super) static SSE_INITIAL_EVENT: Lazy<ServerSentEvent> = Lazy::new(|| ServerSentEvent {
+    id: None,
+    data: SseData::ApiVersion(CLIENT_API_VERSION.clone()),
+});
 
 /// The "id" field of the events sent on the event stream to clients.
 type Id = u32;
@@ -62,6 +59,7 @@ pub enum SseData {
         ttl: TimeDiff,
         dependencies: Vec<DeployHash>,
         block_hash: BlockHash,
+        #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
 }

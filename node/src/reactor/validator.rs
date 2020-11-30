@@ -9,7 +9,7 @@ mod memory_metrics;
 mod tests;
 
 use std::{
-    cmp,
+    cmp, env,
     fmt::{self, Debug, Display, Formatter},
     str::FromStr,
 };
@@ -19,8 +19,6 @@ use derive_more::From;
 use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, error, warn};
-
-use block_proposer::BlockProposerState;
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -38,6 +36,7 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
+        network::{self, Network, ENABLE_LIBP2P_ENV_VAR},
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
         small_network::{self, GossipedAddress, SmallNetwork},
@@ -54,7 +53,7 @@ use crate::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
-            RpcRequest, StorageRequest,
+            RpcRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -75,7 +74,10 @@ use memory_metrics::MemoryMetrics;
 pub enum Event {
     /// Network event.
     #[from]
-    Network(#[serde(skip_serializing)] small_network::Event<Message>),
+    Network(network::Event<Message>),
+    /// Small network event.
+    #[from]
+    SmallNetwork(small_network::Event<Message>),
     /// Block proposer event.
     #[from]
     BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
@@ -149,6 +151,12 @@ pub enum Event {
     /// Chainspec info request
     #[from]
     ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
+    /// Storage request.
+    #[from]
+    StorageRequest(#[serde(skip_serializing)] StorageRequest),
+    /// Request for state storage.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
 
     // Announcements
     /// Network announcement.
@@ -175,12 +183,6 @@ pub enum Event {
     /// Linear chain announcement.
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
-}
-
-impl From<StorageRequest> for Event {
-    fn from(request: StorageRequest) -> Self {
-        Event::Storage(request.into())
-    }
 }
 
 impl From<RpcRequest<NodeId>> for Event {
@@ -235,6 +237,7 @@ impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Network(event) => write!(f, "network: {}", event),
+            Event::SmallNetwork(event) => write!(f, "small network: {}", event),
             Event::BlockProposer(event) => write!(f, "block proposer: {}", event),
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::RpcServer(event) => write!(f, "rpc server: {}", event),
@@ -253,6 +256,8 @@ impl Display for Event {
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             Event::ChainspecLoaderRequest(req) => write!(f, "chainspec loader request: {}", req),
+            Event::StorageRequest(req) => write!(f, "storage request: {}", req),
+            Event::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
             Event::BlockProposerRequest(req) => write!(f, "block proposer request: {}", req),
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
@@ -287,7 +292,6 @@ pub struct ValidatorInitConfig {
     pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) linear_chain: Vec<Block>,
-    pub(super) block_proposer_state: BlockProposerState,
     pub(super) event_stream_server: EventStreamServer,
 }
 
@@ -295,7 +299,8 @@ pub struct ValidatorInitConfig {
 #[derive(DataSize, Debug)]
 pub struct Reactor {
     metrics: Metrics,
-    net: SmallNetwork<Event, Message>,
+    small_network: SmallNetwork<Event, Message>,
+    network: Network<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,
     storage: Storage,
     contract_runtime: ContractRuntime,
@@ -353,7 +358,6 @@ impl reactor::Reactor for Reactor {
             consensus,
             init_consensus_effects,
             linear_chain,
-            block_proposer_state,
             event_stream_server,
         } = config;
 
@@ -364,7 +368,10 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(event_queue, config.network, true)?;
+        let network_config = network::Config::from(&config.network);
+        let (network, network_effects) = Network::new(event_queue, network_config, true)?;
+        let (small_network, small_network_effects) =
+            SmallNetwork::new(event_queue, config.network, true)?;
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -381,18 +388,22 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
         let (block_proposer, block_proposer_effects) =
-            BlockProposer::new(registry.clone(), effect_builder, block_proposer_state)?;
+            BlockProposer::new(registry.clone(), effect_builder)?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         // Post state hash is expected to be present.
         let genesis_state_root_hash = chainspec_loader
             .genesis_state_root_hash()
             .expect("should have state root hash");
-        let block_executor = BlockExecutor::new(genesis_state_root_hash)
+        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone())
             .with_parent_map(linear_chain.last().cloned());
         let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();
 
-        effects.extend(reactor::wrap_effects(Event::Network, net_effects));
+        effects.extend(reactor::wrap_effects(Event::Network, network_effects));
+        effects.extend(reactor::wrap_effects(
+            Event::SmallNetwork,
+            small_network_effects,
+        ));
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
             init_consensus_effects,
@@ -420,7 +431,8 @@ impl reactor::Reactor for Reactor {
         Ok((
             Reactor {
                 metrics,
-                net,
+                network,
+                small_network,
                 address_gossiper,
                 storage,
                 contract_runtime,
@@ -450,9 +462,19 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Network(event) => reactor::wrap_effects(
-                Event::Network,
-                self.net.handle_event(effect_builder, rng, event),
+            Event::Network(event) => {
+                if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+                    reactor::wrap_effects(
+                        Event::Network,
+                        self.network.handle_event(effect_builder, rng, event),
+                    )
+                } else {
+                    Effects::new()
+                }
+            }
+            Event::SmallNetwork(event) => reactor::wrap_effects(
+                Event::SmallNetwork,
+                self.small_network.handle_event(effect_builder, rng, event),
             ),
             Event::BlockProposer(event) => reactor::wrap_effects(
                 Event::BlockProposer,
@@ -526,12 +548,12 @@ impl reactor::Reactor for Reactor {
             Event::NetworkRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
-                Event::Network(small_network::Event::from(req)),
+                Event::SmallNetwork(small_network::Event::from(req)),
             ),
             Event::NetworkInfoRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
-                Event::Network(small_network::Event::from(req)),
+                Event::SmallNetwork(small_network::Event::from(req)),
             ),
             Event::DeployFetcherRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployFetcher(req.into()))
@@ -555,6 +577,12 @@ impl reactor::Reactor for Reactor {
             ),
             Event::ChainspecLoaderRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::ChainspecLoader(req.into()))
+            }
+            Event::StorageRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
+            }
+            Event::StateStoreRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
             }
 
             // Announcements:
@@ -669,6 +697,7 @@ impl reactor::Reactor for Reactor {
                             return Effects::new();
                         }
                     },
+                    Message::FinalitySignature(fs) => Event::LinearChain(fs.into()),
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
@@ -787,8 +816,9 @@ impl reactor::Reactor for Reactor {
             }
             Event::AddressGossiperAnnouncement(ann) => {
                 let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
-                let reactor_event =
-                    Event::Network(small_network::Event::PeerAddressReceived(gossiped_address));
+                let reactor_event = Event::SmallNetwork(small_network::Event::PeerAddressReceived(
+                    gossiped_address,
+                ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
@@ -816,6 +846,6 @@ impl reactor::Reactor for Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        self.net.node_id()
+        self.small_network.node_id()
     }
 }
