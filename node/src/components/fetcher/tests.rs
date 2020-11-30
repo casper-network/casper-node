@@ -116,20 +116,16 @@ impl Reactor {
                     {
                         // This functionality was moved out of the storage component and
                         // should be refactored ASAP.
-                        Some(deploy) => {
-                            match Message::new_get_response(&deploy) {
-                                Ok(message) => {
-                                    return effect_builder.send_message(sender, message).ignore();
-                                }
-                                Err(error) => {
-                                    error!("failed to create get-response: {}", error);
-                                    return Effects::new();
-                                }
-                            };
-                        }
+                        Some(deploy) => match Message::new_get_response(&deploy) {
+                            Ok(message) => effect_builder.send_message(sender, message).ignore(),
+                            Err(error) => {
+                                error!("failed to create get-response: {}", error);
+                                Effects::new()
+                            }
+                        },
                         None => {
                             debug!("failed to get {} for {}", deploy_hash, sender);
-                            return Effects::new();
+                            Effects::new()
                         }
                     }
                 }
@@ -212,13 +208,13 @@ async fn store_deploy(
         .crank_until(
             node_id,
             &mut rng,
-            move |event: &ReactorEvent| -> bool {
-                match event {
+            move |event: &ReactorEvent| {
+                matches!(
+                    event,
                     ReactorEvent::DeployAcceptorAnnouncement(
                         DeployAcceptorAnnouncement::AcceptedNewDeploy { .. },
-                    ) => true,
-                    _ => false,
-                }
+                    )
+                )
             },
             TIMEOUT,
         )
@@ -383,16 +379,14 @@ async fn should_timeout_fetch_from_peer() {
         .crank_until(
             &requesting_node,
             &mut rng,
-            move |event: &ReactorEvent| -> bool {
-                if let ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
-                    payload: Message::GetRequest { .. },
-                    ..
-                }) = event
-                {
-                    true
-                } else {
-                    false
-                }
+            move |event: &ReactorEvent| {
+                matches!(
+                    event,
+                    ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
+                        payload: Message::GetRequest { .. },
+                        ..
+                    })
+                )
             },
             TIMEOUT,
         )
@@ -403,16 +397,14 @@ async fn should_timeout_fetch_from_peer() {
         .crank_until(
             &holding_node,
             &mut rng,
-            move |event: &ReactorEvent| -> bool {
-                if let ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
-                    payload: Message::GetResponse { .. },
-                    ..
-                }) = event
-                {
-                    true
-                } else {
-                    false
-                }
+            move |event: &ReactorEvent| {
+                matches!(
+                    event,
+                    ReactorEvent::NetworkRequest(NetworkRequest::SendMessage {
+                        payload: Message::GetResponse { .. },
+                        ..
+                    })
+                )
             },
             TIMEOUT,
         )
