@@ -422,7 +422,7 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                     // joining), do it now.
                     self.get_deploys(effect_builder, finalized_block)
                 } else {
-                    return Effects::new();
+                    Effects::new()
                 }
             }
             Event::GetDeploysResult {
