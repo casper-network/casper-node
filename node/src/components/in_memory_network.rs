@@ -284,7 +284,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     convert::Infallible,
-    fmt::{self, Display},
+    fmt::{self, Display, Formatter},
     sync::{Arc, RwLock},
 };
 
@@ -304,7 +304,6 @@ use crate::{
     types::NodeId,
     NodeRng,
 };
-use fmt::Formatter;
 
 /// A network.
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
