@@ -12,7 +12,7 @@ pub(crate) use params::Params;
 use quanta::Clock;
 pub(crate) use weight::Weight;
 
-pub(super) use panorama::{Observation, Panorama};
+pub(crate) use panorama::{Observation, Panorama};
 pub(super) use unit::Unit;
 
 use std::{
