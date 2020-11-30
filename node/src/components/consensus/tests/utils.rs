@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
 
@@ -9,16 +9,14 @@ use crate::{
     Chainspec,
 };
 
-lazy_static! {
-    pub static ref ALICE_RAW_SECRET: Vec<u8> = vec![0; SecretKey::ED25519_LENGTH];
-    pub static ref ALICE_SECRET_KEY: SecretKey =
-        SecretKey::ed25519_from_bytes(&*ALICE_RAW_SECRET).unwrap();
-    pub static ref ALICE_PUBLIC_KEY: PublicKey = PublicKey::from(ALICE_SECRET_KEY.deref());
-    pub static ref BOB_RAW_SECRET: Vec<u8> = vec![1; SecretKey::ED25519_LENGTH];
-    pub static ref BOB_PRIVATE_KEY: SecretKey =
-        SecretKey::ed25519_from_bytes(&*BOB_RAW_SECRET).unwrap();
-    pub static ref BOB_PUBLIC_KEY: PublicKey = PublicKey::from(BOB_PRIVATE_KEY.deref());
-}
+pub static ALICE_RAW_SECRET: Lazy<Vec<u8>> = Lazy::new(|| vec![0; SecretKey::ED25519_LENGTH]);
+pub static ALICE_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes(&*ALICE_RAW_SECRET).unwrap());
+pub static ALICE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ALICE_SECRET_KEY));
+pub static BOB_RAW_SECRET: Lazy<Vec<u8>> = Lazy::new(|| vec![1; SecretKey::ED25519_LENGTH]);
+pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes(&*BOB_RAW_SECRET).unwrap());
+pub static BOB_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*BOB_PRIVATE_KEY));
 
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.
 /// The test `Chainspec` returned has eras with exactly three blocks.
