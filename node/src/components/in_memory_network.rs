@@ -309,8 +309,7 @@ use fmt::Formatter;
 /// A network.
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
 
-/// Public type alias for convention; the in memory network needs to internal events and just
-/// responds to network requests.
+/// An in-memory network events.
 #[derive(Debug)]
 pub struct Event<P>(NetworkRequest<NodeId, P>);
 
