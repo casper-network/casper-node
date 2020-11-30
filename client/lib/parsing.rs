@@ -254,12 +254,7 @@ fn args_from_simple_or_complex(
 /// - More than one parameter is non-empty.
 /// - Any parameter that is non-empty has requires[] requirements that are empty.
 macro_rules! check_exactly_one_not_empty {
-    {
-        context: $site: expr, $(
-            ($x:expr)
-            requires[$($y:expr),*]
-        ),+ $(,)?
-    } => {{
+    ( context: $site:expr, $( ($x:expr) requires[$($y:expr),*] requires_empty[$($z:expr),*] ),+ $(,)? ) => {{
 
         let field_is_empty_map = &[$(
             (stringify!($x), $x.is_empty())
@@ -281,28 +276,52 @@ macro_rules! check_exactly_one_not_empty {
         if required_arguments.len() == 1 {
             let name = &required_arguments[0];
             let field_requirements = &[$(
-                (stringify!($x), vec![$((stringify!($y), $y)),*])
+                (
+                    stringify!($x),
+                    $x,
+                    vec![$((stringify!($y), $y)),*],
+                    vec![$((stringify!($z), $z)),*],
+                )
             ),+];
 
-            // Check requires[] fields
-            let (_, requirements) = field_requirements.iter().find(|(field, _)| *field == name).expect("should exist");
+            // Check requires[] and requires_requires_empty[] fields
+            let (_, value, requirements, required_empty) = field_requirements
+                .iter()
+                .find(|(field, _, _, _)| *field == name).expect("should exist");
             let required_arguments = requirements
                 .iter()
                 .filter(|(_, value)| !value.is_empty())
                 .collect::<Vec<_>>();
 
             if requirements.len() != required_arguments.len() {
-                let required_param_names = requirements.iter().map(|(requirement_name, _)| requirement_name).collect::<Vec<_>>();
+                let required_param_names = requirements
+                    .iter()
+                    .map(|(requirement_name, _)| requirement_name)
+                    .collect::<Vec<_>>();
                 return Err(Error::InvalidArgument(
                     $site,
                     format!("Field {} also requires following fields to be provided: {:?}", name, required_param_names),
                 ));
             }
+
+            let mut conflicting_fields = required_empty
+                .iter()
+                .filter(|(_, value)| !value.is_empty())
+                .map(|(field, value)| format!("{}={}", field, value)).collect::<Vec<_>>();
+
+            if !conflicting_fields.is_empty() {
+                conflicting_fields.push(format!("{}={}", name, value));
+                conflicting_fields.sort();
+                return Err(Error::ConflictingArguments{
+                    context: $site,
+                    args: conflicting_fields,
+                });
+            }
         } else {
             let mut non_empty_fields_with_values = vec![$((stringify!($x), $x)),+]
                 .iter()
-                .filter_map(|(key, value)| if !value.is_empty() {
-                    Some(format!("{}={}", key, value))
+                .filter_map(|(field, value)| if !value.is_empty() {
+                    Some(format!("{}={}", field, value))
                 } else {
                     None
                 })
@@ -356,15 +375,15 @@ pub(super) fn parse_session_info(
     check_exactly_one_not_empty!(
         context: "parse_session_info",
         (session_hash)
-            requires[session_entry_point],
+            requires[session_entry_point] requires_empty[],
         (session_name)
-            requires[session_entry_point],
+            requires[session_entry_point] requires_empty[],
         (session_package_hash)
-            requires[session_entry_point],
+            requires[session_entry_point] requires_empty[],
         (session_package_name)
-            requires[session_entry_point],
+            requires[session_entry_point] requires_empty[],
         (session_path)
-            requires[],
+            requires[] requires_empty[session_entry_point, session_version],
     );
     if !session_args.is_empty() && !session_args_complex.is_empty() {
         return Err(Error::ConflictingArguments {
@@ -436,16 +455,17 @@ pub(super) fn parse_payment_info(
 ) -> Result<ExecutableDeployItem> {
     check_exactly_one_not_empty!(
         context: "parse_payment_info",
-        (payment_amount) requires[],
+        (payment_amount)
+            requires[] requires_empty[payment_entry_point, payment_version],
         (payment_hash)
-            requires[payment_entry_point],
+            requires[payment_entry_point] requires_empty[],
         (payment_name)
-            requires[payment_entry_point],
+            requires[payment_entry_point] requires_empty[],
         (payment_package_hash)
-            requires[payment_entry_point],
+            requires[payment_entry_point] requires_empty[],
         (payment_package_name)
-            requires[payment_entry_point],
-        (payment_path) requires[],
+            requires[payment_entry_point] requires_empty[],
+        (payment_path) requires[] requires_empty[payment_entry_point, payment_version],
     );
     if !payment_args.is_empty() && !payment_args_complex.is_empty() {
         return Err(Error::ConflictingArguments {
@@ -622,6 +642,7 @@ mod tests {
         pub const PACKAGE_NAME: &str = "package_name";
         pub const PATH: &str = "./session.wasm";
         pub const ENTRY_POINT: &str = "entrypoint";
+        pub const VERSION: &str = "1.0.0";
     }
 
     fn invalid_simple_args_test(cli_string: &str) {
@@ -1014,266 +1035,141 @@ mod tests {
     mod conflicting_args {
         use super::*;
 
-        /// Implement a unit test that ensures a conflicting argument results in an error.
-        macro_rules! impl_test_conflicting_args {
+        macro_rules! impl_test_matrix {
             (
-                $t:ident,
-                $test_fn_name:ident,
-                $arg:tt => $arg_value:expr,
-                conflicting: $con:tt => $con_value:expr,
-                context: $context:expr
+                type: $t:ident,
+                context: $context:expr,
+                module: $module:ident,
+                tests[$(
+                        $arg:tt => $arg_value:expr,
+                        conflict: $con:tt => $con_value:expr,
+                        requires[$($req:tt => $req_value:expr),*]
+                        $test_fn_name:ident
+                    ),+
+                ]
             ) => {
-                #[test]
-                fn $test_fn_name() {
-                    let info: StdResult<ExecutableDeployItem, ErrWrapper> = $t {
-                        $arg: $arg_value,
-                        $con: $con_value,
-                        ..Default::default()
-                    }
-                    .try_into()
-                    .map_err(ErrWrapper);
-                    let mut conflicting = vec![
-                        format!("{}={}", stringify!($arg), $arg_value),
-                        format!("{}={}", stringify!($con), $con_value),
-                    ];
-                    conflicting.sort();
-                    assert_eq!(
-                        info,
-                        Err(Error::ConflictingArguments {
-                            context: $context,
-                            args: conflicting,
+                mod $module {
+                    use super::*;
+                    $(
+                        #[test]
+                        fn $test_fn_name() {
+                            let info: StdResult<ExecutableDeployItem, ErrWrapper> = $t {
+                                $arg: $arg_value,
+                                $con: $con_value,
+                                $($req: $req_value,),*
+                                ..Default::default()
+                            }
+                            .try_into()
+                            .map_err(ErrWrapper);
+                            let mut conflicting = vec![
+                                format!("{}={}", stringify!($arg), $arg_value),
+                                format!("{}={}", stringify!($con), $con_value),
+                            ];
+                            conflicting.sort();
+                            assert_eq!(
+                                info,
+                                Err(Error::ConflictingArguments {
+                                    context: $context,
+                                    args: conflicting
+                                }
+                                .into())
+                            );
                         }
-                        .into())
-                    );
-                }
-            };
-            (
-                $t:ident,
-                $test_fn_name:ident,
-                $arg:tt => $arg_value:expr,
-                required: $req:tt => $req_value:expr,
-                conflicting: $con:tt => $con_value:expr,
-                context: $context:expr
-            ) => {
-                #[test]
-                fn $test_fn_name() {
-                    let info: StdResult<ExecutableDeployItem, ErrWrapper> = $t {
-                        $arg: $arg_value,
-                        $req: $req_value,
-                        $con: $con_value,
-                        ..Default::default()
-                    }
-                    .try_into()
-                    .map_err(ErrWrapper);
-                    let mut conflicting = vec![
-                        format!("{}={}", stringify!($con), $con_value),
-                        format!("{}={}", stringify!($arg), $arg_value),
-                    ];
-                    conflicting.sort();
-                    assert_eq!(
-                        info,
-                        Err(Error::ConflictingArguments {
-                            context: $context,
-                            args: conflicting
-                        }
-                        .into())
-                    );
+                    )+
                 }
             };
         }
 
-        // session_hash
-        impl_test_conflicting_args!(
-            SessionStrParams,
-            session_name_conflicts_with_session_hash,
-            session_name => happy::NAME,
-            required: session_entry_point => happy::ENTRY_POINT,
-            conflicting: session_hash => happy::HASH,
-            context: "parse_session_info"
-        );
-        impl_test_conflicting_args!(
-            SessionStrParams,
-            session_package_name_conflicts_with_session_hash,
-            session_package_name => happy::PACKAGE_NAME,
-            required: session_entry_point => happy::ENTRY_POINT,
-            conflicting: session_hash => happy::HASH,
-            context: "parse_session_info"
-        );
-        impl_test_conflicting_args!(
-            SessionStrParams,
-            session_package_hash_conflicts_with_session_hash,
-            session_package_hash => happy::PACKAGE_HASH,
-            required: session_entry_point => happy::ENTRY_POINT,
-            conflicting: session_hash => happy::HASH,
-            context: "parse_session_info"
-        );
-        impl_test_conflicting_args!(
-            SessionStrParams,
-            session_path_conflicts_with_session_hash,
-            session_path => happy::PATH,
-            conflicting: session_hash => happy::HASH,
-            context: "parse_session_info"
-        );
+        impl_test_matrix![
+            type: SessionStrParams,
+            context: "parse_session_info",
+            module: session_str_params,
+            tests[
 
-        // session_name
-        impl_test_conflicting_args!(
-            SessionStrParams,
-            session_package_name_conflicts_with_session_name,
-            session_package_name => happy::PACKAGE_NAME,
-            required: session_entry_point => happy::ENTRY_POINT,
-            conflicting: session_name => happy::NAME,
-            context: "parse_session_info"
-        );
-        impl_test_conflicting_args!(
-            SessionStrParams,
-            session_package_hash_conflicts_with_session_name,
-            session_package_hash => happy::PACKAGE_HASH,
-            required: session_entry_point => happy::ENTRY_POINT,
-            conflicting: session_name => happy::NAME,
-            context: "parse_session_info"
-        );
-        impl_test_conflicting_args!(
-            SessionStrParams,
-            session_path_conflicts_with_session_name,
-            session_name => happy::PATH,
-            conflicting: session_path => happy::PATH,
-            context: "parse_session_info"
-        );
+                // path
+                session_path => happy::PATH, conflict: session_package_hash => happy::PACKAGE_HASH, requires[] path_conflicts_with_package_hash,
+                session_path => happy::PATH, conflict: session_package_name => happy::PACKAGE_NAME, requires[] path_conflicts_with_package_name,
+                session_path => happy::PATH, conflict: session_hash =>         happy::HASH,         requires[] path_conflicts_with_hash,
+                session_path => happy::PATH, conflict: session_name =>         happy::HASH,         requires[] path_conflicts_with_name,
+                session_path => happy::PATH, conflict: session_version =>      happy::VERSION,      requires[] path_conflicts_with_version,
+                session_path => happy::PATH, conflict: session_entry_point =>  happy::ENTRY_POINT,  requires[] path_conflicts_with_entry_point,
 
-        // session_package_name
-        impl_test_conflicting_args!(
-            SessionStrParams,
-            session_package_hash_conflicts_with_session_package_name,
-            session_package_hash => happy::PACKAGE_HASH,
-            required: session_entry_point => happy::ENTRY_POINT,
-            conflicting: session_package_name => happy::NAME,
-            context: "parse_session_info"
-        );
-        impl_test_conflicting_args!(
-            SessionStrParams,
-            session_path_conflicts_with_session_package_name,
-            session_path => happy::PATH,
-            conflicting: session_name => happy::NAME,
-            context: "parse_session_info"
-        );
-        // session_package_hash
-        impl_test_conflicting_args!(
-            SessionStrParams,
-            session_path_conflicts_with_session_package_hash,
-            session_path => happy::PATH,
-            conflicting: session_package_hash => happy::HASH,
-            context: "parse_session_info"
-        );
+                // name
+                session_name => happy::NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT] name_conflicts_with_package_hash,
+                session_name => happy::NAME, conflict: session_package_name => happy::PACKAGE_NAME, requires[session_entry_point => happy::ENTRY_POINT] name_conflicts_with_package_name,
+                session_name => happy::NAME, conflict: session_hash =>         happy::HASH,         requires[session_entry_point => happy::ENTRY_POINT] name_conflicts_with_hash,
 
-        // payment_hash
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_amount_conflicts_with_payment_hash,
-            payment_amount => "12345",
-            conflicting: payment_hash => happy::HASH,
-            context: "parse_payment_info"
-        );
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_name_conflicts_with_payment_hash,
-            payment_name => happy::NAME,
-            required: payment_entry_point => happy::ENTRY_POINT,
-            conflicting: payment_hash => happy::HASH,
-            context: "parse_payment_info"
-        );
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_package_name_conflicts_with_payment_hash,
-            payment_package_name => happy::PACKAGE_NAME,
-            required: payment_entry_point => happy::ENTRY_POINT,
-            conflicting: payment_hash => happy::HASH,
-            context: "parse_payment_info"
-        );
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_package_hash_conflicts_with_payment_hash,
-            payment_package_hash => happy::PACKAGE_HASH,
-            required: payment_entry_point => happy::ENTRY_POINT,
-            conflicting: payment_hash => happy::HASH,
-            context: "parse_payment_info"
-        );
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_path_conflicts_with_payment_hash,
-            payment_path => happy::PATH,
-            conflicting: payment_hash => happy::HASH,
-            context: "parse_payment_info"
-        );
+                // hash
+                session_hash => happy::HASH, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT] hash_conflicts_with_package_hash,
+                session_hash => happy::HASH, conflict: session_package_name => happy::PACKAGE_NAME, requires[session_entry_point => happy::ENTRY_POINT] hash_conflicts_with_package_name,
+                // name <-> hash is already checked
+                // name <-> path is already checked
 
-        // payment_name
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_amount_conflicts_with_payment_name,
-            payment_amount => "12345",
-            conflicting: payment_name => happy::NAME,
-            context: "parse_payment_info"
-        );
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_package_name_conflicts_with_payment_name,
-            payment_package_name => happy::PACKAGE_NAME,
-            required: payment_entry_point => happy::ENTRY_POINT,
-            conflicting: payment_name => happy::NAME,
-            context: "parse_payment_info"
-        );
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_package_hash_conflicts_with_payment_name,
-            payment_package_hash => happy::PACKAGE_HASH,
-            required: payment_entry_point => happy::ENTRY_POINT,
-            conflicting: payment_name => happy::NAME,
-            context: "parse_payment_info"
-        );
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_path_conflicts_with_payment_name,
-            payment_name => happy::PATH,
-            conflicting: payment_path => happy::PATH,
-            context: "parse_payment_info"
-        );
+                // package_name
+                session_package_name => happy::PACKAGE_NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT] package_name_conflicts_with_package_hash
+                // package_name <-> hash is already checked
+                // package_name <-> name is already checked
+                // package_name <-> path is already checked
 
-        // payment_package_name
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_amount_conflicts_with_payment_package_name,
-            payment_amount => "12345",
-            conflicting: payment_package_name => happy::PACKAGE_NAME,
-            context: "parse_payment_info"
-        );
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_package_hash_conflicts_with_payment_package_name,
-            payment_package_hash => happy::PACKAGE_HASH,
-            required: payment_entry_point => happy::ENTRY_POINT,
-            conflicting: payment_package_name => happy::NAME,
-            context: "parse_payment_info"
-        );
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_path_conflicts_with_payment_package_name,
-            payment_path => happy::PATH,
-            conflicting: payment_name => happy::NAME,
-            context: "parse_payment_info"
-        );
-        // payment_package_hash
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_amount_conflicts_with_payment_package_hash,
-            payment_amount => "12345",
-            conflicting: payment_package_hash => happy::PACKAGE_HASH,
-            context: "parse_payment_info"
-        );
-        impl_test_conflicting_args!(
-            PaymentStrParams,
-            payment_path_conflicts_with_payment_package_hash,
-            payment_path => happy::PATH,
-            conflicting: payment_package_hash => happy::PACKAGE_HASH,
-            context: "parse_payment_info"
-        );
+                // package_hash
+                // package_name <-> package_hash is already checked
+                // package_name <-> hash is already checked
+                // package_name <-> name is already checked
+                // package_name <-> path is already checked
+
+            ]
+        ];
+
+        impl_test_matrix![
+            type: PaymentStrParams,
+            context: "parse_payment_info",
+            module: payment_str_params,
+            tests[
+
+                // amount
+                payment_amount => happy::PATH, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[] amount_conflicts_with_package_hash,
+                payment_amount => happy::PATH, conflict: payment_package_name => happy::PACKAGE_NAME, requires[] amount_conflicts_with_package_name,
+                payment_amount => happy::PATH, conflict: payment_hash =>         happy::HASH,         requires[] amount_conflicts_with_hash,
+                payment_amount => happy::PATH, conflict: payment_name =>         happy::HASH,         requires[] amount_conflicts_with_name,
+                payment_amount => happy::PATH, conflict: payment_version =>      happy::VERSION,      requires[] amount_conflicts_with_version,
+                payment_amount => happy::PATH, conflict: payment_entry_point =>  happy::ENTRY_POINT,  requires[] amount_conflicts_with_entry_point,
+
+                // path
+                // amount <-> path is already checked
+                payment_path => happy::PATH, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[] path_conflicts_with_package_hash,
+                payment_path => happy::PATH, conflict: payment_package_name => happy::PACKAGE_NAME, requires[] path_conflicts_with_package_name,
+                payment_path => happy::PATH, conflict: payment_hash =>         happy::HASH,         requires[] path_conflicts_with_hash,
+                payment_path => happy::PATH, conflict: payment_name =>         happy::HASH,         requires[] path_conflicts_with_name,
+                payment_path => happy::PATH, conflict: payment_version =>      happy::VERSION,      requires[] path_conflicts_with_version,
+                payment_path => happy::PATH, conflict: payment_entry_point =>  happy::ENTRY_POINT,  requires[] path_conflicts_with_entry_point,
+
+                // name
+                // amount <-> path is already checked
+                payment_name => happy::NAME, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[payment_entry_point => happy::ENTRY_POINT] name_conflicts_with_package_hash,
+                payment_name => happy::NAME, conflict: payment_package_name => happy::PACKAGE_NAME, requires[payment_entry_point => happy::ENTRY_POINT] name_conflicts_with_package_name,
+                payment_name => happy::NAME, conflict: payment_hash =>         happy::HASH,         requires[payment_entry_point => happy::ENTRY_POINT] name_conflicts_with_hash,
+
+                // hash
+                // amount <-> hash is already checked
+                payment_hash => happy::HASH, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[payment_entry_point => happy::ENTRY_POINT] hash_conflicts_with_package_hash,
+                payment_hash => happy::HASH, conflict: payment_package_name => happy::PACKAGE_NAME, requires[payment_entry_point => happy::ENTRY_POINT] hash_conflicts_with_package_name,
+                // name <-> hash is already checked
+                // name <-> path is already checked
+
+                // package_name
+                // amount <-> package_name is already checked
+                payment_package_name => happy::PACKAGE_NAME, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[payment_entry_point => happy::ENTRY_POINT] package_name_conflicts_with_package_hash
+                // package_name <-> hash is already checked
+                // package_name <-> name is already checked
+                // package_name <-> path is already checked
+
+                // package_hash
+                // amount <-> package_hash is already checked
+                // package_name <-> package_hash is already checked
+                // package_name <-> hash is already checked
+                // package_name <-> name is already checked
+                // package_name <-> path is already checked
+            ]
+        ];
     }
 }
