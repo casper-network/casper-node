@@ -8,7 +8,6 @@ impl From<WasmConfig> for ipc::ChainSpec_WasmConfig {
     fn from(wasm_config: WasmConfig) -> Self {
         let mut pb_wasmconfig = ipc::ChainSpec_WasmConfig::new();
 
-        // pb_wasmconfig.set_initial_memor(wasm_config.max_memory);
         pb_wasmconfig.set_max_memory(wasm_config.max_memory);
         pb_wasmconfig.set_max_stack_height(wasm_config.max_stack_height);
         pb_wasmconfig.set_opcode_costs(wasm_config.opcode_costs().into());
