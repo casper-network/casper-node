@@ -9,11 +9,7 @@ use tokio::time;
 
 use super::*;
 use crate::{
-    components::{
-        deploy_acceptor,
-        in_memory_network::{NetworkController, NodeId},
-        storage::{self, Storage, StorageType},
-    },
+    components::{deploy_acceptor, in_memory_network::NetworkController, storage},
     effect::announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
     protocol::Message,
     reactor::{Reactor as ReactorTrait, Runner},
@@ -21,7 +17,7 @@ use crate::{
         network::{Network, NetworkedReactor},
         ConditionCheckReactor, TestRng,
     },
-    types::{Deploy, DeployHash},
+    types::{Deploy, DeployHash, NodeId},
     utils::WithDir,
 };
 
@@ -42,7 +38,7 @@ impl Drop for Reactor {
 
 #[derive(Debug)]
 pub struct FetcherTestConfig {
-    gossiper_config: GossipConfig,
+    fetcher_config: Config,
     storage_config: storage::Config,
     temp_dir: TempDir,
 }
@@ -51,7 +47,7 @@ impl Default for FetcherTestConfig {
     fn default() -> Self {
         let (storage_config, temp_dir) = storage::Config::default_for_tests();
         FetcherTestConfig {
-            gossiper_config: Default::default(),
+            fetcher_config: Default::default(),
             storage_config,
             temp_dir,
         }
@@ -63,22 +59,21 @@ reactor!(Reactor {
 
     components: {
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
-        storage = Storage(WithDir::new(cfg.temp_dir.path(), cfg.storage_config));
+        storage = Storage(&WithDir::new(cfg.temp_dir.path(), cfg.storage_config));
         deploy_acceptor = infallible DeployAcceptor();
-        deploy_fetcher = infallible Fetcher::<Deploy>(cfg.gossiper_config);
+        deploy_fetcher = infallible Fetcher::<Deploy>(cfg.fetcher_config);
     }
 
     events: {
         network = Event<Message>;
-        storage = Event<Storage>;
         deploy_fetcher = Event<Deploy>;
     }
 
     requests: {
-        // This tests contains no linear chain requests, so we panic if we receive any.
+        // This test contains no linear chain requests, so we panic if we receive any.
         LinearChainRequest<NodeId> -> !;
         NetworkRequest<NodeId, Message> -> network;
-        StorageRequest<Storage> -> storage;
+        StorageRequest -> storage;
         FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
     }
 
@@ -87,9 +82,9 @@ reactor!(Reactor {
         DeployAcceptorAnnouncement<NodeId> -> [deploy_fetcher];
         // TODO: Route network messages
         NetworkAnnouncement<NodeId, Message> -> [fn handle_message];
-        // Currently the ApiServerAnnouncement is misnamed - it solely tells of new deploys arriving
+        // Currently the RpcServerAnnouncement is misnamed - it solely tells of new deploys arriving
         // from a client.
-        ApiServerAnnouncement -> [deploy_acceptor];
+        RpcServerAnnouncement -> [deploy_acceptor];
     }
 });
 
@@ -97,7 +92,7 @@ impl Reactor {
     fn handle_message(
         &mut self,
         effect_builder: EffectBuilder<ReactorEvent>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut NodeRng,
         network_announcement: NetworkAnnouncement<NodeId, Message>,
     ) -> Effects<ReactorEvent> {
         // TODO: Make this manual routing disappear and supply appropriate
@@ -116,14 +111,15 @@ impl Reactor {
                         }
                     };
 
-                    self.dispatch_event(
-                        effect_builder,
-                        rng,
-                        ReactorEvent::Storage(storage::Event::GetDeployForPeer {
-                            deploy_hash,
-                            peer: sender,
-                        }),
-                    )
+                    todo!()
+                    // self.dispatch_event(
+                    //     effect_builder,
+                    //     rng,
+                    //     ReactorEvent::Storage(storage::Event::GetDeployForPeer {
+                    //         deploy_hash,
+                    //         peer: sender,
+                    //     }),
+                    // )
                 }
 
                 Message::GetResponse {
@@ -232,21 +228,22 @@ async fn assert_settled(
 
     network.settle_on(rng, has_responded, timeout).await;
 
-    let maybe_stored_deploy = network
-        .nodes()
-        .get(node_id)
-        .unwrap()
-        .reactor()
-        .inner()
-        .storage
-        .deploy_store()
-        .get(smallvec![deploy_hash])
-        .pop()
-        .expect("should only be a single result")
-        .expect("should not error while getting");
-    assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
+    // let maybe_stored_deploy = network
+    //     .nodes()
+    //     .get(node_id)
+    //     .unwrap()
+    //     .reactor()
+    //     .inner()
+    //     .storage
+    //     .deploy_store()
+    //     .get(smallvec![deploy_hash])
+    //     .pop()
+    //     .expect("should only be a single result")
+    //     .expect("should not error while getting");
+    let maybe_stored_deploy = todo!();
+    // assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
 
-    assert_eq!(fetched.lock().unwrap().1, expected_result)
+    // assert_eq!(fetched.lock().unwrap().1, expected_result)
 }
 
 #[tokio::test]
@@ -275,7 +272,7 @@ async fn should_fetch_from_local() {
     network
         .process_injected_effect_on(
             node_id,
-            fetch_deploy(deploy_hash, *node_id, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, node_id.clone(), Arc::clone(&fetched)),
         )
         .await;
 
@@ -321,11 +318,14 @@ async fn should_fetch_from_peer() {
     network
         .process_injected_effect_on(
             node_without_deploy,
-            fetch_deploy(deploy_hash, *node_with_deploy, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, node_with_deploy.clone(), Arc::clone(&fetched)),
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromPeer(Box::new(deploy), *node_with_deploy));
+    let expected_result = Some(FetchResult::FromPeer(
+        Box::new(deploy),
+        node_with_deploy.clone(),
+    ));
     assert_settled(
         node_without_deploy,
         deploy_hash,
@@ -356,8 +356,8 @@ async fn should_timeout_fetch_from_peer() {
     let deploy = Deploy::random(&mut rng);
     let deploy_hash = *deploy.id();
 
-    let holding_node = node_ids[0];
-    let requesting_node = node_ids[1];
+    let holding_node = node_ids[0].clone();
+    let requesting_node = node_ids[1].clone();
 
     // Store deploy on holding node.
     store_deploy(&deploy, &holding_node, &mut network, &mut rng).await;
@@ -367,7 +367,7 @@ async fn should_timeout_fetch_from_peer() {
     network
         .process_injected_effect_on(
             &requesting_node,
-            fetch_deploy(deploy_hash, holding_node, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, holding_node.clone(), Arc::clone(&fetched)),
         )
         .await;
 
@@ -412,7 +412,7 @@ async fn should_timeout_fetch_from_peer() {
         .await;
 
     // Advance time.
-    let secs_to_advance = GossipConfig::default().get_remainder_timeout_secs();
+    let secs_to_advance = Config::default().get_from_peer_timeout();
     time::pause();
     time::advance(Duration::from_secs(secs_to_advance + 10)).await;
     time::resume();
