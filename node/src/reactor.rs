@@ -26,7 +26,7 @@
 
 mod event_queue_metrics;
 pub mod initializer;
-// pub mod initializer2;
+pub mod initializer2;
 pub mod joiner;
 mod queue_kind;
 pub mod validator;
