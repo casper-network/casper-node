@@ -1,12 +1,14 @@
 use std::fmt::{self, Display, Formatter};
 
+use datasize::DataSize;
+use serde::Serialize;
+
 use super::Item;
 use crate::{
     effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest, Responder},
     types::{Deploy, NodeId},
     utils::Source,
 };
-use datasize::DataSize;
 
 #[derive(Clone, DataSize, Debug, PartialEq)]
 pub enum FetchResult<T> {
@@ -17,7 +19,7 @@ pub enum FetchResult<T> {
 pub(crate) type FetchResponder<T> = Responder<Option<FetchResult<T>>>;
 
 /// `Fetcher` events.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Event<T: Item> {
     /// The initiating event to fetch an item by its id.
     Fetch {

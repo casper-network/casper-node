@@ -4,6 +4,7 @@ mod event;
 use std::{collections::HashMap, convert::Infallible, fmt::Debug};
 
 use semver::Version;
+use serde::Serialize;
 use tracing::{debug, error, warn};
 
 use crate::{
@@ -32,7 +33,7 @@ impl<REv> ReactorEventT for REv where
 {
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DeployAcceptorConfig {
     chain_name: String,
     deploy_config: DeployConfig,

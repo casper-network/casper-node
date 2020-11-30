@@ -132,7 +132,7 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
 
     quote!(
         #[doc = #event_docs]
-        #[derive(Debug)]
+        #[derive(Debug, serde::Serialize)]
         pub enum #event_ident {
            #(#event_variants,)*
         }

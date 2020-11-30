@@ -95,7 +95,7 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 #[cfg(target_os = "macos")]
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 
-#[derive(Debug, From)]
+#[derive(Debug, From, Serialize)]
 pub enum Event {
     /// Incoming storage request.
     #[from]

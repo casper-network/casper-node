@@ -9,6 +9,7 @@ use std::{
 };
 
 use casper_types::ExecutionResult;
+use serde::Serialize;
 
 use crate::{
     components::small_network::GossipedAddress,
@@ -19,7 +20,7 @@ use crate::{
 };
 
 /// A networking layer announcement.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub enum NetworkAnnouncement<I, P> {
     /// A payload message has been received from a peer.
@@ -62,7 +63,7 @@ where
 // announcement. Additionally, the `DeployReceived` is actually a deploy-received-from-client event
 // as it stands right now, note that there is no sender ID -- anyone processing this announcement
 // will claim it as Source::Client.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub enum RpcServerAnnouncement {
     /// A new deploy received.
@@ -83,7 +84,7 @@ impl Display for RpcServerAnnouncement {
 }
 
 /// A `DeployAcceptor` announcement.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum DeployAcceptorAnnouncement<I> {
     /// A deploy which wasn't previously stored on this node has been accepted and stored.
     AcceptedNewDeploy {

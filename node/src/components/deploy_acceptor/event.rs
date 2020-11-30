@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use semver::Version;
+use serde::Serialize;
 
 use super::{DeployAcceptorConfig, Source};
 use crate::{
@@ -9,7 +10,7 @@ use crate::{
 };
 
 /// `DeployAcceptor` events.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Event {
     /// The initiating event to accept a new `Deploy`.
     Accept {

@@ -186,7 +186,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 /// A storage request.
 #[must_use]
 pub enum StorageRequest {
@@ -669,7 +669,7 @@ impl Display for ContractRuntimeRequest {
 }
 
 /// Fetcher related requests.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub enum FetcherRequest<I, T: Item> {
     /// Return the specified item if it exists, else `None`.
@@ -735,7 +735,7 @@ impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
 
 type BlockHeight = u64;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 /// Requests issued to the Linear Chain component.
 pub enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.
