@@ -289,9 +289,10 @@ impl reactor::Reactor for Reactor {
             Event::DeployGossiperAnnouncement(_ann) => {
                 unreachable!("the deploy gossiper should never make an announcement")
             }
-            Event::Network(_) => {
-                todo!()
-            }
+            Event::Network(event) => reactor::wrap_effects(
+                Event::Network,
+                self.network.handle_event(effect_builder, rng, event),
+            ),
         }
     }
 }
