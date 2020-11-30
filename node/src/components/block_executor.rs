@@ -403,17 +403,28 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
             Event::Request(BlockExecutorRequest::ExecuteBlock(finalized_block)) => {
                 debug!(?finalized_block, "execute block");
                 if finalized_block.proto_block().deploys().is_empty() {
-                    effect_builder
+                    return effect_builder
                         .immediately()
                         .event(move |_| Event::GetDeploysResult {
                             finalized_block,
                             deploys: VecDeque::new(),
-                        })
-                } else {
+                        });
+                }
+                effect_builder
+                    .get_block_at_height_local(finalized_block.height())
+                    .event(move |maybe_block| {
+                        Event::BlockAlreadyExists(maybe_block.is_some(), finalized_block)
+                    })
+            }
+            Event::BlockAlreadyExists(exists, finalized_block) => {
+                if !exists {
+                    // If we haven't executed the block before in the past (for example during
+                    // joining), do it now.
                     self.get_deploys(effect_builder, finalized_block)
+                } else {
+                    return Effects::new();
                 }
             }
-
             Event::GetDeploysResult {
                 finalized_block,
                 deploys,
