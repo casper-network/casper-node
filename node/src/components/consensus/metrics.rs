@@ -63,9 +63,9 @@ impl Drop for ConsensusMetrics {
             .expect("did not expect deregistering rate to fail");
         self.registry
             .unregister(Box::new(self.finalized_block_count.clone()))
-            .expect("did not expect deregisterting amount to fail");
+            .expect("did not expect deregistering amount to fail");
         self.registry
             .unregister(Box::new(self.current_era.clone()))
-            .expect("did note expect deregistering curren_era to fail");
+            .expect("did not expect deregistering current era to fail");
     }
 }

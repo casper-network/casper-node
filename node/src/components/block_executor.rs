@@ -10,6 +10,7 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
+use prometheus::Registry;
 use smallvec::SmallVec;
 use tracing::{debug, error, trace};
 
@@ -41,7 +42,6 @@ use crate::{
     NodeRng,
 };
 pub(crate) use event::Event;
-use prometheus::Registry;
 
 /// A helper trait whose bounds represent the requirements for a reactor event that `BlockExecutor`
 /// can work with.
