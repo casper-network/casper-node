@@ -207,7 +207,7 @@ remove_key = { cost = 1032, arguments = [0, 1] }
 ret = { cost = 1033, arguments = [0, 1] }
 revert = { cost = 1034, arguments = [0] }
 set_action_threshold = { cost = 1035, arguments = [0, 1] }
-transfer_from_purse_to_account = { cost = 1036, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 9] }
+transfer_from_purse_to_account = { cost = 1036, arguments = [0, 1, 2, 3, 4, 5, 6, 7, 8] }
 transfer_from_purse_to_purse = { cost = 1037, arguments = [0, 1, 2, 3, 4, 5, 6, 7] }
 transfer_to_account = { cost = 1038, arguments = [0, 1, 2, 3, 4, 5, 6] }
 update_associated_key = { cost = 1039, arguments = [0, 1, 2] }
