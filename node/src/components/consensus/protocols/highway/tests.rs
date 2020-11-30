@@ -129,10 +129,15 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
                 "Invalid message is not message that was sent."
             );
             assert_eq!(offending_sender, &sender, "Unexpected sender.");
-            assert!(format!("{:?}", err).starts_with(
-                "The vertex contains an invalid unit: `The round length exponent is less than the minimum allowed by the chain-spec.`"),
-                    "Error message did not start as expected: {:?}", 
-                    err)
+            assert!(
+                format!("{:?}", err).starts_with(
+                    "The vertex contains an invalid unit: `The round \
+                     length exponent is less than the minimum allowed by \
+                     the chain-spec.`"
+                ),
+                "Error message did not start as expected: {:?}",
+                err
+            )
         }
         Some(protocol_outcome) => panic!("Unexpected protocol outcome {:?}", protocol_outcome),
     }
