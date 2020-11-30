@@ -121,7 +121,7 @@ pub fn transfer_to_account(target: AccountHash, amount: U512, id: Option<u64>) -
         )
     };
 
-    // Propagate error (if there is)
+    // Propagate error (if any)
     api_error::result_from(return_code)?;
 
     // Return appropriate result if transfer was successful
@@ -157,7 +157,7 @@ pub fn transfer_from_purse_to_account(
         )
     };
 
-    // Propagate error (if there is)
+    // Propagate error (if any)
     api_error::result_from(return_code)?;
 
     // Return appropriate result if transfer was successful
