@@ -33,7 +33,7 @@ block_max_deploy_count = 125
 block_gas_limit = 13
 
 [wasm_config]
-initial_memory = 17
+max_memory = 17
 max_stack_height = 19
 
 [wasm_config.opcode_costs]
@@ -128,7 +128,7 @@ upgrade_installer_path = 'upgrade.wasm'
 height = 23
 
 [upgrade.new_wasm_config]
-initial_memory = 17
+max_memory = 17
 max_stack_height = 19
 
 [upgrade.new_wasm_config.opcode_costs]
