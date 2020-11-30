@@ -427,20 +427,25 @@ where
         block_header: BlockHeader,
         responder: Responder<FinalitySignature>,
     ) -> Effects<Event<I>> {
-        // TODO - we should only sign if we're a validator for the given era ID.
-        let signature = asymmetric_key::sign(
-            block_header.hash().inner(),
-            &self.era_supervisor.secret_signing_key,
-            &self.era_supervisor.public_signing_key,
-            self.rng,
-        );
-        let mut effects = responder
-            .respond(FinalitySignature::new(
-                block_header.hash(),
-                signature,
-                self.era_supervisor.public_signing_key,
-            ))
-            .ignore();
+        let mut effects = Effects::new();
+        if self.is_validator_in(block_header.era_id()) {
+            let signature = asymmetric_key::sign(
+                block_header.hash().inner(),
+                &self.era_supervisor.secret_signing_key,
+                &self.era_supervisor.public_signing_key,
+                self.rng,
+            );
+
+            effects.extend(
+                responder
+                    .respond(FinalitySignature::new(
+                        block_header.hash(),
+                        signature,
+                        self.era_supervisor.public_signing_key,
+                    ))
+                    .ignore(),
+            );
+        };
         if block_header.era_id() < self.era_supervisor.current_era {
             trace!(era_id = %block_header.era_id(), "executed block in old era");
             return effects;
@@ -582,6 +587,13 @@ where
     /// Returns the era with the specified ID mutably. Panics if it does not exist.
     fn era_mut(&mut self, era_id: EraId) -> &mut Era<I> {
         self.era_supervisor.active_eras.get_mut(&era_id).unwrap()
+    }
+
+    /// Returns whether this node's validator is bonded in `era_id`.
+    fn is_validator_in(&self, era_id: EraId) -> bool {
+        self.era(era_id)
+            .consensus
+            .is_bonded_validator(&self.era_supervisor.public_signing_key)
     }
 
     fn handle_consensus_result(

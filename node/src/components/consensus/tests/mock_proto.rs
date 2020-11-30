@@ -101,6 +101,7 @@ where
     start_time: Timestamp,
     pending_blocks: VecDeque<PendingBlock<C>>,
     finalized_blocks: Vec<FinalizedBlock<C>>,
+    validators: Vec<C::ValidatorId>,
 }
 
 impl<C: Context + 'static> MockProto<C>
@@ -110,7 +111,7 @@ where
     /// Creates a new boxed `MockProto` instance.
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
-        _validator_stakes: Vec<(C::ValidatorId, Motes)>,
+        validator_stakes: Vec<(C::ValidatorId, Motes)>,
         slashed: &HashSet<C::ValidatorId>,
         chainspec: &Chainspec,
         _prev_cp: Option<&dyn ConsensusProtocol<NodeId, C>>,
@@ -127,6 +128,7 @@ where
             start_time,
             pending_blocks: Default::default(),
             finalized_blocks: Default::default(),
+            validators: validator_stakes.into_iter().map(|(vid, _)| vid).collect(),
         })
     }
 }
@@ -295,5 +297,9 @@ where
 
     fn has_received_messages(&self) -> bool {
         !self.pending_blocks.is_empty() || !self.finalized_blocks.is_empty()
+    }
+
+    fn is_bonded_validator(&self, vid: &C::ValidatorId) -> bool {
+        self.validators.iter().any(|id| id == vid)
     }
 }

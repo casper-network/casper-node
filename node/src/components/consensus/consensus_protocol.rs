@@ -150,6 +150,9 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
     /// Returns the list of all validators that were observed as faulty in this consensus instance.
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId>;
 
+    /// Returns whether validator is bonded in that instance of the consensus protocol.
+    fn is_bonded_validator(&self, vid: &C::ValidatorId) -> bool;
+
     /// Returns true if the protocol has received some messages since initialization.
     fn has_received_messages(&self) -> bool;
 }

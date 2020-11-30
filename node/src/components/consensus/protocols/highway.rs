@@ -622,4 +622,8 @@ where
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn is_bonded_validator(&self, vid: &C::ValidatorId) -> bool {
+        self.highway.validators().has_validator(vid)
+    }
 }

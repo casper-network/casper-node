@@ -94,6 +94,11 @@ impl<VID: Eq + Hash> Validators<VID> {
             .filter(|(_, v)| v.banned)
             .map(|(idx, _)| ValidatorIndex::from(idx as u32))
     }
+
+    /// Return whether the validator exists in this validator map.
+    pub(crate) fn has_validator(&self, validator: &VID) -> bool {
+        self.index_by_id.contains_key(validator)
+    }
 }
 
 impl<VID: Ord + Hash + Clone, W: Into<Weight>> FromIterator<(VID, W)> for Validators<VID> {
