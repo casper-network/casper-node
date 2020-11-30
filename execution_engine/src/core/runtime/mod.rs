@@ -48,6 +48,7 @@ use crate::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction},
         stored_value::StoredValue,
+        wasm_config::WasmConfig,
     },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
@@ -81,9 +82,10 @@ pub fn rename_export_to_call(module: &mut Module, name: String) {
 pub fn instance_and_memory(
     parity_module: Module,
     protocol_version: ProtocolVersion,
+    wasm_config: &WasmConfig,
 ) -> Result<(ModuleRef, MemoryRef), Error> {
     let module = wasmi::Module::from_parity_wasm_module(parity_module)?;
-    let resolver = create_module_resolver(protocol_version)?;
+    let resolver = create_module_resolver(protocol_version, wasm_config)?;
     let mut imports = ImportsBuilder::new();
     imports.push_resolver("env", &resolver);
     let not_started_module = ModuleInstance::new(&module, &imports)?;
@@ -1938,7 +1940,11 @@ where
 
         let entry_point_name = entry_point.name();
 
-        let (instance, memory) = instance_and_memory(module.clone(), protocol_version)?;
+        let (instance, memory) = instance_and_memory(
+            module.clone(),
+            protocol_version,
+            self.protocol_data().wasm_config(),
+        )?;
 
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();

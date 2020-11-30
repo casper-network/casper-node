@@ -8,14 +8,13 @@ use super::{
     host_function_costs::HostFunctionCosts, opcode_costs::OpcodeCosts, storage_costs::StorageCosts,
 };
 
-pub const DEFAULT_INITIAL_MEMORY: u32 = 64;
+pub const DEFAULT_WASM_MAX_MEMORY: u32 = 64;
 pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 64 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct WasmConfig {
-    /// Memory stipend. Amount of free memory (in 64kb pages) each contract can
-    /// use for stack.
-    pub initial_memory: u32,
+    /// Maximum amount of a heap memory (represented in 64kb pages) each contract can use.
+    pub max_memory: u32,
     /// Max stack height (native WebAssembly stack limiter)
     pub max_stack_height: u32,
     /// Wasm opcode costs table
@@ -28,14 +27,14 @@ pub struct WasmConfig {
 
 impl WasmConfig {
     pub const fn new(
-        initial_mem: u32,
+        max_memory: u32,
         max_stack_height: u32,
         opcode_costs: OpcodeCosts,
         storage_costs: StorageCosts,
         host_function_costs: HostFunctionCosts,
     ) -> Self {
         Self {
-            initial_memory: initial_mem,
+            max_memory,
             max_stack_height,
             opcode_costs,
             storage_costs,
@@ -59,7 +58,7 @@ impl WasmConfig {
 impl Default for WasmConfig {
     fn default() -> Self {
         Self {
-            initial_memory: DEFAULT_INITIAL_MEMORY,
+            max_memory: DEFAULT_WASM_MAX_MEMORY,
             max_stack_height: DEFAULT_MAX_STACK_HEIGHT,
             opcode_costs: OpcodeCosts::default(),
             storage_costs: StorageCosts::default(),
@@ -72,7 +71,7 @@ impl ToBytes for WasmConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
-        ret.append(&mut self.initial_memory.to_bytes()?);
+        ret.append(&mut self.max_memory.to_bytes()?);
         ret.append(&mut self.max_stack_height.to_bytes()?);
         ret.append(&mut self.opcode_costs.to_bytes()?);
         ret.append(&mut self.storage_costs.to_bytes()?);
@@ -82,7 +81,7 @@ impl ToBytes for WasmConfig {
     }
 
     fn serialized_length(&self) -> usize {
-        self.initial_memory.serialized_length()
+        self.max_memory.serialized_length()
             + self.max_stack_height.serialized_length()
             + self.opcode_costs.serialized_length()
             + self.storage_costs.serialized_length()
@@ -92,7 +91,7 @@ impl ToBytes for WasmConfig {
 
 impl FromBytes for WasmConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (initial_mem, rem) = FromBytes::from_bytes(bytes)?;
+        let (max_memory, rem) = FromBytes::from_bytes(bytes)?;
         let (max_stack_height, rem) = FromBytes::from_bytes(rem)?;
         let (opcode_costs, rem) = FromBytes::from_bytes(rem)?;
         let (storage_costs, rem) = FromBytes::from_bytes(rem)?;
@@ -100,7 +99,7 @@ impl FromBytes for WasmConfig {
 
         Ok((
             WasmConfig {
-                initial_memory: initial_mem,
+                max_memory,
                 max_stack_height,
                 opcode_costs,
                 storage_costs,
@@ -114,7 +113,7 @@ impl FromBytes for WasmConfig {
 impl Distribution<WasmConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> WasmConfig {
         WasmConfig {
-            initial_memory: rng.gen(),
+            max_memory: rng.gen(),
             max_stack_height: rng.gen(),
             opcode_costs: rng.gen(),
             storage_costs: rng.gen(),
@@ -135,14 +134,14 @@ pub mod gens {
 
     prop_compose! {
         pub fn wasm_config_arb() (
-            initial_memory in num::u32::ANY,
+            max_memory in num::u32::ANY,
             max_stack_height in num::u32::ANY,
             opcode_costs in opcode_costs_arb(),
             storage_costs in storage_costs_arb(),
             host_function_costs in host_function_costs_arb(),
         ) -> WasmConfig {
             WasmConfig {
-                initial_memory,
+                max_memory,
                 max_stack_height,
                 opcode_costs,
                 storage_costs,

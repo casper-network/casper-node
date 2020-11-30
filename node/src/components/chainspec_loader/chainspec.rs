@@ -634,7 +634,7 @@ mod tests {
             EXPECTED_UPGRADE_COSTS,
         );
 
-        assert_eq!(new_wasm_config.initial_memory, 17);
+        assert_eq!(new_wasm_config.max_memory, 17);
         assert_eq!(new_wasm_config.max_stack_height, 19);
 
         assert_eq!(

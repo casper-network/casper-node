@@ -82,7 +82,7 @@ block_gas_limit = 10_000_000_000_000
 
 [wasm_config]
 # Amount of free memory (in 64kB pages) each contract can use for stack.
-initial_memory = 64
+max_memory = 64
 # Max stack height (native WebAssembly stack limiter).
 max_stack_height = 65_536
 
