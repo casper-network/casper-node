@@ -241,22 +241,17 @@ async fn assert_settled(
 
     network.settle_on(rng, has_responded, timeout).await;
 
-    // let maybe_stored_deploy = network
-    //     .nodes()
-    //     .get(node_id)
-    //     .unwrap()
-    //     .reactor()
-    //     .inner()
-    //     .storage
-    //     .deploy_store()
-    //     .get(smallvec![deploy_hash])
-    //     .pop()
-    //     .expect("should only be a single result")
-    //     .expect("should not error while getting");
-    let maybe_stored_deploy = todo!();
-    // assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
+    let maybe_stored_deploy = network
+        .nodes()
+        .get(node_id)
+        .unwrap()
+        .reactor()
+        .inner()
+        .storage
+        .get_deploy_by_hash(deploy_hash);
 
-    // assert_eq!(fetched.lock().unwrap().1, expected_result)
+    assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
+    assert_eq!(fetched.lock().unwrap().1, expected_result)
 }
 
 #[tokio::test]
