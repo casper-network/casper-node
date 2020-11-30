@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
@@ -70,14 +70,14 @@ const BID_ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([206; 32]);
 const BID_ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const BID_ACCOUNT_2_BOND: u64 = 0;
 
-lazy_static! {
-    static ref NON_FOUNDER_VALIDATOR_1_ADDR: AccountHash = NON_FOUNDER_VALIDATOR_1_PK.into();
-    static ref NON_FOUNDER_VALIDATOR_2_ADDR: AccountHash = NON_FOUNDER_VALIDATOR_2_PK.into();
-    static ref ACCOUNT_1_ADDR: AccountHash = ACCOUNT_1_PK.into();
-    static ref ACCOUNT_2_ADDR: AccountHash = ACCOUNT_2_PK.into();
-    static ref BID_ACCOUNT_1_ADDR: AccountHash = BID_ACCOUNT_1_PK.into();
-    static ref BID_ACCOUNT_2_ADDR: AccountHash = BID_ACCOUNT_2_PK.into();
-}
+static NON_FOUNDER_VALIDATOR_1_ADDR: Lazy<AccountHash> =
+    Lazy::new(|| NON_FOUNDER_VALIDATOR_1_PK.into());
+static NON_FOUNDER_VALIDATOR_2_ADDR: Lazy<AccountHash> =
+    Lazy::new(|| NON_FOUNDER_VALIDATOR_2_PK.into());
+static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PK.into());
+static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PK.into());
+static BID_ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| BID_ACCOUNT_1_PK.into());
+static BID_ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| BID_ACCOUNT_2_PK.into());
 
 const UNBONDING_PURSE_NAME_1: &str = "unbonding_purse_1";
 const UNBONDING_PURSE_NAME_2: &str = "unbonding_purse_2";

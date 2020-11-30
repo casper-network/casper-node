@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
 use casper_engine_test_support::{
@@ -29,20 +29,22 @@ const CONTRACT_EE_966_REGRESSION: &str = "ee_966_regression.wasm";
 const MINIMUM_INITIAL_MEMORY: u32 = 16;
 const DEFAULT_ACTIVATION_POINT: ActivationPoint = 0;
 
-lazy_static! {
-    static ref DOUBLED_WASM_MEMORY_LIMIT: WasmConfig = WasmConfig::new(
+static DOUBLED_WASM_MEMORY_LIMIT: Lazy<WasmConfig> = Lazy::new(|| {
+    WasmConfig::new(
         DEFAULT_WASM_MAX_MEMORY * 2,
         DEFAULT_MAX_STACK_HEIGHT,
         OpcodeCosts::default(),
         StorageCosts::default(),
-        HostFunctionCosts::default()
-    );
-    static ref NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+        HostFunctionCosts::default(),
+    )
+});
+static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
+    ProtocolVersion::from_parts(
         DEFAULT_PROTOCOL_VERSION.value().major,
         DEFAULT_PROTOCOL_VERSION.value().minor,
         DEFAULT_PROTOCOL_VERSION.value().patch + 1,
-    );
-}
+    )
+});
 
 fn make_session_code_with_memory_pages(initial_pages: u32, max_pages: Option<u32>) -> Vec<u8> {
     let module = builder::module()

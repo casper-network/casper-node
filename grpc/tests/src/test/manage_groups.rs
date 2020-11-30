@@ -1,4 +1,8 @@
+use std::{collections::BTreeSet, iter::FromIterator};
+
 use assert_matches::assert_matches;
+use once_cell::sync::Lazy;
+
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
@@ -7,10 +11,10 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
-use casper_types::{contracts, contracts::MAX_GROUPS, runtime_args, Group, Key, RuntimeArgs};
-use contracts::CONTRACT_INITIAL_VERSION;
-use lazy_static::lazy_static;
-use std::{collections::BTreeSet, iter::FromIterator};
+use casper_types::{
+    contracts::{self, CONTRACT_INITIAL_VERSION, MAX_GROUPS},
+    runtime_args, Group, Key, RuntimeArgs,
+};
 
 const CONTRACT_GROUPS: &str = "manage_groups.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -27,13 +31,13 @@ const TOTAL_NEW_UREFS_ARG: &str = "total_new_urefs";
 const TOTAL_EXISTING_UREFS_ARG: &str = "total_existing_urefs";
 const ARG_AMOUNT: &str = "amount";
 
-lazy_static! {
-    static ref DEFAULT_CREATE_GROUP_ARGS: RuntimeArgs = runtime_args! {
+static DEFAULT_CREATE_GROUP_ARGS: Lazy<RuntimeArgs> = Lazy::new(|| {
+    runtime_args! {
         GROUP_NAME_ARG => GROUP_1_NAME,
         TOTAL_NEW_UREFS_ARG => 1u64,
         TOTAL_EXISTING_UREFS_ARG => 1u64,
-    };
-}
+    }
+});
 
 #[ignore]
 #[test]

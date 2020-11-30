@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use rand::RngCore;
 
 use casper_types::{
@@ -45,9 +45,7 @@ const DEPLOY_HASH: [u8; 32] = [1u8; 32];
 const PHASE: Phase = Phase::Session;
 const GAS_LIMIT: u64 = 500_000_000_000_000u64;
 
-lazy_static! {
-    static ref TEST_PROTOCOL_DATA: ProtocolData = ProtocolData::default();
-}
+static TEST_PROTOCOL_DATA: Lazy<ProtocolData> = Lazy::new(ProtocolData::default);
 
 fn mock_tracking_copy(
     init_key: Key,

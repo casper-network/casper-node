@@ -8,7 +8,7 @@ use std::{convert::TryFrom, str};
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -36,8 +36,8 @@ use crate::{
     },
 };
 
-lazy_static! {
-    static ref MERKLE_PROOF: String = String::from(
+static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
+    String::from(
         "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e\
         55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3\
         f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a\
@@ -48,31 +48,32 @@ lazy_static! {
         bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d0000030\
         00000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467\
         a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c\
-        1bcbcee522649d2b135fe510fe3");
-    static ref GET_ITEM_PARAMS: GetItemParams = GetItemParams {
-        state_root_hash: *Block::doc_example().header().state_root_hash(),
-        key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
-        path: vec!["inner".to_string()]
-    };
-    static ref GET_ITEM_RESULT: GetItemResult = GetItemResult {
-        api_version: CLIENT_API_VERSION.clone(),
-        stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
-        merkle_proof: MERKLE_PROOF.clone(),
-    };
-    static ref GET_BALANCE_PARAMS: GetBalanceParams = GetBalanceParams {
-        state_root_hash: *Block::doc_example().header().state_root_hash(),
-        purse_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007".to_string(),
-    };
-    static ref GET_BALANCE_RESULT: GetBalanceResult = GetBalanceResult {
-        api_version: CLIENT_API_VERSION.clone(),
-        balance_value: U512::from(123_456),
-        merkle_proof: MERKLE_PROOF.clone(),
-    };
-    static ref GET_AUCTION_INFO_RESULT: GetAuctionInfoResult = GetAuctionInfoResult {
-        api_version: CLIENT_API_VERSION.clone(),
-        auction_state: AuctionState::doc_example().clone(),
-    };
-}
+        1bcbcee522649d2b135fe510fe3")
+});
+static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
+    state_root_hash: *Block::doc_example().header().state_root_hash(),
+    key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+    path: vec!["inner".to_string()],
+});
+static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
+    merkle_proof: MERKLE_PROOF.clone(),
+});
+static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParams {
+    state_root_hash: *Block::doc_example().header().state_root_hash(),
+    purse_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
+        .to_string(),
+});
+static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    balance_value: U512::from(123_456),
+    merkle_proof: MERKLE_PROOF.clone(),
+});
+static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    auction_state: AuctionState::doc_example().clone(),
+});
 
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
