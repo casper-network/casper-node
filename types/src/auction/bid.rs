@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// An entry in a founding validator map.
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct Bid {
     /// The purse that was used for bonding.
     bonding_purse: URef,

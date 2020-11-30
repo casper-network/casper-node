@@ -52,7 +52,7 @@ impl AdditiveMapDiff {
 
 #[cfg(test)]
 mod tests {
-    use lazy_static::lazy_static;
+    use once_cell::sync::Lazy;
     use rand::{self, Rng};
 
     use casper_types::{AccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH};
@@ -62,47 +62,45 @@ mod tests {
     const MIN_ELEMENTS: u8 = 1;
     const MAX_ELEMENTS: u8 = 10;
 
-    lazy_static! {
-        static ref LEFT_ONLY: AdditiveMap<Key, Transform> = {
-            let mut map = AdditiveMap::new();
-            for i in 0..random_element_count() {
-                map.insert(
-                    Key::URef(URef::new(
-                        [i; BLAKE2B_DIGEST_LENGTH],
-                        AccessRights::READ_ADD_WRITE,
-                    )),
-                    Transform::AddInt32(i.into()),
-                );
-            }
-            map
-        };
-        static ref BOTH: AdditiveMap<Key, Transform> = {
-            let mut map = AdditiveMap::new();
-            for i in 0..random_element_count() {
-                map.insert(
-                    Key::URef(URef::new(
-                        [i + MAX_ELEMENTS; BLAKE2B_DIGEST_LENGTH],
-                        AccessRights::READ_ADD_WRITE,
-                    )),
-                    Transform::Identity,
-                );
-            }
-            map
-        };
-        static ref RIGHT_ONLY: AdditiveMap<Key, Transform> = {
-            let mut map = AdditiveMap::new();
-            for i in 0..random_element_count() {
-                map.insert(
-                    Key::URef(URef::new(
-                        [i; BLAKE2B_DIGEST_LENGTH],
-                        AccessRights::READ_ADD_WRITE,
-                    )),
-                    Transform::AddUInt512(i.into()),
-                );
-            }
-            map
-        };
-    }
+    static LEFT_ONLY: Lazy<AdditiveMap<Key, Transform>> = Lazy::new(|| {
+        let mut map = AdditiveMap::new();
+        for i in 0..random_element_count() {
+            map.insert(
+                Key::URef(URef::new(
+                    [i; BLAKE2B_DIGEST_LENGTH],
+                    AccessRights::READ_ADD_WRITE,
+                )),
+                Transform::AddInt32(i.into()),
+            );
+        }
+        map
+    });
+    static BOTH: Lazy<AdditiveMap<Key, Transform>> = Lazy::new(|| {
+        let mut map = AdditiveMap::new();
+        for i in 0..random_element_count() {
+            map.insert(
+                Key::URef(URef::new(
+                    [i + MAX_ELEMENTS; BLAKE2B_DIGEST_LENGTH],
+                    AccessRights::READ_ADD_WRITE,
+                )),
+                Transform::Identity,
+            );
+        }
+        map
+    });
+    static RIGHT_ONLY: Lazy<AdditiveMap<Key, Transform>> = Lazy::new(|| {
+        let mut map = AdditiveMap::new();
+        for i in 0..random_element_count() {
+            map.insert(
+                Key::URef(URef::new(
+                    [i; BLAKE2B_DIGEST_LENGTH],
+                    AccessRights::READ_ADD_WRITE,
+                )),
+                Transform::AddUInt512(i.into()),
+            );
+        }
+        map
+    });
 
     fn random_element_count() -> u8 {
         rand::thread_rng().gen_range(MIN_ELEMENTS, MAX_ELEMENTS + 1)
