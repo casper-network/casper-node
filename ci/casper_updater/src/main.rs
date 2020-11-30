@@ -204,12 +204,14 @@ fn main() {
     );
     grpc_cargo_casper.update();
 
-    // Update Cargo.lock.
-    let status = Command::new(env!("CARGO"))
-        .arg("generate-lockfile")
-        .arg("--offline")
-        .current_dir(root_dir())
-        .status()
-        .expect("Failed to execute 'cargo generate-lockfile'");
-    assert!(status.success(), "Failed to update Cargo.lock");
+    // Update Cargo.lock if this isn't a dry run.
+    if !is_dry_run() {
+        let status = Command::new(env!("CARGO"))
+            .arg("generate-lockfile")
+            .arg("--offline")
+            .current_dir(root_dir())
+            .status()
+            .expect("Failed to execute 'cargo generate-lockfile'");
+        assert!(status.success(), "Failed to update Cargo.lock");
+    }
 }
