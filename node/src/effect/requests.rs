@@ -71,7 +71,7 @@ impl Display for MetricsRequest {
 }
 
 /// A networking request.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
@@ -81,6 +81,7 @@ pub enum NetworkRequest<I, P> {
         /// Message payload.
         payload: P,
         /// Responder to be called when the message is queued.
+        #[serde(skip_serializing)]
         responder: Responder<()>,
     },
     /// Send a message on the network to all peers.
@@ -90,6 +91,7 @@ pub enum NetworkRequest<I, P> {
         /// Message payload.
         payload: P,
         /// Responder to be called when all messages are queued.
+        #[serde(skip_serializing)]
         responder: Responder<()>,
     },
     /// Gossip a message to a random subset of peers.
@@ -99,8 +101,10 @@ pub enum NetworkRequest<I, P> {
         /// Number of peers to gossip to. This is an upper bound, otherwise best-effort.
         count: usize,
         /// Node IDs of nodes to exclude from gossiping to.
+        #[serde(skip_serializing)]
         exclude: HashSet<I>,
         /// Responder to be called when all messages are queued.
+        #[serde(skip_serializing)]
         responder: Responder<HashSet<I>>,
     },
 }

@@ -289,6 +289,7 @@ use std::{
 };
 
 use rand::seq::IteratorRandom;
+use serde::Serialize;
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
 
@@ -309,7 +310,7 @@ use crate::{
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
 
 /// An in-memory network events.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Event<P>(NetworkRequest<NodeId, P>);
 
 impl<P> From<NetworkRequest<NodeId, P>> for Event<P> {
