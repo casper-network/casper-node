@@ -17,7 +17,7 @@ pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
 pub static BOB_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*BOB_PRIVATE_KEY));
 
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.
-/// The test `Chainspec` returned has eras with exactly three blocks.
+/// The test `Chainspec` returned has eras with exactly two blocks.
 pub fn new_test_chainspec(stakes: Vec<(PublicKey, u64)>) -> Chainspec {
     let mut chainspec = Chainspec::from_resources("test/valid/chainspec.toml");
     chainspec.genesis.accounts = stakes
@@ -30,7 +30,7 @@ pub fn new_test_chainspec(stakes: Vec<(PublicKey, u64)>) -> Chainspec {
     chainspec.genesis.timestamp = Timestamp::now();
     chainspec.genesis.highway_config.genesis_era_start_timestamp = chainspec.genesis.timestamp;
 
-    // Every era has exactly three blocks.
+    // Every era has exactly two blocks.
     chainspec.genesis.highway_config.minimum_era_height = 2;
     chainspec.genesis.highway_config.era_duration = 0.into();
     chainspec
