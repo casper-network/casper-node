@@ -1,10 +1,15 @@
 //! RPCs related to the state.
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{convert::TryFrom, str};
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
+use once_cell::sync::Lazy;
+use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
@@ -14,9 +19,11 @@ use casper_execution_engine::{
     core::engine_state::{BalanceResult, QueryResult},
     storage::protocol_data::ProtocolData,
 };
-use casper_types::{bytesrepr::ToBytes, Key, ProtocolVersion, URef, U512};
+use casper_types::{bytesrepr::ToBytes, CLValue, Key, ProtocolVersion, URef, U512};
 
-use super::{Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt};
+use super::{
+    docs::DocExample, Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt,
+};
 use crate::{
     components::CLIENT_API_VERSION,
     crypto::hash::Digest,
@@ -29,26 +36,81 @@ use crate::{
     },
 };
 
+static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
+    String::from(
+        "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e\
+        55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3\
+        f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a\
+        7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41d\
+        d035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce9450022\
+        6a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7\
+        725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60\
+        bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d0000030\
+        00000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467\
+        a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c\
+        1bcbcee522649d2b135fe510fe3")
+});
+static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
+    state_root_hash: *Block::doc_example().header().state_root_hash(),
+    key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+    path: vec!["inner".to_string()],
+});
+static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
+    merkle_proof: MERKLE_PROOF.clone(),
+});
+static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParams {
+    state_root_hash: *Block::doc_example().header().state_root_hash(),
+    purse_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
+        .to_string(),
+});
+static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    balance_value: U512::from(123_456),
+    merkle_proof: MERKLE_PROOF.clone(),
+});
+static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    auction_state: AuctionState::doc_example().clone(),
+});
+
 /// Params for "state_get_item" RPC request.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetItemParams {
     /// Hash of the state root.
     pub state_root_hash: Digest,
     /// `casper_types::Key` as formatted string.
     pub key: String,
     /// The path components starting from the key as base.
+    #[serde(default)]
     pub path: Vec<String>,
 }
 
+impl DocExample for GetItemParams {
+    fn doc_example() -> &'static Self {
+        &*GET_ITEM_PARAMS
+    }
+}
+
 /// Result for "state_get_item" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetItemResult {
     /// The RPC API version.
+    #[schemars(with = "String")]
     pub api_version: Version,
     /// The stored value.
     pub stored_value: StoredValue,
     /// The merkle proof.
     pub merkle_proof: String,
+}
+
+impl DocExample for GetItemResult {
+    fn doc_example() -> &'static Self {
+        &*GET_ITEM_RESULT
+    }
 }
 
 /// "state_get_item" RPC.
@@ -145,7 +207,8 @@ impl RpcWithParamsExt for GetItem {
 }
 
 /// Params for "state_get_balance" RPC request.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetBalanceParams {
     /// The hash of state root.
     pub state_root_hash: Digest,
@@ -153,15 +216,29 @@ pub struct GetBalanceParams {
     pub purse_uref: String,
 }
 
+impl DocExample for GetBalanceParams {
+    fn doc_example() -> &'static Self {
+        &*GET_BALANCE_PARAMS
+    }
+}
+
 /// Result for "state_get_balance" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetBalanceResult {
     /// The RPC API version.
+    #[schemars(with = "String")]
     pub api_version: Version,
     /// The balance value.
     pub balance_value: U512,
     /// The merkle proof.
     pub merkle_proof: String,
+}
+
+impl DocExample for GetBalanceResult {
+    fn doc_example() -> &'static Self {
+        &*GET_BALANCE_RESULT
+    }
 }
 
 /// "state_get_balance" RPC.
@@ -252,15 +329,21 @@ impl RpcWithParamsExt for GetBalance {
     }
 }
 
-// auction info
-
 /// Result for "state_get_auction_info" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetAuctionInfoResult {
     /// The RPC API version.
+    #[schemars(with = "String")]
     pub api_version: Version,
     /// The auction state.
     pub auction_state: AuctionState,
+}
+
+impl DocExample for GetAuctionInfoResult {
+    fn doc_example() -> &'static Self {
+        &*GET_AUCTION_INFO_RESULT
+    }
 }
 
 /// "state_get_auction_info" RPC.

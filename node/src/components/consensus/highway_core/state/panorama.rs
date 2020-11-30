@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{collections::HashSet, fmt::Debug};
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -115,6 +115,13 @@ impl<C: Context> Panorama<C> {
         self.iter().filter_map(Observation::correct)
     }
 
+    /// Returns an iterator over all faulty validators' indices.
+    pub(crate) fn iter_faulty(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+        self.enumerate()
+            .filter(|(_, obs)| obs.is_faulty())
+            .map(|(i, _)| i)
+    }
+
     /// Returns the correct sequence number for a new unit by `vidx` with this panorama.
     pub(crate) fn next_seq_num(&self, state: &State<C>, vidx: ValidatorIndex) -> u64 {
         let add1 = |vh: &C::Hash| state.unit(vh).seq_number + 1;
@@ -128,6 +135,22 @@ impl<C: Context> Panorama<C> {
             Some(hash) == state.find_in_swimlane(latest_hash, unit.seq_number)
         };
         self.get(unit.creator).correct().map_or(false, can_see)
+    }
+
+    /// Returns `true` if `self` sees the unit with the specified `hash`.
+    pub(crate) fn sees(&self, state: &State<C>, hash_to_be_found: &C::Hash) -> bool {
+        // TODO: Optimize this!
+        let mut visited = HashSet::new();
+        let mut to_visit: Vec<_> = self.iter_correct_hashes().collect();
+        while let Some(hash) = to_visit.pop() {
+            if visited.insert(hash) {
+                if hash == hash_to_be_found {
+                    return true;
+                }
+                to_visit.extend(state.unit(hash).panorama.iter_correct_hashes());
+            }
+        }
+        false
     }
 
     /// Merges two panoramas into a new one.

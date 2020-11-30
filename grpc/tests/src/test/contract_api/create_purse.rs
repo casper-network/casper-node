@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
@@ -15,9 +15,7 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 const TEST_PURSE_NAME: &str = "test_purse";
 const ARG_PURSE_NAME: &str = "purse_name";
 
-lazy_static! {
-    static ref ACCOUNT_1_INITIAL_BALANCE: U512 = *DEFAULT_PAYMENT;
-}
+static ACCOUNT_1_INITIAL_BALANCE: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT);
 
 fn get_purse_key_from_mint_transform(mint_transform: &Transform) -> Key {
     let keys = if let Transform::AddKeys(keys) = mint_transform {

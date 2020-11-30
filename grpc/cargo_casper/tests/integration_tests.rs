@@ -1,7 +1,7 @@
 use std::process::Output;
 
 use assert_cmd::Command;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use tempfile::TempDir;
 
 const FAILURE_EXIT_CODE: i32 = 101;
@@ -9,11 +9,9 @@ const SUCCESS_EXIT_CODE: i32 = 0;
 const USE_SYSTEM_CONTRACTS: &str = "--use-system-contracts";
 const TURBO: &str = "turbo";
 
-lazy_static! {
-    static ref WORKSPACE_PATH_ARG: String =
-        format!("--workspace-path={}/../../", env!("CARGO_MANIFEST_DIR"));
-    static ref TEST_DIR: TempDir = tempfile::tempdir().unwrap();
-}
+static WORKSPACE_PATH_ARG: Lazy<String> =
+    Lazy::new(|| format!("--workspace-path={}/../../", env!("CARGO_MANIFEST_DIR")));
+static TEST_DIR: Lazy<TempDir> = Lazy::new(|| tempfile::tempdir().unwrap());
 
 #[test]
 fn should_fail_when_target_path_already_exists() {

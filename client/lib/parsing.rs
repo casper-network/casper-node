@@ -52,7 +52,10 @@ fn gas_price(value: &str) -> Result<u64> {
 fn dependencies(values: &[&str]) -> Result<Vec<DeployHash>> {
     let mut hashes = Vec::with_capacity(values.len());
     for value in values {
-        let digest = Digest::from_hex(value)?;
+        let digest = Digest::from_hex(value).map_err(|error| Error::CryptoError {
+            context: "dependencies",
+            error,
+        })?;
         hashes.push(DeployHash::new(digest))
     }
     Ok(hashes)
@@ -211,6 +214,9 @@ mod args_complex {
 
 const STANDARD_PAYMENT_ARG_NAME: &str = "amount";
 fn standard_payment(value: &str) -> Result<RuntimeArgs> {
+    if value.is_empty() {
+        return Err(Error::InvalidCLValue(value.to_string()));
+    }
     let arg = U512::from_dec_str(value)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
     let mut runtime_args = RuntimeArgs::new();
@@ -220,7 +226,10 @@ fn standard_payment(value: &str) -> Result<RuntimeArgs> {
 
 pub(crate) fn secret_key(value: &str) -> Result<SecretKey> {
     let path = PathBuf::from(value);
-    SecretKey::from_file(path).map_err(Error::CryptoError)
+    SecretKey::from_file(path).map_err(|error| Error::CryptoError {
+        context: "secret_key",
+        error,
+    })
 }
 
 fn args_from_simple_or_complex(
@@ -286,7 +295,7 @@ pub(super) fn parse_session_info(
         );
     }
 
-    if let Ok(session_hash) = hash(session_hash) {
+    if let Some(session_hash) = parse_contract_hash(session_hash)? {
         return ExecutableDeployItem::new_stored_contract_by_hash(
             session_hash,
             entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
@@ -304,13 +313,20 @@ pub(super) fn parse_session_info(
         );
     }
 
-    if let Ok(package_hash) = hash(session_package_hash) {
+    if let Some(package_hash) = parse_contract_hash(session_package_hash)? {
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
             package_hash,
             version,
             entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             session_args,
         );
+    }
+
+    if session_path.is_empty() {
+        return Err(Error::InvalidArgument(
+            "session_path",
+            "<empty>".to_string(),
+        ));
     }
 
     let module_bytes = fs::read(session_path).map_err(|error| Error::IoError {
@@ -353,7 +369,7 @@ pub(super) fn parse_payment_info(
         );
     }
 
-    if let Ok(payment_hash) = hash(payment_hash) {
+    if let Some(payment_hash) = parse_contract_hash(payment_hash)? {
         return ExecutableDeployItem::new_stored_contract_by_hash(
             payment_hash,
             entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
@@ -371,13 +387,20 @@ pub(super) fn parse_payment_info(
         );
     }
 
-    if let Ok(package_hash) = hash(payment_package_hash) {
+    if let Some(package_hash) = parse_contract_hash(payment_package_hash)? {
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
             package_hash,
             version,
             entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
         );
+    }
+
+    if payment_path.is_empty() {
+        return Err(Error::InvalidArgument(
+            "payment_path",
+            "<empty>".to_string(),
+        ));
     }
 
     let module_bytes = fs::read(payment_path).map_err(|error| Error::IoError {
@@ -409,18 +432,17 @@ pub(crate) fn output(value: &str) -> Option<&str> {
     none_if_empty(value)
 }
 
-fn parse_contract_hash(value: &str) -> Result<ContractHash> {
+fn parse_contract_hash(value: &str) -> Result<Option<ContractHash>> {
+    if value.is_empty() {
+        return Ok(None);
+    }
     if let Ok(digest) = Digest::from_hex(value) {
-        return Ok(digest.to_array());
+        return Ok(Some(digest.to_array()));
     }
     if let Ok(Key::Hash(hash)) = Key::from_formatted_str(value) {
-        return Ok(hash);
+        return Ok(Some(hash));
     }
     Err(Error::FailedToParseKey)
-}
-
-fn hash(value: &str) -> Result<ContractHash> {
-    parse_contract_hash(value)
 }
 
 fn name(value: &str) -> Option<String> {
@@ -432,20 +454,30 @@ fn entry_point(value: &str) -> Option<String> {
 }
 
 fn version(value: &str) -> Result<u32> {
-    Ok(value
+    value
         .parse::<u32>()
-        .map_err(|error| Error::FailedToParseInt("version", error))?)
+        .map_err(|error| Error::FailedToParseInt("version", error))
 }
 
 fn account(value: &str) -> Result<NodePublicKey> {
-    Ok(NodePublicKey::from_hex(value)?)
+    NodePublicKey::from_hex(value).map_err(|error| Error::CryptoError {
+        context: "account",
+        error,
+    })
 }
 
 pub(crate) fn purse(value: &str) -> Result<URef> {
-    Ok(
-        URef::from_formatted_str(value)
-            .map_err(|error| Error::FailedToParseURef("purse", error))?,
-    )
+    URef::from_formatted_str(value).map_err(|error| Error::FailedToParseURef("purse", error))
+}
+
+pub(crate) fn transfer_id(value: &str) -> Result<Option<u64>> {
+    if str::is_empty(value) {
+        return Ok(None);
+    }
+    let value = value
+        .parse::<u64>()
+        .map_err(|error| Error::FailedToParseInt("transfer_id", error))?;
+    Ok(Some(value))
 }
 
 #[cfg(test)]

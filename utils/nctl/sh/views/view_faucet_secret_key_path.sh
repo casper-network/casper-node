@@ -31,7 +31,7 @@ net=${net:-1}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Render path to secret key.
 render_account_secret_key $net $NCTL_ACCOUNT_TYPE_FAUCET $node

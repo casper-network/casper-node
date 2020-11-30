@@ -1,4 +1,4 @@
-//! A store for persisting [`Trie`](crate::trie::Trie) values at their hashes.
+//! A store for persisting `Trie` values at their hashes.
 //!
 //! See the [in_memory](in_memory/index.html#usage) and
 //! [lmdb](lmdb/index.html#usage) modules for usage examples.

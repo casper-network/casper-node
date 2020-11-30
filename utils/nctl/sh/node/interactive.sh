@@ -42,7 +42,7 @@ export RUST_LOG=$loglevel
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Import vars.
 source $(get_path_to_net_vars $net)
@@ -68,6 +68,7 @@ network_known_addresses=$(get_network_known_addresses $net $node $NCTL_NET_BOOTS
 $NCTL/assets/net-$net/bin/casper-node validator $path_node_config \
     --config-ext=consensus.secret_key_path=$path_node_secret_key  \
     --config-ext=event_stream_server.address=0.0.0.0:$node_api_port_event  \
+    --config-ext logging.format="json" \
     --config-ext network.bind_address=$network_bind_address  \
     --config-ext network.known_addresses=[$network_known_addresses]  \
     --config-ext=node.chainspec_config_path=$path_net_chainspec  \

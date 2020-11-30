@@ -183,403 +183,7 @@ fn extract_urefs(cl_value: &CLValue) -> Result<Vec<URef>, Error> {
             }
             _ => Ok(vec![]),
         },
-        CLType::FixedList(ty, 1) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 1] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 1] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 2) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 2] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 2] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 3) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 3] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 3] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 4) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 4] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 4] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 5) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 5] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 5] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 6) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 6] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 6] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 7) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 7] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 7] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 8) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 8] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 8] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 9) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 9] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 9] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 10) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 10] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 10] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 11) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 11] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 11] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 12) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 12] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 12] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 13) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 13] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 13] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 14) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 14] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 14] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 15) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 15] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 15] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 16) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 16] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 16] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 17) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 17] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 17] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 18) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 18] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 18] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 19) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 19] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 19] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 20) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 20] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 20] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 21) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 21] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 21] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 22) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 22] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 22] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 23) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 23] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 23] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 24) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 24] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 24] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 25) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 25] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 25] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 26) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 26] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 26] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 27) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 27] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 27] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 28) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 28] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 28] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 29) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 29] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 29] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 30) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 30] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 30] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 31) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 31] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 31] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 32) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 32] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 32] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 64) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 64] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 64] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 128) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 128] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 128] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 256) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 256] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 256] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(ty, 512) => match **ty {
-            CLType::URef => {
-                let arr: [URef; 512] = cl_value.to_owned().into_t()?;
-                Ok(arr.to_vec())
-            }
-            CLType::Key => {
-                let arr: [Key; 512] = cl_value.to_owned().into_t()?;
-                Ok(arr.iter().filter_map(Key::as_uref).cloned().collect())
-            }
-            _ => Ok(vec![]),
-        },
-        CLType::FixedList(_ty, _) => Ok(vec![]),
+        CLType::ByteArray(_) => Ok(vec![]),
         CLType::Result { ok, err } => match (&**ok, &**err) {
             (CLType::URef, CLType::Bool) => {
                 let res: Result<URef, bool> = cl_value.to_owned().into_t()?;
@@ -1542,7 +1146,7 @@ where
         Ok(())
     }
 
-    /// Writes runtime context's account main purse to [dest_ptr] in the Wasm memory.
+    /// Writes runtime context's account main purse to dest_ptr in the Wasm memory.
     fn get_main_purse(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let purse = self.context.get_main_purse()?;
         let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
@@ -1551,7 +1155,7 @@ where
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
 
-    /// Writes caller (deploy) account public key to [dest_ptr] in the Wasm
+    /// Writes caller (deploy) account public key to dest_ptr in the Wasm
     /// memory.
     fn get_caller(&mut self, output_size: u32) -> Result<Result<(), ApiError>, Trap> {
         if !self.can_write_to_host_buffer() {
@@ -1574,7 +1178,7 @@ where
         Ok(Ok(()))
     }
 
-    /// Writes runtime context's phase to [dest_ptr] in the Wasm memory.
+    /// Writes runtime context's phase to dest_ptr in the Wasm memory.
     fn get_phase(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let phase = self.context.phase();
         let bytes = phase.into_bytes().map_err(Error::BytesRepr)?;
@@ -1583,7 +1187,7 @@ where
             .map_err(|e| Error::Interpreter(e.into()).into())
     }
 
-    /// Writes current blocktime to [dest_ptr] in Wasm memory.
+    /// Writes current blocktime to dest_ptr in Wasm memory.
     fn get_blocktime(&self, dest_ptr: u32) -> Result<(), Trap> {
         let blocktime = self
             .context
@@ -1735,6 +1339,12 @@ where
                     mint_runtime.mint(amount);
                 CLValue::from_t(result)?
             }
+            mint::METHOD_REDUCE_TOTAL_SUPPLY => {
+                let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
+                let result: Result<(), system_contract_errors::mint::Error> =
+                    mint_runtime.reduce_total_supply(amount);
+                CLValue::from_t(result)?
+            }
             // Type: `fn create() -> URef`
             mint::METHOD_CREATE => {
                 let uref = mint_runtime.mint(U512::zero()).map_err(Self::reverter)?;
@@ -1747,13 +1357,15 @@ where
                     mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)?
             }
-            // Type: `fn transfer(source: URef, target: URef, amount: U512) -> Result<(), Error>`
+            // Type: `fn transfer(source: URef, target: URef, amount: U512, id: Option<u64>) ->
+            // Result<(), Error>`
             mint::METHOD_TRANSFER => {
                 let source: URef = Self::get_named_argument(&runtime_args, mint::ARG_SOURCE)?;
                 let target: URef = Self::get_named_argument(&runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
+                let id: Option<u64> = Self::get_named_argument(&runtime_args, mint::ARG_ID)?;
                 let result: Result<(), system_contract_errors::mint::Error> =
-                    mint_runtime.transfer(source, target, amount);
+                    mint_runtime.transfer(source, target, amount, id);
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             // Type: `fn read_base_round_reward() -> Result<U512, Error>`
@@ -2804,7 +2416,13 @@ where
     }
 
     /// Records a transfer.
-    fn record_transfer(&mut self, source: URef, target: URef, amount: U512) -> Result<(), Error> {
+    fn record_transfer(
+        &mut self,
+        source: URef,
+        target: URef,
+        amount: U512,
+        id: Option<u64>,
+    ) -> Result<(), Error> {
         if self.context.base_key() != Key::from(self.protocol_data().mint()) {
             return Err(Error::InvalidContext);
         }
@@ -2818,7 +2436,7 @@ where
             let deploy_hash: DeployHash = self.context.get_deploy_hash();
             let from: AccountHash = self.context.account().account_hash();
             let fee: U512 = U512::zero(); // TODO
-            Transfer::new(deploy_hash, from, source, target, amount, fee)
+            Transfer::new(deploy_hash, from, source, target, amount, fee, id)
         };
         {
             let transfers = self.context.transfers_mut();
@@ -3065,6 +2683,25 @@ where
         Ok(result.map_err(system_contract_errors::Error::from)?)
     }
 
+    /// Calls the `reduce_total_supply` method on the mint contract at the given mint
+    /// contract key
+    fn mint_reduce_total_supply(
+        &mut self,
+        mint_contract_hash: ContractHash,
+        amount: U512,
+    ) -> Result<(), Error> {
+        let runtime_args = runtime_args! {
+            mint::ARG_AMOUNT => amount,
+        };
+        let result = self.call_contract(
+            mint_contract_hash,
+            mint::METHOD_REDUCE_TOTAL_SUPPLY,
+            runtime_args,
+        )?;
+        let result: Result<(), system_contract_errors::mint::Error> = result.into_t()?;
+        Ok(result.map_err(system_contract_errors::Error::from)?)
+    }
+
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
     fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
@@ -3086,18 +2723,16 @@ where
         source: URef,
         target: URef,
         amount: U512,
+        id: Option<u64>,
     ) -> Result<(), Error> {
-        const ARG_SOURCE: &str = "source";
-        const ARG_TARGET: &str = "target";
-        const ARG_AMOUNT: &str = "amount";
-
         let args_values: RuntimeArgs = runtime_args! {
-            ARG_SOURCE => source,
-            ARG_TARGET => target,
-            ARG_AMOUNT => amount,
+            mint::ARG_SOURCE => source,
+            mint::ARG_TARGET => target,
+            mint::ARG_AMOUNT => amount,
+            mint::ARG_ID => id,
         };
 
-        let result = self.call_contract(mint_contract_hash, "transfer", args_values)?;
+        let result = self.call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values)?;
         let result: Result<(), system_contract_errors::mint::Error> = result.into_t()?;
         Ok(result.map_err(system_contract_errors::Error::from)?)
     }
@@ -3109,6 +2744,7 @@ where
         source: URef,
         target: AccountHash,
         amount: U512,
+        id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let mint_contract_hash = self.get_mint_contract();
 
@@ -3131,6 +2767,7 @@ where
             source,
             target_purse.with_access_rights(AccessRights::ADD),
             amount,
+            id,
         ) {
             Ok(_) => {
                 let account = Account::create(target, Default::default(), target_purse);
@@ -3149,13 +2786,14 @@ where
         source: URef,
         target: URef,
         amount: U512,
+        id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let mint_contract_key = self.get_mint_contract();
 
         // This appears to be a load-bearing use of `RuntimeContext::insert_uref`.
         self.context.insert_uref(target);
 
-        match self.mint_transfer(mint_contract_key, source, target, amount) {
+        match self.mint_transfer(mint_contract_key, source, target, amount, id) {
             Ok(_) => Ok(Ok(TransferredTo::ExistingAccount)),
             Err(_) => Ok(Err(ApiError::Transfer)),
         }
@@ -3167,9 +2805,10 @@ where
         &mut self,
         target: AccountHash,
         amount: U512,
+        id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let source = self.context.get_main_purse()?;
-        self.transfer_from_purse_to_account(source, target, amount)
+        self.transfer_from_purse_to_account(source, target, amount, id)
     }
 
     /// Transfers `amount` of motes from `source` purse to `target` account.
@@ -3179,6 +2818,7 @@ where
         source: URef,
         target: AccountHash,
         amount: U512,
+        id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
@@ -3186,7 +2826,7 @@ where
             None => {
                 // If no account exists, create a new account and transfer the amount to its
                 // purse.
-                self.transfer_to_new_account(source, target, amount)
+                self.transfer_to_new_account(source, target, amount, id)
             }
             Some(StoredValue::Account(account)) => {
                 let target = account.main_purse_add_only();
@@ -3194,7 +2834,7 @@ where
                     return Ok(Ok(TransferredTo::ExistingAccount));
                 }
                 // If an account exists, transfer the amount to its purse
-                self.transfer_to_existing_account(source, target, amount)
+                self.transfer_to_existing_account(source, target, amount, id)
             }
             Some(_) => {
                 // If some other value exists, return an error
@@ -3204,6 +2844,7 @@ where
     }
 
     /// Transfers `amount` of motes from `source` purse to `target` purse.
+    #[allow(clippy::too_many_arguments)]
     fn transfer_from_purse_to_purse(
         &mut self,
         source_ptr: u32,
@@ -3212,6 +2853,8 @@ where
         target_size: u32,
         amount_ptr: u32,
         amount_size: u32,
+        id_ptr: u32,
+        id_size: u32,
     ) -> Result<Result<(), ApiError>, Error> {
         let source: URef = {
             let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
@@ -3228,10 +2871,15 @@ where
             bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
         };
 
+        let id: Option<u64> = {
+            let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
+            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+        };
+
         let mint_contract_key = self.get_mint_contract();
 
         if self
-            .mint_transfer(mint_contract_key, source, target, amount)
+            .mint_transfer(mint_contract_key, source, target, amount, id)
             .is_ok()
         {
             Ok(Ok(()))
@@ -3635,7 +3283,7 @@ where
 #[cfg(test)]
 mod tests {
     use proptest::{
-        array,
+        array::uniform32,
         collection::{btree_map, vec},
         option,
         prelude::*,
@@ -3668,7 +3316,7 @@ mod tests {
                 | CLType::URef
                 | CLType::Option(_)
                 | CLType::List(_)
-                | CLType::FixedList(..)
+                | CLType::ByteArray(..)
                 | CLType::Result { .. }
                 | CLType::Map { .. }
                 | CLType::Tuple1(_)
@@ -3717,16 +3365,8 @@ mod tests {
                 CLValue::from_t(x.clone()).expect("should create CLValue"),
                 x.into_iter().filter_map(Key::into_uref).collect()
             )),
-            [any::<u64>(); 32]
+            uniform32(any::<u8>())
                 .prop_map(|x| (CLValue::from_t(x).expect("should create CLValue"), vec![])),
-            array::uniform8(uref_arb()).prop_map(|x| {
-                let urefs = x.to_vec();
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
-            array::uniform8(key_arb()).prop_map(|x| {
-                let urefs = x.iter().filter_map(Key::as_uref).cloned().collect();
-                (CLValue::from_t(x).expect("should create CLValue"), urefs)
-            }),
             result::maybe_err(key_arb(), ".*").prop_map(|x| {
                 let urefs = match &x {
                     Ok(key) => key.as_uref().into_iter().cloned().collect(),

@@ -2,6 +2,8 @@
 pub const ARG_PURSE: &str = "purse";
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
+/// Named constant for `id`.
+pub const ARG_ID: &str = "id";
 /// Named constant for `source`.
 pub const ARG_SOURCE: &str = "source";
 /// Named constant for `target`.
@@ -11,6 +13,8 @@ pub const ARG_ROUND_SEIGNIORAGE_RATE: &str = "round_seigniorage_rate";
 
 /// Named constant for method `mint`.
 pub const METHOD_MINT: &str = "mint";
+/// Named constant for method `reduce_total_supply`.
+pub const METHOD_REDUCE_TOTAL_SUPPLY: &str = "reduce_total_supply";
 /// Named constant for (synthetic) method `create`
 pub const METHOD_CREATE: &str = "create";
 /// Named constant for method `balance`.

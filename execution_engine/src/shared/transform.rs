@@ -298,6 +298,48 @@ impl Default for Transform {
     }
 }
 
+impl From<&Transform> for casper_types::Transform {
+    fn from(transform: &Transform) -> Self {
+        match transform {
+            Transform::Identity => casper_types::Transform::Identity,
+            Transform::Write(StoredValue::CLValue(cl_value)) => {
+                casper_types::Transform::WriteCLValue(cl_value.clone())
+            }
+            Transform::Write(StoredValue::Account(account)) => {
+                casper_types::Transform::WriteAccount(account.account_hash())
+            }
+            Transform::Write(StoredValue::ContractWasm(_)) => {
+                casper_types::Transform::WriteContractWasm
+            }
+            Transform::Write(StoredValue::Contract(_)) => casper_types::Transform::WriteContract,
+            Transform::Write(StoredValue::ContractPackage(_)) => {
+                casper_types::Transform::WriteContractPackage
+            }
+            Transform::Write(StoredValue::Transfer(transfer)) => {
+                casper_types::Transform::WriteTransfer(*transfer)
+            }
+            Transform::Write(StoredValue::DeployInfo(deploy_info)) => {
+                casper_types::Transform::WriteDeployInfo(deploy_info.clone())
+            }
+            Transform::AddInt32(value) => casper_types::Transform::AddInt32(*value),
+            Transform::AddUInt64(value) => casper_types::Transform::AddUInt64(*value),
+            Transform::AddUInt128(value) => casper_types::Transform::AddUInt128(*value),
+            Transform::AddUInt256(value) => casper_types::Transform::AddUInt256(*value),
+            Transform::AddUInt512(value) => casper_types::Transform::AddUInt512(*value),
+            Transform::AddKeys(named_keys) => casper_types::Transform::AddKeys(
+                named_keys
+                    .iter()
+                    .map(|(name, key)| casper_types::NamedKey {
+                        name: name.clone(),
+                        key: key.to_formatted_string(),
+                    })
+                    .collect(),
+            ),
+            Transform::Failure(error) => casper_types::Transform::Failure(error.to_string()),
+        }
+    }
+}
+
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
     use proptest::{collection::vec, prelude::*};
@@ -331,7 +373,8 @@ mod tests {
     use num::{Bounded, Num};
 
     use casper_types::{
-        account::AccountHash, AccessRights, ContractWasm, Key, URef, U128, U256, U512,
+        account::AccountHash, bytesrepr::Bytes, AccessRights, ContractWasm, Key, URef, U128, U256,
+        U512,
     };
 
     use super::*;
@@ -498,8 +541,9 @@ mod tests {
             StoredValue::CLValue(CLValue::from_t(Some(ZERO_U8)).expect("should create CLValue"));
         assert_yields_type_mismatch_error(cl_option);
 
-        let cl_list =
-            StoredValue::CLValue(CLValue::from_t(vec![ZERO_U8]).expect("should create CLValue"));
+        let cl_list = StoredValue::CLValue(
+            CLValue::from_t(Bytes::from(vec![ZERO_U8])).expect("should create CLValue"),
+        );
         assert_yields_type_mismatch_error(cl_list);
 
         let cl_fixed_list =

@@ -1,9 +1,10 @@
 //! The set of JSON-RPCs which the API server handles.
 //!
-//! See https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs for info.
+//! See <https://github.com/CasperLabs/ceps/blob/master/text/0009-client-api.md#rpcs> for info.
 
 pub mod account;
 pub mod chain;
+pub mod docs;
 pub mod info;
 pub mod state;
 
@@ -12,6 +13,7 @@ use std::str;
 use futures::{future::BoxFuture, TryFutureExt};
 use http::Response;
 use hyper::Body;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use warp::{
     filters::BoxedFilter,
@@ -22,13 +24,14 @@ use warp_json_rpc::{filters, Builder};
 
 use super::{ReactorEventT, RpcRequest};
 use crate::effect::EffectBuilder;
+use docs::DocExample;
 
 /// The URL path.
 pub const RPC_API_PATH: &str = "rpc";
 
 /// Error code returned if the JSON-RPC response indicates failure.
 ///
-/// See https://www.jsonrpc.org/specification#error_object for details.
+/// See <https://www.jsonrpc.org/specification#error_object> for details.
 #[repr(i64)]
 enum ErrorCode {
     NoSuchDeploy = 32000,
@@ -58,10 +61,20 @@ pub trait RpcWithParams {
     const METHOD: &'static str;
 
     /// The JSON-RPC request's "params" type.
-    type RequestParams: Serialize + for<'de> Deserialize<'de> + Send + 'static;
+    type RequestParams: Serialize
+        + for<'de> Deserialize<'de>
+        + JsonSchema
+        + DocExample
+        + Send
+        + 'static;
 
     /// The JSON-RPC response's "result" type.
-    type ResponseResult: Serialize + for<'de> Deserialize<'de> + Send + 'static;
+    type ResponseResult: Serialize
+        + for<'de> Deserialize<'de>
+        + JsonSchema
+        + DocExample
+        + Send
+        + 'static;
 }
 
 /// A trait for creating a JSON-RPC filter where the request is required to have "params".
@@ -97,7 +110,12 @@ pub trait RpcWithoutParams {
     const METHOD: &'static str;
 
     /// The JSON-RPC response's "result" type.
-    type ResponseResult: Serialize + for<'de> Deserialize<'de> + Send + 'static;
+    type ResponseResult: Serialize
+        + for<'de> Deserialize<'de>
+        + JsonSchema
+        + DocExample
+        + Send
+        + 'static;
 }
 
 /// A trait for creating a JSON-RPC filter where the request is not required to have "params".
@@ -129,10 +147,20 @@ pub trait RpcWithOptionalParams {
 
     /// The JSON-RPC request's "params" type.  This will be passed to the handler wrapped in an
     /// `Option`.
-    type OptionalRequestParams: Serialize + for<'de> Deserialize<'de> + Send + 'static;
+    type OptionalRequestParams: Serialize
+        + for<'de> Deserialize<'de>
+        + JsonSchema
+        + DocExample
+        + Send
+        + 'static;
 
     /// The JSON-RPC response's "result" type.
-    type ResponseResult: Serialize + for<'de> Deserialize<'de> + Send + 'static;
+    type ResponseResult: Serialize
+        + for<'de> Deserialize<'de>
+        + JsonSchema
+        + DocExample
+        + Send
+        + 'static;
 }
 
 /// A trait for creating a JSON-RPC filter where the request may optionally have "params".

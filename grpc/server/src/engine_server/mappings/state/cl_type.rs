@@ -31,10 +31,9 @@ impl From<CLType> for state::CLType {
             CLType::List(inner) => {
                 pb_type.mut_list_type().set_inner((*inner).into());
             }
-            CLType::FixedList(inner, len) => {
-                let pb_fixed_list = pb_type.mut_fixed_list_type();
-                pb_fixed_list.set_inner((*inner).into());
-                pb_fixed_list.set_len(len);
+            CLType::ByteArray(len) => {
+                let pb_byte_array_type = pb_type.mut_byte_array_type();
+                pb_byte_array_type.set_len(len);
             }
             CLType::Result { ok, err } => {
                 let pb_result = pb_type.mut_result_type();
@@ -104,9 +103,8 @@ impl TryFrom<state::CLType> for CLType {
                 let inner = pb_list.take_inner().try_into()?;
                 CLType::List(Box::new(inner))
             }
-            CLType_oneof_variants::fixed_list_type(mut pb_fixed_list) => {
-                let inner = pb_fixed_list.take_inner().try_into()?;
-                CLType::FixedList(Box::new(inner), pb_fixed_list.len)
+            CLType_oneof_variants::byte_array_type(pb_byte_array_type) => {
+                CLType::ByteArray(pb_byte_array_type.len)
             }
             CLType_oneof_variants::result_type(mut pb_result) => {
                 let ok = pb_result.take_ok().try_into()?;

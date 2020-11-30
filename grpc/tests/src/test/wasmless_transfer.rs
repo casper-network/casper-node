@@ -1,5 +1,3 @@
-use lazy_static::lazy_static;
-
 use casper_engine_test_support::{
     internal::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
@@ -11,25 +9,14 @@ use casper_execution_engine::core::{
     engine_state::Error as CoreError, execution::Error as ExecError,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, AccessRights, ApiError, Key, RuntimeArgs, URef, U512,
+    account::AccountHash, mint, runtime_args, AccessRights, ApiError, Key, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const TRANSFER_RESULT_NAMED_KEY: &str = "transfer_result";
 
-lazy_static! {
-    static ref TRANSFER_1_AMOUNT: U512 = U512::from(250_000_000) + 1000;
-    static ref TRANSFER_2_AMOUNT: U512 = U512::from(750);
-    static ref TRANSFER_2_AMOUNT_WITH_ADV: U512 = *DEFAULT_PAYMENT + *TRANSFER_2_AMOUNT;
-    static ref TRANSFER_TOO_MUCH: U512 = U512::from(u64::max_value());
-    static ref ACCOUNT_1_INITIAL_BALANCE: U512 = *DEFAULT_PAYMENT;
-}
-
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([2u8; 32]);
-const ARG_SOURCE: &str = "source";
-const ARG_TARGET: &str = "target";
-const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
 #[test]
@@ -73,6 +60,7 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
     let create_account_2: bool = true;
     let mut builder = init_wasmless_transform_builder(create_account_2);
     let transfer_amount: U512 = U512::from(1000);
+    let id: Option<u64> = None;
 
     let account_1_purse = builder
         .get_account(ACCOUNT_1_ADDR)
@@ -89,19 +77,41 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
 
     let runtime_args = match wasmless_transfer {
         WasmlessTransfer::AccountMainPurseToPurse => {
-            runtime_args! { ARG_TARGET => account_2_purse, ARG_AMOUNT => transfer_amount }
+            runtime_args! {
+                mint::ARG_TARGET => account_2_purse,
+                mint::ARG_AMOUNT => transfer_amount,
+                mint::ARG_ID => id
+            }
         }
         WasmlessTransfer::AccountMainPurseToAccountMainPurse => {
-            runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR, ARG_AMOUNT => transfer_amount }
+            runtime_args! {
+                mint::ARG_TARGET => ACCOUNT_2_ADDR,
+                mint::ARG_AMOUNT => transfer_amount,
+                mint::ARG_ID => id
+            }
         }
         WasmlessTransfer::AccountToAccountByKey => {
-            runtime_args! { ARG_TARGET => Key::Account(ACCOUNT_2_ADDR), ARG_AMOUNT => transfer_amount }
+            runtime_args! {
+                mint::ARG_TARGET => Key::Account(ACCOUNT_2_ADDR),
+                mint::ARG_AMOUNT => transfer_amount,
+                mint::ARG_ID => id
+            }
         }
         WasmlessTransfer::PurseToPurse => {
-            runtime_args! { ARG_SOURCE => account_1_purse, ARG_TARGET => account_2_purse, ARG_AMOUNT => transfer_amount }
+            runtime_args! {
+                mint::ARG_SOURCE => account_1_purse,
+                mint::ARG_TARGET => account_2_purse,
+                mint::ARG_AMOUNT => transfer_amount,
+                mint::ARG_ID => id
+            }
         }
         WasmlessTransfer::AmountAsU64 => {
-            runtime_args! { ARG_SOURCE => account_1_purse, ARG_TARGET => account_2_purse, ARG_AMOUNT => 1000u64 }
+            runtime_args! {
+                mint::ARG_SOURCE => account_1_purse,
+                mint::ARG_TARGET => account_2_purse,
+                mint::ARG_AMOUNT => 1000u64,
+                mint::ARG_ID => id
+            }
         }
     };
 
@@ -230,13 +240,18 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
     let create_account_2: bool = true;
     let mut builder = init_wasmless_transform_builder(create_account_2);
     let transfer_amount: U512 = U512::from(1000);
+    let id: Option<u64> = None;
 
     let (addr, runtime_args, expected_error) = match invalid_wasmless_transfer {
         InvalidWasmlessTransfer::TransferToSelfByAddr => {
             // same source and target purse is invalid
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id,
+                },
                 CoreError::Exec(ExecError::Revert(ApiError::InvalidPurse)),
             )
         }
@@ -244,7 +259,11 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // same source and target purse is invalid
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_TARGET => Key::Account(ACCOUNT_1_ADDR), ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_TARGET => Key::Account(ACCOUNT_1_ADDR),
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::Revert(ApiError::InvalidPurse)),
             )
         }
@@ -256,7 +275,11 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // same source and target purse is invalid
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_TARGET => account_1_purse, ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_TARGET => account_1_purse,
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::Revert(ApiError::InvalidPurse)),
             )
         }
@@ -264,7 +287,12 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // passes another account's addr as source
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_SOURCE => ACCOUNT_2_ADDR, ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_SOURCE => ACCOUNT_2_ADDR,
+                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::Revert(ApiError::InvalidArgument)),
             )
         }
@@ -272,7 +300,12 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // passes another account's Key::Account as source
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_SOURCE => Key::Account(ACCOUNT_2_ADDR), ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_SOURCE => Key::Account(ACCOUNT_2_ADDR),
+                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::Revert(ApiError::InvalidArgument)),
             )
         }
@@ -284,7 +317,12 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // passes another account's purse as source
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_SOURCE => account_2_purse, ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_SOURCE => account_2_purse,
+                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::ForgedReference(account_2_purse)),
             )
         }
@@ -292,7 +330,10 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // does not pass target
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::Revert(ApiError::MissingArgument)),
             )
         }
@@ -300,7 +341,10 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // does not pass amount
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR },
+                runtime_args! {
+                    mint::ARG_TARGET => ACCOUNT_2_ADDR,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::Revert(ApiError::MissingArgument)),
             )
         }
@@ -310,7 +354,12 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // passes an invalid uref as source (an existing uref that is not a purse uref)
             (
                 *DEFAULT_ACCOUNT_ADDR,
-                runtime_args! { ARG_SOURCE => not_purse_uref, ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_SOURCE => not_purse_uref,
+                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::Revert(ApiError::InvalidPurse)),
             )
         }
@@ -320,7 +369,11 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // passes an invalid uref as target (an existing uref that is not a purse uref)
             (
                 *DEFAULT_ACCOUNT_ADDR,
-                runtime_args! { ARG_TARGET => not_purse_uref, ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_TARGET => not_purse_uref,
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::Revert(ApiError::InvalidPurse)),
             )
         }
@@ -331,7 +384,12 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // write access to it / are allowed to take funds from it.
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_SOURCE => nonexistent_purse, ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_SOURCE => nonexistent_purse,
+                    mint::ARG_TARGET => ACCOUNT_1_ADDR,
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::ForgedReference(nonexistent_purse)),
             )
         }
@@ -340,7 +398,11 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // passes a nonexistent uref as target
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_TARGET => nonexistent_purse, ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_TARGET => nonexistent_purse,
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::Revert(ApiError::InvalidPurse)),
             )
         }
@@ -357,7 +419,12 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
             // attempts to take from an unowned purse
             (
                 ACCOUNT_1_ADDR,
-                runtime_args! { ARG_SOURCE => account_2_purse, ARG_TARGET => account_1_purse, ARG_AMOUNT => transfer_amount },
+                runtime_args! {
+                    mint::ARG_SOURCE => account_2_purse,
+                    mint::ARG_TARGET => account_1_purse,
+                    mint::ARG_AMOUNT => transfer_amount,
+                    mint::ARG_ID => id
+                },
                 CoreError::Exec(ExecError::ForgedReference(account_2_purse)),
             )
         }
@@ -415,8 +482,11 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
 
     let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
 
-    let runtime_args =
-        runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR, ARG_AMOUNT => transfer_amount };
+    let runtime_args = runtime_args! {
+       mint::ARG_TARGET => ACCOUNT_2_ADDR,
+       mint::ARG_AMOUNT => transfer_amount,
+       mint::ARG_ID => <Option<u64>>::None
+    };
 
     let no_wasm_transfer_request = {
         let deploy_item = DeployItemBuilder::new()
@@ -465,10 +535,17 @@ fn get_default_account_named_uref(builder: &mut InMemoryWasmTestBuilder, name: &
 
 fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
+
+    let id: Option<u64> = None;
+
     let create_account_1_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *DEFAULT_PAYMENT },
+        runtime_args! {
+            mint::ARG_TARGET => ACCOUNT_1_ADDR,
+            mint::ARG_AMOUNT => *DEFAULT_PAYMENT,
+            mint::ARG_ID => id
+        },
     )
     .build();
 
@@ -485,7 +562,11 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
     let create_account_2_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR, ARG_AMOUNT => *DEFAULT_PAYMENT },
+        runtime_args! {
+            mint::ARG_TARGET => ACCOUNT_2_ADDR,
+            mint::ARG_AMOUNT => *DEFAULT_PAYMENT,
+            mint::ARG_ID => id
+        },
     )
     .build();
 

@@ -150,7 +150,7 @@ impl MemoryMetrics {
         let timer = self.mem_estimator_runtime_s.start_timer();
 
         let metrics = reactor.metrics.estimate_heap_size() as i64;
-        let net = reactor.net.estimate_heap_size() as i64;
+        let net = reactor.small_network.estimate_heap_size() as i64;
         let address_gossiper = reactor.address_gossiper.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;

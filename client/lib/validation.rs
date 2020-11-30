@@ -18,10 +18,10 @@ const GET_ITEM_RESULT_BALANCE_VALUE: &str = "balance_value";
 const GET_ITEM_RESULT_STORED_VALUE: &str = "stored_value";
 const GET_ITEM_RESULT_MERKLE_PROOF: &str = "merkle_proof";
 
-/// Error that can be returned by when validating
+/// Error that can be returned when validating a block returned from a JSON-RPC method.
 #[derive(Error, Debug)]
 pub enum ValidateResponseError {
-    /// Failed to marshall value
+    /// Failed to marshall value.
     #[error("Failed to marshall value {0}")]
     BytesRepr(bytesrepr::Error),
 
@@ -29,31 +29,31 @@ pub enum ValidateResponseError {
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 
-    /// Failed to parse JSON
+    /// Failed to parse JSON.
     #[error("validate_response failed to parse")]
     ValidateResponseFailedToParse,
 
-    /// Failed to validate Merkle proofs
+    /// Failed to validate Merkle proofs.
     #[error(transparent)]
     ValidationError(#[from] ValidationError),
 
-    /// Failed to validate a block
+    /// Failed to validate a block.
     #[error("Block validation error {0}")]
     BlockValidationError(BlockValidationError),
 
-    /// Serialized value not contained in proof
+    /// Serialized value not contained in proof.
     #[error("serialized value not contained in proof")]
     SerializedValueNotContainedInProof,
 
-    /// No block in response
+    /// No block in response.
     #[error("no block in response")]
     NoBlockInResponse,
 
-    /// Block hash requested does not correspond to response
+    /// Block hash requested does not correspond to response.
     #[error("block hash requested does not correspond to response")]
     UnexpectedBlockHash,
 
-    /// Block height was not as requested
+    /// Block height was not as requested.
     #[error("block height was not as requested")]
     UnexpectedBlockHeight,
 }

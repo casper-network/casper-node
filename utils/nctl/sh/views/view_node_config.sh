@@ -35,6 +35,6 @@ node=${node:-1}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 less $NCTL/assets/net-$net/nodes/node-$node/config/node-config.toml

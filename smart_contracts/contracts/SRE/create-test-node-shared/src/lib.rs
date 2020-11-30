@@ -34,7 +34,7 @@ pub fn create_account(account_addr: &[u8; 64], initial_amount: u64) {
     let account_hash = parse_account_hash(account_addr);
     let amount: U512 = U512::from(initial_amount);
 
-    match system::transfer_to_account(account_hash, amount)
+    match system::transfer_to_account(account_hash, amount, None)
         .unwrap_or_revert_with(Error::TransferFailed)
     {
         TransferredTo::NewAccount => (),

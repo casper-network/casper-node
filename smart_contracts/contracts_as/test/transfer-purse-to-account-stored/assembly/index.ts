@@ -34,7 +34,7 @@ export function transfer(): void {
 export function call(): void {
     let entryPoints = new CL.EntryPoints();
     let args = new Array<Pair<String, CLType>>();
-    args.push(new Pair(ARG_0_NAME, CLType.fixedList(new CLType(CLTypeTag.U8), 32)));
+    args.push(new Pair(ARG_0_NAME, CLType.byteArray(32)));
     args.push(new Pair(ARG_1_NAME, new CLType(CLTypeTag.U512)));
 
     let entryPoint = new CL.EntryPoint(ENTRY_FUNCTION_NAME, args, new CLType(CLTypeTag.Unit), new CL.PublicAccess(), CL.EntryPointType.Session);

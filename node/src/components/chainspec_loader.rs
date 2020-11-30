@@ -5,7 +5,7 @@
 //! initialization only happens at genesis.
 //!
 //! See
-//! https://casperlabs.atlassian.net/wiki/spaces/EN/pages/135528449/Genesis+Process+Specification
+//! <https://casperlabs.atlassian.net/wiki/spaces/EN/pages/135528449/Genesis+Process+Specification>
 //! for full details.
 
 mod chainspec;
@@ -16,6 +16,7 @@ use std::fmt::{self, Display, Formatter};
 
 use datasize::DataSize;
 use derive_more::From;
+use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace};
@@ -29,11 +30,17 @@ use crate::{
         requests::{ChainspecLoaderRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
+    rpcs::docs::DocExample,
     NodeRng,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{DeployConfig, HighwayConfig};
 pub use error::Error;
+
+static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| ChainspecInfo {
+    name: String::from("casper-example"),
+    root_hash: Some(Digest::from([2u8; Digest::LENGTH])),
+});
 
 /// `ChainspecHandler` events.
 #[derive(Debug, From, Serialize)]
@@ -63,7 +70,7 @@ impl Display for Event {
     }
 }
 
-#[derive(DataSize, Debug, Serialize, Deserialize)]
+#[derive(DataSize, Debug, Serialize, Deserialize, Clone)]
 pub struct ChainspecInfo {
     // Name of the chainspec.
     name: String,
@@ -82,6 +89,12 @@ impl ChainspecInfo {
 
     pub fn root_hash(&self) -> Option<Digest> {
         self.root_hash
+    }
+}
+
+impl DocExample for ChainspecInfo {
+    fn doc_example() -> &'static Self {
+        &*CHAINSPEC_INFO
     }
 }
 

@@ -8,11 +8,12 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
+use casper_types::ExecutionResult;
+
 use crate::{
     components::small_network::GossipedAddress,
     types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-        DeployHeader, FinalizedBlock, Item, ProtoBlock,
+        Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalizedBlock, Item,
     },
     utils::Source,
 };
@@ -116,12 +117,8 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
 /// A consensus announcement.
 #[derive(Debug)]
 pub enum ConsensusAnnouncement {
-    /// A block was proposed and will either be finalized or orphaned soon.
-    Proposed(ProtoBlock),
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
-    /// A block was orphaned.
-    Orphaned(ProtoBlock),
     /// A linear chain block has been handled.
     Handled(Box<BlockHeader>),
 }
@@ -129,14 +126,8 @@ pub enum ConsensusAnnouncement {
 impl Display for ConsensusAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ConsensusAnnouncement::Proposed(block) => {
-                write!(formatter, "proposed proto block {}", block)
-            }
             ConsensusAnnouncement::Finalized(block) => {
                 write!(formatter, "finalized proto block {}", block)
-            }
-            ConsensusAnnouncement::Orphaned(block) => {
-                write!(formatter, "orphaned proto block {}", block)
             }
             ConsensusAnnouncement::Handled(block_header) => write!(
                 formatter,

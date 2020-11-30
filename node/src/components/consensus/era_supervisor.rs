@@ -43,9 +43,10 @@ use crate::{
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
         },
+        linear_chain::FinalitySignature,
     },
     crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey, Signature},
+        asymmetric_key::{self, PublicKey, SecretKey},
         hash::Digest,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
@@ -93,6 +94,13 @@ pub struct EraSupervisor<I> {
     /// A node keeps `2 * bonded_eras` past eras around, because the oldest bonded era could still
     /// receive blocks that refer to `bonded_eras` before that.
     bonded_eras: u64,
+    /// The height of the next block to be finalized.
+    /// We keep that in order to be able to signal to the Block Proposer how many blocks have been
+    /// finalized when we request a new block. This way the Block Proposer can know whether it's up
+    /// to date, or whether it has to wait for more finalized blocks before responding.
+    /// This value could be obtained from the consensus instance in a relevant era, but caching it
+    /// here is the easiest way of achieving the desired effect.
+    next_block_height: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
 }
@@ -137,6 +145,7 @@ where
             new_consensus,
             node_start_time: Timestamp::now(),
             bonded_eras,
+            next_block_height: 0,
             metrics,
         };
 
@@ -212,7 +221,7 @@ where
         &mut self,
         era_id: EraId,
         timestamp: Timestamp,
-        validator_stakes: Vec<(PublicKey, Motes)>,
+        mut validator_stakes: Vec<(PublicKey, Motes)>,
         newly_slashed: Vec<PublicKey>,
         seed: u64,
         start_time: Timestamp,
@@ -223,12 +232,16 @@ where
             panic!("{} already exists", era_id);
         }
         self.current_era = era_id;
+        self.metrics.current_era.set(self.current_era.0 as i64);
+        let instance_id = instance_id(&self.chainspec, state_root_hash, start_height);
 
+        validator_stakes.sort_by_cached_key(|(pub_key, _)| *pub_key);
         info!(
             ?validator_stakes,
             %start_time,
             %timestamp,
             %start_height,
+            %instance_id,
             era = era_id.0,
             "starting era",
         );
@@ -262,7 +275,7 @@ where
             .and_then(|last_era_id| self.active_eras.get(&last_era_id));
 
         let mut consensus = (self.new_consensus)(
-            instance_id(&self.chainspec, state_root_hash, start_height),
+            instance_id,
             validator_stakes,
             &slashed,
             &self.chainspec,
@@ -397,10 +410,6 @@ where
             warn!(era = era_id.0, "new proto block in outdated era");
             return Effects::new();
         }
-        let mut effects = self
-            .effect_builder
-            .announce_proposed_proto_block(proto_block.clone())
-            .ignore();
         let accusations = era_id
             .iter_bonded(self.era_supervisor.bonded_eras)
             .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
@@ -409,16 +418,15 @@ where
             .cloned()
             .collect();
         let candidate_block = CandidateBlock::new(proto_block, accusations);
-        effects.extend(self.delegate_to_era(era_id, move |consensus, rng| {
+        self.delegate_to_era(era_id, move |consensus, rng| {
             consensus.propose(candidate_block, block_context, rng)
-        }));
-        effects
+        })
     }
 
     pub(super) fn handle_linear_chain_block(
         &mut self,
         block_header: BlockHeader,
-        responder: Responder<Signature>,
+        responder: Responder<FinalitySignature>,
     ) -> Effects<Event<I>> {
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
@@ -427,7 +435,13 @@ where
             &self.era_supervisor.public_signing_key,
             self.rng,
         );
-        let mut effects = responder.respond(signature).ignore();
+        let mut effects = responder
+            .respond(FinalitySignature::new(
+                block_header.hash(),
+                signature,
+                self.era_supervisor.public_signing_key,
+            ))
+            .ignore();
         if block_header.era_id() < self.era_supervisor.current_era {
             trace!(era_id = %block_header.era_id(), "executed block in old era");
             return effects;
@@ -539,13 +553,6 @@ where
             effects.extend(self.delegate_to_era(era_id, |consensus, rng| {
                 consensus.resolve_validity(&candidate_block, valid, rng)
             }));
-            if valid {
-                effects.extend(
-                    self.effect_builder
-                        .announce_proposed_proto_block(candidate_block.into())
-                        .ignore(),
-                );
-            }
         }
         effects
     }
@@ -611,7 +618,11 @@ where
             }
             ProtocolOutcome::CreateNewBlock { block_context } => self
                 .effect_builder
-                .request_proto_block(block_context, self.rng.gen())
+                .request_proto_block(
+                    block_context,
+                    self.era_supervisor.next_block_height,
+                    self.rng.gen(),
+                )
                 .event(move |(proto_block, block_context)| Event::NewProtoBlock {
                     era_id,
                     proto_block,
@@ -649,6 +660,7 @@ where
                     .effect_builder
                     .announce_finalized_block(finalized_block.clone())
                     .ignore();
+                self.era_supervisor.next_block_height = finalized_block.height() + 1;
                 // Request execution of the finalized block.
                 effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects
@@ -701,11 +713,6 @@ where
                         effects.extend(self.delegate_to_era(e_id, |consensus, rng| {
                             consensus.resolve_validity(&candidate_block, true, rng)
                         }));
-                        effects.extend(
-                            self.effect_builder
-                                .announce_proposed_proto_block(candidate_block.into())
-                                .ignore(),
-                        );
                     }
                 }
                 effects

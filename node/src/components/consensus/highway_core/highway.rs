@@ -275,10 +275,8 @@ impl<C: Context> Highway<C> {
             Vertex::Evidence(evidence) => self.state.has_evidence(evidence.perpetrator()),
             Vertex::Endorsements(endorsements) => {
                 let unit = endorsements.unit();
-                self.state.is_endorsed(unit)
-                    || self
-                        .state
-                        .has_all_endorsements(unit, endorsements.validator_ids())
+                self.state
+                    .has_all_endorsements(unit, endorsements.validator_ids())
             }
         }
     }
@@ -474,7 +472,7 @@ impl<C: Context> Highway<C> {
                 Effect::NewVertex(vv) => {
                     result.extend(self.add_valid_vertex(vv.clone(), rng, timestamp))
                 }
-                Effect::WeEquivocated(_) => self.deactivate_validator(),
+                Effect::WeAreFaulty(_) => self.deactivate_validator(),
                 Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => (),
             }
         }
@@ -506,6 +504,9 @@ impl<C: Context> Highway<C> {
             }
             Vertex::Endorsements(endorsements) => {
                 let unit = *endorsements.unit();
+                if endorsements.endorsers.is_empty() {
+                    return Err(EndorsementError::Empty.into());
+                }
                 for (v_id, signature) in endorsements.endorsers.iter() {
                     let validator = self.validators.id(*v_id).ok_or(EndorsementError::Creator)?;
                     let endorsement: Endorsement<C> = Endorsement::new(unit, *v_id);

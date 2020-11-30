@@ -52,8 +52,18 @@ pub extern "C" fn call() {
 
     let transfer_amount_two: U512 = runtime::get_named_arg(TRANSFER_AMOUNT_TWO);
 
-    system::transfer_from_purse_to_purse(main_purse, destination_purse_one, transfer_amount_one)
-        .unwrap_or_revert_with(ApiError::User(CustomError::TransferToPurseOneFailed as u16));
-    system::transfer_from_purse_to_purse(main_purse, destination_purse_two, transfer_amount_two)
-        .unwrap_or_revert_with(ApiError::User(CustomError::TransferToPurseTwoFailed as u16));
+    system::transfer_from_purse_to_purse(
+        main_purse,
+        destination_purse_one,
+        transfer_amount_one,
+        None,
+    )
+    .unwrap_or_revert_with(ApiError::User(CustomError::TransferToPurseOneFailed as u16));
+    system::transfer_from_purse_to_purse(
+        main_purse,
+        destination_purse_two,
+        transfer_amount_two,
+        None,
+    )
+    .unwrap_or_revert_with(ApiError::User(CustomError::TransferToPurseTwoFailed as u16));
 }

@@ -1,12 +1,37 @@
-use std::{collections::HashMap, hash::Hash, net::SocketAddr};
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
 
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+};
+
+use once_cell::sync::Lazy;
+use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{chainspec_loader::ChainspecInfo, consensus::EraId},
+    components::{
+        chainspec_loader::ChainspecInfo, consensus::EraId, rpc_server::rpcs::docs::DocExample,
+    },
     types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
 };
+
+static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
+    let node_id = NodeId::doc_example();
+    let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
+    let mut peers = HashMap::new();
+    peers.insert(node_id.clone(), socket_addr);
+    let status_feed = StatusFeed::<NodeId> {
+        last_added_block: Some(Block::doc_example().clone()),
+        peers,
+        chainspec_info: ChainspecInfo::doc_example().clone(),
+        version: crate::VERSION_STRING.as_str(),
+    };
+    GetStatusResult::from(status_feed)
+});
 
 /// Data feed for client "info_get_status" endpoint.
 #[derive(Debug, Serialize)]
@@ -38,7 +63,8 @@ impl<I> StatusFeed<I> {
 }
 
 /// Minimal info of a `Block`.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct MinimalBlockInfo {
     hash: BlockHash,
     timestamp: Timestamp,
@@ -58,10 +84,12 @@ impl From<Block> for MinimalBlockInfo {
 }
 
 /// Result for "info_get_status" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetStatusResult {
     /// The RPC API version.
-    pub api_version: Option<Version>,
+    #[schemars(with = "String")]
+    pub api_version: Version,
     /// The chainspec name.
     pub chainspec_name: String,
     /// The genesis root hash.
@@ -77,7 +105,13 @@ pub struct GetStatusResult {
 impl GetStatusResult {
     /// Set api version.
     pub fn set_api_version(&mut self, version: Version) {
-        self.api_version = Some(version);
+        self.api_version = version;
+    }
+}
+
+impl DocExample for GetStatusResult {
+    fn doc_example() -> &'static Self {
+        &*GET_STATUS_RESULT
     }
 }
 
@@ -89,8 +123,8 @@ impl From<StatusFeed<NodeId>> for GetStatusResult {
             .root_hash()
             .unwrap_or_default()
             .to_string();
-        let api_version = None;
-        let peers = status_feed.peers.into();
+        let api_version = Version::from((0, 0, 0));
+        let peers = PeersMap::from(status_feed.peers);
         let last_added_block_info = status_feed.last_added_block.map(Into::into);
         let build_version = crate::VERSION_STRING.clone();
         GetStatusResult {

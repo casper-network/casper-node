@@ -9,6 +9,8 @@ use std::{
 };
 
 use datasize::DataSize;
+#[cfg(test)]
+use once_cell::sync::Lazy;
 use openssl::{
     pkey::{PKey, Private},
     x509::X509,
@@ -22,12 +24,10 @@ use crate::{
     tls,
 };
 
+/// Path to bundled resources.
 #[cfg(test)]
-lazy_static::lazy_static! {
-    /// Path to bundled resources.
-    pub static ref RESOURCES_PATH: PathBuf =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../resources");
-}
+pub static RESOURCES_PATH: Lazy<PathBuf> =
+    Lazy::new(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../resources"));
 
 /// External resource.
 ///

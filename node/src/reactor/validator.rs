@@ -9,7 +9,7 @@ mod memory_metrics;
 mod tests;
 
 use std::{
-    cmp,
+    cmp, env,
     fmt::{self, Debug, Display, Formatter},
     str::FromStr,
 };
@@ -20,14 +20,12 @@ use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, error, warn};
 
-use block_proposer::BlockProposerState;
-
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_executor::{self, BlockExecutor},
-        block_proposer::{self, BlockProposer},
+        block_proposer::{self, BlockProposer, BlockProposerState},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor},
@@ -38,6 +36,7 @@ use crate::{
         gossiper::{self, Gossiper},
         linear_chain,
         metrics::Metrics,
+        network::{self, Network, ENABLE_LIBP2P_ENV_VAR},
         rest_server::{self, RestServer},
         rpc_server::{self, RpcServer},
         small_network::{self, GossipedAddress, SmallNetwork},
@@ -75,7 +74,10 @@ use memory_metrics::MemoryMetrics;
 pub enum Event {
     /// Network event.
     #[from]
-    Network(#[serde(skip_serializing)] small_network::Event<Message>),
+    Network(network::Event<Message>),
+    /// Small network event.
+    #[from]
+    SmallNetwork(small_network::Event<Message>),
     /// Block proposer event.
     #[from]
     BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
@@ -235,6 +237,7 @@ impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Network(event) => write!(f, "network: {}", event),
+            Event::SmallNetwork(event) => write!(f, "small network: {}", event),
             Event::BlockProposer(event) => write!(f, "block proposer: {}", event),
             Event::Storage(event) => write!(f, "storage: {}", event),
             Event::RpcServer(event) => write!(f, "rpc server: {}", event),
@@ -295,7 +298,8 @@ pub struct ValidatorInitConfig {
 #[derive(DataSize, Debug)]
 pub struct Reactor {
     metrics: Metrics,
-    net: SmallNetwork<Event, Message>,
+    small_network: SmallNetwork<Event, Message>,
+    network: Network<Event, Message>,
     address_gossiper: Gossiper<GossipedAddress, Event>,
     storage: Storage,
     contract_runtime: ContractRuntime,
@@ -364,7 +368,10 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let effect_builder = EffectBuilder::new(event_queue);
-        let (net, net_effects) = SmallNetwork::new(event_queue, config.network, true)?;
+        let network_config = network::Config::from(&config.network);
+        let (network, network_effects) = Network::new(event_queue, network_config, true)?;
+        let (small_network, small_network_effects) =
+            SmallNetwork::new(event_queue, config.network, true)?;
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -387,12 +394,16 @@ impl reactor::Reactor for Reactor {
         let genesis_state_root_hash = chainspec_loader
             .genesis_state_root_hash()
             .expect("should have state root hash");
-        let block_executor = BlockExecutor::new(genesis_state_root_hash)
+        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone())
             .with_parent_map(linear_chain.last().cloned());
         let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();
 
-        effects.extend(reactor::wrap_effects(Event::Network, net_effects));
+        effects.extend(reactor::wrap_effects(Event::Network, network_effects));
+        effects.extend(reactor::wrap_effects(
+            Event::SmallNetwork,
+            small_network_effects,
+        ));
         effects.extend(reactor::wrap_effects(
             Event::Consensus,
             init_consensus_effects,
@@ -420,7 +431,8 @@ impl reactor::Reactor for Reactor {
         Ok((
             Reactor {
                 metrics,
-                net,
+                network,
+                small_network,
                 address_gossiper,
                 storage,
                 contract_runtime,
@@ -450,9 +462,19 @@ impl reactor::Reactor for Reactor {
         event: Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Network(event) => reactor::wrap_effects(
-                Event::Network,
-                self.net.handle_event(effect_builder, rng, event),
+            Event::Network(event) => {
+                if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+                    reactor::wrap_effects(
+                        Event::Network,
+                        self.network.handle_event(effect_builder, rng, event),
+                    )
+                } else {
+                    Effects::new()
+                }
+            }
+            Event::SmallNetwork(event) => reactor::wrap_effects(
+                Event::SmallNetwork,
+                self.small_network.handle_event(effect_builder, rng, event),
             ),
             Event::BlockProposer(event) => reactor::wrap_effects(
                 Event::BlockProposer,
@@ -526,12 +548,12 @@ impl reactor::Reactor for Reactor {
             Event::NetworkRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
-                Event::Network(small_network::Event::from(req)),
+                Event::SmallNetwork(small_network::Event::from(req)),
             ),
             Event::NetworkInfoRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
-                Event::Network(small_network::Event::from(req)),
+                Event::SmallNetwork(small_network::Event::from(req)),
             ),
             Event::DeployFetcherRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::DeployFetcher(req.into()))
@@ -669,6 +691,7 @@ impl reactor::Reactor for Reactor {
                             return Effects::new();
                         }
                     },
+                    Message::FinalitySignature(fs) => Event::LinearChain(fs.into()),
                 };
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
@@ -733,21 +756,17 @@ impl reactor::Reactor for Reactor {
                 };
 
                 match consensus_announcement {
-                    ConsensusAnnouncement::Proposed(block) => {
-                        reactor_event_dispatch(block_proposer::Event::ProposedProtoBlock(block))
-                    }
                     ConsensusAnnouncement::Finalized(block) => {
-                        let mut effects = reactor_event_dispatch(
-                            block_proposer::Event::FinalizedProtoBlock(block.proto_block().clone()),
-                        );
+                        let mut effects =
+                            reactor_event_dispatch(block_proposer::Event::FinalizedProtoBlock {
+                                block: block.proto_block().clone(),
+                                height: block.height(),
+                            });
                         let reactor_event = Event::EventStreamServer(
                             event_stream_server::Event::BlockFinalized(block),
                         );
                         effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
-                    }
-                    ConsensusAnnouncement::Orphaned(block) => {
-                        reactor_event_dispatch(block_proposer::Event::OrphanedProtoBlock(block))
                     }
                     ConsensusAnnouncement::Handled(_) => {
                         debug!("Ignoring `Handled` announcement in `validator` reactor.");
@@ -791,8 +810,9 @@ impl reactor::Reactor for Reactor {
             }
             Event::AddressGossiperAnnouncement(ann) => {
                 let GossiperAnnouncement::NewCompleteItem(gossiped_address) = ann;
-                let reactor_event =
-                    Event::Network(small_network::Event::PeerAddressReceived(gossiped_address));
+                let reactor_event = Event::SmallNetwork(small_network::Event::PeerAddressReceived(
+                    gossiped_address,
+                ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
             Event::LinearChainAnnouncement(LinearChainAnnouncement::BlockAdded {
@@ -820,6 +840,6 @@ impl reactor::Reactor for Reactor {
 impl NetworkedReactor for Reactor {
     type NodeId = NodeId;
     fn node_id(&self) -> Self::NodeId {
-        self.net.node_id()
+        self.small_network.node_id()
     }
 }

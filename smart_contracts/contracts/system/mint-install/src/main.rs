@@ -23,6 +23,11 @@ pub extern "C" fn mint() {
 }
 
 #[no_mangle]
+pub extern "C" fn reduce_total_supply() {
+    mint_token::reduce_total_supply();
+}
+
+#[no_mangle]
 pub extern "C" fn create() {
     mint_token::create();
 }

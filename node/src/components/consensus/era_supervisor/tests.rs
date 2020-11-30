@@ -122,18 +122,6 @@ impl MockReactor {
         }
     }
 
-    async fn expect_proposed(&self) -> ProtoBlock {
-        let (event, _) = self.scheduler.pop().await;
-        if let Event::ConsensusAnnouncement(ConsensusAnnouncement::Proposed(proto_block)) = event {
-            proto_block
-        } else {
-            panic!(
-                "unexpected event: {:?}, expected announcement of proposed proto block",
-                event
-            );
-        }
-    }
-
     async fn expect_finalized(&self) -> FinalizedBlock {
         let (event, _) = self.scheduler.pop().await;
         if let Event::ConsensusAnnouncement(ConsensusAnnouncement::Finalized(fb)) = event {
@@ -232,7 +220,7 @@ async fn propose_and_finalize(
     let rv_event = validate.await.unwrap().pop().unwrap();
 
     // As a result, the era supervisor should request validation of the proto block and evidence
-    // against Alice.
+    // against all accused validators.
     for _ in &accusations {
         let request_evidence = tokio::spawn(effects.pop().unwrap());
         reactor.expect_send_message(NodeId(1)).await; // Sending request for evidence.
@@ -253,11 +241,8 @@ async fn propose_and_finalize(
     // The block validator returns true: The deploys in the block are valid. That completes our
     // requirements for the proposed block. The era supervisor announces that it has passed the
     // proposed block to the consensus protocol.
-    let mut effects = handle(es, rv_event);
-    let announce_proposed = tokio::spawn(effects.pop().unwrap());
+    let effects = handle(es, rv_event);
     assert!(effects.is_empty());
-    assert_eq!(proto_block, reactor.expect_proposed().await);
-    announce_proposed.await.unwrap();
 
     // Node 1 now sends us another message that is sufficient for the protocol to finalize the
     // block. The era supervisor is expected to announce finalization, and to request execution.
@@ -305,14 +290,16 @@ async fn propose_and_finalize(
         assert_eq!(block_header, reactor.expect_announce_block_handled().await);
         block_h.await.unwrap();
     };
-    let sig = receiver.await.unwrap().unwrap();
-    asymmetric_key::verify(block.hash(), &sig, &es.public_signing_key).unwrap();
+    let fs = receiver.await.unwrap().unwrap();
+    assert_eq!(fs.block_hash(), block.hash());
+    assert_eq!(fs.public_key(), &es.public_signing_key);
+    assert!(fs.verify().is_ok());
 
     block
 }
 
 #[tokio::test]
-async fn cross_era_slashing() -> Result<(), Error> {
+async fn finalize_blocks_and_switch_eras() -> Result<(), Error> {
     let mut rng = TestRng::new();
 
     let (mut es, effects) = {

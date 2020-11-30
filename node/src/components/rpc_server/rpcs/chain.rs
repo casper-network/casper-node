@@ -1,28 +1,52 @@
 //! RPCs related to the block chain.
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
+use once_cell::sync::Lazy;
+use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
 use super::{
-    Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithOptionalParamsExt,
+    docs::DocExample, Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams,
+    RpcWithOptionalParamsExt,
 };
 use crate::{
     components::CLIENT_API_VERSION,
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{Block, BlockHash},
+    types::{Block, BlockHash, Item, JsonBlock},
 };
 
+static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
+    block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
+});
+static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    block: Some(Block::doc_example().clone().into()),
+});
+static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
+    Lazy::new(|| GetStateRootHashParams {
+        block_identifier: BlockIdentifier::Height(Block::doc_example().header().height()),
+    });
+static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
+    Lazy::new(|| GetStateRootHashResult {
+        api_version: CLIENT_API_VERSION.clone(),
+        state_root_hash: Some(*Block::doc_example().header().state_root_hash()),
+    });
+
 /// Identifier for possible ways to retrieve a block.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub enum BlockIdentifier {
     /// Identify and retrieve the block with its hash.
     Hash(BlockHash),
@@ -31,19 +55,34 @@ pub enum BlockIdentifier {
 }
 
 /// Params for "chain_get_block" RPC request.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetBlockParams {
     /// The block hash.
     pub block_identifier: BlockIdentifier,
 }
 
+impl DocExample for GetBlockParams {
+    fn doc_example() -> &'static Self {
+        &*GET_BLOCK_PARAMS
+    }
+}
+
 /// Result for "chain_get_block" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetBlockResult {
     /// The RPC API version.
+    #[schemars(with = "String")]
     pub api_version: Version,
     /// The block, if found.
-    pub block: Option<Block>,
+    pub block: Option<JsonBlock>,
+}
+
+impl DocExample for GetBlockResult {
+    fn doc_example() -> &'static Self {
+        &*GET_BLOCK_RESULT
+    }
 }
 
 /// "chain_get_block" RPC.
@@ -72,7 +111,7 @@ impl RpcWithOptionalParamsExt for GetBlock {
             // Return the result.
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                block: maybe_block,
+                block: maybe_block.map(Into::into),
             };
             Ok(response_builder.success(result)?)
         }
@@ -81,19 +120,34 @@ impl RpcWithOptionalParamsExt for GetBlock {
 }
 
 /// Params for "chain_get_state_root_hash" RPC request.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetStateRootHashParams {
     /// The block hash.
     pub block_identifier: BlockIdentifier,
 }
 
+impl DocExample for GetStateRootHashParams {
+    fn doc_example() -> &'static Self {
+        &*GET_STATE_ROOT_HASH_PARAMS
+    }
+}
+
 /// Result for "chain_get_state_root_hash" RPC response.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GetStateRootHashResult {
     /// The RPC API version.
+    #[schemars(with = "String")]
     pub api_version: Version,
     /// Hex-encoded hash of the state root.
     pub state_root_hash: Option<Digest>,
+}
+
+impl DocExample for GetStateRootHashResult {
+    fn doc_example() -> &'static Self {
+        &*GET_STATE_ROOT_HASH_RESULT
+    }
 }
 
 /// "chain_get_state_root_hash" RPC.

@@ -17,13 +17,13 @@ use casper_types::{
         DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY, VALIDATOR_REWARD_PURSE_KEY,
     },
-    runtime_args, ContractHash, RuntimeArgs, U512,
+    runtime_args, ContractHash, DeployHash, RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const TRANSFER_AMOUNT: u64 = 250_000_000 + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
-const DEPLOY_HASH_2: [u8; 32] = [2u8; 32];
+const DEPLOY_HASH_2: DeployHash = DeployHash::new([2u8; 32]);
 
 // one named_key for each validator and three for the purses, one for validator slots, one for
 // auction_delay, one for locked_funds_period.

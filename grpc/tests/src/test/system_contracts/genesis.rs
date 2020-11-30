@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
@@ -32,31 +32,29 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([43; 32]);
 const ACCOUNT_2_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([44; 32]);
 const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([45; 32]);
 
-lazy_static! {
-    static ref GENESIS_CUSTOM_ACCOUNTS: Vec<GenesisAccount> = {
-        let account_1 = {
-            let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
-            let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
-            GenesisAccount::new(
-                ACCOUNT_1_PUBLIC_KEY,
-                ACCOUNT_1_ADDR,
-                account_1_balance,
-                account_1_bonded_amount,
-            )
-        };
-        let account_2 = {
-            let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
-            let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
-            GenesisAccount::new(
-                ACCOUNT_2_PUBLIC_KEY,
-                ACCOUNT_2_ADDR,
-                account_2_balance,
-                account_2_bonded_amount,
-            )
-        };
-        vec![account_1, account_2]
+static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
+    let account_1 = {
+        let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
+        let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
+        GenesisAccount::new(
+            ACCOUNT_1_PUBLIC_KEY,
+            ACCOUNT_1_ADDR,
+            account_1_balance,
+            account_1_bonded_amount,
+        )
     };
-}
+    let account_2 = {
+        let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
+        let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
+        GenesisAccount::new(
+            ACCOUNT_2_PUBLIC_KEY,
+            ACCOUNT_2_ADDR,
+            account_2_balance,
+            account_2_bonded_amount,
+        )
+    };
+    vec![account_1, account_2]
+});
 
 #[ignore]
 #[test]

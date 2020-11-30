@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 #[cfg(test)]
 use std::iter;
 use std::{
@@ -16,31 +19,81 @@ use blake2::{
 use datasize::DataSize;
 use hex::FromHexError;
 use hex_fmt::{HexFmt, HexList};
+use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[cfg(test)]
 use casper_types::auction::BLOCK_REWARD;
-
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::{Item, Tag, Timestamp};
 use crate::{
     components::consensus::{self, EraId},
     crypto::{
-        asymmetric_key::{PublicKey, Signature},
+        asymmetric_key::{PublicKey, SecretKey, Signature},
         hash::{self, Digest},
     },
-    types::DeployHash,
+    rpcs::docs::DocExample,
+    types::{Deploy, DeployHash},
     utils::DisplayIter,
 };
 #[cfg(test)]
-use crate::{
-    crypto::asymmetric_key::{self, SecretKey},
-    testing::TestRng,
-};
+use crate::{crypto::asymmetric_key, testing::TestRng};
+
+static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
+    let secret_key_1 = SecretKey::new_ed25519([0; 32]);
+    let public_key_1 = PublicKey::from(&secret_key_1);
+    let equivocators = vec![public_key_1];
+
+    let secret_key_2 = SecretKey::new_ed25519([1; 32]);
+    let public_key_2 = PublicKey::from(&secret_key_2);
+    let mut rewards = BTreeMap::new();
+    rewards.insert(public_key_2, 1000);
+
+    EraEnd {
+        equivocators,
+        rewards,
+    }
+});
+static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
+    let deploy_hashes = vec![*Deploy::doc_example().id()];
+    let random_bit = true;
+    let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
+    let timestamp = *Timestamp::doc_example();
+    let era_end = Some(EraEnd::doc_example().clone());
+    let era: u64 = 1;
+    let secret_key = SecretKey::doc_example();
+    let public_key = PublicKey::from(secret_key);
+
+    FinalizedBlock::new(
+        proto_block,
+        timestamp,
+        era_end,
+        EraId(era),
+        era * 10,
+        public_key,
+    )
+});
+static BLOCK: Lazy<Block> = Lazy::new(|| {
+    let parent_hash = BlockHash::new(Digest::from([7u8; Digest::LENGTH]));
+    let state_root_hash = Digest::from([8u8; Digest::LENGTH]);
+    let finalized_block = FinalizedBlock::doc_example().clone();
+    let parent_seed = Digest::from([9u8; Digest::LENGTH]);
+
+    let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
+    let signature = Signature::from_hex(
+        "01bd9a3d1fe100345702c4631ce1e22b7dd7c2cd5b3808744efd36fdfc900bff30b19d4fdc369c104924a9\
+            f62ccfa91f3a9fc013b9066224a7ebdfe39579892200"
+            .as_bytes(),
+    )
+    .unwrap();
+    block.append_proof(signature);
+    block
+});
 
 /// Error returned from constructing or validating a `Block`.
 #[derive(Debug, Error)]
@@ -93,20 +146,9 @@ impl ProtoBlockHash {
         ProtoBlockHash(hash)
     }
 
-    pub fn from_parts(deploys: &[DeployHash], random_bit: bool) -> Self {
-        ProtoBlockHash::new(hash::hash(
-            &bincode::serialize(&(deploys, random_bit)).expect("serialize ProtoBlock"),
-        ))
-    }
-
     /// Returns the wrapped inner hash.
     pub fn inner(&self) -> &Digest {
         &self.0
-    }
-
-    /// Returns `true` is `self` is a hash of empty `ProtoBlock`.
-    pub(crate) fn is_empty(self) -> bool {
-        self == ProtoBlock::empty_random_bit_false() || self == ProtoBlock::empty_random_bit_true()
     }
 }
 
@@ -161,18 +203,6 @@ impl ProtoBlock {
 
     pub(crate) fn destructure(self) -> (ProtoBlockHash, Vec<DeployHash>, bool) {
         (self.hash, self.deploys, self.random_bit)
-    }
-
-    /// Returns hash of empty ProtoBlock (no deploys) with a random bit set to false.
-    /// Added here so that it's always aligned with how hash is calculated.
-    pub(crate) fn empty_random_bit_false() -> ProtoBlockHash {
-        *ProtoBlock::new(vec![], false).hash()
-    }
-
-    /// Returns hash of empty ProtoBlock (no deploys) with a random bit set to true.
-    /// Added here so that it's always aligned with how hash is calculated.
-    pub(crate) fn empty_random_bit_true() -> ProtoBlockHash {
-        *ProtoBlock::new(vec![], true).hash()
     }
 }
 
@@ -231,6 +261,12 @@ impl FromBytes for EraEnd {
             rewards,
         };
         Ok((era_end, remainder))
+    }
+}
+
+impl DocExample for EraEnd {
+    fn doc_example() -> &'static Self {
+        &*ERA_END
     }
 }
 
@@ -348,6 +384,12 @@ impl FinalizedBlock {
     }
 }
 
+impl DocExample for FinalizedBlock {
+    fn doc_example() -> &'static Self {
+        &*FINALIZED_BLOCK
+    }
+}
+
 impl From<BlockHeader> for FinalizedBlock {
     fn from(header: BlockHeader) -> Self {
         let proto_block = ProtoBlock::new(header.deploy_hashes().clone(), header.random_bit);
@@ -385,8 +427,20 @@ impl Display for FinalizedBlock {
 
 /// A cryptographic hash identifying a [`Block`](struct.Block.html).
 #[derive(
-    Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug,
+    Copy,
+    Clone,
+    DataSize,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Debug,
+    JsonSchema,
 )]
+#[serde(deny_unknown_fields)]
 pub struct BlockHash(Digest);
 
 impl BlockHash {
@@ -749,6 +803,11 @@ impl Block {
         self.proofs.push(proof)
     }
 
+    /// Provide proofs for an OpenRPC compatible representation.
+    pub fn proofs(&self) -> &Vec<Signature> {
+        &self.proofs
+    }
+
     fn serialize_body(body: &()) -> Result<Vec<u8>, bytesrepr::Error> {
         body.to_bytes()
     }
@@ -799,6 +858,12 @@ impl Block {
         }
 
         block
+    }
+}
+
+impl DocExample for Block {
+    fn doc_example() -> &'static Self {
+        &*BLOCK
     }
 }
 
@@ -927,6 +992,100 @@ impl Item for BlockByHeight {
 
     fn id(&self) -> Self::Id {
         self.height()
+    }
+}
+
+pub(crate) mod json_compatibility {
+    use super::*;
+
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct Reward {
+        validator: PublicKey,
+        amount: u64,
+    }
+
+    /// Equivocation and reward information to be included in the terminal block.
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct JsonEraEnd {
+        equivocators: Vec<PublicKey>,
+        rewards: Vec<Reward>,
+    }
+
+    impl From<EraEnd> for JsonEraEnd {
+        fn from(era_end: EraEnd) -> Self {
+            JsonEraEnd {
+                equivocators: era_end.equivocators,
+                rewards: era_end
+                    .rewards
+                    .into_iter()
+                    .map(|(validator, amount)| Reward { validator, amount })
+                    .collect(),
+            }
+        }
+    }
+
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct JsonBlockHeader {
+        parent_hash: BlockHash,
+        state_root_hash: Digest,
+        body_hash: Digest,
+        deploy_hashes: Vec<DeployHash>,
+        random_bit: bool,
+        accumulated_seed: Digest,
+        era_end: Option<JsonEraEnd>,
+        timestamp: Timestamp,
+        era_id: EraId,
+        height: u64,
+        proposer: PublicKey,
+    }
+
+    impl From<BlockHeader> for JsonBlockHeader {
+        fn from(block_header: BlockHeader) -> Self {
+            JsonBlockHeader {
+                parent_hash: block_header.parent_hash,
+                state_root_hash: block_header.state_root_hash,
+                body_hash: block_header.body_hash,
+                deploy_hashes: block_header.deploy_hashes,
+                random_bit: block_header.random_bit,
+                accumulated_seed: block_header.accumulated_seed,
+                era_end: block_header.era_end.map(JsonEraEnd::from),
+                timestamp: block_header.timestamp,
+                era_id: block_header.era_id,
+                height: block_header.height,
+                proposer: block_header.proposer,
+            }
+        }
+    }
+
+    /// A JSON-friendly representation of `Block`.
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    pub struct JsonBlock {
+        hash: BlockHash,
+        header: JsonBlockHeader,
+        body: (),
+        proofs: Vec<Signature>,
+    }
+
+    impl JsonBlock {
+        /// Returns the hashes of the `Deploy`s included in the `Block`.
+        pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
+            &self.header.deploy_hashes
+        }
+    }
+
+    impl From<Block> for JsonBlock {
+        fn from(block: Block) -> Self {
+            JsonBlock {
+                hash: block.hash,
+                header: JsonBlockHeader::from(block.header),
+                body: block.body,
+                proofs: block.proofs,
+            }
+        }
     }
 }
 

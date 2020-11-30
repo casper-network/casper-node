@@ -31,6 +31,6 @@ net=${net:-1}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 less $NCTL/assets/net-$net/chainspec/chainspec.toml

@@ -195,10 +195,10 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    let unbond_list = unbond_purses
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
-        .expect("should have unbond");
-    assert_eq!(unbond_list.len(), 0); // removed unbonds
+    assert!(
+        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
+        "should remove slashed from unbonds"
+    );
 
     let bids: Bids = builder.get_value(auction, BIDS_KEY);
     assert!(bids.is_empty());

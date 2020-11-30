@@ -6,13 +6,14 @@ use std::{
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use libp2p::PeerId;
+use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::{Rng, RngCore};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 #[cfg(test)]
 use crate::testing::TestRng;
-use crate::tls::KeyFingerprint;
+use crate::{rpcs::docs::DocExample, tls::KeyFingerprint};
 
 /// The network identifier for a node.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, DataSize)]
@@ -114,6 +115,15 @@ impl<'de> Deserialize<'de> for NodeId {
                 Ok(NodeId::P2p(peer_id))
             }
         }
+    }
+}
+
+static NODE_ID: Lazy<NodeId> =
+    Lazy::new(|| NodeId::Tls(KeyFingerprint::from([1u8; KeyFingerprint::LENGTH])));
+
+impl DocExample for NodeId {
+    fn doc_example() -> &'static Self {
+        &*NODE_ID
     }
 }
 

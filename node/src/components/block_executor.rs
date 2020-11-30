@@ -1,5 +1,6 @@
 //! Block executor component.
 mod event;
+mod metrics;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -9,6 +10,7 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
+use prometheus::Registry;
 use smallvec::SmallVec;
 use tracing::{debug, error, trace};
 
@@ -21,10 +23,13 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
-use casper_types::ProtocolVersion;
+use casper_types::{ExecutionResult, ProtocolVersion};
 
 use crate::{
-    components::{block_executor::event::State, Component},
+    components::{
+        block_executor::{event::State, metrics::BlockExecutorMetrics},
+        Component,
+    },
     crypto::hash::Digest,
     effect::{
         announcements::BlockExecutorAnnouncement,
@@ -33,10 +38,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, DeployHeader,
-        FinalizedBlock, NodeId,
-    },
+    types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalizedBlock, NodeId},
     NodeRng,
 };
 pub(crate) use event::Event;
@@ -85,14 +87,19 @@ pub(crate) struct BlockExecutor {
     parent_map: HashMap<BlockHeight, ExecutedBlockSummary>,
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: HashMap<BlockHeight, (FinalizedBlock, VecDeque<Deploy>)>,
+    /// Metrics to track current chain height.
+    #[data_size(skip)]
+    metrics: BlockExecutorMetrics,
 }
 
 impl BlockExecutor {
-    pub(crate) fn new(genesis_state_root_hash: Digest) -> Self {
+    pub(crate) fn new(genesis_state_root_hash: Digest, registry: Registry) -> Self {
+        let metrics = BlockExecutorMetrics::new(registry).unwrap();
         BlockExecutor {
             genesis_state_root_hash,
             parent_map: HashMap::new(),
             exec_queue: HashMap::new(),
+            metrics,
         }
     }
 
@@ -159,6 +166,10 @@ impl BlockExecutor {
         // The state hash of the last execute-commit cycle is used as the block's post state
         // hash.
         let next_height = state.finalized_block.height() + 1;
+        // Update the metric.
+        self.metrics
+            .chain_height
+            .set(state.finalized_block.height() as i64);
         let block = self.create_block(state.finalized_block, state.state_root_hash);
 
         let mut effects = effect_builder
@@ -324,7 +335,9 @@ impl BlockExecutor {
 
         let execution_effect = match ee_execution_result {
             EngineExecutionResult::Success { effect, cost, .. } => {
-                debug!(?effect, %cost, "execution succeeded");
+                // We do want to see the deploy hash and cost in the logs.
+                // We don't need to see the effects in the logs.
+                debug!(?deploy_hash, %cost, "execution succeeded");
                 effect
             }
             EngineExecutionResult::Failure {
@@ -333,7 +346,10 @@ impl BlockExecutor {
                 cost,
                 ..
             } => {
-                error!(?error, ?effect, %cost, "execution failure");
+                // Failure to execute a contract is a user error, not a system error.
+                // We do want to see the deploy hash, error, and cost in the logs.
+                // We don't need to see the effects in the logs.
+                debug!(?deploy_hash, ?error, %cost, "execution failure");
                 effect
             }
         };
@@ -491,6 +507,7 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         self.finalize_block_execution(effect_builder, state)
                     }
                     _ => {
+                        // When step fails, the auction process is broken and we should panic.
                         error!(?result, "run step failed - internal contract runtime error");
                         panic!("unable to run step");
                     }

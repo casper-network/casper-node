@@ -1,3 +1,5 @@
+use std::fs::File;
+
 use futures::executor;
 use jsonrpc_lite::{Id, JsonRpc, Params};
 use rand::Rng;
@@ -13,6 +15,7 @@ use casper_node::{
         chain::{
             BlockIdentifier, GetBlock, GetBlockParams, GetStateRootHash, GetStateRootHashParams,
         },
+        docs::ListRpcs,
         info::{GetDeploy, GetDeployParams},
         state::{GetAuctionInfo, GetBalance, GetBalanceParams, GetItem, GetItemParams},
         RpcWithOptionalParams, RpcWithParams, RpcWithoutParams, RPC_API_PATH,
@@ -71,7 +74,10 @@ impl RpcCall {
     }
 
     pub(crate) fn get_deploy(self, deploy_hash: &str) -> Result<JsonRpc> {
-        let hash = Digest::from_hex(deploy_hash)?;
+        let hash = Digest::from_hex(deploy_hash).map_err(|error| Error::CryptoError {
+            context: "deploy_hash",
+            error,
+        })?;
         let params = GetDeployParams {
             deploy_hash: DeployHash::new(hash),
         };
@@ -79,7 +85,11 @@ impl RpcCall {
     }
 
     pub(crate) fn get_item(self, state_root_hash: &str, key: &str, path: &str) -> Result<JsonRpc> {
-        let state_root_hash = Digest::from_hex(state_root_hash)?;
+        let state_root_hash =
+            Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
+                context: "state_root_hash",
+                error,
+            })?;
 
         let key = {
             if let Ok(key) = Key::from_formatted_str(key) {
@@ -118,7 +128,11 @@ impl RpcCall {
     }
 
     pub(crate) fn get_balance(self, state_root_hash: &str, purse_uref: &str) -> Result<JsonRpc> {
-        let state_root_hash = Digest::from_hex(state_root_hash)?;
+        let state_root_hash =
+            Digest::from_hex(state_root_hash).map_err(|error| Error::CryptoError {
+                context: "state_root_hash",
+                error,
+            })?;
         let uref = URef::from_formatted_str(purse_uref)
             .map_err(|error| Error::FailedToParseURef("purse_uref", error))?;
         let key = Key::from(uref);
@@ -136,17 +150,23 @@ impl RpcCall {
         GetAuctionInfo::request(self)
     }
 
+    pub(crate) fn list_rpcs(self) -> Result<JsonRpc> {
+        ListRpcs::request(self)
+    }
+
     pub(crate) fn transfer(
         self,
         amount: U512,
         source_purse: Option<URef>,
         target: TransferTarget,
+        id: Option<u64>,
         deploy_params: DeployParams,
         payment: ExecutableDeployItem,
     ) -> Result<JsonRpc> {
         const TRANSFER_ARG_AMOUNT: &str = "amount";
         const TRANSFER_ARG_SOURCE: &str = "source";
         const TRANSFER_ARG_TARGET: &str = "target";
+        const TRANSFER_ARG_ID: &str = "id";
 
         let mut transfer_args = RuntimeArgs::new();
         transfer_args.insert(TRANSFER_ARG_AMOUNT, amount);
@@ -162,8 +182,9 @@ impl RpcCall {
                 transfer_args.insert(TRANSFER_ARG_TARGET, target_purse);
             }
         }
+        transfer_args.insert(TRANSFER_ARG_ID, id);
         let session = ExecutableDeployItem::Transfer {
-            args: transfer_args.to_bytes()?,
+            args: transfer_args.to_bytes()?.into(),
         };
         let deploy = Deploy::with_payment_and_session(deploy_params, payment, session);
         let params = PutDeployParams { deploy };
@@ -171,7 +192,11 @@ impl RpcCall {
     }
 
     pub(crate) fn send_deploy_file(self, input_path: &str) -> Result<JsonRpc> {
-        let deploy = Deploy::read_deploy(input_path)?;
+        let input = File::open(input_path).map_err(|error| Error::IoError {
+            context: format!("unable to read input file '{}'", input_path),
+            error,
+        })?;
+        let deploy = Deploy::read_deploy(input)?;
         let params = PutDeployParams { deploy };
         SendDeploy::request_with_map_params(self, params)
     }
@@ -200,7 +225,11 @@ impl RpcCall {
         }
 
         if maybe_block_identifier.len() == (Digest::LENGTH * 2) {
-            let hash = Digest::from_hex(maybe_block_identifier)?;
+            let hash =
+                Digest::from_hex(maybe_block_identifier).map_err(|error| Error::CryptoError {
+                    context: "block_identifier",
+                    error,
+                })?;
             Ok(Some(BlockIdentifier::Hash(BlockHash::new(hash))))
         } else {
             let height = maybe_block_identifier
@@ -307,6 +336,10 @@ impl RpcClient for GetAuctionInfo {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
+impl RpcClient for ListRpcs {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
 pub(crate) trait IntoJsonMap: Serialize {
     fn into_json_map(self) -> Map<String, Value>
     where
@@ -325,3 +358,4 @@ impl IntoJsonMap for GetStateRootHashParams {}
 impl IntoJsonMap for GetDeployParams {}
 impl IntoJsonMap for GetBalanceParams {}
 impl IntoJsonMap for GetItemParams {}
+impl IntoJsonMap for ListRpcs {}

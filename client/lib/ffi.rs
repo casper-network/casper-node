@@ -8,15 +8,13 @@ use std::{
     sync::Mutex,
 };
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use tokio::runtime;
 
 use super::error::{Error, Result};
 
-lazy_static! {
-    static ref LAST_ERROR: Mutex<Option<Error>> = Mutex::new(None);
-    static ref RUNTIME: Mutex<Option<runtime::Runtime>> = Mutex::new(None);
-}
+static LAST_ERROR: Lazy<Mutex<Option<Error>>> = Lazy::new(|| Mutex::new(None));
+static RUNTIME: Lazy<Mutex<Option<runtime::Runtime>>> = Lazy::new(|| Mutex::new(None));
 
 fn set_last_error(error: Error) {
     let last_error = &mut *LAST_ERROR.lock().expect("should lock");
@@ -25,7 +23,7 @@ fn set_last_error(error: Error) {
 
 /// FFI representation of [super::Error](super::Error)
 ///
-/// The full error can be extracted with [get_last_error](get_last_error).
+/// The full error can be extracted with get_last_error.
 /// See [super::Error](super::Error) for more details on what these mean.
 #[allow(non_snake_case, non_camel_case_types, missing_docs)]
 #[repr(C)]
@@ -78,7 +76,7 @@ impl AsFFIError for Error {
             Error::FailedSending(_) => casper_error_t::CASPER_FAILED_SENDING,
             Error::IoError { .. } => casper_error_t::CASPER_IO_ERROR,
             Error::ToBytesError(_) => casper_error_t::CASPER_TO_BYTES_ERROR,
-            Error::CryptoError(_) => casper_error_t::CASPER_CRYPTO_ERROR,
+            Error::CryptoError { .. } => casper_error_t::CASPER_CRYPTO_ERROR,
             Error::InvalidCLValue(_) => casper_error_t::CASPER_INVALID_CL_VALUE,
             Error::InvalidArgument(_, _) => casper_error_t::CASPER_INVALID_ARGUMENT,
             Error::InvalidResponse(_) => casper_error_t::CASPER_INVALID_RESPONSE,
@@ -363,6 +361,7 @@ pub extern "C" fn casper_transfer(
     maybe_source_purse: *const c_char,
     maybe_target_purse: *const c_char,
     maybe_target_account: *const c_char,
+    maybe_id: *const c_char,
     deploy_params: *const casper_deploy_params_t,
     payment_params: *const casper_payment_params_t,
     response_buf: *mut c_uchar,
@@ -376,6 +375,7 @@ pub extern "C" fn casper_transfer(
     let maybe_source_purse = try_unsafe_arg!(maybe_source_purse);
     let maybe_target_purse = try_unsafe_arg!(maybe_target_purse);
     let maybe_target_account = try_unsafe_arg!(maybe_target_account);
+    let maybe_id = try_unsafe_arg!(maybe_id);
     let deploy_params = try_arg_into!(deploy_params);
     let payment_params = try_arg_into!(payment_params);
     runtime.block_on(async move {
@@ -387,6 +387,7 @@ pub extern "C" fn casper_transfer(
             maybe_source_purse,
             maybe_target_purse,
             maybe_target_account,
+            maybe_id,
             deploy_params,
             payment_params,
         );

@@ -336,20 +336,17 @@ pub fn parts_to_cl_value(cl_type: CLType, value: &str) -> Result<CLValue> {
             };
             parse_to_cl_value(optional_status, parse)
         }
-        CLType::FixedList(ty, 32) => match *ty {
-            CLType::U8 => {
-                let parse = || {
-                    AccountHash::from_formatted_str(trimmed_value).map_err(|error| {
-                        Error::InvalidCLValue(format!(
-                            "can't parse {} as AccountHash: {:?}",
-                            trimmed_value, error
-                        ))
-                    })
-                };
-                parse_to_cl_value(optional_status, parse)
-            }
-            _ => unreachable!(),
-        },
+        CLType::ByteArray(32) => {
+            let parse = || {
+                AccountHash::from_formatted_str(trimmed_value).map_err(|error| {
+                    Error::InvalidCLValue(format!(
+                        "can't parse {} as AccountHash: {:?}",
+                        trimmed_value, error
+                    ))
+                })
+            };
+            parse_to_cl_value(optional_status, parse)
+        }
         CLType::URef => {
             let parse = || {
                 URef::from_formatted_str(trimmed_value).map_err(|error| {

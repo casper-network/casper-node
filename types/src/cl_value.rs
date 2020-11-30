@@ -1,12 +1,17 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{string::String, vec::Vec};
 use core::fmt;
 
 use failure::Fail;
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{json, Value};
 
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     CLType, CLTyped, Key, PublicKey, URef, U128, U256, U512,
 };
 
@@ -52,9 +57,17 @@ impl From<bytesrepr::Error> for CLValueError {
 /// It holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the
 /// [`CLType`] of the underlying data as a separate member.
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct CLValue {
     cl_type: CLType,
-    bytes: Vec<u8>,
+    #[cfg_attr(
+        feature = "std",
+        schemars(
+            with = "String",
+            description = "Hex-encoded value, serialized using ToBytes."
+        )
+    )]
+    bytes: Bytes,
 }
 
 impl CLValue {
@@ -64,7 +77,7 @@ impl CLValue {
 
         Ok(CLValue {
             cl_type: T::cl_type(),
-            bytes,
+            bytes: bytes.into(),
         })
     }
 
@@ -73,7 +86,7 @@ impl CLValue {
         let expected = T::cl_type();
 
         if self.cl_type == expected {
-            Ok(bytesrepr::deserialize(self.bytes)?)
+            Ok(bytesrepr::deserialize(self.bytes.into())?)
         } else {
             Err(CLValueError::Type(CLTypeMismatch {
                 expected,
@@ -86,13 +99,16 @@ impl CLValue {
     // conversion from the Protobuf `CLValue`) in a separate module to this one.
     #[doc(hidden)]
     pub fn from_components(cl_type: CLType, bytes: Vec<u8>) -> Self {
-        Self { cl_type, bytes }
+        Self {
+            cl_type,
+            bytes: bytes.into(),
+        }
     }
 
     // This is only required in order to implement `From<CLValue> for state::CLValue` (i.e. the
     // conversion to the Protobuf `CLValue`) in a separate module to this one.
     #[doc(hidden)]
-    pub fn destructure(self) -> (CLType, Vec<u8>) {
+    pub fn destructure(self) -> (CLType, Bytes) {
         (self.cl_type, self.bytes)
     }
 
@@ -103,7 +119,7 @@ impl CLValue {
 
     /// Returns a reference to the serialized form of the underlying value held in this `CLValue`.
     pub fn inner_bytes(&self) -> &Vec<u8> {
-        &self.bytes
+        self.bytes.inner_bytes()
     }
 
     /// Returns the length of the `Vec<u8>` yielded after calling `self.to_bytes()`.
@@ -114,7 +130,10 @@ impl CLValue {
     }
 
     fn jsonify<T: FromBytes + Serialize>(&self) -> Option<Value> {
-        Some(json!(bytesrepr::deserialize::<T>(self.bytes.clone()).ok()?))
+        Some(json!(bytesrepr::deserialize::<T>(
+            self.bytes.clone().into()
+        )
+        .ok()?))
     }
 
     /// Returns a best-effort attempt to convert the `CLValue` into a meaningful JSON value.  For
@@ -236,14 +255,15 @@ impl ToBytes for CLValue {
 
 impl FromBytes for CLValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (bytes, remainder) = Vec::<u8>::from_bytes(bytes)?;
-        let (cl_type, remainder) = CLType::from_bytes(remainder)?;
+        let (bytes, remainder) = FromBytes::from_bytes(bytes)?;
+        let (cl_type, remainder) = FromBytes::from_bytes(remainder)?;
         let cl_value = CLValue { cl_type, bytes };
         Ok((cl_value, remainder))
     }
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CLValueJson {
     cl_type: CLType,
     serialized_bytes: String,
@@ -276,7 +296,10 @@ impl<'de> Deserialize<'de> for CLValue {
         } else {
             <(CLType, Vec<u8>)>::deserialize(deserializer)?
         };
-        Ok(CLValue { cl_type, bytes })
+        Ok(CLValue {
+            cl_type,
+            bytes: bytes.into(),
+        })
     }
 }
 
@@ -288,7 +311,8 @@ mod tests {
     use crate::{
         account::{AccountHash, ACCOUNT_HASH_LENGTH},
         key::KEY_HASH_LENGTH,
-        AccessRights, UREF_ADDR_LENGTH,
+        AccessRights, DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
+        UREF_ADDR_LENGTH,
     };
 
     #[test]
@@ -447,13 +471,13 @@ mod tests {
                 r#"{"cl_type":"Key","parsed_to_json":{"URef":"uref-0303030303030303030303030303030303030303030303030303030303030303-001"}}"#,
             );
 
-            let key_transfer = Key::Transfer([4; KEY_HASH_LENGTH]);
+            let key_transfer = Key::Transfer(TransferAddr::new([4; TRANSFER_ADDR_LENGTH]));
             check_to_json(
                 key_transfer,
                 r#"{"cl_type":"Key","parsed_to_json":{"Transfer":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}}"#,
             );
 
-            let key_deploy_info = Key::DeployInfo([5; KEY_HASH_LENGTH]);
+            let key_deploy_info = Key::DeployInfo(DeployHash::new([5; DEPLOY_HASH_LENGTH]));
             check_to_json(
                 key_deploy_info,
                 r#"{"cl_type":"Key","parsed_to_json":{"DeployInfo":"deploy-0505050505050505050505050505050505050505050505050505050505050505"}}"#,
@@ -685,13 +709,13 @@ mod tests {
                 r#"{"cl_type":{"Option":"Key"},"parsed_to_json":{"URef":"uref-0303030303030303030303030303030303030303030303030303030303030303-001"}}"#,
             );
 
-            let key_transfer = Key::Transfer([4; KEY_HASH_LENGTH]);
+            let key_transfer = Key::Transfer(TransferAddr::new([4; TRANSFER_ADDR_LENGTH]));
             check_to_json(
                 Some(key_transfer),
                 r#"{"cl_type":{"Option":"Key"},"parsed_to_json":{"Transfer":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}}"#,
             );
 
-            let key_deploy_info = Key::DeployInfo([5; KEY_HASH_LENGTH]);
+            let key_deploy_info = Key::DeployInfo(DeployHash::new([5; DEPLOY_HASH_LENGTH]));
             check_to_json(
                 Some(key_deploy_info),
                 r#"{"cl_type":{"Option":"Key"},"parsed_to_json":{"DeployInfo":"deploy-0505050505050505050505050505050505050505050505050505050505050505"}}"#,

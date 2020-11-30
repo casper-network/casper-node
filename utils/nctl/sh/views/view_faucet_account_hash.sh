@@ -31,7 +31,7 @@ net=${net:-1}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Render account hash.
 render_account_hash $net $NCTL_ACCOUNT_TYPE_FAUCET

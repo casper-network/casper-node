@@ -66,7 +66,7 @@ pub extern "C" fn call() {
     };
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
-    let transfer_result = system::transfer_from_purse_to_purse(*src_purse, dst_purse, amount);
+    let transfer_result = system::transfer_from_purse_to_purse(*src_purse, dst_purse, amount, None);
 
     // Assert is done here
     let final_balance = system::get_balance(main_purse)

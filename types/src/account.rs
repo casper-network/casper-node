@@ -1,6 +1,9 @@
 //! Contains types and constants associated with user accounts.
 
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
+use alloc::{format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
     convert::TryFrom,
@@ -13,6 +16,8 @@ use blake2::{
 };
 use datasize::DataSize;
 use failure::Fail;
+#[cfg(feature = "std")]
+use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -190,9 +195,6 @@ impl CLTyped for Weight {
 /// The length in bytes of a [`AccountHash`].
 pub const ACCOUNT_HASH_LENGTH: usize = 32;
 
-/// The number of bytes in a serialized [`AccountHash`].
-pub const ACCOUNT_HASH_SERIALIZED_LENGTH: usize = 32;
-
 /// A type alias for the raw bytes of an Account Hash.
 pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 
@@ -260,6 +262,20 @@ impl AccountHash {
         // Hash the preimage data using blake2b256 and return it.
         let digest = blake2b_hash_fn(preimage);
         Self::new(digest)
+    }
+}
+
+#[cfg(feature = "std")]
+impl JsonSchema for AccountHash {
+    fn schema_name() -> String {
+        String::from("AccountHash")
+    }
+
+    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Hex-encoded account hash.".to_string());
+        schema_object.into()
     }
 }
 
@@ -337,23 +353,25 @@ impl Debug for AccountHash {
 
 impl CLTyped for AccountHash {
     fn cl_type() -> CLType {
-        CLType::FixedList(Box::new(CLType::U8), 32)
+        CLType::ByteArray(ACCOUNT_HASH_LENGTH as u32)
     }
 }
 
 impl ToBytes for AccountHash {
+    #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         self.0.to_bytes()
     }
 
+    #[inline(always)]
     fn serialized_length(&self) -> usize {
-        ACCOUNT_HASH_SERIALIZED_LENGTH
+        self.0.serialized_length()
     }
 }
 
 impl FromBytes for AccountHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (bytes, rem) = <[u8; 32]>::from_bytes(bytes)?;
+        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
         Ok((AccountHash::new(bytes), rem))
     }
 }

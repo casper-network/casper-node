@@ -45,8 +45,9 @@ state_root_hash=${state_root_hash:-$(get_state_root_hash $net $node)}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
+# Set account balance.
 balance=$(
     $(get_path_to_client $net) get-balance \
         --node-address $(get_node_address_rpc $net $node) \
@@ -55,4 +56,5 @@ balance=$(
         | jq '.result.balance_value' \
         | sed -e 's/^"//' -e 's/"$//'
     )
+
 log $prefix" balance = "$balance

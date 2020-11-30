@@ -4,7 +4,6 @@
 use std::process;
 
 use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
-use lazy_static::lazy_static;
 
 use casper_client::{help, PaymentStrParams, SessionStrParams};
 
@@ -23,6 +22,7 @@ pub(super) enum DisplayOrder {
     TransferSourcePurse,
     TransferTargetAccount,
     TransferTargetPurse,
+    TransferId,
     Timestamp,
     Ttl,
     GasPrice,
@@ -343,18 +343,19 @@ pub(super) mod session_path {
 /// Handles providing the arg for and retrieval of simple session and payment args.
 pub(super) mod arg_simple {
     use super::*;
+    use once_cell::sync::Lazy;
 
     const ARG_VALUE_NAME: &str = r#""NAME:TYPE='VALUE'" OR "NAME:TYPE=null""#;
 
-    lazy_static! {
-        static ref ARG_HELP: String = format!(
+    static ARG_HELP: Lazy<String> = Lazy::new(|| {
+        format!(
             "For simple CLTypes, a named and typed arg which is passed to the Wasm code. To see \
             an example for each type, run '--{}'. This arg can be repeated to pass multiple named, \
             typed args, but can only be used for the following types: {}",
             super::show_arg_examples::ARG_NAME,
             help::supported_cl_type_list()
-        );
-    }
+        )
+    });
 
     pub(in crate::deploy) mod session {
         use super::*;

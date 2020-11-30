@@ -1,5 +1,8 @@
 //! Asymmetric-key types and functions.
 
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{
     cmp::Ordering,
     convert::TryFrom,
@@ -17,9 +20,11 @@ use hex_fmt::HexFmt;
 use k256::ecdsa::{
     Signature as Secp256k1Signature, Signer as Secp256k1Signer, Verifier as Secp256k1Verifier,
 };
+use once_cell::sync::Lazy;
 use pem::Pem;
 #[cfg(test)]
 use rand::{Rng, RngCore};
+use schemars::{gen, schema::Schema, JsonSchema};
 use serde::{
     de::{Deserializer, Error as SerdeError},
     Deserialize, Serialize, Serializer,
@@ -30,11 +35,12 @@ use untrusted::Input;
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
-use super::{Error, Result};
+pub use super::{Error, Result};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
     crypto::hash::hash,
+    rpcs::docs::DocExample,
     utils::{read_file, write_file},
     NodeRng,
 };
@@ -61,6 +67,11 @@ const EC_PUBLIC_KEY_OBJECT_IDENTIFIER: [u8; 7] = [42, 134, 72, 206, 61, 2, 1];
 const SECP256K1_OBJECT_IDENTIFIER: [u8; 5] = [43, 129, 4, 0, 10];
 const SECP256K1_PEM_SECRET_KEY_TAG: &str = "EC PRIVATE KEY";
 const SECP256K1_PEM_PUBLIC_KEY_TAG: &str = "PUBLIC KEY";
+
+static ED25519_KEY: Lazy<SecretKey> = Lazy::new(|| {
+    let bytes = [15u8; SecretKey::ED25519_LENGTH];
+    SecretKey::new_ed25519(bytes)
+});
 
 /// A secret or private asymmetric key.
 #[derive(DataSize)]
@@ -372,6 +383,12 @@ impl Debug for SecretKey {
             SecretKey::Ed25519(_) => write!(formatter, "SecretKey::{}(...)", ED25519),
             SecretKey::Secp256k1(_) => write!(formatter, "SecretKey::{}(...)", SECP256K1),
         }
+    }
+}
+
+impl DocExample for SecretKey {
+    fn doc_example() -> &'static Self {
+        &*ED25519_KEY
     }
 }
 
@@ -739,24 +756,23 @@ impl ToBytes for PublicKey {
         match self {
             PublicKey::Ed25519(public_key) => {
                 buffer.insert(0, ED25519_TAG);
-                buffer.extend(public_key.as_ref().to_vec().into_bytes()?);
+                let ed25519_bytes = public_key.as_bytes();
+                buffer.extend_from_slice(ed25519_bytes);
             }
             PublicKey::Secp256k1(public_key) => {
                 buffer.insert(0, SECP256K1_TAG);
-                buffer.extend(public_key.as_ref().to_vec().into_bytes()?);
+                let secp256k1_bytes = public_key.as_bytes();
+                buffer.extend_from_slice(secp256k1_bytes);
             }
         }
         Ok(buffer)
     }
 
-    // TODO: implement ToBytes for `&[u8]` to avoid allocating via `to_vec()` here.
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
-                PublicKey::Ed25519(public_key) => public_key.as_ref().to_vec().serialized_length(),
-                PublicKey::Secp256k1(public_key) => {
-                    public_key.as_ref().to_vec().serialized_length()
-                }
+                PublicKey::Ed25519(_) => Self::ED25519_LENGTH,
+                PublicKey::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
     }
 }
@@ -766,16 +782,18 @@ impl FromBytes for PublicKey {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             ED25519_TAG => {
-                let (raw_bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
-                let public_key = Self::ed25519_from_bytes(&raw_bytes).map_err(|error| {
+                let (raw_bytes, remainder): ([u8; Self::ED25519_LENGTH], _) =
+                    FromBytes::from_bytes(remainder)?;
+                let public_key = Self::new_ed25519(raw_bytes).map_err(|error| {
                     info!("failed deserializing to public key: {}", error);
                     bytesrepr::Error::Formatting
                 })?;
                 Ok((public_key, remainder))
             }
             SECP256K1_TAG => {
-                let (raw_bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
-                let public_key = Self::secp256k1_from_bytes(&raw_bytes).map_err(|error| {
+                let (raw_bytes, remainder): ([u8; Self::SECP256K1_LENGTH], _) =
+                    FromBytes::from_bytes(remainder)?;
+                let public_key = Self::new_secp256k1(raw_bytes).map_err(|error| {
                     info!("failed deserializing to public key: {}", error);
                     bytesrepr::Error::Formatting
                 })?;
@@ -786,6 +804,21 @@ impl FromBytes for PublicKey {
                 Err(bytesrepr::Error::Formatting)
             }
         }
+    }
+}
+
+impl JsonSchema for PublicKey {
+    fn schema_name() -> String {
+        String::from("PublicKey")
+    }
+
+    fn json_schema(gen: &mut gen::SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "Hex-encoded cryptographic public key, including the algorithm tag prefix.".to_string(),
+        );
+        schema_object.into()
     }
 }
 
@@ -998,7 +1031,7 @@ impl ToBytes for Signature {
             }
             Signature::Secp256k1(signature) => {
                 buffer.insert(0, SECP256K1_TAG);
-                buffer.extend(signature.as_ref().to_vec().into_bytes()?);
+                buffer.extend_from_slice(signature.as_ref());
             }
         }
         Ok(buffer)
@@ -1007,8 +1040,8 @@ impl ToBytes for Signature {
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
-                Signature::Ed25519(signature) => signature.serialized_length(),
-                Signature::Secp256k1(signature) => signature.as_ref().to_vec().serialized_length(),
+                Signature::Ed25519(_) => Self::ED25519_LENGTH,
+                Signature::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
     }
 }
@@ -1028,9 +1061,10 @@ impl FromBytes for Signature {
                 Ok((ed25519_signature, remainder))
             }
             SECP256K1_TAG => {
-                let (secp256k1_signature_bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
-                let secp256k1_signature = Self::secp256k1_from_bytes(secp256k1_signature_bytes)
-                    .map_err(|error| {
+                let (secp256k1_signature_bytes, remainder): ([u8; Self::SECP256K1_LENGTH], &[u8]) =
+                    FromBytes::from_bytes(remainder)?;
+                let secp256k1_signature =
+                    Self::new_secp256k1(secp256k1_signature_bytes).map_err(|error| {
                         info!("failed to deserialize secp256k1 signature: {}", error);
                         bytesrepr::Error::Formatting
                     })?;
@@ -1053,6 +1087,21 @@ impl Serialize for Signature {
 impl<'de> Deserialize<'de> for Signature {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
         deserialize(deserializer)
+    }
+}
+
+impl JsonSchema for Signature {
+    fn schema_name() -> String {
+        String::from("Signature")
+    }
+
+    fn json_schema(gen: &mut gen::SchemaGenerator) -> Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "Hex-encoded cryptographic signature, including the algorithm tag prefix.".to_string(),
+        );
+        schema_object.into()
     }
 }
 

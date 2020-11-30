@@ -1,3 +1,6 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::{string::String, vec::Vec};
 use core::{
     cmp,
@@ -6,6 +9,8 @@ use core::{
 };
 
 use datasize::DataSize;
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -49,13 +54,15 @@ impl Display for FromStrError {
     }
 }
 
+pub type Secp256k1BytesArray = [u8; SECP256K1_PUBLIC_KEY_LENGTH];
+
 /// Represents the bytes of a secp256k1 public key.
 #[derive(Copy, Clone, DataSize)]
-pub struct Secp256k1Bytes([u8; SECP256K1_PUBLIC_KEY_LENGTH]);
+pub struct Secp256k1Bytes(Secp256k1BytesArray);
 
 impl Secp256k1Bytes {
     /// Returns the underlying bytes.
-    pub fn value(self) -> [u8; SECP256K1_PUBLIC_KEY_LENGTH] {
+    pub fn value(self) -> Secp256k1BytesArray {
         self.0
     }
 }
@@ -92,25 +99,23 @@ impl AsRef<[u8]> for Secp256k1Bytes {
     }
 }
 
-impl From<[u8; SECP256K1_PUBLIC_KEY_LENGTH]> for Secp256k1Bytes {
-    fn from(value: [u8; SECP256K1_PUBLIC_KEY_LENGTH]) -> Self {
+impl From<Secp256k1BytesArray> for Secp256k1Bytes {
+    fn from(value: Secp256k1BytesArray) -> Self {
         Secp256k1Bytes(value)
     }
 }
 
 impl FromBytes for Secp256k1Bytes {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (bytes, rem) = bytesrepr::safe_split_at(bytes, SECP256K1_PUBLIC_KEY_LENGTH)?;
-        let mut result = [0u8; SECP256K1_PUBLIC_KEY_LENGTH];
-        result.copy_from_slice(bytes);
-        Ok((Secp256k1Bytes(result), rem))
+        let (secp256k1_bytes, rem) = FromBytes::from_bytes(bytes)?;
+        Ok((Secp256k1Bytes(secp256k1_bytes), rem))
     }
 }
 
 impl ToBytes for Secp256k1Bytes {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         // Without prefix similar to [u8; N] arrays.
-        Ok(self.0.to_vec())
+        self.0.to_bytes()
     }
     fn serialized_length(&self) -> usize {
         SECP256K1_PUBLIC_KEY_LENGTH
@@ -119,10 +124,20 @@ impl ToBytes for Secp256k1Bytes {
 
 /// Simplified raw data type
 #[derive(DataSize, Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "std",
+    schemars(
+        with = "String",
+        description = "Hex-encoded cryptographic public key, including the algorithm tag prefix."
+    )
+)]
 pub enum PublicKey {
     /// Ed25519 public key.
+    #[cfg_attr(feature = "std", schemars(skip))]
     Ed25519([u8; ED25519_PUBLIC_KEY_LENGTH]),
     /// Secp256k1 public key.
+    #[cfg_attr(feature = "std", schemars(skip))]
     Secp256k1(Secp256k1Bytes),
 }
 
@@ -201,8 +216,8 @@ impl ToBytes for PublicKey {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.variant_id().to_bytes()?);
         match self {
-            PublicKey::Ed25519(bytes) => buffer.extend((*bytes).to_bytes()?),
-            PublicKey::Secp256k1(bytes) => buffer.extend((*bytes).to_bytes()?),
+            PublicKey::Ed25519(bytes) => buffer.extend(bytes.to_bytes()?),
+            PublicKey::Secp256k1(bytes) => buffer.extend(bytes.to_bytes()?),
         }
         Ok(buffer)
     }

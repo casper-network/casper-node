@@ -2,17 +2,17 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use rand::prelude::SliceRandom;
+use rand::{prelude::SliceRandom, Rng};
 use semver::Version;
 use smallvec::smallvec;
+
+use casper_types::ExecutionResult;
 
 use super::{Config, Storage};
 use crate::{
     effect::{requests::StorageRequest, Multiple},
     testing::{ComponentHarness, TestRng},
-    types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, DeployMetadata,
-    },
+    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
     Chainspec,
 };
@@ -210,11 +210,11 @@ fn can_put_and_get_block() {
     let was_new = put_block(&mut harness, &mut storage, block.clone());
     assert!(was_new, "putting block should have returned `true`");
 
-    // Storing the same block again should work, but yield a result of `false`.
+    // Storing the same block again should work, but yield a result of `true`.
     let was_new_second_time = put_block(&mut harness, &mut storage, block.clone());
     assert!(
-        !was_new_second_time,
-        "storing block the second time should have returned `false`"
+        was_new_second_time,
+        "storing block the second time should have returned `true`"
     );
 
     let response = get_block(&mut harness, &mut storage, *block.hash());
@@ -321,7 +321,7 @@ fn different_block_at_height_is_fatal() {
     assert!(was_new);
 
     let was_new = put_block(&mut harness, &mut storage, block_44_a);
-    assert!(!was_new);
+    assert!(was_new);
 
     // Putting a different block with the same height should now crash.
     put_block(&mut harness, &mut storage, block_44_b);
@@ -435,7 +435,7 @@ fn store_execution_results_for_two_blocks() {
     );
 
     // Put first execution result.
-    let first_result = ExecutionResult::random(&mut harness.rng);
+    let first_result: ExecutionResult = harness.rng.gen();
     let mut first_results = HashMap::new();
     first_results.insert(*deploy.id(), first_result.clone());
     put_execution_results(&mut harness, &mut storage, block_hash_a, first_results);
@@ -450,7 +450,7 @@ fn store_execution_results_for_two_blocks() {
     assert_eq!(first_metadata.execution_results, expected_per_block_results);
 
     // Add second result for the same deploy, different block.
-    let second_result = ExecutionResult::random(&mut harness.rng);
+    let second_result: ExecutionResult = harness.rng.gen();
     let mut second_results = HashMap::new();
     second_results.insert(*deploy.id(), second_result.clone());
     put_execution_results(&mut harness, &mut storage, block_hash_b, second_results);
@@ -511,7 +511,7 @@ fn store_random_execution_results() {
             // Store unique deploy.
             put_deploy(harness, storage, Box::new(deploy.clone()));
 
-            let execution_result = ExecutionResult::random(&mut harness.rng);
+            let execution_result: ExecutionResult = harness.rng.gen();
 
             // Insert deploy results for the unique block-deploy combination.
             let mut map = HashMap::new();
@@ -524,7 +524,7 @@ fn store_random_execution_results() {
 
         // Insert the shared deploys as well.
         for shared_deploy in shared_deploys {
-            let execution_result = ExecutionResult::random(&mut harness.rng);
+            let execution_result: ExecutionResult = harness.rng.gen();
 
             // Insert the new result and ensure it is not present yet.
             let result = block_results.insert(*shared_deploy.id(), execution_result.clone());
@@ -582,10 +582,10 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     let deploy_hash = DeployHash::random(&mut harness.rng);
 
     let mut exec_result_1 = HashMap::new();
-    exec_result_1.insert(deploy_hash, ExecutionResult::random(&mut harness.rng));
+    exec_result_1.insert(deploy_hash, harness.rng.gen());
 
     let mut exec_result_2 = HashMap::new();
-    exec_result_2.insert(deploy_hash, ExecutionResult::random(&mut harness.rng));
+    exec_result_2.insert(deploy_hash, harness.rng.gen());
 
     put_execution_results(&mut harness, &mut storage, block_hash, exec_result_1);
 
@@ -602,7 +602,7 @@ fn store_identical_execution_results() {
     let deploy_hash = DeployHash::random(&mut harness.rng);
 
     let mut exec_result = HashMap::new();
-    exec_result.insert(deploy_hash, ExecutionResult::random(&mut harness.rng));
+    exec_result.insert(deploy_hash, harness.rng.gen());
 
     put_execution_results(&mut harness, &mut storage, block_hash, exec_result.clone());
 
@@ -657,7 +657,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
     let block = random_block_at_height(&mut harness.rng, 42);
-    let execution_result = ExecutionResult::random(&mut harness.rng);
+    let execution_result: ExecutionResult = harness.rng.gen();
 
     put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
     put_block(&mut harness, &mut storage, block.clone());

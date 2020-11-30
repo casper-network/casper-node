@@ -35,7 +35,7 @@ node=${node:-"all"}
 #######################################
 
 # Import utils.
-source $NCTL/sh/utils/misc.sh
+source $NCTL/sh/utils.sh
 
 # Import vars.
 source $(get_path_to_net_vars $net)

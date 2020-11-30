@@ -68,14 +68,13 @@ impl<C: Context> FinalityDetector<C> {
             } else {
                 None
             };
-            let faulty_iter = unit.panorama.enumerate().filter(|(_, obs)| obs.is_faulty());
 
             Some(FinalizedBlock {
                 value: block.value.clone(),
                 timestamp: unit.timestamp,
                 height: block.height,
                 rewards,
-                equivocators: faulty_iter.map(|(vidx, _)| to_id(vidx)).collect(),
+                equivocators: unit.panorama.iter_faulty().map(to_id).collect(),
                 proposer: to_id(unit.creator),
             })
         }))
