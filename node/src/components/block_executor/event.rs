@@ -151,7 +151,12 @@ impl Display for Event {
                 result
             ),
             Event::BlockAlreadyExists(flag, fb) => {
-                write!(f, "Block at height: {} was executed before: {}", fb.height(), flag)
+                write!(
+                    f,
+                    "Block at height: {} was executed before: {}",
+                    fb.height(),
+                    flag
+                )
             }
         }
     }
