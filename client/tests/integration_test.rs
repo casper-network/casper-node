@@ -412,16 +412,58 @@ mod get_block {
 }
 
 mod get_item {
+    use casper_client::ValidateResponseError;
     use casper_node::rpcs::state::{GetItem, GetItemParams};
 
     use super::*;
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_block_should_fail_with_invalid_key() {
+    async fn get_item_should_succeed_with_valid_state_root_hash() {
+        let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
+
+        // in this case, the error means that the request was sent successfully, but due to to the
+        // mock implementation fails to validate
+
+        assert_eq!(
+            server_handle.get_item(VALID_STATE_ROOT_HASH, VALID_PURSE_UREF, ""),
+            Err(
+                Error::InvalidResponse(ValidateResponseError::ValidateResponseFailedToParse).into()
+            )
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn get_item_should_fail_with_invalid_state_root_hash() {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
-            server_handle.get_item(VALID_STATE_ROOT_HASH, "", ""),
+            server_handle.get_item("<invalid state root hash>", VALID_PURSE_UREF, ""),
+            Err(CryptoError {
+                context: "state_root_hash",
+                error: FromHex(OddLength)
+            }
+            .into())
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn get_item_fail_with_invalid_key() {
+        let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
+        assert_eq!(
+            server_handle.get_item(VALID_STATE_ROOT_HASH, "invalid key", ""),
             Err(FailedToParseKey.into())
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn get_item_should_fail_with_empty_key() {
+        let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
+        assert_eq!(
+            server_handle.get_item("<invalid state root hash>", "", ""),
+            Err(CryptoError {
+                context: "state_root_hash",
+                error: FromHex(OddLength)
+            }
+            .into())
         );
     }
 }
