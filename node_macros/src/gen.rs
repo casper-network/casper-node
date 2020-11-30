@@ -346,50 +346,45 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
     }
 
     quote!(
-            impl crate::reactor::Reactor for #reactor_ident {
-                type Event = #event_ident;
-                type Error = #error_ident;
-                type Config = #config;
+        impl crate::reactor::Reactor for #reactor_ident {
+            type Event = #event_ident;
+            type Error = #error_ident;
+            type Config = #config;
 
-                fn dispatch_event(
-                    &mut self,
-    <<<<<<< HEAD
-                    effect_builder: crate::effect::EffectBuilder<Self::Event>,
-                    rng: &mut dyn crate::types::CryptoRngCore,
-    =======
-                    effect_builder: crate::reactor::EffectBuilder<Self::Event>,
-                    rng: &mut crate::NodeRng,
-    >>>>>>> upstream/master
-                    event: Self::Event,
-                ) -> crate::effect::Effects<Self::Event> {
-                    match event {
-                        #(#dispatches)*
-                    }
-                }
-
-                fn new(
-                    cfg: Self::Config,
-                    registry: &prometheus::Registry,
-                    event_queue: crate::reactor::EventQueueHandle<Self::Event>,
-                    rng: &mut crate::NodeRng,
-                ) -> Result<(Self, crate::effect::Effects<Self::Event>), Self::Error> {
-                    let mut all_effects = crate::effect::Effects::new();
-
-                    let effect_builder = crate::effect::EffectBuilder::new(event_queue);
-
-                    // Instantiate each component.
-                    #(#component_instantiations)*
-
-                    // Assign component fields during reactor construction.
-                    let reactor = #reactor_ident {
-                        #(#component_fields,)*
-                    };
-
-                    // To avoid unused warnings.
-                    let _ = effect_builder;
-
-                    Ok((reactor, all_effects))
+            fn dispatch_event(
+                &mut self,
+                effect_builder: crate::effect::EffectBuilder<Self::Event>,
+                rng: &mut crate::NodeRng,
+                event: Self::Event,
+            ) -> crate::effect::Effects<Self::Event> {
+                match event {
+                    #(#dispatches)*
                 }
             }
-        )
+
+            fn new(
+                cfg: Self::Config,
+                registry: &prometheus::Registry,
+                event_queue: crate::reactor::EventQueueHandle<Self::Event>,
+                rng: &mut crate::NodeRng,
+            ) -> Result<(Self, crate::effect::Effects<Self::Event>), Self::Error> {
+                let mut all_effects = crate::effect::Effects::new();
+
+                let effect_builder = crate::effect::EffectBuilder::new(event_queue);
+
+                // Instantiate each component.
+                #(#component_instantiations)*
+
+                // Assign component fields during reactor construction.
+                let reactor = #reactor_ident {
+                    #(#component_fields,)*
+                };
+
+                // To avoid unused warnings.
+                let _ = effect_builder;
+
+                Ok((reactor, all_effects))
+            }
+        }
+    )
 }
