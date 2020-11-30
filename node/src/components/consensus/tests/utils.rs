@@ -9,13 +9,11 @@ use crate::{
     Chainspec,
 };
 
-pub static ALICE_RAW_SECRET: Lazy<Vec<u8>> = Lazy::new(|| vec![0; SecretKey::ED25519_LENGTH]);
 pub static ALICE_SECRET_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes(&*ALICE_RAW_SECRET).unwrap());
+    Lazy::new(|| SecretKey::ed25519_from_bytes(&[0; SecretKey::ED25519_LENGTH]).unwrap());
 pub static ALICE_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ALICE_SECRET_KEY));
-pub static BOB_RAW_SECRET: Lazy<Vec<u8>> = Lazy::new(|| vec![1; SecretKey::ED25519_LENGTH]);
 pub static BOB_PRIVATE_KEY: Lazy<SecretKey> =
-    Lazy::new(|| SecretKey::ed25519_from_bytes(&*BOB_RAW_SECRET).unwrap());
+    Lazy::new(|| SecretKey::ed25519_from_bytes(&[1; SecretKey::ED25519_LENGTH]).unwrap());
 pub static BOB_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*BOB_PRIVATE_KEY));
 
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.

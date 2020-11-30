@@ -16,12 +16,11 @@ use crate::{
         protocols::highway::HighwayMessage,
         tests::{
             mock_proto::NodeId,
-            utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_RAW_SECRET, BOB_PUBLIC_KEY},
+            utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
         },
         traits::Context,
         HighwayProtocol,
     },
-    crypto::asymmetric_key::SecretKey,
     testing::TestRng,
     types::Timestamp,
 };
@@ -108,8 +107,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
         round_exp: 0,
         endorsed: BTreeSet::new(),
     };
-    let alice_keypair: Keypair =
-        Rc::new(SecretKey::ed25519_from_bytes(&*ALICE_RAW_SECRET).unwrap()).into();
+    let alice_keypair: Keypair = Keypair::from(Rc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
     ));
