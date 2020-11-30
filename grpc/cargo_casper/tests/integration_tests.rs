@@ -1,8 +1,7 @@
-use std::process::Output;
+use std::{fs, process::Output};
 
 use assert_cmd::Command;
 use lazy_static::lazy_static;
-use tempfile::TempDir;
 
 const FAILURE_EXIT_CODE: i32 = 101;
 const SUCCESS_EXIT_CODE: i32 = 0;
@@ -12,26 +11,25 @@ const TURBO: &str = "turbo";
 lazy_static! {
     static ref WORKSPACE_PATH_ARG: String =
         format!("--workspace-path={}/../../", env!("CARGO_MANIFEST_DIR"));
-    static ref TEST_DIR: TempDir = tempfile::tempdir().unwrap();
 }
 
 #[test]
 fn should_fail_when_target_path_already_exists() {
+    let test_dir = tempfile::tempdir().unwrap().into_path();
     let output_error = Command::cargo_bin(env!("CARGO_PKG_NAME"))
         .unwrap()
-        .arg(TEST_DIR.path())
+        .arg(&test_dir)
         .unwrap_err();
 
     let exit_code = output_error.as_output().unwrap().status.code().unwrap();
     assert_eq!(FAILURE_EXIT_CODE, exit_code);
 
     let stderr: String = String::from_utf8_lossy(&output_error.as_output().unwrap().stderr).into();
-    let expected_msg_fragment = format!(
-        ": destination '{}' already exists",
-        TEST_DIR.path().display()
-    );
+    let expected_msg_fragment = format!(": destination '{}' already exists", test_dir.display());
     assert!(stderr.contains(&expected_msg_fragment));
     assert!(stderr.contains("error"));
+
+    fs::remove_dir_all(&test_dir).unwrap();
 }
 
 /// Runs `cmd` and returns the `Output` if successful, or panics on failure.
@@ -49,9 +47,11 @@ fn output_from_command(mut command: Command) -> Output {
 }
 
 fn run_tool_and_resulting_tests(turbo: bool) {
+    let temp_dir = tempfile::tempdir().unwrap().into_path();
+
     // Run 'cargo-casper <test dir>/<subdir> --workspace-path=<path to casper-node root>'
     let subdir = if turbo { TURBO } else { USE_SYSTEM_CONTRACTS };
-    let test_dir = TEST_DIR.path().join(subdir);
+    let test_dir = temp_dir.join(subdir);
     let mut tool_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
     tool_cmd.arg(&test_dir);
     tool_cmd.arg(&*WORKSPACE_PATH_ARG);
@@ -71,6 +71,9 @@ fn run_tool_and_resulting_tests(turbo: bool) {
     test_cmd.arg("test").current_dir(test_dir.join("tests"));
     let test_output = output_from_command(test_cmd);
     assert_eq!(SUCCESS_EXIT_CODE, test_output.status.code().unwrap());
+
+    // Cleans up temporary directory, but leaves it otherwise if the test failed.
+    fs::remove_dir_all(&temp_dir).unwrap();
 }
 
 #[test]
