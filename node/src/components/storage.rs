@@ -179,7 +179,7 @@ impl<REv> Component<REv> for Storage {
         // anyway, it should not matter.
         match result {
             Ok(effects) => effects,
-            Err(err) => fatal!(effect_builder, format!("storage error: {}", err)),
+            Err(err) => fatal!(effect_builder, "storage error: {}", err),
         }
     }
 }
@@ -276,7 +276,7 @@ impl Storage {
         Ok(match req {
             StorageRequest::PutBlock { block, responder } => {
                 let mut txn = self.env.begin_rw_txn()?;
-                let outcome = txn.put_value(self.block_db, block.hash(), &block, false)?;
+                let outcome = txn.put_value(self.block_db, block.hash(), &block, true)?;
                 txn.commit()?;
 
                 if outcome {

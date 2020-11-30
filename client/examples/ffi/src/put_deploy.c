@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
 
     const char *payment_args[2] = {
         "name_01:bool='false'",
-        "name_02:int='42'",
+        "name_02:i32='42'",
     };
     payment_params.payment_args_simple = (const char *const *)&payment_args;
     payment_params.payment_args_simple_len = 2;

@@ -30,6 +30,11 @@ pub(crate) const HANNA: ValidatorIndex = ValidatorIndex(7);
 pub(crate) const N: Observation<TestContext> = Observation::None;
 pub(crate) const F: Observation<TestContext> = Observation::Faulty;
 
+const TEST_MIN_ROUND_EXP: u8 = 4;
+const TEST_MAX_ROUND_EXP: u8 = 19;
+const TEST_INIT_ROUND_EXP: u8 = 4;
+const TEST_ERA_HEIGHT: u64 = 5;
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TestContext;
 
@@ -111,12 +116,12 @@ impl State<TestContext> {
             seed,
             TEST_BLOCK_REWARD,
             TEST_BLOCK_REWARD / 5,
-            4,
-            19,
-            4,
-            u64::MAX,
-            Timestamp::from(u64::MAX),
-            Timestamp::from(u64::MAX),
+            TEST_MIN_ROUND_EXP,
+            TEST_MAX_ROUND_EXP,
+            TEST_INIT_ROUND_EXP,
+            TEST_ERA_HEIGHT,
+            Timestamp::from(0),
+            Timestamp::from(0),
         );
         State::new(weights, params, vec![])
     }
@@ -314,7 +319,6 @@ fn fork_choice() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new_test(WEIGHTS, 0);
     let mut rng = crate::new_rng();
@@ -334,7 +338,6 @@ fn validate_lnc_no_equivocation() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
     // Equivocation cited by one honest validator in the vote's panorama.
     // Does NOT violate LNC.
@@ -357,7 +360,6 @@ fn validate_lnc_fault_seen_directly() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
     // Equivocation cited by two honest validators in the vote's panorama – their votes need to
     // be endorsed.
@@ -395,7 +397,6 @@ fn validate_lnc_one_equivocator() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
     // Multiple equivocators and indirect equivocations.
     // Votes are seen as endorsed by `state` – does not violate LNC.
@@ -437,7 +438,6 @@ fn validate_lnc_two_equivocators() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
     //           a0'<-----+
     // Alice              |
@@ -476,7 +476,6 @@ fn validate_lnc_own_naive_citation() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
     // Eric's vote should not require an endorsement as his unit e0 cites equivocator Carol before
     // the fork.
@@ -519,7 +518,6 @@ fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>> {
     // Endorsements should be transitive to descendants.
     // c1 doesn't have to be endorsed, it is enough that c0 is.
@@ -556,7 +554,6 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<TestContext>> {
     // a0 cites a descendant b1 of an eqiuvocation vote (b0 and b0').
     // This is still detected as violation of the LNC.
@@ -591,7 +588,6 @@ fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<Tes
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_endorse_mix_pairs.png
@@ -627,7 +623,6 @@ fn validate_lnc_endorse_mix_pairs() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_shared_equiv_unit.png
@@ -673,7 +668,6 @@ fn validate_lnc_shared_equiv_unit() -> Result<(), AddUnitError<TestContext>> {
 }
 
 #[test]
-#[ignore]
 fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
     // Diagram of the DAG can be found under
     // /resources/test/dags/validate_lnc_four_forks.png
@@ -720,6 +714,29 @@ fn validate_lnc_four_forks() -> Result<(), AddUnitError<TestContext>> {
     // And it should still work if both were endorsed.
     endorse!(pre_endorse_state, rng, h0; ALICE, BOB, CAROL, DAN, GINA, HANNA);
     add_unit!(pre_endorse_state, rng, DAN, None; a0, b0, c0, d0, F, f0, g0, h0; a0, g0, b0, h0)?;
+    Ok(())
+}
+
+#[test]
+fn is_terminal_block() -> Result<(), AddUnitError<TestContext>> {
+    let mut state = State::new_test(WEIGHTS, 0);
+    let mut rng = crate::new_rng();
+
+    let a0 = add_unit!(state, rng, ALICE, 0x00; N, N, N)?;
+    assert!(!state.is_terminal_block(&a0)); // height 0
+    let b0 = add_unit!(state, rng, BOB, 0x01; a0, N, N)?;
+    assert!(!state.is_terminal_block(&b0)); // height 1
+    let c0 = add_unit!(state, rng, CAROL, 0x02; a0, b0, N)?;
+    assert!(!state.is_terminal_block(&c0)); // height 2
+    let a1 = add_unit!(state, rng, ALICE, 0x03; a0, b0, c0)?;
+    assert!(!state.is_terminal_block(&a1)); // height 3
+    let a2 = add_unit!(state, rng, ALICE, None; a1, b0, c0)?;
+    assert!(!state.is_terminal_block(&a2)); // not a block
+    let a3 = add_unit!(state, rng, ALICE, 0x04; a2, b0, c0)?;
+    assert!(state.is_terminal_block(&a3)); // height 4, i.e. the fifth block and thus the last one
+    assert_eq!(TEST_ERA_HEIGHT - 1, state.block(&a3).height);
+    let a4 = add_unit!(state, rng, ALICE, None; a3, b0, c0)?;
+    assert!(!state.is_terminal_block(&a4)); // not a block
     Ok(())
 }
 

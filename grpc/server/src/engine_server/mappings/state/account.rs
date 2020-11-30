@@ -26,7 +26,7 @@ impl From<Account> for state::Account {
         pb_account.set_main_purse(account.main_purse().into());
 
         let associated_keys: Vec<Account_AssociatedKey> =
-            account.get_associated_keys().map(Into::into).collect();
+            account.associated_keys().map(Into::into).collect();
         pb_account.set_associated_keys(associated_keys.into());
 
         {

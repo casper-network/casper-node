@@ -22,7 +22,7 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
-use casper_types::ProtocolVersion;
+use casper_types::{ExecutionResult, ProtocolVersion};
 
 use crate::{
     components::{
@@ -37,10 +37,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    types::{
-        json_compatibility::ExecutionResult, Block, BlockHash, Deploy, DeployHash, DeployHeader,
-        FinalizedBlock, NodeId,
-    },
+    types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalizedBlock, NodeId},
     NodeRng,
 };
 pub(crate) use event::Event;

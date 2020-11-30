@@ -43,9 +43,10 @@ use crate::{
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
         },
+        linear_chain::FinalitySignature,
     },
     crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey, Signature},
+        asymmetric_key::{self, PublicKey, SecretKey},
         hash::Digest,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
@@ -135,7 +136,6 @@ where
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
 
-        metrics.current_era.set(0);
         let mut era_supervisor = Self {
             active_eras: Default::default(),
             secret_signing_key,
@@ -221,7 +221,7 @@ where
         &mut self,
         era_id: EraId,
         timestamp: Timestamp,
-        validator_stakes: Vec<(PublicKey, Motes)>,
+        mut validator_stakes: Vec<(PublicKey, Motes)>,
         newly_slashed: Vec<PublicKey>,
         seed: u64,
         start_time: Timestamp,
@@ -233,11 +233,15 @@ where
         }
         self.current_era = era_id;
         self.metrics.current_era.set(self.current_era.0 as i64);
+        let instance_id = instance_id(&self.chainspec, state_root_hash, start_height);
+
+        validator_stakes.sort_by_cached_key(|(pub_key, _)| *pub_key);
         info!(
             ?validator_stakes,
             %start_time,
             %timestamp,
             %start_height,
+            %instance_id,
             era = era_id.0,
             "starting era",
         );
@@ -271,7 +275,7 @@ where
             .and_then(|last_era_id| self.active_eras.get(&last_era_id));
 
         let mut consensus = (self.new_consensus)(
-            instance_id(&self.chainspec, state_root_hash, start_height),
+            instance_id,
             validator_stakes,
             &slashed,
             &self.chainspec,
@@ -422,7 +426,7 @@ where
     pub(super) fn handle_linear_chain_block(
         &mut self,
         block_header: BlockHeader,
-        responder: Responder<Signature>,
+        responder: Responder<FinalitySignature>,
     ) -> Effects<Event<I>> {
         // TODO - we should only sign if we're a validator for the given era ID.
         let signature = asymmetric_key::sign(
@@ -431,7 +435,13 @@ where
             &self.era_supervisor.public_signing_key,
             self.rng,
         );
-        let mut effects = responder.respond(signature).ignore();
+        let mut effects = responder
+            .respond(FinalitySignature::new(
+                block_header.hash(),
+                signature,
+                self.era_supervisor.public_signing_key,
+            ))
+            .ignore();
         if block_header.era_id() < self.era_supervisor.current_era {
             trace!(era_id = %block_header.era_id(), "executed block in old era");
             return effects;
