@@ -80,7 +80,6 @@ reactor!(Reactor {
     announcements: {
         // The deploy fetcher needs to be notified about new deploys.
         DeployAcceptorAnnouncement<NodeId> -> [deploy_fetcher];
-        // TODO: Route network messages
         NetworkAnnouncement<NodeId, Message> -> [fn handle_message];
         // Currently the RpcServerAnnouncement is misnamed - it solely tells of new deploys arriving
         // from a client.
