@@ -1,4 +1,4 @@
-use std::{iter, rc::Rc};
+use std::{collections::BTreeSet, iter, rc::Rc};
 
 use casper_execution_engine::shared::motes::Motes;
 
@@ -25,7 +25,6 @@ use crate::{
     testing::TestRng,
     types::Timestamp,
 };
-use std::collections::BTreeSet;
 
 /// Returns a new `State` with `ClContext` parameters suitable for tests.
 pub(crate) fn new_test_state(weights: &[state::Weight], seed: u64) -> State<ClContext> {
