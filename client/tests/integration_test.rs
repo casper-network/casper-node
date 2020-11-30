@@ -116,6 +116,18 @@ impl MockServerHandle {
             .map_err(ErrWrapper)
     }
 
+    fn get_block(&self, maybe_block_id: &str) -> Result<(), ErrWrapper> {
+        casper_client::get_block("1", &self.url(), false, maybe_block_id)
+            .map(|_| ())
+            .map_err(ErrWrapper)
+    }
+
+    fn get_item(&self, state_root_hash: &str, key: &str, path: &str) -> Result<(), ErrWrapper> {
+        casper_client::get_item("1", &self.url(), false, state_root_hash, key, path)
+            .map(|_| ())
+            .map_err(ErrWrapper)
+    }
+
     fn transfer(
         &self,
         amount: &str,
@@ -330,6 +342,88 @@ mod get_state_root_hash {
         let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
         assert_eq!(server_handle.get_state_root_hash(""), Ok(()));
     }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_succeed_with_block_id_of_height() {
+        let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
+        assert_eq!(server_handle.get_state_root_hash("1"), Ok(()));
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_with_bad_block_id() {
+        let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
+        let input = "<not a real block id>";
+        assert!(
+            server_handle.get_state_root_hash(input).is_err(),
+            "input '{}' should not parse to a valid block id",
+            input
+        );
+    }
+}
+
+mod get_block {
+    use casper_client::ValidateResponseError;
+    use casper_node::rpcs::chain::{GetBlock, GetBlockParams};
+
+    use super::*;
+
+    // in this case, the error means that the request was sent successfully, but due to to the
+    // mock implementation fails to validate
+
+    #[tokio::test(threaded_scheduler)]
+    async fn get_block_should_succeed_with_valid_block_id() {
+        let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
+        assert_eq!(
+            server_handle.get_block(VALID_STATE_ROOT_HASH),
+            Err(ErrWrapper(InvalidResponse(
+                ValidateResponseError::NoBlockInResponse
+            )))
+        );
+    }
+    #[tokio::test(threaded_scheduler)]
+    async fn get_block_should_succeed_with_valid_block_height() {
+        let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
+        assert_eq!(
+            server_handle.get_block("1"),
+            Err(ErrWrapper(InvalidResponse(
+                ValidateResponseError::NoBlockInResponse
+            )))
+        );
+    }
+    #[tokio::test(threaded_scheduler)]
+    async fn get_block_should_succeed_with_valid_empty_block_id() {
+        let server_handle = MockServerHandle::spawn_without_params(GetBlock::METHOD);
+        assert_eq!(
+            server_handle.get_block(""),
+            Err(ErrWrapper(InvalidResponse(
+                ValidateResponseError::NoBlockInResponse
+            )))
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn get_block_should_fail_with_invalid_block_id() {
+        let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
+        match server_handle.get_block("<not a valid hash>") {
+            Err(ErrWrapper(Error::FailedToParseInt("block_identifier", _))) => {}
+            other => panic!("incorrect error returned from client {:?}", other),
+        }
+    }
+}
+
+mod get_item {
+    use casper_node::rpcs::state::{GetItem, GetItemParams};
+
+    use super::*;
+
+    #[tokio::test(threaded_scheduler)]
+    async fn get_block_should_fail_with_invalid_key() {
+        let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
+        assert_eq!(
+            server_handle.get_item(VALID_STATE_ROOT_HASH, "", ""),
+            Err(FailedToParseKey.into())
+        );
+    }
 }
 
 mod get_deploy {
@@ -340,7 +434,7 @@ mod get_deploy {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert_eq!(
             server_handle
-                .get_deploy("09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",),
+                .get_deploy("09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6"),
             Ok(())
         );
     }
@@ -414,7 +508,7 @@ mod transfer {
     }
 
     #[tokio::test(threaded_scheduler)]
-    async fn should_fail_if_both_target_purse_and_target_account_provided() {
+    async fn should_fail_if_both_target_purse_and_target_account_are_provided() {
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         let maybe_target_purse = VALID_PURSE_UREF;
         let maybe_target_account = "12345";
@@ -427,7 +521,27 @@ mod transfer {
                 deploy_params::test_data_valid(),
                 payment_params::test_data_with_name()
             ),
-            Err(Error::InvalidArgument("target_account | target_purse", "Invalid arguments to get_transfer_target - must provide either a target account or purse.".to_string()).into())
+            Err(Error::InvalidArgument("target_account | target_purse",
+            format!(
+                "Invalid arguments to get_transfer_target - must provide either a target account or purse. account={}, purse={}", maybe_target_account, maybe_target_purse)).into())
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_if_both_target_purse_and_target_account_are_excluded() {
+        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
+        assert_eq!(
+            server_handle.transfer(
+                "100",
+                VALID_PURSE_UREF,
+                "",
+                "",
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name()
+            ),
+            Err(Error::InvalidArgument(
+                "target_account | target_purse",
+                "Invalid arguments to get_transfer_target - must provide either a target account or purse. account=, purse=".to_string()).into())
         );
     }
 }
