@@ -370,8 +370,9 @@ impl reactor::Reactor for Reactor {
         let effect_builder = EffectBuilder::new(event_queue);
         let network_config = network::Config::from(&config.network);
         let (network, network_effects) = Network::new(event_queue, network_config, true)?;
+        let genesis_config_hash = chainspec_loader.chainspec().hash();
         let (small_network, small_network_effects) =
-            SmallNetwork::new(event_queue, config.network, true)?;
+            SmallNetwork::new(event_queue, config.network, genesis_config_hash, true)?;
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
