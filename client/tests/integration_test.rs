@@ -171,6 +171,12 @@ impl MockServerHandle {
         .map_err(ErrWrapper)
     }
 
+    fn send_deploy_file(&self, input_path: &str) -> Result<(), ErrWrapper> {
+        casper_client::send_deploy_file("1", &self.url(), false, input_path)
+            .map(|_| ())
+            .map_err(ErrWrapper)
+    }
+
     fn get_auction_info(&self) -> Result<(), ErrWrapper> {
         casper_client::get_auction_info("1", &self.url(), false)
             .map(|_| ())
@@ -504,6 +510,221 @@ mod get_auction_info {
     async fn should_succeed() {
         let server_handle = MockServerHandle::spawn_without_params(GetAuctionInfo::METHOD);
         assert_eq!(server_handle.get_auction_info(), Ok(()));
+    }
+}
+
+mod make_deploy {
+    use super::*;
+
+    #[test]
+    fn should_succeed_for_stdout() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_succeed_for_file() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "../target/test_deploy.json",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+}
+
+mod send_deploy {
+    use super::*;
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_with_bad_deploy_file_path() {
+        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
+        if let Err(ErrWrapper(Error::IoError { context, .. })) =
+            server_handle.send_deploy_file("<not a valid path>")
+        {
+            assert_eq!(context, "unable to read input file \'<not a valid path>\'")
+        }
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_succeed_for_file() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "../target/test_send_deploy.json",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
+        assert_eq!(
+            server_handle.send_deploy_file("../target/test_send_deploy.json"),
+            Ok(())
+        );
+    }
+}
+
+mod sign_deploy {
+    use super::*;
+
+    #[test]
+    fn should_succeed_for_file() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "../target/test_deploy.json",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                "../target/test_deploy.json",
+                "../resources/local/secret_keys/node-1.pem",
+                "../target/signed_test_deploy.json",
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_succeed_for_stdout() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "../target/test_deploy.json",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                "../target/test_deploy.json",
+                "../resources/local/secret_keys/node-1.pem",
+                ""
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_fail_with_bad_secret_key_path() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "../target/test_deploy.json",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert!(casper_client::sign_deploy_file(
+            "../target/test_deploy.json",
+            "<this is not a path>",
+            ""
+        )
+        .is_err());
+    }
+}
+
+mod keygen_generate_files {
+    use std::{env::current_dir, fs::remove_dir_all};
+
+    use super::*;
+
+    fn remove_dir(path: &str) {
+        if let Err(err) = remove_dir_all(path) {
+            println!("Unable to remove file at {} - {:?}", path, err);
+        }
+    }
+
+    #[test]
+    fn should_succeed_for_valid_args_ed25519() {
+        let path = "../target/test-keygen-ed25519";
+        remove_dir(path);
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::ED25519, true)
+                .map_err(ErrWrapper);
+        assert_eq!(result, Ok(()));
+        remove_dir(path);
+    }
+
+    #[test]
+    fn should_succeed_for_valid_args_secp256k1() {
+        let path = "../target/test-keygen-secp256k1";
+        remove_dir(path);
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, true)
+                .map_err(ErrWrapper);
+        assert_eq!(result, Ok(()));
+        remove_dir(path);
+    }
+
+    #[test]
+    fn should_force_overwrite_when_set() {
+        let path = "../target/test-keygen-force";
+        remove_dir(path);
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, false)
+                .map_err(ErrWrapper);
+        assert_eq!(result, Ok(()));
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, false)
+                .map_err(ErrWrapper);
+        assert_eq!(
+            result,
+            Err(FileAlreadyExists(
+                current_dir()
+                    .expect("does exist")
+                    .parent()
+                    .unwrap()
+                    .join("target/test-keygen-force/secret_key.pem")
+            )
+            .into())
+        );
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, true)
+                .map_err(ErrWrapper);
+        assert_eq!(result, Ok(()));
+        remove_dir(path);
+    }
+
+    #[test]
+    fn should_fail_for_invalid_algorithm() {
+        let path = "../target/test-keygen-invalid-algo";
+        let result = casper_client::keygen::generate_files(path, "<not a valid algo>", true)
+            .map_err(ErrWrapper);
+        assert_eq!(result, Err(UnsupportedAlgorithm("<not a valid algo>".to_string()).into()));
+    }
+
+    #[test]
+    fn should_fail_for_invalid_output_dir() {
+        let path = "";
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::ED25519, true)
+                .map_err(ErrWrapper);
+        assert_eq!(result, Err(InvalidArgument("generate_files", "empty output_dir provided, must be a valid path".to_string()).into()));
     }
 }
 
