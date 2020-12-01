@@ -122,7 +122,7 @@ impl<VID: Ord + Hash + fmt::Debug> fmt::Display for Validators<VID> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
 pub(crate) struct ValidatorMap<T>(Vec<T>);
 
 impl<T> ValidatorMap<T> {
