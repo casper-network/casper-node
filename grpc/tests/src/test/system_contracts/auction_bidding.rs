@@ -1,3 +1,5 @@
+use assert_matches::assert_matches;
+
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
@@ -5,7 +7,13 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::{
+        engine_state::{genesis::GenesisAccount, Error as EngineError},
+        execution::Error,
+    },
+    shared::motes::Motes,
+};
 use casper_types::{
     account::AccountHash,
     auction::{
@@ -245,13 +253,10 @@ fn should_fail_bonding_with_insufficient_funds() {
         .expect("should have a response")
         .to_owned();
 
-    let error_message = utils::get_error_message(response);
-
-    assert!(
-        error_message.contains(&format!("{:?}", ApiError::from(auction::Error::Transfer))),
-        "error: {:?}",
-        error_message
-    );
+    assert_eq!(response.len(), 1);
+    let exec_result = response[0].as_error().expect("should have error");
+    let error = assert_matches!(exec_result, EngineError::Exec(Error::Revert(e)) => *e, "{:?}", exec_result);
+    assert_eq!(error, ApiError::from(auction::Error::TransferToBidPurse));
 }
 
 #[ignore]

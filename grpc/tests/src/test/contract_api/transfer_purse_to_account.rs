@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
@@ -10,15 +10,14 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_types::{
-    account::AccountHash, auction::ARG_AMOUNT, mint::ARG_TARGET, runtime_args, ApiError, CLValue,
-    RuntimeArgs, U512,
+    account::AccountHash, auction::ARG_AMOUNT, mint::ARG_TARGET, runtime_args,
+    system_contract_errors::mint, ApiError, CLValue, RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
-lazy_static! {
-    static ref ACCOUNT_1_INITIAL_FUND: U512 = *DEFAULT_PAYMENT + 42;
-}
+
+static ACCOUNT_1_INITIAL_FUND: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + 42);
 
 #[ignore]
 #[test]
@@ -108,9 +107,10 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     .expect("should be String");
 
     // Main assertion for the result of `transfer_from_purse_to_purse`
+    let expected_error: ApiError = mint::Error::InsufficientFunds.into();
     assert_eq!(
         transfer_result,
-        format!("{:?}", Result::<(), _>::Err(ApiError::Transfer)),
+        format!("{:?}", Result::<(), _>::Err(expected_error)),
         "Transfer Error incorrect"
     );
 }

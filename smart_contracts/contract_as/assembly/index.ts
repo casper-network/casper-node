@@ -4,13 +4,13 @@ import {Error, ErrorCode} from "./error";
 import {CLValue, CLType, CLTypeTag} from "./clvalue";
 import {Key, AccountHash} from "./key";
 import {Pair} from "./pair";
+import {Ref} from "./ref";
 import {toBytesString,
         toBytesVecT,
         fromBytesMap,
         fromBytesString,
         toBytesStringList,
         Result,
-        Ref,
         toBytesMap,
         toBytesVecT,
         fromBytesArray} from "./bytesrepr";

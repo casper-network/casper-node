@@ -421,7 +421,7 @@ impl reactor::Reactor for Reactor {
             .genesis_state_root_hash()
             .expect("Should have Genesis state root hash");
 
-        let block_executor = BlockExecutor::new(genesis_state_root_hash);
+        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone());
 
         let linear_chain = linear_chain::LinearChain::new();
 
@@ -808,8 +808,6 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
-        let block_proposer_state = Default::default();
-
         let (network, small_network, rest_server, config) = (
             self.network,
             self.small_network,
@@ -822,7 +820,6 @@ impl Reactor {
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
                 linear_chain: self.linear_chain.linear_chain().clone(),
-                block_proposer_state,
                 event_stream_server: self.event_stream_server,
             },
         );

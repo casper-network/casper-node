@@ -8,7 +8,7 @@ use std::str;
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
 use hyper::Body;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -28,23 +28,21 @@ use crate::{
     types::{Block, BlockHash, Deploy, DeployHash, GetStatusResult, Item, PeersMap},
 };
 
-lazy_static! {
-    static ref GET_DEPLOY_PARAMS: GetDeployParams = GetDeployParams {
-        deploy_hash: *Deploy::doc_example().id(),
-    };
-    static ref GET_DEPLOY_RESULT: GetDeployResult = GetDeployResult {
-        api_version: CLIENT_API_VERSION.clone(),
-        deploy: Deploy::doc_example().clone(),
-        execution_results: vec![JsonExecutionResult {
-            block_hash: Block::doc_example().id(),
-            result: ExecutionResult::example().clone(),
-        }],
-    };
-    static ref GET_PEERS_RESULT: GetPeersResult = GetPeersResult {
-        api_version: CLIENT_API_VERSION.clone(),
-        peers: GetStatusResult::doc_example().peers.clone(),
-    };
-}
+static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
+    deploy_hash: *Deploy::doc_example().id(),
+});
+static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    deploy: Deploy::doc_example().clone(),
+    execution_results: vec![JsonExecutionResult {
+        block_hash: Block::doc_example().id(),
+        result: ExecutionResult::example().clone(),
+    }],
+});
+static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    peers: GetStatusResult::doc_example().peers.clone(),
+});
 
 /// Params for "info_get_deploy" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]

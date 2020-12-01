@@ -26,8 +26,8 @@ use casper_types::{
     mint::{METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD, METHOD_REDUCE_TOTAL_SUPPLY},
     system_contract_errors,
     system_contract_errors::auction::Error,
-    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    Parameter, PublicKey, RuntimeArgs, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    ApiError, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    Key, Parameter, PublicKey, RuntimeArgs, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 struct AuctionContract;
@@ -57,9 +57,8 @@ impl SystemProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> StdResult<(), Error> {
+    ) -> StdResult<(), ApiError> {
         system::transfer_from_purse_to_purse(source, target, amount, None)
-            .map_err(|_| Error::Transfer)
     }
 }
 
@@ -96,9 +95,8 @@ impl MintProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ApiError> {
         system::transfer_from_purse_to_purse(source, target, amount, None)
-            .map_err(|_| Error::Transfer)
     }
 
     fn balance(&mut self, purse: URef) -> Option<U512> {

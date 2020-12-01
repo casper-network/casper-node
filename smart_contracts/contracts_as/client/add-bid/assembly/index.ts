@@ -62,13 +62,13 @@ export function call(): void {
 
     let delegationRate = delegationRateResult.value;
 
-    let ret = transferFromPurseToPurse(
+    let error = transferFromPurseToPurse(
         mainPurse,
         bondingPurse,
         amount,
     );
-    if (ret > 0) {
-        Error.fromErrorCode(ErrorCode.Transfer).revert();
+    if (error !== null) {
+        error.revert();
         return;
     }
 

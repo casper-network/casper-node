@@ -15,8 +15,8 @@ use std::{
 };
 
 use datasize::DataSize;
-use lazy_static::lazy_static;
 use libc::{c_long, sysconf, _SC_PAGESIZE};
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -29,18 +29,16 @@ pub(crate) use round_robin::WeightedRoundRobin;
 /// Sensible default for many if not all systems.
 const DEFAULT_PAGE_SIZE: usize = 4096;
 
-lazy_static! {
-    /// OS page size.
-    pub static ref OS_PAGE_SIZE: usize = {
-        // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
-        let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
-        if value <= 0 {
-            DEFAULT_PAGE_SIZE
-        } else {
-            value as usize
-        }
-    };
-}
+/// OS page size.
+pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
+    // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
+    let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
+    if value <= 0 {
+        DEFAULT_PAGE_SIZE
+    } else {
+        value as usize
+    }
+});
 
 /// Parses a network address from a string, with DNS resolution.
 pub(crate) fn resolve_address(addr: &str) -> io::Result<SocketAddr> {

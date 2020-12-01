@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
@@ -28,14 +28,12 @@ const ALICE_KEY: PublicKey = PublicKey::Ed25519([3; 32]);
 const BOB_KEY: PublicKey = PublicKey::Ed25519([5; 32]);
 const CAROL_KEY: PublicKey = PublicKey::Ed25519([7; 32]);
 
-lazy_static! {
-    static ref ALICE_ADDR: AccountHash = ALICE_KEY.into();
-    static ref BOB_ADDR: AccountHash = BOB_KEY.into();
-    static ref CAROL_ADDR: AccountHash = CAROL_KEY.into();
-    static ref TRANSFER_AMOUNT_1: U512 = U512::from(100_000_000);
-    static ref TRANSFER_AMOUNT_2: U512 = U512::from(200_000_000);
-    static ref TRANSFER_AMOUNT_3: U512 = U512::from(300_000_000);
-}
+static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| ALICE_KEY.into());
+static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| BOB_KEY.into());
+static CAROL_ADDR: Lazy<AccountHash> = Lazy::new(|| CAROL_KEY.into());
+static TRANSFER_AMOUNT_1: Lazy<U512> = Lazy::new(|| U512::from(100_100_000));
+static TRANSFER_AMOUNT_2: Lazy<U512> = Lazy::new(|| U512::from(200_100_000));
+static TRANSFER_AMOUNT_3: Lazy<U512> = Lazy::new(|| U512::from(300_100_000));
 
 #[ignore]
 #[test]

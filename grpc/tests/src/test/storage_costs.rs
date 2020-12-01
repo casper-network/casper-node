@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 #[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
 use casper_engine_test_support::internal::DEFAULT_ACCOUNT_PUBLIC_KEY;
@@ -16,7 +16,7 @@ use casper_execution_engine::{
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
         stored_value::StoredValue,
-        wasm_config::{WasmConfig, DEFAULT_INITIAL_MEMORY, DEFAULT_MAX_STACK_HEIGHT},
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
 #[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
@@ -78,64 +78,67 @@ const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
     grow_memory: 0,
     regular: 0,
 };
-lazy_static! {
-    static ref NEW_HOST_FUNCTION_COSTS: HostFunctionCosts = HostFunctionCosts {
-        read_value: HostFunction::fixed(0),
-        read_value_local: HostFunction::fixed(0),
-        write: HostFunction::fixed(0),
-        write_local: HostFunction::fixed(0),
-        add: HostFunction::fixed(0),
-        new_uref: HostFunction::fixed(0),
-        load_named_keys: HostFunction::fixed(0),
-        ret: HostFunction::fixed(0),
-        get_key: HostFunction::fixed(0),
-        has_key: HostFunction::fixed(0),
-        put_key: HostFunction::fixed(0),
-        remove_key: HostFunction::fixed(0),
-        revert: HostFunction::fixed(0),
-        is_valid_uref: HostFunction::fixed(0),
-        add_associated_key: HostFunction::fixed(0),
-        remove_associated_key: HostFunction::fixed(0),
-        update_associated_key: HostFunction::fixed(0),
-        set_action_threshold: HostFunction::fixed(0),
-        get_caller: HostFunction::fixed(0),
-        get_blocktime: HostFunction::fixed(0),
-        create_purse: HostFunction::fixed(0),
-        transfer_to_account: HostFunction::fixed(0),
-        transfer_from_purse_to_account: HostFunction::fixed(0),
-        transfer_from_purse_to_purse: HostFunction::fixed(0),
-        get_balance: HostFunction::fixed(0),
-        get_phase: HostFunction::fixed(0),
-        get_system_contract: HostFunction::fixed(0),
-        get_main_purse: HostFunction::fixed(0),
-        read_host_buffer: HostFunction::fixed(0),
-        create_contract_package_at_hash: HostFunction::fixed(0),
-        create_contract_user_group: HostFunction::fixed(0),
-        add_contract_version: HostFunction::fixed(0),
-        disable_contract_version: HostFunction::fixed(0),
-        call_contract: HostFunction::fixed(0),
-        call_versioned_contract: HostFunction::fixed(0),
-        get_named_arg_size: HostFunction::fixed(0),
-        get_named_arg: HostFunction::fixed(0),
-        remove_contract_user_group: HostFunction::fixed(0),
-        provision_contract_user_group_uref: HostFunction::fixed(0),
-        remove_contract_user_group_urefs: HostFunction::fixed(0),
-        print: HostFunction::fixed(0),
-        blake2b: HostFunction::fixed(0),
-    };
-    static ref STORAGE_COSTS_ONLY: WasmConfig = WasmConfig::new(
-        DEFAULT_INITIAL_MEMORY,
+
+static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunctionCosts {
+    read_value: HostFunction::fixed(0),
+    read_value_local: HostFunction::fixed(0),
+    write: HostFunction::fixed(0),
+    write_local: HostFunction::fixed(0),
+    add: HostFunction::fixed(0),
+    new_uref: HostFunction::fixed(0),
+    load_named_keys: HostFunction::fixed(0),
+    ret: HostFunction::fixed(0),
+    get_key: HostFunction::fixed(0),
+    has_key: HostFunction::fixed(0),
+    put_key: HostFunction::fixed(0),
+    remove_key: HostFunction::fixed(0),
+    revert: HostFunction::fixed(0),
+    is_valid_uref: HostFunction::fixed(0),
+    add_associated_key: HostFunction::fixed(0),
+    remove_associated_key: HostFunction::fixed(0),
+    update_associated_key: HostFunction::fixed(0),
+    set_action_threshold: HostFunction::fixed(0),
+    get_caller: HostFunction::fixed(0),
+    get_blocktime: HostFunction::fixed(0),
+    create_purse: HostFunction::fixed(0),
+    transfer_to_account: HostFunction::fixed(0),
+    transfer_from_purse_to_account: HostFunction::fixed(0),
+    transfer_from_purse_to_purse: HostFunction::fixed(0),
+    get_balance: HostFunction::fixed(0),
+    get_phase: HostFunction::fixed(0),
+    get_system_contract: HostFunction::fixed(0),
+    get_main_purse: HostFunction::fixed(0),
+    read_host_buffer: HostFunction::fixed(0),
+    create_contract_package_at_hash: HostFunction::fixed(0),
+    create_contract_user_group: HostFunction::fixed(0),
+    add_contract_version: HostFunction::fixed(0),
+    disable_contract_version: HostFunction::fixed(0),
+    call_contract: HostFunction::fixed(0),
+    call_versioned_contract: HostFunction::fixed(0),
+    get_named_arg_size: HostFunction::fixed(0),
+    get_named_arg: HostFunction::fixed(0),
+    remove_contract_user_group: HostFunction::fixed(0),
+    provision_contract_user_group_uref: HostFunction::fixed(0),
+    remove_contract_user_group_urefs: HostFunction::fixed(0),
+    print: HostFunction::fixed(0),
+    blake2b: HostFunction::fixed(0),
+});
+static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
+    WasmConfig::new(
+        DEFAULT_WASM_MAX_MEMORY,
         DEFAULT_MAX_STACK_HEIGHT,
         NEW_OPCODE_COSTS,
         StorageCosts::default(),
         *NEW_HOST_FUNCTION_COSTS,
-    );
-    static ref NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+    )
+});
+static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
+    ProtocolVersion::from_parts(
         DEFAULT_PROTOCOL_VERSION.value().major,
         DEFAULT_PROTOCOL_VERSION.value().minor,
         DEFAULT_PROTOCOL_VERSION.value().patch + 1,
-    );
-}
+    )
+});
 
 fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
     // This test runs a contract that's after every call extends the same key with

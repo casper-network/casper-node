@@ -305,6 +305,8 @@ extern "C" {
     /// * `amount_size` - size of the amount (in bytes)
     /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
     /// * `id_size` - size of the id (in bytes)
+    /// * `result_ptr` - pointer in wasm memory to a value where `TransferredTo` value would be set
+    ///   on successful transfer.
     pub fn casper_transfer_to_account(
         target_ptr: *const u8,
         target_size: usize,
@@ -312,6 +314,7 @@ extern "C" {
         amount_size: usize,
         id_ptr: *const u8,
         id_size: usize,
+        result_ptr: *const i32,
     ) -> i32;
     /// This function uses the mint contract’s transfer function to transfer
     /// tokens from the specified purse to the main purse of the target account.
@@ -343,6 +346,8 @@ extern "C" {
     /// * `amount_size` - size of the amount (in bytes)
     /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
     /// * `id_size` - size of the id (in bytes)
+    /// * `result_ptr` - pointer in wasm memory to a value where `TransferredTo` value would be set
+    ///   on successful transfer.
     pub fn casper_transfer_from_purse_to_account(
         source_ptr: *const u8,
         source_size: usize,
@@ -352,6 +357,7 @@ extern "C" {
         amount_size: usize,
         id_ptr: *const u8,
         id_size: usize,
+        result_ptr: *const i32,
     ) -> i32;
     /// This function uses the mint contract’s transfer function to transfer
     /// tokens from the specified source purse to the specified target purse. If

@@ -48,6 +48,7 @@ use crate::{
         gas::Gas,
         host_function_costs::{Cost, HostFunction},
         stored_value::StoredValue,
+        wasm_config::WasmConfig,
     },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
@@ -81,9 +82,10 @@ pub fn rename_export_to_call(module: &mut Module, name: String) {
 pub fn instance_and_memory(
     parity_module: Module,
     protocol_version: ProtocolVersion,
+    wasm_config: &WasmConfig,
 ) -> Result<(ModuleRef, MemoryRef), Error> {
     let module = wasmi::Module::from_parity_wasm_module(parity_module)?;
-    let resolver = create_module_resolver(protocol_version)?;
+    let resolver = create_module_resolver(protocol_version, wasm_config)?;
     let mut imports = ImportsBuilder::new();
     imports.push_resolver("env", &resolver);
     let not_started_module = ModuleInstance::new(&module, &imports)?;
@@ -1938,7 +1940,11 @@ where
 
         let entry_point_name = entry_point.name();
 
-        let (instance, memory) = instance_and_memory(module.clone(), protocol_version)?;
+        let (instance, memory) = instance_and_memory(
+            module.clone(),
+            protocol_version,
+            self.protocol_data().wasm_config(),
+        )?;
 
         let access_rights = {
             let mut keys: Vec<Key> = named_keys.values().cloned().collect();
@@ -2724,7 +2730,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<(), Error> {
+    ) -> Result<Result<(), ApiError>, Error> {
         let args_values: RuntimeArgs = runtime_args! {
             mint::ARG_SOURCE => source,
             mint::ARG_TARGET => target,
@@ -2732,9 +2738,12 @@ where
             mint::ARG_ID => id,
         };
 
-        let result = self.call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values)?;
-        let result: Result<(), system_contract_errors::mint::Error> = result.into_t()?;
-        Ok(result.map_err(system_contract_errors::Error::from)?)
+        let call_result =
+            self.call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values)?;
+
+        let mint_result: Result<(), system_contract_errors::mint::Error> = call_result.into_t()?;
+
+        Ok(mint_result.map_err(ApiError::from))
     }
 
     /// Creates a new account at a given public key, transferring a given amount
@@ -2753,7 +2762,9 @@ where
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
         if amount > self.get_balance(source)?.unwrap_or_default() {
-            return Ok(Err(ApiError::Transfer));
+            return Ok(Err(
+                system_contract_errors::mint::Error::InsufficientFunds.into()
+            ));
         }
 
         let target_purse = self.mint_create(mint_contract_hash)?;
@@ -2768,13 +2779,13 @@ where
             target_purse.with_access_rights(AccessRights::ADD),
             amount,
             id,
-        ) {
-            Ok(_) => {
+        )? {
+            Ok(()) => {
                 let account = Account::create(target, Default::default(), target_purse);
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
-            Err(_) => Ok(Err(ApiError::Transfer)),
+            Err(api_error) => Ok(Err(api_error)),
         }
     }
 
@@ -2793,9 +2804,9 @@ where
         // This appears to be a load-bearing use of `RuntimeContext::insert_uref`.
         self.context.insert_uref(target);
 
-        match self.mint_transfer(mint_contract_key, source, target, amount, id) {
-            Ok(_) => Ok(Ok(TransferredTo::ExistingAccount)),
-            Err(_) => Ok(Err(ApiError::Transfer)),
+        match self.mint_transfer(mint_contract_key, source, target, amount, id)? {
+            Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
+            Err(error) => Ok(Err(error)),
         }
     }
 
@@ -2878,13 +2889,9 @@ where
 
         let mint_contract_key = self.get_mint_contract();
 
-        if self
-            .mint_transfer(mint_contract_key, source, target, amount, id)
-            .is_ok()
-        {
-            Ok(Ok(()))
-        } else {
-            Ok(Err(ApiError::Transfer))
+        match self.mint_transfer(mint_contract_key, source, target, amount, id)? {
+            Ok(()) => Ok(Ok(())),
+            Err(api_error) => Ok(Err(api_error)),
         }
     }
 

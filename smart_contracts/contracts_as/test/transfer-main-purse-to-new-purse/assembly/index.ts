@@ -35,8 +35,7 @@ export function call(): void {
     let destinationPurseName = destinationPurseNameResult.value;
     const mainPurse = getMainPurse();
     const destinationPurse = createPurse();
-    const result = transferFromPurseToPurse(mainPurse, destinationPurse, <U512>amount);
-    const error = Error.fromResult(result);
+    const error = transferFromPurseToPurse(mainPurse, destinationPurse, <U512>amount);
     if (error !== null) {
         error.revert();
         return;

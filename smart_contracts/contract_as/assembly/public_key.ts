@@ -1,5 +1,6 @@
 import {typedToArray} from "./utils";
-import {Result, Ref, Error as BytesreprError} from "./bytesrepr";
+import {Ref} from "./ref";
+import {Result, Error as BytesreprError} from "./bytesrepr";
 
 const ED25519_PUBLIC_KEY_LENGTH = 32;
 const SECP256K1_PUBLIC_KEY_LENGTH = 33;

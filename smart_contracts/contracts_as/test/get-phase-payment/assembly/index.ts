@@ -25,13 +25,13 @@ function standardPayment(amount: U512): void {
   }
   let paymentPurse = paymentPurseResult.value;
 
-  let ret = transferFromPurseToPurse(
+  let error = transferFromPurseToPurse(
     mainPurse,
     paymentPurse,
     amount,
   );
-  if (ret > 0) {
-    Error.fromErrorCode(ErrorCode.Transfer).revert();
+  if (error !== null) {
+    error.revert();
     return;
   }
 }

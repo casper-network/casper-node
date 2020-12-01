@@ -40,7 +40,7 @@ impl Preprocessor {
 
     pub fn preprocess(&self, module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
         let module = deserialize(module_bytes)?;
-        let module = pwasm_utils::externalize_mem(module, None, self.wasm_config.initial_memory);
+        let module = pwasm_utils::externalize_mem(module, None, self.wasm_config.max_memory);
         let module =
             pwasm_utils::inject_gas_counter(module, &self.wasm_config.opcode_costs().to_set())
                 .map_err(|_| PreprocessingError::OperationForbiddenByGasRules)?;

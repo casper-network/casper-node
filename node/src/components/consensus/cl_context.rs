@@ -28,6 +28,13 @@ impl Keypair {
     }
 }
 
+impl From<Rc<SecretKey>> for Keypair {
+    fn from(secret_key: Rc<SecretKey>) -> Self {
+        let public_key: PublicKey = secret_key.as_ref().into();
+        Self::new(secret_key, public_key)
+    }
+}
+
 impl ValidatorSecret for Keypair {
     type Hash = Digest;
     type Signature = Signature;

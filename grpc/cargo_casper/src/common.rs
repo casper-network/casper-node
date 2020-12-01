@@ -7,15 +7,14 @@ use std::{
 };
 
 use colour::e_red;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use crate::{dependency::Dependency, ARGS, FAILURE_EXIT_CODE};
 
-lazy_static! {
-    pub static ref CL_CONTRACT: Dependency =
-        Dependency::new("casper-contract", "0.2.0", "smart_contracts/contract");
-    pub static ref CL_TYPES: Dependency = Dependency::new("casper-types", "0.2.0", "types");
-}
+pub static CL_CONTRACT: Lazy<Dependency> =
+    Lazy::new(|| Dependency::new("casper-contract", "0.2.0", "smart_contracts/contract"));
+pub static CL_TYPES: Lazy<Dependency> =
+    Lazy::new(|| Dependency::new("casper-types", "0.2.0", "types"));
 
 pub fn print_error_and_exit(msg: &str) -> ! {
     e_red!("error");
