@@ -1123,8 +1123,8 @@ mod param_tests {
             params.gas_price = "fifteen";
             let result: StdResult<DeployParams, Error> = params.try_into();
             let result = result.map(|_| ());
-            if let Err(Error::FailedToParseInt("gas_price", _)) = result {
-                assert!(true, "should fail to parse int");
+            if let Err(Error::FailedToParseInt(context, _)) = result {
+                assert_eq!(context, "gas_price");
             } else {
                 panic!("should be an error");
             }
@@ -1157,12 +1157,8 @@ mod param_tests {
             params.secret_key = "";
             let result: StdResult<DeployParams, Error> = params.try_into();
             let result = result.map(|_| ());
-            if let Err(Error::CryptoError {
-                context: "secret_key",
-                ..
-            }) = result
-            {
-                assert!(true, "secret key should be invalid");
+            if let Err(Error::CryptoError { context, .. }) = result {
+                assert_eq!(context, "secret_key");
             } else {
                 panic!("should be an error")
             }
