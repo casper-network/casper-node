@@ -391,9 +391,9 @@ pub trait Auction:
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
         let base_round_reward = self.read_base_round_reward()?;
 
-        if reward_factors.keys().ne(seigniorage_recipients.keys()) {
-            return Err(Error::MismatchedEraValidators);
-        }
+        // TODO: what are the expectations that the reward_factors.keys() and the
+        // seigniorage_recipients.keys() should match or overlap, and under what
+        // circumstances the Error::MismatchedEraValidators should be raised?
 
         for (public_key, reward_factor) in reward_factors {
             let recipient = seigniorage_recipients
