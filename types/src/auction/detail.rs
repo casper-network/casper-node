@@ -136,13 +136,13 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
             // Since `process_unbond_requests` is run before `run_auction`, we should check
             // if current era id is equal or greater than the `era_of_withdrawal` that was
             // calculated on `unbond` attempt.
-            if current_era_id >= unbonding_purse.era_of_withdrawal as u64 {
+            if current_era_id >= unbonding_purse.era_of_withdrawal() {
                 // Move funds from bid purse to unbonding purse
                 provider
                     .transfer_from_purse_to_purse(
-                        unbonding_purse.bonding_purse,
-                        unbonding_purse.unbonding_purse,
-                        unbonding_purse.amount,
+                        *unbonding_purse.bonding_purse(),
+                        *unbonding_purse.unbonding_purse(),
+                        *unbonding_purse.amount(),
                     )
                     .map_err(|_| Error::TransferToUnbondingPurse)?
             } else {
@@ -166,7 +166,8 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
 /// unbonding purse. Returns the amount of motes remaining in the validator's bid purse.
 pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     provider: &mut P,
-    public_key: PublicKey,
+    validator_public_key: PublicKey,
+    unbonder_public_key: PublicKey,
     bonding_purse: URef,
     unbonding_purse: URef,
     amount: U512,
@@ -177,15 +178,16 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
 
     let mut unbonding_purses: UnbondingPurses = get_unbonding_purses(provider)?;
     let era_of_withdrawal = provider.read_era_id()? + DEFAULT_UNBONDING_DELAY;
-    let new_unbonding_purse = UnbondingPurse {
+    let new_unbonding_purse = UnbondingPurse::new(
         bonding_purse,
         unbonding_purse,
-        public_key,
+        validator_public_key,
+        unbonder_public_key,
         era_of_withdrawal,
         amount,
-    };
+    );
     unbonding_purses
-        .entry(public_key)
+        .entry(validator_public_key)
         .or_default()
         .push(new_unbonding_purse);
     set_unbonding_purses(provider, unbonding_purses)?;
