@@ -32,16 +32,18 @@ pub const SECP256K1: &str = "secp256k1";
 /// files exist, [`Error::FileAlreadyExists`](../enum.Error.html#variant.FileAlreadyExists) is
 /// returned and no files are written.
 pub fn generate_files(output_dir: &str, algorithm: &str, force: bool) -> Result<()> {
-    let _ = fs::create_dir_all(output_dir).map_err(|error| Error::IoError {
-        context: format!("unable to create directory at '{}'", output_dir),
-        error,
-    })?;
     let output_dir = Path::new(output_dir)
         .canonicalize()
         .map_err(|error| Error::IoError {
             context: format!("unable get canonical path at '{}'", output_dir),
             error,
         })?;
+
+    let output_dir = output_dir.as_path();
+    let _ = fs::create_dir_all(output_dir).map_err(move |error| Error::IoError {
+        context: format!("unable to create directory at '{:?}'", output_dir.to_str()),
+        error,
+    })?;
 
     if !force {
         for file in FILES.iter().map(|filename| output_dir.join(filename)) {
