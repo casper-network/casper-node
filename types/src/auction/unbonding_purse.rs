@@ -25,7 +25,7 @@ pub struct UnbondingPurse {
 }
 
 impl UnbondingPurse {
-    /// Creates [`UnbondingPurse`] instance for a withdraw bid request made by a delegator.
+    /// Creates [`UnbondingPurse`] instance for an unbonding request.
     pub fn new(
         bonding_purse: URef,
         unbonding_purse: URef,
