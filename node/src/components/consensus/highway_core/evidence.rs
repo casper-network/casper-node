@@ -1,20 +1,34 @@
+use std::iter;
+
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::validators::ValidatorIndex;
-use crate::components::consensus::{highway_core::highway::SignedWireUnit, traits::Context};
+use crate::components::consensus::{
+    highway_core::{
+        endorsement::SignedEndorsement, highway::SignedWireUnit, validators::Validators,
+    },
+    traits::Context,
+};
 
 /// An error due to invalid evidence.
 #[derive(Debug, Error, PartialEq)]
 pub(crate) enum EvidenceError {
-    #[error("The creators in the equivocating units are different.")]
-    EquivocationDifferentCreators,
     #[error("The sequence numbers in the equivocating units are different.")]
     EquivocationDifferentSeqNumbers,
-    #[error("The two units are equal.")]
-    EquivocationSameUnit,
+    #[error("The creators in the equivocating units are different.")]
+    EquivocationDifferentCreators,
     #[error("The units were created for a different instance ID.")]
     EquivocationInstanceId,
+    #[error("The two units are equal.")]
+    EquivocationSameUnit,
+    #[error("The endorsements don't match the unit hashes.")]
+    EndorsementWrongHash,
+    #[error("The creators of the conflicting endorsements are different.")]
+    EndorsementDifferentCreators,
+    #[error("The swimlane is not a contiguous sequence of units.")]
+    EndorsementInvalidSwimlane,
     #[error("The perpetrator is not a validator.")]
     UnknownPerpetrator,
     #[error("The signature is invalid.")]
@@ -30,6 +44,14 @@ pub(crate) enum EvidenceError {
 pub(crate) enum Evidence<C: Context> {
     /// The validator produced two units with the same sequence number.
     Equivocation(SignedWireUnit<C>, SignedWireUnit<C>),
+    /// The validator endorsed two conflicting units.
+    Endorsements {
+        endorsement1: SignedEndorsement<C>,
+        unit1: SignedWireUnit<C>,
+        endorsement2: SignedEndorsement<C>,
+        unit2: SignedWireUnit<C>,
+        swimlane2: Vec<SignedWireUnit<C>>,
+    },
 }
 
 impl<C: Context> Evidence<C> {
@@ -37,6 +59,7 @@ impl<C: Context> Evidence<C> {
     pub(crate) fn perpetrator(&self) -> ValidatorIndex {
         match self {
             Evidence::Equivocation(unit1, _) => unit1.wire_unit.creator,
+            Evidence::Endorsements { endorsement1, .. } => endorsement1.validator_idx(),
         }
     }
 
@@ -47,32 +70,80 @@ impl<C: Context> Evidence<C> {
     /// the two units are the same.
     pub(crate) fn validate(
         &self,
-        v_id: &C::ValidatorId,
+        validators: &Validators<C::ValidatorId>,
         instance_id: &C::InstanceId,
     ) -> Result<(), EvidenceError> {
         match self {
             Evidence::Equivocation(unit1, unit2) => {
-                if unit1.wire_unit.creator != unit2.wire_unit.creator {
-                    return Err(EvidenceError::EquivocationDifferentCreators);
+                Self::validate_equivocation(unit1, unit2, instance_id, validators)
+            }
+            Evidence::Endorsements {
+                endorsement1,
+                unit1,
+                endorsement2,
+                unit2,
+                swimlane2,
+            } => {
+                let v_id = validators
+                    .id(endorsement1.validator_idx())
+                    .ok_or(EvidenceError::UnknownPerpetrator)?;
+                if *endorsement1.unit() != unit1.hash() || *endorsement2.unit() != unit2.hash() {
+                    return Err(EvidenceError::EndorsementWrongHash);
                 }
-                if unit1.wire_unit.seq_number != unit2.wire_unit.seq_number {
-                    return Err(EvidenceError::EquivocationDifferentSeqNumbers);
+                if endorsement1.validator_idx() != endorsement2.validator_idx() {
+                    return Err(EvidenceError::EndorsementDifferentCreators);
                 }
-                if unit1.wire_unit.instance_id != *instance_id
-                    || unit2.wire_unit.instance_id != *instance_id
-                {
-                    return Err(EvidenceError::EquivocationInstanceId);
+                for (unit, pred) in iter::once(unit2).chain(swimlane2).tuple_windows() {
+                    if unit.wire_unit.panorama[unit.wire_unit.creator].correct()
+                        != Some(&pred.hash())
+                    {
+                        return Err(EvidenceError::EndorsementInvalidSwimlane);
+                    }
                 }
-                if unit1 == unit2 {
-                    return Err(EvidenceError::EquivocationSameUnit);
-                }
-                if !C::verify_signature(&unit1.hash(), v_id, &unit1.signature)
-                    || !C::verify_signature(&unit2.hash(), v_id, &unit2.signature)
+                Self::validate_equivocation(
+                    unit1,
+                    swimlane2.last().unwrap_or(unit2),
+                    instance_id,
+                    validators,
+                )?;
+                if !C::verify_signature(&endorsement1.unit(), v_id, &endorsement1.signature())
+                    || !C::verify_signature(&endorsement2.unit(), v_id, &endorsement2.signature())
                 {
                     return Err(EvidenceError::Signature);
                 }
                 Ok(())
             }
         }
+    }
+
+    fn validate_equivocation(
+        unit1: &SignedWireUnit<C>,
+        unit2: &SignedWireUnit<C>,
+        instance_id: &C::InstanceId,
+        validators: &Validators<C::ValidatorId>,
+    ) -> Result<(), EvidenceError> {
+        let v_id = validators
+            .id(unit1.wire_unit.creator)
+            .ok_or(EvidenceError::UnknownPerpetrator)?;
+        if unit1.wire_unit.creator != unit2.wire_unit.creator {
+            return Err(EvidenceError::EquivocationDifferentCreators);
+        }
+        if unit1.wire_unit.seq_number != unit2.wire_unit.seq_number {
+            return Err(EvidenceError::EquivocationDifferentSeqNumbers);
+        }
+        if unit1.wire_unit.instance_id != *instance_id
+            || unit2.wire_unit.instance_id != *instance_id
+        {
+            return Err(EvidenceError::EquivocationInstanceId);
+        }
+        if unit1 == unit2 {
+            return Err(EvidenceError::EquivocationSameUnit);
+        }
+        if !C::verify_signature(&unit1.hash(), v_id, &unit1.signature)
+            || !C::verify_signature(&unit2.hash(), v_id, &unit2.signature)
+        {
+            return Err(EvidenceError::Signature);
+        }
+        Ok(())
     }
 }

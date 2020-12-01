@@ -496,11 +496,7 @@ impl<C: Context> Highway<C> {
                 Ok(self.state.pre_validate_unit(unit)?)
             }
             Vertex::Evidence(evidence) => {
-                let v_id = self
-                    .validators
-                    .id(evidence.perpetrator())
-                    .ok_or(EvidenceError::UnknownPerpetrator)?;
-                Ok(evidence.validate(v_id, &self.instance_id)?)
+                Ok(evidence.validate(&self.validators, &self.instance_id)?)
             }
             Vertex::Endorsements(endorsements) => {
                 let unit = *endorsements.unit();

@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::components::consensus::traits::Context;
@@ -17,7 +18,11 @@ pub(crate) enum EndorsementError {
 
 /// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
 pub(crate) struct Endorsement<C: Context> {
     /// Unit being endorsed.
     unit: C::Hash,
@@ -42,7 +47,11 @@ impl<C: Context> Endorsement<C> {
 
 /// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Signature: Serialize",
+    deserialize = "C::Signature: Deserialize<'de>",
+))]
 pub(crate) struct SignedEndorsement<C: Context> {
     /// Original endorsement,
     endorsement: Endorsement<C>,
