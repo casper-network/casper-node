@@ -81,6 +81,7 @@ use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
 use crate::{
     components::Component,
+    crypto::hash::Digest,
     effect::{
         announcements::NetworkAnnouncement,
         requests::{NetworkInfoRequest, NetworkRequest},
@@ -150,6 +151,9 @@ where
     /// An index for an iteration of gossiping our own public listening address.  This is
     /// incremented by 1 on each iteration, and wraps on overflow.
     next_gossip_address_index: u32,
+    /// The hash of the chainspec.  We only remain connected to peers with the same
+    /// `genesis_config_hash` as us.
+    genesis_config_hash: Digest,
     /// Channel signaling a shutdown of the small network.
     // Note: This channel is closed when `SmallNetwork` is dropped, signalling the receivers that
     // they should cease operation.
@@ -178,6 +182,7 @@ where
     pub(crate) fn new(
         event_queue: EventQueueHandle<REv>,
         cfg: Config,
+        genesis_config_hash: Digest,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
         // First, we generate the TLS keys.
@@ -241,6 +246,7 @@ where
             blocklist: HashSet::new(),
             gossip_interval: cfg.gossip_interval,
             next_gossip_address_index: 0,
+            genesis_config_hash,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
             server_join_handle: Some(server_join_handle),
@@ -351,7 +357,7 @@ where
         }
     }
 
-    fn handle_incoming_handshake_completed(
+    fn handle_incoming_tls_handshake_completed(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         result: Result<(NodeId, Transport)>,
@@ -474,8 +480,11 @@ where
 
         let mut effects = self.check_connection_complete(effect_builder, peer_id.clone());
 
+        let handshake = Message::Handshake {
+            genesis_config_hash: self.genesis_config_hash,
+        };
         effects.extend(
-            message_sender(receiver, sink).event(move |result| Event::OutgoingFailed {
+            message_sender(receiver, sink, handshake).event(move |result| Event::OutgoingFailed {
                 peer_id: Some(peer_id),
                 peer_address,
                 error: result.err().map(Into::into),
@@ -487,6 +496,7 @@ where
 
     fn handle_outgoing_lost(
         &mut self,
+        effect_builder: EffectBuilder<REv>,
         peer_id: Option<NodeId>,
         peer_address: SocketAddr,
         error: Option<Error>,
@@ -499,25 +509,35 @@ where
             } else {
                 warn!(%peer_id, %peer_address, "{}: outgoing connection closed", self.our_id);
             }
-            self.remove(&peer_id);
+            return self.remove(effect_builder, &peer_id, false);
+        }
+
+        // If we don't have the node ID passed in here, it was never added as an
+        // outgoing connection, hence no need to call `self.remove()`.
+        if let Some(err) = error {
+            warn!(%peer_address, %err, "{}: outgoing connection failed", self.our_id);
         } else {
-            // If we don't have the node ID passed in here, it was never added as an
-            // outgoing connection, hence no need to call `self.remove()`.
-            if let Some(err) = error {
-                warn!(%peer_address, %err, "{}: outgoing connection failed", self.our_id);
-            } else {
-                warn!(%peer_address, "{}: outgoing connection closed", self.our_id);
-            }
+            warn!(%peer_address, "{}: outgoing connection closed", self.our_id);
         }
 
         Effects::new()
     }
 
-    fn remove(&mut self, peer_id: &NodeId) {
+    fn remove(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        peer_id: &NodeId,
+        add_to_blocklist: bool,
+    ) -> Effects<Event<P>> {
         if let Some(incoming) = self.incoming.remove(&peer_id) {
             let _ = self.pending.remove(&incoming.peer_address);
         }
-        let _ = self.outgoing.remove(&peer_id);
+        if let Some(outgoing) = self.outgoing.remove(&peer_id) {
+            if add_to_blocklist {
+                self.blocklist.insert(outgoing.peer_address);
+            }
+        }
+        self.terminate_if_isolated(effect_builder)
     }
 
     /// Gossips our public listening address, and schedules the next such gossip round.
@@ -537,16 +557,15 @@ where
 
     /// Marks connections as asymmetric (only incoming or only outgoing) and removes them if they
     /// pass the upper limit for this. Connections that are symmetrical are reset to 0.
-    fn enforce_symmetric_connections(&mut self) {
+    fn enforce_symmetric_connections(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<P>> {
         let mut remove = Vec::new();
-        enum Node {
-            Incoming(NodeId),
-            Outgoing(NodeId, SocketAddr),
-        }
         for (node_id, conn) in self.incoming.iter_mut() {
             if !self.outgoing.contains_key(node_id) {
                 if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    remove.push(Node::Outgoing(node_id.clone(), conn.peer_address));
+                    remove.push(node_id.clone());
                 } else {
                     conn.times_seen_asymmetric += 1;
                 }
@@ -557,7 +576,7 @@ where
         for (node_id, conn) in self.outgoing.iter_mut() {
             if !self.incoming.contains_key(node_id) {
                 if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    remove.push(Node::Incoming(node_id.clone()));
+                    remove.push(node_id.clone());
                 } else {
                     conn.times_seen_asymmetric += 1;
                 }
@@ -565,15 +584,11 @@ where
                 conn.times_seen_asymmetric = 0;
             }
         }
-        for connection in remove {
-            match connection {
-                Node::Incoming(node_id) => self.remove(&node_id),
-                Node::Outgoing(node_id, peer_address) => {
-                    self.blocklist.insert(peer_address);
-                    self.remove(&node_id);
-                }
-            }
+        let mut effects = Effects::new();
+        for node_id in remove {
+            effects.extend(self.remove(effect_builder, &node_id, true));
         }
+        effects
     }
 
     /// Handles a received message.
@@ -586,9 +601,26 @@ where
     where
         REv: From<NetworkAnnouncement<NodeId, P>>,
     {
-        effect_builder
-            .announce_message_received(peer_id, msg.0)
-            .ignore()
+        match msg {
+            Message::Handshake {
+                genesis_config_hash,
+            } => {
+                if genesis_config_hash != self.genesis_config_hash {
+                    info!(
+                        our_hash=?self.genesis_config_hash,
+                        their_hash=?genesis_config_hash,
+                        "{}: dropping connection to {} due to genesis config hash mismatch",
+                        self.our_id,
+                        peer_id
+                    );
+                    return self.remove(effect_builder, &peer_id, true);
+                }
+                Effects::new()
+            }
+            Message::Payload(payload) => effect_builder
+                .announce_message_received(peer_id, payload)
+                .ignore(),
+        }
     }
 
     fn connect_to_peer_if_required(&mut self, peer_address: SocketAddr) -> Effects<Event<P>> {
@@ -637,6 +669,27 @@ where
         } else {
             Effects::new()
         }
+    }
+
+    fn terminate_if_isolated(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
+        if self.is_isolated() {
+            if self.is_bootstrap_node {
+                info!(
+                    "{}: failed to bootstrap to any other nodes, but continuing to run as we are a \
+                    bootstrap node",
+                    self.our_id
+                );
+            } else {
+                // Note that we could retry the connection to other nodes, but for now we
+                // just leave it up to the node operator to restart.
+                return fatal!(
+                    effect_builder,
+                    "{}: failed to connect to any known node, now isolated",
+                    self.our_id
+                );
+            }
+        }
+        Effects::new()
     }
 
     /// Returns the set of connected nodes.
@@ -722,24 +775,7 @@ where
                     was_removed,
                     "Bootstrap failed for node, but it was not in the set of pending connections"
                 );
-
-                if self.is_isolated() {
-                    if self.is_bootstrap_node {
-                        info!(
-                            "{}: failed to bootstrap to any other nodes, but continuing to run as we are a \
-                            bootstrap node", self.our_id
-                        );
-                    } else {
-                        // Note that we could retry the connection to other nodes, but for now we
-                        // just leave it up to the node operator to restart.
-                        return fatal!(
-                            effect_builder,
-                            "{}: failed to connect to any known node, now isolated",
-                            self.our_id
-                        );
-                    }
-                }
-                Effects::new()
+                self.terminate_if_isolated(effect_builder)
             }
             Event::IncomingNew {
                 stream,
@@ -757,7 +793,7 @@ where
             Event::IncomingHandshakeCompleted {
                 result,
                 peer_address,
-            } => self.handle_incoming_handshake_completed(effect_builder, result, peer_address),
+            } => self.handle_incoming_tls_handshake_completed(effect_builder, result, peer_address),
             Event::IncomingMessage { peer_id, msg } => {
                 self.handle_message(effect_builder, peer_id, msg)
             }
@@ -772,8 +808,7 @@ where
                         warn!(%peer_id, %peer_address, %err, "{}: connection dropped", self.our_id)
                     }
                 }
-                self.remove(&peer_id);
-                Effects::new()
+                self.remove(effect_builder, &peer_id, false)
             }
             Event::OutgoingEstablished { peer_id, transport } => {
                 self.setup_outgoing(effect_builder, peer_id, transport)
@@ -782,7 +817,7 @@ where
                 peer_id,
                 peer_address,
                 error,
-            } => self.handle_outgoing_lost(peer_id, peer_address, error),
+            } => self.handle_outgoing_lost(effect_builder, peer_id, peer_address, error),
             Event::NetworkRequest {
                 req:
                     NetworkRequest::SendMessage {
@@ -792,14 +827,14 @@ where
                     },
             } => {
                 // We're given a message to send out.
-                self.send_message(dest, Message(payload));
+                self.send_message(dest, Message::Payload(payload));
                 responder.respond(()).ignore()
             }
             Event::NetworkRequest {
                 req: NetworkRequest::Broadcast { payload, responder },
             } => {
                 // We're given a message to broadcast.
-                self.broadcast_message(Message(payload));
+                self.broadcast_message(Message::Payload(payload));
                 responder.respond(()).ignore()
             }
             Event::NetworkRequest {
@@ -812,15 +847,15 @@ where
                     },
             } => {
                 // We're given a message to gossip.
-                let sent_to = self.gossip_message(rng, Message(payload), count, exclude);
+                let sent_to = self.gossip_message(rng, Message::Payload(payload), count, exclude);
                 responder.respond(sent_to).ignore()
             }
             Event::NetworkInfoRequest {
                 req: NetworkInfoRequest::GetPeers { responder },
             } => responder.respond(self.peers()).ignore(),
             Event::GossipOurAddress => {
-                let effects = self.gossip_our_address(effect_builder);
-                self.enforce_symmetric_connections();
+                let mut effects = self.gossip_our_address(effect_builder);
+                effects.extend(self.enforce_symmetric_connections(effect_builder));
                 effects
             }
             Event::PeerAddressReceived(gossiped_address) => {
@@ -977,13 +1012,18 @@ where
 /// Network message sender.
 ///
 /// Reads from a channel and sends all messages, until the stream is closed or an error occurs.
+///
+/// Initially sends a handshake including the `genesis_config_hash` as a final handshake step.  If
+/// the recipient's `genesis_config_hash` doesn't match, the connection will be closed.
 async fn message_sender<P>(
     mut queue: UnboundedReceiver<Message<P>>,
     mut sink: SplitSink<FramedTransport<P>, Message<P>>,
+    handshake: Message<P>,
 ) -> Result<()>
 where
     P: Serialize + Send,
 {
+    sink.send(handshake).await.map_err(Error::MessageNotSent)?;
     while let Some(payload) = queue.recv().await {
         // We simply error-out if the sink fails, it means that our connection broke.
         sink.send(payload).await.map_err(Error::MessageNotSent)?;

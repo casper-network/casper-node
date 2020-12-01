@@ -367,8 +367,13 @@ impl reactor::Reactor for Reactor {
 
         let network_config = network::Config::from(&config.network);
         let (network, network_effects) = Network::new(event_queue, network_config, false)?;
-        let (small_network, small_network_effects) =
-            SmallNetwork::new(event_queue, config.network.clone(), false)?;
+        let genesis_config_hash = chainspec_loader.chainspec().hash();
+        let (small_network, small_network_effects) = SmallNetwork::new(
+            event_queue,
+            config.network.clone(),
+            genesis_config_hash,
+            false,
+        )?;
 
         let linear_chain_fetcher = Fetcher::new(config.fetcher);
 
