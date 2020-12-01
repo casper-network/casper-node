@@ -347,7 +347,7 @@ pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Resul
 }
 
 /// Container for `Deploy` construction options.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct DeployStrParams<'a> {
     /// Path to secret key file.
     pub secret_key: &'a str,
@@ -832,6 +832,12 @@ mod param_tests {
         }
     }
 
+    impl Into<ErrWrapper> for Error {
+        fn into(self) -> ErrWrapper {
+            ErrWrapper(self)
+        }
+    }
+
     const HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
     const NAME: &str = "name";
     const PKG_NAME: &str = "pkg_name";
@@ -1071,6 +1077,8 @@ mod param_tests {
     }
 
     mod deploy_str_params {
+        use humantime::{DurationError, TimestampError};
+
         use super::*;
 
         use std::{convert::TryInto, result::Result as StdResult};
@@ -1092,6 +1100,89 @@ mod param_tests {
             let deploy_params: StdResult<DeployParams, ErrWrapper> =
                 test_value().try_into().map_err(ErrWrapper);
             assert!(deploy_params.is_ok());
+        }
+
+        #[test]
+        fn should_fail_to_convert_with_bad_timestamp() {
+            let mut params = test_value();
+            params.timestamp = "garbage";
+            let result: StdResult<DeployParams, Error> = params.try_into();
+            let result = result.map(|_| ()).map_err(ErrWrapper);
+            assert_eq!(
+                result,
+                Err(
+                    Error::FailedToParseTimestamp("timestamp", TimestampError::InvalidFormat)
+                        .into()
+                )
+            );
+        }
+
+        #[test]
+        fn should_fail_to_convert_with_bad_gas_price() {
+            let mut params = test_value();
+            params.gas_price = "fifteen";
+            let result: StdResult<DeployParams, Error> = params.try_into();
+            let result = result.map(|_| ());
+            if let Err(Error::FailedToParseInt("gas_price", _)) = result {
+                assert!(true, "should fail to parse int");
+            } else {
+                panic!("should be an error");
+            }
+        }
+
+        #[test]
+        fn should_fail_to_convert_with_bad_chain_name() {
+            let mut params = test_value();
+            params.chain_name = "";
+            let result: StdResult<DeployParams, Error> = params.try_into();
+            let result = result.map(|_| ()).map_err(ErrWrapper);
+            assert_eq!(result, Ok(()));
+        }
+
+        #[test]
+        fn should_fail_to_convert_with_bad_ttl() {
+            let mut params = test_value();
+            params.ttl = "not_a_ttl";
+            let result: StdResult<DeployParams, Error> = params.try_into();
+            let result = result.map(|_| ()).map_err(ErrWrapper);
+            assert_eq!(
+                result,
+                Err(Error::FailedToParseTimeDiff("ttl", DurationError::NumberExpected(0)).into())
+            );
+        }
+
+        #[test]
+        fn should_fail_to_convert_with_bad_secret_key_path() {
+            let mut params = test_value();
+            params.secret_key = "";
+            let result: StdResult<DeployParams, Error> = params.try_into();
+            let result = result.map(|_| ());
+            if let Err(Error::CryptoError {
+                context: "secret_key",
+                ..
+            }) = result
+            {
+                assert!(true, "secret key should be invalid");
+            } else {
+                panic!("should be an error")
+            }
+        }
+
+        #[test]
+        fn should_fail_to_convert_with_bad_dependencies() {
+            use casper_node::crypto::Error as CryptoError;
+            let mut params = test_value();
+            params.dependencies = vec!["invalid dep"];
+            let result: StdResult<DeployParams, Error> = params.try_into();
+            let result = result.map(|_| ()).map_err(ErrWrapper);
+            assert_eq!(
+                result,
+                Err(Error::CryptoError {
+                    context: "dependencies",
+                    error: CryptoError::FromHex(hex::FromHexError::OddLength)
+                }
+                .into())
+            );
         }
     }
 }
