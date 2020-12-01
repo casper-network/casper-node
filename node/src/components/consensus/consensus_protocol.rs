@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{components::consensus::traits::Context, types::Timestamp, NodeRng};
 
 /// Information about the context in which a new block is created.
-#[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd)]
+#[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
 pub struct BlockContext {
     timestamp: Timestamp,
     height: u64,

@@ -17,7 +17,7 @@ pub(crate) enum EndorsementError {
 
 /// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct Endorsement<C: Context> {
     /// Unit being endorsed.
     unit: C::Hash,
@@ -42,7 +42,7 @@ impl<C: Context> Endorsement<C> {
 
 /// Testimony that creator of `unit` was seen honest
 /// by `endorser` at the moment of creating this endorsement.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct SignedEndorsement<C: Context> {
     /// Original endorsement,
     endorsement: Endorsement<C>,
