@@ -715,7 +715,10 @@ mod keygen_generate_files {
         let path = "../target/test-keygen-invalid-algo";
         let result = casper_client::keygen::generate_files(path, "<not a valid algo>", true)
             .map_err(ErrWrapper);
-        assert_eq!(result, Err(UnsupportedAlgorithm("<not a valid algo>".to_string()).into()));
+        assert_eq!(
+            result,
+            Err(UnsupportedAlgorithm("<not a valid algo>".to_string()).into())
+        );
     }
 
     #[test]
@@ -724,7 +727,14 @@ mod keygen_generate_files {
         let result =
             casper_client::keygen::generate_files(path, casper_client::keygen::ED25519, true)
                 .map_err(ErrWrapper);
-        assert_eq!(result, Err(InvalidArgument("generate_files", "empty output_dir provided, must be a valid path".to_string()).into()));
+        assert_eq!(
+            result,
+            Err(InvalidArgument(
+                "generate_files",
+                "empty output_dir provided, must be a valid path".to_string()
+            )
+            .into())
+        );
     }
 }
 
