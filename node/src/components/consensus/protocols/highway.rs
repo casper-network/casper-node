@@ -415,39 +415,20 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
     /// Returns an iterator over all the values that are expected to become finalized, but are not
     /// finalized yet.
-    pub(crate) fn non_finalized_values<'a>(
-        &'a self,
-        fork_choice: Option<C::Hash>,
-    ) -> Box<dyn Iterator<Item = &'a C::ConsensusValue> + 'a> {
-        // early return if there is no fork choice
-        let fork_choice = match fork_choice {
-            Some(bhash) => bhash,
-            None => {
-                return Box::new(iter::empty());
+    pub(crate) fn non_finalized_values(
+        &self,
+        mut fork_choice: Option<C::Hash>,
+    ) -> impl Iterator<Item = &C::ConsensusValue> {
+        let last_finalized = self.finality_detector.last_finalized();
+        iter::from_fn(move || {
+            if fork_choice.as_ref() == last_finalized {
+                return None;
             }
-        };
-        let next_finalized_height = self
-            .finality_detector
-            .last_finalized()
-            .map_or(0, |bhash| self.highway.state().block(bhash).height + 1);
-        Box::new(
-            // start at the next finalized height
-            (next_finalized_height..)
-                // take the ancestor of the fork choice at this height
-                .map(move |height| {
-                    self.highway
-                        .state()
-                        .find_ancestor(&fork_choice, height)
-                        .cloned()
-                })
-                // only take values while there actually exists such an ancestor
-                .take_while(Option::is_some)
-                // flatten the `Option` returned by the iterator
-                .flatten()
-                // the ancestor is expressed as a block hash - return the value contained in the
-                // block
-                .map(move |bhash| &self.highway.state().block(&bhash).value),
-        )
+            let opt_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
+            let value = opt_block.map(|block| &block.value);
+            fork_choice = opt_block.map(|block| block.skip_idx[0]);
+            value
+        })
     }
 }
 
