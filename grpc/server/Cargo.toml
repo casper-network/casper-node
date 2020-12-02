@@ -42,7 +42,6 @@ rand = "0.7.2"
 
 [features]
 test-support = ["casper-execution-engine/test-support"]
-no-unstable-features = ["casper-types/no-unstable-features"]
 
 [[bin]]
 name = "casper-engine-grpc-server"
@@ -69,5 +68,3 @@ Wasm execution engine for Casper smart contracts.
 For information on using package, see https://github.com/CasperLabs/casper-node
 """
 
-[package.metadata.docs.rs]
-features = ["no-unstable-features"]

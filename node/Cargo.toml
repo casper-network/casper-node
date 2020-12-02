@@ -105,7 +105,6 @@ tokio = { version = "0.2.20", features = ["test-util"] }
 
 [features]
 vendored-openssl = ['openssl/vendored']
-no-unstable-features = ["casper-types/no-unstable-features"]
 
 [[bin]]
 name = "casper-node"
@@ -149,5 +148,3 @@ For information on using package, see https://github.com/CasperLabs/casper-node
 unit-scripts = "../resources/maintainer_scripts/casper_node"
 restart-after-upgrade = false
 
-[package.metadata.docs.rs]
-features = ["no-unstable-features"]

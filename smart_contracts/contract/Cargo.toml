@@ -23,7 +23,3 @@ version-sync = "0.9"
 default = []
 std = ["casper-types/std"]
 test-support = []
-no-unstable-features = ["std", "casper-types/no-unstable-features"]
-
-[package.metadata.docs.rs]
-features = ["no-unstable-features"]

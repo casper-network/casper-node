@@ -351,6 +351,7 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     }
 }
 
+// TODO Replace `try_vec_with_capacity` with `Vec::try_reserve_exact` once it's in stable.
 fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
     // see https://doc.rust-lang.org/src/alloc/raw_vec.rs.html#75-98
     let elem_size = mem::size_of::<T>();
