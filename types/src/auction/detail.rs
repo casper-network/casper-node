@@ -133,10 +133,10 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
     for unbonding_list in unbonding_purses.values_mut() {
         let mut new_unbonding_list = Vec::new();
         for unbonding_purse in unbonding_list.iter() {
-            // Since `process_unbond_requests` is run before `run_auction`, we should check
-            // if current era id is equal or greater than the `era_of_withdrawal` that was
-            // calculated on `unbond` attempt.
-            if current_era_id >= unbonding_purse.era_of_withdrawal() {
+            // Since `process_unbond_requests` is run before `run_auction`, we should check if
+            // current era id + unbonding deal is equal or greater than the `era_of_creation` that
+            // was calculated on `unbond` attempt.
+            if current_era_id >= unbonding_purse.era_of_creation() + DEFAULT_UNBONDING_DELAY {
                 // Move funds from bid purse to unbonding purse
                 provider
                     .transfer_from_purse_to_purse(
@@ -177,13 +177,13 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     }
 
     let mut unbonding_purses: UnbondingPurses = get_unbonding_purses(provider)?;
-    let era_of_withdrawal = provider.read_era_id()? + DEFAULT_UNBONDING_DELAY;
+    let era_of_creation = provider.read_era_id()?;
     let new_unbonding_purse = UnbondingPurse::new(
         bonding_purse,
         unbonding_purse,
         validator_public_key,
         unbonder_public_key,
-        era_of_withdrawal,
+        era_of_creation,
         amount,
     );
     unbonding_purses

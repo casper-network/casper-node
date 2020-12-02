@@ -158,11 +158,11 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     );
 
     assert_eq!(
-        unbond_list[0].era_of_withdrawal() as usize,
-        INITIAL_ERA_ID as usize + DEFAULT_UNBONDING_DELAY as usize
+        unbond_list[0].era_of_creation(),
+        INITIAL_ERA_ID,
     );
 
-    let unbond_era_1 = unbond_list[0].era_of_withdrawal();
+    let unbond_era_1 = unbond_list[0].era_of_creation();
 
     let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
@@ -192,7 +192,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     );
     assert_eq!(unbond_list[0].amount(), &unbond_amount,);
 
-    let unbond_era_2 = unbond_list[0].era_of_withdrawal();
+    let unbond_era_2 = unbond_list[0].era_of_creation();
 
     assert_eq!(unbond_era_2, unbond_era_1);
 
@@ -505,12 +505,9 @@ fn should_run_successful_bond_and_unbond_with_release() {
         U512::zero(),
     );
 
-    assert_eq!(
-        unbond_list[0].era_of_withdrawal() as usize,
-        INITIAL_ERA_ID as usize + 1 + DEFAULT_UNBONDING_DELAY as usize
-    );
+    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID + 1);
 
-    let unbond_era_1 = unbond_list[0].era_of_withdrawal();
+    let unbond_era_1 = unbond_list[0].era_of_creation();
 
     let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
@@ -540,7 +537,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         U512::zero(), // Not paid yet
     );
 
-    let unbond_era_2 = unbond_list[0].era_of_withdrawal();
+    let unbond_era_2 = unbond_list[0].era_of_creation();
 
     assert_eq!(unbond_era_2, unbond_era_1); // era of withdrawal didn't change since first run
 

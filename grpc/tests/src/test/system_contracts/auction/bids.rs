@@ -213,10 +213,7 @@ fn should_run_add_bid() {
     );
     assert_eq!(unbond_list[0].amount(), &U512::from(WITHDRAW_BID_AMOUNT_2),);
 
-    assert_eq!(
-        unbond_list[0].era_of_withdrawal(),
-        INITIAL_ERA_ID + DEFAULT_UNBONDING_DELAY,
-    );
+    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID,);
 }
 
 #[ignore]
@@ -377,10 +374,7 @@ fn should_run_delegate_and_undelegate() {
     assert_eq!(unbond_list[0].amount(), &U512::from(UNDELEGATE_AMOUNT_1));
     assert!(!unbond_list[0].is_validator());
 
-    assert_eq!(
-        unbond_list[0].era_of_withdrawal() as usize,
-        INITIAL_ERA_ID as usize + DEFAULT_UNBONDING_DELAY as usize
-    );
+    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID);
 }
 
 #[ignore]

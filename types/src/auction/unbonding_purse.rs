@@ -18,8 +18,8 @@ pub struct UnbondingPurse {
     validator_public_key: PublicKey,
     /// Unbonders public key.
     unbonder_public_key: PublicKey,
-    /// Unbonding Era.
-    era_of_withdrawal: EraId,
+    /// Era in which this unbonding request was created.
+    era_of_creation: EraId,
     /// Unbonding Amount.
     amount: U512,
 }
@@ -31,7 +31,7 @@ impl UnbondingPurse {
         unbonding_purse: URef,
         validator_public_key: PublicKey,
         unbonder_public_key: PublicKey,
-        era_of_withdrawal: EraId,
+        era_of_creation: EraId,
         amount: U512,
     ) -> Self {
         Self {
@@ -39,7 +39,7 @@ impl UnbondingPurse {
             unbonding_purse,
             validator_public_key,
             unbonder_public_key,
-            era_of_withdrawal,
+            era_of_creation,
             amount,
         }
     }
@@ -74,9 +74,9 @@ impl UnbondingPurse {
         &self.unbonder_public_key
     }
 
-    /// Returns era which will be used to complete this withdrawal request.
-    pub fn era_of_withdrawal(&self) -> EraId {
-        self.era_of_withdrawal
+    /// Returns era which was used to create this unbonding request.
+    pub fn era_of_creation(&self) -> EraId {
+        self.era_of_creation
     }
 
     /// Returns unbonding amount.
@@ -92,7 +92,7 @@ impl ToBytes for UnbondingPurse {
         result.extend(&self.unbonding_purse.to_bytes()?);
         result.extend(&self.validator_public_key.to_bytes()?);
         result.extend(&self.unbonder_public_key.to_bytes()?);
-        result.extend(&self.era_of_withdrawal.to_bytes()?);
+        result.extend(&self.era_of_creation.to_bytes()?);
         result.extend(&self.amount.to_bytes()?);
         Ok(result)
     }
@@ -101,7 +101,7 @@ impl ToBytes for UnbondingPurse {
             + self.unbonding_purse.serialized_length()
             + self.validator_public_key.serialized_length()
             + self.unbonder_public_key.serialized_length()
-            + self.era_of_withdrawal.serialized_length()
+            + self.era_of_creation.serialized_length()
             + self.amount.serialized_length()
     }
 }
@@ -112,7 +112,7 @@ impl FromBytes for UnbondingPurse {
         let (unbonding_purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (validator_public_key, bytes) = FromBytes::from_bytes(bytes)?;
         let (unbonder_public_key, bytes) = FromBytes::from_bytes(bytes)?;
-        let (era_of_withdrawal, bytes) = FromBytes::from_bytes(bytes)?;
+        let (era_of_creation, bytes) = FromBytes::from_bytes(bytes)?;
         let (amount, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             UnbondingPurse {
@@ -120,7 +120,7 @@ impl FromBytes for UnbondingPurse {
                 unbonding_purse,
                 validator_public_key,
                 unbonder_public_key,
-                era_of_withdrawal,
+                era_of_creation,
                 amount,
             },
             bytes,
@@ -157,7 +157,7 @@ mod tests {
             unbonding_purse: UNBONDING_PURSE,
             validator_public_key: VALIDATOR_PUBLIC_KEY,
             unbonder_public_key: UNBONDER_PUBLIC_KEY,
-            era_of_withdrawal: ERA_OF_WITHDRAWAL,
+            era_of_creation: ERA_OF_WITHDRAWAL,
             amount: *AMOUNT,
         };
 
