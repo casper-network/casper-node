@@ -26,7 +26,7 @@ pub struct UnbondingPurse {
 
 impl UnbondingPurse {
     /// Creates [`UnbondingPurse`] instance for an unbonding request.
-    pub fn new(
+    pub const fn new(
         bonding_purse: URef,
         unbonding_purse: URef,
         validator_public_key: PublicKey,
