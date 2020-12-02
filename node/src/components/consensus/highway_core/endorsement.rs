@@ -10,6 +10,8 @@ use super::validators::ValidatorIndex;
 pub(crate) enum EndorsementError {
     #[error("The creator is not a validator.")]
     Creator,
+    #[error("The creator is banned.")]
+    Banned,
     #[error("The signature is invalid.")]
     Signature,
     #[error("The list of endorsements is empty.")]
@@ -77,5 +79,9 @@ impl<C: Context> SignedEndorsement<C> {
 
     pub(crate) fn signature(&self) -> &C::Signature {
         &self.signature
+    }
+
+    pub(crate) fn hash(&self) -> C::Hash {
+        self.endorsement.hash()
     }
 }

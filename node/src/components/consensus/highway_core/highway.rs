@@ -1,5 +1,7 @@
 mod vertex;
 
+use std::collections::HashSet;
+
 pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{Dependency, Endorsements, SignedWireUnit, Vertex, WireUnit};
 
@@ -258,10 +260,7 @@ impl<C: Context> Highway<C> {
             match vertex {
                 Vertex::Unit(unit) => self.add_valid_unit(unit, now, rng),
                 Vertex::Evidence(evidence) => self.add_evidence(evidence, rng),
-                Vertex::Endorsements(endorsements) => {
-                    self.state.add_endorsements(endorsements);
-                    vec![]
-                }
+                Vertex::Endorsements(endorsements) => self.add_endorsements(endorsements),
             }
         } else {
             vec![]
@@ -441,7 +440,7 @@ impl<C: Context> Highway<C> {
         for effect in effects.iter() {
             if let Effect::NewVertex(vv) = effect {
                 if let Some(e) = vv.endorsements() {
-                    self.state.add_endorsements(e.clone());
+                    self.state.add_endorsements(e.clone(), &self.instance_id);
                 }
             }
         }
@@ -508,6 +507,9 @@ impl<C: Context> Highway<C> {
                         .validators
                         .id(*creator)
                         .ok_or(EndorsementError::Creator)?;
+                    if self.state.opt_fault(*creator) == Some(&Fault::Banned) {
+                        return Err(EndorsementError::Banned.into());
+                    }
                     let endorsement: Endorsement<C> = Endorsement::new(unit, *creator);
                     if !C::verify_signature(&endorsement.hash(), v_id, &signature) {
                         return Err(EndorsementError::Signature.into());
@@ -569,6 +571,19 @@ impl<C: Context> Highway<C> {
             .unwrap_or_default();
         evidence_effects.extend(self.on_new_unit(&unit_hash, now, rng));
         evidence_effects
+    }
+
+    /// Adds endorsements to the state.
+    fn add_endorsements(&mut self, endorsements: Endorsements<C>) -> Vec<Effect<C>> {
+        // TODO: Not faulty — evidence!
+        let old_faulty: HashSet<_> = self.state.faulty_validators().collect();
+        self.state.add_endorsements(endorsements, &self.instance_id);
+        self.state
+            .faulty_validators()
+            .filter(|v_id| !old_faulty.contains(v_id))
+            .filter_map(|v_id| self.state.opt_evidence(v_id).cloned())
+            .map(|ev| Effect::NewVertex(ValidVertex(Vertex::Evidence(ev))))
+            .collect()
     }
 }
 

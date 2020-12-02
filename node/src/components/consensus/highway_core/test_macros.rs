@@ -115,6 +115,6 @@ macro_rules! endorse {
         let signed_endorsement = SignedEndorsement::new(endorsement, signature);
         let endorsements: Endorsements<TestContext> =
             Endorsements::new(vec![signed_endorsement].into_iter());
-        $state.add_endorsements(endorsements)
+        $state.add_endorsements(endorsements, &0)
     };
 }
