@@ -190,7 +190,7 @@ impl<C: Context> ActiveValidator<C> {
     /// If we are already waiting for a consensus value, `None` is returned instead.
     /// If the new value would come after a terminal block, the proposal is made immediately, and
     /// without a value.
-    pub(crate) fn request_new_block(
+    fn request_new_block(
         &mut self,
         state: &State<C>,
         instance_id: C::InstanceId,
