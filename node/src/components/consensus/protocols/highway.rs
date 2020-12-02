@@ -152,8 +152,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 self.process_new_vertex(vv.into())
             }
             AvEffect::ScheduleTimer(timestamp) => vec![ProtocolOutcome::ScheduleTimer(timestamp)],
-            AvEffect::RequestNewBlock(block_context) => {
-                let past_values = self.non_finalized_values().cloned().collect();
+            AvEffect::RequestNewBlock {
+                block_context,
+                fork_choice,
+            } => {
+                let past_values = self.non_finalized_values(fork_choice).cloned().collect();
                 vec![ProtocolOutcome::CreateNewBlock {
                     block_context,
                     past_values,
@@ -414,34 +417,36 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// finalized yet.
     pub(crate) fn non_finalized_values<'a>(
         &'a self,
+        fork_choice: Option<C::Hash>,
     ) -> Box<dyn Iterator<Item = &'a C::ConsensusValue> + 'a> {
-        let next_finalized_height = self
-            .finality_detector
-            .last_finalized()
-            .map_or(0, |bhash| self.highway.state().block(bhash).height + 1);
         // early return if there is no fork choice
-        let fork_choice = match self
-            .highway
-            .state()
-            .fork_choice(self.highway.state().panorama())
-        {
+        let fork_choice = match fork_choice {
             Some(bhash) => bhash,
             None => {
                 return Box::new(iter::empty());
             }
         };
+        let next_finalized_height = self
+            .finality_detector
+            .last_finalized()
+            .map_or(0, |bhash| self.highway.state().block(bhash).height + 1);
         Box::new(
             // start at the next finalized height
             (next_finalized_height..)
                 // take the ancestor of the fork choice at this height
-                .map(move |height| self.highway.state().find_ancestor(fork_choice, height))
+                .map(move |height| {
+                    self.highway
+                        .state()
+                        .find_ancestor(&fork_choice, height)
+                        .cloned()
+                })
                 // only take values while there actually exists such an ancestor
                 .take_while(Option::is_some)
                 // flatten the `Option` returned by the iterator
                 .flatten()
                 // the ancestor is expressed as a block hash - return the value contained in the
                 // block
-                .map(move |bhash| &self.highway.state().block(bhash).value),
+                .map(move |bhash| &self.highway.state().block(&bhash).value),
         )
     }
 }
