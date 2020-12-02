@@ -29,7 +29,10 @@ pub(crate) enum Effect<C: Context> {
     ScheduleTimer(Timestamp),
     /// `propose` needs to be called with a value for a new block with the specified block context
     /// and parent value.
-    RequestNewBlock(BlockContext),
+    RequestNewBlock {
+        block_context: BlockContext,
+        fork_choice: Option<C::Hash>,
+    },
     /// This validator is faulty.
     ///
     /// When this is returned, the validator automatically deactivates.
@@ -214,8 +217,11 @@ impl<C: Context> ActiveValidator<C> {
         let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
         let height = opt_parent.map_or(0, |block| block.height);
         self.next_proposal = Some((timestamp, panorama));
-        let bctx = BlockContext::new(timestamp, height);
-        Some(Effect::RequestNewBlock(bctx))
+        let block_context = BlockContext::new(timestamp, height);
+        Some(Effect::RequestNewBlock {
+            block_context,
+            fork_choice: opt_parent_hash.cloned(),
+        })
     }
 
     /// Proposes a new block with the given consensus value.
@@ -511,11 +517,10 @@ mod tests {
 
         // Alice wants to propose a block, and also make her witness unit at 426.
         let bctx = match &*alice_av.handle_timer(416.into(), &state, instance_id, &mut rng) {
-            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
-                if *timestamp == 426.into() =>
-            {
-                bctx.clone()
-            }
+            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock {
+                block_context: bctx,
+                ..
+            }] if *timestamp == 426.into() => bctx.clone(),
             effects => panic!("unexpected effects {:?}", effects),
         };
         assert_eq!(Timestamp::from(416), bctx.timestamp());

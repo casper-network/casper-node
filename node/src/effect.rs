@@ -815,6 +815,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext,
+        past_deploys: HashSet<DeployHash>,
         next_finalized: u64,
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
@@ -826,7 +827,7 @@ impl<REv> EffectBuilder<REv> {
                 |responder| {
                     BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
                         current_instant: block_context.timestamp(),
-                        past_deploys: Default::default(), // TODO
+                        past_deploys,
                         next_finalized,
                         responder,
                     })

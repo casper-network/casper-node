@@ -616,18 +616,28 @@ where
                     .set_timeout(timediff.into())
                     .event(move |_| Event::Timer { era_id, timestamp })
             }
-            ProtocolOutcome::CreateNewBlock { block_context } => self
-                .effect_builder
-                .request_proto_block(
-                    block_context,
-                    self.era_supervisor.next_block_height,
-                    self.rng.gen(),
-                )
-                .event(move |(proto_block, block_context)| Event::NewProtoBlock {
-                    era_id,
-                    proto_block,
-                    block_context,
-                }),
+            ProtocolOutcome::CreateNewBlock {
+                block_context,
+                past_values,
+            } => {
+                let past_deploys = past_values
+                    .iter()
+                    .flat_map(|candidate| candidate.proto_block().deploys())
+                    .cloned()
+                    .collect();
+                self.effect_builder
+                    .request_proto_block(
+                        block_context,
+                        past_deploys,
+                        self.era_supervisor.next_block_height,
+                        self.rng.gen(),
+                    )
+                    .event(move |(proto_block, block_context)| Event::NewProtoBlock {
+                        era_id,
+                        proto_block,
+                        block_context,
+                    })
+            }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
                 value,
                 timestamp,
