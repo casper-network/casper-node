@@ -92,12 +92,6 @@ impl MockServerHandle {
         }
     }
 
-    // lib/deploy.rs houses file related operation tests
-    // intentionally missing here are:
-    // * sign_deploy
-    // * send_deploy
-    // * make_deploy
-
     fn get_balance(&self, state_root_hash: &str, purse_uref: &str) -> Result<(), ErrWrapper> {
         casper_client::get_balance("1", &self.url(), false, state_root_hash, purse_uref)
             .map(|_| ())
@@ -350,7 +344,7 @@ mod get_state_root_hash {
     }
 
     #[tokio::test(threaded_scheduler)]
-    async fn should_succeed_with_block_id_of_height() {
+    async fn should_succeed_with_valid_block_height() {
         let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
         assert_eq!(server_handle.get_state_root_hash("1"), Ok(()));
     }
@@ -377,7 +371,7 @@ mod get_block {
     // mock implementation fails to validate
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_block_should_succeed_with_valid_block_id() {
+    async fn should_succeed_with_valid_block_hash() {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert_eq!(
             server_handle.get_block(VALID_STATE_ROOT_HASH),
@@ -386,8 +380,9 @@ mod get_block {
             )))
         );
     }
+
     #[tokio::test(threaded_scheduler)]
-    async fn get_block_should_succeed_with_valid_block_height() {
+    async fn should_succeed_with_valid_block_height() {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         assert_eq!(
             server_handle.get_block("1"),
@@ -396,8 +391,9 @@ mod get_block {
             )))
         );
     }
+
     #[tokio::test(threaded_scheduler)]
-    async fn get_block_should_succeed_with_valid_empty_block_id() {
+    async fn should_succeed_with_valid_empty_block_hash() {
         let server_handle = MockServerHandle::spawn_without_params(GetBlock::METHOD);
         assert_eq!(
             server_handle.get_block(""),
@@ -408,7 +404,7 @@ mod get_block {
     }
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_block_should_fail_with_invalid_block_id() {
+    async fn should_fail_with_invalid_block_id() {
         let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
         match server_handle.get_block("<not a valid hash>") {
             Err(ErrWrapper(Error::FailedToParseInt("block_identifier", _))) => {}
@@ -424,7 +420,7 @@ mod get_item {
     use super::*;
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_item_should_succeed_with_valid_state_root_hash() {
+    async fn should_succeed_with_valid_state_root_hash() {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
 
         // in this case, the error means that the request was sent successfully, but due to to the
@@ -439,7 +435,7 @@ mod get_item {
     }
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_item_should_fail_with_invalid_state_root_hash() {
+    async fn should_fail_with_invalid_state_root_hash() {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
             server_handle.get_item("<invalid state root hash>", VALID_PURSE_UREF, ""),
@@ -452,7 +448,7 @@ mod get_item {
     }
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_item_fail_with_invalid_key() {
+    async fn should_fail_with_invalid_key() {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
             server_handle.get_item(VALID_STATE_ROOT_HASH, "invalid key", ""),
@@ -461,7 +457,7 @@ mod get_item {
     }
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_item_should_fail_with_empty_key() {
+    async fn should_fail_with_empty_key() {
         let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
         assert_eq!(
             server_handle.get_item("<invalid state root hash>", "", ""),
@@ -478,7 +474,7 @@ mod get_deploy {
     use super::*;
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_deploy_should_succeed_with_valid_hash() {
+    async fn should_succeed_with_valid_hash() {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert_eq!(
             server_handle
@@ -488,7 +484,7 @@ mod get_deploy {
     }
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_deploy_should_fail_with_invalid_hash() {
+    async fn should_fail_with_invalid_hash() {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert_eq!(
             server_handle.get_deploy("012345",),
@@ -742,7 +738,7 @@ mod put_deploy {
     use super::*;
 
     #[tokio::test(threaded_scheduler)]
-    async fn client_should_send_put_deploy() {
+    async fn should_send_put_deploy() {
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         assert_eq!(
             server_handle.put_deploy(

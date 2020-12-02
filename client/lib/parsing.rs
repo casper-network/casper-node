@@ -375,9 +375,9 @@ pub(super) fn parse_session_info(
     check_exactly_one_not_empty!(
         context: "parse_session_info",
         (session_hash)
-            requires[session_entry_point] requires_empty[],
+            requires[session_entry_point] requires_empty[session_version],
         (session_name)
-            requires[session_entry_point] requires_empty[],
+            requires[session_entry_point] requires_empty[session_version],
         (session_package_hash)
             requires[session_entry_point] requires_empty[],
         (session_package_name)
@@ -458,9 +458,9 @@ pub(super) fn parse_payment_info(
         (payment_amount)
             requires[] requires_empty[payment_entry_point, payment_version],
         (payment_hash)
-            requires[payment_entry_point] requires_empty[],
+            requires[payment_entry_point] requires_empty[payment_version],
         (payment_name)
-            requires[payment_entry_point] requires_empty[],
+            requires[payment_entry_point] requires_empty[payment_version],
         (payment_package_hash)
             requires[payment_entry_point] requires_empty[],
         (payment_package_name)
@@ -639,7 +639,32 @@ mod tests {
         pub const ARG_UNQUOTED: &str = "name:u32=0"; // value needs single quotes to be valid
         pub const ARG_BAD_TYPE: &str = "name:wat='false'";
         pub const ARG_GIBBERISH: &str = "asdf|1234(..)";
-        pub const LARGE_2K_INPUT: &str = "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";
+        pub const LARGE_2K_INPUT: &str = r#"
+        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
+        "#;
     }
 
     mod happy {
@@ -1043,21 +1068,84 @@ mod tests {
     mod conflicting_args {
         use super::*;
 
+        /// impl_test_matrix - implements many tests for SessionStrParams or PaymentStrParams which
+        /// ensures that an error is returned when the permutation they define is executed.
+        ///
+        /// For instance, it is neccesary to check that when `session_path` is set, other arguments
+        /// are not.
+        ///
+        /// For example, a sample invocation with one test: ```
+        /// impl_test_matrix![
+        ///     type: SessionStrParams,
+        ///     context: "parse_session_info",
+        ///     session_str_params[
+        ///         test[
+        ///             session_path => happy::PATH,
+        ///             conflict: session_package_hash => happy::PACKAGE_HASH,
+        ///             requires[],
+        ///             path_conflicts_with_package_hash
+        ///         ]
+        ///     ]
+        /// ];
+        /// ```
+        /// 
+        /// This generates the following test module (with the fn name passed), with one test per line in `session_str_params[]`:
+        /// ```
+        /// #[cfg(test)]
+        /// mod session_str_params {
+        ///     use super::*;            
+        ///
+        ///     #[test]
+        ///     fn path_conflicts_with_package_hash() {
+        ///         let info: StdResult<ExecutableDeployItem, ErrWrapper> = SessionStrParams {
+        ///                 session_path: happy::PATH,
+        ///                 session_package_hash: happy::PACKAGE_HASH,
+        ///                 ..Default::default()
+        ///             }
+        ///             .try_into()
+        ///             .map_err(ErrWrapper);
+        ///         let mut conflicting = vec![
+        ///             format!("{}={}", "session_path", happy::PATH),
+        ///             format!("{}={}", "session_package_hash", happy::PACKAGE_HASH),
+        ///         ];
+        ///         conflicting.sort();
+        ///         assert_eq!(
+        ///             info,
+        ///             Err(Error::ConflictingArguments {
+        ///                 context: "parse_session_info",
+        ///                 args: conflicting
+        ///             }
+        ///             .into())
+        ///         );
+        ///     }
+        /// }
+        /// ```
         macro_rules! impl_test_matrix {
             (
+                /// Struct for which to define the following tests. In our case, SessionStrParams or PaymentStrParams.
                 type: $t:ident,
+                /// Expected `context` field to be returned in the `Error::ConflictingArguments{ context, .. }` field.
                 context: $context:expr,
-                module: $module:ident,
-                tests[$(
+
+                /// $module will be our module name.
+                $module:ident [$(
+                    // many tests can be defined
+                    test[
+                        /// The argument's ident to be tested, followed by it's value.
                         $arg:tt => $arg_value:expr,
+                        /// The conflicting argument's ident to be tested, followed by it's value.
                         conflict: $con:tt => $con_value:expr,
-                        requires[$($req:tt => $req_value:expr),*]
+                        /// A list of any additional fields required by the argument, and their values.
+                        requires[$($req:tt => $req_value:expr),*],
+                        /// fn name for the defined test.
                         $test_fn_name:ident
-                    ),+
-                ]
+                    ]
+                )+]
             ) => {
+                #[cfg(test)]
                 mod $module {
                     use super::*;
+
                     $(
                         #[test]
                         fn $test_fn_name() {
@@ -1088,42 +1176,48 @@ mod tests {
             };
         }
 
+        // NOTE: there's no need to test a conflicting argument in both directions, since they
+        // amount to passing two fields to a structs constructor.
+        // Where a reverse test like this is omitted, a comment should be left.
         impl_test_matrix![
             type: SessionStrParams,
             context: "parse_session_info",
-            module: session_str_params,
-            tests[
+            session_str_params[
 
                 // path
-                session_path => happy::PATH, conflict: session_package_hash => happy::PACKAGE_HASH, requires[] path_conflicts_with_package_hash,
-                session_path => happy::PATH, conflict: session_package_name => happy::PACKAGE_NAME, requires[] path_conflicts_with_package_name,
-                session_path => happy::PATH, conflict: session_hash =>         happy::HASH,         requires[] path_conflicts_with_hash,
-                session_path => happy::PATH, conflict: session_name =>         happy::HASH,         requires[] path_conflicts_with_name,
-                session_path => happy::PATH, conflict: session_version =>      happy::VERSION,      requires[] path_conflicts_with_version,
-                session_path => happy::PATH, conflict: session_entry_point =>  happy::ENTRY_POINT,  requires[] path_conflicts_with_entry_point,
+                test[session_path => happy::PATH, conflict: session_package_hash => happy::PACKAGE_HASH, requires[], path_conflicts_with_package_hash]
+                test[session_path => happy::PATH, conflict: session_package_name => happy::PACKAGE_NAME, requires[], path_conflicts_with_package_name]
+                test[session_path => happy::PATH, conflict: session_hash =>         happy::HASH,         requires[], path_conflicts_with_hash]
+                test[session_path => happy::PATH, conflict: session_name =>         happy::HASH,         requires[], path_conflicts_with_name]
+                test[session_path => happy::PATH, conflict: session_version =>      happy::VERSION,      requires[], path_conflicts_with_version]
+                test[session_path => happy::PATH, conflict: session_entry_point =>  happy::ENTRY_POINT,  requires[], path_conflicts_with_entry_point]
 
                 // name
-                session_name => happy::NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT] name_conflicts_with_package_hash,
-                session_name => happy::NAME, conflict: session_package_name => happy::PACKAGE_NAME, requires[session_entry_point => happy::ENTRY_POINT] name_conflicts_with_package_name,
-                session_name => happy::NAME, conflict: session_hash =>         happy::HASH,         requires[session_entry_point => happy::ENTRY_POINT] name_conflicts_with_hash,
+                test[session_name => happy::NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_package_hash]
+                test[session_name => happy::NAME, conflict: session_package_name => happy::PACKAGE_NAME, requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_package_name]
+                test[session_name => happy::NAME, conflict: session_hash =>         happy::HASH,         requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_hash]
+                test[session_name => happy::NAME, conflict: session_version =>      happy::VERSION,         requires[session_entry_point => happy::ENTRY_POINT], name_conflicts_with_version]
 
                 // hash
-                session_hash => happy::HASH, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT] hash_conflicts_with_package_hash,
-                session_hash => happy::HASH, conflict: session_package_name => happy::PACKAGE_NAME, requires[session_entry_point => happy::ENTRY_POINT] hash_conflicts_with_package_name,
+                test[session_hash => happy::HASH, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_package_hash]
+                test[session_hash => happy::HASH, conflict: session_package_name => happy::PACKAGE_NAME, requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_package_name]
+                test[session_hash => happy::HASH, conflict: session_version =>      happy::VERSION,      requires[session_entry_point => happy::ENTRY_POINT], hash_conflicts_with_version]
                 // name <-> hash is already checked
                 // name <-> path is already checked
 
                 // package_name
-                session_package_name => happy::PACKAGE_NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT] package_name_conflicts_with_package_hash
+                // package_name + session_version is optional and allowed
+                test[session_package_name => happy::PACKAGE_NAME, conflict: session_package_hash => happy::PACKAGE_HASH, requires[session_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_package_hash]
                 // package_name <-> hash is already checked
                 // package_name <-> name is already checked
                 // package_name <-> path is already checked
 
                 // package_hash
-                // package_name <-> package_hash is already checked
-                // package_name <-> hash is already checked
-                // package_name <-> name is already checked
-                // package_name <-> path is already checked
+                // package_hash + session_version is optional and allowed
+                // package_hash <-> package_name is already checked
+                // package_hash <-> hash is already checked
+                // package_hash <-> name is already checked
+                // package_hash <-> path is already checked
 
             ]
         ];
@@ -1131,52 +1225,54 @@ mod tests {
         impl_test_matrix![
             type: PaymentStrParams,
             context: "parse_payment_info",
-            module: payment_str_params,
-            tests[
+            payment_str_params[
 
                 // amount
-                payment_amount => happy::PATH, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[] amount_conflicts_with_package_hash,
-                payment_amount => happy::PATH, conflict: payment_package_name => happy::PACKAGE_NAME, requires[] amount_conflicts_with_package_name,
-                payment_amount => happy::PATH, conflict: payment_hash =>         happy::HASH,         requires[] amount_conflicts_with_hash,
-                payment_amount => happy::PATH, conflict: payment_name =>         happy::HASH,         requires[] amount_conflicts_with_name,
-                payment_amount => happy::PATH, conflict: payment_version =>      happy::VERSION,      requires[] amount_conflicts_with_version,
-                payment_amount => happy::PATH, conflict: payment_entry_point =>  happy::ENTRY_POINT,  requires[] amount_conflicts_with_entry_point,
+                test[payment_amount => happy::PATH, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[], amount_conflicts_with_package_hash]
+                test[payment_amount => happy::PATH, conflict: payment_package_name => happy::PACKAGE_NAME, requires[], amount_conflicts_with_package_name]
+                test[payment_amount => happy::PATH, conflict: payment_hash =>         happy::HASH,         requires[], amount_conflicts_with_hash]
+                test[payment_amount => happy::PATH, conflict: payment_name =>         happy::HASH,         requires[], amount_conflicts_with_name]
+                test[payment_amount => happy::PATH, conflict: payment_version =>      happy::VERSION,      requires[], amount_conflicts_with_version]
+                test[payment_amount => happy::PATH, conflict: payment_entry_point =>  happy::ENTRY_POINT,  requires[], amount_conflicts_with_entry_point]
 
                 // path
                 // amount <-> path is already checked
-                payment_path => happy::PATH, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[] path_conflicts_with_package_hash,
-                payment_path => happy::PATH, conflict: payment_package_name => happy::PACKAGE_NAME, requires[] path_conflicts_with_package_name,
-                payment_path => happy::PATH, conflict: payment_hash =>         happy::HASH,         requires[] path_conflicts_with_hash,
-                payment_path => happy::PATH, conflict: payment_name =>         happy::HASH,         requires[] path_conflicts_with_name,
-                payment_path => happy::PATH, conflict: payment_version =>      happy::VERSION,      requires[] path_conflicts_with_version,
-                payment_path => happy::PATH, conflict: payment_entry_point =>  happy::ENTRY_POINT,  requires[] path_conflicts_with_entry_point,
+                test[payment_path => happy::PATH, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[], path_conflicts_with_package_hash]
+                test[payment_path => happy::PATH, conflict: payment_package_name => happy::PACKAGE_NAME, requires[], path_conflicts_with_package_name]
+                test[payment_path => happy::PATH, conflict: payment_hash =>         happy::HASH,         requires[], path_conflicts_with_hash]
+                test[payment_path => happy::PATH, conflict: payment_name =>         happy::HASH,         requires[], path_conflicts_with_name]
+                test[payment_path => happy::PATH, conflict: payment_version =>      happy::VERSION,      requires[], path_conflicts_with_version]
+                test[payment_path => happy::PATH, conflict: payment_entry_point =>  happy::ENTRY_POINT,  requires[], path_conflicts_with_entry_point]
 
                 // name
                 // amount <-> path is already checked
-                payment_name => happy::NAME, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[payment_entry_point => happy::ENTRY_POINT] name_conflicts_with_package_hash,
-                payment_name => happy::NAME, conflict: payment_package_name => happy::PACKAGE_NAME, requires[payment_entry_point => happy::ENTRY_POINT] name_conflicts_with_package_name,
-                payment_name => happy::NAME, conflict: payment_hash =>         happy::HASH,         requires[payment_entry_point => happy::ENTRY_POINT] name_conflicts_with_hash,
+                test[payment_name => happy::NAME, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[payment_entry_point => happy::ENTRY_POINT], name_conflicts_with_package_hash]
+                test[payment_name => happy::NAME, conflict: payment_package_name => happy::PACKAGE_NAME, requires[payment_entry_point => happy::ENTRY_POINT], name_conflicts_with_package_name]
+                test[payment_name => happy::NAME, conflict: payment_hash =>         happy::HASH,         requires[payment_entry_point => happy::ENTRY_POINT], name_conflicts_with_hash]
+                test[payment_name => happy::NAME, conflict: payment_version =>      happy::VERSION,      requires[payment_entry_point => happy::ENTRY_POINT], name_conflicts_with_version]
 
                 // hash
                 // amount <-> hash is already checked
-                payment_hash => happy::HASH, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[payment_entry_point => happy::ENTRY_POINT] hash_conflicts_with_package_hash,
-                payment_hash => happy::HASH, conflict: payment_package_name => happy::PACKAGE_NAME, requires[payment_entry_point => happy::ENTRY_POINT] hash_conflicts_with_package_name,
+                test[payment_hash => happy::HASH, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[payment_entry_point => happy::ENTRY_POINT], hash_conflicts_with_package_hash]
+                test[payment_hash => happy::HASH, conflict: payment_package_name => happy::PACKAGE_NAME, requires[payment_entry_point => happy::ENTRY_POINT], hash_conflicts_with_package_name]
+                test[payment_hash => happy::HASH, conflict: payment_version =>      happy::VERSION,      requires[payment_entry_point => happy::ENTRY_POINT], hash_conflicts_with_version]
                 // name <-> hash is already checked
                 // name <-> path is already checked
 
                 // package_name
                 // amount <-> package_name is already checked
-                payment_package_name => happy::PACKAGE_NAME, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[payment_entry_point => happy::ENTRY_POINT] package_name_conflicts_with_package_hash
+                test[payment_package_name => happy::PACKAGE_NAME, conflict: payment_package_hash => happy::PACKAGE_HASH, requires[payment_entry_point => happy::ENTRY_POINT], package_name_conflicts_with_package_hash]
                 // package_name <-> hash is already checked
                 // package_name <-> name is already checked
                 // package_name <-> path is already checked
 
                 // package_hash
+                // package_hash + session_version is optional and allowed
                 // amount <-> package_hash is already checked
-                // package_name <-> package_hash is already checked
-                // package_name <-> hash is already checked
-                // package_name <-> name is already checked
-                // package_name <-> path is already checked
+                // package_hash <-> package_name is already checked
+                // package_hash <-> hash is already checked
+                // package_hash <-> name is already checked
+                // package_hash <-> path is already checked
             ]
         ];
     }
