@@ -6,6 +6,7 @@ use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
+    iter,
 };
 
 use casper_execution_engine::shared::motes::Motes;
@@ -617,6 +618,37 @@ where
 
     fn has_received_messages(&self) -> bool {
         self.highway.state().is_empty()
+    }
+
+    fn non_finalized_values<'a>(&'a self) -> Box<dyn Iterator<Item = &'a C::ConsensusValue> + 'a> {
+        let next_finalized_height = self
+            .finality_detector
+            .last_finalized()
+            .map_or(0, |bhash| self.highway.state().block(bhash).height + 1);
+        // early return if there is no fork choice
+        let fork_choice = match self
+            .highway
+            .state()
+            .fork_choice(self.highway.state().panorama())
+        {
+            Some(bhash) => bhash,
+            None => {
+                return Box::new(iter::empty());
+            }
+        };
+        Box::new(
+            // start at the next finalized height
+            (next_finalized_height..)
+                // take the ancestor of the fork choice at this height
+                .map(move |height| self.highway.state().find_ancestor(fork_choice, height))
+                // only take values while there actually exists such an ancestor
+                .take_while(Option::is_some)
+                // flatten the `Option` returned by the iterator
+                .flatten()
+                // the ancestor is expressed as a block hash - return the value contained in the
+                // block
+                .map(move |bhash| &self.highway.state().block(bhash).value),
+        )
     }
 
     fn as_any(&self) -> &dyn Any {

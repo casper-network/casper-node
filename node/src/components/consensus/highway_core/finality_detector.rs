@@ -151,6 +151,11 @@ impl<C: Context> FinalityDetector<C> {
         let height_plus_1 = |bhash| state.block(bhash).height + 1;
         self.last_finalized.as_ref().map_or(0, height_plus_1)
     }
+
+    /// Returns the hash of the last finalized block (if any).
+    pub(crate) fn last_finalized(&self) -> Option<&C::Hash> {
+        self.last_finalized.as_ref()
+    }
 }
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
