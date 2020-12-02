@@ -157,10 +157,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         U512::zero(),
     );
 
-    assert_eq!(
-        unbond_list[0].era_of_creation(),
-        INITIAL_ERA_ID,
-    );
+    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID,);
 
     let unbond_era_1 = unbond_list[0].era_of_creation();
 
