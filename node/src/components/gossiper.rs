@@ -203,7 +203,11 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         let message = Message::Gossip(item_id);
         effect_builder
             .gossip_message(message, count, exclude_peers)
-            .event(move |peers| Event::GossipedTo { item_id, peers })
+            .event(move |peers| Event::GossipedTo {
+                item_id,
+                requested_count: count,
+                peers,
+            })
     }
 
     /// Handles the response from the network component detailing which peers it gossiped to.
@@ -211,6 +215,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
+        requested_count: usize,
         peers: HashSet<NodeId>,
     ) -> Effects<Event<T>> {
         // We don't have any peers to gossip to, so pause the process, which will eventually result
@@ -224,6 +229,13 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
                 item_id
             );
             return Effects::new();
+        }
+
+        // We didn't gossip to as many peers as was requested.  Reduce the table entry's in-flight
+        // count.
+        if peers.len() < requested_count {
+            self.table
+                .reduce_in_flight_count(&item_id, requested_count - peers.len());
         }
 
         // Set timeouts to check later that the specified peers all responded.
@@ -477,9 +489,11 @@ where
             Event::ItemReceived { item_id, source } => {
                 self.handle_item_received(effect_builder, item_id, source)
             }
-            Event::GossipedTo { item_id, peers } => {
-                self.gossiped_to(effect_builder, item_id, peers)
-            }
+            Event::GossipedTo {
+                item_id,
+                requested_count,
+                peers,
+            } => self.gossiped_to(effect_builder, item_id, requested_count, peers),
             Event::CheckGossipTimeout { item_id, peer } => {
                 self.check_gossip_timeout(effect_builder, item_id, peer)
             }
