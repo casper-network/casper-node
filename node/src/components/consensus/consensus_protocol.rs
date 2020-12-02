@@ -71,6 +71,7 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     /// TODO: Add more details that are necessary for block creation.
     CreateNewBlock {
         block_context: BlockContext,
+        past_values: Vec<C::ConsensusValue>,
     },
     /// A block was finalized.
     FinalizedBlock(FinalizedBlock<C>),
@@ -152,8 +153,4 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
 
     /// Returns true if the protocol has received some messages since initialization.
     fn has_received_messages(&self) -> bool;
-
-    /// Returns an iterator over all the values that are expected to become finalized, but are not
-    /// finalized yet.
-    fn non_finalized_values<'a>(&'a self) -> Box<dyn Iterator<Item = &'a C::ConsensusValue> + 'a>;
 }

@@ -616,11 +616,12 @@ where
                     .set_timeout(timediff.into())
                     .event(move |_| Event::Timer { era_id, timestamp })
             }
-            ProtocolOutcome::CreateNewBlock { block_context } => {
-                let past_deploys = self
-                    .era(era_id)
-                    .consensus
-                    .non_finalized_values()
+            ProtocolOutcome::CreateNewBlock {
+                block_context,
+                past_values,
+            } => {
+                let past_deploys = past_values
+                    .iter()
                     .flat_map(|candidate| candidate.proto_block().deploys())
                     .cloned()
                     .collect();

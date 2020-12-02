@@ -296,8 +296,4 @@ where
     fn has_received_messages(&self) -> bool {
         !self.pending_blocks.is_empty() || !self.finalized_blocks.is_empty()
     }
-
-    fn non_finalized_values<'a>(&'a self) -> Box<dyn Iterator<Item = &'a C::ConsensusValue> + 'a> {
-        todo!("implement non_finalized_values")
-    }
 }
