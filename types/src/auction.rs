@@ -133,6 +133,7 @@ pub trait Auction:
         detail::create_unbonding_purse(
             self,
             public_key,
+            public_key, // validator is the unbonder
             *bid.bonding_purse(),
             unbonding_purse,
             amount,
@@ -234,6 +235,7 @@ pub trait Auction:
             Some(delegator) => {
                 detail::create_unbonding_purse(
                     self,
+                    validator_public_key,
                     delegator_public_key,
                     *delegator.bonding_purse(),
                     unbonding_purse,
@@ -269,7 +271,7 @@ pub trait Auction:
         for validator_public_key in validator_public_keys {
             // TODO: slash delegators properly
             if let Some(unbonding_list) = unbonding_purses.remove(&validator_public_key) {
-                burned_amount += unbonding_list.iter().map(|x| x.amount).sum();
+                burned_amount += unbonding_list.iter().map(|x| *x.amount()).sum();
                 unbonding_purses_modified = true;
             }
         }
