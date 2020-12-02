@@ -7,25 +7,23 @@ mod deploy_sets;
 mod event;
 mod metrics;
 
-use std::{
-    collections::{HashMap, HashSet},
-    convert::Infallible,
-    time::Duration,
-};
+#[cfg(test)]
+mod tests;
+
+use std::{collections::HashMap, convert::Infallible, time::Duration};
 
 use datasize::DataSize;
+use deploy_sets::DeployType;
 use prometheus::{self, Registry};
 use tracing::{debug, info, trace, warn};
 
 use crate::{
     components::{chainspec_loader::DeployConfig, Component},
     effect::{
-        requests::{
-            BlockProposerRequest, ListForInclusionRequest, StateStoreRequest, StorageRequest,
-        },
+        requests::{BlockProposerRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{DeployHash, DeployHeader, Timestamp},
+    types::{DeployHash, DeployHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
 pub(crate) use deploy_sets::BlockProposerDeploySets;
@@ -50,9 +48,6 @@ const PRUNE_INTERVAL: Duration = Duration::from_secs(10);
 /// The type of values expressing the block height in the chain.
 type BlockHeight = u64;
 
-/// A collection of deploy hashes with their corresponding deploy headers.
-type DeployCollection = HashMap<DeployHash, DeployHeader>;
-
 /// A queue of contents of blocks that we know have been finalized, but we are still missing
 /// notifications about finalization of some of their ancestors. It maps block height to the
 /// deploys contained in the corresponding block.
@@ -61,7 +56,7 @@ type FinalizationQueue = HashMap<BlockHeight, Vec<DeployHash>>;
 /// A queue of requests we can't respond to yet, because we aren't up to date on finalized blocks.
 /// The key is the height of the next block we will expect to be finalized at the point when we can
 /// fulfill the corresponding requests.
-type RequestQueue = HashMap<BlockHeight, Vec<ListForInclusionRequest>>;
+type RequestQueue = HashMap<BlockHeight, Vec<ProtoBlockRequest>>;
 
 /// Current operational state of a block proposer.
 #[derive(DataSize, Debug)]
@@ -156,7 +151,7 @@ where
                 effects.extend(
                     effect_builder
                         .set_timeout(PRUNE_INTERVAL)
-                        .event(|_| Event::BufferPrune),
+                        .event(|_| Event::Prune),
                 );
             }
             (BlockProposerState::Initializing { ref mut pending }, event) => {
@@ -201,7 +196,7 @@ impl BlockProposerReady {
         REv: Send + From<StateStoreRequest>,
     {
         match event {
-            Event::Request(BlockProposerRequest::ListForInclusion(request)) => {
+            Event::Request(BlockProposerRequest::RequestProtoBlock(request)) => {
                 if request.next_finalized > self.sets.next_finalized {
                     self.request_queue
                         .entry(request.next_finalized)
@@ -211,19 +206,29 @@ impl BlockProposerReady {
                 } else {
                     request
                         .responder
-                        .respond(self.propose_deploys(
+                        .respond(self.propose_proto_block(
                             self.deploy_config,
                             request.current_instant,
-                            request.past_deploys,
+                            &request.past_deploys,
+                            request.random_bit,
                         ))
                         .ignore()
                 }
             }
-            Event::Buffer { hash, header } => {
-                self.add_deploy(Timestamp::now(), hash, *header);
+            Event::BufferDeploy {
+                hash,
+                header,
+                is_transfer,
+            } => {
+                let deploy_or_transfer = if is_transfer {
+                    DeployType::Transfer(*header)
+                } else {
+                    DeployType::Deploy(*header)
+                };
+                self.add_deploy_or_transfer(Timestamp::now(), hash, deploy_or_transfer);
                 Effects::new()
             }
-            Event::BufferPrune => {
+            Event::Prune => {
                 let pruned = self.prune(Timestamp::now());
                 debug!("Pruned {} deploys from buffer", pruned);
 
@@ -236,7 +241,7 @@ impl BlockProposerReady {
                 effects.extend(
                     effect_builder
                         .set_timeout(PRUNE_INTERVAL)
-                        .event(|_| Event::BufferPrune),
+                        .event(|_| Event::Prune),
                 );
 
                 effects
@@ -250,7 +255,9 @@ impl BlockProposerReady {
                 Effects::new()
             }
             Event::FinalizedProtoBlock { block, mut height } => {
-                let (_, deploys, _) = block.destructure();
+                let (_, mut deploys, transfers, _) = block.destructure();
+                deploys.extend(transfers);
+
                 if height > self.sets.next_finalized {
                     // safe to subtract 1 - height will never be 0 in this branch, because
                     // next_finalized is at least 0, and height has to be greater
@@ -275,14 +282,23 @@ impl BlockProposerReady {
     /// Adds a deploy to the block proposer.
     ///
     /// Returns `false` if the deploy has been rejected.
-    fn add_deploy(&mut self, current_instant: Timestamp, hash: DeployHash, header: DeployHeader) {
-        if header.expired(current_instant) {
-            trace!("expired deploy {} rejected from the buffer", hash);
-            return;
+    fn add_deploy_or_transfer(
+        &mut self,
+        current_instant: Timestamp,
+        hash: DeployHash,
+        deploy_or_transfer: DeployType,
+    ) {
+        match deploy_or_transfer {
+            DeployType::Deploy(ref header) | DeployType::Transfer(ref header) => {
+                if header.expired(current_instant) {
+                    trace!("expired deploy {} rejected from the buffer", hash);
+                    return;
+                }
+            }
         }
         // only add the deploy if it isn't contained in a finalized block
         if !self.sets.finalized_deploys.contains_key(&hash) {
-            self.sets.pending.insert(hash, header);
+            self.sets.pending.insert(hash, deploy_or_transfer);
             info!("added deploy {} to the buffer", hash);
         } else {
             info!("deploy {} rejected from the buffer", hash);
@@ -299,10 +315,14 @@ impl BlockProposerReady {
         let deploys: HashMap<_, _> = deploys
             .into_iter()
             .filter_map(|deploy_hash| {
-                self.sets
-                    .pending
-                    .get(&deploy_hash)
-                    .map(|deploy_header| (deploy_hash, deploy_header.clone()))
+                self.sets.pending.get(&deploy_hash).map(|deploy_type| {
+                    let deploy_header = match deploy_type {
+                        DeployType::Transfer(deploy_header) | DeployType::Deploy(deploy_header) => {
+                            deploy_header
+                        }
+                    };
+                    (deploy_hash, deploy_header.clone())
+                })
             })
             .collect();
         self.sets
@@ -330,10 +350,11 @@ impl BlockProposerReady {
                 .flat_map(|request| {
                     request
                         .responder
-                        .respond(self.propose_deploys(
+                        .respond(self.propose_proto_block(
                             self.deploy_config,
                             request.current_instant,
-                            request.past_deploys,
+                            &request.past_deploys,
+                            request.random_bit,
                         ))
                         .ignore()
                 })
@@ -349,7 +370,7 @@ impl BlockProposerReady {
         deploy: &DeployHeader,
         block_timestamp: Timestamp,
         deploy_config: &DeployConfig,
-        past_deploys: &HashSet<DeployHash>,
+        past_deploys: &[DeployHash],
     ) -> bool {
         let all_deps_resolved = || {
             deploy.dependencies().iter().all(|dep| {
@@ -364,263 +385,62 @@ impl BlockProposerReady {
     }
 
     /// Returns a list of candidates for inclusion into a block.
-    // TODO:
-    /// rename to proposed deploys
-    // TODO:
-    /// maybe use cuckoofilter
-    fn propose_deploys(
+    fn propose_proto_block(
         &mut self,
         deploy_config: DeployConfig,
         block_timestamp: Timestamp,
-        past_deploys: HashSet<DeployHash>,
-    ) -> HashSet<DeployHash> {
-        // deploys_to_return = all deploys in pending that aren't in finalized blocks or
+        past_deploys: &[DeployHash],
+        random_bit: bool,
+    ) -> ProtoBlock {
+        // all deploys in pending that aren't in finalized blocks or
         // proposed blocks from the set `past_blocks`
-        self.sets
+        let deploys = self
+            .sets
             .pending
             .iter()
-            .filter(|&(hash, deploy)| {
-                self.is_deploy_valid(deploy, block_timestamp, &deploy_config, &past_deploys)
-                    && !past_deploys.contains(hash)
-                    && !self.sets.finalized_deploys.contains_key(hash)
+            .filter_map(|(hash, deploy)| {
+                if let DeployType::Deploy(header) = deploy {
+                    if self.is_deploy_valid(header, block_timestamp, &deploy_config, past_deploys)
+                        && !past_deploys.contains(hash)
+                        && !self.sets.finalized_deploys.contains_key(hash)
+                    {
+                        Some(*hash)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             })
-            .map(|(hash, _deploy)| *hash)
             .take(deploy_config.block_max_deploy_count as usize)
-            .collect::<HashSet<_>>()
-        // TODO: check gas and block size limits
+            .collect::<Vec<_>>();
+
+        let transfers = self
+            .sets
+            .pending
+            .iter()
+            .filter_map(|(hash, deploy)| {
+                if let DeployType::Transfer(header) = deploy {
+                    if self.is_deploy_valid(header, block_timestamp, &deploy_config, past_deploys)
+                        && !past_deploys.contains(hash)
+                        && !self.sets.finalized_deploys.contains_key(hash)
+                    {
+                        Some(*hash)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .take(deploy_config.block_max_transfer_count as usize)
+            .collect::<Vec<_>>();
+
+        ProtoBlock::new(deploys, transfers, random_bit)
     }
 
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.
     fn prune(&mut self, current_instant: Timestamp) -> usize {
         self.sets.prune(current_instant)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashSet;
-
-    use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
-    use casper_types::bytesrepr::Bytes;
-
-    use super::*;
-    use crate::{
-        crypto::asymmetric_key::SecretKey,
-        testing::TestRng,
-        types::{Deploy, DeployHash, DeployHeader, TimeDiff},
-    };
-
-    fn generate_deploy(
-        rng: &mut TestRng,
-        timestamp: Timestamp,
-        ttl: TimeDiff,
-        dependencies: Vec<DeployHash>,
-    ) -> (DeployHash, DeployHeader) {
-        let secret_key = SecretKey::random(rng);
-        let gas_price = 10;
-        let chain_name = "chain".to_string();
-        let payment = ExecutableDeployItem::ModuleBytes {
-            module_bytes: Bytes::new(),
-            args: Bytes::new(),
-        };
-        let session = ExecutableDeployItem::ModuleBytes {
-            module_bytes: Bytes::new(),
-            args: Bytes::new(),
-        };
-
-        let deploy = Deploy::new(
-            timestamp,
-            ttl,
-            gas_price,
-            dependencies,
-            chain_name,
-            payment,
-            session,
-            &secret_key,
-            rng,
-        );
-
-        (*deploy.id(), deploy.take_header())
-    }
-
-    fn create_test_proposer() -> BlockProposerReady {
-        BlockProposerReady {
-            sets: Default::default(),
-            deploy_config: Default::default(),
-            state_key: b"block-proposer-test".to_vec(),
-            request_queue: Default::default(),
-        }
-    }
-
-    impl From<StorageRequest> for Event {
-        fn from(_: StorageRequest) -> Self {
-            // we never send a storage request in our unit tests, but if this does become
-            // meaningful....
-            unreachable!("no storage requests in block proposer unit tests")
-        }
-    }
-
-    impl From<StateStoreRequest> for Event {
-        fn from(_: StateStoreRequest) -> Self {
-            unreachable!("no state store requests in block proposer unit tests")
-        }
-    }
-
-    #[test]
-    fn add_and_take_deploys() {
-        let creation_time = Timestamp::from(100);
-        let ttl = TimeDiff::from(100);
-        let block_time1 = Timestamp::from(80);
-        let block_time2 = Timestamp::from(120);
-        let block_time3 = Timestamp::from(220);
-
-        let no_deploys = HashSet::new();
-        let mut proposer = create_test_proposer();
-        let mut rng = crate::new_rng();
-        let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-        let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-        let (hash3, deploy3) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-        let (hash4, deploy4) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-
-        assert!(proposer
-            .propose_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
-            .is_empty());
-
-        // add two deploys
-        proposer.add_deploy(block_time2, hash1, deploy1);
-        proposer.add_deploy(block_time2, hash2, deploy2);
-
-        // if we try to create a block with a timestamp that is too early, we shouldn't get any
-        // deploys
-        assert!(proposer
-            .propose_deploys(DeployConfig::default(), block_time1, no_deploys.clone())
-            .is_empty());
-
-        // if we try to create a block with a timestamp that is too late, we shouldn't get any
-        // deploys, either
-        assert!(proposer
-            .propose_deploys(DeployConfig::default(), block_time3, no_deploys.clone())
-            .is_empty());
-
-        // take the deploys out
-        let deploys =
-            proposer.propose_deploys(DeployConfig::default(), block_time2, no_deploys.clone());
-
-        assert_eq!(deploys.len(), 2);
-        assert!(deploys.contains(&hash1));
-        assert!(deploys.contains(&hash2));
-
-        assert_eq!(
-            proposer
-                .propose_deploys(DeployConfig::default(), block_time2, no_deploys.clone())
-                .len(),
-            2
-        );
-
-        // but they shouldn't be returned if we include it in the past deploys
-        assert!(proposer
-            .propose_deploys(DeployConfig::default(), block_time2, deploys.clone())
-            .is_empty());
-
-        // finalize the block
-        proposer.finalized_deploys(deploys);
-
-        // add more deploys
-        proposer.add_deploy(block_time2, hash3, deploy3);
-        proposer.add_deploy(block_time2, hash4, deploy4);
-
-        let deploys = proposer.propose_deploys(DeployConfig::default(), block_time2, no_deploys);
-
-        // since block 1 is now finalized, neither deploy1 nor deploy2 should be among the returned
-        assert_eq!(deploys.len(), 2);
-        assert!(deploys.contains(&hash3));
-        assert!(deploys.contains(&hash4));
-    }
-
-    #[test]
-    fn test_prune() {
-        let expired_time = Timestamp::from(201);
-        let creation_time = Timestamp::from(100);
-        let test_time = Timestamp::from(120);
-        let ttl = TimeDiff::from(100);
-
-        let mut rng = crate::new_rng();
-        let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-        let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-        let (hash3, deploy3) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-        let (hash4, deploy4) = generate_deploy(
-            &mut rng,
-            creation_time + Duration::from_secs(20).into(),
-            ttl,
-            vec![],
-        );
-        let mut proposer = create_test_proposer();
-
-        // pending
-        proposer.add_deploy(creation_time, hash1, deploy1);
-        proposer.add_deploy(creation_time, hash2, deploy2);
-        proposer.add_deploy(creation_time, hash3, deploy3);
-        proposer.add_deploy(creation_time, hash4, deploy4);
-
-        // pending => finalized
-        proposer.finalized_deploys(vec![hash1]);
-
-        assert_eq!(proposer.sets.pending.len(), 3);
-        assert!(proposer.sets.finalized_deploys.contains_key(&hash1));
-
-        // test for retained values
-        let pruned = proposer.prune(test_time);
-        assert_eq!(pruned, 0);
-
-        assert_eq!(proposer.sets.pending.len(), 3);
-        assert_eq!(proposer.sets.finalized_deploys.len(), 1);
-        assert!(proposer.sets.finalized_deploys.contains_key(&hash1));
-
-        // now move the clock to make some things expire
-        let pruned = proposer.prune(expired_time);
-        assert_eq!(pruned, 3);
-
-        assert_eq!(proposer.sets.pending.len(), 1); // deploy4 is still valid
-        assert_eq!(proposer.sets.finalized_deploys.len(), 0);
-    }
-
-    #[test]
-    fn test_deploy_dependencies() {
-        let creation_time = Timestamp::from(100);
-        let ttl = TimeDiff::from(100);
-        let block_time = Timestamp::from(120);
-
-        let mut rng = crate::new_rng();
-        let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-        // let deploy2 depend on deploy1
-        let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![hash1]);
-
-        let no_deploys = HashSet::new();
-        let mut proposer = create_test_proposer();
-
-        // add deploy2
-        proposer.add_deploy(creation_time, hash2, deploy2);
-
-        // deploy2 has an unsatisfied dependency
-        assert!(proposer
-            .propose_deploys(DeployConfig::default(), block_time, no_deploys.clone())
-            .is_empty());
-
-        // add deploy1
-        proposer.add_deploy(creation_time, hash1, deploy1);
-
-        let deploys =
-            proposer.propose_deploys(DeployConfig::default(), block_time, no_deploys.clone());
-        // only deploy1 should be returned, as it has no dependencies
-        assert_eq!(deploys.len(), 1);
-        assert!(deploys.contains(&hash1));
-
-        // the deploy will be included in block 1
-        proposer.finalized_deploys(deploys);
-
-        let deploys2 = proposer.propose_deploys(DeployConfig::default(), block_time, no_deploys);
-        // `blocks` contains a block that contains deploy1 now, so we should get deploy2
-        assert_eq!(deploys2.len(), 1);
-        assert!(deploys2.contains(&hash2));
     }
 }

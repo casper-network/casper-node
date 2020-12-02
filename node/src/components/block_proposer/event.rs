@@ -28,12 +28,13 @@ pub enum Event {
         sets: Option<BlockProposerDeploySets>,
     },
     /// A new deploy should be buffered.
-    Buffer {
+    BufferDeploy {
         hash: DeployHash,
         header: Box<DeployHeader>,
+        is_transfer: bool,
     },
     /// The deploy-buffer has been asked to prune stale deploys
-    BufferPrune,
+    Prune,
     /// A proto block has been finalized. We should never propose its deploys again.
     FinalizedProtoBlock {
         block: ProtoBlock,
@@ -52,8 +53,8 @@ impl Display for Event {
                 f,
                 "loaded block-proposer deploy sets, none found in storage"
             ),
-            Event::Buffer { hash, .. } => write!(f, "block-proposer add {}", hash),
-            Event::BufferPrune => write!(f, "buffer prune"),
+            Event::BufferDeploy { hash, .. } => write!(f, "block-proposer add {}", hash),
+            Event::Prune => write!(f, "block-proposer prune"),
             Event::FinalizedProtoBlock { block, height } => {
                 write!(
                     f,

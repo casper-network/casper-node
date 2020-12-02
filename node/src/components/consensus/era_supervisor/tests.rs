@@ -203,7 +203,7 @@ async fn propose_and_finalize(
     };
 
     // Propose a new block. We receive that proposal via node 1.
-    let proto_block = ProtoBlock::new(vec![], true);
+    let proto_block = ProtoBlock::new(vec![], vec![], true);
     let candidate_block = CandidateBlock::new(proto_block.clone(), accusations.clone());
     let timestamp = Timestamp::now();
     let event = ClMessage::BlockByOtherValidator {

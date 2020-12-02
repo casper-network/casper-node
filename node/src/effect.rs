@@ -123,8 +123,8 @@ use announcements::{
 };
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
-    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, ListForInclusionRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, StateStoreRequest, StorageRequest,
+    ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
+    NetworkRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -815,29 +815,27 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext,
-        past_deploys: HashSet<DeployHash>,
+        past_deploys: Vec<DeployHash>,
         next_finalized: u64,
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
     where
         REv: From<BlockProposerRequest>,
     {
-        let deploys = self
+        let proto_block = self
             .make_request(
                 |responder| {
-                    BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
+                    BlockProposerRequest::RequestProtoBlock(ProtoBlockRequest {
                         current_instant: block_context.timestamp(),
                         past_deploys,
                         next_finalized,
                         responder,
+                        random_bit,
                     })
                 },
                 QueueKind::Regular,
             )
-            .await
-            .into_iter()
-            .collect();
-        let proto_block = ProtoBlock::new(deploys, random_bit);
+            .await;
         (proto_block, block_context)
     }
 

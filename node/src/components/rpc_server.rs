@@ -178,8 +178,8 @@ where
         match event {
             Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => {
                 let mut effects = effect_builder.announce_deploy_received(deploy).ignore();
-                effects.extend(responder.respond(()).ignore());
-                effects
+                effects.extend(responder.respond(()).ignore()); // send responder, then inside return is_valid (ie not a 200)
+                effects // check account in is_valid
             }
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),

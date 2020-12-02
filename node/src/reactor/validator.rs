@@ -20,6 +20,8 @@ use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, error, warn};
 
+use casper_execution_engine::core::engine_state::ExecutableDeployItem;
+
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -724,9 +726,10 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
-                let event = block_proposer::Event::Buffer {
+                let event = block_proposer::Event::BufferDeploy {
                     hash: *deploy.id(),
                     header: Box::new(deploy.header().clone()),
+                    is_transfer: matches!(deploy.session(), ExecutableDeployItem::Transfer{ .. }),
                 };
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));
@@ -756,7 +759,7 @@ impl reactor::Reactor for Reactor {
             Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
                 deploy: _,
                 source: _,
-            }) => Effects::new(),
+            }) => Effects::new(), //
             Event::ConsensusAnnouncement(consensus_announcement) => {
                 let mut reactor_event_dispatch = |dbe: block_proposer::Event| {
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(dbe))

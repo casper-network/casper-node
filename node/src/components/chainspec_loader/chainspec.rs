@@ -42,6 +42,7 @@ pub struct DeployConfig {
     pub(crate) max_dependencies: u8,
     pub(crate) max_block_size: u32,
     pub(crate) block_max_deploy_count: u32,
+    pub(crate) block_max_transfer_count: u32,
     pub(crate) block_gas_limit: u64,
 }
 
@@ -53,6 +54,7 @@ impl Default for DeployConfig {
             max_dependencies: 10,
             max_block_size: 10_485_760,
             block_max_deploy_count: 10,
+            block_max_transfer_count: 1000,
             block_gas_limit: 10_000_000_000_000,
         }
     }
@@ -69,6 +71,7 @@ impl DeployConfig {
         let max_dependencies = rng.gen();
         let max_block_size = rng.gen_range(1_000_000, 1_000_000_000);
         let block_max_deploy_count = rng.gen();
+        let block_max_transfer_count = rng.gen();
         let block_gas_limit = rng.gen_range(100_000_000_000, 1_000_000_000_000_000);
 
         DeployConfig {
@@ -77,6 +80,7 @@ impl DeployConfig {
             max_dependencies,
             max_block_size,
             block_max_deploy_count,
+            block_max_transfer_count,
             block_gas_limit,
         }
     }

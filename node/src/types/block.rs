@@ -62,7 +62,7 @@ static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let deploy_hashes = vec![*Deploy::doc_example().id()];
     let random_bit = true;
-    let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
+    let proto_block = ProtoBlock::new(deploy_hashes, vec![], random_bit);
     let timestamp = *Timestamp::doc_example();
     let era_end = Some(EraEnd::doc_example().clone());
     let era: u64 = 1;
@@ -120,7 +120,7 @@ impl From<TryFromSliceError> for Error {
 }
 
 pub trait BlockLike: Eq + Hash {
-    fn deploys(&self) -> &Vec<DeployHash>;
+    fn deploys(&self) -> Vec<&DeployHash>;
 }
 
 /// A cryptographic hash identifying a `ProtoBlock`.
@@ -171,11 +171,16 @@ impl Display for ProtoBlockHash {
 pub struct ProtoBlock {
     hash: ProtoBlockHash,
     deploys: Vec<DeployHash>,
+    transfers: Vec<DeployHash>,
     random_bit: bool,
 }
 
 impl ProtoBlock {
-    pub(crate) fn new(deploys: Vec<DeployHash>, random_bit: bool) -> Self {
+    pub(crate) fn new(
+        deploys: Vec<DeployHash>,
+        transfers: Vec<DeployHash>,
+        random_bit: bool,
+    ) -> Self {
         let hash = ProtoBlockHash::new(hash::hash(
             &bincode::serialize(&(&deploys, random_bit)).expect("serialize ProtoBlock"),
         ));
@@ -183,6 +188,7 @@ impl ProtoBlock {
         ProtoBlock {
             hash,
             deploys,
+            transfers,
             random_bit,
         }
     }
@@ -196,13 +202,18 @@ impl ProtoBlock {
         &self.deploys
     }
 
+    /// The list of deploy hashes included in the block.
+    pub(crate) fn transfers(&self) -> &Vec<DeployHash> {
+        &self.transfers
+    }
+
     /// A random bit needed for initializing a future era.
     pub(crate) fn random_bit(&self) -> bool {
         self.random_bit
     }
 
-    pub(crate) fn destructure(self) -> (ProtoBlockHash, Vec<DeployHash>, bool) {
-        (self.hash, self.deploys, self.random_bit)
+    pub(crate) fn destructure(self) -> (ProtoBlockHash, Vec<DeployHash>, Vec<DeployHash>, bool) {
+        (self.hash, self.deploys, self.transfers, self.random_bit)
     }
 }
 
@@ -219,8 +230,11 @@ impl Display for ProtoBlock {
 }
 
 impl BlockLike for ProtoBlock {
-    fn deploys(&self) -> &Vec<DeployHash> {
+    fn deploys(&self) -> Vec<&DeployHash> {
         self.deploys()
+            .iter()
+            .chain(self.transfers())
+            .collect::<Vec<_>>()
     }
 }
 
@@ -345,7 +359,7 @@ impl FinalizedBlock {
             .take(deploy_count)
             .collect();
         let random_bit = rng.gen();
-        let proto_block = ProtoBlock::new(deploy_hashes, random_bit);
+        let proto_block = ProtoBlock::new(deploy_hashes, vec![], random_bit);
 
         // TODO - make Timestamp deterministic.
         let timestamp = Timestamp::now();
@@ -392,7 +406,8 @@ impl DocExample for FinalizedBlock {
 
 impl From<BlockHeader> for FinalizedBlock {
     fn from(header: BlockHeader) -> Self {
-        let proto_block = ProtoBlock::new(header.deploy_hashes().clone(), header.random_bit);
+        let proto_block =
+            ProtoBlock::new(header.deploy_hashes().clone(), vec![], header.random_bit);
 
         FinalizedBlock {
             proto_block,
@@ -923,14 +938,14 @@ impl FromBytes for Block {
 }
 
 impl BlockLike for Block {
-    fn deploys(&self) -> &Vec<DeployHash> {
-        self.deploy_hashes()
+    fn deploys(&self) -> Vec<&DeployHash> {
+        self.deploy_hashes().iter().collect()
     }
 }
 
 impl BlockLike for BlockHeader {
-    fn deploys(&self) -> &Vec<DeployHash> {
-        self.deploy_hashes()
+    fn deploys(&self) -> Vec<&DeployHash> {
+        self.deploy_hashes().iter().collect()
     }
 }
 
