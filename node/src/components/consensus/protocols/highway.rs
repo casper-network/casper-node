@@ -426,7 +426,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             }
             let opt_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
             let value = opt_block.map(|block| &block.value);
-            fork_choice = opt_block.map(|block| block.skip_idx[0]);
+            fork_choice = opt_block.and_then(|block| block.parent().cloned());
             value
         })
     }
