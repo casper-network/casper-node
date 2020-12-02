@@ -541,16 +541,14 @@ pub(crate) fn get_transfer_target(
             let account = account(target_account)?;
             Ok(TransferTarget::Account(account))
         }
-        _ => {
-            Err(Error::InvalidArgument(
-                "target_account | target_purse",
-                format!(
-                    "Invalid arguments to get_transfer_target - must provide either a target \
+        _ => Err(Error::InvalidArgument(
+            "target_account | target_purse",
+            format!(
+                "Invalid arguments to get_transfer_target - must provide either a target \
                     account or purse. account={}, purse={}",
-                    target_account, target_purse
-                )
-            ))
-        }
+                target_account, target_purse
+            ),
+        )),
     }
 }
 
