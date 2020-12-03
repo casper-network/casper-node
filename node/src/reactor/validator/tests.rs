@@ -1,4 +1,7 @@
-use std::{collections::HashSet, time::Duration};
+use std::{
+    collections::{BTreeMap, HashSet},
+    time::Duration,
+};
 
 use anyhow::bail;
 use rand::Rng;
@@ -18,6 +21,7 @@ use crate::{
 };
 
 struct TestChain {
+    // Keys that validator instances will use, can include duplicates
     keys: Vec<SecretKey>,
     storages: Vec<TempDir>,
     chainspec: Chainspec,
@@ -30,22 +34,34 @@ impl TestChain {
     ///
     /// Generates secret keys for `size` validators and creates a matching chainspec.
     fn new(rng: &mut TestRng, size: usize) -> Self {
-        // Create a secret key for each validator.
         let keys: Vec<SecretKey> = (0..size).map(|_| SecretKey::random(rng)).collect();
+        let stakes = keys
+            .iter()
+            .map(|secret_key| (PublicKey::from(secret_key), rng.gen_range(100, 999)))
+            .collect();
+        Self::new_with_keys(rng, keys, stakes)
+    }
 
+    /// Instantiates a new test chain configuration.
+    ///
+    /// Takes a vector of bonded keys with specified bond amounts.
+    fn new_with_keys(
+        rng: &mut TestRng,
+        keys: Vec<SecretKey>,
+        stakes: BTreeMap<PublicKey, u64>,
+    ) -> Self {
         // Load the `local` chainspec.
-        let mut chainspec = Chainspec::from_resources("local/chainspec.toml");
+        let mut chainspec: Chainspec = Chainspec::from_resources("local/chainspec.toml");
 
         // Override accounts with those generated from the keys.
-        chainspec.genesis.accounts = keys
+        chainspec.genesis.accounts = stakes
             .iter()
-            .map(|secret_key| {
-                let public_key: PublicKey = secret_key.into();
+            .map(|(public_key, bounded_amounts_u64)| {
                 GenesisAccount::new(
-                    public_key.into(),
+                    (*public_key).into(),
                     public_key.to_account_hash(),
                     Motes::new(U512::from(rng.gen_range(10000, 99999999))),
-                    Motes::new(U512::from(rng.gen_range(100, 999))),
+                    Motes::new(U512::from(*bounded_amounts_u64)),
                 )
             })
             .collect();
@@ -53,6 +69,10 @@ impl TestChain {
         // Make the genesis timestamp 30 seconds from now, to allow for all validators to start up.
         chainspec.genesis.timestamp = Timestamp::now() + 30000.into();
         chainspec.genesis.highway_config.genesis_era_start_timestamp = chainspec.genesis.timestamp;
+
+        chainspec.genesis.highway_config.minimum_era_height = 1;
+        chainspec.genesis.highway_config.finality_threshold_percent = 34;
+        chainspec.genesis.highway_config.era_duration = 10.into();
 
         TestChain {
             keys,
@@ -179,5 +199,71 @@ async fn run_validator_network() {
         .await;
 
     net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(60))
+        .await;
+}
+
+#[tokio::test]
+async fn run_equivocator_network() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    let alice_sk = SecretKey::random(&mut rng);
+    let size: usize = 2;
+    let mut keys: Vec<SecretKey> = (1..size).map(|_| SecretKey::random(&mut rng)).collect();
+    let mut stakes: BTreeMap<PublicKey, u64> = keys
+        .iter()
+        .map(|secret_key| (PublicKey::from(secret_key), 100))
+        .collect();
+    stakes.insert(PublicKey::from(&alice_sk), 1);
+    keys.push(alice_sk.clone());
+    keys.push(alice_sk);
+
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes);
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    let is_in_era = |era_num| {
+        move |nodes: &Nodes| {
+            // check ee's era_validators against consensus' validators
+            let first_node = nodes.values().next().expect("need at least one node");
+
+            // Get a list of eras from the first node.
+            let expected_eras = era_ids(&first_node);
+
+            // Return if not in expected era yet.
+            if expected_eras.len() <= era_num {
+                return false;
+            }
+
+            // Ensure eras are all the same for all other nodes.
+            nodes
+                .values()
+                .map(era_ids)
+                .all(|eras| eras == expected_eras)
+        }
+    };
+
+    println!("Waiting for Era 1 to end");
+    net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(600))
+        .await;
+
+    println!("Waiting for Era 2 to end");
+    net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(90))
+        .await;
+
+    println!("Waiting for Era 3 to end");
+    net.settle_on(&mut rng, is_in_era(3), Duration::from_secs(90))
+        .await;
+
+    println!("Waiting for Era 4 to end");
+    net.settle_on(&mut rng, is_in_era(4), Duration::from_secs(90))
+        .await;
+
+    println!("Waiting for Era 5 to end");
+    net.settle_on(&mut rng, is_in_era(5), Duration::from_secs(90))
         .await;
 }

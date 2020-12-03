@@ -14,7 +14,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
-use tracing::{info, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use self::round_success_meter::RoundSuccessMeter;
 use casper_types::{auction::BLOCK_REWARD, U512};
@@ -162,7 +162,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     past_values,
                 }]
             }
-            AvEffect::WeAreFaulty(fault) => panic!("this validator is faulty: {:?}", fault),
+            AvEffect::WeAreFaulty(fault) => {
+                error!("this validator is faulty: {:?}", fault);
+                vec![]
+            }
         }
     }
 
