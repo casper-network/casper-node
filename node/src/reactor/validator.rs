@@ -759,7 +759,7 @@ impl reactor::Reactor for Reactor {
             Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
                 deploy: _,
                 source: _,
-            }) => Effects::new(), //
+            }) => Effects::new(),
             Event::ConsensusAnnouncement(consensus_announcement) => {
                 let mut reactor_event_dispatch = |dbe: block_proposer::Event| {
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(dbe))

@@ -370,7 +370,7 @@ pub struct ProtoBlockRequest {
     /// request was made. Block Proposer uses this in order to determine if there might be any
     /// deploys that are neither in `past_deploys`, nor among the finalized deploys it knows of.
     pub(crate) next_finalized: u64,
-    // TODO
+    /// Random bit with which to construct the `ProtoBlock` requested.
     pub(crate) random_bit: bool,
     /// Responder to call with the result.
     pub(crate) responder: Responder<ProtoBlock>,
