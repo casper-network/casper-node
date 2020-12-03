@@ -269,8 +269,6 @@ pub trait Auction:
 
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
-            // let mut cleanup_required = false;
-
             if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
                 let length_before = unbonding_list.len();
 
