@@ -123,6 +123,8 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 .PHONY: test-rs
 test-rs: build-system-contracts resources/local/chainspec.toml
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --workspace
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --features=std --manifest-path=types/Cargo.toml
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --features=std --manifest-path=smart_contracts/contract/Cargo.toml
 
 .PHONY: test-as
 test-as: setup-as
@@ -165,7 +167,7 @@ build-docs-stable-rs: $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE)
 
 doc-stable/%: CARGO_TOOLCHAIN += +stable
 doc-stable/%:
-	$(CARGO) doc $(CARGO_FLAGS) --manifest-path "$*/Cargo.toml" --features "no-unstable-features" --no-deps
+	$(CARGO) doc $(CARGO_FLAGS) --manifest-path "$*/Cargo.toml" --no-deps
 
 .PHONY: check-rs
 check-rs: \

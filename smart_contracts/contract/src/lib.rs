@@ -73,6 +73,6 @@ pub static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 pub mod contract_api;
 pub mod ext_ffi;
-#[cfg(not(any(feature = "std", test)))]
+#[cfg(not(any(feature = "std", test, doc)))]
 pub mod handlers;
 pub mod unwrap_or_revert;

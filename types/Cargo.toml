@@ -43,11 +43,8 @@ serde_test = "1.0.117"
 default = ["base16/alloc", "serde/alloc", "serde_json/alloc"]
 std = ["base16/std", "serde/std", "serde_json/std", "schemars"]
 gens = ["std", "proptest/std"]
-no-unstable-features = []
 
 [[bench]]
 name = "bytesrepr_bench"
 harness = false
 
-[package.metadata.docs.rs]
-features = ["no-unstable-features"]
