@@ -456,12 +456,9 @@ impl<C: Context> ActiveValidator<C> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::{BTreeSet, HashMap},
-        fmt::Debug,
-    };
+    use std::{collections::BTreeSet, fmt::Debug};
 
-    use crate::testing::TestRng;
+    use crate::{components::consensus::highway_core::validators::ValidatorMap, testing::TestRng};
 
     use super::{
         super::{
@@ -481,6 +478,14 @@ mod tests {
                 panic!("Unexpected effect: {:?}", self);
             }
         }
+
+        fn unwrap_timer(self) -> Timestamp {
+            if let Eff::ScheduleTimer(timestamp) = self {
+                timestamp
+            } else {
+                panic!("Unexpected effect: {:?}", self);
+            }
+        }
     }
 
     struct TestState {
@@ -488,7 +493,7 @@ mod tests {
         state: State<TestContext>,
         instance_id: u64,
         fd: FinalityDetector<TestContext>,
-        validators: HashMap<ValidatorIndex, ActiveValidator<TestContext>>,
+        active_validators: ValidatorMap<ActiveValidator<TestContext>>,
         timers: BTreeSet<(Timestamp, ValidatorIndex)>,
     }
 
@@ -502,38 +507,36 @@ mod tests {
             validators: Vec<ValidatorIndex>,
         ) -> Self {
             let mut timers = BTreeSet::new();
-            let earliest_round_start = state::round_id(start_time, state.params().init_round_exp())
-                + (1 << state.params().init_round_exp()).into();
-            let validator_map = validators
+            let current_round_id = state::round_id(start_time, state.params().init_round_exp());
+            let earliest_round_start = if start_time == current_round_id {
+                start_time
+            } else {
+                current_round_id + (1 << state.params().init_round_exp()).into()
+            };
+            let active_validators = validators
                 .into_iter()
                 .map(|vidx| {
                     let secret = TestSecret(vidx.0);
                     let (av, effects) = ActiveValidator::new(vidx, secret, start_time, &state);
-                    if let [Eff::ScheduleTimer(timestamp)] = *effects {
-                        // We start at time 410, with round length 16, so the first leader tick is
-                        // 416, and the first witness tick 426.
-                        if state.leader(earliest_round_start) == vidx {
-                            assert_eq!(
-                                timestamp,
-                                416.into(),
-                                "Invalid initial timer scheduled for {:?}.",
-                                vidx
-                            )
-                        } else {
-                            let witness_offset = av
-                                .witness_offset(state::round_len(state.params().init_round_exp()));
-                            let witness_timestamp = earliest_round_start + witness_offset;
-                            assert_eq!(
-                                timestamp, witness_timestamp,
-                                "Invalid initial timer scheduled for {:?}.",
-                                vidx
-                            )
-                        }
-                        timers.insert((timestamp, vidx));
+                    let timestamp = unwrap_single(&effects).unwrap_timer();
+                    if state.leader(earliest_round_start) == vidx {
+                        assert_eq!(
+                            timestamp, earliest_round_start,
+                            "Invalid initial timer scheduled for {:?}.",
+                            vidx
+                        )
                     } else {
-                        panic!("Only one initial effect expected")
+                        let witness_offset =
+                            av.witness_offset(state::round_len(state.params().init_round_exp()));
+                        let witness_timestamp = earliest_round_start + witness_offset;
+                        assert_eq!(
+                            timestamp, witness_timestamp,
+                            "Invalid initial timer scheduled for {:?}.",
+                            vidx
+                        )
                     }
-                    (vidx, av)
+                    timers.insert((timestamp, vidx));
+                    av
                 })
                 .collect();
 
@@ -542,28 +545,28 @@ mod tests {
                 state,
                 instance_id,
                 fd,
-                validators: validator_map,
+                active_validators,
                 timers,
             }
         }
 
-        /// Force the validator to handle timer that may not have been sheduled by it.
+        /// Force the validator to handle timer that may not have been scheduled by it.
         /// Useful for testing.
         /// Returns effects created when handling the timer.
         fn handle_timer(
             &mut self,
-            validator: ValidatorIndex,
+            vidx: ValidatorIndex,
             timestamp: Timestamp,
         ) -> Vec<Effect<TestContext>> {
             // Remove the timer from the queue if it has been scheduled.
-            let _ = self.timers.remove(&(timestamp, validator));
-            let effects = self.validators.get_mut(&validator).unwrap().handle_timer(
+            let _ = self.timers.remove(&(timestamp, vidx));
+            let effects = self.active_validators.get_mut(vidx).handle_timer(
                 timestamp,
                 &self.state,
                 self.instance_id,
                 &mut self.rng,
             );
-            self.schedule_timer(validator, &effects);
+            self.schedule_timer(vidx, &effects);
             self.add_new_unit(&effects);
             effects
         }
@@ -576,7 +579,7 @@ mod tests {
             cv: <TestContext as Context>::ConsensusValue,
             block_context: BlockContext,
         ) -> (Vec<Effect<TestContext>>, SignedWireUnit<TestContext>) {
-            let validator = self.validators.get_mut(&vidx).unwrap();
+            let validator = self.active_validators.get_mut(vidx);
             let proposal_timestamp = block_context.timestamp();
             let effects = validator.propose(
                 cv,
@@ -602,14 +605,14 @@ mod tests {
         }
 
         /// Handle new unit by validator `vidx`.
-        /// Since all validator use the same state, that unit should be added already. Panics if
+        /// Since all validators use the same state, that unit should be added already. Panics if
         /// not. Returns effect created when handling new unit.
         fn handle_new_unit(
             &mut self,
             vidx: ValidatorIndex,
             uhash: &<TestContext as Context>::Hash,
         ) -> Vec<Effect<TestContext>> {
-            let validator = self.validators.get_mut(&vidx).unwrap();
+            let validator = self.active_validators.get_mut(vidx);
             let delivery_timestamp = self.state.unit(uhash).timestamp + 1.into();
             let effects = validator.on_new_unit(
                 uhash,
@@ -700,6 +703,8 @@ mod tests {
 
         assert!(test.handle_timer(ALICE, 415.into()).is_empty()); // Too early: No new effects.
 
+        // We start at time 410, with round length 16, so the first leader tick is
+        // 416, and the first witness tick 426.
         // Alice wants to propose a block, and also make her witness unit at 426.
         let bctx = match &*test.handle_timer(ALICE, 416.into()) {
             [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]

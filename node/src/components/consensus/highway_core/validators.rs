@@ -131,6 +131,11 @@ impl<T> ValidatorMap<T> {
         &self.0[idx.0 as usize]
     }
 
+    #[cfg(test)]
+    pub(crate) fn get_mut(&mut self, idx: ValidatorIndex) -> &mut T {
+        &mut self.0[idx.0 as usize]
+    }
+
     /// Returns the number of values. This must equal the number of validators.
     pub(crate) fn len(&self) -> usize {
         self.0.len()
