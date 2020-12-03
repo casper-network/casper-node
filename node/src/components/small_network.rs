@@ -390,15 +390,8 @@ where
                 }
 
                 debug!(%peer_id, %peer_address, "{}: established incoming connection", self.our_id);
-                // The sink is only used to send a single handshake message, then dropped.
-                let (mut sink, stream) = framed::<P>(transport).split();
-                let handshake = Message::Handshake {
-                    genesis_config_hash: self.genesis_config_hash,
-                };
-                let mut effects = async move {
-                    let _ = sink.send(handshake).await;
-                }
-                .ignore::<Event<P>>();
+                // The sink is never used, as we only read data from incoming connections.
+                let (_sink, stream) = framed::<P>(transport).split();
 
                 let _ = self.incoming.insert(
                     peer_id.clone(),
@@ -409,7 +402,7 @@ where
                 );
 
                 // If the connection is now complete, announce the new peer before starting reader.
-                effects.extend(self.check_connection_complete(effect_builder, peer_id.clone()));
+                let mut effects = self.check_connection_complete(effect_builder, peer_id.clone());
 
                 effects.extend(
                     message_reader(
@@ -469,8 +462,7 @@ where
             return Effects::new();
         }
 
-        // The stream is only used to receive a single handshake message and then dropped.
-        let (sink, stream) = framed::<P>(transport).split();
+        let (sink, _stream) = framed::<P>(transport).split();
         debug!(%peer_id, %peer_address, "{}: established outgoing connection", self.our_id);
 
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -491,23 +483,12 @@ where
         let handshake = Message::Handshake {
             genesis_config_hash: self.genesis_config_hash,
         };
-        let peer_id_cloned = peer_id.clone();
         effects.extend(
             message_sender(receiver, sink, handshake).event(move |result| Event::OutgoingFailed {
                 peer_id: Some(peer_id),
                 peer_address,
                 error: result.err().map(Into::into),
             }),
-        );
-        effects.extend(
-            handshake_reader(
-                self.event_queue,
-                stream,
-                self.our_id.clone(),
-                peer_id_cloned,
-                peer_address,
-            )
-            .ignore::<Event<P>>(),
         );
 
         effects
@@ -632,7 +613,7 @@ where
                         self.our_id,
                         peer_id
                     );
-                    return self.remove(effect_builder, &peer_id, false);
+                    return self.remove(effect_builder, &peer_id, true);
                 }
                 Effects::new()
             }
@@ -969,41 +950,6 @@ async fn setup_tls(
         NodeId::from(tls::validate_cert(peer_cert)?.public_key_fingerprint()),
         tls_stream,
     ))
-}
-
-/// Network handshake reader for single handshake message received by outgoing connection.
-async fn handshake_reader<REv, P>(
-    event_queue: EventQueueHandle<REv>,
-    mut stream: SplitStream<FramedTransport<P>>,
-    our_id: NodeId,
-    peer_id: NodeId,
-    peer_address: SocketAddr,
-) where
-    P: DeserializeOwned + Send + Display,
-    REv: From<Event<P>>,
-{
-    if let Some(incoming_handshake_msg) = stream.next().await {
-        if let Ok(msg @ Message::Handshake { .. }) = incoming_handshake_msg {
-            debug!(%msg, %peer_id, "{}: handshake received", our_id);
-            return event_queue
-                .schedule(
-                    Event::IncomingMessage { peer_id, msg },
-                    QueueKind::NetworkIncoming,
-                )
-                .await;
-        }
-    }
-    warn!(%peer_id, "{}: receiving handshake failed, closing connection", our_id);
-    event_queue
-        .schedule(
-            Event::OutgoingFailed {
-                peer_id: Some(peer_id),
-                peer_address,
-                error: None,
-            },
-            QueueKind::Network,
-        )
-        .await
 }
 
 /// Network message reader.
