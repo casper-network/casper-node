@@ -566,12 +566,9 @@ mod tests {
         ) -> Vec<Effect<TestContext>> {
             // Remove the timer from the queue if it has been scheduled.
             let _ = self.timers.remove(&(timestamp, vidx));
-            let effects = self.active_validators.get_mut(vidx).handle_timer(
-                timestamp,
-                &self.state,
-                self.instance_id,
-                &mut self.rng,
-            );
+            let validator = &mut self.active_validators[vidx];
+            let effects =
+                validator.handle_timer(timestamp, &self.state, self.instance_id, &mut self.rng);
             self.schedule_timer(vidx, &effects);
             self.add_new_unit(&effects);
             effects
@@ -585,7 +582,7 @@ mod tests {
             cv: <TestContext as Context>::ConsensusValue,
             block_context: BlockContext,
         ) -> (Vec<Effect<TestContext>>, SignedWireUnit<TestContext>) {
-            let validator = self.active_validators.get_mut(vidx);
+            let validator = &mut self.active_validators[vidx];
             let proposal_timestamp = block_context.timestamp();
             let effects = validator.propose(
                 cv,
@@ -618,7 +615,7 @@ mod tests {
             vidx: ValidatorIndex,
             uhash: &<TestContext as Context>::Hash,
         ) -> Vec<Effect<TestContext>> {
-            let validator = self.active_validators.get_mut(vidx);
+            let validator = &mut self.active_validators[vidx];
             let delivery_timestamp = self.state.unit(uhash).timestamp + 1.into();
             let effects = validator.on_new_unit(
                 uhash,
