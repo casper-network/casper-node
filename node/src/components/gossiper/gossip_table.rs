@@ -365,6 +365,18 @@ impl<T: Copy + Eq + Hash + Display> GossipTable<T> {
         GossipAction::Noop
     }
 
+    /// Directly reduces the in-flight count of gossip requests for the given item by the given
+    /// amount.
+    ///
+    /// This should be called if, after trying to gossip to a given number of peers, we find that
+    /// we've not been able to select enough peers.  Without this reduction, the given gossip item
+    /// would never move from `current` to `finished` or `paused`, and hence would never be purged.
+    pub(crate) fn reduce_in_flight_count(&mut self, data_id: &T, reduce_by: usize) {
+        if let Some(state) = self.current.get_mut(data_id) {
+            state.in_flight_count = state.in_flight_count.saturating_sub(reduce_by);
+        }
+    }
+
     /// Checks if gossip request we sent timed out.
     ///
     /// If the peer is already counted as a holder, it has previously responded and this method

@@ -13,7 +13,7 @@ use num_traits::Zero;
 use rand::Rng;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{error, warn};
 
 use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
@@ -25,7 +25,10 @@ use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    crypto::asymmetric_key::PublicKey,
+    crypto::{
+        asymmetric_key::PublicKey,
+        hash::{self, Digest},
+    },
     types::{TimeDiff, Timestamp},
     utils::Loadable,
 };
@@ -404,6 +407,15 @@ impl Chainspec {
     /// Checks whether the values set in the config make sense and prints warnings if they don't
     pub fn validate_config(&self) {
         self.genesis.validate_config();
+    }
+
+    /// Serializes `self` and hashes the resulting bytes.
+    pub(crate) fn hash(&self) -> Digest {
+        let serialized_chainspec = bincode::serialize(self).unwrap_or_else(|error| {
+            error!("failed to serialize chainspec: {}", error);
+            vec![]
+        });
+        hash::hash(&serialized_chainspec)
     }
 }
 

@@ -133,6 +133,7 @@ pub trait Auction:
         detail::create_unbonding_purse(
             self,
             public_key,
+            public_key, // validator is the unbonder
             *bid.bonding_purse(),
             unbonding_purse,
             amount,
@@ -234,6 +235,7 @@ pub trait Auction:
             Some(delegator) => {
                 detail::create_unbonding_purse(
                     self,
+                    validator_public_key,
                     delegator_public_key,
                     *delegator.bonding_purse(),
                     unbonding_purse,
@@ -269,7 +271,7 @@ pub trait Auction:
         for validator_public_key in validator_public_keys {
             // TODO: slash delegators properly
             if let Some(unbonding_list) = unbonding_purses.remove(&validator_public_key) {
-                burned_amount += unbonding_list.iter().map(|x| x.amount).sum();
+                burned_amount += unbonding_list.iter().map(|x| *x.amount()).sum();
                 unbonding_purses_modified = true;
             }
         }
@@ -391,14 +393,16 @@ pub trait Auction:
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
         let base_round_reward = self.read_base_round_reward()?;
 
-        if reward_factors.keys().ne(seigniorage_recipients.keys()) {
-            return Err(Error::MismatchedEraValidators);
-        }
+        // // TODO: fix consensus?
+        // if reward_factors.keys().ne(seigniorage_recipients.keys()) {
+        //     return Err(Error::MismatchedEraValidators);
+        // }
 
         for (public_key, reward_factor) in reward_factors {
-            let recipient = seigniorage_recipients
-                .get(&public_key)
-                .ok_or(Error::ValidatorNotFound)?;
+            let recipient = match seigniorage_recipients.get(&public_key) {
+                Some(recipient) => recipient,
+                None => continue, // TODO: fix consensus?
+            };
 
             let total_stake = recipient.total_stake();
             if total_stake.is_zero() {

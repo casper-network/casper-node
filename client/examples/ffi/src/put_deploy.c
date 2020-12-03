@@ -12,8 +12,7 @@ int main(int argc, char **argv) {
     casper_setup_client();
 
     casper_deploy_params_t deploy_params = {0};
-    deploy_params.secret_key =
-        "resources/local/secret_keys/node-1.pem";
+    deploy_params.secret_key = "resources/local/secret_keys/node-1.pem";
     deploy_params.ttl = "10s";
     deploy_params.chain_name = "casper-charlie-testnet1";
     deploy_params.gas_price = "11";

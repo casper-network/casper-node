@@ -6,7 +6,6 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    net::SocketAddr,
     time::{Duration, Instant},
 };
 
@@ -22,6 +21,7 @@ use crate::{
         gossiper::{self, Gossiper},
         Component,
     },
+    crypto::hash::Digest,
     effect::{
         announcements::{GossiperAnnouncement, NetworkAnnouncement},
         requests::{NetworkRequest, StorageRequest},
@@ -110,7 +110,7 @@ impl Reactor for TestReactor {
         event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> anyhow::Result<(Self, Effects<Self::Event>)> {
-        let (net, effects) = SmallNetwork::new(event_queue, cfg, false)?;
+        let (net, effects) = SmallNetwork::new(event_queue, cfg, Digest::default(), false)?;
         let gossiper_config = gossiper::Config::default();
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", gossiper_config, registry)?;
@@ -298,55 +298,6 @@ async fn run_two_node_network_five_times() {
             network_is_complete(&blocklist, net.nodes()),
             "network did not stay connected"
         );
-
-        net.finalize().await;
-    }
-}
-
-/// Sanity check that we fail to settle with one node gossiping the wrong address.
-#[tokio::test]
-async fn network_with_unhealthy_nodes_settles_without_them() {
-    init_logging();
-
-    let mut rng = crate::new_rng();
-    for (healthy, unhealthy) in &[(1u64, 1u64), (1, 2), (1, 4), (2, 2), (4, 4), (4, 1)] {
-        let port = testing::unused_port_on_localhost();
-
-        let mut net = Network::<TestReactor>::new();
-        let (_peer1, _) = net
-            .add_node_with_config(Config::default_local_net_first_node(port), &mut rng)
-            .await
-            .unwrap();
-
-        let mut healthy_peers = HashSet::new();
-
-        for _ in 1..*healthy {
-            let (healthy_peer, _) = net
-                .add_node_with_config(Config::default_local_net(port), &mut rng)
-                .await
-                .unwrap();
-            healthy_peers.insert(healthy_peer);
-        }
-
-        let mut unhealthy_nodes = HashSet::new();
-
-        for unhealthy_address in 0..*unhealthy {
-            let (unhealthy_peer, runner3) = net
-                .add_node_with_config(Config::default_local_net(port), &mut rng)
-                .await
-                .unwrap();
-            let unhealthy = &mut runner3.reactor_mut().inner_mut().net;
-            unhealthy.public_address = SocketAddr::from(([254, 1, 1, unhealthy_address as u8], 0)); // cause the gossipped address to be wrong
-            unhealthy_nodes.insert(unhealthy_peer);
-        }
-
-        // The network should be fully connected but with only the two good nodes
-        net.settle_on(
-            &mut rng,
-            move |nodes| network_is_complete(&unhealthy_nodes, nodes),
-            Duration::from_secs(4 * (healthy + unhealthy)),
-        )
-        .await;
 
         net.finalize().await;
     }

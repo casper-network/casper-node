@@ -95,12 +95,13 @@ steps:
   - make test
   - make test-contracts
 
-- name: client-ffi-examples
+- name: client-ffi-tests-and-examples
   image: casperlabs/node-build-u1804
   commands:
   - make setup-rs
   - cmake -Hclient/examples/ffi -Btarget/build -DCMAKE_BUILD_TYPE=Debug
   - cmake --build target/build
+  - ./target/build/ffi-tests
   - ./target/build/get-auction-info
   - ./target/build/put-deploy
 

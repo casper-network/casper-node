@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{components::consensus::traits::Context, types::Timestamp, NodeRng};
 
 /// Information about the context in which a new block is created.
-#[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd)]
+#[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
 pub struct BlockContext {
     timestamp: Timestamp,
     height: u64,
@@ -67,10 +67,10 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     CreatedTargetedMessage(Vec<u8>, I),
     InvalidIncomingMessage(Vec<u8>, I, Error),
     ScheduleTimer(Timestamp),
-    /// Request deploys for a new block, whose timestamp will be the given `u64`.
-    /// TODO: Add more details that are necessary for block creation.
+    /// Request deploys for a new block, providing the necessary context.
     CreateNewBlock {
         block_context: BlockContext,
+        past_values: Vec<C::ConsensusValue>,
     },
     /// A block was finalized.
     FinalizedBlock(FinalizedBlock<C>),
