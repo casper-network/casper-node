@@ -33,12 +33,10 @@ pub(crate) enum Evidence<C: Context> {
 }
 
 impl<C: Context> Evidence<C> {
-    // TODO: Verify whether the evidence is conclusive. Or as part of deserialization?
-
     /// Returns the ID of the faulty validator.
     pub(crate) fn perpetrator(&self) -> ValidatorIndex {
         match self {
-            Evidence::Equivocation(unit0, _) => unit0.wire_unit.creator,
+            Evidence::Equivocation(unit1, _) => unit1.wire_unit.creator,
         }
     }
 
