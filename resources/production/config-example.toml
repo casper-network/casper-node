@@ -16,7 +16,7 @@ chainspec_config_path = '/etc/casper/chainspec.toml'
 [logging]
 
 # Output format.  Possible values are 'text' or 'json'.
-format = 'text'
+format = 'json'
 
 # Colored output.  Has no effect if format = 'json'.
 color = false
@@ -47,7 +47,7 @@ public_address = '<IP ADDRESS>:0'
 
 # Address to bind to for listening.
 # If port is set to 0, a random port will be used.
-bind_address = '0.0.0.0:34553'
+bind_address = '0.0.0.0:35555'
 
 # Addresses to connect to in order to join the network.
 #
@@ -57,7 +57,7 @@ bind_address = '0.0.0.0:34553'
 #
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
-known_addresses = ['54.177.84.9:34553', '18.144.69.216:34553', '13.57.251.65:34553']
+known_addresses = ['54.183.27.75:35555']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 120_000
@@ -124,7 +124,7 @@ event_stream_buffer_length = 100
 # If the folder doesn't exist, it and any required parents will be created.
 #
 # If unset, the path must be supplied as an argument via the CLI.
-path = '/root/.local/share/casper-node'
+path = '/var/lib/casper/casper-node'
 
 # Maximum size of the database to use for the block store.
 #
