@@ -10,7 +10,11 @@ use rand::{Rng, RngCore};
 use super::*;
 use crate::{
     components::consensus::{
-        highway_core::{highway::Dependency, highway_testing::TEST_BLOCK_REWARD},
+        highway_core::{
+            endorsement::{Endorsement, SignedEndorsement},
+            highway::{Dependency, Endorsements},
+            highway_testing::{TEST_BLOCK_REWARD, TEST_INSTANCE_ID},
+        },
         traits::ValidatorSecret,
     },
     NodeRng,
@@ -167,7 +171,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let mut wunit = WireUnit {
         panorama: panorama!(N, b1, c0),
         creator: BOB,
-        instance_id: 1u64,
+        instance_id: TEST_INSTANCE_ID,
         value: None,
         seq_number: 3,
         timestamp: 51.into(),
@@ -737,6 +741,54 @@ fn is_terminal_block() -> Result<(), AddUnitError<TestContext>> {
     assert_eq!(TEST_ERA_HEIGHT - 1, state.block(&a3).height);
     let a4 = add_unit!(state, rng, ALICE, None; a3, b0, c0)?;
     assert!(!state.is_terminal_block(&a4)); // not a block
+    Ok(())
+}
+
+#[test]
+fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
+    let validators = vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
+        .into_iter()
+        .map(|(sk, vid)| {
+            assert_eq!(sk.0, vid.0);
+            (sk.0, WEIGHTS[vid.0 as usize].0)
+        })
+        .collect();
+    let mut state = State::new_test(WEIGHTS, 0);
+    let mut empty_state = State::new_test(WEIGHTS, 0);
+    let mut rng = crate::new_rng();
+
+    // Alice equivocates and creates two forks:
+    // * a0_prime and
+    // * a0 < a1 < a2
+    let a0 = add_unit!(state, rng, ALICE, 0x00; N, N, N)?;
+    let a0_prime = add_unit!(state, rng, ALICE, 0x01; N, N, N)?;
+    let a1 = add_unit!(state, rng, ALICE, None; a0, N, N)?;
+    let a2 = add_unit!(state, rng, ALICE, None; a1, N, N)?;
+
+    // Bob endorses a0_prime.
+    let endorsement_a0_prime = Endorsement::new(a0_prime, BOB);
+    let sig_a0_prime = BOB_SEC.sign(&endorsement_a0_prime.hash(), &mut rng);
+    let signed_endorsement_a0_prime = SignedEndorsement::new(endorsement_a0_prime, sig_a0_prime);
+    let endorsements_a0_prime = Endorsements::new(iter::once(signed_endorsement_a0_prime));
+    state.add_endorsements(endorsements_a0_prime, &TEST_INSTANCE_ID);
+    assert!(!state.is_faulty(BOB));
+
+    // Now he also endorses a2, even though it is on a different fork. That's a fault!
+    let endorsement_a2 = Endorsement::new(a2, BOB);
+    let sig_a2 = BOB_SEC.sign(&endorsement_a2.hash(), &mut rng);
+    let signed_endorsement_a2 = SignedEndorsement::new(endorsement_a2, sig_a2);
+    let endorsements_a2 = Endorsements::new(iter::once(signed_endorsement_a2));
+    state.add_endorsements(endorsements_a2, &TEST_INSTANCE_ID);
+    let evidence = state
+        .opt_evidence(BOB)
+        .expect("Bob should be considered faulty")
+        .clone();
+
+    // The evidence can be validated by an empty instance.
+    assert_eq!(Ok(()), evidence.validate(&validators, &TEST_INSTANCE_ID));
+    empty_state.add_evidence(evidence);
+    assert!(empty_state.has_evidence(BOB));
+
     Ok(())
 }
 

@@ -596,6 +596,7 @@ pub(crate) mod tests {
             highway_core::{
                 evidence::{Evidence, EvidenceError},
                 highway::{Highway, SignedWireUnit, UnitError, Vertex, VertexError, WireUnit},
+                highway_testing::TEST_INSTANCE_ID,
                 state::{
                     tests::{
                         TestContext, TestSecret, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
@@ -629,7 +630,7 @@ pub(crate) mod tests {
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let mut highway = Highway {
-            instance_id: 1u64,
+            instance_id: TEST_INSTANCE_ID,
             validators: test_validators(),
             state,
             active_validator: None,
@@ -674,7 +675,7 @@ pub(crate) mod tests {
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let highway = Highway {
-            instance_id: 1u64,
+            instance_id: TEST_INSTANCE_ID,
             validators: test_validators(),
             state,
             active_validator: None,
@@ -757,7 +758,7 @@ pub(crate) mod tests {
         wunit0.seq_number = 0;
 
         // If the units are from a different network or era we don't accept the evidence.
-        wunit0.instance_id = 2;
+        wunit0.instance_id = TEST_INSTANCE_ID + 1;
         assert_eq!(
             Err(VertexError::Evidence(EvidenceError::EquivocationInstanceId)),
             validate(&wunit0, &CAROL_SEC, &wunit1, &CAROL_SEC)
