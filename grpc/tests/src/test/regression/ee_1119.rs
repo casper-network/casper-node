@@ -265,6 +265,6 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);
     assert_eq!(
         total_supply_before_slashing - total_supply_after_slashing,
-        U512::from(VALIDATOR_1_STAKE) - unbond_amount + U512::from(UNDELEGATE_AMOUNT_1)
+        U512::from(VALIDATOR_1_STAKE),
     );
 }
