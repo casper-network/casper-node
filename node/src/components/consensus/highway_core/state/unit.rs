@@ -84,7 +84,7 @@ impl<C: Context> Unit<C> {
         (unit, wunit.value)
     }
 
-    /// Returns the creator's previous message.
+    /// Returns the creator's previous unit.
     pub(crate) fn previous(&self) -> Option<&C::Hash> {
         self.skip_idx.first()
     }

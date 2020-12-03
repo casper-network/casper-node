@@ -507,10 +507,13 @@ impl<C: Context> Highway<C> {
                 if endorsements.endorsers.is_empty() {
                     return Err(EndorsementError::Empty.into());
                 }
-                for (v_id, signature) in endorsements.endorsers.iter() {
-                    let validator = self.validators.id(*v_id).ok_or(EndorsementError::Creator)?;
-                    let endorsement: Endorsement<C> = Endorsement::new(unit, *v_id);
-                    if !C::verify_signature(&endorsement.hash(), validator, &signature) {
+                for (creator, signature) in endorsements.endorsers.iter() {
+                    let v_id = self
+                        .validators
+                        .id(*creator)
+                        .ok_or(EndorsementError::Creator)?;
+                    let endorsement: Endorsement<C> = Endorsement::new(unit, *creator);
+                    if !C::verify_signature(&endorsement.hash(), v_id, &signature) {
                         return Err(EndorsementError::Signature.into());
                     }
                 }

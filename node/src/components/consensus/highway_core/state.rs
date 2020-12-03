@@ -261,7 +261,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns whether we have all endorsements for `unit`.
-    pub(crate) fn has_all_endorsements<'a, I: IntoIterator<Item = &'a ValidatorIndex>>(
+    pub(crate) fn has_all_endorsements<I: IntoIterator<Item = ValidatorIndex>>(
         &self,
         unit: &C::Hash,
         v_ids: I,
@@ -269,17 +269,16 @@ impl<C: Context> State<C> {
         if self.endorsements.contains_key(unit) {
             true // We have enough endorsements for this unit.
         } else if let Some(sigs) = self.incomplete_endorsements.get(unit) {
-            v_ids.into_iter().all(|v_id| sigs.contains_key(v_id))
+            v_ids.into_iter().all(|v_id| sigs.contains_key(&v_id))
         } else {
             v_ids.into_iter().next().is_none()
         }
     }
 
     /// Returns whether we have seen enough endorsements for the unit.
-    /// Unit is endorsed when it, or its descendant, has more than ≥ ⅔ of units (by weight).
+    /// Unit is endorsed when it has endorsements from more than 50% of the validators (by weight).
     pub(crate) fn is_endorsed(&self, hash: &C::Hash) -> bool {
         self.endorsements.contains_key(hash)
-        // TODO: check if any descendant (from the same creator) of `hash` is endorsed.
     }
 
     /// Returns hash of unit that needs to be endorsed.
@@ -395,30 +394,30 @@ impl<C: Context> State<C> {
     /// If, after adding, we have collected enough endorsements to consider unit _endorsed_,
     /// it will be *upgraded* to fully endorsed.
     pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
-        let unit = *endorsements.unit();
-        if self.endorsements.contains_key(&unit) {
+        let uhash = *endorsements.unit();
+        if self.endorsements.contains_key(&uhash) {
             return; // We already have a sufficient number of endorsements.
         }
-        info!("Received endorsements of {:?}", unit);
+        info!("Received endorsements of {:?}", uhash);
         self.incomplete_endorsements
-            .entry(unit)
+            .entry(uhash)
             .or_default()
             .extend(endorsements.endorsers);
-        let endorsed: Weight = self.incomplete_endorsements[&unit]
+        let endorsed: Weight = self.incomplete_endorsements[&uhash]
             .keys()
             .map(|vidx| self.weight(*vidx))
             .sum();
         // Stake required to consider unit to be endorsed.
         let threshold = self.total_weight() / 2;
         if endorsed > threshold {
-            info!(%unit, "Unit endorsed by at least 1/2 of validators.");
-            let mut fully_endorsed = self.incomplete_endorsements.remove(&unit).unwrap();
+            info!(%uhash, "Unit endorsed by at least 1/2 of validators.");
+            let mut fully_endorsed = self.incomplete_endorsements.remove(&uhash).unwrap();
             let endorsed_map = self
                 .weights()
                 .keys()
                 .map(|vidx| fully_endorsed.remove(&vidx))
                 .collect();
-            self.endorsements.insert(unit, endorsed_map);
+            self.endorsements.insert(uhash, endorsed_map);
         }
     }
 
@@ -542,7 +541,7 @@ impl<C: Context> State<C> {
             return Err(UnitError::SequenceNumber);
         }
         let r_id = round_id(timestamp, wunit.round_exp);
-        let opt_prev_unit = panorama[creator].correct().map(|vh| self.unit(vh));
+        let opt_prev_unit = wunit.previous().map(|vh| self.unit(vh));
         if let Some(prev_unit) = opt_prev_unit {
             if prev_unit.round_exp != wunit.round_exp {
                 // The round exponent must not change within a round: Even with respect to the
@@ -847,7 +846,7 @@ impl<C: Context> State<C> {
                 // haven't found conflicting naively cited forks yet, there are none.
                 return true;
             }
-            opt_pred_hash = pred_unit.panorama[creator].correct();
+            opt_pred_hash = pred_unit.previous();
         }
         true // No earlier messages, so no conflicting naively cited forks.
     }
