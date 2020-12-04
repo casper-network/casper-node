@@ -16,6 +16,7 @@ use casper_types::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
+    auction::AuctionInfo,
     bytesrepr,
     bytesrepr::ToBytes,
     contracts::NamedKeys,
@@ -244,6 +245,12 @@ where
                 let _deploy_info: DeployInfo = self.read_gs_typed(&deploy_info_addr)?;
                 self.named_keys.remove(name);
                 // Users cannot remove deploy infos from global state
+                Ok(())
+            }
+            auction_info_addr @ Key::AuctionInfo(_) => {
+                let _auction_info: AuctionInfo = self.read_gs_typed(&auction_info_addr)?;
+                self.named_keys.remove(name);
+                // Users cannot remove auction infos from global state
                 Ok(())
             }
         }
@@ -477,6 +484,16 @@ where
         }
     }
 
+    pub fn write_auction_info(&mut self, key: Key, value: AuctionInfo) {
+        if let Key::AuctionInfo(_) = key {
+            self.tracking_copy
+                .borrow_mut()
+                .write(key, StoredValue::AuctionInfo(value));
+        } else {
+            panic!("Do not use this function for writing non-auction-info keys")
+        }
+    }
+
     pub fn store_function(
         &mut self,
         contract: StoredValue,
@@ -578,6 +595,7 @@ where
             StoredValue::ContractPackage(_) => Ok(()),
             StoredValue::Transfer(_) => Ok(()),
             StoredValue::DeployInfo(_) => Ok(()),
+            StoredValue::AuctionInfo(_) => Ok(()),
         }
     }
 
@@ -663,6 +681,7 @@ where
             Key::URef(uref) => uref.is_readable(),
             Key::Transfer(_) => true,
             Key::DeployInfo(_) => true,
+            Key::AuctionInfo(_) => true,
         }
     }
 
@@ -673,6 +692,7 @@ where
             Key::URef(uref) => uref.is_addable(),
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
+            Key::AuctionInfo(_) => false,
         }
     }
 
@@ -681,8 +701,9 @@ where
         match key {
             Key::Account(_) | Key::Hash(_) => false,
             Key::URef(uref) => uref.is_writeable(),
-            Key::DeployInfo(_) => false,
             Key::Transfer(_) => false,
+            Key::DeployInfo(_) => false,
+            Key::AuctionInfo(_) => false,
         }
     }
 

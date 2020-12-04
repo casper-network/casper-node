@@ -119,6 +119,9 @@ pub enum Error {
     /// Failed to transfer desired amount into unbonding purse.
     #[fail(display = "Transfer to unbonding purse error")]
     TransferToUnbondingPurse = 32,
+    /// Failed to record auction info.
+    #[fail(display = "Record auction info error")]
+    RecordAuctionInfo = 33,
 
     #[cfg(test)]
     #[doc(hidden)]
@@ -183,6 +186,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::WithdrawDelegatorReward as u8 => Ok(Error::WithdrawDelegatorReward),
             d if d == Error::WithdrawValidatorReward as u8 => Ok(Error::WithdrawValidatorReward),
             d if d == Error::TransferToUnbondingPurse as u8 => Ok(Error::TransferToUnbondingPurse),
+            d if d == Error::RecordAuctionInfo as u8 => Ok(Error::RecordAuctionInfo),
             _ => Err(TryFromU8ForError(())),
         }
     }
