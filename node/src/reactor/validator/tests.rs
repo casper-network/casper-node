@@ -9,6 +9,7 @@ use tempfile::TempDir;
 
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::U512;
+use log::info;
 
 use crate::{
     components::{consensus::EraId, small_network, storage},
@@ -247,19 +248,19 @@ async fn run_equivocator_network() {
         }
     };
 
-    println!("Waiting for Era 1 to end");
+    info!("Waiting for Era 1 to end");
     net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(600))
         .await;
 
-    println!("Waiting for Era 2 to end");
+    info!("Waiting for Era 2 to end");
     net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(90))
         .await;
 
-    println!("Waiting for Era 3 to end");
+    info!("Waiting for Era 3 to end");
     net.settle_on(&mut rng, is_in_era(3), Duration::from_secs(90))
         .await;
 
-    println!("Waiting for Era 4 to end");
+    info!("Waiting for Era 4 to end");
     net.settle_on(&mut rng, is_in_era(4), Duration::from_secs(90))
         .await;
 
