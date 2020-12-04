@@ -269,10 +269,30 @@ pub trait Auction:
 
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
-            // TODO: slash delegators properly
-            if let Some(unbonding_list) = unbonding_purses.remove(&validator_public_key) {
-                burned_amount += unbonding_list.iter().map(|x| *x.amount()).sum();
-                unbonding_purses_modified = true;
+            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
+                let initial_length = unbonding_list.len();
+
+                unbonding_list.retain(|unbonding_purse| {
+                    // Only entries created by non-validators are retained
+                    let should_retain = !unbonding_purse.is_validator();
+
+                    if !should_retain {
+                        // Amounts inside removed entries are burned only.
+                        burned_amount += *unbonding_purse.amount()
+                    }
+
+                    should_retain
+                });
+
+                if unbonding_list.len() != initial_length {
+                    unbonding_purses_modified = true;
+                }
+
+                if unbonding_list.is_empty() {
+                    // Cleans up empty map entries to preserve global state.
+                    unbonding_purses.remove(&validator_public_key).unwrap();
+                    unbonding_purses_modified = true;
+                }
             }
         }
 
