@@ -39,7 +39,7 @@ node=${node:-1}
 source $NCTL/sh/utils.sh
 source $NCTL/sh/contracts/erc20/utils.sh
 
-# Import vars.path_net=$(get_path_to_net $net)
+# Import net vars.path_net=$(get_path_to_net $net)
 
 # Set contract owner account key.
 contract_owner_account_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_FAUCET)

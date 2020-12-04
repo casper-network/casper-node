@@ -39,7 +39,7 @@ node=${node:-1}
 source $NCTL/sh/utils.sh
 source $NCTL/sh/contracts/erc20/utils.sh
 
-# Import vars.
+# Import net vars.
 path_net=$(get_path_to_net $net)
 
 # Set contract owner account key.
@@ -60,10 +60,10 @@ log "ERC-20 $token_symbol Account Balances:"
 log "... contract owner = "$contract_owner_account_balance
 
 # Render user account balances.
-for idx in $(seq 1 $NCTL_NET_USER_COUNT)
+for IDX in $(seq 1 $NCTL_NET_USER_COUNT)
 do
     # Set user account key.
-    user_account_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $idx)
+    user_account_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $IDX)
 
     # Set user account hash.
     user_account_hash=$(get_account_hash $user_account_key)
@@ -73,5 +73,5 @@ do
     user_account_balance=$(get_erc20_contract_key_value $net $node $contract_hash $user_account_balance_key)
 
     # Render user account balance.
-    log "... user $idx = "$(($user_account_balance * 2))
+    log "... user $IDX = "$(($user_account_balance * 2))
 done

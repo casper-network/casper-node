@@ -62,7 +62,7 @@ user2=${user2:-2}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
+# Import net vars.
 source $(get_path_to_net_vars $net)
 
 # Set amount - target contract uses U256 therefore need to factor to U512.
