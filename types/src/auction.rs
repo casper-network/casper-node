@@ -8,7 +8,10 @@ mod seigniorage_recipient;
 mod types;
 mod unbonding_purse;
 
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    vec::Vec,
+};
 
 use num_rational::Ratio;
 
@@ -263,13 +266,27 @@ pub trait Auction:
             return Err(Error::InvalidCaller);
         }
 
-        let (mut burned_amount, orphaned_delegators) =
-            detail::quash_bid(self, &validator_public_keys)?;
+        let mut burned_amount: U512 = U512::zero();
+
+        let mut bids = detail::get_bids(self)?;
+        let mut modified_validators = 0usize;
 
         let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
-
         let mut unbonding_purses_modified = false;
+
         for validator_public_key in validator_public_keys {
+            // Clean up bids for given validator and save up assigned delegators
+            let orphaned_delegators = match bids.remove(&validator_public_key) {
+                Some(bid) => {
+                    burned_amount += *bid.staked_amount();
+                    modified_validators += 1;
+
+                    bid.delegators().keys().copied().collect()
+                }
+                None => BTreeSet::new(),
+            };
+
+            // Clean up unbonding entry for given validator
             if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
                 let initial_length = unbonding_list.len();
 
@@ -301,6 +318,10 @@ pub trait Auction:
 
         if unbonding_purses_modified {
             detail::set_unbonding_purses(self, unbonding_purses)?;
+        }
+
+        if modified_validators > 0 {
+            detail::set_bids(self, bids)?;
         }
 
         // call reduce total supply
