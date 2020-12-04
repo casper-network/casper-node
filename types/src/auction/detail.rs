@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{collections::BTreeSet, vec::Vec};
 use core::convert::TryInto;
 
 use num_rational::Ratio;
@@ -271,7 +271,7 @@ where
 pub(crate) fn quash_bid<P: StorageProvider + RuntimeProvider + ?Sized>(
     provider: &mut P,
     validator_public_keys: &[PublicKey],
-) -> Result<U512> {
+) -> Result<(U512, BTreeSet<PublicKey>)> {
     // Clean up inside `bids`
     let mut validators = get_bids(provider)?;
 
@@ -279,10 +279,14 @@ pub(crate) fn quash_bid<P: StorageProvider + RuntimeProvider + ?Sized>(
 
     let mut burned_amount: U512 = U512::zero();
 
+    let mut delegators = BTreeSet::new();
+
     for validator_public_key in validator_public_keys {
         if let Some(bid) = validators.remove(validator_public_key) {
             burned_amount += *bid.staked_amount();
             modified_validators += 1;
+
+            delegators.extend(bid.delegators().keys());
         }
     }
 
@@ -290,5 +294,5 @@ pub(crate) fn quash_bid<P: StorageProvider + RuntimeProvider + ?Sized>(
         set_bids(provider, validators)?;
     }
 
-    Ok(burned_amount)
+    Ok((burned_amount, delegators))
 }

@@ -263,7 +263,8 @@ pub trait Auction:
             return Err(Error::InvalidCaller);
         }
 
-        let mut burned_amount = detail::quash_bid(self, &validator_public_keys)?;
+        let (mut burned_amount, orphaned_delegators) =
+            detail::quash_bid(self, &validator_public_keys)?;
 
         let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
 
@@ -273,8 +274,10 @@ pub trait Auction:
                 let initial_length = unbonding_list.len();
 
                 unbonding_list.retain(|unbonding_purse| {
-                    // Only entries created by non-validators are retained
-                    let should_retain = !unbonding_purse.is_validator();
+                    // Only entries created by validator entries and delegators that were attached
+                    // to quashed bids of validator.
+                    let should_retain = !unbonding_purse.is_validator()
+                        && !orphaned_delegators.contains(unbonding_purse.unbonder_public_key());
 
                     if !should_retain {
                         // Amounts inside removed entries are burned only.
