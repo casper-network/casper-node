@@ -754,7 +754,6 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
         })
         .collect();
     let mut state = State::new_test(WEIGHTS, 0);
-    let mut empty_state = State::new_test(WEIGHTS, 0);
     let mut rng = crate::new_rng();
 
     // Alice equivocates and creates two forks:
@@ -766,28 +765,18 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
     let a2 = add_unit!(state, rng, ALICE, None; a1, N, N)?;
 
     // Bob endorses a0_prime.
-    let endorsement_a0_prime = Endorsement::new(a0_prime, BOB);
-    let sig_a0_prime = BOB_SEC.sign(&endorsement_a0_prime.hash(), &mut rng);
-    let signed_endorsement_a0_prime = SignedEndorsement::new(endorsement_a0_prime, sig_a0_prime);
-    let endorsements_a0_prime = Endorsements::new(iter::once(signed_endorsement_a0_prime));
-    state.add_endorsements(endorsements_a0_prime, &TEST_INSTANCE_ID);
+    endorse!(state, rng, BOB, a0_prime);
     assert!(!state.is_faulty(BOB));
 
     // Now he also endorses a2, even though it is on a different fork. That's a fault!
-    let endorsement_a2 = Endorsement::new(a2, BOB);
-    let sig_a2 = BOB_SEC.sign(&endorsement_a2.hash(), &mut rng);
-    let signed_endorsement_a2 = SignedEndorsement::new(endorsement_a2, sig_a2);
-    let endorsements_a2 = Endorsements::new(iter::once(signed_endorsement_a2));
-    state.add_endorsements(endorsements_a2, &TEST_INSTANCE_ID);
+    endorse!(state, rng, BOB, a2);
+    assert!(state.is_faulty(BOB));
+
     let evidence = state
         .opt_evidence(BOB)
         .expect("Bob should be considered faulty")
         .clone();
-
-    // The evidence can be validated by an empty instance.
     assert_eq!(Ok(()), evidence.validate(&validators, &TEST_INSTANCE_ID));
-    empty_state.add_evidence(evidence);
-    assert!(empty_state.has_evidence(BOB));
 
     Ok(())
 }

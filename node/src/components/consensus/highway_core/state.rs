@@ -393,14 +393,7 @@ impl<C: Context> State<C> {
     /// Add set of endorsements to the state.
     /// If, after adding, we have collected enough endorsements to consider unit _endorsed_,
     /// it will be *upgraded* to fully endorsed.
-    pub(crate) fn add_endorsements(
-        &mut self,
-        endorsements: Endorsements<C>,
-        instance_id: &C::InstanceId,
-    ) {
-        for evidence in self.find_conflicting_endorsements(&endorsements, instance_id) {
-            self.add_evidence(evidence);
-        }
+    pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
         let uhash = *endorsements.unit();
         if self.endorsements.contains_key(&uhash) {
             return; // We already have a sufficient number of endorsements.
@@ -426,6 +419,82 @@ impl<C: Context> State<C> {
                 .collect();
             self.endorsements.insert(uhash, endorsed_map);
         }
+    }
+
+    /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
+    /// ones.
+    pub(crate) fn find_conflicting_endorsements(
+        &self,
+        endorsements: &Endorsements<C>,
+        instance_id: &C::InstanceId,
+    ) -> Vec<Evidence<C>> {
+        let uhash = endorsements.unit();
+        let unit = self.unit(&uhash);
+        if !self.has_evidence(unit.creator) {
+            return vec![]; // There are no equivocations, so endorsements cannot conflict.
+        }
+
+        // We are only interested in endorsements that we didn't know before and whose validators
+        // we don't already have evidence against.
+        let is_new_endorsement = |&&(vidx, _): &&(ValidatorIndex, _)| {
+            if self.has_evidence(vidx) {
+                false
+            } else if let Some(known_endorsements) = self.endorsements.get(&uhash) {
+                known_endorsements[vidx].is_none()
+            } else if let Some(known_endorsements) = self.incomplete_endorsements.get(&uhash) {
+                !known_endorsements.contains_key(&vidx)
+            } else {
+                true
+            }
+        };
+        let new_endorsements = endorsements.endorsers.iter().filter(is_new_endorsement);
+
+        // For each new endorser, find a pair of conflicting endorsements, if it exists.
+        // Order the data so that the first unit has a lower or equal sequence number.
+        let conflicting_endorsements = new_endorsements.filter_map(|&(vidx, ref sig)| {
+            // Iterate over all existing endorsements by vidx.
+            let known_endorsements = self.endorsements.iter();
+            let known_incomplete_endorsements = self.incomplete_endorsements.iter();
+            let known_vidx_endorsements = known_endorsements
+                .filter_map(|(uhash2, sigs2)| sigs2[vidx].as_ref().map(|sig2| (uhash2, sig2)));
+            let known_vidx_incomplete_endorsements = known_incomplete_endorsements
+                .filter_map(|(uhash2, sigs2)| sigs2.get(&vidx).map(|sig2| (uhash2, sig2)));
+            // Find a conflicting one, i.e. one that endorses a unit with the same creator as uhash
+            // but incompatible with uhash. Put the data into a tuple, with the earlier unit first.
+            known_vidx_endorsements
+                .chain(known_vidx_incomplete_endorsements)
+                .find(|(uhash2, _)| {
+                    // TODO: Limit the difference of sequence numbers?
+                    self.unit(uhash2).creator == unit.creator && !self.is_compatible(&uhash, uhash2)
+                })
+                .map(|(uhash2, sig2)| {
+                    if unit.seq_number <= self.unit(uhash2).seq_number {
+                        (vidx, uhash, sig, uhash2, sig2)
+                    } else {
+                        (vidx, uhash2, sig2, uhash, sig)
+                    }
+                })
+        });
+
+        // Create an Evidence instance for each conflict we found.
+        conflicting_endorsements
+            .map(|(vidx, uhash1, sig1, uhash2, sig2)| {
+                let unit1 = self.unit(uhash1);
+                let swimlane2 = self
+                    .swimlane(uhash2)
+                    .skip(1)
+                    .take_while(|(_, pred2)| pred2.seq_number >= unit1.seq_number)
+                    .map(|(pred2_hash, _)| self.wire_unit(pred2_hash, *instance_id).unwrap())
+                    .collect();
+                Evidence::Endorsements {
+                    endorsement1: SignedEndorsement::new(Endorsement::new(*uhash1, vidx), *sig1),
+                    unit1: self.wire_unit(uhash1, *instance_id).unwrap(),
+                    endorsement2: SignedEndorsement::new(Endorsement::new(*uhash2, vidx), *sig2),
+                    unit2: self.wire_unit(uhash2, *instance_id).unwrap(),
+                    swimlane2,
+                }
+            })
+            .collect()
     }
 
     pub(crate) fn wire_unit(
@@ -646,82 +715,6 @@ impl<C: Context> State<C> {
         !self.is_faulty(unit.creator)
             && self.leader(unit.timestamp) == unit.creator
             && unit.timestamp == round_id(unit.timestamp, unit.round_exp)
-    }
-
-    /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
-    /// ones.
-    fn find_conflicting_endorsements(
-        &self,
-        endorsements: &Endorsements<C>,
-        instance_id: &C::InstanceId,
-    ) -> Vec<Evidence<C>> {
-        let uhash = endorsements.unit();
-        let unit = self.unit(&uhash);
-        if !self.has_evidence(unit.creator) {
-            return vec![]; // There are no equivocations, so endorsements cannot conflict.
-        }
-
-        // We are only interested in endorsements that we didn't know before and whose validators
-        // we don't already have evidence against.
-        let is_new_endorsement = |&&(vidx, _): &&(ValidatorIndex, _)| {
-            if self.has_evidence(vidx) {
-                false
-            } else if let Some(known_endorsements) = self.endorsements.get(&uhash) {
-                known_endorsements[vidx].is_none()
-            } else if let Some(known_endorsements) = self.incomplete_endorsements.get(&uhash) {
-                !known_endorsements.contains_key(&vidx)
-            } else {
-                true
-            }
-        };
-        let new_endorsements = endorsements.endorsers.iter().filter(is_new_endorsement);
-
-        // For each new endorser, find a pair of conflicting endorsements, if it exists.
-        // Order the data so that the first unit has a lower or equal sequence number.
-        let conflicting_endorsements = new_endorsements.filter_map(|&(vidx, ref sig)| {
-            // Iterate over all existing endorsements by vidx.
-            let known_endorsements = self.endorsements.iter();
-            let known_incomplete_endorsements = self.incomplete_endorsements.iter();
-            let known_vidx_endorsements = known_endorsements
-                .filter_map(|(uhash2, sigs2)| sigs2[vidx].as_ref().map(|sig2| (uhash2, sig2)));
-            let known_vidx_incomplete_endorsements = known_incomplete_endorsements
-                .filter_map(|(uhash2, sigs2)| sigs2.get(&vidx).map(|sig2| (uhash2, sig2)));
-            // Find a conflicting one, i.e. one that endorses a unit with the same creator as uhash
-            // but incompatible with uhash. Put the data into a tuple, with the earlier unit first.
-            known_vidx_endorsements
-                .chain(known_vidx_incomplete_endorsements)
-                .find(|(uhash2, _)| {
-                    // TODO: Limit the difference of sequence numbers?
-                    self.unit(uhash2).creator == unit.creator && !self.is_compatible(&uhash, uhash2)
-                })
-                .map(|(uhash2, sig2)| {
-                    if unit.seq_number <= self.unit(uhash2).seq_number {
-                        (vidx, uhash, sig, uhash2, sig2)
-                    } else {
-                        (vidx, uhash2, sig2, uhash, sig)
-                    }
-                })
-        });
-
-        // Create an Evidence instance for each conflict we found.
-        conflicting_endorsements
-            .map(|(vidx, uhash1, sig1, uhash2, sig2)| {
-                let unit1 = self.unit(uhash1);
-                let swimlane2 = self
-                    .swimlane(uhash2)
-                    .skip(1)
-                    .take_while(|(_, pred2)| pred2.seq_number >= unit1.seq_number)
-                    .map(|(pred2_hash, _)| self.wire_unit(pred2_hash, *instance_id).unwrap())
-                    .collect();
-                Evidence::Endorsements {
-                    endorsement1: SignedEndorsement::new(Endorsement::new(*uhash1, vidx), *sig1),
-                    unit1: self.wire_unit(uhash1, *instance_id).unwrap(),
-                    endorsement2: SignedEndorsement::new(Endorsement::new(*uhash2, vidx), *sig2),
-                    unit2: self.wire_unit(uhash2, *instance_id).unwrap(),
-                    swimlane2,
-                }
-            })
-            .collect()
     }
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,

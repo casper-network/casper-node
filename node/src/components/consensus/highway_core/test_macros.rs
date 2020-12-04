@@ -117,6 +117,10 @@ macro_rules! endorse {
         let signed_endorsement = SignedEndorsement::new(endorsement, signature);
         let endorsements: Endorsements<TestContext> =
             Endorsements::new(vec![signed_endorsement].into_iter());
-        $state.add_endorsements(endorsements, &TEST_INSTANCE_ID)
+        let evidence = $state.find_conflicting_endorsements(&endorsements, &TEST_INSTANCE_ID);
+        $state.add_endorsements(endorsements);
+        for ev in evidence {
+            $state.add_evidence(ev);
+        }
     };
 }

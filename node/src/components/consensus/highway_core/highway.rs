@@ -1,7 +1,5 @@
 mod vertex;
 
-use std::collections::HashSet;
-
 pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{Dependency, Endorsements, SignedWireUnit, Vertex, WireUnit};
 
@@ -436,11 +434,12 @@ impl<C: Context> Highway<C> {
             .as_mut()
             .map(|av| av.on_new_evidence(&evidence, state, rng))
             .unwrap_or_default();
-        // Add newly created endorsements to the local state.
+        // Add newly created endorsements to the local state. These can only be our own ones, so we
+        // don't need to look for conflicts and call State::add_endorsements directly.
         for effect in effects.iter() {
             if let Effect::NewVertex(vv) = effect {
                 if let Some(e) = vv.endorsements() {
-                    self.state.add_endorsements(e.clone(), &self.instance_id);
+                    self.state.add_endorsements(e.clone());
                 }
             }
         }
@@ -573,17 +572,18 @@ impl<C: Context> Highway<C> {
         evidence_effects
     }
 
-    /// Adds endorsements to the state.
+    /// Adds endorsements to the state. If there are conflicting endorsements, `NewVertex` effects
+    /// are returned containing evidence to prove them faulty.
     fn add_endorsements(&mut self, endorsements: Endorsements<C>) -> Vec<Effect<C>> {
-        // TODO: Not faulty — evidence!
-        let old_faulty: HashSet<_> = self.state.faulty_validators().collect();
-        self.state.add_endorsements(endorsements, &self.instance_id);
-        self.state
-            .faulty_validators()
-            .filter(|v_id| !old_faulty.contains(v_id))
-            .filter_map(|v_id| self.state.opt_evidence(v_id).cloned())
-            .map(|ev| Effect::NewVertex(ValidVertex(Vertex::Evidence(ev))))
-            .collect()
+        let evidence = self
+            .state
+            .find_conflicting_endorsements(&endorsements, &self.instance_id);
+        self.state.add_endorsements(endorsements);
+        let add_and_create_effect = |ev: Evidence<C>| {
+            self.state.add_evidence(ev.clone());
+            Effect::NewVertex(ValidVertex(Vertex::Evidence(ev)))
+        };
+        evidence.into_iter().map(add_and_create_effect).collect()
     }
 }
 

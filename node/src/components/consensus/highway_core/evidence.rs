@@ -52,8 +52,8 @@ pub(crate) enum Evidence<C: Context> {
         unit1: SignedWireUnit<C>,
         /// The endorsement for `unit2`, by the same creator as endorsement1.
         endorsement2: SignedEndorsement<C>,
-        /// The unit with the higher sequence number, on a conflicting fork of the same creator as
-        /// `unit1`.
+        /// The unit with the higher (or equal) sequence number, on a conflicting fork of the same
+        /// creator as `unit1`.
         unit2: SignedWireUnit<C>,
         /// The predecessors of `unit2`, back to the same sequence number as `unit1`, in reverse
         /// chronological order.
