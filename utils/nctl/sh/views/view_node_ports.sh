@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Renders a user account key.
+# Renders node peers to stdout.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
-#   User ordinal identifier.
+#   Node ordinal identifier.
 
 #######################################
 # Destructure input args.
@@ -13,7 +13,7 @@
 
 # Unset to avoid parameter collisions.
 unset net
-unset user
+unset node
 
 for ARGUMENT in "$@"
 do
@@ -21,14 +21,14 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         net) net=${VALUE} ;;
-        user) user=${VALUE} ;;
+        node) node=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
 net=${net:-1}
-user=${user:-"all"}
+node=${node:-"all"}
 
 #######################################
 # Main
@@ -40,12 +40,12 @@ source $NCTL/sh/utils.sh
 # Import net vars.
 source $(get_path_to_net_vars $net)
 
-# Render account key(s).
-if [ $user = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_USER_COUNT)
+# Render peer set.
+if [ $node = "all" ]; then
+    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        render_account_key $net $NCTL_ACCOUNT_TYPE_USER $IDX
+        render_node_ports $net $IDX
     done
 else
-    render_account_key $net $NCTL_ACCOUNT_TYPE_USER $user
+    render_node_ports $net $node
 fi

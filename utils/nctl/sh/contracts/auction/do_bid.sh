@@ -13,79 +13,83 @@
 #   Gas payment (optional).
 
 #######################################
+# Imports
+#######################################
+
+# Import utils.
+source $NCTL/sh/utils.sh
+
+#######################################
 # Destructure input args.
 #######################################
 
 # Unset to avoid parameter collisions.
-unset amount
-unset payment
-unset gas
-unset delegation_rate
-unset net
-unset node
-unset user
+unset AMOUNT
+unset DELEGATION_RATE
+unset GAS
+unset NET_ID
+unset NODE_ID
+unset PAYMENT
+unset USER_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        amount) amount=${VALUE} ;;
-        gas) gas=${VALUE} ;;
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
-        payment) payment=${VALUE} ;;
-        rate) delegation_rate=${VALUE} ;;
-        user) user=${VALUE} ;;
+        amount) AMOUNT=${VALUE} ;;
+        gas) GAS=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
+        payment) PAYMENT=${VALUE} ;;
+        rate) DELEGATION_RATE=${VALUE} ;;
+        user) USER_ID=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
-amount=${amount:-$NCTL_DEFAULT_AUCTION_BID_AMOUNT}
-delegation_rate=${delegation_rate:-125}
-payment=${payment:-$NCTL_DEFAULT_GAS_PAYMENT}
-gas=${gas:-$NCTL_DEFAULT_GAS_PRICE}
-net=${net:-1}
-node=${node:-1}
-user=${user:-1}
+AMOUNT=${AMOUNT:-$NCTL_DEFAULT_AUCTION_BID_AMOUNT}
+DELEGATION_RATE=${DELEGATION_RATE:-125}
+GAS=${GAS:-$NCTL_DEFAULT_GAS_PRICE}
+NET_ID=${NET_ID:-1}
+NODE_ID=${NODE_ID:-1}
+PAYMENT=${PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}
+USER_ID=${USER_ID:-1}
 
 #######################################
 # Main
 #######################################
 
-# Import utils.
-source $NCTL/sh/utils.sh
-
 # Set deploy params.
-bidder_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_USER $user)
-bidder_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $user)
-node_address=$(get_node_address_rpc $net $node)
-path_contract=$(get_path_to_contract $net "add_bid.wasm")
+BIDDER_PUBLIC_KEY=$(get_account_key $NET_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID)
+BIDDER_SECRET_KEY=$(get_path_to_secret_key $NET_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID)
+NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
+PATH_TO_CONTRACT=$(get_path_to_contract $NET_ID "add_bid.wasm")
 
 # Inform.
 log "dispatching deploy -> add_bid.wasm"
-log "... network = $net"
-log "... node = $node"
-log "... node address = $node_address"
-log "... contract = $path_contract"
-log "... bidder id = $user"
-log "... bidder secret key = $bidder_secret_key"
+log "... network = $NET_ID"
+log "... node = $NODE_ID"
+log "... node address = $NODE_ADDRESS"
+log "... contract = $PATH_TO_CONTRACT"
+log "... bidder id = $USER_ID"
+log "... bidder secret key = $BIDDER_SECRET_KEY"
 log "... bid amount = $amount"
-log "... bid delegation rate = $delegation_rate"
+log "... bid delegation rate = $DELEGATION_RATE"
 
 # Dispatch deploy.
-deploy_hash=$(
-    $(get_path_to_client $net) put-deploy \
-        --chain-name casper-net-$net \
-        --gas-price $gas \
-        --node-address $node_address \
-        --payment-amount $payment \
-        --secret-key $bidder_secret_key \
-        --session-arg="public_key:public_key='$bidder_public_key'" \
-        --session-arg "amount:u512='$amount'" \
-        --session-arg "delegation_rate:u64='$delegation_rate'" \
-        --session-path $path_contract \
+DEPLOY_HASH=$(
+    $(get_path_to_client $NET_ID) put-deploy \
+        --chain-name $(get_chain_name $NET_ID) \
+        --gas-price $GAS \
+        --node-address $NODE_ADDRESS \
+        --payment-amount $PAYMENT \
+        --secret-key $BIDDER_SECRET_KEY \
+        --session-arg="public_key:public_key='$BIDDER_PUBLIC_KEY'" \
+        --session-arg "amount:u512='$AMOUNT'" \
+        --session-arg "delegation_rate:u64='$DELEGATION_RATE'" \
+        --session-path $PATH_TO_CONTRACT \
         --ttl "1day" \
         | jq '.result.deploy_hash' \
         | sed -e 's/^"//' -e 's/"$//'
@@ -93,4 +97,4 @@ deploy_hash=$(
 
 # Display deploy hash.
 log "deploy dispatched:"
-log "... deploy hash = $deploy_hash"
+log "... deploy hash = $DEPLOY_HASH"

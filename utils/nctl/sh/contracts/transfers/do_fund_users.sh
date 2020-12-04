@@ -14,29 +14,32 @@
 #######################################
 
 # Unset to avoid parameter collisions.
-unset gas
-unset net
-unset node
-unset payment
+unset GAS
+unset NET_ID
+unset NODE_ID
+unset PAYMENT
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        gas) gas=${VALUE} ;;
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
-        payment) payment=${VALUE} ;;
+        gas) GAS=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
+        payment) PAYMENT=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-gas=${gas:-$NCTL_DEFAULT_GAS_PRICE}
-net=${net:-1}
-node=${node:-1}
-payment=${payment:-$NCTL_DEFAULT_GAS_PAYMENT}
+#######################################
+# Defaults
+#######################################
+
+GAS=${GAS:-$NCTL_DEFAULT_GAS_PRICE}
+NET_ID=${NET_ID:-1}
+NODE_ID=${NODE_ID:-1}
+PAYMENT=${PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}
 
 #######################################
 # Main
@@ -45,37 +48,37 @@ payment=${payment:-$NCTL_DEFAULT_GAS_PAYMENT}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
-source $(get_path_to_net_vars $net)
+# Import net vars.
+source $(get_path_to_net_vars $NET_ID)
 
 # Inform.
 log "funding user accounts from faucet:"
-log "... network=$net"
-log "... node=$node"
+log "... network=$NET_ID"
+log "... node=$NODE_ID"
 log "... transfer amount=$NCTL_INITIAL_BALANCE_USER"
 log "... dispatched deploys:"
 
 # Set faucet secret key.
-path_to_faucet_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_FAUCET)
+PATH_TO_FAUCET_SECRET_KEY=$(get_path_to_secret_key $NET_ID $NCTL_ACCOUNT_TYPE_FAUCET)
 
-for idx in $(seq 1 $NCTL_NET_USER_COUNT)
+for IDX in $(seq 1 $NCTL_NET_USER_COUNT)
 do
     # Set user account key.
-    user_account_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $idx)
+    USER_ACCOUNT_KEY=$(get_account_key $NET_ID $NCTL_ACCOUNT_TYPE_USER $IDX)
 
     # Dispatch deploy.
     deploy_hash=$(
-        $(get_path_to_client $net) transfer \
-            --chain-name $(get_chain_name $net) \
-            --gas-price $gas \
-            --node-address $(get_node_address_rpc $net $node) \
-            --payment-amount $payment \
-            --secret-key $path_to_faucet_secret_key \
+        $(get_path_to_client $NET_ID) transfer \
+            --chain-name $(get_chain_name $NET_ID) \
+            --gas-price $GAS \
+            --node-address $(get_node_address_rpc $NET_ID $NODE_ID) \
+            --payment-amount $PAYMENT \
+            --secret-key $PATH_TO_FAUCET_SECRET_KEY \
             --ttl "1day" \
             --amount $NCTL_INITIAL_BALANCE_USER \
-            --target-account $user_account_key \
+            --target-account $USER_ACCOUNT_KEY \
             | jq '.result.deploy_hash' \
             | sed -e 's/^"//' -e 's/"$//'
         )
-    log "... ... user-"$idx" -> "$deploy_hash
+    log "... ... user-"$IDX" -> "$deploy_hash
 done

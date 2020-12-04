@@ -54,7 +54,7 @@ token_supply=${token_supply:-1000000000000000000000000000000000}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
+# Import net vars.
 source $(get_path_to_net_vars $net)
 
 # Set contract path.

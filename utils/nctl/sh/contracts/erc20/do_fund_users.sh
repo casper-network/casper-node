@@ -54,10 +54,10 @@ node=${node:-1}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
+# Import net vars.
 source $(get_path_to_net_vars $net)
 
-# Import vars.
+# Import net vars.
 source $(get_path_to_net_vars $net)
 
 # Set amount - target contract uses U256 therefore need to factor to U512.
@@ -70,10 +70,10 @@ contract_owner_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_FAUCE
 node_address=$(get_node_address_rpc $net $node)
 
 # For each user, dispatch a deploy:
-for idx in $(seq 1 $NCTL_NET_USER_COUNT)
+for IDX in $(seq 1 $NCTL_NET_USER_COUNT)
 do
     # Set user account key.
-    user_account_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $idx)
+    user_account_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $IDX)
 
     # Set user account hash.
     user_account_hash=$(get_account_hash $user_account_key)
@@ -96,5 +96,5 @@ do
     )
 
     # Inform.
-    log "funding user $idx deploy hash = "$deploy_hash
+    log "funding user $IDX deploy hash = "$deploy_hash
 done
