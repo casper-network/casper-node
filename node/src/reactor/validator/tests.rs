@@ -160,6 +160,28 @@ fn era_ids(runner: &Runner<ConditionCheckReactor<validator::Reactor>>) -> HashSe
         .collect()
 }
 
+/// Given an era number, return a predicate to check if all of the nodes are in that specified era.
+fn is_in_era(era_num: usize) -> impl Fn(&Nodes) -> bool {
+    move |nodes: &Nodes| {
+        // check ee's era_validators against consensus' validators
+        let first_node = nodes.values().next().expect("need at least one node");
+
+        // Get a list of eras from the first node.
+        let expected_eras = era_ids(&first_node);
+
+        // Return if not in expected era yet.
+        if expected_eras.len() <= era_num {
+            return false;
+        }
+
+        // Ensure eras are all the same for all other nodes.
+        nodes
+            .values()
+            .map(era_ids)
+            .all(|eras| eras == expected_eras)
+    }
+}
+
 #[tokio::test]
 async fn run_validator_network() {
     testing::init_logging();
@@ -174,26 +196,6 @@ async fn run_validator_network() {
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
-
-    let is_in_era = |era_num| {
-        move |nodes: &Nodes| {
-            let first_node = nodes.values().next().expect("need at least one node");
-
-            // Get a list of eras from the first node.
-            let expected_eras = era_ids(&first_node);
-
-            // Return if not in expected era yet.
-            if expected_eras.len() <= era_num {
-                return false;
-            }
-
-            // Ensure eras are all the same for all other nodes.
-            nodes
-                .values()
-                .map(era_ids)
-                .all(|eras| eras == expected_eras)
-        }
-    };
 
     // Wait for all nodes to agree on one era.
     net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(90))
@@ -226,27 +228,6 @@ async fn run_equivocator_network() {
         .create_initialized_network(&mut rng)
         .await
         .expect("network initialization failed");
-
-    let is_in_era = |era_num| {
-        move |nodes: &Nodes| {
-            // check ee's era_validators against consensus' validators
-            let first_node = nodes.values().next().expect("need at least one node");
-
-            // Get a list of eras from the first node.
-            let expected_eras = era_ids(&first_node);
-
-            // Return if not in expected era yet.
-            if expected_eras.len() <= era_num {
-                return false;
-            }
-
-            // Ensure eras are all the same for all other nodes.
-            nodes
-                .values()
-                .map(era_ids)
-                .all(|eras| eras == expected_eras)
-        }
-    };
 
     info!("Waiting for Era 1 to end");
     net.settle_on(&mut rng, is_in_era(1), Duration::from_secs(600))
