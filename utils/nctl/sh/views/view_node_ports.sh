@@ -12,23 +12,23 @@
 #######################################
 
 # Unset to avoid parameter collisions.
-unset net
-unset node
+unset NET_ID
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
-net=${net:-1}
-node=${node:-"all"}
+NET_ID=${NET_ID:-1}
+NODE_ID=${NODE_ID:-"all"}
 
 #######################################
 # Main
@@ -38,14 +38,14 @@ node=${node:-"all"}
 source $NCTL/sh/utils.sh
 
 # Import net vars.
-source $(get_path_to_net_vars $net)
+source $(get_path_to_net_vars $NET_ID)
 
 # Render peer set.
-if [ $node = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
+if [ $NODE_ID = "all" ]; then
+    for IDX in $(seq 1 $(get_count_of_all_nodes $NET_ID))
     do
-        render_node_ports $net $IDX
+        render_node_ports $NET_ID $IDX
     done
 else
-    render_node_ports $net $node
+    render_node_ports $NET_ID $NODE_ID
 fi

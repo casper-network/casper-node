@@ -58,42 +58,54 @@ USER_ID=${USER_ID:-1}
 # Main
 #######################################
 
-# Set deploy params.
-USER_SECRET_KEY=$(get_path_to_secret_key $NET_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID)
-USER_ACCOUNT_KEY=$(get_account_key $NET_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID)
-USER_MAIN_PURSE_UREF=$(get_main_purse_uref $NET_ID $NODE_ID $USER_ACCOUNT_KEY)
-NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
-PATH_TO_CONTRACT=$(get_path_to_contract $NET_ID "withdraw_bid.wasm")
+function main() 
+{
+    local NET_ID=${1}
+    local NODE_ID=${2}
+    local AMOUNT=${3}
+    local USER_ID=${4}
+    local GAS=${5}
+    local PAYMENT=${6}
 
-# Inform.
-log "dispatching deploy -> withdraw_bid.wasm"
-log "... network = $NET_ID"
-log "... node = $NODE_ID"
-log "... node address = $NODE_ADDRESS"
-log "... contract = $PATH_TO_CONTRACT"
-log "... user id = $USER_ID"
-log "... user account key = $USER_ACCOUNT_KEY"
-log "... user secret key = $USER_SECRET_KEY"
-log "... user main purse uref = $USER_MAIN_PURSE_UREF"
-log "... withdrawal amount = $AMOUNT"
+    # Set deploy params.
+    local USER_SECRET_KEY=$(get_path_to_secret_key $NET_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID)
+    local USER_ACCOUNT_KEY=$(get_account_key $NET_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID)
+    local USER_MAIN_PURSE_UREF=$(get_main_purse_uref $NET_ID $NODE_ID $USER_ACCOUNT_KEY)
+    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
+    local PATH_TO_CONTRACT=$(get_path_to_contract $NET_ID "withdraw_bid.wasm")
 
-# Dispatch deploy.
-DEPLOY_HASH=$(
-    $(get_path_to_client $NET_ID) put-deploy \
-        --chain-name $(get_chain_name $NET_ID) \
-        --gas-price $GAS \
-        --node-address $NODE_ADDRESS \
-        --payment-amount $PAYMENT \
-        --secret-key $USER_SECRET_KEY \
-        --session-arg="public_key:public_key='$USER_ACCOUNT_KEY'" \
-        --session-arg "amount:u512='$AMOUNT'" \
-        --session-arg "unbond_purse:uref='$USER_MAIN_PURSE_UREF'" \
-        --session-path $PATH_TO_CONTRACT \
-        --ttl "1day" \
-        | jq '.result.deploy_hash' \
-        | sed -e 's/^"//' -e 's/"$//'
-    )
+    # Inform.
+    log "dispatching deploy -> withdraw_bid.wasm"
+    log "... network = $NET_ID"
+    log "... node = $NODE_ID"
+    log "... node address = $NODE_ADDRESS"
+    log "... contract = $PATH_TO_CONTRACT"
+    log "... user id = $USER_ID"
+    log "... user account key = $USER_ACCOUNT_KEY"
+    log "... user secret key = $USER_SECRET_KEY"
+    log "... user main purse uref = $USER_MAIN_PURSE_UREF"
+    log "... withdrawal amount = $AMOUNT"
 
-# Display deploy hash.
-log "deploy dispatched:"
-log "... deploy hash = $DEPLOY_HASH"
+    # Dispatch deploy.
+    local DEPLOY_HASH=$(
+        $(get_path_to_client $NET_ID) put-deploy \
+            --chain-name $(get_chain_name $NET_ID) \
+            --gas-price $GAS \
+            --node-address $NODE_ADDRESS \
+            --payment-amount $PAYMENT \
+            --secret-key $USER_SECRET_KEY \
+            --session-arg="public_key:public_key='$USER_ACCOUNT_KEY'" \
+            --session-arg "amount:u512='$AMOUNT'" \
+            --session-arg "unbond_purse:uref='uref-a35adc28c260fa9909bbc3dd504d60eb155f7459c27b3f3091b62bfcb1ea895d-007'" \
+            --session-path $PATH_TO_CONTRACT \
+            --ttl "1day" \
+            | jq '.result.deploy_hash' \
+            | sed -e 's/^"//' -e 's/"$//'
+        )
+
+    # Display deploy hash.
+    log "deploy dispatched:"
+    log "... deploy hash = $DEPLOY_HASH"
+}
+
+main $NET_ID $NODE_ID $AMOUNT $USER_ID $GAS $PAYMENT
