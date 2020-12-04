@@ -254,7 +254,12 @@ impl Key {
             Key::AuctionInfo(era_id) => {
                 // stop-gap measure until this method is removed
                 let mut ret = [0u8; BLAKE2B_DIGEST_LENGTH];
-                ret.clone_from_slice(&era_id.to_le_bytes());
+                let era_id_bytes = era_id.to_le_bytes();
+                let era_id_bytes_len = era_id_bytes.len();
+                assert!(era_id_bytes_len < BLAKE2B_DIGEST_LENGTH);
+                for i in 0..era_id_bytes_len {
+                    ret[i] = era_id_bytes[i]
+                }
                 ret
             }
         }
