@@ -18,41 +18,41 @@
 #######################################
 
 # Unset to avoid parameter collisions.
-unset amount
-unset gas
-unset interval
-unset net
-unset node
-unset payment
-unset transfers
-unset user
+unset AMOUNT
+unset GAS
+unset TRANSFER_INTERVAL
+unset NET_ID
+unset NODE_ID
+unset PAYMENT
+unset TRANSFERS
+unset USER_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        amount) amount=${VALUE} ;;
-        gas) gas=${VALUE} ;;
-        interval) transfer_interval=${VALUE} ;;
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
-        payment) payment=${VALUE} ;;
-        transfers) transfers=${VALUE} ;;
-        user) user=${VALUE} ;;
+        amount) AMOUNT=${VALUE} ;;
+        gas) GAS=${VALUE} ;;
+        interval) TRANSFER_INTERVAL=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
+        payment) PAYMENT=${VALUE} ;;
+        transfers) TRANSFERS=${VALUE} ;;
+        user) USER_ID=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
-amount=${amount:-$NCTL_DEFAULT_TRANSFER_AMOUNT}
-payment=${payment:-$NCTL_DEFAULT_GAS_PAYMENT}
-gas=${gas:-$NCTL_DEFAULT_GAS_PRICE}
-net=${net:-1}
-node=${node:-1}
-transfers=${transfers:-100}
-transfer_interval=${transfer_interval:-0.01}
-user=${user:-1}
+AMOUNT=${AMOUNT:-$NCTL_DEFAULT_TRANSFER_AMOUNT}
+PAYMENT=${PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}
+GAS=${GAS:-$NCTL_DEFAULT_GAS_PRICE}
+NET_ID=${NET_ID:-1}
+NODE_ID=${NODE_ID:-1}
+TRANSFERS=${TRANSFERS:-100}
+TRANSFER_INTERVAL=${TRANSFER_INTERVAL:-0.01}
+USER_ID=${USER_ID:-1}
 
 #######################################
 # Main
@@ -61,73 +61,70 @@ user=${user:-1}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
-source $(get_path_to_net_vars $net)
+# Import net vars.
+source $(get_path_to_net_vars $NET_ID)
 
 # Set deploy params.
-cp1_secret_key=$(get_path_to_secret_key $net $NCTL_ACCOUNT_TYPE_FAUCET)
-cp1_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_FAUCET)
-cp2_public_key=$(get_account_key $net $NCTL_ACCOUNT_TYPE_USER $user)
+CHAIN_NAME=$(get_chain_name $NET_ID)
+CP1_SECRET_KEY=$(get_path_to_secret_key $NET_ID $NCTL_ACCOUNT_TYPE_FAUCET)
+CP1_PUBLIC_KEY=$(get_account_key $NET_ID $NCTL_ACCOUNT_TYPE_FAUCET)
+CP2_PUBLIC_KEY=$(get_account_key $NET_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID)
+PATH_TO_CLIENT=$(get_path_to_client $NET_ID)
 
 # Inform.
-log "dispatching $transfers wasmless transfers"
-log "... network=$net"
-log "... node=$node"
-log "... transfer amount=$amount"
-log "... transfer interval=$transfer_interval (s)"
-log "... counter-party 1 public key=$cp1_public_key"
-log "... counter-party 2 public key=$cp2_public_key"
-if [ $transfers -le 10 ]; then
-    log "... dispatched deploys:"
-fi
+log "dispatching $TRANSFERS wasmless transfers"
+log "... network=$NET_ID"
+log "... node=$NODE_ID"
+log "... transfer amount=$AMOUNT"
+log "... transfer interval=$TRANSFER_INTERVAL (s)"
+log "... counter-party 1 public key=$CP1_PUBLIC_KEY"
+log "... counter-party 2 public key=$CP2_PUBLIC_KEY"
+log "... dispatched deploys:"
 
 # Deploy dispatcher.
 function _dispatch_deploy() {
     echo $(
-        $(get_path_to_client $net) transfer \
-            --chain-name $(get_chain_name $net) \
-            --gas-price $gas \
-            --node-address $node_address \
-            --payment-amount $payment \
-            --secret-key $cp1_secret_key \
+        $PATH_TO_CLIENT transfer \
+            --chain-name $CHAIN_NAME \
+            --gas-price $GAS \
+            --node-address $NODE_ADDRESS \
+            --payment-amount $PAYMENT \
+            --secret-key $CP1_SECRET_KEY \
             --ttl "1day" \
-            --amount $amount \
-            --target-account $cp2_public_key \
+            --amount $AMOUNT \
+            --target-account $CP2_PUBLIC_KEY \
             | jq '.result.deploy_hash' \
             | sed -e 's/^"//' -e 's/"$//'
         )
 }
 
 # Dispatch transfers to each node in round-robin fashion.
-if [ $node = "all" ]; then
-    transferred=0
-    while [ $transferred -lt $transfers ];
+if [ $NODE_ID = "all" ]; then
+    TRANSFERRED=0
+    while [ $TRANSFERRED -lt $TRANSFERS ];
     do
-        for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+        for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
         do
-            node_address=$(get_node_address_rpc $net $idx)
-            deploy_hash=$(_dispatch_deploy)
-            if [ $transfers -le 10 ]; then
-                log "... ... "$deploy_hash
-            fi
-            transferred=$((transferred + 1))
-            if [[ $transferred -eq $transfers ]]; then
+            NODE_ADDRESS=$(get_node_address_rpc $NET_ID $IDX)
+            DEPLOY_HASH=$(_dispatch_deploy)
+            TRANSFERRED=$((TRANSFERRED + 1))
+            log "... ... #$TRANSFERRED :: $DEPLOY_HASH"
+            if [[ $TRANSFERRED -eq $TRANSFERS ]]; then
                 break
             fi
-            sleep $transfer_interval
+            sleep $TRANSFER_INTERVAL
         done
     done
 
-# Dispatch transfers to user specified node.
+# Dispatch transfers to a specific node.
 else
-    node_address=$(get_node_address_rpc $net $node)
-    for transfer_id in $(seq 1 $transfers)
+    NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
+    for IDX in $(seq 1 $TRANSFERS)
     do
-        deploy_hash=$(_dispatch_deploy)
-        if [ $transfers -le 10 ]; then
-            log "... ... "$deploy_hash
-        fi
-        sleep $transfer_interval
+        DEPLOY_HASH=$(_dispatch_deploy)
+        log "... ... #$IDX :: $DEPLOY_HASH"
+        sleep $TRANSFER_INTERVAL
     done
 fi
 
+log "dispatched $TRANSFERS wasmless transfers"

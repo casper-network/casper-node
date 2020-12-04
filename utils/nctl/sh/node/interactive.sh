@@ -12,66 +12,70 @@
 #######################################
 
 # Unset to avoid parameter collisions.
-unset loglevel
-unset net
-unset node
+unset LOG_LEVEL
+unset NET_ID
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        loglevel) loglevel=${VALUE} ;;
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        loglevel) LOG_LEVEL=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
-loglevel=${loglevel:-$RUST_LOG}
-loglevel=${loglevel:-debug}
-net=${net:-1}
-node=${node:-1}
+LOG_LEVEL=${LOG_LEVEL:-$RUST_LOG}
+LOG_LEVEL=${LOG_LEVEL:-debug}
+NET_ID=${NET_ID:-1}
+NODE_ID=${NODE_ID:-1}
 
 # Set rust log level.
-export RUST_LOG=$loglevel
+export RUST_LOG=$LOG_LEVEL
 
 #######################################
-# Main
+# Imports
 #######################################
 
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
-source $(get_path_to_net_vars $net)
+# Import net vars.
+source $(get_path_to_net_vars $NET_ID)
+
+#######################################
+# Main
+#######################################
 
 # Set paths.
-path_net=$NCTL/assets/net-$net
-path_net_chainspec=$path_net/chainspec/chainspec.toml
-path_node=$path_net/nodes/node-$node
-path_node_config=$path_net/nodes/node-$node/config/node-config.toml
-path_node_storage=$path_node/storage
-path_node_secret_key=$path_node/keys/secret_key.pem
+PATH_NET=$(get_path_to_net $NET_ID)
+PATH_NET_CHAINSPEC=$PATH_NET/chainspec/chainspec.toml
+PATH_NODE=$(get_path_to_node $NET_ID $NODE_ID)
+PATH_NODE_CONFIG=$PATH_NET/nodes/node-$NODE_ID/config/node-config.toml
+PATH_NODE_STORAGE=$PATH_NODE/storage
+PATH_NODE_SECRET_KEY=$PATH_NODE/keys/secret_key.pem
 
 # Set ports.
-node_api_port_event=$(get_node_port $NCTL_BASE_PORT_EVENT $net $node)
-node_api_port_rest=$(get_node_port $NCTL_BASE_PORT_REST $net $node)
-node_api_port_rpc=$(get_node_port $NCTL_BASE_PORT_RPC $net $node)
+NODE_API_PORT_REST=$(get_node_port_rest $NET_ID $NODE_ID)
+NODE_API_PORT_RPC=$(get_node_port_rpc $NET_ID $NODE_ID)
+NODE_API_PORT_SSE=$(get_node_port_sse $NET_ID $NODE_ID)
 
 # Set validator network addresses.
-network_bind_address=$(get_network_bind_address $net $node $NCTL_NET_BOOTSTRAP_COUNT)
-network_known_addresses=$(get_network_known_addresses $net $node $NCTL_NET_BOOTSTRAP_COUNT)
+NETWORK_BIND_ADDRESS=$(get_network_bind_address $NET_ID $NODE_ID $NCTL_NET_BOOTSTRAP_COUNT)
+NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $NET_ID $NODE_ID $NCTL_NET_BOOTSTRAP_COUNT)
 
 # Start node in validator mode.
-$NCTL/assets/net-$net/bin/casper-node validator $path_node_config \
-    --config-ext=consensus.secret_key_path=$path_node_secret_key  \
-    --config-ext=event_stream_server.address=0.0.0.0:$node_api_port_event  \
-    --config-ext logging.format="json" \
-    --config-ext network.bind_address=$network_bind_address  \
-    --config-ext network.known_addresses=[$network_known_addresses]  \
-    --config-ext=node.chainspec_config_path=$path_net_chainspec  \
-    --config-ext=rest_server.address=0.0.0.0:$node_api_port_rest  \
-    --config-ext=rpc_server.address=0.0.0.0:$node_api_port_rpc  \
-    --config-ext=storage.path=$path_node_storage ;
+$PATH_NET/bin/casper-node validator $PATH_NODE_CONFIG \
+    --config-ext consensus.secret_key_path=$PATH_NODE_SECRET_KEY  \
+    --config-ext event_stream_server.address=0.0.0.0:$NODE_API_PORT_SSE  \
+    --config-ext logging.format=json \
+    --config-ext network.bind_address=$NETWORK_BIND_ADDRESS  \
+    --config-ext network.known_addresses=[$NETWORK_KNOWN_ADDRESSES]  \
+    --config-ext node.chainspec_config_path=$PATH_NET_CHAINSPEC  \
+    --config-ext rest_server.address=0.0.0.0:$NODE_API_PORT_REST  \
+    --config-ext rpc_server.address=0.0.0.0:$NODE_API_PORT_RPC  \
+    --config-ext storage.path=$PATH_NODE_STORAGE ;

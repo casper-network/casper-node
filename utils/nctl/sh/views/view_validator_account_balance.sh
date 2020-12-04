@@ -36,14 +36,14 @@ node=${node:-"all"}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
+# Import net vars.
 source $(get_path_to_net_vars $net)
 
 # Render account balance(s).
 if [ $node = "all" ]; then
-    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        render_account_balance $net $idx $NCTL_ACCOUNT_TYPE_NODE $idx
+        render_account_balance $net $IDX $NCTL_ACCOUNT_TYPE_NODE $IDX
     done
 else
     render_account_balance $net $node $NCTL_ACCOUNT_TYPE_NODE $node

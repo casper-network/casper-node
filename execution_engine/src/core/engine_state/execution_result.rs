@@ -372,7 +372,7 @@ impl ExecutionResultBuilder {
     }
 
     pub fn transfers(&self) -> Vec<TransferAddr> {
-        self.payment_execution_result
+        self.session_execution_result
             .as_ref()
             .map(ExecutionResult::transfers)
             .cloned()

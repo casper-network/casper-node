@@ -38,13 +38,6 @@ default = [
 ]
 use-as-wasm = ["casper-engine-test-support/use-as-wasm"]
 use-system-contracts = ["casper-engine-test-support/use-system-contracts"]
-no-unstable-features = [
-    "casper-contract/no-unstable-features",
-    "casper-execution-engine/no-unstable-features",
-    "casper-engine-grpc-server/no-unstable-features",
-    "casper-engine-test-support/no-unstable-features",
-    "casper-types/no-unstable-features"
-]
 
 [lib]
 bench = false

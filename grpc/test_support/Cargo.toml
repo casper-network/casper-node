@@ -31,11 +31,4 @@ version-sync = "0.9"
 use-as-wasm = []
 use-system-contracts = []
 test-support = ["casper-engine-grpc-server/test-support", "casper-contract/test-support"]
-no-unstable-features = [
-    "casper-contract/no-unstable-features",
-    "casper-engine-grpc-server/no-unstable-features",
-    "casper-types/no-unstable-features"
-]
 
-[package.metadata.docs.rs]
-features = ["no-unstable-features"]

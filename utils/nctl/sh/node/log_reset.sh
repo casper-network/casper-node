@@ -12,40 +12,44 @@
 #######################################
 
 # Unset to avoid parameter collisions.
-unset net
-unset node
+unset NET_ID
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
-net=${net:-1}
-node=${node:-"all"}
+NET_ID=${NET_ID:-1}
+NODE_ID=${NODE_ID:-"all"}
 
 #######################################
-# Main
+# Imports
 #######################################
 
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
-source $(get_path_to_net_vars $net)
+# Import net vars.
+source $(get_path_to_net_vars $NET_ID)
+
+#######################################
+# Main
+#######################################
 
 # Reset logs.
-if [ $node = "all" ]; then
-    for node_id in $(seq 1 $NCTL_NET_NODE_COUNT)
+if [ $NODE_ID = "all" ]; then
+    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        rm $NCTL/assets/net-$net/nodes/node-$node_id/logs/*.log > /dev/null 2>&1
+        rm $(get_path_to_node $NET_ID $IDX)/logs/*.log > /dev/null 2>&1
     done
 else
-    rm $NCTL/assets/net-$net/nodes/node-$node/logs/*.log > /dev/null 2>&1
+    rm $(get_path_to_node $NET_ID $NODE_ID)/logs/*.log > /dev/null 2>&1
 fi
