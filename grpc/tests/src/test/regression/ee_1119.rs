@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
@@ -16,7 +18,6 @@ use casper_types::{
     mint::TOTAL_SUPPLY_KEY,
     runtime_args, PublicKey, RuntimeArgs, URef, U512,
 };
-use once_cell::sync::Lazy;
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
@@ -56,7 +57,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 
-    let exec_request = ExecuteRequestBuilder::standard(
+    let fund_system_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
@@ -66,7 +67,10 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(fund_system_exec_request)
+        .expect_success()
+        .commit();
 
     let auction = builder.get_auction_contract_hash();
 
@@ -123,7 +127,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     let unbond_amount = U512::from(VALIDATOR_1_STAKE) - 1;
 
-    let exec_request_3 = ExecuteRequestBuilder::standard(
+    let undelegate_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_UNDELEGATE,
         runtime_args! {
@@ -134,7 +138,10 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         },
     )
     .build();
-    builder.exec(exec_request_3).commit().expect_success();
+    builder
+        .exec(undelegate_exec_request)
+        .commit()
+        .expect_success();
 
     //
     // Other genesis validator withdraws withdraws his bid
@@ -185,7 +192,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         "should not be part of unbonds"
     );
 
-    let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
+    let slash_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         auction,
         METHOD_SLASH,
@@ -197,7 +204,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     )
     .build();
 
-    builder.exec(exec_request_4).expect_success().commit();
+    builder.exec(slash_request_1).expect_success().commit();
 
     let unbond_purses_noop: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(
@@ -215,7 +222,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     let total_supply_before_slashing: U512 =
         builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);
 
-    let exec_request_5 = ExecuteRequestBuilder::contract_call_by_hash(
+    let slash_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         auction,
         METHOD_SLASH,
@@ -227,7 +234,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     )
     .build();
 
-    builder.exec(exec_request_5).expect_success().commit();
+    builder.exec(slash_request_2).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
