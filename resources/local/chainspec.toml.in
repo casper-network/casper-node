@@ -39,9 +39,6 @@ locked_funds_period = 15
 round_seigniorage_rate = [15_959, 6_204_824_582_392]
 
 [highway]
-# Beginning of era 0. By this time, a sufficient majority (> 50% + F/2 — see finality_threshold_percent below)
-# of validator nodes must be up and running to start the blockchain.
-genesis_era_start_timestamp = '${TIMESTAMP}'
 # Era duration.
 era_duration = '41seconds'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the

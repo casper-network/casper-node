@@ -39,13 +39,6 @@ locked_funds_period = 15
 round_seigniorage_rate = [16_837, 204_568_405_924]
 
 [highway]
-# Tick unit is milliseconds.
-#
-# Timestamp for the genesis era.  At least one node has to be started when the genesis era is active in order to make
-# key blocks for the upcoming eras.  If the era is over by the time we start the nodes, they'll not be able to produce
-# blocks in it, and there won't be a new era build either.  That means when a completely new network is started, the
-# genesis era start time has to be adjusted to be active at the time.
-genesis_era_start_timestamp = '2020-11-05T17:00:00Z'
 # Era duration.
 era_duration = '30minutes'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
