@@ -12,9 +12,13 @@ use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use crate::{components::{
+use crate::{
+    components::{
         chainspec_loader::ChainspecInfo, consensus::EraId, rpc_server::rpcs::docs::DocExample,
-    }, crypto::{hash::Digest, asymmetric_key::PublicKey}, types::{Block, BlockHash, NodeId, PeersMap, Timestamp}};
+    },
+    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
+};
 
 static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let node_id = NodeId::doc_example();
