@@ -12,12 +12,9 @@ use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    components::{
+use crate::{components::{
         chainspec_loader::ChainspecInfo, consensus::EraId, rpc_server::rpcs::docs::DocExample,
-    },
-    types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
-};
+    }, crypto::{hash::Digest, asymmetric_key::PublicKey}, types::{Block, BlockHash, NodeId, PeersMap, Timestamp}};
 
 static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let node_id = NodeId::doc_example();
@@ -70,6 +67,8 @@ pub struct MinimalBlockInfo {
     timestamp: Timestamp,
     era_id: EraId,
     height: u64,
+    state_root_hash: Digest,
+    creator: PublicKey,
 }
 
 impl From<Block> for MinimalBlockInfo {
@@ -79,6 +78,8 @@ impl From<Block> for MinimalBlockInfo {
             timestamp: block.header().timestamp(),
             era_id: block.header().era_id(),
             height: block.header().height(),
+            state_root_hash: *block.header().state_root_hash(),
+            creator: *block.header().proposer(),
         }
     }
 }
