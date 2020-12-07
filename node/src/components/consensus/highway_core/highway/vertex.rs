@@ -187,6 +187,11 @@ impl<C: Context> WireUnit<C> {
     pub(crate) fn round_id(&self) -> Timestamp {
         state::round_id(self.timestamp, self.round_exp)
     }
+
+    /// Returns the creator's previous unit.
+    pub(crate) fn previous(&self) -> Option<&C::Hash> {
+        self.panorama[self.creator].correct()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
@@ -218,7 +223,7 @@ impl<C: Context> Endorsements<C> {
     }
 
     /// Returns an iterator over validator indexes that endorsed the `unit`.
-    pub fn validator_ids(&self) -> impl Iterator<Item = &ValidatorIndex> {
-        self.endorsers.iter().map(|(v, _)| v)
+    pub fn validator_ids(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+        self.endorsers.iter().map(|(v, _)| *v)
     }
 }

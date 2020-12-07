@@ -14,7 +14,6 @@ locked_funds_period = 0
 round_seigniorage_rate = [6_414, 623_437_335_209]
 
 [highway]
-genesis_era_start_timestamp = '2020-09-18T18:45:00Z'
 era_duration = '3minutes'
 minimum_era_height = 9
 booking_duration = '4hours'

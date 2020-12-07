@@ -4,8 +4,13 @@ use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
 use casper_types::{
-    account::AccountHash, api_error, bytesrepr, ApiError, ContractHash, SystemContractType,
-    TransferResult, TransferredTo, URef, U512, UREF_SERIALIZED_LENGTH,
+    account::AccountHash,
+    api_error,
+    auction::{AuctionInfo, EraId},
+    bytesrepr,
+    system_contract_errors::auction,
+    ApiError, ContractHash, SystemContractType, TransferResult, TransferredTo, URef, U512,
+    UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -221,5 +226,26 @@ pub fn record_transfer(
         Ok(())
     } else {
         Err(ApiError::Transfer)
+    }
+}
+
+/// Records auction info.  Can only be called from within the auction contract.
+/// Needed to support system contract-based execution.
+#[doc(hidden)]
+pub fn record_auction_info(era_id: EraId, auction_info: AuctionInfo) -> Result<(), ApiError> {
+    let (era_id_ptr, era_id_size, _bytes1) = contract_api::to_ptr(era_id);
+    let (auction_info_ptr, auction_info_size, _bytes2) = contract_api::to_ptr(auction_info);
+    let result = unsafe {
+        ext_ffi::casper_record_auction_info(
+            era_id_ptr,
+            era_id_size,
+            auction_info_ptr,
+            auction_info_size,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(auction::Error::RecordAuctionInfo.into())
     }
 }

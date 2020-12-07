@@ -7,8 +7,7 @@ use crate::{
 };
 
 /// Unbonding purse.
-#[cfg_attr(test, derive(Debug))]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct UnbondingPurse {
     /// Bonding Purse
     bonding_purse: URef,

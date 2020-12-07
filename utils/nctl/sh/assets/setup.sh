@@ -95,6 +95,7 @@ function _set_chainspec_account() {
 # Sets assets pertaining to network daemon.
 # Globals:
 #   NCTL - path to nctl home directory.
+#   NCTL_DAEMON_TYPE - type of daemon service manager.
 # Arguments:
 #   Path to network directory.
 #   Network ordinal identifier.
@@ -198,9 +199,9 @@ function _set_users() {
     log "... users"
 
     mkdir $1/users
-    for idx in $(seq 1 $2)
+    for IDX in $(seq 1 $2)
     do
-        _set_user $1 $idx
+        _set_user $1 $IDX
     done
 }
 
@@ -260,7 +261,7 @@ function _main() {
         source $NCTL/sh/assets/teardown.sh net=$1
     fi
 
-    log "network #$1: setting up assets ... please wait"
+    log "net-$1: setting up assets ... please wait"
 
     # Make directory.
     mkdir -p $path_net
@@ -275,7 +276,7 @@ function _main() {
     _set_users $path_net $4
     _set_vars $path_net $1 $2 $3 $4
 
-    log "network #$1: assets set up"
+    log "net-$1: assets set up"
 }
 
 #######################################
@@ -283,43 +284,47 @@ function _main() {
 #######################################
 
 # Unset to avoid parameter collisions.
-unset bootstraps
-unset net
-unset nodes
-unset users
-unset delay
+unset BOOTSTRAP_COUNT
+unset GENESIS_DELAY_SECONDS
+unset NET_ID
+unset NODE_COUNT
+unset USER_COUNT
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        bootstraps) bootstraps=${VALUE} ;;
-        delay) delay=${VALUE} ;;
-        net) net=${VALUE} ;;
-        nodes) nodes=${VALUE} ;;
-        users) users=${VALUE} ;;
+        bootstraps) BOOTSTRAP_COUNT=${VALUE} ;;
+        delay) GENESIS_DELAY_SECONDS=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        nodes) NODE_COUNT=${VALUE} ;;
+        users) USER_COUNT=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
-bootstraps=${bootstraps:-1}
-delay=${delay:-30}
-net=${net:-1}
-nodes=${nodes:-5}
-users=${users:-5}
+BOOTSTRAP_COUNT=${BOOTSTRAP_COUNT:-1}
+GENESIS_DELAY_SECONDS=${GENESIS_DELAY_SECONDS:-30}
+NET_ID=${NET_ID:-1}
+NODE_COUNT=${NODE_COUNT:-5}
+USER_COUNT=${USER_COUNT:-5}
 
 #######################################
-# Main
+# Imports
 #######################################
 
 # Import utils.
 source $NCTL/sh/utils.sh
 
+#######################################
+# Main
+#######################################
+
 # Execute when inputs are valid.
-if [ $bootstraps -ge $nodes ]; then
+if [ $BOOTSTRAP_COUNT -ge $NODE_COUNT ]; then
     log_error "Invalid input: bootstraps MUST BE < nodes"
 else
-    _main $net $nodes $bootstraps $users $delay
+    _main $NET_ID $NODE_COUNT $BOOTSTRAP_COUNT $USER_COUNT $GENESIS_DELAY_SECONDS
 fi

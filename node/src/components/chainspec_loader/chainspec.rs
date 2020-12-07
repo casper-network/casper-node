@@ -92,7 +92,6 @@ impl DeployConfig {
 pub(crate) struct HighwayConfig {
     // TODO: Most of these are not Highway-specific.
     // TODO: Some should be defined on-chain in a contract instead, or be part of `UpgradePoint`.
-    pub(crate) genesis_era_start_timestamp: Timestamp,
     pub(crate) era_duration: TimeDiff,
     pub(crate) minimum_era_height: u64,
     // TODO: This is duplicated (and probably in conflict with) `AUCTION_DELAY`.
@@ -109,7 +108,6 @@ pub(crate) struct HighwayConfig {
 impl Default for HighwayConfig {
     fn default() -> Self {
         HighwayConfig {
-            genesis_era_start_timestamp: Timestamp::from_str("2020-10-01T00:00:01.000Z").unwrap(),
             era_duration: TimeDiff::from_str("1week").unwrap(),
             minimum_era_height: 100,
             booking_duration: TimeDiff::from_str("10days").unwrap(),
@@ -151,7 +149,6 @@ impl HighwayConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         HighwayConfig {
-            genesis_era_start_timestamp: Timestamp::random(rng),
             era_duration: TimeDiff::from(rng.gen_range(600_000, 604_800_000)),
             minimum_era_height: rng.gen_range(5, 100),
             booking_duration: TimeDiff::from(rng.gen_range(600_000, 864_000_000)),
@@ -586,13 +583,6 @@ mod tests {
             );
         }
 
-        assert_eq!(
-            spec.genesis
-                .highway_config
-                .genesis_era_start_timestamp
-                .millis(),
-            1600454700000
-        );
         assert_eq!(
             spec.genesis.highway_config.era_duration,
             TimeDiff::from(180000)

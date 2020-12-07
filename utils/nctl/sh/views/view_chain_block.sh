@@ -13,9 +13,9 @@
 #######################################
 
 # Unset to avoid parameter collisions.
-unset block_hash
-unset net
-unset node
+unset BLOCK_HASH
+unset NET_ID
+unset NODE_ID
 
 # Destructure named args.
 for ARGUMENT in "$@"
@@ -23,16 +23,16 @@ do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        block) block_hash=${VALUE} ;;
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        block) BLOCK_HASH=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
-net=${net:-1}
-node=${node:-1}
+NET_ID=${NET_ID:-1}
+NODE_ID=${NODE_ID:-1}
 
 #######################################
 # Main
@@ -42,4 +42,4 @@ node=${node:-1}
 source $NCTL/sh/utils.sh
 
 # Render on-chain block information.
-render_chain_block $net $node $block_hash
+render_chain_block $NET_ID $NODE_ID $BLOCK_HASH

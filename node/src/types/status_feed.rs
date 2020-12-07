@@ -16,6 +16,7 @@ use crate::{
     components::{
         chainspec_loader::ChainspecInfo, consensus::EraId, rpc_server::rpcs::docs::DocExample,
     },
+    crypto::{asymmetric_key::PublicKey, hash::Digest},
     types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
 };
 
@@ -70,6 +71,8 @@ pub struct MinimalBlockInfo {
     timestamp: Timestamp,
     era_id: EraId,
     height: u64,
+    state_root_hash: Digest,
+    creator: PublicKey,
 }
 
 impl From<Block> for MinimalBlockInfo {
@@ -79,6 +82,8 @@ impl From<Block> for MinimalBlockInfo {
             timestamp: block.header().timestamp(),
             era_id: block.header().era_id(),
             height: block.header().height(),
+            state_root_hash: *block.header().state_root_hash(),
+            creator: *block.header().proposer(),
         }
     }
 }

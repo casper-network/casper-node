@@ -57,11 +57,8 @@ tempfile = "3.1.0"
 default = ["gens"]
 gens = ["proptest"]
 test-support = []
-no-unstable-features = ["casper-types/no-unstable-features"]
 
 [[bench]]
 name = "trie_bench"
 harness = false
 
-[package.metadata.docs.rs]
-features = ["no-unstable-features"]

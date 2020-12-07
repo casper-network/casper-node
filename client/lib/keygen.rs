@@ -32,7 +32,13 @@ pub const SECP256K1: &str = "secp256k1";
 /// files exist, [`Error::FileAlreadyExists`](../enum.Error.html#variant.FileAlreadyExists) is
 /// returned and no files are written.
 pub fn generate_files(output_dir: &str, algorithm: &str, force: bool) -> Result<()> {
-    let _ = fs::create_dir_all(output_dir).map_err(|error| Error::IoError {
+    if output_dir.is_empty() {
+        return Err(Error::InvalidArgument(
+            "generate_files",
+            "empty output_dir provided, must be a valid path".to_string(),
+        ));
+    }
+    let _ = fs::create_dir_all(output_dir).map_err(move |error| Error::IoError {
         context: format!("unable to create directory at '{}'", output_dir),
         error,
     })?;
