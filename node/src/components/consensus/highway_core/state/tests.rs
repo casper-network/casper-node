@@ -211,8 +211,8 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let missing = panorama!(42, b1, c0).missing_dependency(&state);
     assert_eq!(Some(Dependency::Unit(42)), missing);
 
-    // Alice equivocates: A1 doesn't see a1.
-    let ae1 = add_unit!(state, rng, ALICE, None; a0, b1, c0)?;
+    // Alice equivocates: ae1 doesn't see a1.
+    let ae1 = add_unit!(state, rng, ALICE, 0xAE1; a0, b1, c0)?;
     assert!(state.has_evidence(ALICE));
     assert_eq!(panorama![F, b1, c1], *state.panorama());
 
