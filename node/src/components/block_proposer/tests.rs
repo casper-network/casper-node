@@ -313,7 +313,10 @@ fn test_proposer_with(
     // pending => finalized
     let block = proposer.propose_proto_block(config, test_time, past_deploys, true);
 
-    assert_eq!(block.deploys().len(), deploys.min(max_deploys) as usize);
+    assert_eq!(
+        block.wasm_deploys().len(),
+        deploys.min(max_deploys) as usize
+    );
     assert_eq!(
         block.transfers().len(),
         transfers.min(max_transfers) as usize
