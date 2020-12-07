@@ -67,8 +67,8 @@ impl TestChain {
             })
             .collect();
         // TODO: This is duplicated. Remove the `HighwayConfig` field.
-        // Make the genesis timestamp 30 seconds from now, to allow for all validators to start up.
-        chainspec.genesis.timestamp = Timestamp::now() + 30000.into();
+        // Make the genesis timestamp 45 seconds from now, to allow for all validators to start up.
+        chainspec.genesis.timestamp = Timestamp::now() + 45000.into();
         chainspec.genesis.highway_config.genesis_era_start_timestamp = chainspec.genesis.timestamp;
 
         chainspec.genesis.highway_config.minimum_era_height = 1;
