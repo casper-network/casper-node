@@ -778,6 +778,14 @@ impl reactor::Reactor for Reactor {
                         debug!("Ignoring `Handled` announcement in `validator` reactor.");
                         Effects::new()
                     }
+                    ConsensusAnnouncement::EquivocationEvent(evidence, era_id) => {
+                        let mut effects = Effects::new();
+                        let reactor_event = Event::EventStreamServer(
+                            event_stream_server::Event::EquivocationEvent(evidence, era_id),
+                        );
+                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                        effects
+                    }
                 }
             }
             Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::LinearChainBlock {

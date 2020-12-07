@@ -30,7 +30,7 @@ use crate::{
                     Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
                     Vertex,
                 },
-                validators::Validators,
+                validators::{ValidatorIndex, Validators},
             },
             traits::{Context, NodeIdT},
         },
@@ -161,6 +161,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     fn process_new_vertex(&mut self, v: Vertex<C>) -> Vec<ProtocolOutcome<I, C>> {
         let mut results = Vec::new();
         if let Vertex::Evidence(ev) = &v {
+            let evidence = ev.clone();
             let v_id = self
                 .highway
                 .validators()
@@ -168,6 +169,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 .expect("validator not found")
                 .clone();
             results.push(ProtocolOutcome::NewEvidence(v_id));
+            results.push(ProtocolOutcome::EquivocationEvent(evidence));
         }
         let msg = HighwayMessage::NewVertex(v);
         results.push(ProtocolOutcome::CreatedGossipMessage(
@@ -613,6 +615,10 @@ where
 
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId> {
         self.highway.validators_with_evidence().collect()
+    }
+
+    fn perform_lookup(&self, index: ValidatorIndex) -> &C::ValidatorId {
+        self.highway.lookup(index)
     }
 
     fn has_received_messages(&self) -> bool {

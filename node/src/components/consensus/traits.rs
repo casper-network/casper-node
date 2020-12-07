@@ -12,18 +12,15 @@ pub trait NodeIdT: Clone + Display + Debug + Send + Eq + Hash + 'static {}
 impl<I> NodeIdT for I where I: Clone + Display + Debug + Send + Eq + Hash + 'static {}
 
 /// A validator identifier.
-pub(crate) trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash {}
+pub trait ValidatorIdT: Eq + Ord + Clone + Debug + Hash {}
 impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash {}
 
 /// The consensus value type, e.g. a list of transactions.
-pub(crate) trait ConsensusValueT:
-    Eq + Clone + Debug + Hash + Serialize + DeserializeOwned
-{
-}
+pub trait ConsensusValueT: Eq + Clone + Debug + Hash + Serialize + DeserializeOwned {}
 impl<T> ConsensusValueT for T where T: Eq + Clone + Debug + Hash + Serialize + DeserializeOwned {}
 
 /// A hash, as an identifier for a block or unit.
-pub(crate) trait HashT:
+pub trait HashT:
     Eq + Ord + Copy + Clone + Debug + Display + Hash + Serialize + DeserializeOwned
 {
 }
@@ -33,7 +30,7 @@ impl<H> HashT for H where
 }
 
 /// A validator's secret signing key.
-pub(crate) trait ValidatorSecret {
+pub trait ValidatorSecret {
     type Hash;
 
     type Signature: Eq + PartialEq + Clone + Debug + Hash + Serialize + DeserializeOwned;
@@ -44,7 +41,7 @@ pub(crate) trait ValidatorSecret {
 /// The collection of types the user can choose for cryptography, IDs, transactions, etc.
 // TODO: These trait bounds make `#[derive(...)]` work for types with a `C: Context` type
 // parameter. Split this up or replace the derives with explicit implementations.
-pub(crate) trait Context: Clone + Debug + Eq + Ord + Hash {
+pub trait Context: Clone + Debug + Eq + Ord + Hash {
     /// The consensus value type, e.g. a list of transactions.
     type ConsensusValue: ConsensusValueT + DataSize;
     /// Unique identifiers for validators.

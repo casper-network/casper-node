@@ -21,6 +21,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::shared::motes::Motes;
@@ -57,7 +58,13 @@ use crate::{
 };
 
 pub use self::era::{Era, EraId};
-use crate::components::contract_runtime::ValidatorWeightsByEraIdRequest;
+use crate::components::{
+    consensus::{
+        highway_core::{evidence::Evidence, validators::ValidatorIndex},
+        traits::Context,
+    },
+    contract_runtime::ValidatorWeightsByEraIdRequest,
+};
 
 mod era;
 #[cfg(test)]
@@ -72,6 +79,40 @@ type ConsensusConstructor<I> = dyn Fn(
     Timestamp,                                    // start time for this era
     u64,                                          // random seed
 ) -> Box<dyn ConsensusProtocol<I, ClContext>>;
+
+/// A struct to map internal Evidence representation to an external representation to send to the
+/// event stream.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceStream<C: Context> {
+    /// Creator ID
+    creator_id: ValidatorIndex,
+    /// The ValidatorID.
+    creator_public_key: C::ValidatorId,
+    /// The instance ID,
+    instance: C::InstanceId,
+    /// The sequence number of the units.
+    sequence_number: u64,
+    /// The round exponent
+    round_exp: (u8, u8),
+    /// Timestamps of the equivalent units.
+    timestamps: (Timestamp, Timestamp),
+    /// The signature
+    signatures: (C::Signature, C::Signature),
+}
+
+impl<C: Context> EvidenceStream<C> {
+    pub fn new(evidence: Evidence<C>, creator_public_key: C::ValidatorId) -> Self {
+        EvidenceStream {
+            creator_id: evidence.perpetrator(),
+            creator_public_key,
+            instance: evidence.instance(),
+            sequence_number: evidence.sequence_number(),
+            round_exp: evidence.round_exps(),
+            timestamps: evidence.timestamps(),
+            signatures: evidence.signature(),
+        }
+    }
+}
 
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
@@ -725,6 +766,19 @@ where
                     })
                 })
                 .collect(),
+            ProtocolOutcome::EquivocationEvent(evidence) => {
+                match self.era_supervisor.active_eras.get_mut(&era_id) {
+                    Some(era) => {
+                        let id = era.consensus.perform_lookup(evidence.perpetrator());
+                        let event_evidence = EvidenceStream::new(evidence, *id);
+                        self.effect_builder
+                            .announce_equivocation_event(event_evidence, era_id)
+                            .ignore()
+                    }
+                    // TODO What should happen in this instance?
+                    None => panic!("No era was returned"),
+                }
+            }
         }
     }
 

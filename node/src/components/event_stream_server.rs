@@ -110,6 +110,12 @@ where
                 block_hash,
                 execution_result,
             }),
+            Event::EquivocationEvent(evidence, era_id) => {
+                self.broadcast(SseData::EquivocationEvent {
+                    evidence: *evidence,
+                    era_id: *era_id,
+                })
+            }
         }
     }
 }

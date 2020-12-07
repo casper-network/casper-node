@@ -25,6 +25,7 @@ use super::{
     endorsement::{Endorsement, EndorsementError},
     evidence::Evidence,
 };
+use crate::components::consensus::highway_core::validators::ValidatorIndex;
 
 /// An error due to an invalid vertex.
 #[derive(Debug, Error, PartialEq)]
@@ -570,6 +571,11 @@ impl<C: Context> Highway<C> {
             .unwrap_or_default();
         evidence_effects.extend(self.on_new_unit(&unit_hash, now, rng));
         evidence_effects
+    }
+
+    /// Return the public key for the equivocating ID.
+    pub(crate) fn lookup(&self, index: ValidatorIndex) -> &<C as Context>::ValidatorId {
+        self.validators.id(index).expect("Failed to lookup index")
     }
 }
 

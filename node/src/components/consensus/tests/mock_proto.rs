@@ -15,6 +15,7 @@ use crate::{
             consensus_protocol::{
                 BlockContext, ConsensusProtocol, FinalizedBlock, ProtocolOutcome,
             },
+            highway_core::validators::ValidatorIndex,
             traits::Context,
             ConsensusMessage, EraId, Event,
         },
@@ -291,6 +292,11 @@ where
 
     fn validators_with_evidence(&self) -> Vec<&C::ValidatorId> {
         self.evidence.iter().collect()
+    }
+
+    fn perform_lookup(&self, index: ValidatorIndex) -> &C::ValidatorId {
+        let validators = self.validators_with_evidence();
+        validators[index.0 as usize]
     }
 
     fn has_received_messages(&self) -> bool {

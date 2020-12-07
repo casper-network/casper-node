@@ -4,7 +4,14 @@ use anyhow::Error;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::{components::consensus::traits::Context, types::Timestamp, NodeRng};
+use crate::{
+    components::consensus::{
+        highway_core::{evidence::Evidence, validators::ValidatorIndex},
+        traits::Context,
+    },
+    types::Timestamp,
+    NodeRng,
+};
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
@@ -85,6 +92,8 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     NewEvidence(C::ValidatorId),
     /// Send evidence about the validator from an earlier era to the peer.
     SendEvidence(I, C::ValidatorId),
+    /// Send evidence about an equivocation to the event stream.
+    EquivocationEvent(Evidence<C>),
 }
 
 /// An API for a single instance of the consensus.
@@ -152,4 +161,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
 
     /// Returns true if the protocol has received some messages since initialization.
     fn has_received_messages(&self) -> bool;
+
+    /// Return the PublicKey for a given equivocator.
+    fn perform_lookup(&self, index: ValidatorIndex) -> &C::ValidatorId;
 }

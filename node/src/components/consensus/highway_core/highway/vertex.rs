@@ -109,9 +109,9 @@ impl<C: Context> Vertex<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct SignedWireUnit<C: Context> {
-    pub(crate) wire_unit: WireUnit<C>,
-    pub(crate) signature: C::Signature,
+pub struct SignedWireUnit<C: Context> {
+    pub wire_unit: WireUnit<C>,
+    pub signature: C::Signature,
 }
 
 impl<C: Context> SignedWireUnit<C> {
@@ -138,7 +138,7 @@ impl<C: Context> SignedWireUnit<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct WireUnit<C: Context> {
+pub struct WireUnit<C: Context> {
     pub(crate) panorama: Panorama<C>,
     pub(crate) creator: ValidatorIndex,
     pub(crate) instance_id: C::InstanceId,

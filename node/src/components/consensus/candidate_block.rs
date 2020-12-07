@@ -6,7 +6,7 @@ use crate::{crypto::asymmetric_key::PublicKey, types::ProtoBlock};
 /// A proposed block. Once the consensus protocol reaches agreement on it, it will be converted to
 /// a `FinalizedBlock`.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub(crate) struct CandidateBlock {
+pub struct CandidateBlock {
     proto_block: ProtoBlock,
     accusations: Vec<PublicKey>,
 }

@@ -5,7 +5,7 @@ mod cl_context;
 mod config;
 mod consensus_protocol;
 mod era_supervisor;
-mod highway_core;
+pub(crate) mod highway_core;
 mod metrics;
 mod protocols;
 #[cfg(test)]
@@ -42,9 +42,10 @@ use crate::{
     NodeRng,
 };
 
+pub(crate) use cl_context::ClContext;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraEnd};
-pub(crate) use era_supervisor::{EraId, EraSupervisor};
+pub(crate) use era_supervisor::{EraId, EraSupervisor, EvidenceStream};
 pub(crate) use protocols::highway::HighwayProtocol;
 use traits::NodeIdT;
 

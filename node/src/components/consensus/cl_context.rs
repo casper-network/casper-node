@@ -14,7 +14,7 @@ use crate::{
     NodeRng,
 };
 
-pub(crate) struct Keypair {
+pub struct Keypair {
     secret_key: Rc<SecretKey>,
     public_key: PublicKey,
 }
@@ -46,7 +46,7 @@ impl ValidatorSecret for Keypair {
 
 /// The collection of types used for cryptography, IDs and blocks in the CasperLabs node.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct ClContext;
+pub struct ClContext;
 
 impl Context for ClContext {
     type ConsensusValue = CandidateBlock;

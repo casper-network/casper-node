@@ -2,7 +2,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::validators::ValidatorIndex;
-use crate::components::consensus::{highway_core::highway::SignedWireUnit, traits::Context};
+use crate::{
+    components::consensus::{highway_core::highway::SignedWireUnit, traits::Context},
+    types::Timestamp,
+};
 
 /// An error due to invalid evidence.
 #[derive(Debug, Error, PartialEq)]
@@ -27,7 +30,7 @@ pub(crate) enum EvidenceError {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) enum Evidence<C: Context> {
+pub enum Evidence<C: Context> {
     /// The validator produced two units with the same sequence number.
     Equivocation(SignedWireUnit<C>, SignedWireUnit<C>),
 }
@@ -39,6 +42,45 @@ impl<C: Context> Evidence<C> {
     pub(crate) fn perpetrator(&self) -> ValidatorIndex {
         match self {
             Evidence::Equivocation(unit0, _) => unit0.wire_unit.creator,
+        }
+    }
+
+    /// Returns the instance ID within the evidence.
+    pub(crate) fn instance(&self) -> C::InstanceId {
+        match self {
+            Evidence::Equivocation(unit0, _) => unit0.wire_unit.instance_id,
+        }
+    }
+
+    /// Returns the signature within the unit.
+    pub(crate) fn signature(&self) -> (C::Signature, C::Signature) {
+        match self {
+            Evidence::Equivocation(unit0, unit1) => (unit0.signature, unit1.signature),
+        }
+    }
+
+    /// Returns the timestamps of the each unit
+    pub(crate) fn timestamps(&self) -> (Timestamp, Timestamp) {
+        match self {
+            Evidence::Equivocation(unit0, unit1) => {
+                (unit0.wire_unit.timestamp, unit1.wire_unit.timestamp)
+            }
+        }
+    }
+
+    /// Returns the sequence number
+    pub(crate) fn sequence_number(&self) -> u64 {
+        match self {
+            Evidence::Equivocation(unit0, _) => unit0.wire_unit.seq_number,
+        }
+    }
+
+    /// Returns the round exponents of the units
+    pub(crate) fn round_exps(&self) -> (u8, u8) {
+        match self {
+            Evidence::Equivocation(unit0, unit1) => {
+                (unit0.wire_unit.round_exp, unit1.wire_unit.round_exp)
+            }
         }
     }
 

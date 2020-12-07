@@ -11,7 +11,10 @@ use std::{
 use casper_types::ExecutionResult;
 
 use crate::{
-    components::small_network::GossipedAddress,
+    components::{
+        consensus::{ClContext, EraId, EvidenceStream},
+        small_network::GossipedAddress,
+    },
     types::{
         Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalizedBlock, Item,
     },
@@ -121,6 +124,8 @@ pub enum ConsensusAnnouncement {
     Finalized(Box<FinalizedBlock>),
     /// A linear chain block has been handled.
     Handled(Box<BlockHeader>),
+    /// An equivocation event must be sent to the event stream
+    EquivocationEvent(Box<EvidenceStream<ClContext>>, Box<EraId>),
 }
 
 impl Display for ConsensusAnnouncement {
@@ -134,6 +139,11 @@ impl Display for ConsensusAnnouncement {
                 "Linear chain block has been handled by consensus, height={}, hash={}",
                 block_header.height(),
                 block_header.hash()
+            ),
+            ConsensusAnnouncement::EquivocationEvent(_, era_id) => write!(
+                formatter,
+                "An equivocation has been identified with evidence in era: {}",
+                *era_id
             ),
         }
     }

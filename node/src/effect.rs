@@ -101,7 +101,7 @@ use casper_types::{
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
-        consensus::BlockContext,
+        consensus::{BlockContext, ClContext, EraId, EvidenceStream},
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
         linear_chain::FinalitySignature,
@@ -886,6 +886,22 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ConsensusAnnouncement::Finalized(Box::new(finalized_block)),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Send to the event stream that an equivocation has been detected.
+    pub(crate) async fn announce_equivocation_event(
+        self,
+        evidence: EvidenceStream<ClContext>,
+        era_id: EraId,
+    ) where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::EquivocationEvent(Box::new(evidence), Box::new(era_id)),
                 QueueKind::Regular,
             )
             .await

@@ -39,7 +39,7 @@ pub(crate) mod state;
 pub(crate) mod validators;
 
 mod endorsement;
-mod evidence;
+pub(crate) mod evidence;
 #[cfg(test)]
 pub(crate) mod highway_testing;
 
