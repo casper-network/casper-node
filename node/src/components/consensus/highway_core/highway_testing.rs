@@ -47,7 +47,7 @@ const TEST_END_HEIGHT: u64 = 100000;
 pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
 pub(crate) const TEST_INSTANCE_ID: u64 = 42;
-pub(crate) const TEST_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 1500;
+pub(crate) const TEST_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 20;
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 enum HighwayMessage {

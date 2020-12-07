@@ -119,4 +119,11 @@ impl Params {
     pub(crate) fn endorsement_evidence_limit(&self) -> u64 {
         self.endorsement_evidence_limit
     }
+
+    /// Returns new `Params` with the update endorsement evidence limit.
+    #[cfg(test)]
+    pub(crate) fn with_endorsement_evidence_limit(mut self, new_limit: u64) -> Params {
+        self.endorsement_evidence_limit = new_limit;
+        self
+    }
 }
