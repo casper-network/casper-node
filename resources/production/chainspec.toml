@@ -31,6 +31,8 @@ auction_delay = 3
 # The delay for the payout of funds, in eras. If a withdraw request is included in a block in era N
 # (other than the last one), they are paid out in the last block of era N + locked_funds_period.
 locked_funds_period = 15
+# Default number of eras that need to pass to be able to withdraw unbonded funds.
+unbonding_delay = 14
 # Round seigniorage rate represented as a fraction of the total supply.
 #
 # Annual issuance: 2%

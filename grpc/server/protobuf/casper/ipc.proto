@@ -297,6 +297,8 @@ message ChainSpec {
             uint64 locked_funds_period = 10;
             // Round seigniorage rate expressed as a fraction.
             Ratio round_seigniorage_rate = 11;
+            // Unbonding delay expressed in eras.
+            uint64 unbonding_delay = 12;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;

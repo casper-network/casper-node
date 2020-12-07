@@ -4,6 +4,7 @@ use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
         DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_UNBONDING_DELAY,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -18,8 +19,7 @@ use casper_types::{
     account::AccountHash,
     auction::{
         Bids, DelegationRate, UnbondingPurses, ARG_UNBOND_PURSE, ARG_VALIDATOR_PUBLIC_KEYS,
-        BIDS_KEY, DEFAULT_UNBONDING_DELAY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
-        UNBONDING_PURSES_KEY,
+        BIDS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH, UNBONDING_PURSES_KEY,
     },
     runtime_args,
     system_contract_errors::auction,

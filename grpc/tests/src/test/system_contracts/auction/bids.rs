@@ -6,6 +6,7 @@ use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
         DEFAULT_AUCTION_DELAY, DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_UNBONDING_DELAY,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -16,8 +17,8 @@ use casper_types::{
     auction::{
         Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
         ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
-        ARG_UNBOND_PURSE, ARG_VALIDATOR, BIDS_KEY, DEFAULT_UNBONDING_DELAY, ERA_ID_KEY,
-        INITIAL_ERA_ID, METHOD_RUN_AUCTION, UNBONDING_PURSES_KEY,
+        ARG_UNBOND_PURSE, ARG_VALIDATOR, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION,
+        UNBONDING_PURSES_KEY,
     },
     runtime_args, PublicKey, RuntimeArgs, URef, U512,
 };

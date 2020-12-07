@@ -33,8 +33,9 @@ use casper_types::{
     account::AccountHash,
     auction::{
         EraValidators, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
-        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
-        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, VALIDATOR_SLOTS_KEY,
+        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_UNBONDING_DELAY,
+        ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
+        VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
@@ -423,6 +424,7 @@ where
             let validator_slots = ee_config.validator_slots();
             let auction_delay = ee_config.auction_delay();
             let locked_funds_period = ee_config.locked_funds_period();
+            let unbonding_delay = ee_config.unbonding_delay();
             let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
             let args = runtime_args! {
                 ARG_MINT_CONTRACT_PACKAGE_HASH => mint_package_hash,
@@ -430,6 +432,7 @@ where
                 ARG_VALIDATOR_SLOTS => validator_slots,
                 ARG_AUCTION_DELAY => auction_delay,
                 ARG_LOCKED_FUNDS_PERIOD => locked_funds_period,
+                ARG_UNBONDING_DELAY => unbonding_delay,
             };
             let authorization_keys = BTreeSet::new();
             let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
