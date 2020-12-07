@@ -273,7 +273,6 @@ pub trait Auction:
 
         let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
         let mut unbonding_purses_modified = false;
-
         for validator_public_key in validator_public_keys {
             // Clean up bids for given validator and save up assigned delegators
             let orphaned_delegators = match bids.remove(&validator_public_key) {
