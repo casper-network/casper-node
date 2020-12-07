@@ -43,5 +43,5 @@ node=${node:-1}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-log "network #$net :: on-chain faucet account details:"
+log "net-$net :: on-chain faucet account details:"
 render_account $net $node $NCTL_ACCOUNT_TYPE_FAUCET

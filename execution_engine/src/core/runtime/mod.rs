@@ -19,7 +19,7 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind
 
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
-    auction::{self, Auction},
+    auction::{self, Auction, AuctionInfo, EraId},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
@@ -108,6 +108,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Hash(_) => None,
         Key::Transfer(_) => None,
         Key::DeployInfo(_) => None,
+        Key::AuctionInfo(_) => None,
     }
 }
 
@@ -1513,7 +1514,7 @@ where
         };
         let authorization_keys = self.context.authorization_keys().to_owned();
         let account = self.context.account();
-        let base_key = self.protocol_data().proof_of_stake().into();
+        let base_key = self.protocol_data().auction().into();
         let blocktime = self.context.get_blocktime();
         let deploy_hash = self.context.get_deploy_hash();
         let gas_limit = self.context.gas_limit();
@@ -2450,6 +2451,26 @@ where
         }
         self.context
             .write_transfer(Key::Transfer(transfer_addr), transfer);
+        Ok(())
+    }
+
+    /// Records given auction info at a given era id
+    fn record_auction_info(
+        &mut self,
+        era_id: EraId,
+        auction_info: AuctionInfo,
+    ) -> Result<(), Error> {
+        if self.context.base_key() != Key::from(self.protocol_data().auction()) {
+            return Err(Error::InvalidContext);
+        }
+
+        if self.context.phase() != Phase::Session {
+            return Ok(());
+        }
+
+        self.context
+            .write_auction_info(Key::AuctionInfo(era_id), auction_info);
+
         Ok(())
     }
 

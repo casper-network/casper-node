@@ -41,7 +41,6 @@ alias nctl-restart='source $NCTL/sh/node/restart.sh'
 alias nctl-start='source $NCTL/sh/node/start.sh'
 alias nctl-status='source $NCTL/sh/node/status.sh'
 alias nctl-stop='source $NCTL/sh/node/stop.sh'
-alias nctl-toggle='source $NCTL/sh/node/toggle.sh'
 alias nctl-up='source $NCTL/sh/node/start.sh'
 
 # Views #1: chain.
@@ -58,6 +57,8 @@ alias nctl-view-chain-spec-accounts='source $NCTL/sh/views/view_chain_spec_accou
 alias nctl-view-node-config='source $NCTL/sh/views/view_node_config.sh'
 alias nctl-view-node-log='source $NCTL/sh/views/view_node_log.sh'
 alias nctl-view-node-peers='source $NCTL/sh/views/view_node_peers.sh'
+alias nctl-view-node-ports='source $NCTL/sh/views/view_node_ports.sh'
+alias nctl-view-node-rpc-schema='source $NCTL/sh/views/view_node_rpc_schema.sh'
 alias nctl-view-node-status='source $NCTL/sh/views/view_node_status.sh'
 alias nctl-view-node-storage='source $NCTL/sh/views/view_node_storage.sh'
 

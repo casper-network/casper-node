@@ -317,6 +317,29 @@ impl CLTyped for PublicKey {
 }
 
 #[cfg(test)]
+pub(crate) mod gens {
+    use std::convert::TryInto;
+
+    use proptest::{
+        array, collection,
+        prelude::{Arbitrary, Strategy},
+        prop_oneof,
+    };
+
+    use crate::{public_key::SECP256K1_PUBLIC_KEY_LENGTH, PublicKey};
+
+    pub fn public_key_arb() -> impl Strategy<Value = PublicKey> {
+        prop_oneof![
+            array::uniform32(<u8>::arbitrary()).prop_map(PublicKey::Ed25519),
+            collection::vec(<u8>::arbitrary(), SECP256K1_PUBLIC_KEY_LENGTH).prop_map(|bytes| {
+                let bytes_array: [u8; SECP256K1_PUBLIC_KEY_LENGTH] = bytes.try_into().unwrap();
+                PublicKey::Secp256k1(bytes_array.into())
+            })
+        ]
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::PublicKey;
     use crate::{bytesrepr, CLValue};

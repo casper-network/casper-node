@@ -37,20 +37,21 @@ EOM
 for node_id in $(seq 1 $3)
 do
     # Set paths.
-    path_net=$1
-    path_net_chainspec=$path_net/chainspec/chainspec.toml
-    path_node=$path_net/nodes/node-$node_id
-    path_node_storage=$path_node/storage
-    path_node_secret_key=$path_node/keys/secret_key.pem
+    PATH_NET=$1
+    PATH_NET_CHAINSPEC=$PATH_NET/chainspec/chainspec.toml
+    PATH_NODE=$PATH_NET/nodes/node-$node_id
+    PATH_NODE_CONFIG=$PATH_NODE/config/node-config.toml
+    PATH_NODE_STORAGE=$PATH_NODE/storage
+    PATH_NODE_SECRET_KEY=$PATH_NODE/keys/secret_key.pem
 
     # Set ports.
-    port_node_api_rpc=$(get_node_port $NCTL_BASE_PORT_RPC $2 $node_id)
-    port_node_api_rest=$(get_node_port $NCTL_BASE_PORT_REST $2 $node_id)
-    port_node_api_event=$(get_node_port $NCTL_BASE_PORT_EVENT $2 $node_id)
+    NODE_API_PORT_REST=$(get_node_port_rest $2 $node_id)
+    NODE_API_PORT_RPC=$(get_node_port_rpc $2 $node_id)
+    NODE_API_PORT_SSE=$(get_node_port_sse $2 $node_id)
 
     # Set validator network addresses.
-    network_bind_address=$(get_network_bind_address $2 $node_id $4)
-    network_known_addresses=$(get_network_known_addresses $2 $node_id $4)
+    NETWORK_BIND_ADDRESS=$(get_network_bind_address $2 $node_id $4)
+    NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $2 $node_id $4)
 
     # Add supervisord application section.
     cat >> $1/daemon/config/supervisord.conf <<- EOM
@@ -58,22 +59,22 @@ do
 [program:casper-net-$2-node-$node_id]
 autostart=false
 autorestart=false
-command=$1/bin/casper-node validator $path_node/config/node-config.toml \
-    --config-ext consensus.secret_key_path=$path_node_secret_key \
-    --config-ext event_stream_server.address=0.0.0.0:$port_node_api_event \
+command=$1/bin/casper-node validator $PATH_NODE_CONFIG \
+    --config-ext consensus.secret_key_path=$PATH_NODE_SECRET_KEY \
+    --config-ext event_stream_server.address=0.0.0.0:$NODE_API_PORT_SSE \
     --config-ext logging.format="json" \
-    --config-ext network.bind_address=$network_bind_address \
-    --config-ext network.known_addresses=[$network_known_addresses] \
-    --config-ext node.chainspec_config_path=$path_net_chainspec \
-    --config-ext rest_server.address=0.0.0.0:$port_node_api_rest \
-    --config-ext rpc_server.address=0.0.0.0:$port_node_api_rpc \
-    --config-ext storage.path=$path_node_storage ;
+    --config-ext network.bind_address=$NETWORK_BIND_ADDRESS \
+    --config-ext network.known_addresses=[$NETWORK_KNOWN_ADDRESSES] \
+    --config-ext node.chainspec_config_path=$PATH_NET_CHAINSPEC \
+    --config-ext rest_server.address=0.0.0.0:$NODE_API_PORT_REST \
+    --config-ext rpc_server.address=0.0.0.0:$NODE_API_PORT_RPC \
+    --config-ext storage.path=$PATH_NODE_STORAGE ;
 numprocs=1
 numprocs_start=0
-stderr_logfile=$path_node/logs/stderr.log ;
+stderr_logfile=$PATH_NODE/logs/stderr.log ;
 stderr_logfile_backups=5 ;
 stderr_logfile_maxbytes=50MB ;
-stdout_logfile=$path_node/logs/stdout.log ;
+stdout_logfile=$PATH_NODE/logs/stdout.log ;
 stdout_logfile_backups=5 ;
 stdout_logfile_maxbytes=50MB ;
 EOM

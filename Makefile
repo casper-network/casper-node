@@ -202,7 +202,7 @@ build-for-packaging: build-system-contracts build-client-contracts
 	$(CARGO) build --release
 
 .PHONY: deb
-deb: build-for-packaging
+deb: setup build-for-packaging
 	cd grpc/server && $(CARGO) deb -p casper-engine-grpc-server --no-build
 	cd node && $(CARGO) deb -p casper-node --no-build
 	cd client && $(CARGO) deb -p casper-client --no-build

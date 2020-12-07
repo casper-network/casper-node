@@ -40,14 +40,14 @@ block=${block:-""}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
+# Import net vars.
 source $(get_path_to_net_vars $net)
 
 # Render state root hash.
 if [ $node = "all" ]; then
-    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        render_chain_state_root_hash $net $idx $block
+        render_chain_state_root_hash $net $IDX $block
     done
 else
     render_chain_state_root_hash $net $node $block

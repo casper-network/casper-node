@@ -212,6 +212,10 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
                 FunctionIndex::RecordTransfer.into(),
             ),
+            "casper_record_auction_info" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                FunctionIndex::RecordAuctionInfo.into(),
+            ),
             #[cfg(feature = "test-support")]
             "casper_print" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], None),

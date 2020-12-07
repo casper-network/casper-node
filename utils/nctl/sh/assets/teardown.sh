@@ -12,42 +12,43 @@
 #######################################
 
 # Unset to avoid parameter collisions.
-unset net
+unset NET_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
-net=${net:-1}
+NET_ID=${NET_ID:-1}
 
 #######################################
-# Main
+# Imports
 #######################################
 
 # Import utils.
 source $NCTL/sh/utils.sh
 
-log "network #$net: tearing down assets ... please wait"
+#######################################
+# Main
+#######################################
+
+log "net-$NET_ID: tearing down assets ... please wait"
 
 # Stop all spinning nodes.
-source $NCTL/sh/node/stop.sh net=$net node=all
+source $NCTL/sh/node/stop.sh net=$NET_ID node=all
 
-# Set daemon handler.
+# If supervisord then kill.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    daemon_mgr=$NCTL/sh/daemons/supervisord/daemon_kill.sh
+    do_supervisord_kill $NET_ID
 fi
 
-# Kill service daemon (if appropriate).
-source $daemon_mgr $net
-
 # Delete artefacts.
-rm -rf $NCTL/assets/net-$net
+rm -rf $NCTL/assets/net-$NET_ID
 
-log "network #$net: assets torn down."
+log "net-$NET_ID: assets torn down."

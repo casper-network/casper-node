@@ -40,14 +40,14 @@ user=${user:-"all"}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
+# Import net vars.
 source $(get_path_to_net_vars $net)
 
 # Render user main purse u-ref.
 if [ $user = "all" ]; then
-    for idx in $(seq 1 $NCTL_NET_USER_COUNT); 
+    for IDX in $(seq 1 $NCTL_NET_USER_COUNT); 
     do
-        render_account_main_purse_uref $net $node $NCTL_ACCOUNT_TYPE_USER $idx
+        render_account_main_purse_uref $net $node $NCTL_ACCOUNT_TYPE_USER $IDX
     done
 else
     render_account_main_purse_uref $net $node $NCTL_ACCOUNT_TYPE_USER $user

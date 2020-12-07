@@ -5,7 +5,7 @@ use num_rational::Ratio;
 
 use crate::{
     auction::{
-        constants::*, Auction, Bids, EraId, MintProvider, RuntimeProvider,
+        constants::*, Auction, Bids, EraId, MintProvider, RuntimeProvider, SeigniorageAllocation,
         SeigniorageRecipientsSnapshot, StorageProvider, SystemProvider, UnbondingPurse,
         UnbondingPurses,
     },
@@ -201,6 +201,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
 /// Update validator reward map.
 pub fn update_delegator_rewards<P>(
     provider: &mut P,
+    seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
 ) -> Result<U512>
@@ -232,6 +233,14 @@ where
         delegator.increase_reward(delegator_reward_trunc)?;
 
         total_delegator_payout += delegator_reward_trunc;
+
+        let allocation = SeigniorageAllocation::delegator(
+            delegator_key,
+            validator_public_key,
+            delegator_reward_trunc,
+        );
+
+        seigniorage_allocations.push(allocation);
     }
 
     set_bids(provider, bids)?;
@@ -242,6 +251,7 @@ where
 /// Update validator reward map.
 pub fn update_validator_reward<P>(
     provider: &mut P,
+    seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
     amount: U512,
 ) -> Result<U512>
@@ -259,6 +269,10 @@ where
     };
 
     bid.increase_reward(amount)?;
+
+    let allocation = SeigniorageAllocation::validator(validator_public_key, amount);
+
+    seigniorage_allocations.push(allocation);
 
     set_bids(provider, bids)?;
 
