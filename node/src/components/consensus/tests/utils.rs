@@ -28,7 +28,6 @@ pub fn new_test_chainspec(stakes: Vec<(PublicKey, u64)>) -> Chainspec {
         })
         .collect();
     chainspec.genesis.timestamp = Timestamp::now();
-    chainspec.genesis.highway_config.genesis_era_start_timestamp = chainspec.genesis.timestamp;
 
     // Every era has exactly two blocks.
     chainspec.genesis.highway_config.minimum_era_height = 2;

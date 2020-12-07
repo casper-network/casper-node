@@ -155,7 +155,7 @@ where
             validator_stakes,
             vec![], // no banned validators in era 0
             0,      // hardcoded seed for era 0
-            chainspec.genesis.highway_config.genesis_era_start_timestamp,
+            chainspec.genesis.timestamp,
             0, // the first block has height 0
             genesis_state_root_hash,
         );
