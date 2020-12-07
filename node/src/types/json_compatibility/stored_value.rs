@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::shared::stored_value::StoredValue as ExecutionEngineStoredValue;
 use casper_types::{
+    auction::AuctionInfo,
     bytesrepr::{self, ToBytes},
     CLValue, DeployInfo, Transfer,
 };
@@ -40,6 +41,8 @@ pub enum StoredValue {
     Transfer(Transfer),
     /// A record of a deploy
     DeployInfo(DeployInfo),
+    /// Auction metadata
+    AuctionInfo(AuctionInfo),
 }
 
 impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
@@ -61,6 +64,9 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
             ExecutionEngineStoredValue::Transfer(transfer) => StoredValue::Transfer(*transfer),
             ExecutionEngineStoredValue::DeployInfo(deploy_info) => {
                 StoredValue::DeployInfo(deploy_info.clone())
+            }
+            ExecutionEngineStoredValue::AuctionInfo(auction_info) => {
+                StoredValue::AuctionInfo(auction_info.clone())
             }
         };
 

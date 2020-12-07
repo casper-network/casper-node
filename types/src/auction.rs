@@ -1,4 +1,5 @@
 //! Contains implementation of a Auction contract functionality.
+mod auction_info;
 mod bid;
 mod constants;
 mod delegator;
@@ -18,6 +19,7 @@ use crate::{
     PublicKey, URef, U512,
 };
 
+pub use auction_info::*;
 pub use bid::Bid;
 pub use constants::*;
 pub use delegator::Delegator;
@@ -269,10 +271,30 @@ pub trait Auction:
 
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
-            // TODO: slash delegators properly
-            if let Some(unbonding_list) = unbonding_purses.remove(&validator_public_key) {
-                burned_amount += unbonding_list.iter().map(|x| *x.amount()).sum();
-                unbonding_purses_modified = true;
+            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
+                let initial_length = unbonding_list.len();
+
+                unbonding_list.retain(|unbonding_purse| {
+                    // Only entries created by non-validators are retained
+                    let should_retain = !unbonding_purse.is_validator();
+
+                    if !should_retain {
+                        // Amounts inside removed entries are burned only.
+                        burned_amount += *unbonding_purse.amount()
+                    }
+
+                    should_retain
+                });
+
+                if unbonding_list.len() != initial_length {
+                    unbonding_purses_modified = true;
+                }
+
+                if unbonding_list.is_empty() {
+                    // Cleans up empty map entries to preserve global state.
+                    unbonding_purses.remove(&validator_public_key).unwrap();
+                    unbonding_purses_modified = true;
+                }
             }
         }
 
@@ -392,11 +414,15 @@ pub trait Auction:
 
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
         let base_round_reward = self.read_base_round_reward()?;
+        let era_id = detail::get_era_id(self)?;
 
         // // TODO: fix consensus?
         // if reward_factors.keys().ne(seigniorage_recipients.keys()) {
         //     return Err(Error::MismatchedEraValidators);
         // }
+
+        let mut auction_info = AuctionInfo::new();
+        let mut seigniorage_allocations = auction_info.seigniorage_allocations_mut();
 
         for (public_key, reward_factor) in reward_factors {
             let recipient = match seigniorage_recipients.get(&public_key) {
@@ -438,13 +464,21 @@ pub trait Auction:
                         let reward = delegators_part * reward_multiplier;
                         (*delegator_key, reward)
                     });
-            let total_delegator_payout: U512 =
-                detail::update_delegator_rewards(self, public_key, delegator_rewards)?;
+            let total_delegator_payout: U512 = detail::update_delegator_rewards(
+                self,
+                &mut seigniorage_allocations,
+                public_key,
+                delegator_rewards,
+            )?;
 
             let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
             let validator_reward = validators_part.to_integer();
-            let validator_payout =
-                detail::update_validator_reward(self, public_key, validator_reward)?;
+            let validator_payout = detail::update_validator_reward(
+                self,
+                &mut seigniorage_allocations,
+                public_key,
+                validator_reward,
+            )?;
 
             // TODO: add "mint into existing purse" facility
             let validator_reward_purse = self
@@ -477,6 +511,9 @@ pub trait Auction:
             )
             .map_err(|_| Error::DelegatorRewardTransfer)?;
         }
+
+        self.record_auction_info(era_id, auction_info)?;
+
         Ok(())
     }
 
