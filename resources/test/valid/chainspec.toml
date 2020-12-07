@@ -220,7 +220,7 @@ max_ttl = '35years'
 max_dependencies = 36
 max_block_size = 37
 block_max_deploy_count = 375
-block_max_transfer_count = 375
+block_max_transfer_count = 376
 block_gas_limit = 38
 
 [[upgrade]]
