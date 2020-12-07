@@ -136,7 +136,6 @@ pub(crate) struct State<C: Context> {
     /// through `i`.
     cumulative_w: ValidatorMap<Weight>,
     /// All units imported so far, by hash.
-    // TODO: HashMaps prevent deterministic tests.
     units: HashMap<C::Hash, Unit<C>>,
     /// All blocks, by hash.
     blocks: HashMap<C::Hash, Block<C>>,
