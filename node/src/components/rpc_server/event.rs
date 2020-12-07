@@ -10,12 +10,12 @@ use casper_execution_engine::{
     core::engine_state::{self, BalanceResult, GetEraValidatorsError, QueryResult},
     storage::protocol_data::ProtocolData,
 };
-use casper_types::auction::EraValidators;
+use casper_types::{auction::EraValidators, Transfer};
 
 use crate::{
     effect::{requests::RpcRequest, Responder},
     rpcs::chain::BlockIdentifier,
-    types::{Block, Deploy, DeployHash, DeployMetadata, NodeId},
+    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -26,6 +26,11 @@ pub enum Event {
         maybe_id: Option<BlockIdentifier>,
         result: Box<Option<Block>>,
         main_responder: Responder<Option<Block>>,
+    },
+    GetBlockTransfersResult {
+        block_hash: BlockHash,
+        result: Box<Option<Vec<Transfer>>>,
+        main_responder: Responder<Option<Vec<Transfer>>>,
     },
     QueryProtocolDataResult {
         result: Result<Option<Box<ProtocolData>>, engine_state::Error>,
@@ -77,6 +82,13 @@ impl Display for Event {
                 result,
                 ..
             } => write!(formatter, "get latest block result: {:?}", result),
+            Event::GetBlockTransfersResult {
+                block_hash, result, ..
+            } => write!(
+                formatter,
+                "get block transfers result for block_hash {}: {:?}",
+                block_hash, result
+            ),
             Event::QueryProtocolDataResult { result, .. } => {
                 write!(formatter, "query protocol data result: {:?}", result)
             }

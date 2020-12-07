@@ -14,7 +14,7 @@ use clap::{crate_description, crate_version, App};
 
 use casper_node::rpcs::{
     account::PutDeploy,
-    chain::{GetBlock, GetStateRootHash},
+    chain::{GetBlock, GetBlockTransfers, GetStateRootHash},
     docs::ListRpcs,
     info::GetDeploy,
     state::{GetAuctionInfo, GetBalance, GetItem as QueryState},
@@ -38,6 +38,7 @@ enum DisplayOrder {
     Transfer,
     GetDeploy,
     GetBlock,
+    GetBlockTransfers,
     ListDeploys,
     GetStateRootHash,
     QueryState,
@@ -59,6 +60,9 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
         .subcommand(Transfer::build(DisplayOrder::Transfer as usize))
         .subcommand(GetDeploy::build(DisplayOrder::GetDeploy as usize))
         .subcommand(GetBlock::build(DisplayOrder::GetBlock as usize))
+        .subcommand(GetBlockTransfers::build(
+            DisplayOrder::GetBlockTransfers as usize,
+        ))
         .subcommand(ListDeploys::build(DisplayOrder::ListDeploys as usize))
         .subcommand(GetBalance::build(DisplayOrder::GetBalance as usize))
         .subcommand(GetStateRootHash::build(
@@ -84,6 +88,7 @@ async fn main() {
         (Transfer::NAME, Some(matches)) => Transfer::run(matches),
         (GetDeploy::NAME, Some(matches)) => GetDeploy::run(matches),
         (GetBlock::NAME, Some(matches)) => GetBlock::run(matches),
+        (GetBlockTransfers::NAME, Some(matches)) => GetBlockTransfers::run(matches),
         (ListDeploys::NAME, Some(matches)) => ListDeploys::run(matches),
         (GetBalance::NAME, Some(matches)) => GetBalance::run(matches),
         (GetStateRootHash::NAME, Some(matches)) => GetStateRootHash::run(matches),

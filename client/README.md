@@ -36,6 +36,7 @@ SUBCOMMANDS:
     transfer               Transfers funds between purses
     get-deploy             Retrieves a deploy from the network
     get-block              Retrieves a block from the network
+    get-block-transfers    Retrieves all transfers for a block from the network
     list-deploys           Retrieves the list of all deploy hashes in a given block
     get-state-root-hash    Retrieves a state root hash at a given block
     query-state            Retrieves a stored value from the network
@@ -299,6 +300,39 @@ cargo run --release -- get-block --block-hash=80a09df67f45bfb290c8f36021daf2fb89
 
 The `state_root_hash` in the response's `header` is worth noting, as it can be used to identify the state root hash
 for the purposes of querying the global state.
+
+### Get all `Transfers` contained in a `Block`
+
+To retrieve all `Transfer` transactions processed in a `Block` created by the network, you can use `get-block-transfers`. For example:
+
+```
+cargo run --release -- get-block-transfers --block-hash=80a09df67f45bfb290c8f36021daf2fb898587a48fa0e4f7c506202ae8f791b8
+```
+
+<details><summary>example output</summary>
+
+```commandline
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "api_version": "1.0.0",
+    "block_hash": "80a09df67f45bfb290c8f36021daf2fb898587a48fa0e4f7c506202ae8f791b8",
+    "transfers": [
+      {
+        "amount": "100000000",
+        "deploy_hash": "ab87c5f2c0f6f331bf488703676fb0c68f897282dfbb8e085752f220a3dfc25e",
+        "from": "account-hash-1ace33e66142d5a0679ba5507ef75b9c09888d1567e86100d1db535fa819a962",
+        "gas": "0",
+        "id": null,
+        "source": "uref-21f7316e72d1baa7b706a9083077d643665ad3a56673c594db9762ceac4f3788-007",
+        "target": "uref-c5eb9788156b53c9a599dfb5e591c6399580b491c72086a6bc028dd18fdfcb2d-004"
+      }
+    ]
+  },
+  "id": 7229488934468542904
+}
+```
+</details>
 
 
 ### Query the global state

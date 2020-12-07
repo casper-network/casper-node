@@ -211,6 +211,16 @@ where
                     result: Box::new(result),
                     main_responder: responder,
                 }),
+            Event::RpcRequest(RpcRequest::GetBlockTransfers {
+                block_hash,
+                responder,
+            }) => effect_builder
+                .get_block_transfers_from_storage(block_hash)
+                .event(move |result| Event::GetBlockTransfersResult {
+                    block_hash,
+                    result: Box::new(result),
+                    main_responder: responder,
+                }),
             Event::RpcRequest(RpcRequest::QueryProtocolData {
                 protocol_version,
                 responder,
@@ -269,6 +279,11 @@ where
                 maybe_id: _,
                 result,
                 main_responder,
+            } => main_responder.respond(*result).ignore(),
+            Event::GetBlockTransfersResult {
+                result,
+                main_responder,
+                ..
             } => main_responder.respond(*result).ignore(),
             Event::QueryProtocolDataResult {
                 result,

@@ -19,7 +19,7 @@ use warp_json_rpc::Builder;
 
 use super::{
     account::PutDeploy,
-    chain::{GetBlock, GetStateRootHash},
+    chain::{GetBlock, GetBlockTransfers, GetStateRootHash},
     info::{GetDeploy, GetPeers, GetStatus},
     state::{GetAuctionInfo, GetBalance, GetItem},
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
@@ -68,6 +68,9 @@ static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
     schema.push_without_params::<GetStatus>("returns the current status of the node");
     schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
+    schema.push_with_optional_params::<GetBlockTransfers>(
+        "returns all transfers for a Block from the network",
+    );
     schema.push_with_optional_params::<GetStateRootHash>(
         "returns a state root hash at a given Block",
     );

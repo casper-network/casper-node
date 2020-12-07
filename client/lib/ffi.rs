@@ -449,6 +449,32 @@ pub extern "C" fn casper_get_block(
     })
 }
 
+/// Retrieves all `Transfer` items for a `Block` from the network.
+///
+/// See [super::casper_get_block_transfers](super::casper_get_block_transfers) for more details.
+#[no_mangle]
+pub extern "C" fn casper_get_block_transfers(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    maybe_block_id: *const c_char,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> casper_error_t {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
+    let node_address = try_unsafe_arg!(node_address);
+    let maybe_block_id = try_unsafe_arg!(maybe_block_id);
+    runtime.block_on(async move {
+        let result =
+            super::get_block_transfers(maybe_rpc_id, node_address, verbose, maybe_block_id);
+        let response = try_unwrap_rpc!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        casper_error_t::CASPER_SUCCESS
+    })
+}
+
 /// Retrieves a state root hash at a given `Block`.
 ///
 /// See [super::get_state_root_hash](super::get_state_root_hash) for more details.

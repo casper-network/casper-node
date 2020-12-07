@@ -95,7 +95,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion,
+    ExecutionResult, Key, ProtocolVersion, Transfer,
 };
 
 use crate::{
@@ -648,6 +648,24 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetBlock {
+                block_hash,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Gets the requested block's transfers from storage.
+    pub(crate) async fn get_block_transfers_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<Vec<Transfer>>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockTransfers {
                 block_hash,
                 responder,
             },

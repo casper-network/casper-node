@@ -32,7 +32,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, URef,
+    ExecutionResult, Key, ProtocolVersion, Transfer, URef,
 };
 use hex_fmt::HexFmt;
 
@@ -224,6 +224,14 @@ pub enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
+    /// Retrieve all transfers in a block with given hash.
+    GetBlockTransfers {
+        /// Hash of block to get transfers of.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` is the transfers do not exist in
+        /// local storage under the block_hash provided.
+        responder: Responder<Option<Vec<Transfer>>>,
+    },
     /// Store given deploy.
     PutDeploy {
         /// Deploy to store.
@@ -295,6 +303,9 @@ impl Display for StorageRequest {
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
+            }
+            StorageRequest::GetBlockTransfers { block_hash, .. } => {
+                write!(formatter, "get transfers for {}", block_hash)
             }
             StorageRequest::PutDeploy { deploy, .. } => write!(formatter, "put {}", deploy),
             StorageRequest::GetDeploys { deploy_hashes, .. } => {
@@ -423,6 +434,13 @@ pub enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Option<LinearBlock>>,
     },
+    /// Return transfers for block by hash (if any).
+    GetBlockTransfers {
+        /// The hash of the block to retrieve transfers for.
+        block_hash: BlockHash,
+        /// Responder to call with the result.
+        responder: Responder<Option<Vec<Transfer>>>,
+    },
     /// Query the global state at the given root hash.
     QueryGlobalState {
         /// The state root hash.
@@ -496,6 +514,9 @@ impl<I> Display for RpcRequest<I> {
                 ..
             } => write!(formatter, "get {}", height),
             RpcRequest::GetBlock { maybe_id: None, .. } => write!(formatter, "get latest block"),
+            RpcRequest::GetBlockTransfers { block_hash, .. } => {
+                write!(formatter, "get transfers {}", block_hash)
+            }
             RpcRequest::QueryProtocolData {
                 protocol_version, ..
             } => write!(formatter, "protocol_version {}", protocol_version),
