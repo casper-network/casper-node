@@ -463,6 +463,8 @@ message ChainSpec {
         NewLockedFundsPeriod new_locked_funds_period = 9;
         // Change the round seigniorage rate (optional)
         Ratio new_round_seigniorage_rate = 10;
+        // Change the unbonding delay (optional)
+        NewUnbondingDelay new_unbonding_delay = 11;
     }
 
     message NewValidatorSlots {
@@ -480,6 +482,10 @@ message ChainSpec {
     message ActivationPoint {
         // equal to Block.Header.height
         uint64 height = 1;
+    }
+
+    message NewUnbondingDelay {
+        uint64 new_unbonding_delay = 1;
     }
 }
 
