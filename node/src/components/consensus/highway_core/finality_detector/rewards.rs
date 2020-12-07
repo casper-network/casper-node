@@ -138,7 +138,7 @@ fn round_participation<'a, C: Context>(
 mod tests {
     use super::*;
     use crate::components::consensus::highway_core::{
-        highway_testing::TEST_BLOCK_REWARD,
+        highway_testing::{TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT},
         state::{tests::*, Params},
         validators::ValidatorMap,
     };
@@ -195,6 +195,7 @@ mod tests {
             u64::MAX,
             Timestamp::zero(),
             Timestamp::from(u64::MAX),
+            TEST_ENDORSEMENT_EVIDENCE_LIMIT,
         );
         let weights = &[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)];
         let mut state = State::new(weights, params, vec![]);

@@ -40,6 +40,10 @@ use crate::{
     NodeRng,
 };
 
+/// Never allow more than this many units in a piece of evidence for conflicting endorsements,
+/// even if eras are longer than this.
+const MAX_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 10000;
+
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
 where
@@ -104,6 +108,16 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             "initializing Highway instance",
         );
 
+        // Allow about as many units as part of evidence for conflicting endorsements as we expect
+        // a validator to create during an era. After that, they can endorse two conflicting forks
+        // without getting slashed.
+        let min_round_len = 1 << highway_config.minimum_round_exponent;
+        let min_rounds_per_era = highway_config
+            .minimum_era_height
+            .max(1 + highway_config.era_duration.millis() / min_round_len);
+        let endorsement_evidence_limit =
+            (2 * min_rounds_per_era).min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
+
         let params = Params::new(
             seed,
             BLOCK_REWARD,
@@ -114,6 +128,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             highway_config.minimum_era_height,
             start_time,
             start_time + highway_config.era_duration,
+            endorsement_evidence_limit,
         );
 
         let min_round_exp = params.min_round_exp();

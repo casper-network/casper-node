@@ -12,6 +12,7 @@ pub(crate) struct Params {
     end_height: u64,
     start_timestamp: Timestamp,
     end_timestamp: Timestamp,
+    endorsement_evidence_limit: u64,
 }
 
 impl Params {
@@ -44,6 +45,7 @@ impl Params {
         end_height: u64,
         start_timestamp: Timestamp,
         end_timestamp: Timestamp,
+        endorsement_evidence_limit: u64,
     ) -> Params {
         assert!(
             reduced_block_reward <= block_reward,
@@ -59,6 +61,7 @@ impl Params {
             end_height,
             start_timestamp,
             end_timestamp,
+            endorsement_evidence_limit,
         }
     }
 
@@ -108,5 +111,12 @@ impl Params {
     /// Returns the minimum timestamp of the last block.
     pub(crate) fn end_timestamp(&self) -> Timestamp {
         self.end_timestamp
+    }
+
+    /// Returns the maximum number of additional units included in evidence for conflicting
+    /// endorsements. If you endorse two conflicting forks at sequence numbers that differ by more
+    /// than this, you get away with it and are not marked faulty.
+    pub(crate) fn endorsement_evidence_limit(&self) -> u64 {
+        self.endorsement_evidence_limit
     }
 }

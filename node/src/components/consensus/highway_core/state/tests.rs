@@ -13,7 +13,9 @@ use crate::{
         highway_core::{
             endorsement::{Endorsement, SignedEndorsement},
             highway::{Dependency, Endorsements},
-            highway_testing::{TEST_BLOCK_REWARD, TEST_INSTANCE_ID},
+            highway_testing::{
+                TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT, TEST_INSTANCE_ID,
+            },
         },
         traits::ValidatorSecret,
     },
@@ -126,6 +128,7 @@ impl State<TestContext> {
             TEST_ERA_HEIGHT,
             Timestamp::from(0),
             Timestamp::from(0),
+            TEST_ENDORSEMENT_EVIDENCE_LIMIT,
         );
         State::new(weights, params, vec![])
     }
@@ -242,6 +245,7 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
         u64::MAX,
         Timestamp::zero(),
         Timestamp::from(u64::MAX),
+        TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     // Everyone already knows Alice is faulty, so she is banned.
     let mut state = State::new(WEIGHTS, params, vec![ALICE]);
@@ -776,7 +780,10 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
         .opt_evidence(BOB)
         .expect("Bob should be considered faulty")
         .clone();
-    assert_eq!(Ok(()), evidence.validate(&validators, &TEST_INSTANCE_ID));
+    assert_eq!(
+        Ok(()),
+        evidence.validate(&validators, &TEST_INSTANCE_ID, &state)
+    );
 
     Ok(())
 }
