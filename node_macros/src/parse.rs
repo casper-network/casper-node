@@ -245,7 +245,7 @@ pub(crate) struct ComponentDefinition {
     component_arguments: Vec<Expr>,
     /// Whether or not the component has actual effects when constructed.
     has_effects: bool,
-    /// Whether or not the component returns an component directly, instead of a Result.
+    /// Whether or not the component's `new` function returns a component instead of a `Result`.
     is_infallible: bool,
 }
 
