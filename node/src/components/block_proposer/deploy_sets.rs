@@ -6,17 +6,11 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use super::{BlockHeight, FinalizationQueue};
+use super::{event::DeployType, BlockHeight, FinalizationQueue};
 use crate::{
     types::{DeployHash, DeployHeader, Timestamp},
     Chainspec,
 };
-
-#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
-pub(super) enum DeployType {
-    Transfer(DeployHeader),
-    Deploy(DeployHeader),
-}
 
 /// Stores the internal state of the BlockProposer.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -103,7 +97,7 @@ pub(super) fn prune_pending_deploys(
     let initial_len = deploys.len();
     deploys.retain(|_hash, wrapper| match wrapper {
         DeployType::Transfer(header) => !header.expired(current_instant),
-        DeployType::Deploy(header) => !header.expired(current_instant),
+        DeployType::Wasm(header) => !header.expired(current_instant),
     });
     initial_len - deploys.len()
 }

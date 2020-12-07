@@ -657,6 +657,10 @@ mod tests {
             upgrade0.new_deploy_config.unwrap().block_max_deploy_count,
             375
         );
+        assert_eq!(
+            upgrade0.new_deploy_config.unwrap().block_max_transfer_count,
+            376
+        );
         assert_eq!(upgrade0.new_deploy_config.unwrap().block_gas_limit, 38);
 
         let upgrade1 = &spec.upgrades[1];

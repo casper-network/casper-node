@@ -13,7 +13,6 @@ mod tests;
 use std::{collections::HashMap, convert::Infallible, time::Duration};
 
 use datasize::DataSize;
-use deploy_sets::DeployType;
 use prometheus::{self, Registry};
 use tracing::{debug, info, trace, warn};
 
@@ -27,7 +26,7 @@ use crate::{
     NodeRng,
 };
 pub(crate) use deploy_sets::BlockProposerDeploySets;
-pub(crate) use event::Event;
+pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
 use semver::Version;
 
@@ -215,17 +214,8 @@ impl BlockProposerReady {
                         .ignore()
                 }
             }
-            Event::BufferDeploy {
-                hash,
-                header,
-                is_transfer,
-            } => {
-                let deploy_or_transfer = if is_transfer {
-                    DeployType::Transfer(*header)
-                } else {
-                    DeployType::Deploy(*header)
-                };
-                self.add_deploy_or_transfer(Timestamp::now(), hash, deploy_or_transfer);
+            Event::BufferDeploy { hash, deploy_type } => {
+                self.add_deploy_or_transfer(Timestamp::now(), hash, *deploy_type);
                 Effects::new()
             }
             Event::Prune => {
@@ -288,13 +278,9 @@ impl BlockProposerReady {
         hash: DeployHash,
         deploy_or_transfer: DeployType,
     ) {
-        match deploy_or_transfer {
-            DeployType::Deploy(ref header) | DeployType::Transfer(ref header) => {
-                if header.expired(current_instant) {
-                    trace!("expired deploy {} rejected from the buffer", hash);
-                    return;
-                }
-            }
+        if deploy_or_transfer.header().expired(current_instant) {
+            trace!("expired deploy {} rejected from the buffer", hash);
+            return;
         }
         // only add the deploy if it isn't contained in a finalized block
         if !self.sets.finalized_deploys.contains_key(&hash) {
@@ -315,14 +301,10 @@ impl BlockProposerReady {
         let deploys: HashMap<_, _> = deploys
             .into_iter()
             .filter_map(|deploy_hash| {
-                self.sets.pending.get(&deploy_hash).map(|deploy_type| {
-                    let deploy_header = match deploy_type {
-                        DeployType::Transfer(deploy_header) | DeployType::Deploy(deploy_header) => {
-                            deploy_header
-                        }
-                    };
-                    (deploy_hash, deploy_header.clone())
-                })
+                self.sets
+                    .pending
+                    .get(&deploy_hash)
+                    .map(|deploy_type| (deploy_hash, deploy_type.header().clone()))
             })
             .collect();
         self.sets
@@ -392,49 +374,40 @@ impl BlockProposerReady {
         past_deploys: &[DeployHash],
         random_bit: bool,
     ) -> ProtoBlock {
-        // all deploys in pending that aren't in finalized blocks or
-        // proposed blocks from the set `past_blocks`
-        let deploys = self
-            .sets
-            .pending
-            .iter()
-            .filter_map(|(hash, deploy)| {
-                if let DeployType::Deploy(header) = deploy {
-                    if self.is_deploy_valid(header, block_timestamp, &deploy_config, past_deploys)
-                        && !past_deploys.contains(hash)
-                        && !self.sets.finalized_deploys.contains_key(hash)
-                    {
-                        Some(*hash)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .take(deploy_config.block_max_deploy_count as usize)
-            .collect::<Vec<_>>();
-
         let transfers = self
             .sets
             .pending
             .iter()
-            .filter_map(|(hash, deploy)| {
-                if let DeployType::Transfer(header) = deploy {
-                    if self.is_deploy_valid(header, block_timestamp, &deploy_config, past_deploys)
-                        && !past_deploys.contains(hash)
-                        && !self.sets.finalized_deploys.contains_key(hash)
-                    {
-                        Some(*hash)
-                    } else {
-                        None
+            .filter(|(_, deploy_type)| matches!(deploy_type, DeployType::Transfer(_)))
+            .take(deploy_config.block_max_transfer_count as usize);
+        let deploys = self
+            .sets
+            .pending
+            .iter()
+            .filter(|(_, deploy_type)| matches!(deploy_type, DeployType::Wasm(_)))
+            .take(deploy_config.block_max_deploy_count as usize);
+
+        let (deploys, transfers) = deploys.chain(transfers).fold(
+            (Vec::new(), Vec::new()),
+            |(mut deploys, mut transfers), (hash, deploy_type)| {
+                if self.is_deploy_valid(
+                    deploy_type.header(),
+                    block_timestamp,
+                    &deploy_config,
+                    past_deploys,
+                ) && !past_deploys.contains(hash)
+                    && !self.sets.finalized_deploys.contains_key(hash)
+                {
+                    // all deploys in pending that aren't in finalized blocks or
+                    // proposed blocks from the set `past_blocks`
+                    match deploy_type {
+                        DeployType::Transfer(_) => transfers.push(*hash),
+                        DeployType::Wasm(_) => deploys.push(*hash),
                     }
-                } else {
-                    None
                 }
-            })
-            .take(deploy_config.block_max_transfer_count as usize)
-            .collect::<Vec<_>>();
+                (deploys, transfers)
+            },
+        );
 
         ProtoBlock::new(deploys, transfers, random_bit)
     }

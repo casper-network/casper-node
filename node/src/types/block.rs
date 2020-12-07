@@ -170,24 +170,28 @@ impl Display for ProtoBlockHash {
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProtoBlock {
     hash: ProtoBlockHash,
-    deploys: Vec<DeployHash>,
+    wasm_deploys: Vec<DeployHash>,
     transfers: Vec<DeployHash>,
     random_bit: bool,
 }
 
 impl ProtoBlock {
     pub(crate) fn new(
-        deploys: Vec<DeployHash>,
+        wasm_deploys: Vec<DeployHash>,
         transfers: Vec<DeployHash>,
         random_bit: bool,
     ) -> Self {
+        let deploys = wasm_deploys
+            .iter()
+            .chain(transfers.iter())
+            .collect::<Vec<_>>();
         let hash = ProtoBlockHash::new(hash::hash(
             &bincode::serialize(&(&deploys, random_bit)).expect("serialize ProtoBlock"),
         ));
 
         ProtoBlock {
             hash,
-            deploys,
+            wasm_deploys,
             transfers,
             random_bit,
         }
@@ -198,8 +202,8 @@ impl ProtoBlock {
     }
 
     /// The list of deploy hashes included in the block.
-    pub(crate) fn deploys(&self) -> &Vec<DeployHash> {
-        &self.deploys
+    pub(crate) fn wasm_deploys(&self) -> &Vec<DeployHash> {
+        &self.wasm_deploys
     }
 
     /// The list of deploy hashes included in the block.
@@ -213,7 +217,12 @@ impl ProtoBlock {
     }
 
     pub(crate) fn destructure(self) -> (ProtoBlockHash, Vec<DeployHash>, Vec<DeployHash>, bool) {
-        (self.hash, self.deploys, self.transfers, self.random_bit)
+        (
+            self.hash,
+            self.wasm_deploys,
+            self.transfers,
+            self.random_bit,
+        )
     }
 }
 
@@ -223,7 +232,7 @@ impl Display for ProtoBlock {
             formatter,
             "proto block {}, deploys [{}], random bit {}",
             self.hash.inner(),
-            DisplayIter::new(self.deploys.iter()),
+            DisplayIter::new(self.wasm_deploys.iter().chain(self.transfers.iter())),
             self.random_bit(),
         )
     }
@@ -231,7 +240,7 @@ impl Display for ProtoBlock {
 
 impl BlockLike for ProtoBlock {
     fn deploys(&self) -> Vec<&DeployHash> {
-        self.deploys()
+        self.wasm_deploys()
             .iter()
             .chain(self.transfers())
             .collect::<Vec<_>>()
@@ -429,7 +438,7 @@ impl Display for FinalizedBlock {
             HexFmt(self.proto_block.hash().inner()),
             self.era_id,
             self.height,
-            HexList(&self.proto_block.deploys),
+            HexList(&self.proto_block.wasm_deploys),
             self.proto_block.random_bit,
             self.timestamp,
         )?;
@@ -765,7 +774,7 @@ impl Block {
             parent_hash,
             state_root_hash,
             body_hash,
-            deploy_hashes: finalized_block.proto_block.deploys,
+            deploy_hashes: finalized_block.proto_block.wasm_deploys,
             random_bit: finalized_block.proto_block.random_bit,
             accumulated_seed: accumulated_seed.into(),
             era_end: finalized_block.era_end,

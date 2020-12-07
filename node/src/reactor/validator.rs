@@ -721,8 +721,12 @@ impl reactor::Reactor for Reactor {
             }) => {
                 let event = block_proposer::Event::BufferDeploy {
                     hash: *deploy.id(),
-                    header: Box::new(deploy.header().clone()),
-                    is_transfer: matches!(deploy.session(), ExecutableDeployItem::Transfer{ .. }),
+                    deploy_type: match deploy.session() {
+                        ExecutableDeployItem::Transfer { .. } => Box::new(
+                            block_proposer::DeployType::Transfer(deploy.header().clone()),
+                        ),
+                        _ => Box::new(block_proposer::DeployType::Wasm(deploy.header().clone())),
+                    },
                 };
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));

@@ -126,8 +126,8 @@ fn should_add_and_take_deploys() {
         .is_empty());
 
     // add two deploys
-    proposer.add_deploy_or_transfer(block_time2, hash1, DeployType::Deploy(deploy1));
-    proposer.add_deploy_or_transfer(block_time2, hash2, DeployType::Deploy(deploy2));
+    proposer.add_deploy_or_transfer(block_time2, hash1, DeployType::Wasm(deploy1));
+    proposer.add_deploy_or_transfer(block_time2, hash2, DeployType::Wasm(deploy2));
 
     // if we try to create a block with a timestamp that is too early, we shouldn't get any
     // deploys
@@ -149,18 +149,22 @@ fn should_add_and_take_deploys() {
     let deploys = block.deploys();
 
     assert_eq!(deploys.len(), 2);
-    assert!(deploys.contains(&hash1));
-    assert!(deploys.contains(&hash2));
+    assert!(deploys.contains(&&hash1));
+    assert!(deploys.contains(&&hash2));
 
     // take the deploys out
     let block =
         proposer.propose_proto_block(DeployConfig::default(), block_time2, &no_deploys, true);
-    let deploys = block.deploys();
+    let deploys = block
+        .deploys()
+        .iter()
+        .map(|hash| **hash)
+        .collect::<Vec<_>>();
     assert_eq!(deploys.len(), 2);
 
     // but they shouldn't be returned if we include it in the past deploys
     assert!(proposer
-        .propose_proto_block(DeployConfig::default(), block_time2, deploys, true)
+        .propose_proto_block(DeployConfig::default(), block_time2, &deploys[..], true)
         .deploys()
         .is_empty());
 
@@ -168,8 +172,8 @@ fn should_add_and_take_deploys() {
     proposer.finalized_deploys(deploys.to_vec());
 
     // add more deploys
-    proposer.add_deploy_or_transfer(block_time2, hash3, DeployType::Deploy(deploy3));
-    proposer.add_deploy_or_transfer(block_time2, hash4, DeployType::Deploy(deploy4));
+    proposer.add_deploy_or_transfer(block_time2, hash3, DeployType::Wasm(deploy3));
+    proposer.add_deploy_or_transfer(block_time2, hash4, DeployType::Wasm(deploy4));
 
     let block =
         proposer.propose_proto_block(DeployConfig::default(), block_time2, &no_deploys, true);
@@ -177,8 +181,8 @@ fn should_add_and_take_deploys() {
 
     // since block 1 is now finalized, neither deploy1 nor deploy2 should be among the returned
     assert_eq!(deploys.len(), 2);
-    assert!(deploys.contains(&hash3));
-    assert!(deploys.contains(&hash4));
+    assert!(deploys.contains(&&hash3));
+    assert!(deploys.contains(&&hash4));
 }
 
 #[test]
@@ -201,10 +205,10 @@ fn should_successfully_prune() {
     let mut proposer = create_test_proposer();
 
     // pending
-    proposer.add_deploy_or_transfer(creation_time, hash1, DeployType::Deploy(deploy1));
-    proposer.add_deploy_or_transfer(creation_time, hash2, DeployType::Deploy(deploy2));
-    proposer.add_deploy_or_transfer(creation_time, hash3, DeployType::Deploy(deploy3));
-    proposer.add_deploy_or_transfer(creation_time, hash4, DeployType::Deploy(deploy4));
+    proposer.add_deploy_or_transfer(creation_time, hash1, DeployType::Wasm(deploy1));
+    proposer.add_deploy_or_transfer(creation_time, hash2, DeployType::Wasm(deploy2));
+    proposer.add_deploy_or_transfer(creation_time, hash3, DeployType::Wasm(deploy3));
+    proposer.add_deploy_or_transfer(creation_time, hash4, DeployType::Wasm(deploy4));
 
     // pending => finalized
     proposer.finalized_deploys(vec![hash1]);
@@ -274,7 +278,7 @@ fn test_proposer_with(
 
     for _ in 0..deploys {
         let (hash, deploy) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-        proposer.add_deploy_or_transfer(creation_time, hash, DeployType::Deploy(deploy));
+        proposer.add_deploy_or_transfer(creation_time, hash, DeployType::Wasm(deploy));
     }
     for _ in 0..transfers {
         let (hash, transfer) = generate_transfer(&mut rng, creation_time, ttl, vec![]);
@@ -317,7 +321,7 @@ fn should_return_deploy_dependencies() {
     let mut proposer = create_test_proposer();
 
     // add deploy2
-    proposer.add_deploy_or_transfer(creation_time, hash2, DeployType::Deploy(deploy2));
+    proposer.add_deploy_or_transfer(creation_time, hash2, DeployType::Wasm(deploy2));
 
     // deploy2 has an unsatisfied dependency
     assert!(proposer
@@ -326,11 +330,15 @@ fn should_return_deploy_dependencies() {
         .is_empty());
 
     // add deploy1
-    proposer.add_deploy_or_transfer(creation_time, hash1, DeployType::Deploy(deploy1));
+    proposer.add_deploy_or_transfer(creation_time, hash1, DeployType::Wasm(deploy1));
 
     let block =
         proposer.propose_proto_block(DeployConfig::default(), block_time, &no_deploys, true);
-    let deploys = block.deploys();
+    let deploys = block
+        .deploys()
+        .iter()
+        .map(|hash| **hash)
+        .collect::<Vec<_>>();
     // only deploy1 should be returned, as it has no dependencies
     assert_eq!(deploys.len(), 1);
     assert!(deploys.contains(&hash1));
@@ -341,7 +349,7 @@ fn should_return_deploy_dependencies() {
     let block =
         proposer.propose_proto_block(DeployConfig::default(), block_time, &no_deploys, true);
     // `blocks` contains a block that contains deploy1 now, so we should get deploy2
-    let deploys2 = block.deploys();
+    let deploys2 = block.wasm_deploys();
     assert_eq!(deploys2.len(), 1);
     assert!(deploys2.contains(&hash2));
 }
