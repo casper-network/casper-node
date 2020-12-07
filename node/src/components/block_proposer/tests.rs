@@ -112,7 +112,7 @@ fn should_add_and_take_deploys() {
     let block_time2 = Timestamp::from(120);
     let block_time3 = Timestamp::from(220);
 
-    let no_deploys = Vec::new();
+    let no_deploys = HashSet::new();
     let mut proposer = create_test_proposer();
     let mut rng = crate::new_rng();
     let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
@@ -121,7 +121,12 @@ fn should_add_and_take_deploys() {
     let (hash4, deploy4) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
 
     assert!(proposer
-        .propose_proto_block(DeployConfig::default(), block_time2, &no_deploys, true)
+        .propose_proto_block(
+            DeployConfig::default(),
+            block_time2,
+            no_deploys.clone(),
+            true
+        )
         .deploys()
         .is_empty());
 
@@ -132,20 +137,34 @@ fn should_add_and_take_deploys() {
     // if we try to create a block with a timestamp that is too early, we shouldn't get any
     // deploys
     assert!(proposer
-        .propose_proto_block(DeployConfig::default(), block_time1, &no_deploys, true)
+        .propose_proto_block(
+            DeployConfig::default(),
+            block_time1,
+            no_deploys.clone(),
+            true
+        )
         .deploys()
         .is_empty());
 
     // if we try to create a block with a timestamp that is too late, we shouldn't get any
     // deploys, either
     assert!(proposer
-        .propose_proto_block(DeployConfig::default(), block_time3, &no_deploys, true)
+        .propose_proto_block(
+            DeployConfig::default(),
+            block_time3,
+            no_deploys.clone(),
+            true
+        )
         .deploys()
         .is_empty());
 
     // take the deploys out
-    let block =
-        proposer.propose_proto_block(DeployConfig::default(), block_time2, &no_deploys, true);
+    let block = proposer.propose_proto_block(
+        DeployConfig::default(),
+        block_time2,
+        no_deploys.clone(),
+        true,
+    );
     let deploys = block.deploys();
 
     assert_eq!(deploys.len(), 2);
@@ -153,30 +172,34 @@ fn should_add_and_take_deploys() {
     assert!(deploys.contains(&&hash2));
 
     // take the deploys out
-    let block =
-        proposer.propose_proto_block(DeployConfig::default(), block_time2, &no_deploys, true);
+    let block = proposer.propose_proto_block(
+        DeployConfig::default(),
+        block_time2,
+        no_deploys.clone(),
+        true,
+    );
     let deploys = block
         .deploys()
         .iter()
         .map(|hash| **hash)
-        .collect::<Vec<_>>();
+        .collect::<HashSet<_>>();
     assert_eq!(deploys.len(), 2);
 
     // but they shouldn't be returned if we include it in the past deploys
     assert!(proposer
-        .propose_proto_block(DeployConfig::default(), block_time2, &deploys[..], true)
+        .propose_proto_block(DeployConfig::default(), block_time2, deploys.clone(), true)
         .deploys()
         .is_empty());
 
     // finalize the block
-    proposer.finalized_deploys(deploys.to_vec());
+    proposer.finalized_deploys(deploys.iter().copied());
 
     // add more deploys
     proposer.add_deploy_or_transfer(block_time2, hash3, DeployType::Wasm(deploy3));
     proposer.add_deploy_or_transfer(block_time2, hash4, DeployType::Wasm(deploy4));
 
     let block =
-        proposer.propose_proto_block(DeployConfig::default(), block_time2, &no_deploys, true);
+        proposer.propose_proto_block(DeployConfig::default(), block_time2, no_deploys, true);
     let deploys = block.deploys();
 
     // since block 1 is now finalized, neither deploy1 nor deploy2 should be among the returned
@@ -267,7 +290,7 @@ fn test_proposer_with(
     let creation_time = Timestamp::from(100);
     let test_time = Timestamp::from(120);
     let ttl = TimeDiff::from(100);
-    let past_deploys = vec![];
+    let past_deploys = HashSet::new();
 
     let mut rng = crate::new_rng();
     let mut proposer = create_test_proposer();
@@ -288,7 +311,7 @@ fn test_proposer_with(
     assert_eq!(proposer.sets.pending.len() as u32, deploys + transfers);
 
     // pending => finalized
-    let block = proposer.propose_proto_block(config, test_time, &past_deploys, true);
+    let block = proposer.propose_proto_block(config, test_time, past_deploys, true);
 
     assert_eq!(block.deploys().len(), deploys.min(max_deploys) as usize);
     assert_eq!(
@@ -317,7 +340,7 @@ fn should_return_deploy_dependencies() {
     // let deploy2 depend on deploy1
     let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![hash1]);
 
-    let no_deploys = Vec::new();
+    let no_deploys = HashSet::new();
     let mut proposer = create_test_proposer();
 
     // add deploy2
@@ -325,15 +348,24 @@ fn should_return_deploy_dependencies() {
 
     // deploy2 has an unsatisfied dependency
     assert!(proposer
-        .propose_proto_block(DeployConfig::default(), block_time, &no_deploys, true)
+        .propose_proto_block(
+            DeployConfig::default(),
+            block_time,
+            no_deploys.clone(),
+            true
+        )
         .deploys()
         .is_empty());
 
     // add deploy1
     proposer.add_deploy_or_transfer(creation_time, hash1, DeployType::Wasm(deploy1));
 
-    let block =
-        proposer.propose_proto_block(DeployConfig::default(), block_time, &no_deploys, true);
+    let block = proposer.propose_proto_block(
+        DeployConfig::default(),
+        block_time,
+        no_deploys.clone(),
+        true,
+    );
     let deploys = block
         .deploys()
         .iter()
@@ -346,8 +378,7 @@ fn should_return_deploy_dependencies() {
     // the deploy will be included in block 1
     proposer.finalized_deploys(deploys.iter().copied());
 
-    let block =
-        proposer.propose_proto_block(DeployConfig::default(), block_time, &no_deploys, true);
+    let block = proposer.propose_proto_block(DeployConfig::default(), block_time, no_deploys, true);
     // `blocks` contains a block that contains deploy1 now, so we should get deploy2
     let deploys2 = block.wasm_deploys();
     assert_eq!(deploys2.len(), 1);

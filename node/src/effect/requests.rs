@@ -364,7 +364,7 @@ pub struct ProtoBlockRequest {
     /// The instant for which the deploy is requested.
     pub(crate) current_instant: Timestamp,
     /// Set of deploy hashes of deploys that should be excluded in addition to the finalized ones.
-    pub(crate) past_deploys: Vec<DeployHash>,
+    pub(crate) past_deploys: HashSet<DeployHash>,
     /// The height of the next block to be finalized at the point the request was made.
     /// This is _only_ a way of expressing how many blocks have been finalized at the moment the
     /// request was made. Block Proposer uses this in order to determine if there might be any

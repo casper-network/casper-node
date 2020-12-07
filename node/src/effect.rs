@@ -815,7 +815,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext,
-        past_deploys: Vec<DeployHash>,
+        past_deploys: HashSet<DeployHash>,
         next_finalized: u64,
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)

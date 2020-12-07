@@ -10,10 +10,15 @@ mod metrics;
 #[cfg(test)]
 mod tests;
 
-use std::{collections::HashMap, convert::Infallible, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::Infallible,
+    time::Duration,
+};
 
 use datasize::DataSize;
 use prometheus::{self, Registry};
+use semver::Version;
 use tracing::{debug, info, trace, warn};
 
 use crate::{
@@ -28,7 +33,6 @@ use crate::{
 pub(crate) use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
-use semver::Version;
 
 /// Block proposer component.
 #[derive(DataSize, Debug)]
@@ -208,7 +212,7 @@ impl BlockProposerReady {
                         .respond(self.propose_proto_block(
                             self.deploy_config,
                             request.current_instant,
-                            &request.past_deploys,
+                            request.past_deploys,
                             request.random_bit,
                         ))
                         .ignore()
@@ -335,7 +339,7 @@ impl BlockProposerReady {
                         .respond(self.propose_proto_block(
                             self.deploy_config,
                             request.current_instant,
-                            &request.past_deploys,
+                            request.past_deploys,
                             request.random_bit,
                         ))
                         .ignore()
@@ -352,7 +356,7 @@ impl BlockProposerReady {
         deploy: &DeployHeader,
         block_timestamp: Timestamp,
         deploy_config: &DeployConfig,
-        past_deploys: &[DeployHash],
+        past_deploys: &HashSet<DeployHash>,
     ) -> bool {
         let all_deps_resolved = || {
             deploy.dependencies().iter().all(|dep| {
@@ -371,7 +375,7 @@ impl BlockProposerReady {
         &mut self,
         deploy_config: DeployConfig,
         block_timestamp: Timestamp,
-        past_deploys: &[DeployHash],
+        past_deploys: HashSet<DeployHash>,
         random_bit: bool,
     ) -> ProtoBlock {
         let transfers = self
@@ -394,7 +398,7 @@ impl BlockProposerReady {
                     deploy_type.header(),
                     block_timestamp,
                     &deploy_config,
-                    past_deploys,
+                    &past_deploys,
                 ) && !past_deploys.contains(hash)
                     && !self.sets.finalized_deploys.contains_key(hash)
                 {
