@@ -524,11 +524,7 @@ impl<C: Context> Highway<C> {
     fn do_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Unit(unit) => Ok(self.state.validate_unit(unit)?),
-            Vertex::Evidence(_evidence) => Ok(()),
-            Vertex::Endorsements(_endorsements) => {
-                // TODO: Validate against equivocations in endorsements.
-                Ok(())
-            }
+            Vertex::Evidence(_) | Vertex::Endorsements(_) => Ok(()),
         }
     }
 

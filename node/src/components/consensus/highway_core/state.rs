@@ -27,7 +27,7 @@ use itertools::Itertools;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use thiserror::Error;
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 
 use crate::{
     components::consensus::{
@@ -136,21 +136,27 @@ pub(crate) struct State<C: Context> {
     /// through `i`.
     cumulative_w: ValidatorMap<Weight>,
     /// All units imported so far, by hash.
-    // TODO: HashMaps prevent deterministic tests.
+    /// This is a downward closed set: A unit must only be added here once all of its dependencies
+    /// have been added as well, and it has been fully validated.
     units: HashMap<C::Hash, Unit<C>>,
-    /// All blocks, by hash.
+    /// All blocks, by hash. All block hashes are also unit hashes, but units that did not
+    /// introduce a new block don't have their own entry here.
     blocks: HashMap<C::Hash, Block<C>>,
     /// List of faulty validators and their type of fault.
+    /// Every validator that has an equivocation in `units` must have an entry here, but there can
+    /// be additional entries for other kinds of faults.
     faults: HashMap<ValidatorIndex, Fault<C>>,
     /// The full panorama, corresponding to the complete protocol state.
+    /// This points to the latest unit of every honest validator.
     panorama: Panorama<C>,
-    /// All currently endorsed units, by hash.
+    /// All currently endorsed units, by hash: units that have enough endorsements to be cited even
+    /// if they naively cite an equivocator.
     endorsements: HashMap<C::Hash, ValidatorMap<Option<C::Signature>>>,
-    /// Units that don't yet have 2/3 of stake endorsing them.
+    /// Units that don't yet have 1/2 of stake endorsing them.
     /// Signatures are stored in a map so that a single validator sending lots of signatures for
     /// different units doesn't cause us to allocate a lot of memory.
     incomplete_endorsements: HashMap<C::Hash, BTreeMap<ValidatorIndex, C::Signature>>,
-    /// Clock to track fork choice
+    /// Clock to measure time spent in fork choice computation.
     clock: Clock,
 }
 
@@ -360,10 +366,14 @@ impl<C: Context> State<C> {
 
     /// Adds the unit to the protocol state.
     ///
-    /// The unit must be valid, and its dependencies satisfied.
+    /// The unit must be valid (see `validate_unit`), and its dependencies satisfied.
     pub(crate) fn add_valid_unit(&mut self, swunit: SignedWireUnit<C>) {
         let wunit = &swunit.wire_unit;
         let hash = wunit.hash();
+        if self.has_unit(&hash) {
+            warn!(%hash, "called add_valid_unit twice");
+            return;
+        }
         let instance_id = wunit.instance_id;
         let fork_choice = self.fork_choice(&wunit.panorama).cloned();
         let (unit, opt_value) = Unit::new(swunit, fork_choice.as_ref(), self);
@@ -372,11 +382,34 @@ impl<C: Context> State<C> {
             self.blocks.insert(hash, block);
         }
         self.units.insert(hash, unit);
-        self.update_panorama(hash, instance_id);
+
+        // Update the panorama.
+        let unit = self.unit(&hash);
+        let creator = unit.creator;
+        let new_obs = match (self.panorama.get(creator), unit.panorama.get(creator)) {
+            (Observation::Faulty, _) => Observation::Faulty,
+            (obs0, obs1) if obs0 == obs1 => Observation::Correct(hash),
+            (Observation::None, _) => panic!("missing creator's previous unit"),
+            (Observation::Correct(hash0), _) => {
+                // We have all dependencies of unit, but it does not cite hash0 as its predecessor,
+                // which is our latest known unit by the creator. It must therefore cite an older
+                // unit and so its sequence number must be at most the same as hash0. Hence it is
+                // an equivocation, and to prove that, we only need to provide the other unit with
+                // the same sequence number.
+                let prev0 = self.find_in_swimlane(hash0, unit.seq_number).unwrap();
+                let wunit0 = self.wire_unit(prev0, instance_id).unwrap();
+                let wunit1 = self.wire_unit(&hash, instance_id).unwrap();
+                self.add_evidence(Evidence::Equivocation(wunit0, wunit1));
+                Observation::Faulty
+            }
+        };
+        self.panorama[creator] = new_obs;
     }
 
     /// Adds direct evidence proving a validator to be faulty, unless that validators is already
-    /// banned or we already have other direct evidence.
+    /// banned or we already have other direct evidence. This must only be called with valid
+    /// evidence (see `Evidence::validate`). Returns `false` if the evidence was not added because
+    /// the perpetrator is banned or we already have evidence against them.
     pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) -> bool {
         let idx = evidence.perpetrator();
         match self.faults.get(&idx) {
@@ -390,9 +423,12 @@ impl<C: Context> State<C> {
         true
     }
 
-    /// Add set of endorsements to the state.
+    /// Adds a set of endorsements to the state.
     /// If, after adding, we have collected enough endorsements to consider unit _endorsed_,
     /// it will be *upgraded* to fully endorsed.
+    ///
+    /// Endorsements must be validated before calling this: The endorsers must exist, the
+    /// signatures must be valid and the endorsed unit must be present in `self.units`.
     pub(crate) fn add_endorsements(&mut self, endorsements: Endorsements<C>) {
         let uhash = *endorsements.unit();
         if self.endorsements.contains_key(&uhash) {
@@ -423,6 +459,9 @@ impl<C: Context> State<C> {
 
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
     /// ones.
+    ///
+    /// Endorsements must be validated before calling this: The endorsers must exist, the
+    /// signatures must be valid and the endorsed unit must be present in `self.units`.
     pub(crate) fn find_conflicting_endorsements(
         &self,
         endorsements: &Endorsements<C>,
@@ -497,6 +536,7 @@ impl<C: Context> State<C> {
             .collect()
     }
 
+    /// Returns the `SignedWireUnit` with the given hash, if it is present in the state.
     pub(crate) fn wire_unit(
         &self,
         hash: &C::Hash,
@@ -602,8 +642,8 @@ impl<C: Context> State<C> {
         Ok(())
     }
 
-    /// Returns an error if `swunit` is invalid. Must only be called once all dependencies have
-    /// been added to the state.
+    /// Returns an error if `swunit` is invalid. Must only be called once `pre_validate_unit`
+    /// returned `Ok` and all dependencies have been added to the state.
     pub(crate) fn validate_unit(&self, swunit: &SignedWireUnit<C>) -> Result<(), UnitError> {
         let wunit = &swunit.wire_unit;
         let creator = wunit.creator;
@@ -682,34 +722,6 @@ impl<C: Context> State<C> {
         })
     }
 
-    /// Updates `self.panorama` with an incoming unit. Panics if dependencies are missing.
-    ///
-    /// If the new unit is valid, it will just add `Observation::Correct(uhash)` to the
-    /// panorama. If it represents an equivocation, it adds `Observation::Faulty` and updates
-    /// `self.faults`.
-    ///
-    /// Panics unless the unit has already been added to `self`.
-    fn update_panorama(&mut self, uhash: C::Hash, instance_id: C::InstanceId) {
-        let unit = self.unit(&uhash);
-        let creator = unit.creator;
-        let new_obs = match (self.panorama.get(creator), unit.panorama.get(creator)) {
-            (Observation::Faulty, _) => Observation::Faulty,
-            (obs0, obs1) if obs0 == obs1 => Observation::Correct(uhash),
-            (Observation::None, _) => panic!("missing creator's previous unit"),
-            (Observation::Correct(hash0), _) => {
-                // If we have all dependencies of unit and still see the sender as correct, the
-                // predecessor of unit must be a predecessor of hash0. So we already have a
-                // conflicting unit with the same sequence number:
-                let prev0 = self.find_in_swimlane(hash0, unit.seq_number).unwrap();
-                let wunit0 = self.wire_unit(prev0, instance_id).unwrap();
-                let wunit1 = self.wire_unit(&uhash, instance_id).unwrap();
-                self.add_evidence(Evidence::Equivocation(wunit0, wunit1));
-                Observation::Faulty
-            }
-        };
-        self.panorama[creator] = new_obs;
-    }
-
     /// Returns `true` if this is a proposal and the creator is not faulty.
     pub(super) fn is_correct_proposal(&self, unit: &Unit<C>) -> bool {
         !self.is_faulty(unit.creator)
@@ -735,12 +747,12 @@ impl<C: Context> State<C> {
     }
 
     /// Returns an iterator over units (with hashes) by the same creator, in reverse chronological
-    /// order, starting with the specified unit.
+    /// order, starting with the specified unit. Panics if no unit with `uhash` exists.
     pub(crate) fn swimlane<'a>(
         &'a self,
-        vhash: &'a C::Hash,
+        uhash: &'a C::Hash,
     ) -> impl Iterator<Item = (&'a C::Hash, &'a Unit<C>)> {
-        let mut next = Some(vhash);
+        let mut next = Some(uhash);
         iter::from_fn(move || {
             let current = next?;
             let unit = self.unit(current);
@@ -945,13 +957,13 @@ impl<C: Context> State<C> {
             || self.unit(hash1).panorama.sees(self, hash0)
     }
 
-    /// Returns the panorama of the confirmation for the leader unit `vhash`.
+    /// Returns the panorama of the confirmation for the leader unit `uhash`.
     pub(crate) fn confirmation_panorama(
         &self,
         creator: ValidatorIndex,
-        vhash: &C::Hash,
+        uhash: &C::Hash,
     ) -> Panorama<C> {
-        self.valid_panorama(creator, self.inclusive_panorama(vhash))
+        self.valid_panorama(creator, self.inclusive_panorama(uhash))
     }
 
     /// Creates a panorama that is valid for use in `creator`'s next unit, and as close as possible
