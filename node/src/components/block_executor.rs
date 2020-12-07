@@ -234,6 +234,11 @@ impl BlockExecutor {
             state.finalized_block.proposer().into(),
         );
 
+        // TODO: this is currently working coincidentally because we are passing only one
+        // deploy_item per exec. The execution results coming back from the ee lacks the
+        // mapping between deploy_hash and execution result, and this outer logic is enriching it
+        // with the deploy hash. If we were passing multiple deploys per exec the relation between
+        // the deploy and the execution results would be lost.
         effect_builder
             .request_execute(execute_request)
             .event(move |result| Event::DeployExecutionResult {

@@ -74,6 +74,7 @@ use crate::{
     utils::WithDir,
     Chainspec, NodeRng,
 };
+use casper_types::{ExecutionResult, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
 /// We can set this very low, as there is only a single reader/writer accessing the component at any
@@ -91,6 +92,8 @@ const DEFAULT_MAX_DEPLOY_STORE_SIZE: usize = 300 * GIB;
 const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
+/// Maximum number of allowed dbs.
+const MAX_DB_COUNT: u32 = 5;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -164,6 +167,9 @@ pub struct Storage {
     /// The deploy metadata database.
     #[data_size(skip)]
     deploy_metadata_db: Database,
+    /// The transfer database.
+    #[data_size(skip)]
+    transfer_db: Database,
     /// The state storage database.
     #[data_size(skip)]
     state_store_db: Database,
@@ -228,13 +234,14 @@ impl Storage {
                     | EnvironmentFlags::NO_TLS,
             )
             .set_max_readers(MAX_TRANSACTIONS)
-            .set_max_dbs(4)
+            .set_max_dbs(MAX_DB_COUNT)
             .set_map_size(total_size)
             .open(&root.join("storage.lmdb"))?;
 
         let block_db = env.create_db(Some("blocks"), DatabaseFlags::empty())?;
         let deploy_db = env.create_db(Some("deploys"), DatabaseFlags::empty())?;
         let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
+        let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
 
         // We now need to restore the block-height index. Log messages allow timing here.
@@ -273,6 +280,7 @@ impl Storage {
             block_db,
             deploy_db,
             deploy_metadata_db,
+            transfer_db,
             state_store_db,
             block_height_index,
             chainspec_cache: None,
@@ -379,6 +387,12 @@ impl Storage {
                         .map(|block| block.header().clone()),
                 )
                 .ignore(),
+            StorageRequest::GetBlockTransfers {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.get_transfers(&mut self.env.begin_ro_txn()?, &block_hash)?)
+                .ignore(),
             StorageRequest::PutDeploy { deploy, responder } => {
                 let mut txn = self.env.begin_rw_txn()?;
                 let outcome = txn.put_value(self.deploy_db, deploy.id(), &deploy, false)?;
@@ -410,6 +424,8 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_rw_txn()?;
 
+                let mut transfers: Vec<Transfer> = vec![];
+
                 for (deploy_hash, execution_result) in execution_results {
                     let mut metadata = self
                         .get_deploy_metadata(&mut txn, &deploy_hash)?
@@ -428,14 +444,39 @@ impl Storage {
                         continue;
                     }
 
+                    if let ExecutionResult::Success { effect, .. } = execution_result.clone() {
+                        for transform_entry in effect.transforms {
+                            if let Transform::WriteTransfer(transfer) = transform_entry.transform {
+                                transfers.push(transfer);
+                            }
+                        }
+                    }
+
+                    // TODO: this is currently done like this because rpc get_deploy returns the
+                    // data, but the organization of deploy, block_hash, and
+                    // execution_result is incorrectly represented. it should be
+                    // inverted; for a given block_hash 0n deploys and each deploy has exactly 1
+                    // result (aka deploy_metadata in this context).
+
                     // Update metadata and write back to db.
                     metadata
                         .execution_results
                         .insert(block_hash, execution_result);
                     let was_written =
                         txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
-                    assert!(was_written);
+                    assert!(
+                        was_written,
+                        "failed to write deploy metadata for block_hash {} deploy_hash {}",
+                        block_hash, deploy_hash
+                    );
                 }
+
+                let was_written = txn.put_value(self.transfer_db, &block_hash, &transfers, true)?;
+                assert!(
+                    was_written,
+                    "failed to write transfers for block_hash {}",
+                    block_hash
+                );
 
                 txn.commit()?;
                 responder.respond(()).ignore()
@@ -518,6 +559,18 @@ impl Storage {
         deploy_hash: &DeployHash,
     ) -> Result<Option<DeployMetadata>, Error> {
         Ok(tx.get_value(self.deploy_metadata_db, deploy_hash)?)
+    }
+
+    /// Retrieves transfers associated with block.
+    ///
+    /// If no transfers are stored for the block, an empty transfers instance will be
+    /// created, but not stored.
+    fn get_transfers<Tx: Transaction>(
+        &self,
+        tx: &mut Tx,
+        block_hash: &BlockHash,
+    ) -> Result<Option<Vec<Transfer>>, Error> {
+        Ok(tx.get_value(self.transfer_db, block_hash)?)
     }
 }
 

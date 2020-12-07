@@ -200,7 +200,7 @@ pub type AccountHashBytes = [u8; ACCOUNT_HASH_LENGTH];
 
 /// A newtype wrapping a [`AccountHashBytes`] which is the raw bytes of
 /// the AccountHash, a hash of Public Key and Algorithm
-#[derive(DataSize, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct AccountHash(AccountHashBytes);
 
 impl AccountHash {
