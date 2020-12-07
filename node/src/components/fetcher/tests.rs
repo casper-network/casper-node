@@ -9,7 +9,9 @@ use tokio::time;
 
 use super::*;
 use crate::{
-    components::{deploy_acceptor, in_memory_network::NetworkController, storage},
+    components::{
+        chainspec_loader::Chainspec, deploy_acceptor, in_memory_network::NetworkController, storage,
+    },
     effect::announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
     protocol::Message,
     reactor::{Reactor as ReactorTrait, Runner},
@@ -18,7 +20,7 @@ use crate::{
         ConditionCheckReactor, TestRng,
     },
     types::{Deploy, DeployHash, NodeId},
-    utils::WithDir,
+    utils::{Loadable, WithDir},
 };
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -58,6 +60,10 @@ reactor!(Reactor {
     type Config = FetcherTestConfig;
 
     components: {
+        chainspec_loader = has_effects infallible ChainspecLoader(
+            Chainspec::from_resources("local/chainspec.toml",),
+            effect_builder
+        );
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
         storage = Storage(&WithDir::new(cfg.temp_dir.path(), cfg.storage_config));
         deploy_acceptor = infallible DeployAcceptor();
@@ -75,6 +81,9 @@ reactor!(Reactor {
         NetworkRequest<NodeId, Message> -> network;
         StorageRequest -> storage;
         FetcherRequest<NodeId, Deploy> -> deploy_fetcher;
+
+        // The only contract runtime request will be the commit of genesis, which we discard.
+        ContractRuntimeRequest -> #;
     }
 
     announcements: {
