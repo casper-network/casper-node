@@ -29,7 +29,10 @@ pub(crate) enum Effect<C: Context> {
     ScheduleTimer(Timestamp),
     /// `propose` needs to be called with a value for a new block with the specified block context
     /// and parent value.
-    RequestNewBlock(BlockContext),
+    RequestNewBlock {
+        block_context: BlockContext,
+        fork_choice: Option<C::Hash>,
+    },
     /// This validator is faulty.
     ///
     /// When this is returned, the validator automatically deactivates.
@@ -190,7 +193,7 @@ impl<C: Context> ActiveValidator<C> {
     /// If we are already waiting for a consensus value, `None` is returned instead.
     /// If the new value would come after a terminal block, the proposal is made immediately, and
     /// without a value.
-    pub(crate) fn request_new_block(
+    fn request_new_block(
         &mut self,
         state: &State<C>,
         instance_id: C::InstanceId,
@@ -214,8 +217,11 @@ impl<C: Context> ActiveValidator<C> {
         let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
         let height = opt_parent.map_or(0, |block| block.height);
         self.next_proposal = Some((timestamp, panorama));
-        let bctx = BlockContext::new(timestamp, height);
-        Some(Effect::RequestNewBlock(bctx))
+        let block_context = BlockContext::new(timestamp, height);
+        Some(Effect::RequestNewBlock {
+            block_context,
+            fork_choice: opt_parent_hash.cloned(),
+        })
     }
 
     /// Proposes a new block with the given consensus value.
@@ -456,7 +462,9 @@ impl<C: Context> ActiveValidator<C> {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Debug;
+    use std::{collections::BTreeSet, fmt::Debug};
+
+    use crate::{components::consensus::highway_core::validators::ValidatorMap, testing::TestRng};
 
     use super::{
         super::{
@@ -476,13 +484,210 @@ mod tests {
                 panic!("Unexpected effect: {:?}", self);
             }
         }
+
+        fn unwrap_timer(self) -> Timestamp {
+            if let Eff::ScheduleTimer(timestamp) = self {
+                timestamp
+            } else {
+                panic!("Unexpected effect: {:?}", self);
+            }
+        }
     }
 
-    fn unwrap_single<T: Debug>(vec: Vec<T>) -> T {
-        let mut iter = vec.into_iter();
+    struct TestState {
+        rng: TestRng,
+        state: State<TestContext>,
+        instance_id: u64,
+        fd: FinalityDetector<TestContext>,
+        active_validators: ValidatorMap<ActiveValidator<TestContext>>,
+        timers: BTreeSet<(Timestamp, ValidatorIndex)>,
+    }
+
+    impl TestState {
+        fn new(
+            state: State<TestContext>,
+            rng: TestRng,
+            start_time: Timestamp,
+            instance_id: u64,
+            fd: FinalityDetector<TestContext>,
+            validators: Vec<ValidatorIndex>,
+        ) -> Self {
+            let mut timers = BTreeSet::new();
+            let current_round_id = state::round_id(start_time, state.params().init_round_exp());
+            let earliest_round_start = if start_time == current_round_id {
+                start_time
+            } else {
+                current_round_id + (1 << state.params().init_round_exp()).into()
+            };
+            let active_validators = validators
+                .into_iter()
+                .map(|vidx| {
+                    let secret = TestSecret(vidx.0);
+                    let (av, effects) = ActiveValidator::new(vidx, secret, start_time, &state);
+                    let timestamp = unwrap_single(&effects).unwrap_timer();
+                    if state.leader(earliest_round_start) == vidx {
+                        assert_eq!(
+                            timestamp, earliest_round_start,
+                            "Invalid initial timer scheduled for {:?}.",
+                            vidx
+                        )
+                    } else {
+                        let witness_offset =
+                            av.witness_offset(state::round_len(state.params().init_round_exp()));
+                        let witness_timestamp = earliest_round_start + witness_offset;
+                        assert_eq!(
+                            timestamp, witness_timestamp,
+                            "Invalid initial timer scheduled for {:?}.",
+                            vidx
+                        )
+                    }
+                    timers.insert((timestamp, vidx));
+                    av
+                })
+                .collect();
+
+            TestState {
+                rng,
+                state,
+                instance_id,
+                fd,
+                active_validators,
+                timers,
+            }
+        }
+
+        /// Force the validator to handle timer that may not have been scheduled by it.
+        /// Useful for testing.
+        /// Returns effects created when handling the timer.
+        fn handle_timer(
+            &mut self,
+            vidx: ValidatorIndex,
+            timestamp: Timestamp,
+        ) -> Vec<Effect<TestContext>> {
+            // Remove the timer from the queue if it has been scheduled.
+            let _ = self.timers.remove(&(timestamp, vidx));
+            let validator = &mut self.active_validators[vidx];
+            let effects =
+                validator.handle_timer(timestamp, &self.state, self.instance_id, &mut self.rng);
+            self.schedule_timer(vidx, &effects);
+            self.add_new_unit(&effects);
+            effects
+        }
+
+        /// Propose new consensus value as validator `vidx`.
+        /// Returns effects created when proposing and newly proposed wire unit.
+        fn propose(
+            &mut self,
+            vidx: ValidatorIndex,
+            cv: <TestContext as Context>::ConsensusValue,
+            block_context: BlockContext,
+        ) -> (Vec<Effect<TestContext>>, SignedWireUnit<TestContext>) {
+            let validator = &mut self.active_validators[vidx];
+            let proposal_timestamp = block_context.timestamp();
+            let effects = validator.propose(
+                cv,
+                block_context,
+                &self.state,
+                self.instance_id,
+                &mut self.rng,
+            );
+
+            // Add the new unit to the state.
+            let proposal_wunit = unwrap_single(&effects).unwrap_unit();
+            let prop_hash = proposal_wunit.hash();
+            self.state.add_unit(proposal_wunit.clone()).unwrap();
+            let effects = validator.on_new_unit(
+                &prop_hash,
+                proposal_timestamp + 1.into(),
+                &self.state,
+                self.instance_id,
+                &mut self.rng,
+            );
+            self.schedule_timer(vidx, &effects);
+            (effects, proposal_wunit)
+        }
+
+        /// Handle new unit by validator `vidx`.
+        /// Since all validators use the same state, that unit should be added already. Panics if
+        /// not. Returns effect created when handling new unit.
+        fn handle_new_unit(
+            &mut self,
+            vidx: ValidatorIndex,
+            uhash: &<TestContext as Context>::Hash,
+        ) -> Vec<Effect<TestContext>> {
+            let validator = &mut self.active_validators[vidx];
+            let delivery_timestamp = self.state.unit(uhash).timestamp + 1.into();
+            let effects = validator.on_new_unit(
+                uhash,
+                delivery_timestamp,
+                &self.state,
+                self.instance_id,
+                &mut self.rng,
+            );
+            self.schedule_timer(vidx, &effects);
+            self.add_new_unit(&effects);
+            effects
+        }
+
+        /// Schedules new timers, if any was returned as an effect.
+        fn schedule_timer(&mut self, vidx: ValidatorIndex, effects: &[Effect<TestContext>]) {
+            let new_timestamps: Vec<Timestamp> = effects
+                .iter()
+                .filter_map(|eff| {
+                    if let Effect::ScheduleTimer(timestamp) = eff {
+                        Some(*timestamp)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            match *new_timestamps {
+                [] => (),
+                [timestamp] => {
+                    let _ = self.timers.insert((timestamp, vidx));
+                }
+                _ => panic!(
+                    "Expected at most one timer to be scheduled: {:?}",
+                    new_timestamps
+                ),
+            }
+        }
+
+        /// Adds new unit, if any, to the state.
+        fn add_new_unit(&mut self, effects: &[Effect<TestContext>]) {
+            let new_units: Vec<_> = effects
+                .iter()
+                .filter_map(|eff| {
+                    if let Effect::NewVertex(ValidVertex(Vertex::Unit(swunit))) = eff {
+                        Some(swunit)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            match *new_units {
+                [] => (),
+                [unit] => {
+                    let _ = self.state.add_unit(unit.clone()).unwrap();
+                }
+                _ => panic!(
+                    "Expected at most one timer to be scheduled: {:?}",
+                    new_units
+                ),
+            }
+        }
+
+        /// Returns hash of the newly finalized unit.
+        fn next_finalized(&mut self) -> Option<&<TestContext as Context>::Hash> {
+            self.fd.next_finalized(&self.state)
+        }
+    }
+
+    fn unwrap_single<T: Debug + Clone>(vec: &[T]) -> T {
+        let mut iter = vec.iter();
         match (iter.next(), iter.next()) {
             (None, _) => panic!("Unexpected empty vec"),
-            (Some(t), None) => t,
+            (Some(t), None) => t.clone(),
             (Some(t0), Some(t1)) => panic!("Expected only one element: {:?}, {:?}", t0, t1),
         }
     }
@@ -490,70 +695,63 @@ mod tests {
     #[test]
     #[allow(clippy::unreadable_literal)] // 0xC0FFEE is more readable than 0x00C0_FFEE.
     fn active_validator() -> Result<(), AddUnitError<TestContext>> {
-        let mut state = State::new_test(&[Weight(3), Weight(4)], 0);
-        let mut rng = crate::new_rng();
-        let mut fd = FinalityDetector::new(Weight(2));
-        let instance_id = 1u64;
+        let mut test = TestState::new(
+            State::new_test(&[Weight(3), Weight(4)], 0),
+            crate::new_rng(),
+            410.into(),
+            1u64,
+            FinalityDetector::new(Weight(2)),
+            vec![ALICE, BOB],
+        );
 
-        // We start at time 410, with round length 16, so the first leader tick is 416, and the
-        // first witness tick 426.
-        assert_eq!(ALICE, state.leader(416.into())); // Alice will be the first leader.
-        assert_eq!(BOB, state.leader(432.into())); // Bob will be the second leader.
-        let (mut alice_av, effects) =
-            ActiveValidator::new(ALICE, TestSecret(0), 410.into(), &state);
-        assert_eq!([Eff::ScheduleTimer(416.into())], *effects);
-        let (mut bob_av, effects) = ActiveValidator::new(BOB, TestSecret(1), 410.into(), &state);
-        assert_eq!([Eff::ScheduleTimer(426.into())], *effects);
+        assert!(test.handle_timer(ALICE, 415.into()).is_empty()); // Too early: No new effects.
 
-        assert!(alice_av
-            .handle_timer(415.into(), &state, instance_id, &mut rng)
-            .is_empty()); // Too early: No new effects.
-
+        // We start at time 410, with round length 16, so the first leader tick is
+        // 416, and the first witness tick 426.
         // Alice wants to propose a block, and also make her witness unit at 426.
-        let bctx = match &*alice_av.handle_timer(416.into(), &state, instance_id, &mut rng) {
-            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
-                if *timestamp == 426.into() =>
-            {
-                bctx.clone()
-            }
+        let bctx = match &*test.handle_timer(ALICE, 416.into()) {
+            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock {
+                block_context: bctx,
+                ..
+            }] if *timestamp == 426.into() => bctx.clone(),
             effects => panic!("unexpected effects {:?}", effects),
         };
-        assert_eq!(Timestamp::from(416), bctx.timestamp());
+        assert_eq!(
+            Timestamp::from(416),
+            bctx.timestamp(),
+            "Proposal should be scheduled for the expected timestamp."
+        );
 
         // She has a pending deploy from Colin who wants to pay for a hot beverage.
-        let effects = alice_av.propose(0xC0FFEE, bctx, &state, instance_id, &mut rng);
-        let proposal_wunit = unwrap_single(effects).unwrap_unit();
-        let prop_hash = proposal_wunit.hash();
-        state.add_unit(proposal_wunit)?;
-        assert!(alice_av
-            .on_new_unit(&prop_hash, 417.into(), &state, instance_id, &mut rng)
-            .is_empty());
+        let (effects, new_unit) = test.propose(ALICE, 0xC0FFEE, bctx);
+        assert!(
+            effects.is_empty(),
+            "No effects by creator after proposing a unit."
+        );
 
         // Bob creates a confirmation unit for Alice's proposal.
-        let effects = bob_av.on_new_unit(&prop_hash, 419.into(), &state, instance_id, &mut rng);
-        state.add_unit(unwrap_single(effects).unwrap_unit())?;
+        let effects = test.handle_new_unit(BOB, &new_unit.hash());
+        // Validate that `effects` contain only one new unit – that is Bob's confirmation of Alice's
+        // vote.
+        let _ = unwrap_single(&effects).unwrap_unit();
 
         // Bob creates his witness message 2/3 through the round.
-        let mut effects = bob_av
-            .handle_timer(426.into(), &state, instance_id, &mut rng)
-            .into_iter();
+        let mut effects = test.handle_timer(BOB, 426.into()).into_iter();
         assert_eq!(Some(Eff::ScheduleTimer(432.into())), effects.next()); // Bob is the next leader.
-        state.add_unit(effects.next().unwrap().unwrap_unit())?;
+        let _ = effects.next().unwrap().unwrap_unit();
         assert_eq!(None, effects.next());
 
         // Alice has not witnessed Bob's unit yet.
-        assert_eq!(None, fd.next_finalized(&state));
+        assert_eq!(None, test.next_finalized());
 
         // Alice also sends her own witness message, completing the summit for her proposal.
-        let mut effects = alice_av
-            .handle_timer(426.into(), &state, instance_id, &mut rng)
-            .into_iter();
+        let mut effects = test.handle_timer(ALICE, 426.into()).into_iter();
         assert_eq!(Some(Eff::ScheduleTimer(442.into())), effects.next()); // Timer for witness unit.
-        state.add_unit(effects.next().unwrap().unwrap_unit())?;
+        let _ = effects.next().unwrap().unwrap_unit();
         assert_eq!(None, effects.next());
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
-        assert_eq!(Some(&prop_hash), fd.next_finalized(&state));
+        assert_eq!(Some(&new_unit.hash()), test.next_finalized());
         Ok(())
     }
 }

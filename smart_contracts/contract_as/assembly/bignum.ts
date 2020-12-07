@@ -1,4 +1,5 @@
-import {Error, Result, Ref} from "./bytesrepr";
+import {Ref} from "./ref";
+import {Error, Result} from "./bytesrepr";
 import {Pair} from "./pair";
 
 const HEX_LOWERCASE: string[] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];

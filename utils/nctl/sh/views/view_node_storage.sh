@@ -37,15 +37,15 @@ node=${node:-"all"}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
+# Import net vars.
 source $(get_path_to_net_vars $net)
 
 # Render node storage.
 if [ $node = "all" ]; then
-    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
         echo "------------------------------------------------------------------------------------------------------------------------------------"
-        render_node_storage $net $idx
+        render_node_storage $net $IDX
     done
     echo "------------------------------------------------------------------------------------------------------------------------------------"
 else

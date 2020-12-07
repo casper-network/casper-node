@@ -38,7 +38,7 @@ impl<C: Context> Dependency<C> {
 /// An element of the protocol state, that might depend on other elements.
 ///
 /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -104,7 +104,7 @@ impl<C: Context> Vertex<C> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -133,7 +133,7 @@ impl<C: Context> SignedWireUnit<C> {
 }
 
 /// A unit as it is sent over the wire, possibly containing a new block.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -187,9 +187,14 @@ impl<C: Context> WireUnit<C> {
     pub(crate) fn round_id(&self) -> Timestamp {
         state::round_id(self.timestamp, self.round_exp)
     }
+
+    /// Returns the creator's previous unit.
+    pub(crate) fn previous(&self) -> Option<&C::Hash> {
+        self.panorama[self.creator].correct()
+    }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
@@ -218,7 +223,7 @@ impl<C: Context> Endorsements<C> {
     }
 
     /// Returns an iterator over validator indexes that endorsed the `unit`.
-    pub fn validator_ids(&self) -> impl Iterator<Item = &ValidatorIndex> {
-        self.endorsers.iter().map(|(v, _)| v)
+    pub fn validator_ids(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+        self.endorsers.iter().map(|(v, _)| *v)
     }
 }

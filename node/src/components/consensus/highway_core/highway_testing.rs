@@ -1,7 +1,7 @@
 use std::{
     collections::{hash_map::DefaultHasher, HashMap, VecDeque},
     fmt::{self, Debug, Display, Formatter},
-    hash::Hasher,
+    hash::{Hash, Hasher},
     iter::FromIterator,
 };
 
@@ -13,11 +13,10 @@ use tracing::{trace, warn};
 
 use super::{
     active_validator::Effect,
-    evidence::Evidence,
     finality_detector::{FinalityDetector, FttExceeded},
     highway::{
-        Dependency, Endorsements, GetDepOutcome, Highway, Params, PreValidatedVertex,
-        SignedWireUnit, ValidVertex, Vertex, VertexError,
+        Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, SignedWireUnit,
+        ValidVertex, Vertex, VertexError,
     },
     state::Fault,
     validators::Validators,
@@ -47,8 +46,9 @@ const TEST_MAX_ROUND_EXP: u8 = 19;
 const TEST_END_HEIGHT: u64 = 100000;
 pub(crate) const TEST_BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub(crate) const TEST_REDUCED_BLOCK_REWARD: u64 = 200_000_000_000;
+pub(crate) const TEST_INSTANCE_ID: u64 = 42;
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 enum HighwayMessage {
     Timer(Timestamp),
     NewVertex(Box<Vertex<TestContext>>),
@@ -100,7 +100,9 @@ impl From<Effect<TestContext>> for HighwayMessage {
             // validators so for them it's just `Vertex` that needs to be validated.
             Effect::NewVertex(ValidVertex(v)) => HighwayMessage::NewVertex(Box::new(v)),
             Effect::ScheduleTimer(t) => HighwayMessage::Timer(t),
-            Effect::RequestNewBlock(block_context) => HighwayMessage::RequestBlock(block_context),
+            Effect::RequestNewBlock { block_context, .. } => {
+                HighwayMessage::RequestBlock(block_context)
+            }
             Effect::WeAreFaulty(fault) => HighwayMessage::WeAreFaulty(Box::new(fault)),
         }
     }
@@ -114,57 +116,11 @@ impl PartialOrd for HighwayMessage {
 
 impl Ord for HighwayMessage {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        if self == other {
-            return std::cmp::Ordering::Equal;
-        }
-        match (self, other) {
-            (HighwayMessage::Timer(t1), HighwayMessage::Timer(t2)) => t1.cmp(&t2),
-            (HighwayMessage::NewVertex(v1), HighwayMessage::NewVertex(v2)) => {
-                match (&**v1, &**v2) {
-                    (Vertex::Unit(swv1), Vertex::Unit(swv2)) => swv1.hash().cmp(&swv2.hash()),
-                    (Vertex::Unit(_), _) => std::cmp::Ordering::Less,
-                    (
-                        Vertex::Evidence(Evidence::Equivocation(ev1_a, ev1_b)),
-                        Vertex::Evidence(Evidence::Equivocation(ev2_a, ev2_b)),
-                    ) => ev1_a
-                        .hash()
-                        .cmp(&ev2_a.hash())
-                        .then_with(|| ev1_b.hash().cmp(&ev2_b.hash())),
-                    (Vertex::Evidence(_), _) => std::cmp::Ordering::Less,
-                    (
-                        Vertex::Endorsements(Endorsements {
-                            unit: l_hash,
-                            endorsers: l_vid,
-                        }),
-                        Vertex::Endorsements(Endorsements {
-                            unit: r_hash,
-                            endorsers: r_vid,
-                        }),
-                    ) => l_hash.cmp(r_hash).then_with(|| l_vid.cmp(r_vid)),
-                    (Vertex::Endorsements(_), _) => std::cmp::Ordering::Less,
-                }
-            }
-            (HighwayMessage::RequestBlock(bc1), HighwayMessage::RequestBlock(bc2)) => bc1.cmp(&bc2),
-            (HighwayMessage::WeAreFaulty(ev1), HighwayMessage::WeAreFaulty(ev2)) => {
-                match (&**ev1, &**ev2) {
-                    (Fault::Banned, _) => std::cmp::Ordering::Greater,
-                    (Fault::Indirect, _) => std::cmp::Ordering::Greater,
-                    (Fault::Direct(ev1), Fault::Direct(ev2)) => {
-                        let Evidence::Equivocation(ev1_a, ev1_b) = ev1;
-                        let Evidence::Equivocation(ev2_a, ev2_b) = ev2;
-                        ev1_a
-                            .hash()
-                            .cmp(&ev2_a.hash())
-                            .then_with(|| ev1_b.hash().cmp(&ev2_b.hash()))
-                    }
-                    (_, _) => std::cmp::Ordering::Less,
-                }
-            }
-            (HighwayMessage::Timer(_), _) => std::cmp::Ordering::Less,
-            (HighwayMessage::NewVertex(_), _) => std::cmp::Ordering::Less,
-            (HighwayMessage::RequestBlock(_), _) => std::cmp::Ordering::Less,
-            (HighwayMessage::WeAreFaulty(_), _) => std::cmp::Ordering::Greater,
-        }
+        let mut hasher0 = DefaultHasher::new();
+        let mut hasher1 = DefaultHasher::new();
+        self.hash(&mut hasher0);
+        other.hash(&mut hasher1);
+        hasher0.finish().cmp(&hasher1.finish())
     }
 }
 

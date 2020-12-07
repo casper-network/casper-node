@@ -25,7 +25,7 @@ use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_executor::{self, BlockExecutor},
-        block_proposer::{self, BlockProposer, BlockProposerState},
+        block_proposer::{self, BlockProposer},
         block_validator::{self, BlockValidator},
         chainspec_loader::{self, ChainspecLoader},
         consensus::{self, EraSupervisor},
@@ -53,7 +53,7 @@ use crate::{
             BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest,
             ChainspecLoaderRequest, ConsensusRequest, ContractRuntimeRequest, FetcherRequest,
             LinearChainRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest, RestRequest,
-            RpcRequest, StorageRequest,
+            RpcRequest, StateStoreRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -151,6 +151,12 @@ pub enum Event {
     /// Chainspec info request
     #[from]
     ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
+    /// Storage request.
+    #[from]
+    StorageRequest(#[serde(skip_serializing)] StorageRequest),
+    /// Request for state storage.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
 
     // Announcements
     /// Network announcement.
@@ -177,12 +183,6 @@ pub enum Event {
     /// Linear chain announcement.
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
-}
-
-impl From<StorageRequest> for Event {
-    fn from(request: StorageRequest) -> Self {
-        Event::Storage(request.into())
-    }
 }
 
 impl From<RpcRequest<NodeId>> for Event {
@@ -256,6 +256,8 @@ impl Display for Event {
             Event::NetworkRequest(req) => write!(f, "network request: {}", req),
             Event::NetworkInfoRequest(req) => write!(f, "network info request: {}", req),
             Event::ChainspecLoaderRequest(req) => write!(f, "chainspec loader request: {}", req),
+            Event::StorageRequest(req) => write!(f, "storage request: {}", req),
+            Event::StateStoreRequest(req) => write!(f, "state store request: {}", req),
             Event::DeployFetcherRequest(req) => write!(f, "deploy fetcher request: {}", req),
             Event::BlockProposerRequest(req) => write!(f, "block proposer request: {}", req),
             Event::BlockExecutorRequest(req) => write!(f, "block executor request: {}", req),
@@ -290,7 +292,6 @@ pub struct ValidatorInitConfig {
     pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
     pub(super) linear_chain: Vec<Block>,
-    pub(super) block_proposer_state: BlockProposerState,
     pub(super) event_stream_server: EventStreamServer,
 }
 
@@ -357,7 +358,6 @@ impl reactor::Reactor for Reactor {
             consensus,
             init_consensus_effects,
             linear_chain,
-            block_proposer_state,
             event_stream_server,
         } = config;
 
@@ -370,8 +370,9 @@ impl reactor::Reactor for Reactor {
         let effect_builder = EffectBuilder::new(event_queue);
         let network_config = network::Config::from(&config.network);
         let (network, network_effects) = Network::new(event_queue, network_config, true)?;
+        let genesis_config_hash = chainspec_loader.chainspec().hash();
         let (small_network, small_network_effects) =
-            SmallNetwork::new(event_queue, config.network, true)?;
+            SmallNetwork::new(event_queue, config.network, genesis_config_hash, true)?;
 
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
@@ -388,7 +389,7 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
         let (block_proposer, block_proposer_effects) =
-            BlockProposer::new(registry.clone(), effect_builder, block_proposer_state)?;
+            BlockProposer::new(registry.clone(), effect_builder)?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         // Post state hash is expected to be present.
         let genesis_state_root_hash = chainspec_loader
@@ -577,6 +578,12 @@ impl reactor::Reactor for Reactor {
             ),
             Event::ChainspecLoaderRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::ChainspecLoader(req.into()))
+            }
+            Event::StorageRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
+            }
+            Event::StateStoreRequest(req) => {
+                self.dispatch_event(effect_builder, rng, Event::Storage(req.into()))
             }
 
             // Announcements:

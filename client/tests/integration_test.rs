@@ -92,12 +92,6 @@ impl MockServerHandle {
         }
     }
 
-    // lib/deploy.rs houses file related operation tests
-    // intentionally missing here are:
-    // * sign_deploy
-    // * send_deploy
-    // * make_deploy
-
     fn get_balance(&self, state_root_hash: &str, purse_uref: &str) -> Result<(), ErrWrapper> {
         casper_client::get_balance("1", &self.url(), false, state_root_hash, purse_uref)
             .map(|_| ())
@@ -112,6 +106,18 @@ impl MockServerHandle {
 
     fn get_state_root_hash(&self, maybe_block_id: &str) -> Result<(), ErrWrapper> {
         casper_client::get_state_root_hash("1", &self.url(), false, maybe_block_id)
+            .map(|_| ())
+            .map_err(ErrWrapper)
+    }
+
+    fn get_block(&self, maybe_block_id: &str) -> Result<(), ErrWrapper> {
+        casper_client::get_block("1", &self.url(), false, maybe_block_id)
+            .map(|_| ())
+            .map_err(ErrWrapper)
+    }
+
+    fn get_item(&self, state_root_hash: &str, key: &str, path: &str) -> Result<(), ErrWrapper> {
+        casper_client::get_item("1", &self.url(), false, state_root_hash, key, path)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
@@ -157,6 +163,12 @@ impl MockServerHandle {
         )
         .map(|_| ())
         .map_err(ErrWrapper)
+    }
+
+    fn send_deploy_file(&self, input_path: &str) -> Result<(), ErrWrapper> {
+        casper_client::send_deploy_file("1", &self.url(), false, input_path)
+            .map(|_| ())
+            .map_err(ErrWrapper)
     }
 
     fn get_auction_info(&self) -> Result<(), ErrWrapper> {
@@ -330,23 +342,149 @@ mod get_state_root_hash {
         let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
         assert_eq!(server_handle.get_state_root_hash(""), Ok(()));
     }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_succeed_with_valid_block_height() {
+        let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
+        assert_eq!(server_handle.get_state_root_hash("1"), Ok(()));
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_with_bad_block_id() {
+        let server_handle = MockServerHandle::spawn_without_params(GetStateRootHash::METHOD);
+        let input = "<not a real block id>";
+        assert!(
+            server_handle.get_state_root_hash(input).is_err(),
+            "input '{}' should not parse to a valid block id",
+            input
+        );
+    }
+}
+
+mod get_block {
+    use casper_client::ValidateResponseError;
+    use casper_node::rpcs::chain::{GetBlock, GetBlockParams};
+
+    use super::*;
+
+    // in this case, the error means that the request was sent successfully, but due to to the
+    // mock implementation fails to validate
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_succeed_with_valid_block_hash() {
+        let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
+        assert_eq!(
+            server_handle.get_block(VALID_STATE_ROOT_HASH),
+            Err(ErrWrapper(InvalidResponse(
+                ValidateResponseError::NoBlockInResponse
+            )))
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_succeed_with_valid_block_height() {
+        let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
+        assert_eq!(
+            server_handle.get_block("1"),
+            Err(ErrWrapper(InvalidResponse(
+                ValidateResponseError::NoBlockInResponse
+            )))
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_succeed_with_valid_empty_block_hash() {
+        let server_handle = MockServerHandle::spawn_without_params(GetBlock::METHOD);
+        assert_eq!(
+            server_handle.get_block(""),
+            Err(ErrWrapper(InvalidResponse(
+                ValidateResponseError::NoBlockInResponse
+            )))
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_with_invalid_block_id() {
+        let server_handle = MockServerHandle::spawn::<GetBlockParams>(GetBlock::METHOD);
+        match server_handle.get_block("<not a valid hash>") {
+            Err(ErrWrapper(Error::FailedToParseInt("block_identifier", _))) => {}
+            other => panic!("incorrect error returned from client {:?}", other),
+        }
+    }
+}
+
+mod get_item {
+    use casper_client::ValidateResponseError;
+    use casper_node::rpcs::state::{GetItem, GetItemParams};
+
+    use super::*;
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_succeed_with_valid_state_root_hash() {
+        let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
+
+        // in this case, the error means that the request was sent successfully, but due to to the
+        // mock implementation fails to validate
+
+        assert_eq!(
+            server_handle.get_item(VALID_STATE_ROOT_HASH, VALID_PURSE_UREF, ""),
+            Err(
+                Error::InvalidResponse(ValidateResponseError::ValidateResponseFailedToParse).into()
+            )
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_with_invalid_state_root_hash() {
+        let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
+        assert_eq!(
+            server_handle.get_item("<invalid state root hash>", VALID_PURSE_UREF, ""),
+            Err(CryptoError {
+                context: "state_root_hash",
+                error: FromHex(OddLength)
+            }
+            .into())
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_with_invalid_key() {
+        let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
+        assert_eq!(
+            server_handle.get_item(VALID_STATE_ROOT_HASH, "invalid key", ""),
+            Err(FailedToParseKey.into())
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_with_empty_key() {
+        let server_handle = MockServerHandle::spawn::<GetItemParams>(GetItem::METHOD);
+        assert_eq!(
+            server_handle.get_item("<invalid state root hash>", "", ""),
+            Err(CryptoError {
+                context: "state_root_hash",
+                error: FromHex(OddLength)
+            }
+            .into())
+        );
+    }
 }
 
 mod get_deploy {
     use super::*;
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_deploy_should_succeed_with_valid_hash() {
+    async fn should_succeed_with_valid_hash() {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert_eq!(
             server_handle
-                .get_deploy("09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",),
+                .get_deploy("09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6"),
             Ok(())
         );
     }
 
     #[tokio::test(threaded_scheduler)]
-    async fn get_deploy_should_fail_with_invalid_hash() {
+    async fn should_fail_with_invalid_hash() {
         let server_handle = MockServerHandle::spawn::<GetDeployParams>(GetDeploy::METHOD);
         assert_eq!(
             server_handle.get_deploy("012345",),
@@ -371,11 +509,236 @@ mod get_auction_info {
     }
 }
 
+mod make_deploy {
+    use super::*;
+
+    #[test]
+    fn should_succeed_for_stdout() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_succeed_for_file() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "../target/test_deploy.json",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+}
+
+mod send_deploy {
+    use super::*;
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_with_bad_deploy_file_path() {
+        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
+        if let Err(ErrWrapper(Error::IoError { context, .. })) =
+            server_handle.send_deploy_file("<not a valid path>")
+        {
+            assert_eq!(context, "unable to read input file \'<not a valid path>\'")
+        }
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_succeed_for_file() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "../target/test_send_deploy.json",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
+        assert_eq!(
+            server_handle.send_deploy_file("../target/test_send_deploy.json"),
+            Ok(())
+        );
+    }
+}
+
+mod sign_deploy {
+    use super::*;
+
+    #[test]
+    fn should_succeed_for_file() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "../target/test_deploy.json",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                "../target/test_deploy.json",
+                "../resources/local/secret_keys/node-1.pem",
+                "../target/signed_test_deploy.json",
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_succeed_for_stdout() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "../target/test_deploy.json",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert_eq!(
+            casper_client::sign_deploy_file(
+                "../target/test_deploy.json",
+                "../resources/local/secret_keys/node-1.pem",
+                ""
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn should_fail_with_bad_secret_key_path() {
+        assert_eq!(
+            casper_client::make_deploy(
+                "../target/test_deploy.json",
+                deploy_params::test_data_valid(),
+                session_params::test_data_with_package_hash(),
+                payment_params::test_data_with_name()
+            )
+            .map_err(ErrWrapper),
+            Ok(())
+        );
+        assert!(casper_client::sign_deploy_file(
+            "../target/test_deploy.json",
+            "<this is not a path>",
+            ""
+        )
+        .is_err());
+    }
+}
+
+mod keygen_generate_files {
+    use std::{env::current_dir, fs::remove_dir_all};
+
+    use super::*;
+
+    fn remove_dir(path: &str) {
+        if let Err(err) = remove_dir_all(path) {
+            println!("Unable to remove file at {} - {:?}", path, err);
+        }
+    }
+
+    #[test]
+    fn should_succeed_for_valid_args_ed25519() {
+        let path = "../target/test-keygen-ed25519";
+        remove_dir(path);
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::ED25519, true)
+                .map_err(ErrWrapper);
+        assert_eq!(result, Ok(()));
+        remove_dir(path);
+    }
+
+    #[test]
+    fn should_succeed_for_valid_args_secp256k1() {
+        let path = "../target/test-keygen-secp256k1";
+        remove_dir(path);
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, true)
+                .map_err(ErrWrapper);
+        assert_eq!(result, Ok(()));
+        remove_dir(path);
+    }
+
+    #[test]
+    fn should_force_overwrite_when_set() {
+        let path = "../target/test-keygen-force";
+        remove_dir(path);
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, false)
+                .map_err(ErrWrapper);
+        assert_eq!(result, Ok(()));
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, false)
+                .map_err(ErrWrapper);
+        assert_eq!(
+            result,
+            Err(FileAlreadyExists(
+                current_dir()
+                    .expect("does exist")
+                    .parent()
+                    .unwrap()
+                    .join("target/test-keygen-force/secret_key.pem")
+            )
+            .into())
+        );
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::SECP256K1, true)
+                .map_err(ErrWrapper);
+        assert_eq!(result, Ok(()));
+        remove_dir(path);
+    }
+
+    #[test]
+    fn should_fail_for_invalid_algorithm() {
+        let path = "../target/test-keygen-invalid-algo";
+        let result = casper_client::keygen::generate_files(path, "<not a valid algo>", true)
+            .map_err(ErrWrapper);
+        assert_eq!(
+            result,
+            Err(UnsupportedAlgorithm("<not a valid algo>".to_string()).into())
+        );
+    }
+
+    #[test]
+    fn should_fail_for_invalid_output_dir() {
+        let path = "";
+        let result =
+            casper_client::keygen::generate_files(path, casper_client::keygen::ED25519, true)
+                .map_err(ErrWrapper);
+        assert_eq!(
+            result,
+            Err(InvalidArgument(
+                "generate_files",
+                "empty output_dir provided, must be a valid path".to_string()
+            )
+            .into())
+        );
+    }
+}
+
 mod put_deploy {
     use super::*;
 
     #[tokio::test(threaded_scheduler)]
-    async fn client_should_send_put_deploy() {
+    async fn should_send_put_deploy() {
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         assert_eq!(
             server_handle.put_deploy(
@@ -414,7 +777,7 @@ mod transfer {
     }
 
     #[tokio::test(threaded_scheduler)]
-    async fn should_fail_if_both_target_purse_and_target_account_provided() {
+    async fn should_fail_if_both_target_purse_and_target_account_are_provided() {
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         let maybe_target_purse = VALID_PURSE_UREF;
         let maybe_target_account = "12345";
@@ -427,7 +790,27 @@ mod transfer {
                 deploy_params::test_data_valid(),
                 payment_params::test_data_with_name()
             ),
-            Err(Error::InvalidArgument("target_account | target_purse", "Invalid arguments to get_transfer_target - must provide either a target account or purse.".to_string()).into())
+            Err(Error::InvalidArgument("target_account | target_purse",
+            format!(
+                "Invalid arguments to get_transfer_target - must provide either a target account or purse. account={}, purse={}", maybe_target_account, maybe_target_purse)).into())
+        );
+    }
+
+    #[tokio::test(threaded_scheduler)]
+    async fn should_fail_if_both_target_purse_and_target_account_are_excluded() {
+        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
+        assert_eq!(
+            server_handle.transfer(
+                "100",
+                VALID_PURSE_UREF,
+                "",
+                "",
+                deploy_params::test_data_valid(),
+                payment_params::test_data_with_name()
+            ),
+            Err(Error::InvalidArgument(
+                "target_account | target_purse",
+                "Invalid arguments to get_transfer_target - must provide either a target account or purse. account=, purse=".to_string()).into())
         );
     }
 }

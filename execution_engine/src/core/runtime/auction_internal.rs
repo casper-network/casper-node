@@ -1,7 +1,9 @@
 use casper_types::{
     account,
     account::AccountHash,
-    auction::{Auction, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
+    auction::{
+        Auction, AuctionInfo, MintProvider, RuntimeProvider, StorageProvider, SystemProvider,
+    },
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
     ApiError, CLTyped, CLValue, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
@@ -55,10 +57,18 @@ where
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ApiError> {
         let mint_contract_hash = self.get_mint_contract();
-        self.mint_transfer(mint_contract_hash, source, target, amount, None)
-            .map_err(|_| Error::Transfer)
+        match self.mint_transfer(mint_contract_hash, source, target, amount, None) {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(api_error)) => Err(api_error),
+            Err(_) => Err(ApiError::Transfer),
+        }
+    }
+
+    fn record_auction_info(&mut self, era_id: u64, auction_info: AuctionInfo) -> Result<(), Error> {
+        Runtime::record_auction_info(self, era_id, auction_info)
+            .map_err(|_| Error::RecordAuctionInfo)
     }
 }
 
@@ -106,15 +116,12 @@ where
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), Error> {
-        let mint_contract_key = self.get_mint_contract();
-        if self
-            .mint_transfer(mint_contract_key, source, target, amount, None)
-            .is_ok()
-        {
-            Ok(())
-        } else {
-            Err(Error::Transfer)
+    ) -> Result<(), ApiError> {
+        let mint_contract_hash = self.get_mint_contract();
+        match self.mint_transfer(mint_contract_hash, source, target, amount, None) {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(api_error)) => Err(api_error),
+            Err(_) => Err(ApiError::Transfer),
         }
     }
 

@@ -6,6 +6,7 @@ use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
+    iter,
 };
 
 use casper_execution_engine::shared::motes::Motes;
@@ -151,8 +152,15 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 self.process_new_vertex(vv.into())
             }
             AvEffect::ScheduleTimer(timestamp) => vec![ProtocolOutcome::ScheduleTimer(timestamp)],
-            AvEffect::RequestNewBlock(block_context) => {
-                vec![ProtocolOutcome::CreateNewBlock { block_context }]
+            AvEffect::RequestNewBlock {
+                block_context,
+                fork_choice,
+            } => {
+                let past_values = self.non_finalized_values(fork_choice).cloned().collect();
+                vec![ProtocolOutcome::CreateNewBlock {
+                    block_context,
+                    past_values,
+                }]
             }
             AvEffect::WeAreFaulty(fault) => panic!("this validator is faulty: {:?}", fault),
         }
@@ -403,6 +411,24 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             self.vertex_deps.remove(&key);
         }
         dropped_vertices
+    }
+
+    /// Returns an iterator over all the values that are expected to become finalized, but are not
+    /// finalized yet.
+    pub(crate) fn non_finalized_values(
+        &self,
+        mut fork_choice: Option<C::Hash>,
+    ) -> impl Iterator<Item = &C::ConsensusValue> {
+        let last_finalized = self.finality_detector.last_finalized();
+        iter::from_fn(move || {
+            if fork_choice.as_ref() == last_finalized {
+                return None;
+            }
+            let opt_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
+            let value = opt_block.map(|block| &block.value);
+            fork_choice = opt_block.and_then(|block| block.parent().cloned());
+            value
+        })
     }
 }
 

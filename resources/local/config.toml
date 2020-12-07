@@ -148,6 +148,12 @@ max_deploy_store_size = 12_884_901_888
 # 322_122_547_200 == 12 GiB.
 max_deploy_metadata_store_size = 12_884_901_888
 
+# Maximum size of the database to use for the state snapshots.
+#
+# The size should be a multiple of the OS page size.
+#
+# 10_737_418_240 == 10 GiB.
+max_state_store_size = 10_737_418_240
 
 # ===================================
 # Configuration options for gossiping
@@ -169,7 +175,7 @@ saturation_limit_percent = 80
 #
 # The longer they are retained, the lower the likelihood of re-gossiping a piece of data.  However,
 # the longer they are retained, the larger the list of finished entries can grow.
-finished_entry_duration_secs = 3600
+finished_entry_duration_secs = 60
 
 # The timeout duration in seconds for a single gossip request, i.e. for a single gossip message
 # sent from this node, it will be considered timed out if the expected response from that peer is

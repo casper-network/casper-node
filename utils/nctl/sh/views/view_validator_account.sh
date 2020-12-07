@@ -37,19 +37,19 @@ node=${node:-"all"}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
+# Import net vars.
 source $(get_path_to_net_vars $net)
 
 # Render account(s).
 if [ $node = "all" ]; then
-    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
         echo "------------------------------------------------------------------------------------------------------------------------------------"
-        log "network #$net :: node #$idx :: on-chain account details:"
-        render_account $net $idx $NCTL_ACCOUNT_TYPE_NODE $idx
+        log "net-$net :: node #$IDX :: on-chain account details:"
+        render_account $net $IDX $NCTL_ACCOUNT_TYPE_NODE $IDX
     done
     echo "------------------------------------------------------------------------------------------------------------------------------------"
 else
-    log "network #$net :: node #$node :: on-chain account details:"
+    log "net-$net :: node #$node :: on-chain account details:"
     render_account $net $node $NCTL_ACCOUNT_TYPE_NODE $node
 fi

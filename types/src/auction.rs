@@ -1,4 +1,5 @@
 //! Contains implementation of a Auction contract functionality.
+mod auction_info;
 mod bid;
 mod constants;
 mod delegator;
@@ -18,6 +19,7 @@ use crate::{
     PublicKey, URef, U512,
 };
 
+pub use auction_info::*;
 pub use bid::Bid;
 pub use constants::*;
 pub use delegator::Delegator;
@@ -87,13 +89,15 @@ pub trait Auction:
         let mut validators = detail::get_bids(self)?;
         let new_amount = match validators.get_mut(&public_key) {
             Some(bid) => {
-                self.transfer_purse_to_purse(source, *bid.bonding_purse(), amount)?;
+                self.transfer_purse_to_purse(source, *bid.bonding_purse(), amount)
+                    .map_err(|_| Error::TransferToBidPurse)?;
                 bid.with_delegation_rate(delegation_rate)
                     .increase_stake(amount)?
             }
             None => {
                 let bonding_purse = self.create_purse();
-                self.transfer_purse_to_purse(source, bonding_purse, amount)?;
+                self.transfer_purse_to_purse(source, bonding_purse, amount)
+                    .map_err(|_| Error::TransferToBidPurse)?;
                 let bid = Bid::unlocked(bonding_purse, amount, delegation_rate);
                 validators.insert(public_key, bid);
                 amount
@@ -131,6 +135,7 @@ pub trait Auction:
         detail::create_unbonding_purse(
             self,
             public_key,
+            public_key, // validator is the unbonder
             *bid.bonding_purse(),
             unbonding_purse,
             amount,
@@ -180,13 +185,15 @@ pub trait Auction:
 
         let new_delegation_amount = match delegators.get_mut(&delegator_public_key) {
             Some(delegator) => {
-                self.transfer_purse_to_purse(source, *delegator.bonding_purse(), amount)?;
+                self.transfer_purse_to_purse(source, *delegator.bonding_purse(), amount)
+                    .map_err(|_| Error::TransferToDelegatorPurse)?;
                 delegator.increase_stake(amount)?;
                 *delegator.staked_amount()
             }
             None => {
                 let bonding_purse = self.create_purse();
-                self.transfer_purse_to_purse(source, bonding_purse, amount)?;
+                self.transfer_purse_to_purse(source, bonding_purse, amount)
+                    .map_err(|_| Error::TransferToDelegatorPurse)?;
                 let delegator = Delegator::new(amount, bonding_purse, validator_public_key);
                 delegators.insert(delegator_public_key, delegator);
                 amount
@@ -230,6 +237,7 @@ pub trait Auction:
             Some(delegator) => {
                 detail::create_unbonding_purse(
                     self,
+                    validator_public_key,
                     delegator_public_key,
                     *delegator.bonding_purse(),
                     unbonding_purse,
@@ -241,9 +249,7 @@ pub trait Auction:
                 };
                 updated_stake
             }
-            None => {
-                return Err(Error::DelegatorNotFound);
-            }
+            None => return Err(Error::DelegatorNotFound),
         };
 
         detail::set_bids(self, bids)?;
@@ -265,10 +271,30 @@ pub trait Auction:
 
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
-            // TODO: slash delegators properly
-            if let Some(unbonding_list) = unbonding_purses.remove(&validator_public_key) {
-                burned_amount += unbonding_list.iter().map(|x| x.amount).sum();
-                unbonding_purses_modified = true;
+            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
+                let initial_length = unbonding_list.len();
+
+                unbonding_list.retain(|unbonding_purse| {
+                    // Only entries created by non-validators are retained
+                    let should_retain = !unbonding_purse.is_validator();
+
+                    if !should_retain {
+                        // Amounts inside removed entries are burned only.
+                        burned_amount += *unbonding_purse.amount()
+                    }
+
+                    should_retain
+                });
+
+                if unbonding_list.len() != initial_length {
+                    unbonding_purses_modified = true;
+                }
+
+                if unbonding_list.is_empty() {
+                    // Cleans up empty map entries to preserve global state.
+                    unbonding_purses.remove(&validator_public_key).unwrap();
+                    unbonding_purses_modified = true;
+                }
             }
         }
 
@@ -388,15 +414,21 @@ pub trait Auction:
 
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
         let base_round_reward = self.read_base_round_reward()?;
+        let era_id = detail::get_era_id(self)?;
 
-        if reward_factors.keys().ne(seigniorage_recipients.keys()) {
-            return Err(Error::MismatchedEraValidators);
-        }
+        // // TODO: fix consensus?
+        // if reward_factors.keys().ne(seigniorage_recipients.keys()) {
+        //     return Err(Error::MismatchedEraValidators);
+        // }
+
+        let mut auction_info = AuctionInfo::new();
+        let mut seigniorage_allocations = auction_info.seigniorage_allocations_mut();
 
         for (public_key, reward_factor) in reward_factors {
-            let recipient = seigniorage_recipients
-                .get(&public_key)
-                .ok_or(Error::ValidatorNotFound)?;
+            let recipient = match seigniorage_recipients.get(&public_key) {
+                Some(recipient) => recipient,
+                None => continue, // TODO: fix consensus?
+            };
 
             let total_stake = recipient.total_stake();
             if total_stake.is_zero() {
@@ -432,13 +464,21 @@ pub trait Auction:
                         let reward = delegators_part * reward_multiplier;
                         (*delegator_key, reward)
                     });
-            let total_delegator_payout: U512 =
-                detail::update_delegator_rewards(self, public_key, delegator_rewards)?;
+            let total_delegator_payout: U512 = detail::update_delegator_rewards(
+                self,
+                &mut seigniorage_allocations,
+                public_key,
+                delegator_rewards,
+            )?;
 
             let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
             let validator_reward = validators_part.to_integer();
-            let validator_payout =
-                detail::update_validator_reward(self, public_key, validator_reward)?;
+            let validator_payout = detail::update_validator_reward(
+                self,
+                &mut seigniorage_allocations,
+                public_key,
+                validator_reward,
+            )?;
 
             // TODO: add "mint into existing purse" facility
             let validator_reward_purse = self
@@ -453,7 +493,7 @@ pub trait Auction:
                 validator_reward_purse,
                 validator_payout,
             )
-            .map_err(|_| Error::Transfer)?;
+            .map_err(|_| Error::ValidatorRewardTransfer)?;
 
             // TODO: add "mint into existing purse" facility
             let delegator_reward_purse = self
@@ -469,8 +509,11 @@ pub trait Auction:
                 delegator_reward_purse,
                 total_delegator_payout,
             )
-            .map_err(|_| Error::Transfer)?;
+            .map_err(|_| Error::DelegatorRewardTransfer)?;
         }
+
+        self.record_auction_info(era_id, auction_info)?;
+
         Ok(())
     }
 
@@ -512,7 +555,7 @@ pub trait Auction:
             .ok_or(Error::InvalidKeyVariant)?;
 
         self.transfer_purse_to_purse(source_purse, target_purse, reward_amount)
-            .map_err(|_| Error::Transfer)?;
+            .map_err(|_| Error::WithdrawDelegatorReward)?;
 
         delegator.zero_reward();
 
@@ -553,7 +596,7 @@ pub trait Auction:
             .ok_or(Error::InvalidKeyVariant)?;
 
         self.transfer_purse_to_purse(source_purse, target_purse, reward_amount)
-            .map_err(|_| Error::Transfer)?;
+            .map_err(|_| Error::WithdrawValidatorReward)?;
 
         bid.zero_reward();
 

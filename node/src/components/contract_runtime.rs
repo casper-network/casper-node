@@ -35,7 +35,6 @@ use casper_types::{auction::ValidatorWeights, ProtocolVersion};
 
 use crate::{
     components::Component,
-    crypto::hash,
     effect::{requests::ContractRuntimeRequest, EffectBuilder, EffectExt, Effects},
     utils::WithDir,
     Chainspec, NodeRng, StorageConfig,
@@ -429,9 +428,7 @@ impl ContractRuntime {
     /// Commits a genesis using a chainspec
     fn commit_genesis(&self, chainspec: Box<Chainspec>) -> Result<GenesisResult, Error> {
         let correlation_id = CorrelationId::new();
-        let serialized_chainspec =
-            bincode::serialize(&chainspec).map_err(|error| Error::from_serialization(*error))?;
-        let genesis_config_hash = hash::hash(&serialized_chainspec);
+        let genesis_config_hash = chainspec.hash();
         let protocol_version = ProtocolVersion::from_parts(
             chainspec.genesis.protocol_version.major as u32,
             chainspec.genesis.protocol_version.minor as u32,

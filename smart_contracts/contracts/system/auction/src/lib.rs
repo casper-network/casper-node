@@ -13,10 +13,10 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        Auction, DelegationRate, MintProvider, RuntimeProvider, SeigniorageRecipients,
-        StorageProvider, SystemProvider, ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
-        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_UNBOND_PURSE, ARG_VALIDATOR,
+        Auction, AuctionInfo, DelegationRate, EraId, MintProvider, RuntimeProvider,
+        SeigniorageRecipients, StorageProvider, SystemProvider, ValidatorWeights, ARG_AMOUNT,
+        ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY,
+        ARG_REWARD_FACTORS, ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_UNBOND_PURSE, ARG_VALIDATOR,
         ARG_VALIDATOR_PUBLIC_KEY, ARG_VALIDATOR_PUBLIC_KEYS, METHOD_ADD_BID, METHOD_DELEGATE,
         METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
         METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
@@ -26,8 +26,8 @@ use casper_types::{
     mint::{METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD, METHOD_REDUCE_TOTAL_SUPPLY},
     system_contract_errors,
     system_contract_errors::auction::Error,
-    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    Parameter, PublicKey, RuntimeArgs, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    ApiError, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    Key, Parameter, PublicKey, RuntimeArgs, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 struct AuctionContract;
@@ -57,9 +57,16 @@ impl SystemProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> StdResult<(), Error> {
+    ) -> StdResult<(), ApiError> {
         system::transfer_from_purse_to_purse(source, target, amount, None)
-            .map_err(|_| Error::Transfer)
+    }
+
+    fn record_auction_info(
+        &mut self,
+        era_id: EraId,
+        auction_info: AuctionInfo,
+    ) -> Result<(), Error> {
+        system::record_auction_info(era_id, auction_info).map_err(|_| Error::RecordAuctionInfo)
     }
 }
 
@@ -96,9 +103,8 @@ impl MintProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ApiError> {
         system::transfer_from_purse_to_purse(source, target, amount, None)
-            .map_err(|_| Error::Transfer)
     }
 
     fn balance(&mut self, purse: URef) -> Option<U512> {

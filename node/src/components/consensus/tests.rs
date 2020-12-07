@@ -4,3 +4,5 @@ pub(crate) mod consensus_des_testing;
 pub(crate) mod mock_proto;
 /// Message queue.
 pub(crate) mod queue;
+/// Miscellaneous code shared among consensus tests
+pub(crate) mod utils;

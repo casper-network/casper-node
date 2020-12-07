@@ -1,8 +1,9 @@
 use crate::{
     account::AccountHash,
+    auction::{AuctionInfo, EraId},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
-    CLTyped, Key, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    ApiError, CLTyped, Key, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -43,6 +44,13 @@ pub trait SystemProvider {
         source: URef,
         target: URef,
         amount: U512,
+    ) -> Result<(), ApiError>;
+
+    /// Records auction info at the given era id.
+    fn record_auction_info(
+        &mut self,
+        era_id: EraId,
+        auction_info: AuctionInfo,
     ) -> Result<(), Error>;
 }
 
@@ -57,14 +65,12 @@ pub trait MintProvider {
     ) -> TransferResult;
 
     /// Transfers `amount` from `source` purse to a `target` purse.
-    // TODO - remove the lint relaxation.
-    #[allow(clippy::result_unit_err)]
     fn transfer_purse_to_purse(
         &mut self,
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), Error>;
+    ) -> Result<(), ApiError>;
 
     /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
     fn balance(&mut self, purse: URef) -> Option<U512>;

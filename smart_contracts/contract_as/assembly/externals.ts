@@ -97,6 +97,7 @@ export declare function transfer_to_account(
     amount_size: u32,
     id_ptr: usize,
     id_size: u32,
+    result_ptr: usize,
 ): i32;
 /** @hidden */
 @external("env", "casper_transfer_from_purse_to_account")
@@ -109,6 +110,7 @@ export declare function transfer_from_purse_to_account(
     amount_size: u32,
     id_ptr: usize,
     id_size: u32,
+    result_ptr: usize,
 ):  i32;
 /** @hidden */
 @external("env", "casper_transfer_from_purse_to_purse")

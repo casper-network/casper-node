@@ -1,4 +1,5 @@
-import {Error, Result, Ref} from "./bytesrepr";
+import {Ref} from "./ref";
+import {Error, Result} from "./bytesrepr";
 import {UREF_ADDR_LENGTH} from "./constants";
 import {checkTypedArrayEqual, typedToArray} from "./utils";
 import {is_valid_uref, revert} from "./externals";

@@ -151,6 +151,11 @@ impl<C: Context> FinalityDetector<C> {
         let height_plus_1 = |bhash| state.block(bhash).height + 1;
         self.last_finalized.as_ref().map_or(0, height_plus_1)
     }
+
+    /// Returns the hash of the last finalized block (if any).
+    pub(crate) fn last_finalized(&self) -> Option<&C::Hash> {
+        self.last_finalized.as_ref()
+    }
 }
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
@@ -236,8 +241,8 @@ mod tests {
         // Test that an initial block reports equivocators as well.
         let mut bstate: State<TestContext> = State::new_test(&[Weight(5), Weight(4), Weight(1)], 0);
         let mut fde4 = FinalityDetector::new(Weight(4)); // Fault tolerance 4.
-        let _c0 = add_unit!(bstate, rng, CAROL, 0xB0; N, N, N)?;
-        let _c0_prime = add_unit!(bstate, rng, CAROL, 0xB0; N, N, N)?;
+        let _c0 = add_unit!(bstate, rng, CAROL, 0xC0; N, N, N)?;
+        let _c0_prime = add_unit!(bstate, rng, CAROL, 0xCC0; N, N, N)?;
         let a0 = add_unit!(bstate, rng, ALICE, 0xA0; N, N, F)?;
         let b0 = add_unit!(bstate, rng, BOB, None; a0, N, F)?;
         let _a1 = add_unit!(bstate, rng, ALICE, None; a0, b0, F)?;

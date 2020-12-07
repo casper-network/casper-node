@@ -6,9 +6,10 @@ use casper_types::{
     account,
     account::AccountHash,
     api_error,
+    auction::{AuctionInfo, EraId},
     bytesrepr::{self, ToBytes},
     contracts::{EntryPoints, NamedKeys},
-    ContractHash, ContractPackageHash, ContractVersion, Group, Key, TransferredTo, URef, U512,
+    ContractHash, ContractPackageHash, ContractVersion, Group, Key, URef, U512,
 };
 
 use super::{args::Args, scoped_instrumenter::ScopedInstrumenter, Error, Runtime};
@@ -339,11 +340,20 @@ where
                 // args(3) = length of array of bytes of an amount
                 // args(4) = pointer to array of bytes of an id
                 // args(5) = length of array of bytes of an id
-                let (key_ptr, key_size, amount_ptr, amount_size, id_ptr, id_size) =
+                // args(6) = pointer to a value where new value will be set
+                let (key_ptr, key_size, amount_ptr, amount_size, id_ptr, id_size, result_ptr) =
                     Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.transfer_to_account,
-                    [key_ptr, key_size, amount_ptr, amount_size, id_ptr, id_size],
+                    [
+                        key_ptr,
+                        key_size,
+                        amount_ptr,
+                        amount_size,
+                        id_ptr,
+                        id_size,
+                        result_ptr,
+                    ],
                 )?;
                 let account_hash: AccountHash = {
                     let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
@@ -357,8 +367,19 @@ where
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
                     bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
                 };
-                let ret = self.transfer_to_account(account_hash, amount, id)?;
-                Ok(Some(RuntimeValue::I32(TransferredTo::i32_from(ret))))
+
+                let ret = match self.transfer_to_account(account_hash, amount, id)? {
+                    Ok(transferred_to) => {
+                        let result_value: u32 = transferred_to as u32;
+                        let result_value_bytes = result_value.to_le_bytes();
+                        self.memory
+                            .set(result_ptr, &result_value_bytes)
+                            .map_err(|error| Error::Interpreter(error.into()))?;
+                        Ok(())
+                    }
+                    Err(api_error) => Err(api_error),
+                };
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
             FunctionIndex::TransferFromPurseToAccountIndex => {
@@ -370,6 +391,7 @@ where
                 // args(5) = length of array of bytes in Wasm memory of an amount
                 // args(6) = pointer to array of bytes in Wasm memory of an id
                 // args(7) = length of array of bytes in Wasm memory of an id
+                // args(8) = pointer to a value where value of `TransferredTo` enum will be set
                 let (
                     source_ptr,
                     source_size,
@@ -379,6 +401,7 @@ where
                     amount_size,
                     id_ptr,
                     id_size,
+                    result_ptr,
                 ) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.transfer_from_purse_to_account,
@@ -391,6 +414,7 @@ where
                         amount_size,
                         id_ptr,
                         id_size,
+                        result_ptr,
                     ],
                 )?;
                 let source_purse = {
@@ -409,9 +433,23 @@ where
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
                     bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
                 };
-                let ret =
-                    self.transfer_from_purse_to_account(source_purse, account_hash, amount, id)?;
-                Ok(Some(RuntimeValue::I32(TransferredTo::i32_from(ret))))
+                let ret = match self.transfer_from_purse_to_account(
+                    source_purse,
+                    account_hash,
+                    amount,
+                    id,
+                )? {
+                    Ok(transferred_to) => {
+                        let result_value: u32 = transferred_to as u32;
+                        let result_value_bytes = result_value.to_le_bytes();
+                        self.memory
+                            .set(result_ptr, &result_value_bytes)
+                            .map_err(|error| Error::Interpreter(error.into()))?;
+                        Ok(())
+                    }
+                    Err(api_error) => Err(api_error),
+                };
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
             FunctionIndex::TransferFromPurseToPurseIndex => {
@@ -936,6 +974,26 @@ where
                 let amount: U512 = self.t_from_mem(amount_ptr, amount_size)?;
                 let id: Option<u64> = self.t_from_mem(id_ptr, id_size)?;
                 self.record_transfer(source, target, amount, id)?;
+                Ok(Some(RuntimeValue::I32(0)))
+            }
+
+            FunctionIndex::RecordAuctionInfo => {
+                // RecordAuctionInfo is a special cased internal host function only callable by the
+                // auction contract and for accounting purposes it isn't represented in protocol
+                // data.
+                let (era_id_ptr, era_id_size, auction_info_ptr, auction_info_size): (
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                ) = Args::parse(args)?;
+                scoped_instrumenter.add_property("era_id_size", era_id_size.to_string());
+                scoped_instrumenter
+                    .add_property("auction_info_size", auction_info_size.to_string());
+                let era_id: EraId = self.t_from_mem(era_id_ptr, era_id_size)?;
+                let auction_info: AuctionInfo =
+                    self.t_from_mem(auction_info_ptr, auction_info_size)?;
+                self.record_auction_info(era_id, auction_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
         }

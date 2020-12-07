@@ -58,14 +58,14 @@ node=${node:-"all"}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
+# Import net vars.
 source $(get_path_to_net_vars $net)
 
 # Render metrics.
 if [ $node = "all" ]; then
-    for idx in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        _view_metrics $net $idx $metric
+        _view_metrics $net $IDX $metric
     done
 else
     _view_metrics $net $node $metric

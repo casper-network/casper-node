@@ -1,3 +1,5 @@
+use assert_matches::assert_matches;
+
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
@@ -5,7 +7,13 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
+use casper_execution_engine::{
+    core::{
+        engine_state::{genesis::GenesisAccount, Error as EngineError},
+        execution::Error,
+    },
+    shared::motes::Motes,
+};
 use casper_types::{
     account::AccountHash,
     auction::{
@@ -139,18 +147,19 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].public_key, default_public_key_arg,);
     assert_eq!(
-        builder.get_purse_balance(unbond_list[0].unbonding_purse),
+        unbond_list[0].validator_public_key(),
+        &default_public_key_arg,
+    );
+    assert!(unbond_list[0].is_validator());
+    assert_eq!(
+        builder.get_purse_balance(*unbond_list[0].unbonding_purse()),
         U512::zero(),
     );
 
-    assert_eq!(
-        unbond_list[0].era_of_withdrawal as usize,
-        INITIAL_ERA_ID as usize + DEFAULT_UNBONDING_DELAY as usize
-    );
+    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID,);
 
-    let unbond_era_1 = unbond_list[0].era_of_withdrawal;
+    let unbond_era_1 = unbond_list[0].era_of_creation();
 
     let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
@@ -169,14 +178,18 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].public_key, default_public_key_arg,);
     assert_eq!(
-        builder.get_purse_balance(unbond_list[0].unbonding_purse),
+        unbond_list[0].validator_public_key(),
+        &default_public_key_arg,
+    );
+    assert!(unbond_list[0].is_validator());
+    assert_eq!(
+        builder.get_purse_balance(*unbond_list[0].unbonding_purse()),
         U512::zero(),
     );
-    assert_eq!(unbond_list[0].amount, unbond_amount,);
+    assert_eq!(unbond_list[0].amount(), &unbond_amount,);
 
-    let unbond_era_2 = unbond_list[0].era_of_withdrawal;
+    let unbond_era_2 = unbond_list[0].era_of_creation();
 
     assert_eq!(unbond_era_2, unbond_era_1);
 
@@ -245,13 +258,10 @@ fn should_fail_bonding_with_insufficient_funds() {
         .expect("should have a response")
         .to_owned();
 
-    let error_message = utils::get_error_message(response);
-
-    assert!(
-        error_message.contains(&format!("{:?}", ApiError::from(auction::Error::Transfer))),
-        "error: {:?}",
-        error_message
-    );
+    assert_eq!(response.len(), 1);
+    let exec_result = response[0].as_error().expect("should have error");
+    let error = assert_matches!(exec_result, EngineError::Exec(Error::Revert(e)) => *e, "{:?}", exec_result);
+    assert_eq!(error, ApiError::from(auction::Error::TransferToBidPurse));
 }
 
 #[ignore]
@@ -482,18 +492,19 @@ fn should_run_successful_bond_and_unbond_with_release() {
         .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].public_key, default_public_key_arg,);
     assert_eq!(
-        builder.get_purse_balance(unbond_list[0].unbonding_purse),
+        unbond_list[0].validator_public_key(),
+        &default_public_key_arg,
+    );
+    assert!(unbond_list[0].is_validator());
+    assert_eq!(
+        builder.get_purse_balance(*unbond_list[0].unbonding_purse()),
         U512::zero(),
     );
 
-    assert_eq!(
-        unbond_list[0].era_of_withdrawal as usize,
-        INITIAL_ERA_ID as usize + 1 + DEFAULT_UNBONDING_DELAY as usize
-    );
+    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID + 1);
 
-    let unbond_era_1 = unbond_list[0].era_of_withdrawal;
+    let unbond_era_1 = unbond_list[0].era_of_creation();
 
     let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
@@ -512,14 +523,18 @@ fn should_run_successful_bond_and_unbond_with_release() {
         .get(&default_public_key_arg)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
-    assert_eq!(unbond_list[0].public_key, default_public_key_arg,);
-    assert_eq!(unbond_list[0].unbonding_purse, unbonding_purse,);
+    assert_eq!(
+        unbond_list[0].validator_public_key(),
+        &default_public_key_arg,
+    );
+    assert!(unbond_list[0].is_validator());
+    assert_eq!(unbond_list[0].unbonding_purse(), &unbonding_purse,);
     assert_eq!(
         builder.get_purse_balance(unbonding_purse),
         U512::zero(), // Not paid yet
     );
 
-    let unbond_era_2 = unbond_list[0].era_of_withdrawal;
+    let unbond_era_2 = unbond_list[0].era_of_creation();
 
     assert_eq!(unbond_era_2, unbond_era_1); // era of withdrawal didn't change since first run
 

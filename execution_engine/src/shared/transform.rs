@@ -189,6 +189,11 @@ impl Transform {
                     let found = "DeployInfo".to_string();
                     Err(TypeMismatch::new(expected, found).into())
                 }
+                StoredValue::AuctionInfo(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "AuctionInfo".to_string();
+                    Err(TypeMismatch::new(expected, found).into())
+                }
             },
             Transform::Failure(error) => Err(error),
         }
@@ -320,6 +325,9 @@ impl From<&Transform> for casper_types::Transform {
             }
             Transform::Write(StoredValue::DeployInfo(deploy_info)) => {
                 casper_types::Transform::WriteDeployInfo(deploy_info.clone())
+            }
+            Transform::Write(StoredValue::AuctionInfo(auction_info)) => {
+                casper_types::Transform::WriteAuctionInfo(auction_info.clone())
             }
             Transform::AddInt32(value) => casper_types::Transform::AddInt32(*value),
             Transform::AddUInt64(value) => casper_types::Transform::AddUInt64(*value),

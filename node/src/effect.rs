@@ -63,6 +63,7 @@ pub mod requests;
 
 use std::{
     any::type_name,
+    borrow::Cow,
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
@@ -74,10 +75,10 @@ use std::{
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use semver::Version;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use smallvec::{smallvec, SmallVec};
 use tokio::join;
-use tracing::error;
+use tracing::{error, warn};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -123,7 +124,7 @@ use announcements::{
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, ListForInclusionRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, StorageRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, StateStoreRequest, StorageRequest,
 };
 
 /// A pinned, boxed future that produces one or more events.
@@ -382,7 +383,12 @@ impl<REv> EffectBuilder<REv> {
     /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
-    pub async fn immediately(self) {}
+    #[allow(clippy::manual_async_fn)]
+    pub fn immediately(self) -> impl Future<Output = ()> + Send {
+        // Note: This function is implemented manually without `async` sugar because the `Send`
+        // inference seems to not work in all cases otherwise.
+        async {}
+    }
 
     /// Reports a fatal error.  Normally called via the `crate::fatal!()` macro.
     ///
@@ -809,6 +815,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn request_proto_block(
         self,
         block_context: BlockContext,
+        past_deploys: HashSet<DeployHash>,
         next_finalized: u64,
         random_bit: bool,
     ) -> (ProtoBlock, BlockContext)
@@ -820,7 +827,7 @@ impl<REv> EffectBuilder<REv> {
                 |responder| {
                     BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
                         current_instant: block_context.timestamp(),
-                        past_deploys: Default::default(), // TODO
+                        past_deploys,
                         next_finalized,
                         responder,
                     })
@@ -965,6 +972,67 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(ChainspecLoaderRequest::GetChainspecInfo, QueueKind::Regular)
             .await
+    }
+
+    /// Loads potentially previously stored state from storage.
+    ///
+    /// Key must be a unique key across the the application, as all keys share a common namespace.
+    ///
+    /// If an error occurs during state loading or no data is found, returns `None`.
+    pub(crate) async fn load_state<T>(self, key: Cow<'static, [u8]>) -> Option<T>
+    where
+        REv: From<StateStoreRequest>,
+        T: DeserializeOwned,
+    {
+        // There is an ugly truth hidden in here: Due to object safety issues, we cannot ship the
+        // actual values around, but only the serialized bytes. For this reason this function
+        // retrieves raw bytes from storage and perform deserialization here.
+        //
+        // Errors are prominently logged but not treated further in any way.
+        self.make_request(
+            move |responder| StateStoreRequest::Load { key, responder },
+            QueueKind::Regular,
+        )
+        .await
+        .map(|data| bincode::deserialize(&data))
+        .transpose()
+        .unwrap_or_else(|err| {
+            let type_name = type_name::<T>();
+            warn!(%type_name, %err, "could not deserialize state from storage");
+            None
+        })
+    }
+
+    /// Save state to storage.
+    ///
+    /// Key must be a unique key across the the application, as all keys share a common namespace.
+    ///
+    /// Returns whether or not storing the state was successful. A component that requires state to
+    /// be successfully stored should check the return value and act accordingly.
+    pub(crate) async fn save_state<T>(self, key: Cow<'static, [u8]>, value: T) -> bool
+    where
+        REv: From<StateStoreRequest>,
+        T: Serialize,
+    {
+        match bincode::serialize(&value) {
+            Ok(data) => {
+                self.make_request(
+                    move |responder| StateStoreRequest::Save {
+                        key,
+                        data,
+                        responder,
+                    },
+                    QueueKind::Regular,
+                )
+                .await;
+                true
+            }
+            Err(err) => {
+                let type_name = type_name::<T>();
+                warn!(%type_name, %err, "Error serializing state");
+                false
+            }
+        }
     }
 
     /// Requests an execution of deploys using Contract Runtime.

@@ -4,8 +4,13 @@ use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
 use casper_types::{
-    account::AccountHash, api_error, bytesrepr, ApiError, ContractHash, SystemContractType,
-    TransferResult, TransferredTo, URef, U512, UREF_SERIALIZED_LENGTH,
+    account::AccountHash,
+    api_error,
+    auction::{AuctionInfo, EraId},
+    bytesrepr,
+    system_contract_errors::auction,
+    ApiError, ContractHash, SystemContractType, TransferResult, TransferredTo, URef, U512,
+    UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -107,6 +112,8 @@ pub fn transfer_to_account(target: AccountHash, amount: U512, id: Option<u64>) -
     let (target_ptr, target_size, _bytes1) = contract_api::to_ptr(target);
     let (amount_ptr, amount_size, _bytes2) = contract_api::to_ptr(amount);
     let (id_ptr, id_size, _bytes3) = contract_api::to_ptr(id);
+    let mut maybe_result_value = MaybeUninit::uninit();
+
     let return_code = unsafe {
         ext_ffi::casper_transfer_to_account(
             target_ptr,
@@ -115,9 +122,16 @@ pub fn transfer_to_account(target: AccountHash, amount: U512, id: Option<u64>) -
             amount_size,
             id_ptr,
             id_size,
+            maybe_result_value.as_mut_ptr(),
         )
     };
-    TransferredTo::result_from(return_code)
+
+    // Propagate error (if any)
+    api_error::result_from(return_code)?;
+
+    // Return appropriate result if transfer was successful
+    let transferred_to_value = unsafe { maybe_result_value.assume_init() };
+    TransferredTo::result_from(transferred_to_value)
 }
 
 /// Transfers `amount` of motes from `source` purse to `target` account.  If `target` does not exist
@@ -132,6 +146,8 @@ pub fn transfer_from_purse_to_account(
     let (target_ptr, target_size, _bytes2) = contract_api::to_ptr(target);
     let (amount_ptr, amount_size, _bytes3) = contract_api::to_ptr(amount);
     let (id_ptr, id_size, _bytes4) = contract_api::to_ptr(id);
+
+    let mut maybe_result_value = MaybeUninit::uninit();
     let return_code = unsafe {
         ext_ffi::casper_transfer_from_purse_to_account(
             source_ptr,
@@ -142,9 +158,16 @@ pub fn transfer_from_purse_to_account(
             amount_size,
             id_ptr,
             id_size,
+            maybe_result_value.as_mut_ptr(),
         )
     };
-    TransferredTo::result_from(return_code)
+
+    // Propagate error (if any)
+    api_error::result_from(return_code)?;
+
+    // Return appropriate result if transfer was successful
+    let transferred_to_value = unsafe { maybe_result_value.assume_init() };
+    TransferredTo::result_from(transferred_to_value)
 }
 
 /// Transfers `amount` of motes from `source` purse to `target` purse.  If `target` does not exist
@@ -171,11 +194,7 @@ pub fn transfer_from_purse_to_purse(
             id_size,
         )
     };
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(ApiError::Transfer)
-    }
+    api_error::result_from(result)
 }
 
 /// Records a transfer.  Can only be called from within the mint contract.
@@ -207,5 +226,26 @@ pub fn record_transfer(
         Ok(())
     } else {
         Err(ApiError::Transfer)
+    }
+}
+
+/// Records auction info.  Can only be called from within the auction contract.
+/// Needed to support system contract-based execution.
+#[doc(hidden)]
+pub fn record_auction_info(era_id: EraId, auction_info: AuctionInfo) -> Result<(), ApiError> {
+    let (era_id_ptr, era_id_size, _bytes1) = contract_api::to_ptr(era_id);
+    let (auction_info_ptr, auction_info_size, _bytes2) = contract_api::to_ptr(auction_info);
+    let result = unsafe {
+        ext_ffi::casper_record_auction_info(
+            era_id_ptr,
+            era_id_size,
+            auction_info_ptr,
+            auction_info_size,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(auction::Error::RecordAuctionInfo.into())
     }
 }

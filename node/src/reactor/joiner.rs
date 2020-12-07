@@ -367,8 +367,13 @@ impl reactor::Reactor for Reactor {
 
         let network_config = network::Config::from(&config.network);
         let (network, network_effects) = Network::new(event_queue, network_config, false)?;
-        let (small_network, small_network_effects) =
-            SmallNetwork::new(event_queue, config.network.clone(), false)?;
+        let genesis_config_hash = chainspec_loader.chainspec().hash();
+        let (small_network, small_network_effects) = SmallNetwork::new(
+            event_queue,
+            config.network.clone(),
+            genesis_config_hash,
+            false,
+        )?;
 
         let linear_chain_fetcher = Fetcher::new(config.fetcher);
 
@@ -808,8 +813,6 @@ impl Reactor {
     /// the network, closing all incoming and outgoing connections, and frees up the listening
     /// socket.
     pub async fn into_validator_config(self) -> ValidatorInitConfig {
-        let block_proposer_state = Default::default();
-
         let (network, small_network, rest_server, config) = (
             self.network,
             self.small_network,
@@ -822,7 +825,6 @@ impl Reactor {
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
                 linear_chain: self.linear_chain.linear_chain().clone(),
-                block_proposer_state,
                 event_stream_server: self.event_stream_server,
             },
         );

@@ -140,7 +140,7 @@ cmake-build-debug/
 # NCTL transient assets
 /utils/nctl/assets
 /utils/nctl/dumps
-/utils/nctl/templates/node-config-*.toml
+/utils/nctl/tmp
 
 # client c headers
 client/headers/**

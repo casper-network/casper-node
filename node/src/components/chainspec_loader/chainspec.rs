@@ -13,7 +13,7 @@ use num_traits::Zero;
 use rand::Rng;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{error, warn};
 
 use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
@@ -25,7 +25,10 @@ use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    crypto::asymmetric_key::PublicKey,
+    crypto::{
+        asymmetric_key::PublicKey,
+        hash::{self, Digest},
+    },
     types::{TimeDiff, Timestamp},
     utils::Loadable,
 };
@@ -405,6 +408,15 @@ impl Chainspec {
     pub fn validate_config(&self) {
         self.genesis.validate_config();
     }
+
+    /// Serializes `self` and hashes the resulting bytes.
+    pub(crate) fn hash(&self) -> Digest {
+        let serialized_chainspec = bincode::serialize(self).unwrap_or_else(|error| {
+            error!("failed to serialize chainspec: {}", error);
+            vec![]
+        });
+        hash::hash(&serialized_chainspec)
+    }
 }
 
 #[cfg(test)]
@@ -468,8 +480,8 @@ mod tests {
             get_caller: HostFunction::new(112, [0]),
             get_blocktime: HostFunction::new(111, [0]),
             create_purse: HostFunction::new(108, [0, 1]),
-            transfer_to_account: HostFunction::new(138, [0, 1, 2, 3, 4, 5]),
-            transfer_from_purse_to_account: HostFunction::new(136, [0, 1, 2, 3, 4, 5, 6, 7]),
+            transfer_to_account: HostFunction::new(138, [0, 1, 2, 3, 4, 5, 6]),
+            transfer_from_purse_to_account: HostFunction::new(136, [0, 1, 2, 3, 4, 5, 6, 7, 8]),
             transfer_from_purse_to_purse: HostFunction::new(137, [0, 1, 2, 3, 4, 5, 6, 7]),
             get_balance: HostFunction::new(110, [0, 1, 2]),
             get_phase: HostFunction::new(117, [0]),
@@ -634,7 +646,7 @@ mod tests {
             EXPECTED_UPGRADE_COSTS,
         );
 
-        assert_eq!(new_wasm_config.initial_memory, 17);
+        assert_eq!(new_wasm_config.max_memory, 17);
         assert_eq!(new_wasm_config.max_stack_height, 19);
 
         assert_eq!(

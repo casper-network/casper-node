@@ -5,7 +5,8 @@ import {URef} from "./uref";
 import {CLValue} from "./clvalue";
 import {Error, ErrorCode} from "./error";
 import {checkTypedArrayEqual, typedToArray} from "./utils";
-import {Result, Ref, Error as BytesreprError} from "./bytesrepr";
+import {Ref} from "./ref";
+import {Result, Error as BytesreprError} from "./bytesrepr";
 
 /**
  * Enum representing a variant of a [[Key]] - Account, Hash or URef.

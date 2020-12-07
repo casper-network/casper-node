@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Stops up a node within a network.
+# Renders node rpc schema to stdout.
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
@@ -12,23 +12,23 @@
 #######################################
 
 # Unset to avoid parameter collisions.
-unset net
-unset node
+unset NET_ID
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
 # Set defaults.
-net=${net:-1}
-node=${node:-1}
+NET_ID=${NET_ID:-1}
+NODE_ID=${NODE_ID:-1}
 
 #######################################
 # Main
@@ -37,17 +37,8 @@ node=${node:-1}
 # Import utils.
 source $NCTL/sh/utils.sh
 
-# Import vars.
-source $(get_path_to_net_vars $net)
+# Import net vars.
+source $(get_path_to_net_vars $NET_ID)
 
-# Set daemon handler.
-if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    daemon_mgr=$NCTL/sh/daemons/supervisord/node_toggle.sh
-fi
-
-# Pass through to daemon handler.
-source $daemon_mgr $net $node
-
-# Display status.
-sleep 1.0
-source $NCTL/sh/node/status.sh $net
+# Render node status.
+render_node_rpc_schema $NET_ID $NODE_ID

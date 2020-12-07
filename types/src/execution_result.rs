@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
+    auction::AuctionInfo,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
@@ -52,13 +53,14 @@ const TRANSFORM_WRITE_CONTRACT_TAG: u8 = 4;
 const TRANSFORM_WRITE_CONTRACT_PACKAGE_TAG: u8 = 5;
 const TRANSFORM_WRITE_DEPLOY_INFO_TAG: u8 = 6;
 const TRANSFORM_WRITE_TRANSFER_TAG: u8 = 7;
-const TRANSFORM_ADD_INT32_TAG: u8 = 8;
-const TRANSFORM_ADD_UINT64_TAG: u8 = 9;
-const TRANSFORM_ADD_UINT128_TAG: u8 = 10;
-const TRANSFORM_ADD_UINT256_TAG: u8 = 11;
-const TRANSFORM_ADD_UINT512_TAG: u8 = 12;
-const TRANSFORM_ADD_KEYS_TAG: u8 = 13;
-const TRANSFORM_FAILURE_TAG: u8 = 14;
+const TRANSFORM_WRITE_AUCTION_INFO_TAG: u8 = 8;
+const TRANSFORM_ADD_INT32_TAG: u8 = 9;
+const TRANSFORM_ADD_UINT64_TAG: u8 = 10;
+const TRANSFORM_ADD_UINT128_TAG: u8 = 11;
+const TRANSFORM_ADD_UINT256_TAG: u8 = 12;
+const TRANSFORM_ADD_UINT512_TAG: u8 = 13;
+const TRANSFORM_ADD_KEYS_TAG: u8 = 14;
+const TRANSFORM_FAILURE_TAG: u8 = 15;
 
 #[cfg(feature = "std")]
 static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
@@ -440,8 +442,10 @@ pub enum Transform {
     WriteContract,
     /// Writes a smart contract package to global state.
     WriteContractPackage,
-    /// Writes the given Deploy to global state.
+    /// Writes the given DeployInfo to global state.
     WriteDeployInfo(DeployInfo),
+    /// Writes the given AuctionInfo to global state.
+    WriteAuctionInfo(AuctionInfo),
     /// Writes the given Transfer to global state.
     WriteTransfer(Transfer),
     /// Adds the given `i32`.
@@ -481,6 +485,10 @@ impl ToBytes for Transform {
             Transform::WriteDeployInfo(deploy_info) => {
                 buffer.insert(0, TRANSFORM_WRITE_DEPLOY_INFO_TAG);
                 buffer.extend(deploy_info.to_bytes()?);
+            }
+            Transform::WriteAuctionInfo(auction_info) => {
+                buffer.insert(0, TRANSFORM_WRITE_AUCTION_INFO_TAG);
+                buffer.extend(auction_info.to_bytes()?);
             }
             Transform::WriteTransfer(transfer) => {
                 buffer.insert(0, TRANSFORM_WRITE_TRANSFER_TAG);

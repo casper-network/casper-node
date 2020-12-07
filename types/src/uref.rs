@@ -92,7 +92,7 @@ pub struct URef(URefAddr, AccessRights);
 
 impl URef {
     /// Constructs a [`URef`] from an address and access rights.
-    pub fn new(address: URefAddr, access_rights: AccessRights) -> Self {
+    pub const fn new(address: URefAddr, access_rights: AccessRights) -> Self {
         URef(address, access_rights)
     }
 

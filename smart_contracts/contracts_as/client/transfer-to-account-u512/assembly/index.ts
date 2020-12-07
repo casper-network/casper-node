@@ -20,8 +20,8 @@ export function call(): void {
     const mainPurse = getMainPurse();
 
     const result = transferFromPurseToAccount(mainPurse, accountBytes, amount);
-    if (result == TransferredTo.TransferError){
-        Error.fromErrorCode(ErrorCode.Transfer).revert();
+    if (result.isErr) {
+        result.err.revert();
         return;
     }
 }

@@ -1,16 +1,20 @@
 //! Unit tests for the storage component.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 use rand::{prelude::SliceRandom, Rng};
 use semver::Version;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::ExecutionResult;
 
 use super::{Config, Storage};
 use crate::{
-    effect::{requests::StorageRequest, Multiple},
+    effect::{
+        requests::{StateStoreRequest, StorageRequest},
+        Multiple,
+    },
     testing::{ComponentHarness, TestRng},
     types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
@@ -33,6 +37,7 @@ fn storage_fixture(harness: &mut ComponentHarness<()>) -> Storage {
         max_block_store_size: 50 * MIB,
         max_deploy_store_size: 50 * MIB,
         max_deploy_metadata_store_size: 50 * MIB,
+        max_state_store_size: 50 * MIB,
     };
 
     Storage::new(&WithDir::new(harness.tmp.path(), cfg)).expect(
@@ -134,6 +139,24 @@ fn get_highest_block(harness: &mut ComponentHarness<()>, storage: &mut Storage) 
     response
 }
 
+/// Loads state from the storage component.
+fn load_state<T>(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    key: Cow<'static, [u8]>,
+) -> Option<T>
+where
+    T: DeserializeOwned,
+{
+    let response: Option<Vec<u8>> = harness.send_request(storage, move |responder| {
+        StateStoreRequest::Load { key, responder }.into()
+    });
+    assert!(harness.is_idle());
+
+    // NOTE: Unfortunately, the deserialization logic is duplicated here from the effect builder.
+    response.map(|raw| bincode::deserialize(&raw).expect("deserialization failed"))
+}
+
 /// Stores a block in a storage component.
 fn put_block(harness: &mut ComponentHarness<()>, storage: &mut Storage, block: Box<Block>) -> bool {
     let response = harness.send_request(storage, move |responder| {
@@ -185,6 +208,28 @@ fn put_execution_results(
     });
     assert!(harness.is_idle());
     response
+}
+
+/// Saves state from the storage component.
+fn save_state<T>(
+    harness: &mut ComponentHarness<()>,
+    storage: &mut Storage,
+    key: Cow<'static, [u8]>,
+    value: &T,
+) where
+    T: Serialize,
+{
+    // NOTE: Unfortunately, the serialization logic is duplicated here from the effect builder.
+    let data = bincode::serialize(value).expect("serialization failed");
+    harness.send_request(storage, move |responder| {
+        StateStoreRequest::Save {
+            key,
+            responder,
+            data,
+        }
+        .into()
+    });
+    assert!(harness.is_idle());
 }
 
 #[test]
@@ -628,6 +673,86 @@ fn store_and_load_chainspec() {
     // Compare returned chainspec.
     let response = get_chainspec(&mut harness, &mut storage, version);
     assert_eq!(response, Some(Arc::new(chainspec)));
+}
+
+/// Example state used in storage.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct StateData {
+    a: Vec<u32>,
+    b: i32,
+}
+
+#[test]
+fn store_and_load_state_data() {
+    let key1 = b"sample-key-1".to_vec();
+    let key2 = b"exkey-2".to_vec();
+
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&mut harness);
+
+    // Initially, both keys should return nothing.
+    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.clone().into());
+    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.clone().into());
+
+    assert!(load1.is_none());
+    assert!(load2.is_none());
+
+    let data1 = StateData { a: vec![1], b: -1 };
+    let data2 = StateData { a: vec![], b: 2 };
+
+    // Store one after another.
+    save_state(&mut harness, &mut storage, key1.clone().into(), &data1);
+    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.clone().into());
+    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.clone().into());
+
+    assert_eq!(load1, Some(data1.clone()));
+    assert!(load2.is_none());
+
+    save_state(&mut harness, &mut storage, key2.clone().into(), &data2);
+    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.clone().into());
+    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.clone().into());
+
+    assert_eq!(load1, Some(data1));
+    assert_eq!(load2, Some(data2.clone()));
+
+    // Overwrite `data1` in store.
+    save_state(&mut harness, &mut storage, key1.clone().into(), &data2);
+    let load1 = load_state::<StateData>(&mut harness, &mut storage, key1.into());
+    let load2 = load_state::<StateData>(&mut harness, &mut storage, key2.into());
+
+    assert_eq!(load1, Some(data2.clone()));
+    assert_eq!(load2, Some(data2));
+}
+
+#[test]
+fn persist_state_data() {
+    let key = b"sample-key-1".to_vec();
+
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&mut harness);
+
+    let load = load_state::<StateData>(&mut harness, &mut storage, key.clone().into());
+    assert!(load.is_none());
+
+    let data = StateData {
+        a: vec![1, 2, 3, 4, 5, 6],
+        b: -1,
+    };
+
+    // Store one after another.
+    save_state(&mut harness, &mut storage, key.clone().into(), &data);
+    let load = load_state::<StateData>(&mut harness, &mut storage, key.clone().into());
+    assert_eq!(load, Some(data.clone()));
+
+    let (on_disk, rng) = harness.into_parts();
+    let mut harness = ComponentHarness::builder()
+        .on_disk(on_disk)
+        .rng(rng)
+        .build();
+    let mut storage = storage_fixture(&mut harness);
+
+    let load = load_state::<StateData>(&mut harness, &mut storage, key.into());
+    assert_eq!(load, Some(data));
 }
 
 #[test]

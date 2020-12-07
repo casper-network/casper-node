@@ -20,6 +20,5 @@ pub trait StandardPayment: AccountProvider + MintProvider + ProofOfStakeProvider
         let main_purse = self.get_main_purse()?;
         let payment_purse = self.get_payment_purse()?;
         self.transfer_purse_to_purse(main_purse, payment_purse, amount)
-            .map_err(|_| ApiError::Transfer)
     }
 }
