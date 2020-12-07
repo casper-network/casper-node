@@ -88,7 +88,7 @@ impl<C: Context> ActiveValidator<C> {
             vidx,
             secret,
             next_round_exp: state.params().init_round_exp(),
-            next_timer: Timestamp::zero(),
+            next_timer: state.params().start_timestamp(),
             next_proposal: None,
         };
         let effects = av.schedule_timer(start_time, state);
@@ -384,7 +384,7 @@ impl<C: Context> ActiveValidator<C> {
     /// our previous unit, and it can't be the third unit in a single round.
     fn earliest_unit_time(&self, state: &State<C>) -> Timestamp {
         self.latest_unit(state)
-            .map_or_else(Timestamp::zero, |unit| {
+            .map_or(state.params().start_timestamp(), |unit| {
                 unit.previous().map_or(unit.timestamp, |vh2| {
                     let unit2 = state.unit(vh2);
                     unit.timestamp.max(unit2.round_id() + unit2.round_len())

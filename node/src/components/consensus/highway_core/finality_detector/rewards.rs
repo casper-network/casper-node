@@ -193,7 +193,7 @@ mod tests {
             19,
             3,
             u64::MAX,
-            Timestamp::from(u64::MAX),
+            Timestamp::zero(),
             Timestamp::from(u64::MAX),
         );
         let weights = &[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)];

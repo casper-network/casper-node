@@ -650,7 +650,9 @@ impl<C: Context> State<C> {
         let panorama = &wunit.panorama;
         let timestamp = wunit.timestamp;
         panorama.validate(self)?;
-        if panorama.iter_correct(self).any(|v| v.timestamp > timestamp) {
+        if panorama.iter_correct(self).any(|v| v.timestamp > timestamp)
+            || wunit.timestamp < self.params.start_timestamp()
+        {
             return Err(UnitError::Timestamps);
         }
         if wunit.seq_number != panorama.next_seq_num(self, creator) {

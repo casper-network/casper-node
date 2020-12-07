@@ -240,7 +240,7 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
         19,
         4,
         u64::MAX,
-        Timestamp::from(u64::MAX),
+        Timestamp::zero(),
         Timestamp::from(u64::MAX),
     );
     // Everyone already knows Alice is faulty, so she is banned.
