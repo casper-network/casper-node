@@ -20,8 +20,6 @@ use prometheus::Registry;
 use serde::Serialize;
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
 use crate::{
@@ -721,12 +719,7 @@ impl reactor::Reactor for Reactor {
             }) => {
                 let event = block_proposer::Event::BufferDeploy {
                     hash: *deploy.id(),
-                    deploy_type: match deploy.session() {
-                        ExecutableDeployItem::Transfer { .. } => Box::new(
-                            block_proposer::DeployType::Transfer(deploy.header().clone()),
-                        ),
-                        _ => Box::new(block_proposer::DeployType::Wasm(deploy.header().clone())),
-                    },
+                    deploy_type: Box::new(deploy.deploy_type()),
                 };
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));
