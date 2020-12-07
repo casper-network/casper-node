@@ -73,7 +73,7 @@ impl Display for MetricsRequest {
 }
 
 /// A networking request.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
@@ -83,6 +83,7 @@ pub enum NetworkRequest<I, P> {
         /// Message payload.
         payload: P,
         /// Responder to be called when the message is queued.
+        #[serde(skip_serializing)]
         responder: Responder<()>,
     },
     /// Send a message on the network to all peers.
@@ -92,6 +93,7 @@ pub enum NetworkRequest<I, P> {
         /// Message payload.
         payload: P,
         /// Responder to be called when all messages are queued.
+        #[serde(skip_serializing)]
         responder: Responder<()>,
     },
     /// Gossip a message to a random subset of peers.
@@ -101,8 +103,10 @@ pub enum NetworkRequest<I, P> {
         /// Number of peers to gossip to. This is an upper bound, otherwise best-effort.
         count: usize,
         /// Node IDs of nodes to exclude from gossiping to.
+        #[serde(skip_serializing)]
         exclude: HashSet<I>,
         /// Responder to be called when all messages are queued.
+        #[serde(skip_serializing)]
         responder: Responder<HashSet<I>>,
     },
 }
@@ -184,7 +188,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 /// A storage request.
 #[must_use]
 pub enum StorageRequest {
@@ -723,7 +727,7 @@ impl Display for ContractRuntimeRequest {
 }
 
 /// Fetcher related requests.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub enum FetcherRequest<I, T: Item> {
     /// Return the specified item if it exists, else `None`.
@@ -789,7 +793,7 @@ impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
 
 type BlockHeight = u64;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 /// Requests issued to the Linear Chain component.
 pub enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.

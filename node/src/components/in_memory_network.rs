@@ -284,11 +284,12 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     convert::Infallible,
-    fmt::Display,
+    fmt::{self, Display, Formatter},
     sync::{Arc, RwLock},
 };
 
 use rand::seq::IteratorRandom;
+use serde::Serialize;
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
 
@@ -305,7 +306,25 @@ use crate::{
     NodeRng,
 };
 
+/// A network.
 type Network<P> = Arc<RwLock<HashMap<NodeId, mpsc::UnboundedSender<(NodeId, P)>>>>;
+
+/// An in-memory network events.
+#[derive(Debug, Serialize)]
+pub struct Event<P>(NetworkRequest<NodeId, P>);
+
+impl<P> From<NetworkRequest<NodeId, P>> for Event<P> {
+    fn from(req: NetworkRequest<NodeId, P>) -> Self {
+        Event(req)
+    }
+}
+
+impl<P: Display> Display for Event<P> {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
 
 thread_local! {
     /// The currently active network as a thread local.
@@ -419,7 +438,7 @@ where
     where
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
-        InMemoryNetwork::new(event_queue, NodeId::random(rng), self.nodes.clone())
+        InMemoryNetwork::new_with_data(event_queue, NodeId::random(rng), self.nodes.clone())
     }
 }
 
@@ -437,7 +456,22 @@ impl<P> InMemoryNetwork<P>
 where
     P: 'static + Send,
 {
-    fn new<REv>(event_queue: EventQueueHandle<REv>, node_id: NodeId, nodes: Network<P>) -> Self
+    /// Creates a new in-memory network node.
+    ///
+    /// This function is an alias of `NetworkController::create_node_local`.
+    pub fn new<REv>(event_queue: EventQueueHandle<REv>, rng: &mut NodeRng) -> Self
+    where
+        REv: From<NetworkAnnouncement<NodeId, P>> + Send,
+    {
+        NetworkController::create_node(event_queue, rng)
+    }
+
+    /// Creates a new in-memory network node.
+    fn new_with_data<REv>(
+        event_queue: EventQueueHandle<REv>,
+        node_id: NodeId,
+        nodes: Network<P>,
+    ) -> Self
     where
         REv: From<NetworkAnnouncement<NodeId, P>> + Send,
     {
@@ -494,14 +528,14 @@ impl<P, REv> Component<REv> for InMemoryNetwork<P>
 where
     P: Display + Clone,
 {
-    type Event = NetworkRequest<NodeId, P>;
+    type Event = Event<P>;
     type ConstructionError = Infallible;
 
     fn handle_event(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
-        event: Self::Event,
+        Event(event): Self::Event,
     ) -> Effects<Self::Event> {
         match event {
             NetworkRequest::SendMessage {

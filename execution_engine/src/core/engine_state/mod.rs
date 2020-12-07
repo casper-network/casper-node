@@ -2205,19 +2205,58 @@ where
             ));
         }
 
+        let reward_factors = match step_request.reward_factors() {
+            Ok(reward_factors) => reward_factors,
+            Err(error) => {
+                error!(
+                    "failed to deserialize reward factors: {}",
+                    error.to_string()
+                );
+                return Ok(StepResult::Serialization(error));
+            }
+        };
+
+        let reward_args = runtime_args! {ARG_REWARD_FACTORS => reward_factors};
+
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::DistributeRewards,
+            auction_module.clone(),
+            reward_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys.clone(),
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if execution_result.is_failure() {
+            return Ok(StepResult::DistributeError(
+                execution_result.take_error().unwrap(),
+            ));
+        }
+
         if step_request.run_auction {
             let run_auction_args = runtime_args! {};
 
             let (_, execution_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::RunAuction,
-                    auction_module.clone(),
+                    auction_module,
                     run_auction_args,
                     &mut named_keys,
                     Default::default(),
                     base_key,
                     &virtual_system_account,
-                    authorization_keys.clone(),
+                    authorization_keys,
                     BlockTime::default(),
                     deploy_hash,
                     gas_limit,
@@ -2234,45 +2273,6 @@ where
                     execution_result.take_error().unwrap(),
                 ));
             }
-        }
-
-        let reward_factors = match step_request.reward_factors() {
-            Ok(reward_factors) => reward_factors,
-            Err(error) => {
-                error!(
-                    "failed to deserialize reward factors: {}",
-                    error.to_string()
-                );
-                return Ok(StepResult::Serialization(error));
-            }
-        };
-
-        let reward_args = runtime_args! {ARG_REWARD_FACTORS => reward_factors};
-
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
-            DirectSystemContractCall::DistributeRewards,
-            auction_module,
-            reward_args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            &virtual_system_account,
-            authorization_keys,
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            step_request.protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            protocol_data,
-            SystemContractCache::clone(&self.system_contract_cache),
-        );
-
-        if execution_result.is_failure() {
-            return Ok(StepResult::DistributeError(
-                execution_result.take_error().unwrap(),
-            ));
         }
 
         let effects = tracking_copy.borrow().effect();

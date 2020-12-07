@@ -8,7 +8,7 @@ reactor!(Initializer {
   type Config = WithDir<validator::Config>;
 
   components: {
-    chainspec = @ChainspecLoader(cfg
+    chainspec = has_effects infallible ChainspecLoader(cfg
            .value()
            .node
            .chainspec_config_path
@@ -16,8 +16,8 @@ reactor!(Initializer {
            .load(cfg.dir())
            .expect("TODO: return proper error when chainspec cannot be loaded"), effect_builder);
     storage = Storage(&cfg.map_ref(|cfg| cfg.storage.clone()));
-    contract_runtime = ContractRuntime(cfg.map_ref(|cfg| cfg.storage.clone()), &cfg.value().contract_runtime, registry);
-  }
+    contract_runtime = ContractRuntime(cfg.map_ref(|cfg| cfg.storage.clone()),
+&cfg.value().contract_runtime, registry);   }
 
   events: {}
 

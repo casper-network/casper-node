@@ -132,7 +132,7 @@ pub(crate) fn generate_reactor_types(def: &ReactorDefinition) -> TokenStream {
 
     quote!(
         #[doc = #event_docs]
-        #[derive(Debug)]
+        #[derive(Debug, serde::Serialize)]
         pub enum #event_ident {
            #(#event_variants,)*
         }
@@ -220,6 +220,14 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                     },
                 ));
             }
+            Target::Panic => {
+                dispatches.push(quote!(
+                    #event_ident::#request_variant_ident(request) => {
+                        // Request is discarded.
+                        panic!("received request that was expressively marked panic: {:?}", request)
+                    },
+                ));
+            }
             Target::Dest(ref dest) => {
                 let dest_component_type = def.component(dest).full_component_type();
                 let dest_variant_ident = def.component(dest).variant_ident();
@@ -238,6 +246,13 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                             },
                         ));
             }
+            Target::Dispatch(ref fname) => {
+                dispatches.push(quote!(
+                    #event_ident::#request_variant_ident(request) => {
+                        self.#fname(effect_builder, rng, request)
+                    },
+                ));
+            }
         }
     }
 
@@ -249,8 +264,14 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
         for target in announcement.targets() {
             match target {
                 Target::Discard => {
-                    // Don't do anything. TODO: Remove `Target` type and just store an ident in
-                    // intermediate representation.
+                    // Don't do anything.
+                    // TODO: Add `trace!` call here? Consider the log spam though.
+                }
+                Target::Panic => {
+                    announcement_dispatches.push(quote!(
+                        panic!("announcement received that was expressively declard as panic: {:?}",
+                               announcement);
+                    ));
                 }
                 Target::Dest(ref dest) => {
                     let dest_component_type = def.component(dest).full_component_type();
@@ -265,6 +286,13 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
                             #event_ident::#dest_variant_ident,
                             <#dest_component_type as crate::components::Component<Self::Event>>::handle_event(&mut self.#dest_field_ident, effect_builder, rng, dest_event)
                         );
+
+                        announcement_effects.extend(effects.into_iter());
+                    ));
+                }
+                Target::Dispatch(ref fname) => {
+                    announcement_dispatches.push(quote!(
+                        let effects = self.#fname(effect_builder, rng, announcement);
 
                         announcement_effects.extend(effects.into_iter());
                     ));
@@ -293,10 +321,16 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
 
         let constructor_args = cdef.component_arguments();
 
+        let suffix = if cdef.is_infallible() {
+            quote!()
+        } else {
+            quote!(.map_err(#error_ident::#variant_ident)?)
+        };
+
         if cdef.has_effects() {
             component_instantiations.push(quote!(
                 let (#field_ident, effects) = #component_type::new::<#event_ident>(#(#constructor_args),*)
-                    .map_err(#error_ident::#variant_ident)?;
+                    #suffix;
                 let wrapped_effects: crate::effect::Effects<#event_ident> = crate::reactor::wrap_effects(#event_ident::#variant_ident, effects);
 
                 all_effects.extend(wrapped_effects.into_iter());
@@ -304,7 +338,7 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
         } else {
             component_instantiations.push(quote!(
                 let #field_ident = #component_type::new(#(#constructor_args),*)
-                    .map_err(#error_ident::#variant_ident)?;
+                    #suffix;
             ));
         }
 
@@ -319,10 +353,10 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
 
             fn dispatch_event(
                 &mut self,
-                effect_builder: crate::reactor::EffectBuilder<Self::Event>,
+                effect_builder: crate::effect::EffectBuilder<Self::Event>,
                 rng: &mut crate::NodeRng,
                 event: Self::Event,
-            ) -> crate::reactor::Effects<Self::Event> {
+            ) -> crate::effect::Effects<Self::Event> {
                 match event {
                     #(#dispatches)*
                 }
@@ -330,11 +364,11 @@ pub(crate) fn generate_reactor_impl(def: &ReactorDefinition) -> TokenStream {
 
             fn new(
                 cfg: Self::Config,
-                registry: &crate::reactor::Registry,
+                registry: &prometheus::Registry,
                 event_queue: crate::reactor::EventQueueHandle<Self::Event>,
                 rng: &mut crate::NodeRng,
-            ) -> Result<(Self, crate::reactor::Effects<Self::Event>), Self::Error> {
-                let mut all_effects = crate::reactor::Effects::new();
+            ) -> Result<(Self, crate::effect::Effects<Self::Event>), Self::Error> {
+                let mut all_effects = crate::effect::Effects::new();
 
                 let effect_builder = crate::effect::EffectBuilder::new(event_queue);
 
