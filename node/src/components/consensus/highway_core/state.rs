@@ -747,15 +747,15 @@ impl<C: Context> State<C> {
     }
 
     /// Returns an iterator over units (with hashes) by the same creator, in reverse chronological
-    /// order, starting with the specified unit. Returns an empty iterator if the unit isn't known.
+    /// order, starting with the specified unit. Panics if no unit with `uhash` exists.
     pub(crate) fn swimlane<'a>(
         &'a self,
-        vhash: &'a C::Hash,
+        uhash: &'a C::Hash,
     ) -> impl Iterator<Item = (&'a C::Hash, &'a Unit<C>)> {
-        let mut next = Some(vhash);
+        let mut next = Some(uhash);
         iter::from_fn(move || {
             let current = next?;
-            let unit = self.opt_unit(current)?;
+            let unit = self.unit(current);
             next = unit.previous();
             Some((current, unit))
         })
@@ -957,13 +957,13 @@ impl<C: Context> State<C> {
             || self.unit(hash1).panorama.sees(self, hash0)
     }
 
-    /// Returns the panorama of the confirmation for the leader unit `vhash`.
+    /// Returns the panorama of the confirmation for the leader unit `uhash`.
     pub(crate) fn confirmation_panorama(
         &self,
         creator: ValidatorIndex,
-        vhash: &C::Hash,
+        uhash: &C::Hash,
     ) -> Panorama<C> {
-        self.valid_panorama(creator, self.inclusive_panorama(vhash))
+        self.valid_panorama(creator, self.inclusive_panorama(uhash))
     }
 
     /// Creates a panorama that is valid for use in `creator`'s next unit, and as close as possible
