@@ -164,7 +164,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             }
             AvEffect::WeAreFaulty(fault) => {
                 error!("this validator is faulty: {:?}", fault);
-                vec![]
+                vec![ProtocolOutcome::WeAreFaulty]
             }
         }
     }

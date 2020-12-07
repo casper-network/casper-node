@@ -735,6 +735,7 @@ where
                     })
                 })
                 .collect(),
+            ProtocolOutcome::WeAreFaulty => Default::default(),
         }
     }
 
