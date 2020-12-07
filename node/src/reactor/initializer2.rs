@@ -8,7 +8,7 @@ reactor!(Initializer {
   type Config = WithDir<validator::Config>;
 
   components: {
-    chainspec = has_effects ChainspecLoader(cfg
+    chainspec = has_effects infallible ChainspecLoader(cfg
            .value()
            .node
            .chainspec_config_path

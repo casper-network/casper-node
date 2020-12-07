@@ -120,7 +120,7 @@ impl ChainspecLoader {
     pub(crate) fn new<REv>(
         chainspec: Chainspec,
         effect_builder: EffectBuilder<REv>,
-    ) -> Result<(Self, Effects<Event>), Error>
+    ) -> (Self, Effects<Event>)
     where
         REv: From<Event> + From<StorageRequest> + Send,
     {
@@ -128,14 +128,14 @@ impl ChainspecLoader {
         let effects = effect_builder
             .put_chainspec(chainspec.clone())
             .event(|_| Event::PutToStorage { version });
-        Ok((
+        (
             ChainspecLoader {
                 chainspec,
                 completed_successfully: None,
                 genesis_state_root_hash: None,
             },
             effects,
-        ))
+        )
     }
 
     pub(crate) fn is_stopped(&self) -> bool {
