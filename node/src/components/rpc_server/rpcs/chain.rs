@@ -144,7 +144,7 @@ impl DocExample for GetBlockTransfersParams {
     }
 }
 
-/// Result for "chain_get_block" RPC response.
+/// Result for "chain_get_block_transfers" RPC response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetBlockTransfersResult {
