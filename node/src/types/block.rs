@@ -1091,7 +1091,7 @@ pub(crate) mod json_compatibility {
 }
 
 /// Finality signature that can be gossiped between nodes or sent to clients.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, DataSize, PartialEq, Eq)]
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.
     pub block_hash: BlockHash,

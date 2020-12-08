@@ -2,7 +2,9 @@ use std::fmt::{self, Display, Formatter};
 
 use casper_types::ExecutionResult;
 
-use crate::types::{BlockHash, BlockHeader, DeployHash, DeployHeader, FinalizedBlock};
+use crate::types::{
+    BlockHash, BlockHeader, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
+};
 
 #[derive(Debug)]
 pub enum Event {
@@ -17,6 +19,7 @@ pub enum Event {
         block_hash: BlockHash,
         execution_result: Box<ExecutionResult>,
     },
+    FinalitySignature(Box<FinalitySignature>),
 }
 
 impl Display for Event {
@@ -31,6 +34,7 @@ impl Display for Event {
             Event::DeployProcessed { deploy_hash, .. } => {
                 write!(formatter, "deploy processed {}", deploy_hash)
             }
+            Event::FinalitySignature(fs) => write!(formatter, "finality signature {}", fs),
         }
     }
 }

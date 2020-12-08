@@ -18,7 +18,9 @@ use casper_types::ExecutionResult;
 use crate::{
     components::CLIENT_API_VERSION,
     crypto::asymmetric_key::PublicKey,
-    types::{BlockHash, BlockHeader, DeployHash, FinalizedBlock, TimeDiff, Timestamp},
+    types::{
+        BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
+    },
 };
 
 /// The URL path.
@@ -62,6 +64,8 @@ pub enum SseData {
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
+    /// New finality signature received.
+    FinalitySignature(Box<FinalitySignature>),
 }
 
 /// The components of a single SSE.
@@ -172,7 +176,8 @@ fn stream_to_client(
                     (None, &SseData::ApiVersion { .. }) => Ok(sse::json(event.data).boxed()),
                     (Some(id), &SseData::BlockFinalized { .. })
                     | (Some(id), &SseData::BlockAdded { .. })
-                    | (Some(id), &SseData::DeployProcessed { .. }) => {
+                    | (Some(id), &SseData::DeployProcessed { .. })
+                    | (Some(id), &SseData::FinalitySignature(_)) => {
                         Ok((sse::id(id), sse::json(event.data)).boxed())
                     }
                     _ => unreachable!("only ApiVersion may have no event ID"),
