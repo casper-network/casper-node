@@ -48,7 +48,7 @@ use crate::{
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
-    types::{BlockHash, BlockHeader, FinalizedBlock, ProtoBlock, Timestamp},
+    types::{BlockHash, BlockHeader, BlockLike, FinalizedBlock, ProtoBlock, Timestamp},
     utils::WithDir,
     NodeRng,
 };
@@ -619,7 +619,7 @@ where
             } => {
                 let past_deploys = past_values
                     .iter()
-                    .flat_map(|candidate| candidate.proto_block().deploys())
+                    .flat_map(|candidate| BlockLike::deploys(candidate.proto_block()))
                     .cloned()
                     .collect();
                 self.effect_builder

@@ -48,7 +48,7 @@ use crate::{
     rpcs::chain::BlockIdentifier,
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalizedBlock, Item, StatusFeed, Timestamp,
+        DeployMetadata, FinalizedBlock, Item, ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -375,7 +375,7 @@ impl Display for StateStoreRequest {
 
 /// Details of a request for a list of deploys to propose in a new block.
 #[derive(DataSize, Debug)]
-pub struct ListForInclusionRequest {
+pub struct ProtoBlockRequest {
     /// The instant for which the deploy is requested.
     pub(crate) current_instant: Timestamp,
     /// Set of deploy hashes of deploys that should be excluded in addition to the finalized ones.
@@ -385,8 +385,10 @@ pub struct ListForInclusionRequest {
     /// request was made. Block Proposer uses this in order to determine if there might be any
     /// deploys that are neither in `past_deploys`, nor among the finalized deploys it knows of.
     pub(crate) next_finalized: u64,
+    /// Random bit with which to construct the `ProtoBlock` requested.
+    pub(crate) random_bit: bool,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<HashSet<DeployHash>>,
+    pub(crate) responder: Responder<ProtoBlock>,
 }
 
 /// A `BlockProposer` request.
@@ -394,17 +396,18 @@ pub struct ListForInclusionRequest {
 #[must_use]
 pub enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
-    ListForInclusion(ListForInclusionRequest),
+    RequestProtoBlock(ProtoBlockRequest),
 }
 
 impl Display for BlockProposerRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
+            BlockProposerRequest::RequestProtoBlock(ProtoBlockRequest {
                 current_instant,
                 past_deploys,
                 next_finalized,
                 responder: _,
+                random_bit: _,
             }) => write!(
                 formatter,
                 "list for inclusion: instant {} past {} next_finalized {}",
