@@ -378,42 +378,38 @@ impl BlockProposerReady {
         past_deploys: HashSet<DeployHash>,
         random_bit: bool,
     ) -> ProtoBlock {
-        let transfers = self
-            .sets
-            .pending
-            .iter()
-            .filter(|(_, deploy_type)| matches!(deploy_type, DeployType::Transfer(_)))
-            .take(deploy_config.block_max_transfer_count as usize);
-        let deploys = self
-            .sets
-            .pending
-            .iter()
-            .filter(|(_, deploy_type)| matches!(deploy_type, DeployType::Wasm(_)))
-            .take(deploy_config.block_max_deploy_count as usize);
+        let max_transfers = deploy_config.block_max_transfer_count as usize;
+        let max_deploys = deploy_config.block_max_deploy_count as usize;
 
-        let (deploys, transfers) = deploys.chain(transfers).fold(
-            (Vec::new(), Vec::new()),
-            |(mut deploys, mut transfers), (hash, deploy_type)| {
-                if self.is_deploy_valid(
-                    deploy_type.header(),
-                    block_timestamp,
-                    &deploy_config,
-                    &past_deploys,
-                ) && !past_deploys.contains(hash)
-                    && !self.sets.finalized_deploys.contains_key(hash)
-                {
-                    // all deploys in pending that aren't in finalized blocks or
-                    // proposed blocks from the set `past_blocks`
-                    match deploy_type {
-                        DeployType::Transfer(_) => transfers.push(*hash),
-                        DeployType::Wasm(_) => deploys.push(*hash),
-                    }
+        let mut transfers = Vec::new();
+        let mut wasm_deploys = Vec::new();
+
+        for (hash, deploy_type) in self.sets.pending.iter() {
+            let under_max_transfers = transfers.len() < max_transfers;
+            let under_max_deploys = wasm_deploys.len() < max_deploys;
+            if !under_max_deploys && !under_max_transfers {
+                break;
+            }
+
+            if self.is_deploy_valid(
+                deploy_type.header(),
+                block_timestamp,
+                &deploy_config,
+                &past_deploys,
+            ) && !past_deploys.contains(hash)
+                && !self.sets.finalized_deploys.contains_key(hash)
+            {
+                // all deploys in pending that aren't in finalized blocks or
+                // proposed blocks from the set `past_blocks`
+                if under_max_transfers && matches!(deploy_type, DeployType::Transfer(_)) {
+                    transfers.push(*hash)
+                } else if under_max_deploys && matches!(deploy_type, DeployType::Wasm(_)) {
+                    wasm_deploys.push(*hash)
                 }
-                (deploys, transfers)
-            },
-        );
+            }
+        }
 
-        ProtoBlock::new(deploys, transfers, random_bit)
+        ProtoBlock::new(wasm_deploys, transfers, random_bit)
     }
 
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.

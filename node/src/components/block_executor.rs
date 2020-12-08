@@ -139,8 +139,7 @@ impl BlockExecutor {
             .deploys()
             .iter()
             .map(|hash| **hash)
-            .collect::<Vec<_>>();
-        let deploy_hashes = SmallVec::from_slice(&deploy_hashes[..]);
+            .collect::<SmallVec<_>>();
         let era_id = finalized_block.era_id();
         let height = finalized_block.height();
 

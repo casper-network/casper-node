@@ -95,9 +95,6 @@ pub(super) fn prune_pending_deploys(
     current_instant: Timestamp,
 ) -> usize {
     let initial_len = deploys.len();
-    deploys.retain(|_hash, wrapper| match wrapper {
-        DeployType::Transfer(header) => !header.expired(current_instant),
-        DeployType::Wasm(header) => !header.expired(current_instant),
-    });
+    deploys.retain(|_hash, wrapper| !wrapper.header().expired(current_instant));
     initial_len - deploys.len()
 }

@@ -309,8 +309,6 @@ fn test_proposer_with(
     }
 
     assert_eq!(proposer.sets.pending.len() as u32, deploys + transfers);
-
-    // pending => finalized
     let block = proposer.propose_proto_block(config, test_time, past_deploys, true);
 
     assert_eq!(
