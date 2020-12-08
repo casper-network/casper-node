@@ -134,6 +134,22 @@ impl HighwayConfig {
                 max = self.maximum_round_exponent
             );
         }
+
+        if self.finality_threshold_fraction <= Ratio::new(0, 1)
+            || self.finality_threshold_fraction >= Ratio::new(1, 1)
+        {
+            panic!(
+                "Finality threshold fraction is not in the range (0, 1)! Finality threshold: {ftt}",
+                ftt = self.finality_threshold_fraction
+            );
+        }
+
+        if self.reduced_reward_multiplier > Ratio::new(1, 1) {
+            panic!(
+                "Reduced reward multiplier is not in the range [0, 1]! Multiplier: {rrm}",
+                rrm = self.reduced_reward_multiplier
+            );
+        }
     }
 }
 
