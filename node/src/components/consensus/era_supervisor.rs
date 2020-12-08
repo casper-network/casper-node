@@ -6,7 +6,7 @@
 //! Most importantly, it doesn't care about what messages it's forwarding.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     rc::Rc,
@@ -23,8 +23,7 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{error, info, trace, warn};
 
-use casper_execution_engine::shared::motes::Motes;
-use casper_types::{auction::ValidatorWeights, ProtocolVersion};
+use casper_types::{ProtocolVersion, U512};
 
 use crate::{
     components::{
@@ -62,7 +61,7 @@ mod tests;
 
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
-    Vec<(PublicKey, Motes)>,                      // validator stakes
+    BTreeMap<PublicKey, U512>,                    // validator weights
     &HashSet<PublicKey>,                          // slashed validators that are banned in this era
     &Chainspec,                                   // the network's chainspec
     Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
@@ -119,7 +118,7 @@ where
         timestamp: Timestamp,
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
-        validator_stakes: Vec<(PublicKey, Motes)>,
+        validators: BTreeMap<PublicKey, U512>,
         chainspec: &Chainspec,
         genesis_state_root_hash: Digest,
         registry: &Registry,
@@ -149,7 +148,7 @@ where
         let results = era_supervisor.new_era(
             EraId(0),
             timestamp,
-            validator_stakes,
+            validators,
             vec![], // no banned validators in era 0
             0,      // hardcoded seed for era 0
             chainspec.genesis.timestamp,
@@ -218,7 +217,7 @@ where
         &mut self,
         era_id: EraId,
         timestamp: Timestamp,
-        mut validator_stakes: Vec<(PublicKey, Motes)>,
+        validators: BTreeMap<PublicKey, U512>,
         newly_slashed: Vec<PublicKey>,
         seed: u64,
         start_time: Timestamp,
@@ -232,9 +231,8 @@ where
         self.metrics.current_era.set(self.current_era.0 as i64);
         let instance_id = instance_id(&self.chainspec, state_root_hash, start_height);
 
-        validator_stakes.sort_by_cached_key(|(pub_key, _)| *pub_key);
         info!(
-            ?validator_stakes,
+            ?validators,
             %start_time,
             %timestamp,
             %start_height,
@@ -259,7 +257,7 @@ where
                 %self.node_start_time, "not voting; node was not started before the era began",
             );
             false
-        } else if !validator_stakes.iter().any(|(v, _)| *v == our_id) {
+        } else if !validators.contains_key(&our_id) {
             info!(era = era_id.0, %our_id, "not voting; not a validator");
             false
         } else {
@@ -273,7 +271,7 @@ where
 
         let mut consensus = (self.new_consensus)(
             instance_id,
-            validator_stakes,
+            validators.clone(),
             &slashed,
             &self.chainspec,
             prev_era.map(|era| &*era.consensus),
@@ -288,7 +286,7 @@ where
             Vec::new()
         };
 
-        let era = Era::new(consensus, start_height, newly_slashed, slashed);
+        let era = Era::new(consensus, start_height, newly_slashed, slashed, validators);
         let _ = self.active_eras.insert(era_id, era);
 
         // Remove the era that has become obsolete now. We keep 2 * bonded_eras past eras because
@@ -311,6 +309,12 @@ where
     /// Returns `true` if the specified era is active and bonded.
     fn is_bonded(&self, era_id: EraId) -> bool {
         era_id.0 + self.bonded_eras >= self.current_era.0 && era_id <= self.current_era
+    }
+
+    /// Returns whether the validator with the given public key is bonded in that era.
+    fn is_validator_in(&self, pub_key: &PublicKey, era_id: EraId) -> bool {
+        let has_validator = |era: &Era<I>| era.validators().contains_key(&pub_key);
+        self.active_eras.get(&era_id).map_or(false, has_validator)
     }
 
     /// Inspect the active eras.
@@ -425,28 +429,24 @@ where
         block_header: BlockHeader,
         responder: Responder<FinalitySignature>,
     ) -> Effects<Event<I>> {
-        // TODO - we should only sign if we're a validator for the given era ID.
-        let signature = asymmetric_key::sign(
-            block_header.hash().inner(),
-            &self.era_supervisor.secret_signing_key,
-            &self.era_supervisor.public_signing_key,
-            self.rng,
-        );
-        let mut effects = responder
-            .respond(FinalitySignature::new(
-                block_header.hash(),
-                signature,
-                self.era_supervisor.public_signing_key,
-            ))
-            .ignore();
-        if block_header.era_id() < self.era_supervisor.current_era {
-            trace!(era_id = %block_header.era_id(), "executed block in old era");
+        let our_pk = self.era_supervisor.public_signing_key;
+        let our_sk = self.era_supervisor.secret_signing_key.clone();
+        let era_id = block_header.era_id();
+        if self.era_supervisor.is_validator_in(&our_pk, era_id) {
+            // TODO: Only sign if a validator!
+        }
+        let block_hash = block_header.hash();
+        let signature = asymmetric_key::sign(block_hash.inner(), &our_sk, &our_pk, self.rng);
+        let fin_sig = FinalitySignature::new(block_hash, signature, our_pk);
+        let mut effects = responder.respond(fin_sig).ignore();
+        if era_id < self.era_supervisor.current_era {
+            trace!(era = era_id.0, "executed block in old era");
             return effects;
         }
         if block_header.switch_block() {
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
-            let new_era_id = block_header.era_id().successor();
+            let new_era_id = era_id.successor();
             let request = ValidatorWeightsByEraIdRequest::new(
                 (*block_header.state_root_hash()).into(),
                 new_era_id,
@@ -488,18 +488,8 @@ where
         block_header: BlockHeader,
         booking_block_hash: BlockHash,
         key_block_seed: Digest,
-        validator_weights: ValidatorWeights,
+        validators: BTreeMap<PublicKey, U512>,
     ) -> Effects<Event<I>> {
-        let validator_stakes = validator_weights
-            .into_iter()
-            .filter_map(|(key, stake)| match key.try_into() {
-                Ok(key) => Some((key, Motes::new(stake))),
-                Err(error) => {
-                    warn!(%error, "error converting the bonded key");
-                    None
-                }
-            })
-            .collect();
         self.era_supervisor
             .current_era_mut()
             .consensus
@@ -516,7 +506,7 @@ where
         let results = self.era_supervisor.new_era(
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
-            validator_stakes,
+            validators,
             newly_slashed,
             seed,
             block_header.timestamp(),

@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes::Motes};
+use casper_types::U512;
 
 use crate::{
     crypto::asymmetric_key::{PublicKey, SecretKey},
@@ -18,7 +19,11 @@ pub static BOB_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*BOB_
 
 /// Loads the local chainspec and overrides timestamp and genesis account with the given stakes.
 /// The test `Chainspec` returned has eras with exactly two blocks.
-pub fn new_test_chainspec(stakes: Vec<(PublicKey, u64)>) -> Chainspec {
+pub fn new_test_chainspec<I, T>(stakes: I) -> Chainspec
+where
+    I: IntoIterator<Item = (PublicKey, T)>,
+    T: Into<U512>,
+{
     let mut chainspec = Chainspec::from_resources("test/valid/chainspec.toml");
     chainspec.genesis.accounts = stakes
         .into_iter()

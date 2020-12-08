@@ -251,7 +251,6 @@ impl GenesisConfig {
                     None
                 }
             })
-            .clone()
             .collect()
     }
 

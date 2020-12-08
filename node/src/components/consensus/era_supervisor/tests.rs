@@ -1,5 +1,4 @@
 use anyhow::Error;
-use casper_execution_engine::shared::motes::Motes;
 use derive_more::From;
 use futures::channel::oneshot;
 use prometheus::Registry;
@@ -13,7 +12,7 @@ use crate::{
             consensus_protocol::EraEnd,
             tests::{
                 mock_proto::{self, MockProto, NodeId},
-                utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
+                utils::{new_test_chainspec, ALICE_PUBLIC_KEY, BOB_PUBLIC_KEY},
             },
             Config,
         },
@@ -303,9 +302,15 @@ async fn finalize_blocks_and_switch_eras() -> Result<(), Error> {
     let mut rng = TestRng::new();
 
     let (mut es, effects) = {
-        let chainspec = new_test_chainspec(vec![(*ALICE_PUBLIC_KEY, 10), (*BOB_PUBLIC_KEY, 100)]);
+        let validators = vec![
+            (*ALICE_PUBLIC_KEY, 10.into()),
+            (*BOB_PUBLIC_KEY, 100.into()),
+        ];
+        let chainspec = new_test_chainspec(validators.clone());
         let config = Config {
-            secret_key_path: External::Loaded(ALICE_SECRET_KEY.clone()),
+            secret_key_path: External::Loaded(
+                SecretKey::ed25519_from_bytes(&[2; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
         };
 
         let registry = Registry::new();
@@ -313,15 +318,12 @@ async fn finalize_blocks_and_switch_eras() -> Result<(), Error> {
         let effect_builder = EffectBuilder::new(EventQueueHandle::new(reactor.scheduler));
 
         // Initialize the era supervisor. There are two validators, Alice and Bob. This instance,
-        // however, is only a passive observer.
+        // however, is only a passive observer. (Its secret key is neither Alice's nor Bob's.)
         EraSupervisor::new(
             Timestamp::now(),
             WithDir::new("tmp", config),
             effect_builder,
-            vec![
-                (*ALICE_PUBLIC_KEY, Motes::new(10.into())),
-                (*BOB_PUBLIC_KEY, Motes::new(100.into())),
-            ],
+            validators.into_iter().collect(),
             &chainspec,
             Default::default(), // genesis state root hash
             &registry,

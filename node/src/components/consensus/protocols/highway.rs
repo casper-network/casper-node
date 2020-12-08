@@ -9,7 +9,6 @@ use std::{
     iter,
 };
 
-use casper_execution_engine::shared::motes::Motes;
 use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
@@ -62,23 +61,23 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// Creates a new boxed `HighwayProtocol` instance.
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
-        validator_stakes: Vec<(C::ValidatorId, Motes)>,
+        validator_stakes: BTreeMap<C::ValidatorId, U512>,
         slashed: &HashSet<C::ValidatorId>,
         chainspec: &Chainspec,
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
         start_time: Timestamp,
         seed: u64,
     ) -> Box<dyn ConsensusProtocol<I, C>> {
-        let sum_stakes: Motes = validator_stakes.iter().map(|(_, stake)| *stake).sum();
+        let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         assert!(
-            !sum_stakes.value().is_zero(),
+            !sum_stakes.is_zero(),
             "cannot start era with total weight 0"
         );
         // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
         // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
-        let scaling_factor = (sum_stakes.value() + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
-        let scale_stake = |(key, stake): (C::ValidatorId, Motes)| {
-            (key, AsPrimitive::<u64>::as_(stake.value() / scaling_factor))
+        let scaling_factor = (sum_stakes + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
+        let scale_stake = |(key, stake): (C::ValidatorId, U512)| {
+            (key, AsPrimitive::<u64>::as_(stake / scaling_factor))
         };
         let mut validators: Validators<C::ValidatorId> =
             validator_stakes.into_iter().map(scale_stake).collect();
