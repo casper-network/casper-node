@@ -34,7 +34,7 @@ const ARG_AMOUNT: &str = "amount";
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
 const VALIDATOR_2: PublicKey = PublicKey::Ed25519([4; 32]);
-const NONVALIDATOR_1: PublicKey = PublicKey::Ed25519([5; 32]);
+const DELEGATOR_1: PublicKey = PublicKey::Ed25519([5; 32]);
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_1.into());
 static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_2.into());
 const VALIDATOR_1_STAKE: u64 = 250_000;
@@ -67,7 +67,7 @@ fn should_run_ee_1120_slash_delegators() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 
-    let trasfer_request_1 = ExecuteRequestBuilder::standard(
+    let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
@@ -77,7 +77,7 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(trasfer_request_1).expect_success().commit();
+    builder.exec(transfer_request_1).expect_success().commit();
 
     let transfer_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -94,7 +94,7 @@ fn should_run_ee_1120_slash_delegators() {
     let auction = builder.get_auction_contract_hash();
 
     //
-    // Validator delegates funds on other genesis validator
+    // Validator delegates funds to other genesis validator
     //
 
     let delegate_exec_request_1 = ExecuteRequestBuilder::standard(
@@ -145,7 +145,7 @@ fn should_run_ee_1120_slash_delegators() {
         .expect_success()
         .commit();
 
-    // sanity check of the system before undelegating
+    // Ensure that initial bid entries exist for validator 1 and validator 2
     let initial_bids: Bids = builder.get_value(auction, BIDS_KEY);
     assert_eq!(
         initial_bids.keys().copied().collect::<BTreeSet<_>>(),
@@ -156,7 +156,7 @@ fn should_run_ee_1120_slash_delegators() {
     assert_eq!(initial_unbond_purses.len(), 0);
 
     //
-    // Partial unbond through undelegate on other genesis validator
+    // DELEGATOR_1 partially unbonds from VALIDATOR_1
     //
     let undelegate_request_1 = ExecuteRequestBuilder::standard(
         NONVALIDATOR_1.into(),
@@ -197,7 +197,7 @@ fn should_run_ee_1120_slash_delegators() {
     .build();
     builder.exec(undelegate_request_3).commit().expect_success();
 
-    // unbonding purses before slashing
+    // Check unbonding purses before slashing
 
     let unbond_purses_before: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses_before.len(), 2);
@@ -223,7 +223,7 @@ fn should_run_ee_1120_slash_delegators() {
     );
 
     //
-    // bids before slashing
+    // Check bids before slashing
     //
     let bids_before: Bids = builder.get_value(auction, BIDS_KEY);
     assert_eq!(
@@ -245,7 +245,7 @@ fn should_run_ee_1120_slash_delegators() {
 
     builder.exec(slash_request_1).expect_success().commit();
 
-    // compare bids after slashing validator 2
+    // Compare bids after slashing validator 2
     let bids_after: Bids = builder.get_value(auction, BIDS_KEY);
     assert_ne!(bids_before, bids_after);
     assert_eq!(bids_after.len(), 1);
@@ -254,7 +254,7 @@ fn should_run_ee_1120_slash_delegators() {
     assert!(bids_after.contains_key(&VALIDATOR_1));
     assert_eq!(bids_after[&VALIDATOR_1].delegators().len(), 2);
 
-    // NOTE: Validator2's bid on Validator1 wasn't slashed.
+    // validator 2's delegation bid on validator 1 was not slashed.
     assert!(bids_after[&VALIDATOR_1]
         .delegators()
         .contains_key(&VALIDATOR_2));
@@ -274,21 +274,21 @@ fn should_run_ee_1120_slash_delegators() {
         &NONVALIDATOR_1
     );
 
-    // NOTE: As mentioned above Validator2's unbonding purse on Validator1 wasn't slashed
+    // validator 2's delegation unbond from validator 1 was not slashed
     assert_eq!(
         validator_1_unbond_list_after[1].unbonder_public_key(),
         &VALIDATOR_2
     );
 
-    // if a delegator gets slashed for one validator's behavior, he isn't also slashed for the other
-    // validators he delegates to
+    // delegator 1 had a delegation unbond slashed for validator 2's behavior.
+    // delegator 1 still has an active delegation unbond from validator 2.
     assert_eq!(
         validator_1_unbond_list_after,
         &validator_1_unbond_list_before
     );
 
     //
-    // slash validator1 to clear both bids and unbonding purses
+    // slash validator 1 to clear remaining bids and unbonding purses
     //
     let slash_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,

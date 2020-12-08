@@ -269,12 +269,12 @@ pub trait Auction:
         let mut burned_amount: U512 = U512::zero();
 
         let mut bids = detail::get_bids(self)?;
-        let mut modified_validators = 0usize;
+        let mut bids_modified = false;
 
         let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
-            // Clean up bids for given validator and save up assigned delegators
+            // Remove bid for given validator, saving its delegators
             let orphaned_delegators = match bids.remove(&validator_public_key) {
                 Some(bid) => {
                     burned_amount += *bid.staked_amount();
@@ -285,13 +285,12 @@ pub trait Auction:
                 None => BTreeSet::new(),
             };
 
-            // Clean up unbonding entry for given validator
+            // Update unbonding entries for given validator
             if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
                 let initial_length = unbonding_list.len();
 
                 unbonding_list.retain(|unbonding_purse| {
-                    // Only entries created by validator entries and delegators that were attached
-                    // to quashed bids of validator.
+                    // Retain all entries where this validator is delegating to another validator.
                     let should_retain = !unbonding_purse.is_validator()
                         && !orphaned_delegators.contains(unbonding_purse.unbonder_public_key());
 
@@ -319,7 +318,7 @@ pub trait Auction:
             detail::set_unbonding_purses(self, unbonding_purses)?;
         }
 
-        if modified_validators > 0 {
+        if bids_modified {
             detail::set_bids(self, bids)?;
         }
 
