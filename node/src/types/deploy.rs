@@ -20,14 +20,14 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use casper_execution_engine::core::engine_state::{
-    executable_deploy_item::ExecutableDeployItem, DeployItem,
+use casper_execution_engine::{
+    core::engine_state::{executable_deploy_item::ExecutableDeployItem, DeployItem},
+    shared::motes::Motes,
 };
-use casper_execution_engine::shared::motes::Motes;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ExecutionResult, U512,
     standard_payment::ARG_AMOUNT,
+    ExecutionResult, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};

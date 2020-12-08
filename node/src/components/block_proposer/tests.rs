@@ -3,8 +3,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    runtime_args, RuntimeArgs,
-    U512,
+    runtime_args, RuntimeArgs, U512,
 };
 
 use crate::{
@@ -415,7 +414,14 @@ fn test_proposer_with(
         proposer.add_deploy_or_transfer(creation_time, hash, DeployType::Wasm(deploy));
     }
     for _ in 0..transfer_count {
-        let (hash, transfer) = generate_transfer(&mut rng, creation_time, ttl, vec![], gas_cost, payment_amount);
+        let (hash, transfer) = generate_transfer(
+            &mut rng,
+            creation_time,
+            ttl,
+            vec![],
+            gas_cost,
+            payment_amount,
+        );
         proposer.add_deploy_or_transfer(
             creation_time,
             hash,

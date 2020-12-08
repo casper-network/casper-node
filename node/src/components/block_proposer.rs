@@ -21,7 +21,6 @@ use prometheus::{self, Registry};
 use semver::Version;
 use tracing::{debug, info, trace, warn};
 
-use casper_execution_engine::shared::motes::Motes;
 use crate::{
     components::{chainspec_loader::DeployConfig, Component},
     effect::{
@@ -31,6 +30,7 @@ use crate::{
     types::{DeployHash, ProtoBlock, Timestamp},
     NodeRng,
 };
+use casper_execution_engine::shared::motes::Motes;
 pub(crate) use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
@@ -409,12 +409,8 @@ impl BlockProposerReady {
                 break;
             }
 
-            if self.is_deploy_valid(
-                &deploy_type,
-                block_timestamp,
-                &deploy_config,
-                &past_deploys,
-            ) && !past_deploys.contains(hash)
+            if self.is_deploy_valid(&deploy_type, block_timestamp, &deploy_config, &past_deploys)
+                && !past_deploys.contains(hash)
                 && !self.sets.finalized_deploys.contains_key(hash)
             {
                 let header = deploy_type.header();
