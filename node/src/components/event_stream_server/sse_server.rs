@@ -16,7 +16,7 @@ use warp::{
 use casper_types::ExecutionResult;
 
 use crate::{
-    components::CLIENT_API_VERSION,
+    components::{consensus::EraId, CLIENT_API_VERSION},
     crypto::asymmetric_key::PublicKey,
     types::{BlockHash, BlockHeader, DeployHash, FinalizedBlock, TimeDiff, Timestamp},
 };
@@ -61,6 +61,11 @@ pub enum SseData {
         block_hash: BlockHash,
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
+    },
+    Equivocation {
+        era_id: EraId,
+        public_key: PublicKey,
+        timestamp: Timestamp,
     },
 }
 
@@ -172,7 +177,8 @@ fn stream_to_client(
                     (None, &SseData::ApiVersion { .. }) => Ok(sse::json(event.data).boxed()),
                     (Some(id), &SseData::BlockFinalized { .. })
                     | (Some(id), &SseData::BlockAdded { .. })
-                    | (Some(id), &SseData::DeployProcessed { .. }) => {
+                    | (Some(id), &SseData::DeployProcessed { .. })
+                    | (Some(id), &SseData::Equivocation { .. }) => {
                         Ok((sse::id(id), sse::json(event.data)).boxed())
                     }
                     _ => unreachable!("only ApiVersion may have no event ID"),

@@ -728,6 +728,22 @@ impl reactor::Reactor for Reactor {
                         event_stream_server::Event::BlockFinalized(block),
                     ),
                 ),
+                ConsensusAnnouncement::Equivocation {
+                    era_id,
+                    public_key,
+                    timestamp,
+                } => reactor::wrap_effects(
+                    Event::EventStreamServer,
+                    self.event_stream_server.handle_event(
+                        effect_builder,
+                        rng,
+                        event_stream_server::Event::Equivocation {
+                            era_id,
+                            public_key: *public_key,
+                            timestamp,
+                        },
+                    ),
+                ),
             },
             Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining

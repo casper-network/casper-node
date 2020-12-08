@@ -110,6 +110,15 @@ where
                 block_hash,
                 execution_result,
             }),
+            Event::Equivocation {
+                era_id,
+                public_key,
+                timestamp,
+            } => self.broadcast(SseData::Equivocation {
+                era_id,
+                public_key,
+                timestamp,
+            }),
         }
     }
 }
