@@ -94,6 +94,10 @@ pub(crate) struct HighwayConfig {
     pub(crate) finality_threshold_fraction: Ratio<u64>,
     pub(crate) minimum_round_exponent: u8,
     pub(crate) maximum_round_exponent: u8,
+    /// The factor by which rewards for a round are multiplied if the greatest summit has ≤50%
+    /// quorum, i.e. no finality.
+    #[data_size(skip)]
+    pub(crate) reduced_reward_multiplier: Ratio<u64>,
 }
 
 impl Default for HighwayConfig {
@@ -104,6 +108,7 @@ impl Default for HighwayConfig {
             finality_threshold_fraction: Ratio::new(1, 3),
             minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
             maximum_round_exponent: 19, // 2**19 ms = ~8.7 minutes
+            reduced_reward_multiplier: Ratio::new(1, 5),
         }
     }
 }
@@ -142,6 +147,7 @@ impl HighwayConfig {
             finality_threshold_fraction: Ratio::new(rng.gen_range(0, 101), 100),
             minimum_round_exponent: rng.gen_range(0, 16),
             maximum_round_exponent: rng.gen_range(16, 22),
+            reduced_reward_multiplier: Ratio::new(rng.gen_range(0, 10), 10),
         }
     }
 }
@@ -584,6 +590,10 @@ mod tests {
         );
         assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 14);
         assert_eq!(spec.genesis.highway_config.maximum_round_exponent, 19);
+        assert_eq!(
+            spec.genesis.highway_config.reduced_reward_multiplier,
+            Ratio::new(1, 5)
+        );
 
         assert_eq!(
             spec.genesis.deploy_config.max_payment_cost,

@@ -109,7 +109,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let params = Params::new(
             seed,
             BLOCK_REWARD,
-            BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
+            (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
             highway_config.minimum_round_exponent,
             highway_config.maximum_round_exponent,
             init_round_exp,
