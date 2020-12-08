@@ -291,8 +291,8 @@ async fn propose_and_finalize(
         block_h.await.unwrap();
     };
     let fs = receiver.await.unwrap().unwrap();
-    assert_eq!(fs.block_hash(), block.hash());
-    assert_eq!(fs.public_key(), &es.public_signing_key);
+    assert_eq!(&fs.block_hash, block.hash());
+    assert_eq!(&fs.public_key, &es.public_signing_key);
     assert!(fs.verify().is_ok());
 
     block

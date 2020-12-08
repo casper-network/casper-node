@@ -7,71 +7,21 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
 use casper_types::ExecutionResult;
 
 use super::Component;
 use crate::{
-    crypto::{
-        self,
-        asymmetric_key::{PublicKey, Signature},
-    },
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{ConsensusRequest, LinearChainRequest, NetworkRequest, StorageRequest},
         EffectExt, Effects, Responder,
     },
     protocol::Message,
-    types::{Block, BlockByHeight, BlockHash, DeployHash},
+    types::{Block, BlockByHeight, BlockHash, DeployHash, FinalitySignature},
     NodeRng,
 };
-
-/// Finality signature that can be gossiped between nodes or sent to clients.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FinalitySignature {
-    block_hash: BlockHash,
-    signature: Signature,
-    public_key: PublicKey,
-}
-
-impl FinalitySignature {
-    pub fn new(block_hash: BlockHash, signature: Signature, public_key: PublicKey) -> Self {
-        FinalitySignature {
-            block_hash,
-            signature,
-            public_key,
-        }
-    }
-
-    pub fn block_hash(&self) -> &BlockHash {
-        &self.block_hash
-    }
-
-    pub fn signature(&self) -> &Signature {
-        &self.signature
-    }
-
-    pub fn public_key(&self) -> &PublicKey {
-        &self.public_key
-    }
-
-    /// Verifies whether the signature is correct.
-    pub fn verify(&self) -> crypto::asymmetric_key::Result<()> {
-        crypto::asymmetric_key::verify(self.block_hash.inner(), &self.signature, &self.public_key)
-    }
-}
-
-impl Display for FinalitySignature {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "finality signature for block hash {}, from {}",
-            &self.block_hash, &self.public_key
-        )
-    }
-}
 
 impl<I> From<FinalitySignature> for Event<I> {
     fn from(fs: FinalitySignature) -> Self {
@@ -131,8 +81,7 @@ impl<I: Display> Display for Event<I> {
             Event::NewFinalitySignature(fs) => write!(
                 f,
                 "linear-chain new finality signature for block: {}, from: {}",
-                fs.block_hash(),
-                fs.public_key(),
+                fs.block_hash, fs.public_key,
             ),
             Event::PutBlockResult { .. } => write!(f, "linear-chain put-block result"),
             Event::GetBlockByHeightResult(height, result, peer) => write!(
@@ -295,12 +244,12 @@ where
                         .await;
                     match maybe_block {
                         None => {
-                            let block_hash = fs.block_hash();
-                            let public_key = fs.public_key();
+                            let block_hash = fs.block_hash;
+                            let public_key = fs.public_key;
                             warn!(%block_hash, %public_key, "received a signature for a block that was not found in storage");
                         }
                         Some(mut block) => {
-                            if !block.proofs().iter().any(|proof| proof == fs.signature()) {
+                            if !block.proofs().iter().any(|proof| proof == &fs.signature) {
                                 block.append_proof(fs.signature);
                                 let _ = effect_builder
                                     .put_block_to_storage(Box::new(block))

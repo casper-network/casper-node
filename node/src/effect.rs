@@ -104,7 +104,6 @@ use crate::{
         consensus::BlockContext,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
-        linear_chain::FinalitySignature,
         small_network::GossipedAddress,
     },
     crypto::hash::Digest,
@@ -112,7 +111,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalizedBlock, Item, ProtoBlock, Timestamp,
+        DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,

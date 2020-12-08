@@ -8,8 +8,8 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    components::{consensus, gossiper, linear_chain, small_network::GossipedAddress},
-    types::{Deploy, Item, Tag},
+    components::{consensus, gossiper, small_network::GossipedAddress},
+    types::{Deploy, FinalitySignature, Item, Tag},
 };
 
 /// Reactor message.
@@ -40,7 +40,7 @@ pub enum Message {
     },
     /// Finality signature.
     #[from]
-    FinalitySignature(Box<linear_chain::FinalitySignature>),
+    FinalitySignature(Box<FinalitySignature>),
 }
 
 impl Message {
