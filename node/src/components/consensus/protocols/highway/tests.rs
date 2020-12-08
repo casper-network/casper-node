@@ -37,6 +37,7 @@ pub(crate) fn new_test_state(weights: &[state::Weight], seed: u64) -> State<ClCo
         u64::MAX,
         0.into(),
         Timestamp::from(u64::MAX),
+        highway_testing::TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     state::State::new(weights, params, vec![])
 }
