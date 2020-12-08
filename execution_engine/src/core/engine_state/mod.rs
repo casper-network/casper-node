@@ -812,6 +812,19 @@ where
                 .write(locked_funds_period_key, value);
         }
 
+        if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.auction())?;
+
+            let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_unbonding_delay)
+                    .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
+            );
+            tracking_copy.borrow_mut().write(unbonding_delay_key, value);
+        }
+
         if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
             let new_round_seigniorage_rate: Ratio<U512> = {
                 let (numer, denom) = new_round_seigniorage_rate.into();
@@ -830,19 +843,6 @@ where
             tracking_copy
                 .borrow_mut()
                 .write(locked_funds_period_key, value);
-        }
-
-        if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, new_protocol_data.auction())?;
-
-            let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_unbonding_delay)
-                    .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
-            );
-            tracking_copy.borrow_mut().write(unbonding_delay_key, value);
         }
 
         let effects = tracking_copy.borrow().effect();
