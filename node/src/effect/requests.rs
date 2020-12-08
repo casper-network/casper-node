@@ -32,7 +32,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, URef,
+    ExecutionResult, Key, ProtocolVersion, Transfer, URef,
 };
 use hex_fmt::HexFmt;
 
@@ -73,7 +73,7 @@ impl Display for MetricsRequest {
 }
 
 /// A networking request.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub enum NetworkRequest<I, P> {
     /// Send a message on the network to a specific peer.
@@ -83,6 +83,7 @@ pub enum NetworkRequest<I, P> {
         /// Message payload.
         payload: P,
         /// Responder to be called when the message is queued.
+        #[serde(skip_serializing)]
         responder: Responder<()>,
     },
     /// Send a message on the network to all peers.
@@ -92,6 +93,7 @@ pub enum NetworkRequest<I, P> {
         /// Message payload.
         payload: P,
         /// Responder to be called when all messages are queued.
+        #[serde(skip_serializing)]
         responder: Responder<()>,
     },
     /// Gossip a message to a random subset of peers.
@@ -101,8 +103,10 @@ pub enum NetworkRequest<I, P> {
         /// Number of peers to gossip to. This is an upper bound, otherwise best-effort.
         count: usize,
         /// Node IDs of nodes to exclude from gossiping to.
+        #[serde(skip_serializing)]
         exclude: HashSet<I>,
         /// Responder to be called when all messages are queued.
+        #[serde(skip_serializing)]
         responder: Responder<HashSet<I>>,
     },
 }
@@ -184,7 +188,7 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 /// A storage request.
 #[must_use]
 pub enum StorageRequest {
@@ -223,6 +227,14 @@ pub enum StorageRequest {
         /// Responder to call with the result.  Returns `None` is the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
+    },
+    /// Retrieve all transfers in a block with given hash.
+    GetBlockTransfers {
+        /// Hash of block to get transfers of.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` is the transfers do not exist in
+        /// local storage under the block_hash provided.
+        responder: Responder<Option<Vec<Transfer>>>,
     },
     /// Store given deploy.
     PutDeploy {
@@ -295,6 +307,9 @@ impl Display for StorageRequest {
             StorageRequest::GetHighestBlock { .. } => write!(formatter, "get highest block"),
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
+            }
+            StorageRequest::GetBlockTransfers { block_hash, .. } => {
+                write!(formatter, "get transfers for {}", block_hash)
             }
             StorageRequest::PutDeploy { deploy, .. } => write!(formatter, "put {}", deploy),
             StorageRequest::GetDeploys { deploy_hashes, .. } => {
@@ -426,6 +441,13 @@ pub enum RpcRequest<I> {
         /// Responder to call with the result.
         responder: Responder<Option<LinearBlock>>,
     },
+    /// Return transfers for block by hash (if any).
+    GetBlockTransfers {
+        /// The hash of the block to retrieve transfers for.
+        block_hash: BlockHash,
+        /// Responder to call with the result.
+        responder: Responder<Option<Vec<Transfer>>>,
+    },
     /// Query the global state at the given root hash.
     QueryGlobalState {
         /// The state root hash.
@@ -499,6 +521,9 @@ impl<I> Display for RpcRequest<I> {
                 ..
             } => write!(formatter, "get {}", height),
             RpcRequest::GetBlock { maybe_id: None, .. } => write!(formatter, "get latest block"),
+            RpcRequest::GetBlockTransfers { block_hash, .. } => {
+                write!(formatter, "get transfers {}", block_hash)
+            }
             RpcRequest::QueryProtocolData {
                 protocol_version, ..
             } => write!(formatter, "protocol_version {}", protocol_version),
@@ -705,7 +730,7 @@ impl Display for ContractRuntimeRequest {
 }
 
 /// Fetcher related requests.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[must_use]
 pub enum FetcherRequest<I, T: Item> {
     /// Return the specified item if it exists, else `None`.
@@ -771,7 +796,7 @@ impl<T: Display, I: Display> Display for BlockValidationRequest<T, I> {
 
 type BlockHeight = u64;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 /// Requests issued to the Linear Chain component.
 pub enum LinearChainRequest<I> {
     /// Request whole block from the linear chain, by hash.

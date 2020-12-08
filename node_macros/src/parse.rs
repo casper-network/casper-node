@@ -9,7 +9,7 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use inflector::cases::pascalcase::to_pascal_case;
 use syn::{
     braced, bracketed,
@@ -21,7 +21,7 @@ use syn::{
 };
 
 use crate::{rust_type::RustType, util::to_ident};
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 
 #[derive(Debug)]
 pub(crate) struct ReactorDefinition {
@@ -157,7 +157,7 @@ impl Parse for ReactorDefinition {
         let _: Token!(:) = content.parse()?;
         braced!(requests_content in content);
 
-        let requests = requests_content
+        let requests: Vec<_> = requests_content
             .parse_terminated::<RequestDefinition, Token!(;)>(RequestDefinition::parse)?
             .into_iter()
             .collect();
@@ -167,19 +167,66 @@ impl Parse for ReactorDefinition {
         let _: kw::announcements = content.parse()?;
         let _: Token!(:) = content.parse()?;
         braced!(announcements_content in content);
-        let announcements = announcements_content
+        let announcements: Vec<_> = announcements_content
             .parse_terminated::<AnnouncementDefinition, Token!(;)>(AnnouncementDefinition::parse)?
             .into_iter()
             .collect();
 
+        // We can now perform some rudimentary checks. Component keys are converted to strings, so
+        // rid them of their span information.
+        let component_keys: IndexSet<_> =
+            components.keys().map(|ident| ident.to_string()).collect();
+
+        // Ensure that the `events` section does not point to non-existing components.
+        let events_keys: IndexSet<_> = events.keys().collect();
+
+        // We cannot use the `difference` function, because equal idents compare different based on
+        // their span.
+        for key in &events_keys {
+            if !component_keys.contains(&key.to_string()) {
+                return Err(syn::Error::new_spanned(
+                    key,
+                    format!("An event entry points to a non-existing component: {}", key),
+                ));
+            }
+        }
+
+        // Ensure that requests are not routed to non-existing events.
+        let request_target_keys: IndexSet<_> = requests
+            .iter()
+            .filter_map(|req| req.target.as_dest())
+            .collect();
+
+        for key in &request_target_keys {
+            if !component_keys.contains(&key.to_string()) {
+                return Err(syn::Error::new_spanned(
+                    key,
+                    format!("An request route to a non-existing component: {}", key),
+                ));
+            }
+        }
+
+        // Ensure that requests are not routed to non-existing events.
+        let announce_target_keys: IndexSet<_> = announcements
+            .iter()
+            .map(|ann| ann.targets.iter())
+            .flatten()
+            .filter_map(Target::as_dest)
+            .collect();
+
+        for key in &announce_target_keys {
+            if !component_keys.contains(&key.to_string()) {
+                return Err(syn::Error::new_spanned(
+                    key,
+                    format!("An announcement route to a non-existing component: {}", key),
+                ));
+            }
+        }
+
         Ok(ReactorDefinition {
             reactor_type_ident,
-            config_type: RustType::try_from(config.ty.as_ref().clone()).map_err(|err| {
-                syn::parse::Error::new(
-                    Span::call_site(), // FIXME: Can we get a better span here?
-                    err,
-                )
-            })?,
+            config_type: RustType::try_from(config.ty.as_ref().clone())
+                .map_err(|err| syn::parse::Error::new_spanned(config.ty, err))?,
             components,
             events,
             requests,
@@ -198,6 +245,8 @@ pub(crate) struct ComponentDefinition {
     component_arguments: Vec<Expr>,
     /// Whether or not the component has actual effects when constructed.
     has_effects: bool,
+    /// Whether or not the component's `new` function returns a component instead of a `Result`.
+    is_infallible: bool,
 }
 
 impl ComponentDefinition {
@@ -240,6 +289,11 @@ impl ComponentDefinition {
     pub fn has_effects(&self) -> bool {
         self.has_effects
     }
+
+    /// Returns whether the component always returns a component directly instead of a `Result`.
+    pub fn is_infallible(&self) -> bool {
+        self.is_infallible
+    }
 }
 
 impl Debug for ComponentDefinition {
@@ -258,8 +312,15 @@ impl Parse for ComponentDefinition {
         let name: Ident = input.parse()?;
         let _: Token!(=) = input.parse()?;
 
-        let has_effects = if input.peek(Token!(@)) {
-            let _: Token!(@) = input.parse()?;
+        let has_effects = if input.peek(kw::has_effects) {
+            let _: kw::has_effects = input.parse()?;
+            true
+        } else {
+            false
+        };
+
+        let is_infallible = if input.peek(kw::infallible) {
+            let _: kw::infallible = input.parse()?;
             true
         } else {
             false
@@ -277,6 +338,7 @@ impl Parse for ComponentDefinition {
             component_type: RustType::new(ty),
             component_arguments: args.into_iter().collect(),
             has_effects,
+            is_infallible,
         })
     }
 }
@@ -407,15 +469,31 @@ impl Parse for AnnouncementDefinition {
 pub(crate) enum Target {
     /// Discard whatever is being routed.
     Discard,
+    /// When anything is routed to this target, panic.
+    Panic,
     /// Forward to destination.
     Dest(Ident),
+    /// Dispatch using a method.
+    Dispatch(Ident),
+}
+
+impl Target {
+    /// Returns a reference to the destination identifier if the target is a destination, or `None`.
+    fn as_dest(&self) -> Option<&Ident> {
+        match self {
+            Target::Discard | Target::Panic | Target::Dispatch(_) => None,
+            Target::Dest(ident) => Some(ident),
+        }
+    }
 }
 
 impl Debug for Target {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Target::Discard => write!(f, "!"),
+            Target::Discard => write!(f, "#"),
+            Target::Panic => write!(f, "!"),
             Target::Dest(id) => write!(f, "{}", id.to_string()),
+            Target::Dispatch(id) => write!(f, "{}()", id.to_string()),
         }
     }
 }
@@ -424,7 +502,15 @@ impl Parse for Target {
     fn parse(input: ParseStream) -> Result<Self> {
         if input.peek(Token!(!)) {
             let _: Token!(!) = input.parse()?;
+            Ok(Target::Panic)
+        } else if input.peek(Token!(#)) {
+            let _: Token!(#) = input.parse()?;
             Ok(Target::Discard)
+        } else if input.peek(Token!(fn)) {
+            let _: Token!(fn) = input.parse()?;
+            let dispatch = input.parse()?;
+
+            Ok(Target::Dispatch(dispatch))
         } else {
             input.parse().map(Target::Dest)
         }
@@ -439,4 +525,6 @@ mod kw {
     syn::custom_keyword!(events);
     syn::custom_keyword!(requests);
     syn::custom_keyword!(announcements);
+    syn::custom_keyword!(infallible);
+    syn::custom_keyword!(has_effects);
 }

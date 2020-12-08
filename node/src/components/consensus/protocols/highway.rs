@@ -14,7 +14,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
 use serde::{Deserialize, Serialize};
-use tracing::{info, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use self::round_success_meter::RoundSuccessMeter;
 use casper_types::{auction::BLOCK_REWARD, U512};
@@ -39,6 +39,10 @@ use crate::{
     types::Timestamp,
     NodeRng,
 };
+
+/// Never allow more than this many units in a piece of evidence for conflicting endorsements,
+/// even if eras are longer than this.
+const MAX_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 10000;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
@@ -91,8 +95,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let highway_config = &chainspec.genesis.highway_config;
 
         let total_weight = u128::from(validators.total_weight());
-        let ftt_percent = u128::from(highway_config.finality_threshold_percent);
-        let ftt = ((total_weight * ftt_percent / 100) as u64).into();
+        let ftt_fraction = highway_config.finality_threshold_fraction;
+        let ftt = ((total_weight * *ftt_fraction.numer() as u128 / *ftt_fraction.denom() as u128)
+            as u64)
+            .into();
 
         let init_round_exp = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
@@ -104,16 +110,27 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             "initializing Highway instance",
         );
 
+        // Allow about as many units as part of evidence for conflicting endorsements as we expect
+        // a validator to create during an era. After that, they can endorse two conflicting forks
+        // without getting slashed.
+        let min_round_len = 1 << highway_config.minimum_round_exponent;
+        let min_rounds_per_era = highway_config
+            .minimum_era_height
+            .max(1 + highway_config.era_duration.millis() / min_round_len);
+        let endorsement_evidence_limit =
+            (2 * min_rounds_per_era).min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
+
         let params = Params::new(
             seed,
             BLOCK_REWARD,
-            BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
+            (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
             highway_config.minimum_round_exponent,
             highway_config.maximum_round_exponent,
             init_round_exp,
             highway_config.minimum_era_height,
             start_time,
             start_time + highway_config.era_duration,
+            endorsement_evidence_limit,
         );
 
         let min_round_exp = params.min_round_exp();
@@ -162,7 +179,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     past_values,
                 }]
             }
-            AvEffect::WeAreFaulty(fault) => panic!("this validator is faulty: {:?}", fault),
+            AvEffect::WeAreFaulty(fault) => {
+                error!("this validator is faulty: {:?}", fault);
+                vec![ProtocolOutcome::WeAreFaulty]
+            }
         }
     }
 

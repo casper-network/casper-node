@@ -416,19 +416,17 @@ pub trait Auction:
         let base_round_reward = self.read_base_round_reward()?;
         let era_id = detail::get_era_id(self)?;
 
-        // // TODO: fix consensus?
-        // if reward_factors.keys().ne(seigniorage_recipients.keys()) {
-        //     return Err(Error::MismatchedEraValidators);
-        // }
+        if reward_factors.keys().ne(seigniorage_recipients.keys()) {
+            return Err(Error::MismatchedEraValidators);
+        }
 
         let mut auction_info = AuctionInfo::new();
         let mut seigniorage_allocations = auction_info.seigniorage_allocations_mut();
 
         for (public_key, reward_factor) in reward_factors {
-            let recipient = match seigniorage_recipients.get(&public_key) {
-                Some(recipient) => recipient,
-                None => continue, // TODO: fix consensus?
-            };
+            let recipient = seigniorage_recipients
+                .get(&public_key)
+                .ok_or(Error::ValidatorNotFound)?;
 
             let total_stake = recipient.total_stake();
             if total_stake.is_zero() {

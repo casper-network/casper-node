@@ -69,6 +69,7 @@ pub struct UpgradeConfig {
     new_auction_delay: Option<u64>,
     new_locked_funds_period: Option<EraId>,
     new_round_seigniorage_rate: Option<Ratio<u64>>,
+    new_unbonding_delay: Option<EraId>,
 }
 
 impl UpgradeConfig {
@@ -85,6 +86,7 @@ impl UpgradeConfig {
         new_auction_delay: Option<u64>,
         new_locked_funds_period: Option<EraId>,
         new_round_seigniorage_rate: Option<Ratio<u64>>,
+        new_unbonding_delay: Option<EraId>,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -98,6 +100,7 @@ impl UpgradeConfig {
             new_auction_delay,
             new_locked_funds_period,
             new_round_seigniorage_rate,
+            new_unbonding_delay,
         }
     }
 
@@ -145,5 +148,9 @@ impl UpgradeConfig {
 
     pub fn new_round_seigniorage_rate(&self) -> Option<Ratio<u64>> {
         self.new_round_seigniorage_rate
+    }
+
+    pub fn new_unbonding_delay(&self) -> Option<EraId> {
+        self.new_unbonding_delay
     }
 }

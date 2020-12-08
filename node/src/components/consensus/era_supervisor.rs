@@ -24,10 +24,7 @@ use rand::Rng;
 use tracing::{error, info, trace, warn};
 
 use casper_execution_engine::shared::motes::Motes;
-use casper_types::{
-    auction::{ValidatorWeights, DEFAULT_UNBONDING_DELAY},
-    ProtocolVersion,
-};
+use casper_types::{auction::ValidatorWeights, ProtocolVersion};
 
 use crate::{
     components::{
@@ -132,7 +129,7 @@ where
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
-        let bonded_eras: u64 = DEFAULT_UNBONDING_DELAY - chainspec.genesis.auction_delay;
+        let bonded_eras: u64 = chainspec.genesis.unbonding_delay - chainspec.genesis.auction_delay;
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
 
@@ -735,6 +732,7 @@ where
                     })
                 })
                 .collect(),
+            ProtocolOutcome::WeAreFaulty => Default::default(),
         }
     }
 

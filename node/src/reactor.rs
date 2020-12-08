@@ -140,7 +140,7 @@ pub trait Reactor: Sized {
     type Config;
 
     /// The error type returned by the reactor.
-    type Error: Send + Sync + 'static;
+    type Error: Send + 'static;
 
     /// Dispatches an event on the reactor.
     ///

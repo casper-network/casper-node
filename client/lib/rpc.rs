@@ -13,7 +13,8 @@ use casper_node::{
     rpcs::{
         account::{PutDeploy, PutDeployParams},
         chain::{
-            BlockIdentifier, GetBlock, GetBlockParams, GetStateRootHash, GetStateRootHashParams,
+            BlockIdentifier, GetBlock, GetBlockParams, GetBlockTransfers, GetBlockTransfersParams,
+            GetStateRootHash, GetStateRootHashParams,
         },
         docs::ListRpcs,
         info::{GetDeploy, GetDeployParams},
@@ -219,6 +220,18 @@ impl RpcCall {
         Ok(response)
     }
 
+    pub(crate) fn get_block_transfers(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
+        let maybe_block_identifier = Self::block_identifier(maybe_block_identifier)?;
+        let response = match maybe_block_identifier {
+            Some(block_identifier) => {
+                let params = GetBlockTransfersParams { block_identifier };
+                GetBlockTransfers::request_with_map_params(self, params)
+            }
+            None => GetBlockTransfers::request(self),
+        }?;
+        Ok(response)
+    }
+
     fn block_identifier(maybe_block_identifier: &str) -> Result<Option<BlockIdentifier>> {
         if maybe_block_identifier.is_empty() {
             return Ok(None);
@@ -324,6 +337,10 @@ impl RpcClient for GetBlock {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 
+impl RpcClient for GetBlockTransfers {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
 impl RpcClient for GetStateRootHash {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
@@ -354,6 +371,7 @@ pub(crate) trait IntoJsonMap: Serialize {
 
 impl IntoJsonMap for PutDeployParams {}
 impl IntoJsonMap for GetBlockParams {}
+impl IntoJsonMap for GetBlockTransfersParams {}
 impl IntoJsonMap for GetStateRootHashParams {}
 impl IntoJsonMap for GetDeployParams {}
 impl IntoJsonMap for GetBalanceParams {}

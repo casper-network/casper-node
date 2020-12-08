@@ -1,12 +1,16 @@
 use std::fmt::{self, Display, Formatter};
 
 use semver::Version;
+use serde::Serialize;
 
 use super::{DeployAcceptorConfig, Source};
-use crate::types::{Deploy, NodeId};
+use crate::{
+    effect::announcements::RpcServerAnnouncement,
+    types::{Deploy, NodeId},
+};
 
 /// `DeployAcceptor` events.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Event {
     /// The initiating event to accept a new `Deploy`.
     Accept {
@@ -26,6 +30,17 @@ pub enum Event {
         source: Source<NodeId>,
         is_new: bool,
     },
+}
+
+impl From<RpcServerAnnouncement> for Event {
+    fn from(announcement: RpcServerAnnouncement) -> Self {
+        match announcement {
+            RpcServerAnnouncement::DeployReceived { deploy } => Event::Accept {
+                deploy,
+                source: Source::<NodeId>::Client,
+            },
+        }
+    }
 }
 
 impl Display for Event {

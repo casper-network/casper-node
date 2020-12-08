@@ -33,8 +33,9 @@ use casper_types::{
     account::AccountHash,
     auction::{
         EraValidators, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
-        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS,
-        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, VALIDATOR_SLOTS_KEY,
+        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_UNBONDING_DELAY,
+        ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
+        UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
@@ -423,6 +424,7 @@ where
             let validator_slots = ee_config.validator_slots();
             let auction_delay = ee_config.auction_delay();
             let locked_funds_period = ee_config.locked_funds_period();
+            let unbonding_delay = ee_config.unbonding_delay();
             let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
             let args = runtime_args! {
                 ARG_MINT_CONTRACT_PACKAGE_HASH => mint_package_hash,
@@ -430,6 +432,7 @@ where
                 ARG_VALIDATOR_SLOTS => validator_slots,
                 ARG_AUCTION_DELAY => auction_delay,
                 ARG_LOCKED_FUNDS_PERIOD => locked_funds_period,
+                ARG_UNBONDING_DELAY => unbonding_delay,
             };
             let authorization_keys = BTreeSet::new();
             let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
@@ -807,6 +810,19 @@ where
             tracking_copy
                 .borrow_mut()
                 .write(locked_funds_period_key, value);
+        }
+
+        if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, new_protocol_data.auction())?;
+
+            let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
+            let value = StoredValue::CLValue(
+                CLValue::from_t(new_unbonding_delay)
+                    .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
+            );
+            tracking_copy.borrow_mut().write(unbonding_delay_key, value);
         }
 
         if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
@@ -2205,19 +2221,58 @@ where
             ));
         }
 
+        let reward_factors = match step_request.reward_factors() {
+            Ok(reward_factors) => reward_factors,
+            Err(error) => {
+                error!(
+                    "failed to deserialize reward factors: {}",
+                    error.to_string()
+                );
+                return Ok(StepResult::Serialization(error));
+            }
+        };
+
+        let reward_args = runtime_args! {ARG_REWARD_FACTORS => reward_factors};
+
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
+            DirectSystemContractCall::DistributeRewards,
+            auction_module.clone(),
+            reward_args,
+            &mut named_keys,
+            Default::default(),
+            base_key,
+            &virtual_system_account,
+            authorization_keys.clone(),
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            protocol_data,
+            SystemContractCache::clone(&self.system_contract_cache),
+        );
+
+        if execution_result.is_failure() {
+            return Ok(StepResult::DistributeError(
+                execution_result.take_error().unwrap(),
+            ));
+        }
+
         if step_request.run_auction {
             let run_auction_args = runtime_args! {};
 
             let (_, execution_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::RunAuction,
-                    auction_module.clone(),
+                    auction_module,
                     run_auction_args,
                     &mut named_keys,
                     Default::default(),
                     base_key,
                     &virtual_system_account,
-                    authorization_keys.clone(),
+                    authorization_keys,
                     BlockTime::default(),
                     deploy_hash,
                     gas_limit,
@@ -2234,45 +2289,6 @@ where
                     execution_result.take_error().unwrap(),
                 ));
             }
-        }
-
-        let reward_factors = match step_request.reward_factors() {
-            Ok(reward_factors) => reward_factors,
-            Err(error) => {
-                error!(
-                    "failed to deserialize reward factors: {}",
-                    error.to_string()
-                );
-                return Ok(StepResult::Serialization(error));
-            }
-        };
-
-        let reward_args = runtime_args! {ARG_REWARD_FACTORS => reward_factors};
-
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
-            DirectSystemContractCall::DistributeRewards,
-            auction_module,
-            reward_args,
-            &mut named_keys,
-            Default::default(),
-            base_key,
-            &virtual_system_account,
-            authorization_keys,
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            step_request.protocol_version,
-            correlation_id,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            protocol_data,
-            SystemContractCache::clone(&self.system_contract_cache),
-        );
-
-        if execution_result.is_failure() {
-            return Ok(StepResult::DistributeError(
-                execution_result.take_error().unwrap(),
-            ));
         }
 
         let effects = tracking_copy.borrow().effect();

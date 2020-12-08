@@ -20,7 +20,7 @@ use casper_execution_engine::{
 };
 use casper_types::Key;
 
-use super::DEFAULT_ROUND_SEIGNIORAGE_RATE;
+use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_UNBONDING_DELAY};
 use crate::internal::{
     AUCTION_INSTALL_CONTRACT, DEFAULT_AUCTION_DELAY, DEFAULT_CHAIN_NAME,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP, DEFAULT_LOCKED_FUNDS_PERIOD,
@@ -143,6 +143,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let auction_delay = DEFAULT_AUCTION_DELAY;
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
+    let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     ExecConfig::new(
         mint_installer_bytes,
         proof_of_stake_installer_bytes,
@@ -154,6 +155,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
         auction_delay,
         locked_funds_period,
         round_seigniorage_rate,
+        unbonding_delay,
     )
 }
 

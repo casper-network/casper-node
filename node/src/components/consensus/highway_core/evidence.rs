@@ -7,7 +7,8 @@ use thiserror::Error;
 use super::validators::ValidatorIndex;
 use crate::components::consensus::{
     highway_core::{
-        endorsement::SignedEndorsement, highway::SignedWireUnit, validators::Validators,
+        endorsement::SignedEndorsement, highway::SignedWireUnit, state::State,
+        validators::Validators,
     },
     traits::Context,
 };
@@ -29,6 +30,8 @@ pub(crate) enum EvidenceError {
     EndorsementDifferentCreators,
     #[error("The swimlane is not a contiguous sequence of units.")]
     EndorsementInvalidSwimlane,
+    #[error("Includes more units than allowed.")]
+    EndorsementTooManyUnits,
     #[error("The perpetrator is not a validator.")]
     UnknownPerpetrator,
     #[error("The signature is invalid.")]
@@ -79,6 +82,7 @@ impl<C: Context> Evidence<C> {
         &self,
         validators: &Validators<C::ValidatorId>,
         instance_id: &C::InstanceId,
+        state: &State<C>,
     ) -> Result<(), EvidenceError> {
         match self {
             Evidence::Equivocation(unit1, unit2) => {
@@ -91,6 +95,9 @@ impl<C: Context> Evidence<C> {
                 unit2,
                 swimlane2,
             } => {
+                if swimlane2.len() as u64 > state.params().endorsement_evidence_limit() {
+                    return Err(EvidenceError::EndorsementTooManyUnits);
+                }
                 let v_id = validators
                     .id(endorsement1.validator_idx())
                     .ok_or(EvidenceError::UnknownPerpetrator)?;
