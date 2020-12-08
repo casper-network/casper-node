@@ -10,7 +10,7 @@ reactor!(NameOfReactor {
 
     components: {
         component_a = CompA<TypeArg>(constructor_arg_1, constructor_arg_2, ...);
-        component_b = @CompB(constructor_arg1, ..);
+        component_b = has_effects CompB(constructor_arg1, ..);
         // ...
     }
 
@@ -59,7 +59,7 @@ Components are defined in the first section:
 ```rust
     components: {
         component_a = CompA<TypeArg>(constructor_arg_1, constructor_arg_2, ...);
-        component_b = @CompB(constructor_arg1, ..);
+        component_b = has_effects CompB(constructor_arg1, ..);
         // ...
     }
 ```
@@ -69,7 +69,7 @@ Here
 * two components will be defined as fields on the reactor struct, the fields being named `component_a` and `component_b` respectively,
 * their type will be `crate::components::comp_a::CompA` (automatically deduced from the name),
 * they will be constructed passing in `constructor_arg_1`, `constructor_arg_2` to the first and `constructor_arg1` to the second component,
-* `CompA::new` will return just the component, while `CompB::new` will return a tuple of `(component, effects)`, indicated by the `@` prefix,
+* `CompA::new` will return just the component, while `CompB::new` will return a tuple of `(component, effects)`, indicated by the `has_effects` keyword,
 * two variants `NameOfReactorEvent::ComponentA` and `NameOfReactorEvent::ComponentB` will be added to the reactors event type,
 * these events will wrap `crate::components::comp_a::Event` (see caveat below) and `crate::components::comp_b::Event` respectively,
 * a `From<crate::components::comp_a::Event>` impl will be generated for `NameOfReactorEvent` (similarly for `comp_b`),
@@ -101,7 +101,7 @@ The third section defines how requests are routed:
         StorageRequest -> component_a;
         NetworkRequest -> component_b;
         ThirdRequest -> component_a;
-        AnotherRequest -> !;
+        AnotherRequest -> #;
     }
 ```
 
@@ -110,7 +110,9 @@ In the example,
 * `StorageRequest`s are routed to `component_a`,
 * `NetworkRequest`s are routed to `component_b`,
 * `ThirdRequest`s are routed to `component_a` (note that multiple requests can be routed to a single component instance), and
-* `AnotherRequest` is discarded entirely.
+* `AnotherRequest` is discarded quietly.
+
+Instead of `#`, a request can be routed to `!`, which will panic once it receives a request.
 
 Routing a request `ExampleRequest` to an `example_target` means that
 
@@ -131,4 +133,4 @@ Announcements are routed almost exactly like requests
     }
 ```
 
-with the key difference being that instead of a single target, an announcement is routed to zero or more instead.
+with the key difference being that instead of a single target, an announcement is routed to zero or more instead. `!` and `#` can be used as targets the same way they are used with requests as well.

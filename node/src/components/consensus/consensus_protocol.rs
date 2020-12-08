@@ -85,6 +85,8 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     NewEvidence(C::ValidatorId),
     /// Send evidence about the validator from an earlier era to the peer.
     SendEvidence(I, C::ValidatorId),
+    /// We've detected an equivocation our own node has made.
+    WeAreFaulty,
 }
 
 /// An API for a single instance of the consensus.

@@ -10,7 +10,11 @@ use rand::{Rng, RngCore};
 use super::*;
 use crate::{
     components::consensus::{
-        highway_core::{highway::Dependency, highway_testing::TEST_BLOCK_REWARD},
+        highway_core::{
+            endorsement::{Endorsement, SignedEndorsement},
+            highway::{Dependency, Endorsements},
+            highway_testing::{TEST_BLOCK_REWARD, TEST_INSTANCE_ID},
+        },
         traits::ValidatorSecret,
     },
     NodeRng,
@@ -167,7 +171,7 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let mut wunit = WireUnit {
         panorama: panorama!(N, b1, c0),
         creator: BOB,
-        instance_id: 1u64,
+        instance_id: TEST_INSTANCE_ID,
         value: None,
         seq_number: 3,
         timestamp: 51.into(),
@@ -207,8 +211,8 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
     let missing = panorama!(42, b1, c0).missing_dependency(&state);
     assert_eq!(Some(Dependency::Unit(42)), missing);
 
-    // Alice equivocates: A1 doesn't see a1.
-    let ae1 = add_unit!(state, rng, ALICE, None; a0, b1, c0)?;
+    // Alice equivocates: ae1 doesn't see a1.
+    let ae1 = add_unit!(state, rng, ALICE, 0xAE1; a0, b1, c0)?;
     assert!(state.has_evidence(ALICE));
     assert_eq!(panorama![F, b1, c1], *state.panorama());
 
@@ -737,6 +741,43 @@ fn is_terminal_block() -> Result<(), AddUnitError<TestContext>> {
     assert_eq!(TEST_ERA_HEIGHT - 1, state.block(&a3).height);
     let a4 = add_unit!(state, rng, ALICE, None; a3, b0, c0)?;
     assert!(!state.is_terminal_block(&a4)); // not a block
+    Ok(())
+}
+
+#[test]
+fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
+    let validators = vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
+        .into_iter()
+        .map(|(sk, vid)| {
+            assert_eq!(sk.0, vid.0);
+            (sk.0, WEIGHTS[vid.0 as usize].0)
+        })
+        .collect();
+    let mut state = State::new_test(WEIGHTS, 0);
+    let mut rng = crate::new_rng();
+
+    // Alice equivocates and creates two forks:
+    // * a0_prime and
+    // * a0 < a1 < a2
+    let a0 = add_unit!(state, rng, ALICE, 0x00; N, N, N)?;
+    let a0_prime = add_unit!(state, rng, ALICE, 0x01; N, N, N)?;
+    let a1 = add_unit!(state, rng, ALICE, None; a0, N, N)?;
+    let a2 = add_unit!(state, rng, ALICE, None; a1, N, N)?;
+
+    // Bob endorses a0_prime.
+    endorse!(state, rng, BOB, a0_prime);
+    assert!(!state.is_faulty(BOB));
+
+    // Now he also endorses a2, even though it is on a different fork. That's a fault!
+    endorse!(state, rng, BOB, a2);
+    assert!(state.is_faulty(BOB));
+
+    let evidence = state
+        .opt_evidence(BOB)
+        .expect("Bob should be considered faulty")
+        .clone();
+    assert_eq!(Ok(()), evidence.validate(&validators, &TEST_INSTANCE_ID));
+
     Ok(())
 }
 

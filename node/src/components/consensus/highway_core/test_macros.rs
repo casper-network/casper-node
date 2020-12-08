@@ -25,6 +25,7 @@ macro_rules! add_unit {
             components::consensus::highway_core::{
                 state::{self, tests::TestSecret},
                 highway::{SignedWireUnit, WireUnit},
+                highway_testing::TEST_INSTANCE_ID,
             },
             types::{TimeDiff, Timestamp},
         };
@@ -62,7 +63,7 @@ macro_rules! add_unit {
         let wunit = WireUnit {
             panorama,
             creator,
-            instance_id: 1u64,
+            instance_id: TEST_INSTANCE_ID,
             value,
             seq_number,
             timestamp,
@@ -80,6 +81,7 @@ macro_rules! add_unit {
         use crate::components::consensus::highway_core::{
             state::tests::TestSecret,
             highway::{SignedWireUnit, WireUnit},
+            highway_testing::TEST_INSTANCE_ID,
         };
 
         let creator = $creator;
@@ -88,7 +90,7 @@ macro_rules! add_unit {
         let wunit = WireUnit {
             panorama,
             creator,
-            instance_id: 1u64,
+            instance_id: TEST_INSTANCE_ID,
             value: ($val).into(),
             seq_number,
             timestamp: ($time).into(),
@@ -115,6 +117,10 @@ macro_rules! endorse {
         let signed_endorsement = SignedEndorsement::new(endorsement, signature);
         let endorsements: Endorsements<TestContext> =
             Endorsements::new(vec![signed_endorsement].into_iter());
-        $state.add_endorsements(endorsements)
+        let evidence = $state.find_conflicting_endorsements(&endorsements, &TEST_INSTANCE_ID);
+        $state.add_endorsements(endorsements);
+        for ev in evidence {
+            $state.add_evidence(ev);
+        }
     };
 }

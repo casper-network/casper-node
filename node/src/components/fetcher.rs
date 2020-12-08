@@ -160,7 +160,7 @@ pub trait ItemFetcher<T: Item + 'static> {
 
 /// The component which fetches an item from local storage or asks a peer if it's not in storage.
 #[derive(DataSize, Debug)]
-pub(crate) struct Fetcher<T>
+pub struct Fetcher<T>
 where
     T: Item + 'static,
 {
@@ -302,6 +302,8 @@ where
                     }
                 }
             }
+            // We do nothing in the case of having an incoming deploy rejected.
+            Event::RejectedRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => self.signal(id, None, peer),
             Event::TimeoutPeer { id, peer } => self.signal(id, None, peer),
         }

@@ -20,7 +20,7 @@ use crate::{
     components::{
         chainspec_loader::Chainspec,
         deploy_acceptor::{self, DeployAcceptor},
-        in_memory_network::{InMemoryNetwork, NetworkController},
+        in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
     },
     effect::announcements::{
@@ -43,13 +43,15 @@ use crate::{
 #[must_use]
 enum Event {
     #[from]
+    Network(in_memory_network::Event<NodeMessage>),
+    #[from]
     Storage(#[serde(skip_serializing)] storage::Event),
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
     #[from]
-    DeployGossiper(#[serde(skip_serializing)] super::Event<Deploy>),
+    DeployGossiper(super::Event<Deploy>),
     #[from]
-    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, NodeMessage>),
+    NetworkRequest(NetworkRequest<NodeId, NodeMessage>),
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, NodeMessage>),
     #[from]
@@ -75,6 +77,7 @@ impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Event::Network(event) => write!(formatter, "event: {}", event),
             Event::Storage(event) => write!(formatter, "storage: {}", event),
             Event::DeployAcceptor(event) => write!(formatter, "deploy acceptor: {}", event),
             Event::DeployGossiper(event) => write!(formatter, "deploy gossiper: {}", event),
@@ -181,8 +184,9 @@ impl reactor::Reactor for Reactor {
                     .handle_event(effect_builder, rng, event),
             ),
             Event::NetworkRequest(request) => reactor::wrap_effects(
-                Event::NetworkRequest,
-                self.network.handle_event(effect_builder, rng, request),
+                Event::Network,
+                self.network
+                    .handle_event(effect_builder, rng, request.into()),
             ),
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
@@ -193,8 +197,8 @@ impl reactor::Reactor for Reactor {
                         tag: Tag::Deploy,
                         serialized_id,
                     } => {
-                        // Note: This is copied almost verbatim from the validator reactor and needs
-                        // to be refactored.
+                        // Note: This is copied almost verbatim from the validator reactor and
+                        // needs to be refactored.
 
                         let deploy_hash = match bincode::deserialize(&serialized_id) {
                             Ok(hash) => hash,
@@ -285,6 +289,10 @@ impl reactor::Reactor for Reactor {
             Event::DeployGossiperAnnouncement(_ann) => {
                 unreachable!("the deploy gossiper should never make an announcement")
             }
+            Event::Network(event) => reactor::wrap_effects(
+                Event::Network,
+                self.network.handle_event(effect_builder, rng, event),
+            ),
         }
     }
 }

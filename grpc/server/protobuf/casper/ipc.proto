@@ -315,8 +315,6 @@ message ChainSpec {
     }
 
     message HighwayConfig {
-        // Unix timestamp of the Genesis era start.
-        uint64 genesis_era_start_timestamp = 1;
         // Fixed length duration of an era.
         uint64 era_duration_millis = 2;
         // Amount of time to look back from the start of an era to pick the booking block.

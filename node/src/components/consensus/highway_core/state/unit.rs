@@ -13,11 +13,16 @@ use crate::{
 };
 
 /// A unit sent to or received from the network.
+///
+/// This is only instantiated when it gets added to a `State`, and only once it has been validated.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Unit<C: Context> {
-    /// The list of latest messages and faults observed by the creator of this message.
+    /// The list of latest units and faults observed by the creator of this message.
+    /// The panorama must be valid, and this unit's creator must not be marked as faulty.
     pub(crate) panorama: Panorama<C>,
     /// The number of earlier messages by the same creator.
+    /// This must be `0` if the creator's entry in the panorama is `None`. Otherwise it must be
+    /// the previous unit's sequence number plus one.
     pub(crate) seq_number: u64,
     /// The validator who created and sent this unit.
     pub(crate) creator: ValidatorIndex,
@@ -28,23 +33,26 @@ pub(crate) struct Unit<C: Context> {
     /// For every `p = 1 << i` that divides `seq_number`, this contains an `i`-th entry pointing to
     /// the older unit with `seq_number - p`.
     pub(crate) skip_idx: Vec<C::Hash>,
-    /// This unit's timestamp, in milliseconds since the epoch.
+    /// This unit's timestamp, in milliseconds since the epoch. This must not be earlier than the
+    /// timestamp of any unit cited in the panorama.
     pub(crate) timestamp: Timestamp,
     /// Original signature of the `SignedWireUnit`.
     pub(crate) signature: C::Signature,
     /// The round exponent of the current round, that this message belongs to.
     ///
     /// The current round consists of all timestamps that agree with this one in all but the last
-    /// `round_exp` bits.
+    /// `round_exp` bits. All cited units by `creator` in the same round must have the same round
+    /// exponent.
     pub(crate) round_exp: u8,
     /// Units that this one claims are endorsed.
+    /// All of these must be cited (directly or indirectly) by the panorama.
     pub(crate) endorsed: BTreeSet<C::Hash>,
 }
 
 impl<C: Context> Unit<C> {
     /// Creates a new `Unit` from the `WireUnit`, and returns the value if it contained any.
     /// Values must be stored as a block, with the same hash.
-    pub(crate) fn new(
+    pub(super) fn new(
         swunit: SignedWireUnit<C>,
         fork_choice: Option<&C::Hash>,
         state: &State<C>,

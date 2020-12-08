@@ -139,8 +139,7 @@ impl reactor::Reactor for Reactor {
 
         let contract_runtime =
             ContractRuntime::new(storage_config, &config.value().contract_runtime, registry)?;
-        let (chainspec_loader, chainspec_effects) =
-            ChainspecLoader::new(chainspec, effect_builder)?;
+        let (chainspec_loader, chainspec_effects) = ChainspecLoader::new(chainspec, effect_builder);
 
         let effects = reactor::wrap_effects(Event::Chainspec, chainspec_effects);
 

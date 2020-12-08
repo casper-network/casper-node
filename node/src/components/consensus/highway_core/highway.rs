@@ -258,10 +258,7 @@ impl<C: Context> Highway<C> {
             match vertex {
                 Vertex::Unit(unit) => self.add_valid_unit(unit, now, rng),
                 Vertex::Evidence(evidence) => self.add_evidence(evidence, rng),
-                Vertex::Endorsements(endorsements) => {
-                    self.state.add_endorsements(endorsements);
-                    vec![]
-                }
+                Vertex::Endorsements(endorsements) => self.add_endorsements(endorsements),
             }
         } else {
             vec![]
@@ -437,7 +434,8 @@ impl<C: Context> Highway<C> {
             .as_mut()
             .map(|av| av.on_new_evidence(&evidence, state, rng))
             .unwrap_or_default();
-        // Add newly created endorsements to the local state.
+        // Add newly created endorsements to the local state. These can only be our own ones, so we
+        // don't need to look for conflicts and call State::add_endorsements directly.
         for effect in effects.iter() {
             if let Effect::NewVertex(vv) = effect {
                 if let Some(e) = vv.endorsements() {
@@ -496,11 +494,7 @@ impl<C: Context> Highway<C> {
                 Ok(self.state.pre_validate_unit(unit)?)
             }
             Vertex::Evidence(evidence) => {
-                let v_id = self
-                    .validators
-                    .id(evidence.perpetrator())
-                    .ok_or(EvidenceError::UnknownPerpetrator)?;
-                Ok(evidence.validate(v_id, &self.instance_id)?)
+                Ok(evidence.validate(&self.validators, &self.instance_id)?)
             }
             Vertex::Endorsements(endorsements) => {
                 let unit = *endorsements.unit();
@@ -512,6 +506,9 @@ impl<C: Context> Highway<C> {
                         .validators
                         .id(*creator)
                         .ok_or(EndorsementError::Creator)?;
+                    if self.state.opt_fault(*creator) == Some(&Fault::Banned) {
+                        return Err(EndorsementError::Banned.into());
+                    }
                     let endorsement: Endorsement<C> = Endorsement::new(unit, *creator);
                     if !C::verify_signature(&endorsement.hash(), v_id, &signature) {
                         return Err(EndorsementError::Signature.into());
@@ -527,11 +524,7 @@ impl<C: Context> Highway<C> {
     fn do_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Unit(unit) => Ok(self.state.validate_unit(unit)?),
-            Vertex::Evidence(_evidence) => Ok(()),
-            Vertex::Endorsements(_endorsements) => {
-                // TODO: Validate against equivocations in endorsements.
-                Ok(())
-            }
+            Vertex::Evidence(_) | Vertex::Endorsements(_) => Ok(()),
         }
     }
 
@@ -574,6 +567,20 @@ impl<C: Context> Highway<C> {
         evidence_effects.extend(self.on_new_unit(&unit_hash, now, rng));
         evidence_effects
     }
+
+    /// Adds endorsements to the state. If there are conflicting endorsements, `NewVertex` effects
+    /// are returned containing evidence to prove them faulty.
+    fn add_endorsements(&mut self, endorsements: Endorsements<C>) -> Vec<Effect<C>> {
+        let evidence = self
+            .state
+            .find_conflicting_endorsements(&endorsements, &self.instance_id);
+        self.state.add_endorsements(endorsements);
+        let add_and_create_effect = |ev: Evidence<C>| {
+            self.state.add_evidence(ev.clone());
+            Effect::NewVertex(ValidVertex(Vertex::Evidence(ev)))
+        };
+        evidence.into_iter().map(add_and_create_effect).collect()
+    }
 }
 
 #[cfg(test)]
@@ -585,6 +592,7 @@ pub(crate) mod tests {
             highway_core::{
                 evidence::{Evidence, EvidenceError},
                 highway::{Highway, SignedWireUnit, UnitError, Vertex, VertexError, WireUnit},
+                highway_testing::TEST_INSTANCE_ID,
                 state::{
                     tests::{
                         TestContext, TestSecret, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
@@ -618,7 +626,7 @@ pub(crate) mod tests {
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let mut highway = Highway {
-            instance_id: 1u64,
+            instance_id: TEST_INSTANCE_ID,
             validators: test_validators(),
             state,
             active_validator: None,
@@ -663,7 +671,7 @@ pub(crate) mod tests {
 
         let state: State<TestContext> = State::new_test(WEIGHTS, 0);
         let highway = Highway {
-            instance_id: 1u64,
+            instance_id: TEST_INSTANCE_ID,
             validators: test_validators(),
             state,
             active_validator: None,
@@ -746,7 +754,7 @@ pub(crate) mod tests {
         wunit0.seq_number = 0;
 
         // If the units are from a different network or era we don't accept the evidence.
-        wunit0.instance_id = 2;
+        wunit0.instance_id = TEST_INSTANCE_ID + 1;
         assert_eq!(
             Err(VertexError::Evidence(EvidenceError::EquivocationInstanceId)),
             validate(&wunit0, &CAROL_SEC, &wunit1, &CAROL_SEC)

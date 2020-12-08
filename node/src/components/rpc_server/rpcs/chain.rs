@@ -26,6 +26,7 @@ use crate::{
     reactor::QueueKind,
     types::{Block, BlockHash, Item, JsonBlock},
 };
+use casper_types::Transfer;
 
 static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
     block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
@@ -34,6 +35,16 @@ static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
     api_version: CLIENT_API_VERSION.clone(),
     block: Some(Block::doc_example().clone().into()),
 });
+static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
+    Lazy::new(|| GetBlockTransfersParams {
+        block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
+    });
+static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
+    Lazy::new(|| GetBlockTransfersResult {
+        api_version: CLIENT_API_VERSION.clone(),
+        block_hash: Some(Block::doc_example().id()),
+        transfers: Some(vec![Transfer::default()]),
+    });
 static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     Lazy::new(|| GetStateRootHashParams {
         block_identifier: BlockIdentifier::Height(Block::doc_example().header().height()),
@@ -113,6 +124,103 @@ impl RpcWithOptionalParamsExt for GetBlock {
                 api_version: CLIENT_API_VERSION.clone(),
                 block: maybe_block.map(Into::into),
             };
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+/// Params for "chain_get_block_transfers" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetBlockTransfersParams {
+    /// The block hash.
+    pub block_identifier: BlockIdentifier,
+}
+
+impl DocExample for GetBlockTransfersParams {
+    fn doc_example() -> &'static Self {
+        &*GET_BLOCK_TRANSFERS_PARAMS
+    }
+}
+
+/// Result for "chain_get_block_transfers" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetBlockTransfersResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: Version,
+    /// The block hash, if found.
+    pub block_hash: Option<BlockHash>,
+    /// The block's transfers, if found.
+    pub transfers: Option<Vec<Transfer>>,
+}
+
+impl GetBlockTransfersResult {
+    /// Create an instance of GetBlockTransfersResult.
+    pub fn new(
+        api_version: Version,
+        block_hash: Option<BlockHash>,
+        transfers: Option<Vec<Transfer>>,
+    ) -> Self {
+        GetBlockTransfersResult {
+            api_version,
+            block_hash,
+            transfers,
+        }
+    }
+}
+
+impl DocExample for GetBlockTransfersResult {
+    fn doc_example() -> &'static Self {
+        &*GET_BLOCK_TRANSFERS_RESULT
+    }
+}
+
+/// "chain_get_block_transfers" RPC.
+pub struct GetBlockTransfers {}
+
+impl RpcWithOptionalParams for GetBlockTransfers {
+    const METHOD: &'static str = "chain_get_block_transfers";
+    type OptionalRequestParams = GetBlockTransfersParams;
+    type ResponseResult = GetBlockTransfersResult;
+}
+
+impl RpcWithOptionalParamsExt for GetBlockTransfers {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        maybe_params: Option<Self::OptionalRequestParams>,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            // Get the block.
+            let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+            let block_hash = match get_block(maybe_block_id, effect_builder).await {
+                Ok(Some(block)) => *block.hash(),
+                Ok(None) => {
+                    return Ok(response_builder.success(Self::ResponseResult::new(
+                        CLIENT_API_VERSION.clone(),
+                        None,
+                        None,
+                    ))?)
+                }
+                Err(error) => return Ok(response_builder.error(error)?),
+            };
+
+            let transfers = effect_builder
+                .make_request(
+                    |responder| RpcRequest::GetBlockTransfers {
+                        block_hash,
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            // Return the result.
+            let result =
+                Self::ResponseResult::new(CLIENT_API_VERSION.clone(), Some(block_hash), transfers);
             Ok(response_builder.success(result)?)
         }
         .boxed()
