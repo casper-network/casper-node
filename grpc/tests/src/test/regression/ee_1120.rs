@@ -37,6 +37,7 @@ const VALIDATOR_2: PublicKey = PublicKey::Ed25519([4; 32]);
 const DELEGATOR_1: PublicKey = PublicKey::Ed25519([5; 32]);
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_1.into());
 static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_2.into());
+static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| DELEGATOR_1.into());
 const VALIDATOR_1_STAKE: u64 = 250_000;
 const VALIDATOR_2_STAKE: u64 = 350_000;
 
@@ -83,7 +84,7 @@ fn should_run_ee_1120_slash_delegators() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! {
-            "target" => AccountHash::from(NONVALIDATOR_1),
+            "target" => *DELEGATOR_1_ADDR,
             "amount" => U512::from(TRANSFER_AMOUNT)
         },
     )
@@ -93,34 +94,32 @@ fn should_run_ee_1120_slash_delegators() {
 
     let auction = builder.get_auction_contract_hash();
 
-    //
     // Validator delegates funds to other genesis validator
-    //
 
     let delegate_exec_request_1 = ExecuteRequestBuilder::standard(
-        NONVALIDATOR_1.into(),
+        *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => VALIDATOR_2,
-            ARG_DELEGATOR => NONVALIDATOR_1,
+            ARG_DELEGATOR => DELEGATOR_1,
         },
     )
     .build();
 
     let delegate_exec_request_2 = ExecuteRequestBuilder::standard(
-        NONVALIDATOR_1.into(),
+        *DELEGATOR_1_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_2),
             ARG_VALIDATOR => VALIDATOR_1,
-            ARG_DELEGATOR => NONVALIDATOR_1,
+            ARG_DELEGATOR => DELEGATOR_1,
         },
     )
     .build();
 
     let delegate_exec_request_3 = ExecuteRequestBuilder::standard(
-        VALIDATOR_2.into(),
+        *VALIDATOR_2_ADDR,
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_3),
@@ -155,37 +154,35 @@ fn should_run_ee_1120_slash_delegators() {
     let initial_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(initial_unbond_purses.len(), 0);
 
-    //
     // DELEGATOR_1 partially unbonds from VALIDATOR_1
-    //
     let undelegate_request_1 = ExecuteRequestBuilder::standard(
-        NONVALIDATOR_1.into(),
+        *DELEGATOR_1_ADDR,
         CONTRACT_UNDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => VALIDATOR_1,
-            ARG_DELEGATOR => NONVALIDATOR_1,
+            ARG_DELEGATOR => DELEGATOR_1,
             ARG_UNBOND_PURSE => Option::<URef>::None,
         },
     )
     .build();
-    builder.exec(undelegate_request_1).commit().expect_success();
 
+    // DELEGATOR_1 partially unbonds from VALIDATOR_2
     let undelegate_request_2 = ExecuteRequestBuilder::standard(
-        NONVALIDATOR_1.into(),
+        *DELEGATOR_1_ADDR,
         CONTRACT_UNDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_2),
             ARG_VALIDATOR => VALIDATOR_2,
-            ARG_DELEGATOR => NONVALIDATOR_1,
+            ARG_DELEGATOR => DELEGATOR_1,
             ARG_UNBOND_PURSE => Option::<URef>::None,
         },
     )
     .build();
-    builder.exec(undelegate_request_2).commit().expect_success();
 
+    // VALIDATOR_2 partially unbonds from VALIDATOR_1
     let undelegate_request_3 = ExecuteRequestBuilder::standard(
-        VALIDATOR_2.into(),
+        *VALIDATOR_2_ADDR,
         CONTRACT_UNDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_3),
@@ -195,6 +192,9 @@ fn should_run_ee_1120_slash_delegators() {
         },
     )
     .build();
+
+    builder.exec(undelegate_request_1).commit().expect_success();
+    builder.exec(undelegate_request_2).commit().expect_success();
     builder.exec(undelegate_request_3).commit().expect_success();
 
     // Check unbonding purses before slashing
@@ -208,23 +208,55 @@ fn should_run_ee_1120_slash_delegators() {
         .expect("should have unbond");
     assert_eq!(validator_1_unbond_list_before.len(), 2); // two entries in order: undelegate, and withdraw bid
 
+    // Added through `undelegate_request_1`
+    assert_eq!(
+        validator_1_unbond_list_before[0].validator_public_key(),
+        &VALIDATOR_1
+    );
+    assert_eq!(
+        validator_1_unbond_list_before[0].unbonder_public_key(),
+        &DELEGATOR_1
+    );
+    assert_eq!(
+        validator_1_unbond_list_before[0].amount(),
+        &U512::from(UNDELEGATE_AMOUNT_1)
+    );
+
+    // Added through `undelegate_request_3`
+    assert_eq!(
+        validator_1_unbond_list_before[1].validator_public_key(),
+        &VALIDATOR_1
+    );
+    assert_eq!(
+        validator_1_unbond_list_before[1].unbonder_public_key(),
+        &VALIDATOR_2
+    );
+    assert_eq!(
+        validator_1_unbond_list_before[1].amount(),
+        &U512::from(UNDELEGATE_AMOUNT_3)
+    );
+
     let validator_2_unbond_list = unbond_purses_before
         .get(&VALIDATOR_2)
         .cloned()
         .expect("should have unbond");
-    assert_eq!(validator_2_unbond_list.len(), 1); // two entries in order: undelegate, and withdraw bid
+
+    assert_eq!(validator_2_unbond_list.len(), 1); // one entry: undelegate
     assert_eq!(
         validator_2_unbond_list[0].validator_public_key(),
         &VALIDATOR_2
     );
     assert_eq!(
         validator_2_unbond_list[0].unbonder_public_key(),
-        &NONVALIDATOR_1
+        &DELEGATOR_1
+    );
+    assert_eq!(
+        validator_2_unbond_list[0].amount(),
+        &U512::from(UNDELEGATE_AMOUNT_2),
     );
 
-    //
     // Check bids before slashing
-    //
+
     let bids_before: Bids = builder.get_value(auction, BIDS_KEY);
     assert_eq!(
         bids_before.keys().collect::<Vec<_>>(),
@@ -260,7 +292,7 @@ fn should_run_ee_1120_slash_delegators() {
         .contains_key(&VALIDATOR_2));
     assert!(bids_after[&VALIDATOR_1]
         .delegators()
-        .contains_key(&NONVALIDATOR_1));
+        .contains_key(&DELEGATOR_1));
 
     let unbond_purses_after: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_ne!(unbond_purses_before, unbond_purses_after);
@@ -271,7 +303,7 @@ fn should_run_ee_1120_slash_delegators() {
     assert_eq!(validator_1_unbond_list_after.len(), 2);
     assert_eq!(
         validator_1_unbond_list_after[0].unbonder_public_key(),
-        &NONVALIDATOR_1
+        &DELEGATOR_1
     );
 
     // validator 2's delegation unbond from validator 1 was not slashed
@@ -287,9 +319,7 @@ fn should_run_ee_1120_slash_delegators() {
         &validator_1_unbond_list_before
     );
 
-    //
     // slash validator 1 to clear remaining bids and unbonding purses
-    //
     let slash_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         auction,

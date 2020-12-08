@@ -278,7 +278,7 @@ pub trait Auction:
             let orphaned_delegators = match bids.remove(&validator_public_key) {
                 Some(bid) => {
                     burned_amount += *bid.staked_amount();
-                    modified_validators += 1;
+                    bids_modified = true;
 
                     bid.delegators().keys().copied().collect()
                 }
@@ -322,7 +322,6 @@ pub trait Auction:
             detail::set_bids(self, bids)?;
         }
 
-        // call reduce total supply
         self.reduce_total_supply(burned_amount)?;
 
         Ok(())
