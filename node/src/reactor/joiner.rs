@@ -429,10 +429,13 @@ impl reactor::Reactor for Reactor {
 
         let linear_chain = linear_chain::LinearChain::new();
 
-        let validator_stakes = chainspec_loader
+        let validator_weights = chainspec_loader
             .chainspec()
             .genesis
-            .genesis_validator_stakes();
+            .genesis_validator_stakes()
+            .into_iter()
+            .map(|(pk, motes)| (pk, motes.value()))
+            .collect();
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
@@ -441,7 +444,7 @@ impl reactor::Reactor for Reactor {
             timestamp,
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
-            validator_stakes,
+            validator_weights,
             chainspec_loader.chainspec(),
             chainspec_loader
                 .genesis_state_root_hash()

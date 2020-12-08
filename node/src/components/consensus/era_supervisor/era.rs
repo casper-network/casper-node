@@ -1,9 +1,12 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
 };
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    U512,
+};
 use datasize::DataSize;
 use itertools::Itertools;
 use schemars::JsonSchema;
@@ -136,6 +139,8 @@ pub struct Era<I> {
     pub(crate) slashed: HashSet<PublicKey>,
     /// Accusations collected in this era so far.
     accusations: HashSet<PublicKey>,
+    /// The validator weights.
+    validators: BTreeMap<PublicKey, U512>,
 }
 
 impl<I> Era<I> {
@@ -144,6 +149,7 @@ impl<I> Era<I> {
         start_height: u64,
         newly_slashed: Vec<PublicKey>,
         slashed: HashSet<PublicKey>,
+        validators: BTreeMap<PublicKey, U512>,
     ) -> Self {
         Era {
             consensus,
@@ -152,6 +158,7 @@ impl<I> Era<I> {
             newly_slashed,
             slashed,
             accusations: HashSet::new(),
+            validators,
         }
     }
 
@@ -226,6 +233,11 @@ impl<I> Era<I> {
         self.accusations.iter().cloned().sorted().collect()
     }
 
+    /// Returns the map of validator weights.
+    pub(crate) fn validators(&self) -> &BTreeMap<PublicKey, U512> {
+        &self.validators
+    }
+
     /// Removes and returns all candidate blocks with no missing dependencies.
     fn remove_complete_candidates(&mut self) -> Vec<CandidateBlock> {
         let (complete, candidates): (Vec<_>, Vec<_>) = self
@@ -255,6 +267,7 @@ where
             newly_slashed,
             slashed,
             accusations,
+            validators,
         } = self;
 
         // `DataSize` cannot be made object safe due its use of associated constants. We implement
@@ -280,6 +293,7 @@ where
             + newly_slashed.estimate_heap_size()
             + slashed.estimate_heap_size()
             + accusations.estimate_heap_size()
+            + validators.estimate_heap_size()
     }
 }
 
