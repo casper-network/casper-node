@@ -14,12 +14,16 @@ use crate::{
     types::{DeployHash, DeployHeader, ProtoBlock},
     Chainspec,
 };
+use casper_execution_engine::shared::motes::Motes;
 
 /// A wrapper over `DeployHeader` to differentiate between wasm-less transfers and wasm headers.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 pub enum DeployType {
     /// Represents a wasm-less transfer.
-    Transfer(DeployHeader),
+    Transfer {
+        header: DeployHeader,
+        payment_amount: Motes,
+    },
     /// Represents a wasm deploy.
     Wasm(DeployHeader),
 }
@@ -28,9 +32,27 @@ impl DeployType {
     /// Access header in all variants of `DeployType`.
     pub fn header(&self) -> &DeployHeader {
         match self {
-            Self::Transfer(header) => header,
+            Self::Transfer { header, .. } => header,
             Self::Wasm(header) => header,
         }
+    }
+
+    /// If this DeployType is a Transfer, return the amount, otherwise None.
+    pub fn payment_amount(&self) -> Option<Motes> {
+        match self {
+            Self::Transfer { payment_amount, .. } => Some(*payment_amount),
+            Self::Wasm(_) => None,
+        }
+    }
+
+    /// Asks if the variant is a Transfer.
+    pub fn is_transfer(&self) -> bool {
+        matches!(self, Self::Transfer{..})
+    }
+
+    /// Asks if the variant is Wasm.
+    pub fn is_wasm(&self) -> bool {
+        matches!(self, Self::Wasm(_))
     }
 }
 

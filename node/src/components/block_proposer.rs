@@ -21,18 +21,20 @@ use prometheus::{self, Registry};
 use semver::Version;
 use tracing::{debug, info, trace, warn};
 
+use casper_execution_engine::shared::motes::Motes;
 use crate::{
     components::{chainspec_loader::DeployConfig, Component},
     effect::{
         requests::{BlockProposerRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{DeployHash, DeployHeader, ProtoBlock, Timestamp},
+    types::{DeployHash, ProtoBlock, Timestamp},
     NodeRng,
 };
 pub(crate) use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
+use num_traits::Zero;
 
 /// Block proposer component.
 #[derive(DataSize, Debug)]
@@ -353,20 +355,30 @@ impl BlockProposerReady {
     /// Checks if a deploy is valid (for inclusion into the next block).
     fn is_deploy_valid(
         &self,
-        deploy: &DeployHeader,
+        deploy_type: &DeployType,
         block_timestamp: Timestamp,
         deploy_config: &DeployConfig,
         past_deploys: &HashSet<DeployHash>,
     ) -> bool {
+        if deploy_config.max_payment_cost != Motes::zero()
+            && deploy_type.is_transfer()
+            && deploy_type
+                .payment_amount()
+                .expect("transfer has payment amount")
+                > deploy_config.max_payment_cost
+        {
+            return false;
+        }
+        let header = deploy_type.header();
         let all_deps_resolved = || {
-            deploy.dependencies().iter().all(|dep| {
+            header.dependencies().iter().all(|dep| {
                 past_deploys.contains(dep) || self.sets.finalized_deploys.contains_key(dep)
             })
         };
-        let ttl_valid = deploy.ttl() <= deploy_config.max_ttl;
-        let timestamp_valid = deploy.timestamp() <= block_timestamp;
-        let deploy_valid = deploy.timestamp() + deploy.ttl() >= block_timestamp;
-        let num_deps_valid = deploy.dependencies().len() <= deploy_config.max_dependencies as usize;
+        let ttl_valid = header.ttl() <= deploy_config.max_ttl;
+        let timestamp_valid = header.timestamp() <= block_timestamp;
+        let deploy_valid = header.timestamp() + header.ttl() >= block_timestamp;
+        let num_deps_valid = header.dependencies().len() <= deploy_config.max_dependencies as usize;
         ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
     }
 
@@ -383,6 +395,12 @@ impl BlockProposerReady {
 
         let mut transfers = Vec::new();
         let mut wasm_deploys = Vec::new();
+        let mut block_gas_running_total = 0u64;
+
+        // TODO: is this possible to check this in BlockProposer:
+        //   deploy_config.max_block_size: u32
+        //      - max block size in bytes - zero means unlimited (according to chainspec docs)
+        //      - would require serialization of the block, to check size in bytes.
 
         for (hash, deploy_type) in self.sets.pending.iter() {
             let under_max_transfers = transfers.len() < max_transfers;
@@ -392,20 +410,27 @@ impl BlockProposerReady {
             }
 
             if self.is_deploy_valid(
-                deploy_type.header(),
+                &deploy_type,
                 block_timestamp,
                 &deploy_config,
                 &past_deploys,
             ) && !past_deploys.contains(hash)
                 && !self.sets.finalized_deploys.contains_key(hash)
             {
+                let header = deploy_type.header();
+                let gas_price = header.gas_price();
+                if gas_price + block_gas_running_total > deploy_config.block_gas_limit {
+                    break;
+                }
+
                 // all deploys in pending that aren't in finalized blocks or
                 // proposed blocks from the set `past_blocks`
-                if under_max_transfers && matches!(deploy_type, DeployType::Transfer(_)) {
-                    transfers.push(*hash)
-                } else if under_max_deploys && matches!(deploy_type, DeployType::Wasm(_)) {
-                    wasm_deploys.push(*hash)
+                if under_max_transfers && deploy_type.is_transfer() {
+                    transfers.push(*hash);
+                } else if under_max_deploys && deploy_type.is_wasm() {
+                    wasm_deploys.push(*hash);
                 }
+                block_gas_running_total += header.gas_price();
             }
         }
 

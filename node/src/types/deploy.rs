@@ -23,9 +23,11 @@ use tracing::warn;
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
+use casper_execution_engine::shared::motes::Motes;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ExecutionResult,
+    ExecutionResult, U512,
+    standard_payment::ARG_AMOUNT,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
@@ -477,7 +479,19 @@ impl Deploy {
     /// Returns the header() wrapped the correct DeployType given the `session`.
     pub fn deploy_type(&self) -> DeployType {
         match self.session() {
-            ExecutableDeployItem::Transfer { .. } => DeployType::Transfer(self.header().clone()),
+            item @ ExecutableDeployItem::Transfer { .. } => {
+                // Some assumptions here:
+                // Since we are a Transfer variant, we expect: args to exist, contain "amount", and
+                // be a valid U512 value.
+                let args = item.clone().into_runtime_args().expect("should get");
+                let value = args.get(ARG_AMOUNT).expect("should exist");
+                let value = value.clone().into_t::<U512>().expect("should be U512");
+                let payment_amount = Motes::new(value);
+                DeployType::Transfer {
+                    header: self.header().clone(),
+                    payment_amount,
+                }
+            }
             ExecutableDeployItem::ModuleBytes { .. }
             | ExecutableDeployItem::StoredContractByHash { .. }
             | ExecutableDeployItem::StoredContractByName { .. }

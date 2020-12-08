@@ -1,7 +1,10 @@
-use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
+use casper_execution_engine::{
+    core::engine_state::executable_deploy_item::ExecutableDeployItem, shared::motes::Motes,
+};
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     runtime_args, RuntimeArgs,
+    U512,
 };
 
 use crate::{
@@ -11,15 +14,17 @@ use crate::{
 };
 
 use super::*;
+use casper_types::standard_payment::ARG_AMOUNT;
 
 fn generate_transfer(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
     dependencies: Vec<DeployHash>,
+    gas_price: u64,
+    payment_amount: U512,
 ) -> (DeployHash, DeployHeader) {
     let secret_key = SecretKey::random(rng);
-    let gas_price = 10;
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
@@ -27,7 +32,7 @@ fn generate_transfer(
     };
 
     let args = runtime_args! {
-        "amount" => 42
+        ARG_AMOUNT => payment_amount
     }
     .to_bytes()
     .expect("should serialize");
@@ -53,9 +58,9 @@ fn generate_deploy(
     timestamp: Timestamp,
     ttl: TimeDiff,
     dependencies: Vec<DeployHash>,
+    gas_price: u64,
 ) -> (DeployHash, DeployHeader) {
     let secret_key = SecretKey::random(rng);
-    let gas_price = 10;
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
@@ -115,10 +120,10 @@ fn should_add_and_take_deploys() {
     let no_deploys = HashSet::new();
     let mut proposer = create_test_proposer();
     let mut rng = crate::new_rng();
-    let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-    let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-    let (hash3, deploy3) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-    let (hash4, deploy4) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+    let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![], 10);
+    let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![], 10);
+    let (hash3, deploy3) = generate_deploy(&mut rng, creation_time, ttl, vec![], 10);
+    let (hash4, deploy4) = generate_deploy(&mut rng, creation_time, ttl, vec![], 10);
 
     assert!(proposer
         .propose_proto_block(
@@ -216,14 +221,15 @@ fn should_successfully_prune() {
     let ttl = TimeDiff::from(100);
 
     let mut rng = crate::new_rng();
-    let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-    let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
-    let (hash3, deploy3) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+    let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![], 10);
+    let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![], 10);
+    let (hash3, deploy3) = generate_deploy(&mut rng, creation_time, ttl, vec![], 10);
     let (hash4, deploy4) = generate_deploy(
         &mut rng,
         creation_time + Duration::from_secs(20).into(),
         ttl,
         vec![],
+        10,
     );
     let mut proposer = create_test_proposer();
 
@@ -256,37 +262,140 @@ fn should_successfully_prune() {
 }
 
 #[test]
-fn should_propose_protoblock_with_generated_deploys_and_transfers() {
-    // Happy path, less than max limits created
-    test_proposer_with(5, 10, 15, 20, 0);
+fn should_respect_limits_for_wasmless_transfers() {
+    test_proposer_with(TestArgs {
+        transfer_count: 30,
+        max_transfer_count: 20,
+        remaining_pending_count: 10,
+        ..Default::default()
+    });
 }
 
 #[test]
-fn should_not_propose_any_deploys_when_max_values_too_low() {
-    // proposer wont propose anything if max is too low
-    test_proposer_with(5, 0, 5, 0, 10);
+fn should_respect_limits_for_wasm_deploys() {
+    test_proposer_with(TestArgs {
+        wasm_deploy_count: 30,
+        max_deploy_count: 20,
+        remaining_pending_count: 10,
+        ..Default::default()
+    });
 }
 
 #[test]
-fn should_propose_protoblock_respecting_limits_for_wasmless_transfers() {
-    // proposer should respected limits
-    test_proposer_with(10, 5, 35, 20, 20);
+fn should_respect_limits_for_wasm_deploys_and_transfers_together() {
+    test_proposer_with(TestArgs {
+        transfer_count: 30,
+        max_transfer_count: 20,
+        wasm_deploy_count: 30,
+        max_deploy_count: 20,
+        remaining_pending_count: 20,
+        ..Default::default()
+    });
+}
+
+#[test]
+fn should_respect_limits_for_gas_cost() {
+    test_proposer_with(TestArgs {
+        transfer_count: 30,
+        max_transfer_count: 20,
+        wasm_deploy_count: 30,
+        max_deploy_count: 20,
+        gas_cost: 5,
+        max_gas_limit: 10,
+        remaining_pending_count: 55,
+        ..Default::default()
+    });
+}
+
+#[test]
+fn should_respect_happy_path() {
+    test_proposer_with(Default::default());
+}
+
+#[test]
+fn should_respect_max_payment_amount_for_transfers() {
+    test_proposer_with(TestArgs {
+        transfer_count: 1,
+        payment_amount: U512::from(100_000),
+        max_payment_cost: U512::from(100_000),
+        max_transfer_count: 5,
+        proposed_count: 1,
+        remaining_pending_count: 0,
+        ..Default::default()
+    });
+}
+
+#[test]
+fn should_not_propose_transfers_with_payment_amount_above_max_payment_cost() {
+    test_proposer_with(TestArgs {
+        transfer_count: 1,
+        payment_amount: U512::from(100_001),
+        max_payment_cost: U512::from(100_000),
+        max_transfer_count: 5,
+        proposed_count: 0,
+        remaining_pending_count: 1,
+        ..Default::default()
+    });
+}
+
+struct TestArgs {
+    /// Number of deploys to create.
+    wasm_deploy_count: u32,
+    /// Max deploys to propose.
+    max_deploy_count: u32,
+    /// Number of transfer deploys to create.
+    transfer_count: u32,
+    /// Max number of transfers to propose.
+    max_transfer_count: u32,
+    /// Cost for deploys generated.
+    gas_cost: u64,
+    /// Max gas cost for block.
+    max_gas_limit: u64,
+    /// Payment amount for transfers.
+    payment_amount: U512,
+    /// Payment amount for transfers.
+    max_payment_cost: U512,
+    /// Post-finalization of proposed block, how many transfers and deploys remain.
+    remaining_pending_count: usize,
+    /// Block deploy count proposed.
+    proposed_count: usize,
+}
+
+/// The default value for TestArgs should represent the happy-path: all deploys are used, but limits
+/// are reached, exactly.
+impl Default for TestArgs {
+    fn default() -> Self {
+        TestArgs {
+            wasm_deploy_count: 5,
+            max_deploy_count: 5,
+            transfer_count: 5,
+            max_transfer_count: 5,
+            gas_cost: 10,
+            payment_amount: U512::from(1),
+            max_payment_cost: U512::from(2),
+            max_gas_limit: 100,
+            remaining_pending_count: 0,
+            proposed_count: 10,
+        }
+    }
 }
 
 /// Test the block_proposer by generating deploys and transfers with variable limits, asserting
 /// on internal counts post-finalization.
 fn test_proposer_with(
-    // Number of deploys to create.
-    deploys: u32,
-    // Max deploys to propose.
-    max_deploys: u32,
-    // Number of transfer deploys to create.
-    transfers: u32,
-    // Max number of transfers to propose.
-    max_transfers: u32,
-    // Post-finalization of proposed block, how many transfers and deploys remain.
-    remaining_pending: usize,
-) {
+    TestArgs {
+        wasm_deploy_count,
+        max_deploy_count,
+        transfer_count,
+        max_transfer_count,
+        gas_cost,
+        max_gas_limit,
+        payment_amount,
+        max_payment_cost,
+        remaining_pending_count,
+        proposed_count,
+    }: TestArgs,
+) -> BlockProposerReady {
     let creation_time = Timestamp::from(100);
     let test_time = Timestamp::from(120);
     let ttl = TimeDiff::from(100);
@@ -296,38 +405,45 @@ fn test_proposer_with(
     let mut proposer = create_test_proposer();
     let mut config = proposer.deploy_config;
     // defaults are 10, 1000 respectively
-    config.block_max_deploy_count = max_deploys;
-    config.block_max_transfer_count = max_transfers;
+    config.block_max_deploy_count = max_deploy_count;
+    config.block_max_transfer_count = max_transfer_count;
+    config.block_gas_limit = max_gas_limit;
+    config.max_payment_cost = Motes::new(max_payment_cost);
 
-    for _ in 0..deploys {
-        let (hash, deploy) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+    for _ in 0..wasm_deploy_count {
+        let (hash, deploy) = generate_deploy(&mut rng, creation_time, ttl, vec![], gas_cost);
         proposer.add_deploy_or_transfer(creation_time, hash, DeployType::Wasm(deploy));
     }
-    for _ in 0..transfers {
-        let (hash, transfer) = generate_transfer(&mut rng, creation_time, ttl, vec![]);
-        proposer.add_deploy_or_transfer(creation_time, hash, DeployType::Transfer(transfer));
+    for _ in 0..transfer_count {
+        let (hash, transfer) = generate_transfer(&mut rng, creation_time, ttl, vec![], gas_cost, payment_amount);
+        proposer.add_deploy_or_transfer(
+            creation_time,
+            hash,
+            DeployType::Transfer {
+                header: transfer,
+                payment_amount: Motes::new(payment_amount),
+            },
+        );
     }
 
-    assert_eq!(proposer.sets.pending.len() as u32, deploys + transfers);
     let block = proposer.propose_proto_block(config, test_time, past_deploys, true);
-
-    assert_eq!(
-        block.wasm_deploys().len(),
-        deploys.min(max_deploys) as usize
-    );
-    assert_eq!(
-        block.transfers().len(),
-        transfers.min(max_transfers) as usize
-    );
-
     let all_deploys = BlockLike::deploys(&block);
-    assert_eq!(
-        all_deploys.len() as u32,
-        deploys.min(max_deploys) + transfers.min(max_transfers)
-    );
-
     proposer.finalized_deploys(all_deploys.iter().map(|hash| **hash));
-    assert_eq!(proposer.sets.pending.len(), remaining_pending);
+    assert_eq!(
+        all_deploys.len(),
+        proposed_count,
+        "should have a proposed_count of {}, but got {}",
+        proposed_count,
+        all_deploys.len()
+    );
+    assert_eq!(
+        proposer.sets.pending.len(),
+        remaining_pending_count,
+        "should have a remaining_pending_count of {}, but got {}",
+        remaining_pending_count,
+        proposer.sets.pending.len()
+    );
+    proposer
 }
 
 #[test]
@@ -337,9 +453,9 @@ fn should_return_deploy_dependencies() {
     let block_time = Timestamp::from(120);
 
     let mut rng = crate::new_rng();
-    let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![]);
+    let (hash1, deploy1) = generate_deploy(&mut rng, creation_time, ttl, vec![], 10);
     // let deploy2 depend on deploy1
-    let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![hash1]);
+    let (hash2, deploy2) = generate_deploy(&mut rng, creation_time, ttl, vec![hash1], 10);
 
     let no_deploys = HashSet::new();
     let mut proposer = create_test_proposer();
