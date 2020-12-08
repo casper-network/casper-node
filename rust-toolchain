@@ -1,1 +1,2 @@
-nightly-2020-11-10
+[toolchain]
+targets = [ "wasm32-unknown-unknown" ]

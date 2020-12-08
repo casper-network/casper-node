@@ -1,4 +1,1 @@
-wrap_comments = true
-comment_width = 100
-merge_imports = true
 edition = "2018"

@@ -3,7 +3,7 @@ CARGO  = $(or $(shell which cargo),  $(HOME)/.cargo/bin/cargo)
 RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
-RUST_TOOLCHAIN := $(shell cat rust-toolchain)
+RUST_TOOLCHAIN := stable
 
 CARGO_OPTS := --locked
 CARGO := $(CARGO) $(CARGO_TOOLCHAIN) $(CARGO_OPTS)
@@ -246,14 +246,6 @@ setup-rs: rust-toolchain
 	$(RUSTUP) update --no-self-update
 	$(RUSTUP) toolchain install --no-self-update $(RUST_TOOLCHAIN)
 	$(RUSTUP) target add --toolchain $(RUST_TOOLCHAIN) wasm32-unknown-unknown
-
-.PHONY: setup-stable-rs
-setup-stable-rs: RUST_TOOLCHAIN := stable
-setup-stable-rs: setup-rs
-
-.PHONY: setup-nightly-rs
-setup-nightly-rs: RUST_TOOLCHAIN := nightly
-setup-nightly-rs: setup-rs
 
 .PHONY: setup-as
 setup-as: smart_contracts/contract_as/package.json
