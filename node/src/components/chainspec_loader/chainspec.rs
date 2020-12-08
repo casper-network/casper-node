@@ -160,7 +160,7 @@ impl HighwayConfig {
         HighwayConfig {
             era_duration: TimeDiff::from(rng.gen_range(600_000, 604_800_000)),
             minimum_era_height: rng.gen_range(5, 100),
-            finality_threshold_fraction: Ratio::new(rng.gen_range(0, 101), 100),
+            finality_threshold_fraction: Ratio::new(rng.gen_range(1, 100), 100),
             minimum_round_exponent: rng.gen_range(0, 16),
             maximum_round_exponent: rng.gen_range(16, 22),
             reduced_reward_multiplier: Ratio::new(rng.gen_range(0, 10), 10),
