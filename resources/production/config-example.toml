@@ -47,7 +47,7 @@ public_address = '<IP ADDRESS>:0'
 
 # Address to bind to for listening.
 # If port is set to 0, a random port will be used.
-bind_address = '0.0.0.0:35555'
+bind_address = '0.0.0.0:35000'
 
 # Addresses to connect to in order to join the network.
 #
@@ -57,7 +57,7 @@ bind_address = '0.0.0.0:35555'
 #
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
-known_addresses = ['54.183.27.75:35555']
+known_addresses = ['54.67.67.33:35000']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 120_000
