@@ -8,7 +8,7 @@ cd /etc/casper
 
 NETWORK_NAME="casper-delta"
 
-BASE_PATH="https://casper-node.s3.us-east-2.amazonaws.com/${NETWORK_NAME}/"
+BASE_PATH="https://casper-node.s3.us-east-2.amazonaws.com/${NETWORK_NAME}"
 ACCOUNTS_CSV_PATH="${BASE_PATH}/accounts.csv"
 CHAINSPEC_TOML_PATH="${BASE_PATH}/chainspec.toml"
 VALIDATION_PATH="${BASE_PATH}/validation.md5"
