@@ -14,9 +14,6 @@ pub const DELEGATION_RATE_DENOMINATOR: u64 = 1_000_000_000_000;
 /// fractions, and small enough for many block rewards to fit into a u64.
 pub const BLOCK_REWARD: u64 = 1_000_000_000_000;
 
-/// Default number of eras that need to pass to be able to withdraw unbonded funds.
-pub const DEFAULT_UNBONDING_DELAY: u64 = 14;
-
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
 /// Named constant for `delegation_rate`.
@@ -57,6 +54,8 @@ pub const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
 pub const ARG_AUCTION_DELAY: &str = "auction_delay";
 /// Named constant for `locked_funds_period`
 pub const ARG_LOCKED_FUNDS_PERIOD: &str = "locked_funds_period";
+/// Named constant for `unbonding_delay`
+pub const ARG_UNBONDING_DELAY: &str = "unbonding_delay";
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
 /// Named constant for method `read_seigniorage_recipients`.
@@ -102,3 +101,5 @@ pub const VALIDATOR_SLOTS_KEY: &str = "validator_slots";
 pub const AUCTION_DELAY_KEY: &str = "auction_delay";
 /// Default lock period for new bid entries represented in eras.
 pub const LOCKED_FUNDS_PERIOD_KEY: &str = "locked_funds_period";
+/// Unbonding delay expressed in eras.
+pub const UNBONDING_DELAY_KEY: &str = "unbonding_delay";

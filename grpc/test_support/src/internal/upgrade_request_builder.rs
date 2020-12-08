@@ -3,8 +3,8 @@ use num_rational::Ratio;
 use casper_engine_grpc_server::engine_server::{
     ipc::{
         ChainSpec_ActivationPoint, ChainSpec_NewAuctionDelay, ChainSpec_NewLockedFundsPeriod,
-        ChainSpec_NewValidatorSlots, ChainSpec_UpgradePoint, ChainSpec_WasmConfig, DeployCode,
-        UpgradeRequest,
+        ChainSpec_NewUnbondingDelay, ChainSpec_NewValidatorSlots, ChainSpec_UpgradePoint,
+        ChainSpec_WasmConfig, DeployCode, UpgradeRequest,
     },
     state,
 };
@@ -22,6 +22,7 @@ pub struct UpgradeRequestBuilder {
     new_auction_delay: Option<u64>,
     new_locked_funds_period: Option<EraId>,
     new_round_seigniorage_rate: Option<Ratio<u64>>,
+    new_unbonding_delay: Option<EraId>,
 }
 
 impl UpgradeRequestBuilder {
@@ -73,6 +74,11 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    pub fn with_new_unbonding_delay(mut self, unbonding_delay: EraId) -> Self {
+        self.new_unbonding_delay = Some(unbonding_delay);
+        self
+    }
+
     pub fn with_activation_point(mut self, height: u64) -> Self {
         self.activation_point = {
             let mut ret = ChainSpec_ActivationPoint::new();
@@ -113,6 +119,12 @@ impl UpgradeRequestBuilder {
             upgrade_point.set_new_round_seigniorage_rate(new_round_seigniorage_rate.into());
         }
 
+        if let Some(new_unbonding_delay) = self.new_unbonding_delay {
+            let mut chainspec_new_unbonding_delay = ChainSpec_NewUnbondingDelay::new();
+            chainspec_new_unbonding_delay.set_new_unbonding_delay(new_unbonding_delay);
+            upgrade_point.set_new_unbonding_delay(chainspec_new_unbonding_delay);
+        }
+
         upgrade_point.set_protocol_version(self.new_protocol_version);
         upgrade_point.set_upgrade_installer(self.upgrade_installer);
 
@@ -136,6 +148,7 @@ impl Default for UpgradeRequestBuilder {
             new_auction_delay: Default::default(),
             new_locked_funds_period: Default::default(),
             new_round_seigniorage_rate: Default::default(),
+            new_unbonding_delay: Default::default(),
         }
     }
 }
