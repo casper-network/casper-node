@@ -362,7 +362,6 @@ struct TestArgs {
     proposed_count: usize,
 }
 
-
 /// Test the block_proposer by generating deploys and transfers with variable limits, asserting
 /// on internal counts post-finalization.
 fn test_proposer_with(
