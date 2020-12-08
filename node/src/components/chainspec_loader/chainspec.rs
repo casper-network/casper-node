@@ -90,7 +90,8 @@ pub(crate) struct HighwayConfig {
     // TODO: Some should be defined on-chain in a contract instead, or be part of `UpgradePoint`.
     pub(crate) era_duration: TimeDiff,
     pub(crate) minimum_era_height: u64,
-    pub(crate) finality_threshold_percent: u8,
+    #[data_size(skip)]
+    pub(crate) finality_threshold_fraction: Ratio<u64>,
     pub(crate) minimum_round_exponent: u8,
     pub(crate) maximum_round_exponent: u8,
 }
@@ -100,7 +101,7 @@ impl Default for HighwayConfig {
         HighwayConfig {
             era_duration: TimeDiff::from_str("1week").unwrap(),
             minimum_era_height: 100,
-            finality_threshold_percent: 10,
+            finality_threshold_fraction: Ratio::new(1, 3),
             minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
             maximum_round_exponent: 19, // 2**19 ms = ~8.7 minutes
         }
@@ -138,7 +139,7 @@ impl HighwayConfig {
         HighwayConfig {
             era_duration: TimeDiff::from(rng.gen_range(600_000, 604_800_000)),
             minimum_era_height: rng.gen_range(5, 100),
-            finality_threshold_percent: rng.gen_range(0, 101),
+            finality_threshold_fraction: Ratio::new(rng.gen_range(0, 101), 100),
             minimum_round_exponent: rng.gen_range(0, 16),
             maximum_round_exponent: rng.gen_range(16, 22),
         }
@@ -577,7 +578,10 @@ mod tests {
             TimeDiff::from(180000)
         );
         assert_eq!(spec.genesis.highway_config.minimum_era_height, 9);
-        assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
+        assert_eq!(
+            spec.genesis.highway_config.finality_threshold_fraction,
+            Ratio::new(2, 25)
+        );
         assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 14);
         assert_eq!(spec.genesis.highway_config.maximum_round_exponent, 19);
 

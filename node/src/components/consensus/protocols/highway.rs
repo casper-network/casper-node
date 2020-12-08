@@ -91,8 +91,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let highway_config = &chainspec.genesis.highway_config;
 
         let total_weight = u128::from(validators.total_weight());
-        let ftt_percent = u128::from(highway_config.finality_threshold_percent);
-        let ftt = ((total_weight * ftt_percent / 100) as u64).into();
+        let ftt_fraction = highway_config.finality_threshold_fraction;
+        let ftt = ((total_weight * *ftt_fraction.numer() as u128 / *ftt_fraction.denom() as u128)
+            as u64)
+            .into();
 
         let init_round_exp = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
