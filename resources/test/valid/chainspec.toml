@@ -17,12 +17,10 @@ unbonding_delay = 14
 [highway]
 era_duration = '3minutes'
 minimum_era_height = 9
-booking_duration = '4hours'
-entropy_duration = '5days'
-voting_period_duration = '6weeks'
-finality_threshold_percent = 8
+finality_threshold_fraction = [2, 25]
 minimum_round_exponent = 14
 maximum_round_exponent = 19
+reduced_reward_multiplier = [1, 5]
 
 [deploys]
 max_payment_cost = '9'
