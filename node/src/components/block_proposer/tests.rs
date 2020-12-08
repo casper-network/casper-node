@@ -265,6 +265,7 @@ fn should_respect_limits_for_wasmless_transfers() {
     test_proposer_with(TestArgs {
         transfer_count: 30,
         max_transfer_count: 20,
+        proposed_count: 20,
         remaining_pending_count: 10,
         ..Default::default()
     });
@@ -275,6 +276,7 @@ fn should_respect_limits_for_wasm_deploys() {
     test_proposer_with(TestArgs {
         wasm_deploy_count: 30,
         max_deploy_count: 20,
+        proposed_count: 20,
         remaining_pending_count: 10,
         ..Default::default()
     });
@@ -287,6 +289,7 @@ fn should_respect_limits_for_wasm_deploys_and_transfers_together() {
         max_transfer_count: 20,
         wasm_deploy_count: 30,
         max_deploy_count: 20,
+        proposed_count: 40,
         remaining_pending_count: 20,
         ..Default::default()
     });
@@ -301,19 +304,16 @@ fn should_respect_limits_for_gas_cost() {
         max_deploy_count: 20,
         gas_cost: 5,
         max_gas_limit: 10,
-        remaining_pending_count: 55,
+        proposed_count: 2,
+        remaining_pending_count: 58,
         ..Default::default()
     });
 }
 
 #[test]
-fn should_respect_happy_path() {
-    test_proposer_with(Default::default());
-}
-
-#[test]
 fn should_respect_max_payment_amount_for_transfers() {
     test_proposer_with(TestArgs {
+        wasm_deploy_count: 0,
         transfer_count: 1,
         payment_amount: U512::from(100_000),
         max_payment_cost: U512::from(100_000),
@@ -327,6 +327,7 @@ fn should_respect_max_payment_amount_for_transfers() {
 #[test]
 fn should_not_propose_transfers_with_payment_amount_above_max_payment_cost() {
     test_proposer_with(TestArgs {
+        wasm_deploy_count: 0,
         transfer_count: 1,
         payment_amount: U512::from(100_001),
         max_payment_cost: U512::from(100_000),
@@ -337,6 +338,7 @@ fn should_not_propose_transfers_with_payment_amount_above_max_payment_cost() {
     });
 }
 
+#[derive(Default)]
 struct TestArgs {
     /// Number of deploys to create.
     wasm_deploy_count: u32,
@@ -360,24 +362,6 @@ struct TestArgs {
     proposed_count: usize,
 }
 
-/// The default value for TestArgs should represent the happy-path: all deploys are used, but limits
-/// are reached, exactly.
-impl Default for TestArgs {
-    fn default() -> Self {
-        TestArgs {
-            wasm_deploy_count: 5,
-            max_deploy_count: 5,
-            transfer_count: 5,
-            max_transfer_count: 5,
-            gas_cost: 10,
-            payment_amount: U512::from(1),
-            max_payment_cost: U512::from(2),
-            max_gas_limit: 100,
-            remaining_pending_count: 0,
-            proposed_count: 10,
-        }
-    }
-}
 
 /// Test the block_proposer by generating deploys and transfers with variable limits, asserting
 /// on internal counts post-finalization.
