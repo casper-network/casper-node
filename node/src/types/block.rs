@@ -34,6 +34,7 @@ use super::{Item, Tag, Timestamp};
 use crate::{
     components::consensus::{self, EraId},
     crypto::{
+        self,
         asymmetric_key::{PublicKey, SecretKey, Signature},
         hash::{self, Digest},
     },
@@ -1110,6 +1111,45 @@ pub(crate) mod json_compatibility {
                 proofs: block.proofs,
             }
         }
+    }
+}
+
+/// A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should
+/// wait until the signers' combined weight exceeds their fault tolerance threshold before accepting
+/// the block as finalized.
+#[derive(Debug, Clone, Serialize, Deserialize, DataSize, PartialEq, Eq)]
+pub struct FinalitySignature {
+    /// Hash of a block this signature is for.
+    pub block_hash: BlockHash,
+    /// Signature over the block hash.
+    pub signature: Signature,
+    /// Public key of the signing validator.
+    pub public_key: PublicKey,
+}
+
+impl FinalitySignature {
+    /// Create an instance of `FinalitySignature`.
+    pub fn new(block_hash: BlockHash, signature: Signature, public_key: PublicKey) -> Self {
+        FinalitySignature {
+            block_hash,
+            signature,
+            public_key,
+        }
+    }
+
+    /// Verifies whether the signature is correct.
+    pub fn verify(&self) -> crypto::asymmetric_key::Result<()> {
+        crypto::asymmetric_key::verify(self.block_hash.inner(), &self.signature, &self.public_key)
+    }
+}
+
+impl Display for FinalitySignature {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "finality signature for block hash {}, from {}",
+            &self.block_hash, &self.public_key
+        )
     }
 }
 

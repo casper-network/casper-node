@@ -39,7 +39,6 @@ use crate::{
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
         },
-        linear_chain::FinalitySignature,
     },
     crypto::{
         asymmetric_key::{self, PublicKey, SecretKey},
@@ -47,7 +46,9 @@ use crate::{
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
-    types::{BlockHash, BlockHeader, BlockLike, FinalizedBlock, ProtoBlock, Timestamp},
+    types::{
+        BlockHash, BlockHeader, BlockLike, FinalitySignature, FinalizedBlock, ProtoBlock, Timestamp,
+    },
     utils::WithDir,
     NodeRng,
 };

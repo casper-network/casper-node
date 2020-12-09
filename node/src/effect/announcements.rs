@@ -14,7 +14,8 @@ use serde::Serialize;
 use crate::{
     components::small_network::GossipedAddress,
     types::{
-        Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalizedBlock, Item,
+        Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
+        FinalizedBlock, Item,
     },
     utils::Source,
 };
@@ -187,6 +188,8 @@ pub enum LinearChainAnnouncement {
         /// Block header.
         block_header: Box<BlockHeader>,
     },
+    /// New finality signature received.
+    NewFinalitySignature(Box<FinalitySignature>),
 }
 
 impl Display for LinearChainAnnouncement {
@@ -194,6 +197,9 @@ impl Display for LinearChainAnnouncement {
         match self {
             LinearChainAnnouncement::BlockAdded { block_hash, .. } => {
                 write!(f, "block added {}", block_hash)
+            }
+            LinearChainAnnouncement::NewFinalitySignature(fs) => {
+                write!(f, "new finality signature {}", fs.block_hash)
             }
         }
     }

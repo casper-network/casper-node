@@ -110,6 +110,7 @@ where
                 block_hash,
                 execution_result,
             }),
+            Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
         }
     }
 }

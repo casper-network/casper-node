@@ -826,6 +826,11 @@ impl reactor::Reactor for Reactor {
                     });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
+                let reactor_event =
+                    Event::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
         }
     }
 
