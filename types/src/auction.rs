@@ -265,36 +265,27 @@ pub trait Auction:
             return Err(Error::InvalidCaller);
         }
 
-        let mut burned_amount = detail::quash_bid(self, &validator_public_keys)?;
+        let mut burned_amount: U512 = U512::zero();
+
+        let mut bids = detail::get_bids(self)?;
+        let mut bids_modified = false;
 
         let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
-
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
-            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
-                let initial_length = unbonding_list.len();
+            // Remove bid for given validator, saving its delegators
+            if let Some(bid) = bids.remove(&validator_public_key) {
+                burned_amount += *bid.staked_amount();
+                bids_modified = true;
+            };
 
-                unbonding_list.retain(|unbonding_purse| {
-                    // Only entries created by non-validators are retained
-                    let should_retain = !unbonding_purse.is_validator();
-
-                    if !should_retain {
-                        // Amounts inside removed entries are burned only.
-                        burned_amount += *unbonding_purse.amount()
-                    }
-
-                    should_retain
-                });
-
-                if unbonding_list.len() != initial_length {
-                    unbonding_purses_modified = true;
-                }
-
-                if unbonding_list.is_empty() {
-                    // Cleans up empty map entries to preserve global state.
-                    unbonding_purses.remove(&validator_public_key).unwrap();
-                    unbonding_purses_modified = true;
-                }
+            // Update unbonding entries for given validator
+            if let Some(unbonding_list) = unbonding_purses.remove(&validator_public_key) {
+                burned_amount += unbonding_list
+                    .into_iter()
+                    .map(|unbonding_purse| *unbonding_purse.amount())
+                    .sum();
+                unbonding_purses_modified = true;
             }
         }
 
@@ -302,7 +293,10 @@ pub trait Auction:
             detail::set_unbonding_purses(self, unbonding_purses)?;
         }
 
-        // call reduce total supply
+        if bids_modified {
+            detail::set_bids(self, bids)?;
+        }
+
         self.reduce_total_supply(burned_amount)?;
 
         Ok(())

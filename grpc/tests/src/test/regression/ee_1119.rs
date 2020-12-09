@@ -237,32 +237,16 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     builder.exec(slash_request_2).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
-    assert_eq!(unbond_purses.len(), 1);
+    assert_eq!(unbond_purses.len(), 0);
 
     assert!(
         !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_PUBLIC_KEY),
-        "should not be part of unbonds (noop)"
+        "delegator should not be part of unbond list after slashing validator"
     );
 
     assert!(
-        unbond_purses.contains_key(&VALIDATOR_1),
-        "should still be part of unbonds"
-    );
-
-    let unbond_list = unbond_purses
-        .get(&VALIDATOR_1)
-        .expect("should have validator 1 key");
-    assert_eq!(unbond_list.len(), 1); // only one entry is removed - withdraw bid for VALIDATOR_1's unlocked funds
-
-    let undelegated_unbond_purse = unbond_list[0];
-    assert!(!undelegated_unbond_purse.is_validator()); // only delegated amount is left
-    assert_eq!(
-        undelegated_unbond_purse.validator_public_key(),
-        &VALIDATOR_1
-    );
-    assert_eq!(
-        undelegated_unbond_purse.unbonder_public_key(),
-        &*DEFAULT_ACCOUNT_PUBLIC_KEY
+        !unbond_purses.contains_key(&VALIDATOR_1),
+        "should not be a part of unbond list because delegator was slashed"
     );
 
     let bids: Bids = builder.get_value(auction, BIDS_KEY);
@@ -272,6 +256,6 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);
     assert_eq!(
         total_supply_before_slashing - total_supply_after_slashing,
-        U512::from(VALIDATOR_1_STAKE),
+        U512::from(VALIDATOR_1_STAKE + UNDELEGATE_AMOUNT_1),
     );
 }
