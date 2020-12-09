@@ -1114,7 +1114,9 @@ pub(crate) mod json_compatibility {
     }
 }
 
-/// Finality signature that can be gossiped between nodes or sent to clients.
+/// A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should
+/// wait until the signers' combined weight exceeds their fault tolerance threshold before accepting
+/// the block as finalized.
 #[derive(Debug, Clone, Serialize, Deserialize, DataSize, PartialEq, Eq)]
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.

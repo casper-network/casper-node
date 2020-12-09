@@ -254,7 +254,7 @@ pub trait EffectOptionExt {
     ///
     /// The function `f_some` is used to translate the returned value from an effect into an event,
     /// while the function `f_none` does the same for a returned `None`.
-    fn fold<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
+    fn map_or_else<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
     where
         F: FnOnce(Self::Value) -> U + 'static + Send,
         G: FnOnce() -> U + 'static + Send,
@@ -315,7 +315,7 @@ where
 {
     type Value = V;
 
-    fn fold<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
+    fn map_or_else<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
     where
         F: FnOnce(V) -> U + 'static + Send,
         G: FnOnce() -> U + 'static + Send,

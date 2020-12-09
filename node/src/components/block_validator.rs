@@ -128,7 +128,7 @@ where
                         let dh_not_found = **deploy_hash;
                         effect_builder
                             .fetch_deploy(**deploy_hash, sender.clone())
-                            .fold(
+                            .map_or_else(
                                 move |result: FetchResult<Deploy>| match result {
                                     FetchResult::FromStorage(deploy)
                                     | FetchResult::FromPeer(deploy, _) => {
