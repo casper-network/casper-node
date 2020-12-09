@@ -110,11 +110,11 @@ where
                 block_hash,
                 execution_result,
             }),
-            Event::Equivocation {
+            Event::Fault {
                 era_id,
                 public_key,
                 timestamp,
-            } => self.broadcast(SseData::Evidence {
+            } => self.broadcast(SseData::Fault {
                 era_id,
                 public_key,
                 timestamp,

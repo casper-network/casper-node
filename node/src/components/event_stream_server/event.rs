@@ -24,7 +24,7 @@ pub enum Event {
         block_hash: BlockHash,
         execution_result: Box<ExecutionResult>,
     },
-    Equivocation {
+    Fault {
         era_id: EraId,
         public_key: PublicKey,
         timestamp: Timestamp,
@@ -44,13 +44,13 @@ impl Display for Event {
             Event::DeployProcessed { deploy_hash, .. } => {
                 write!(formatter, "deploy processed {}", deploy_hash)
             }
-            Event::Equivocation {
+            Event::Fault {
                 era_id,
                 public_key,
                 timestamp,
             } => write!(
                 formatter,
-                "An equivocator with publickey: {} has been identified at time: {} in era: {}",
+                "An equivocator with public key: {} has been identified at time: {} in era: {}",
                 public_key, timestamp, era_id,
             ),
             Event::FinalitySignature(fs) => write!(formatter, "finality signature {}", fs),

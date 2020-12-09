@@ -954,7 +954,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.0
             .schedule(
-                ConsensusAnnouncement::Equivocation {
+                ConsensusAnnouncement::Fault {
                     era_id,
                     public_key: Box::new(public_key),
                     timestamp,

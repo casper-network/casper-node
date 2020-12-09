@@ -125,10 +125,10 @@ pub enum ConsensusAnnouncement {
     /// A linear chain block has been handled.
     Handled(Box<BlockHeader>),
     /// An equivocation has been detected.
-    Equivocation {
+    Fault {
         /// The Id of the era in which the equivocation was detected
         era_id: EraId,
-        /// The publickey of the equivocator.
+        /// The public key of the equivocator.
         public_key: Box<PublicKey>,
         /// The timestamp when the evidence of the equivocation was detected.
         timestamp: Timestamp,
@@ -147,13 +147,13 @@ impl Display for ConsensusAnnouncement {
                 block_header.height(),
                 block_header.hash()
             ),
-            ConsensusAnnouncement::Equivocation {
+            ConsensusAnnouncement::Fault {
                 era_id,
                 public_key,
                 timestamp,
             } => write!(
                 formatter,
-                "An equivocatior with public_key: {} has been identified at time: {} in era: {}",
+                "An equivocator with public key: {} has been identified at time: {} in era: {}",
                 public_key, timestamp, era_id,
             ),
         }

@@ -730,7 +730,7 @@ impl reactor::Reactor for Reactor {
                         event_stream_server::Event::BlockFinalized(block),
                     ),
                 ),
-                ConsensusAnnouncement::Equivocation {
+                ConsensusAnnouncement::Fault {
                     era_id,
                     public_key,
                     timestamp,
@@ -739,7 +739,7 @@ impl reactor::Reactor for Reactor {
                     self.event_stream_server.handle_event(
                         effect_builder,
                         rng,
-                        event_stream_server::Event::Equivocation {
+                        event_stream_server::Event::Fault {
                             era_id,
                             public_key: *public_key,
                             timestamp,

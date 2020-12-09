@@ -65,7 +65,7 @@ pub enum SseData {
         execution_result: Box<ExecutionResult>,
     },
     /// Send Evidence of an equivocation to the event stream.
-    Evidence {
+    Fault {
         era_id: EraId,
         public_key: PublicKey,
         timestamp: Timestamp,
@@ -184,7 +184,7 @@ fn stream_to_client(
                     | (Some(id), &SseData::BlockAdded { .. })
                     | (Some(id), &SseData::DeployProcessed { .. })
                     | (Some(id), &SseData::FinalitySignature(_))
-                    | (Some(id), &SseData::Evidence { .. }) => {
+                    | (Some(id), &SseData::Fault { .. }) => {
                         Ok((sse::id(id), sse::json(event.data)).boxed())
                     }
                     _ => unreachable!("only ApiVersion may have no event ID"),
