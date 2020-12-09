@@ -62,7 +62,8 @@ pub enum SseData {
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
-    Equivocation {
+    /// An equivocation has been detected publish minimal evidence to the event stream.
+    Evidence {
         era_id: EraId,
         public_key: PublicKey,
         timestamp: Timestamp,
@@ -178,7 +179,7 @@ fn stream_to_client(
                     (Some(id), &SseData::BlockFinalized { .. })
                     | (Some(id), &SseData::BlockAdded { .. })
                     | (Some(id), &SseData::DeployProcessed { .. })
-                    | (Some(id), &SseData::Equivocation { .. }) => {
+                    | (Some(id), &SseData::Evidence { .. }) => {
                         Ok((sse::id(id), sse::json(event.data)).boxed())
                     }
                     _ => unreachable!("only ApiVersion may have no event ID"),

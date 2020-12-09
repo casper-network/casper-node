@@ -114,7 +114,7 @@ where
                 era_id,
                 public_key,
                 timestamp,
-            } => self.broadcast(SseData::Equivocation {
+            } => self.broadcast(SseData::Evidence {
                 era_id,
                 public_key,
                 timestamp,
