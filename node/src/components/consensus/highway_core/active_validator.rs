@@ -146,9 +146,10 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
+        own_unit: bool,
     ) -> Vec<Effect<C>> {
         let creator = state.unit(uhash).creator;
-        if creator == self.vidx {
+        if own_unit && creator == self.vidx {
             return vec![Effect::DoppelgangerDetected(*uhash)];
         }
         if let Some(fault) = state.opt_fault(self.vidx) {
@@ -608,6 +609,7 @@ mod tests {
                 &self.state,
                 self.instance_id,
                 &mut self.rng,
+                true,
             );
             self.schedule_timer(vidx, &effects);
             (effects, proposal_wunit)
@@ -629,6 +631,7 @@ mod tests {
                 &self.state,
                 self.instance_id,
                 &mut self.rng,
+                false,
             );
             self.schedule_timer(vidx, &effects);
             self.add_new_unit(&effects);

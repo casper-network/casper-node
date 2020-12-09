@@ -419,7 +419,7 @@ impl<C: Context> Highway<C> {
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
         self.map_active_validator(
-            |av, state, rng| av.on_new_unit(vhash, timestamp, state, instance_id, rng),
+            |av, state, rng| av.on_new_unit(vhash, timestamp, state, instance_id, rng, false),
             timestamp,
             rng,
         )
