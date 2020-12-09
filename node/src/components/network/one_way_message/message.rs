@@ -54,7 +54,7 @@ pub struct Codec {
 impl From<&Config> for Codec {
     fn from(config: &Config) -> Self {
         Codec {
-            max_message_size: config.max_message_size,
+            max_message_size: config.max_one_way_message_size,
         }
     }
 }

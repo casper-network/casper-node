@@ -418,7 +418,7 @@ impl<REv> EffectBuilder<REv> {
     /// Usually causes the node to cease operations quickly and exit/crash.
     //
     // Note: This function is implemented manually without `async` sugar because the `Send`
-    // inferrence seems to not work in all cases otherwise.
+    // inference seems to not work in all cases otherwise.
     pub fn fatal(self, file: &str, line: u32, msg: String) -> impl Future<Output = ()> + Send {
         panic!("fatal error [{}:{}]: {}", file, line, msg);
         #[allow(unreachable_code)]
