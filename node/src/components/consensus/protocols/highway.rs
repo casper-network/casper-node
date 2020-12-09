@@ -183,7 +183,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 vec![ProtocolOutcome::WeAreFaulty]
             }
             AvEffect::DoppelgangerDetected(uhash) => {
-                error!("received unit from a doppelganger: {}", uhash);
+                error!(
+                    "received unit from a doppelganger: {}. \
+                Are you running multiple nodes with the same validator key?",
+                    uhash
+                );
                 vec![ProtocolOutcome::DoppelgangerDetected]
             }
         }
