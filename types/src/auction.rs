@@ -8,10 +8,7 @@ mod seigniorage_recipient;
 mod types;
 mod unbonding_purse;
 
-use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    vec::Vec,
-};
+use alloc::{collections::BTreeMap, vec::Vec};
 
 use num_rational::Ratio;
 
@@ -275,42 +272,18 @@ pub trait Auction:
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
             // Remove bid for given validator, saving its delegators
-            let orphaned_delegators = match bids.remove(&validator_public_key) {
-                Some(bid) => {
-                    burned_amount += *bid.staked_amount();
-                    bids_modified = true;
-
-                    bid.delegators().keys().copied().collect()
-                }
-                None => BTreeSet::new(),
+            if let Some(bid) = bids.remove(&validator_public_key) {
+                burned_amount += *bid.staked_amount();
+                bids_modified = true;
             };
 
             // Update unbonding entries for given validator
-            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
-                let initial_length = unbonding_list.len();
-
-                unbonding_list.retain(|unbonding_purse| {
-                    // Retain all entries where this validator is delegating to another validator.
-                    let should_retain = !unbonding_purse.is_validator()
-                        && !orphaned_delegators.contains(unbonding_purse.unbonder_public_key());
-
-                    if !should_retain {
-                        // Amounts inside removed entries are burned only.
-                        burned_amount += *unbonding_purse.amount()
-                    }
-
-                    should_retain
-                });
-
-                if unbonding_list.len() != initial_length {
-                    unbonding_purses_modified = true;
-                }
-
-                if unbonding_list.is_empty() {
-                    // Cleans up empty map entries to preserve global state.
-                    unbonding_purses.remove(&validator_public_key).unwrap();
-                    unbonding_purses_modified = true;
-                }
+            if let Some(unbonding_list) = unbonding_purses.remove(&validator_public_key) {
+                burned_amount += unbonding_list
+                    .into_iter()
+                    .map(|unbonding_purse| *unbonding_purse.amount())
+                    .sum();
+                unbonding_purses_modified = true;
             }
         }
 
