@@ -777,6 +777,19 @@ impl reactor::Reactor for Reactor {
                         debug!("Ignoring `Handled` announcement in `validator` reactor.");
                         Effects::new()
                     }
+                    ConsensusAnnouncement::Fault {
+                        era_id,
+                        public_key,
+                        timestamp,
+                    } => {
+                        let reactor_event =
+                            Event::EventStreamServer(event_stream_server::Event::Fault {
+                                era_id,
+                                public_key: *public_key,
+                                timestamp,
+                            });
+                        self.dispatch_event(effect_builder, rng, reactor_event)
+                    }
                 }
             }
             Event::BlockExecutorAnnouncement(BlockExecutorAnnouncement::LinearChainBlock {

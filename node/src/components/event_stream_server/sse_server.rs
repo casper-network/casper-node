@@ -16,7 +16,7 @@ use warp::{
 use casper_types::ExecutionResult;
 
 use crate::{
-    components::CLIENT_API_VERSION,
+    components::{consensus::EraId, CLIENT_API_VERSION},
     crypto::asymmetric_key::PublicKey,
     types::{
         BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
@@ -63,6 +63,12 @@ pub enum SseData {
         block_hash: BlockHash,
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
+    },
+    /// Generic representation of validator's fault in an era.
+    Fault {
+        era_id: EraId,
+        public_key: PublicKey,
+        timestamp: Timestamp,
     },
     /// New finality signature received.
     FinalitySignature(Box<FinalitySignature>),
@@ -177,7 +183,8 @@ fn stream_to_client(
                     (Some(id), &SseData::BlockFinalized { .. })
                     | (Some(id), &SseData::BlockAdded { .. })
                     | (Some(id), &SseData::DeployProcessed { .. })
-                    | (Some(id), &SseData::FinalitySignature(_)) => {
+                    | (Some(id), &SseData::FinalitySignature(_))
+                    | (Some(id), &SseData::Fault { .. }) => {
                         Ok((sse::id(id), sse::json(event.data)).boxed())
                     }
                     _ => unreachable!("only ApiVersion may have no event ID"),

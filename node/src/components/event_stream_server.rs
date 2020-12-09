@@ -110,6 +110,15 @@ where
                 block_hash,
                 execution_result,
             }),
+            Event::Fault {
+                era_id,
+                public_key,
+                timestamp,
+            } => self.broadcast(SseData::Fault {
+                era_id,
+                public_key,
+                timestamp,
+            }),
             Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
         }
     }

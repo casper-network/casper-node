@@ -12,10 +12,11 @@ use casper_types::ExecutionResult;
 use serde::Serialize;
 
 use crate::{
-    components::small_network::GossipedAddress,
+    components::{consensus::EraId, small_network::GossipedAddress},
+    crypto::asymmetric_key::PublicKey,
     types::{
         Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
-        FinalizedBlock, Item,
+        FinalizedBlock, Item, Timestamp,
     },
     utils::Source,
 };
@@ -123,6 +124,15 @@ pub enum ConsensusAnnouncement {
     Finalized(Box<FinalizedBlock>),
     /// A linear chain block has been handled.
     Handled(Box<BlockHeader>),
+    /// An equivocation has been detected.
+    Fault {
+        /// The Id of the era in which the equivocation was detected
+        era_id: EraId,
+        /// The public key of the equivocator.
+        public_key: Box<PublicKey>,
+        /// The timestamp when the evidence of the equivocation was detected.
+        timestamp: Timestamp,
+    },
 }
 
 impl Display for ConsensusAnnouncement {
@@ -136,6 +146,15 @@ impl Display for ConsensusAnnouncement {
                 "Linear chain block has been handled by consensus, height={}, hash={}",
                 block_header.height(),
                 block_header.hash()
+            ),
+            ConsensusAnnouncement::Fault {
+                era_id,
+                public_key,
+                timestamp,
+            } => write!(
+                formatter,
+                "Validator fault with public key: {} has been identified at time: {} in era: {}",
+                public_key, timestamp, era_id,
             ),
         }
     }

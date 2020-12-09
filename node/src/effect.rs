@@ -100,12 +100,12 @@ use casper_types::{
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
-        consensus::BlockContext,
+        consensus::{BlockContext, EraId},
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
-    crypto::hash::Digest,
+    crypto::{asymmetric_key::PublicKey, hash::Digest},
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
@@ -938,6 +938,27 @@ impl<REv> EffectBuilder<REv> {
         self.0
             .schedule(
                 ConsensusAnnouncement::Handled(Box::new(block_header)),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// An equivocation has been detected.
+    pub(crate) async fn announce_fault_event(
+        self,
+        era_id: EraId,
+        public_key: PublicKey,
+        timestamp: Timestamp,
+    ) where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Fault {
+                    era_id,
+                    public_key: Box::new(public_key),
+                    timestamp,
+                },
                 QueueKind::Regular,
             )
             .await
