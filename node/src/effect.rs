@@ -64,10 +64,9 @@ pub mod requests;
 use std::{
     any::type_name,
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
-    net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -522,7 +521,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets connected network peers.
-    pub async fn network_peers<I>(self) -> HashMap<I, SocketAddr>
+    pub async fn network_peers<I>(self) -> BTreeMap<I, String>
     where
         REv: From<NetworkInfoRequest<I>>,
         I: Send + 'static,

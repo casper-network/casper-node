@@ -1,7 +1,6 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
-    net::SocketAddr,
 };
 
 use derive_more::From;
@@ -50,8 +49,8 @@ pub enum Event {
         main_responder: Responder<Option<(Deploy, DeployMetadata)>>,
     },
     GetPeersResult {
-        peers: HashMap<NodeId, SocketAddr>,
-        main_responder: Responder<HashMap<NodeId, SocketAddr>>,
+        peers: BTreeMap<NodeId, String>,
+        main_responder: Responder<BTreeMap<NodeId, String>>,
     },
     GetMetricsResult {
         text: Option<String>,

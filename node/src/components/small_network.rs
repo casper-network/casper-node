@@ -41,8 +41,9 @@ mod message;
 mod tests;
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     convert::Infallible,
+    env,
     fmt::{self, Debug, Display, Formatter},
     io,
     net::{SocketAddr, TcpListener},
@@ -80,7 +81,7 @@ use tracing::{debug, error, info, trace, warn};
 use self::error::Result;
 pub(crate) use self::{event::Event, gossiped_address::GossipedAddress, message::Message};
 use crate::{
-    components::Component,
+    components::{network::ENABLE_LIBP2P_ENV_VAR, Component},
     crypto::hash::Digest,
     effect::{
         announcements::NetworkAnnouncement,
@@ -185,9 +186,43 @@ where
         genesis_config_hash: Digest,
         notify: bool,
     ) -> Result<(SmallNetwork<REv, P>, Effects<Event<P>>)> {
+        // Assert we have at least one known address in the config.
+        if cfg.known_addresses.is_empty() {
+            warn!("no known addresses provided via config");
+            return Err(Error::InvalidConfig);
+        }
+
+        let mut public_address =
+            utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
+
         // First, we generate the TLS keys.
         let (cert, secret_key) = tls::generate_node_cert().map_err(Error::CertificateGeneration)?;
         let certificate = Arc::new(tls::validate_cert(cert).map_err(Error::OwnCertificateInvalid)?);
+        let our_id = NodeId::from(certificate.public_key_fingerprint());
+
+        // If the env var "CASPER_ENABLE_LIBP2P" is defined, exit without starting the server.
+        if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+            let model = SmallNetwork {
+                certificate,
+                secret_key: Arc::new(secret_key),
+                public_address,
+                our_id,
+                is_bootstrap_node: false,
+                event_queue,
+                incoming: HashMap::new(),
+                outgoing: HashMap::new(),
+                pending: HashSet::new(),
+                blocklist: HashSet::new(),
+                gossip_interval: cfg.gossip_interval,
+                next_gossip_address_index: 0,
+                genesis_config_hash,
+                shutdown_sender: None,
+                shutdown_receiver: watch::channel(()).1,
+                server_join_handle: None,
+                is_stopped: Arc::new(AtomicBool::new(true)),
+            };
+            return Ok((model, Effects::new()));
+        }
 
         // We can now create a listener.
         let bind_address = utils::resolve_address(&cfg.bind_address).map_err(Error::ResolveAddr)?;
@@ -210,9 +245,6 @@ where
         }
         let local_address = listener.local_addr().map_err(Error::ListenerAddr)?;
 
-        let mut public_address =
-            utils::resolve_address(&cfg.public_address).map_err(Error::ResolveAddr)?;
-
         // Substitute the actually bound port if set to 0.
         if public_address.port() == 0 {
             public_address.set_port(local_address.port());
@@ -221,7 +253,6 @@ where
         // Run the server task.
         // We spawn it ourselves instead of through an effect to get a hold of the join handle,
         // which we need to shutdown cleanly later on.
-        let our_id = NodeId::from(certificate.public_key_fingerprint());
         info!(%local_address, %public_address, "{}: starting server background task", our_id);
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
         let shutdown_receiver = server_shutdown_receiver.clone();
@@ -712,14 +743,14 @@ where
     }
 
     /// Returns the set of connected nodes.
-    pub(crate) fn peers(&self) -> HashMap<NodeId, SocketAddr> {
-        let mut ret: HashMap<NodeId, SocketAddr> = HashMap::new();
+    pub(crate) fn peers(&self) -> BTreeMap<NodeId, String> {
+        let mut ret = BTreeMap::new();
         for (node_id, connection) in &self.outgoing {
-            ret.insert(node_id.clone(), connection.peer_address);
+            ret.insert(node_id.clone(), connection.peer_address.to_string());
         }
         for (node_id, connection) in &self.incoming {
             ret.entry(node_id.clone())
-                .or_insert(connection.peer_address);
+                .or_insert_with(|| connection.peer_address.to_string());
         }
         ret
     }
@@ -760,7 +791,7 @@ where
                     Ok(_) => debug!("{}: server exited cleanly", self.our_id),
                     Err(err) => error!(%self.our_id,%err, "could not join server task cleanly"),
                 }
-            } else {
+            } else if env::var(ENABLE_LIBP2P_ENV_VAR).is_err() {
                 warn!("{}: server shutdown while already shut down", self.our_id)
             }
         }

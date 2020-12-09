@@ -5,9 +5,8 @@
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    net::SocketAddr,
     sync::Arc,
 };
 
@@ -172,7 +171,8 @@ pub enum NetworkInfoRequest<I> {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
-        responder: Responder<HashMap<I, SocketAddr>>,
+        // TODO - change the `String` field to a `libp2p::Multiaddr` once small_network is removed.
+        responder: Responder<BTreeMap<I, String>>,
     },
 }
 
@@ -493,7 +493,7 @@ pub enum RpcRequest<I> {
     /// Return the connected peers.
     GetPeers {
         /// Responder to call with the result.
-        responder: Responder<HashMap<I, SocketAddr>>,
+        responder: Responder<BTreeMap<I, String>>,
     },
     /// Return string formatted status or `None` if an error occurred.
     GetStatus {

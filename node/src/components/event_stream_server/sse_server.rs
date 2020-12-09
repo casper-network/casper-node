@@ -98,7 +98,7 @@ pub(super) struct NewSubscriberInfo {
     pub(super) initial_events_sender: mpsc::UnboundedSender<ServerSentEvent>,
 }
 
-/// The endpoint's query string, e.g. `http://localhost:22777?start_from=999`
+/// The endpoint's query string, e.g. `http://localhost:22777/events?start_from=999`
 #[derive(Deserialize, Debug)]
 struct Query {
     start_from: Option<Id>,
