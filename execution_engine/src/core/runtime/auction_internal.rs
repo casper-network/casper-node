@@ -59,7 +59,7 @@ where
         amount: U512,
     ) -> Result<(), ApiError> {
         let mint_contract_hash = self.get_mint_contract();
-        match self.mint_transfer(mint_contract_hash, source, target, amount, None) {
+        match self.mint_transfer(mint_contract_hash, None, source, target, amount, None) {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(api_error)) => Err(api_error),
             Err(_) => Err(ApiError::Transfer),
@@ -118,7 +118,7 @@ where
         amount: U512,
     ) -> Result<(), ApiError> {
         let mint_contract_hash = self.get_mint_contract();
-        match self.mint_transfer(mint_contract_hash, source, target, amount, None) {
+        match self.mint_transfer(mint_contract_hash, None, source, target, amount, None) {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(api_error)) => Err(api_error),
             Err(_) => Err(ApiError::Transfer),

@@ -400,6 +400,9 @@ extern "C" {
     ///
     /// # Arguments
     ///
+    /// * `maybe_to_ptr` - pointer in wasm memory to bytes representing the recipient
+    ///   `Option<AccountHash>`
+    /// * `maybe_to_size` - size of the source `Option<AccountHash>` (in bytes)
     /// * `source_ptr` - pointer in wasm memory to bytes representing the source `URef` to transfer
     ///   from
     /// * `source_size` - size of the source `URef` (in bytes)
@@ -412,6 +415,8 @@ extern "C" {
     /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
     /// * `id_size` - size of the id (in bytes)
     pub fn casper_record_transfer(
+        maybe_to_ptr: *const u8,
+        maybe_to_size: usize,
         source_ptr: *const u8,
         source_size: usize,
         target_ptr: *const u8,
