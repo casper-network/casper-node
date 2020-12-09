@@ -94,7 +94,6 @@ alias nctl-view-validator-secret-key-path='source $NCTL/sh/views/view_validator_
 # Contracts #1: Transfers.
 alias nctl-do-transfer='source $NCTL/sh/contracts/transfers/do_transfer.sh'
 alias nctl-do-transfer-wasm='source $NCTL/sh/contracts/transfers/do_transfer_wasm.sh'
-alias nctl-do-fund-users='source $NCTL/sh/contracts/transfers/do_fund_users.sh'
 
 # Contracts #2: Auction.
 alias nctl-do-auction-bid='source $NCTL/sh/contracts/auction/do_bid.sh'

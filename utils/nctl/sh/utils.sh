@@ -1028,6 +1028,7 @@ function render_chain_block() {
     else
         $(get_path_to_client $NET_ID) get-block \
             --node-address $NODE_ADDRESS \
+            --block-identifier "" \
             | jq '.result.block'
     fi
 }
