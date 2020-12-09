@@ -517,21 +517,26 @@ impl<C: Context> State<C> {
 
         // Create an Evidence instance for each conflict we found.
         conflicting_endorsements
-            .map(|(vidx, uhash1, sig1, uhash2, sig2)| {
+            .filter_map(|(vidx, uhash1, sig1, uhash2, sig2)| {
                 let unit1 = self.unit(uhash1);
+                let unit2 = self.unit(uhash2);
+                let ee_limit = self.params().endorsement_evidence_limit();
+                if unit1.seq_number.saturating_add(ee_limit) < unit2.seq_number {
+                    return None;
+                }
                 let swimlane2 = self
                     .swimlane(uhash2)
                     .skip(1)
                     .take_while(|(_, pred2)| pred2.seq_number >= unit1.seq_number)
                     .map(|(pred2_hash, _)| self.wire_unit(pred2_hash, *instance_id).unwrap())
                     .collect();
-                Evidence::Endorsements {
+                Some(Evidence::Endorsements {
                     endorsement1: SignedEndorsement::new(Endorsement::new(*uhash1, vidx), *sig1),
                     unit1: self.wire_unit(uhash1, *instance_id).unwrap(),
                     endorsement2: SignedEndorsement::new(Endorsement::new(*uhash2, vidx), *sig2),
                     unit2: self.wire_unit(uhash2, *instance_id).unwrap(),
                     swimlane2,
-                }
+                })
             })
             .collect()
     }
@@ -650,7 +655,9 @@ impl<C: Context> State<C> {
         let panorama = &wunit.panorama;
         let timestamp = wunit.timestamp;
         panorama.validate(self)?;
-        if panorama.iter_correct(self).any(|v| v.timestamp > timestamp) {
+        if panorama.iter_correct(self).any(|v| v.timestamp > timestamp)
+            || wunit.timestamp < self.params.start_timestamp()
+        {
             return Err(UnitError::Timestamps);
         }
         if wunit.seq_number != panorama.next_seq_num(self, creator) {

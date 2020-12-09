@@ -1,9 +1,9 @@
 use std::{
     any::Any,
-    collections::{BTreeSet, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
 };
 
-use casper_execution_engine::shared::motes::Motes;
+use casper_types::U512;
 use datasize::DataSize;
 use derive_more::Display;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -110,7 +110,7 @@ where
     /// Creates a new boxed `MockProto` instance.
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
-        _validator_stakes: Vec<(C::ValidatorId, Motes)>,
+        _validator_weights: BTreeMap<C::ValidatorId, U512>,
         slashed: &HashSet<C::ValidatorId>,
         chainspec: &Chainspec,
         _prev_cp: Option<&dyn ConsensusProtocol<NodeId, C>>,

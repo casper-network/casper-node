@@ -51,7 +51,7 @@ macro_rules! add_unit {
             .map(|unit| unit.timestamp + TimeDiff::from(1))
             .chain(two_units_limit)
             .max()
-            .unwrap_or_else(Timestamp::zero);
+            .unwrap_or($state.params().start_timestamp());
         // If this is a block: Find the next time we're a leader.
         if value.is_some() {
             let r_len = TimeDiff::from(1 << round_exp);

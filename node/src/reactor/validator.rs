@@ -717,9 +717,9 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
-                let event = block_proposer::Event::Buffer {
+                let event = block_proposer::Event::BufferDeploy {
                     hash: *deploy.id(),
-                    header: Box::new(deploy.header().clone()),
+                    deploy_type: Box::new(deploy.deploy_type()),
                 };
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));

@@ -6,6 +6,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use fmt::Display;
+use serde::{Deserialize, Serialize};
 
 use super::{BlockHeight, BlockProposerDeploySets};
 use crate::{
@@ -13,6 +14,25 @@ use crate::{
     types::{DeployHash, DeployHeader, ProtoBlock},
     Chainspec,
 };
+
+/// A wrapper over `DeployHeader` to differentiate between wasm-less transfers and wasm headers.
+#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
+pub enum DeployType {
+    /// Represents a wasm-less transfer.
+    Transfer(DeployHeader),
+    /// Represents a wasm deploy.
+    Wasm(DeployHeader),
+}
+
+impl DeployType {
+    /// Access header in all variants of `DeployType`.
+    pub fn header(&self) -> &DeployHeader {
+        match self {
+            Self::Transfer(header) => header,
+            Self::Wasm(header) => header,
+        }
+    }
+}
 
 /// An event for when using the block proposer as a component.
 #[derive(DataSize, Debug, From)]
@@ -28,12 +48,12 @@ pub enum Event {
         sets: Option<BlockProposerDeploySets>,
     },
     /// A new deploy should be buffered.
-    Buffer {
+    BufferDeploy {
         hash: DeployHash,
-        header: Box<DeployHeader>,
+        deploy_type: Box<DeployType>,
     },
-    /// The deploy-buffer has been asked to prune stale deploys
-    BufferPrune,
+    /// The block proposer has been asked to prune stale deploys
+    Prune,
     /// A proto block has been finalized. We should never propose its deploys again.
     FinalizedProtoBlock {
         block: ProtoBlock,
@@ -52,8 +72,8 @@ impl Display for Event {
                 f,
                 "loaded block-proposer deploy sets, none found in storage"
             ),
-            Event::Buffer { hash, .. } => write!(f, "block-proposer add {}", hash),
-            Event::BufferPrune => write!(f, "buffer prune"),
+            Event::BufferDeploy { hash, .. } => write!(f, "block-proposer add {}", hash),
+            Event::Prune => write!(f, "block-proposer prune"),
             Event::FinalizedProtoBlock { block, height } => {
                 write!(
                     f,

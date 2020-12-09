@@ -38,7 +38,9 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
-    types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalizedBlock, NodeId},
+    types::{
+        Block, BlockHash, BlockLike, Deploy, DeployHash, DeployHeader, FinalizedBlock, NodeId,
+    },
     NodeRng,
 };
 pub(crate) use event::Event;
@@ -132,7 +134,12 @@ impl BlockExecutor {
         effect_builder: EffectBuilder<REv>,
         finalized_block: FinalizedBlock,
     ) -> Effects<Event> {
-        let deploy_hashes = SmallVec::from_slice(finalized_block.proto_block().deploys());
+        let deploy_hashes = finalized_block
+            .proto_block()
+            .deploys()
+            .iter()
+            .map(|hash| **hash)
+            .collect::<SmallVec<_>>();
         let era_id = finalized_block.era_id();
         let height = finalized_block.height();
 

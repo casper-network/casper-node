@@ -80,6 +80,16 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             .cloned()
             .map(Into::into);
 
+        let new_unbonding_delay: Option<EraId> = if !upgrade_point.has_new_unbonding_delay() {
+            None
+        } else {
+            Some(
+                upgrade_point
+                    .take_new_unbonding_delay()
+                    .get_new_unbonding_delay(),
+            )
+        };
+
         Ok(UpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
@@ -92,6 +102,7 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             new_auction_delay,
             new_locked_funds_period,
             new_round_seigniorage_rate,
+            new_unbonding_delay,
         ))
     }
 }

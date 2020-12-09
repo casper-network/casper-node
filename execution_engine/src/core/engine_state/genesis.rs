@@ -267,6 +267,7 @@ pub struct ExecConfig {
     auction_delay: u64,
     locked_funds_period: EraId,
     round_seigniorage_rate: Ratio<u64>,
+    unbonding_delay: EraId,
 }
 
 impl ExecConfig {
@@ -282,6 +283,7 @@ impl ExecConfig {
         auction_delay: u64,
         locked_funds_period: EraId,
         round_seigniorage_rate: Ratio<u64>,
+        unbonding_delay: EraId,
     ) -> ExecConfig {
         ExecConfig {
             mint_installer_bytes,
@@ -294,6 +296,7 @@ impl ExecConfig {
             auction_delay,
             locked_funds_period,
             round_seigniorage_rate,
+            unbonding_delay,
         }
     }
 
@@ -346,6 +349,10 @@ impl ExecConfig {
     pub fn round_seigniorage_rate(&self) -> Ratio<u64> {
         self.round_seigniorage_rate
     }
+
+    pub fn unbonding_delay(&self) -> EraId {
+        self.unbonding_delay
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -374,6 +381,8 @@ impl Distribution<ExecConfig> for Standard {
 
         let locked_funds_period: EraId = rng.gen();
 
+        let unbonding_delay = rng.gen();
+
         let round_seigniorage_rate = Ratio::new(
             rng.gen_range(1, 1_000_000_000),
             rng.gen_range(1, 1_000_000_000),
@@ -390,6 +399,7 @@ impl Distribution<ExecConfig> for Standard {
             auction_delay,
             locked_funds_period,
             round_seigniorage_rate,
+            unbonding_delay,
         }
     }
 }
