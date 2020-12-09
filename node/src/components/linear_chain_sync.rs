@@ -565,7 +565,7 @@ fn fetch_block_by_hash<I: Send + 'static, REv>(
 where
     REv: ReactorEventT<I>,
 {
-    effect_builder.fetch_block(block_hash, peer).option(
+    effect_builder.fetch_block(block_hash, peer).fold(
         move |value| Event::GetBlockHashResult(block_hash, Some(value)),
         move || Event::GetBlockHashResult(block_hash, None),
     )
@@ -581,7 +581,7 @@ where
 {
     effect_builder
         .fetch_block_by_height(block_height, peer.clone())
-        .option(
+        .fold(
             move |fetch_result| match fetch_result {
                 FetchResult::FromPeer(result, _) => match *result {
                     BlockByHeight::Absent(ret_height) => {

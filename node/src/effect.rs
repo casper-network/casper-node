@@ -254,10 +254,19 @@ pub trait EffectOptionExt {
     ///
     /// The function `f_some` is used to translate the returned value from an effect into an event,
     /// while the function `f_none` does the same for a returned `None`.
-    fn option<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
+    fn fold<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
     where
         F: FnOnce(Self::Value) -> U + 'static + Send,
         G: FnOnce() -> U + 'static + Send,
+        U: 'static;
+
+    /// Finalizes a future returning an `Option` into two different effects.
+    ///
+    /// The function `f` is used to translate the returned value from an effect into an event,
+    /// In the case of `None`, empty vector of effects is returned.
+    fn map_some<U, F>(self, f: F) -> Effects<U>
+    where
+        F: FnOnce(Self::Value) -> U + 'static + Send,
         U: 'static;
 }
 
@@ -306,7 +315,7 @@ where
 {
     type Value = V;
 
-    fn option<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
+    fn fold<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
     where
         F: FnOnce(V) -> U + 'static + Send,
         G: FnOnce() -> U + 'static + Send,
@@ -315,6 +324,22 @@ where
         smallvec![self
             .map(|option| option.map_or_else(f_none, f_some))
             .map(|item| smallvec![item])
+            .boxed()]
+    }
+
+    /// Finalizes a future returning an `Option`.
+    ///
+    /// The function `f` is used to translate the returned value from an effect into an event,
+    /// In the case of `None`, empty vector is returned.
+    fn map_some<U, F>(self, f: F) -> Effects<U>
+    where
+        F: FnOnce(Self::Value) -> U + 'static + Send,
+        U: 'static,
+    {
+        smallvec![self
+            .map(|option| option
+                .map(|el| smallvec![f(el)])
+                .unwrap_or_else(|| smallvec![]))
             .boxed()]
     }
 }
