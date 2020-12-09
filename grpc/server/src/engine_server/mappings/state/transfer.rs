@@ -25,6 +25,11 @@ impl From<Transfer> for state::Transfer {
             pb_account_hash.account_hash = transfer.from.value().to_vec();
             ret.set_from(pb_account_hash);
         }
+        if let Some(to) = transfer.to {
+            let mut pb_account_hash = state::AccountHash::new();
+            pb_account_hash.account_hash = to.value().to_vec();
+            ret.set_to(pb_account_hash);
+        }
         ret.set_source(transfer.source.into());
         ret.set_target(transfer.target.into());
         ret.set_amount(transfer.amount.into());
@@ -55,6 +60,16 @@ impl TryFrom<state::Transfer> for Transfer {
             )
             .map(AccountHash::new)?
         };
+        let to = if pb_transfer.has_to() {
+            let pb_account_hash = pb_transfer.get_to();
+            mappings::vec_to_array(
+                pb_account_hash.account_hash.to_owned(),
+                "Protobuf Transfer.to",
+            )
+            .map(|arr| Some(AccountHash::new(arr)))
+        } else {
+            Ok(None)
+        }?;
         let source = URef::try_from(pb_transfer.get_source().to_owned())?;
         let target = URef::try_from(pb_transfer.get_target().to_owned())?;
         let amount = U512::try_from(pb_transfer.get_amount().to_owned())?;
@@ -67,6 +82,7 @@ impl TryFrom<state::Transfer> for Transfer {
         Ok(Transfer {
             deploy_hash,
             from,
+            to,
             source,
             target,
             amount,

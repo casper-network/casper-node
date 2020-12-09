@@ -109,6 +109,8 @@ pub struct Transfer {
     pub deploy_hash: DeployHash,
     /// Account from which transfer was executed
     pub from: AccountHash,
+    /// Account to which funds are transferred
+    pub to: Option<AccountHash>,
     /// Source purse
     pub source: URef,
     /// Target purse
@@ -123,9 +125,11 @@ pub struct Transfer {
 
 impl Transfer {
     /// Creates a [`Transfer`].
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         deploy_hash: DeployHash,
         from: AccountHash,
+        to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
@@ -135,6 +139,7 @@ impl Transfer {
         Transfer {
             deploy_hash,
             from,
+            to,
             source,
             target,
             amount,
@@ -148,6 +153,7 @@ impl FromBytes for Transfer {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (deploy_hash, rem) = FromBytes::from_bytes(bytes)?;
         let (from, rem) = AccountHash::from_bytes(rem)?;
+        let (to, rem) = <Option<AccountHash>>::from_bytes(rem)?;
         let (source, rem) = URef::from_bytes(rem)?;
         let (target, rem) = URef::from_bytes(rem)?;
         let (amount, rem) = U512::from_bytes(rem)?;
@@ -157,6 +163,7 @@ impl FromBytes for Transfer {
             Transfer {
                 deploy_hash,
                 from,
+                to,
                 source,
                 target,
                 amount,
@@ -173,6 +180,7 @@ impl ToBytes for Transfer {
         let mut result = bytesrepr::allocate_buffer(self)?;
         result.append(&mut self.deploy_hash.to_bytes()?);
         result.append(&mut self.from.to_bytes()?);
+        result.append(&mut self.to.to_bytes()?);
         result.append(&mut self.source.to_bytes()?);
         result.append(&mut self.target.to_bytes()?);
         result.append(&mut self.amount.to_bytes()?);
@@ -184,6 +192,7 @@ impl ToBytes for Transfer {
     fn serialized_length(&self) -> usize {
         self.deploy_hash.serialized_length()
             + self.from.serialized_length()
+            + self.to.serialized_length()
             + self.source.serialized_length()
             + self.target.serialized_length()
             + self.amount.serialized_length()
@@ -380,23 +389,25 @@ mod gens {
         (
             deploy_hash_arb(),
             account_hash_arb(),
+            option::of(account_hash_arb()),
             uref_arb(),
             uref_arb(),
             u512_arb(),
             u512_arb(),
             option::of(<u64>::arbitrary()),
         )
-            .prop_map(
-                |(deploy_hash, from, source, target, amount, gas, id)| Transfer {
+            .prop_map(|(deploy_hash, from, to, source, target, amount, gas, id)| {
+                Transfer {
                     deploy_hash,
                     from,
+                    to,
                     source,
                     target,
                     amount,
                     gas,
                     id,
-                },
-            )
+                }
+            })
     }
 }
 

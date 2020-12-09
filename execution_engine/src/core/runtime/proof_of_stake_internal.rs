@@ -33,7 +33,7 @@ where
         amount: U512,
     ) -> Result<(), ApiError> {
         let mint_contract_key = self.get_mint_contract();
-        match self.mint_transfer(mint_contract_key, source, target, amount, None) {
+        match self.mint_transfer(mint_contract_key, None, source, target, amount, None) {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(api_error)) => Err(api_error),
             Err(_) => Err(ApiError::Transfer),
