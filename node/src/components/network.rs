@@ -2,6 +2,7 @@ mod behavior;
 mod config;
 mod error;
 mod event;
+mod gossip;
 mod one_way_message;
 
 use std::{
@@ -38,12 +39,14 @@ use tokio::{
     select,
     sync::{mpsc, watch},
     task::JoinHandle,
+    time,
 };
 use tracing::{debug, error, info, trace, warn};
 
 pub(crate) use self::event::Event;
 use self::{
     behavior::{Behavior, SwarmBehaviorEvent},
+    gossip::{Behavior as GossipBehavior, ListeningAddresses},
     one_way_message::{
         Behavior as OneWayMessageBehavior, IncomingMessage as OneWayIncomingMessage,
         Message as OneWayMessage, OutgoingMessage as OneWayOutgoingMessage,
@@ -117,14 +120,12 @@ where
     #[data_size(skip)]
     one_way_message_sender: mpsc::UnboundedSender<OneWayOutgoingMessage<P>>,
     /// The interval between each fresh round of gossiping the node's public listening address.
-    gossip_interval: Duration,
-    /// An index for an iteration of gossiping our own public listening address.  This is
-    /// incremented by 1 on each iteration, and wraps on overflow.
-    next_gossip_address_index: u32,
+    gossip_address_interval: Duration,
     /// Channel signaling a shutdown of the network component.
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
     server_join_handle: Option<JoinHandle<()>>,
+    addresses_gossiper_join_handle: Option<JoinHandle<()>>,
     _phantom_data: PhantomData<(REv, P)>,
 }
 
@@ -145,6 +146,16 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         let our_peer_id = PeerId::from(id_keys.public());
         let our_id = NodeId::from(our_peer_id.clone());
 
+        // Do preliminary validation of the address gossiper configuration.
+        if config.gossip_duplicate_cache_timeout > config.gossip_address_interval {
+            warn!(
+                "{}: invalid address gossiper config: gossip_duplicate_cache_timeout ({}) > \
+                gossip_address_interval ({})",
+                our_id, config.gossip_duplicate_cache_timeout, config.gossip_address_interval
+            );
+            return Err(Error::InvalidAddressGossipConfig);
+        }
+
         // Convert the known addresses to multiaddr format and prepare the shutdown signal.
         let known_addresses = config
             .known_addresses
@@ -158,7 +169,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         // Assert we have at least one known address in the config.
         if known_addresses.is_empty() {
             warn!("{}: no known addresses provided via config", our_id);
-            return Err(Error::InvalidConfig);
+            return Err(Error::NoKnownAddress);
         }
 
         let (one_way_message_sender, one_way_message_receiver) = mpsc::unbounded_channel();
@@ -172,10 +183,10 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 listening_addresses: vec![],
                 known_addresses,
                 one_way_message_sender,
-                gossip_interval: config.gossip_interval.into(),
-                next_gossip_address_index: 0,
+                gossip_address_interval: config.gossip_address_interval.into(),
                 shutdown_sender: Some(server_shutdown_sender),
                 server_join_handle: None,
+                addresses_gossiper_join_handle: None,
                 _phantom_data: PhantomData,
             };
             return Ok((network, Effects::new()));
@@ -224,12 +235,22 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         })?;
 
         // Start the server task.
+        let (gossip_our_addresses_sender, gossip_our_addresses_receiver) =
+            mpsc::unbounded_channel();
         let server_join_handle = Some(tokio::spawn(server_task(
             event_queue,
             one_way_message_receiver,
-            server_shutdown_receiver,
+            gossip_our_addresses_receiver,
+            server_shutdown_receiver.clone(),
             our_id.clone(),
             swarm,
+        )));
+
+        // Start the addresses-gossiper task.
+        let addresses_gossiper_join_handle = Some(tokio::spawn(addresses_gossiper_task(
+            config.gossip_address_interval.into(),
+            gossip_our_addresses_sender,
+            server_shutdown_receiver,
         )));
 
         let network = Network {
@@ -238,10 +259,10 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             listening_addresses: vec![],
             known_addresses,
             one_way_message_sender,
-            gossip_interval: config.gossip_interval.into(),
-            next_gossip_address_index: 0,
+            gossip_address_interval: config.gossip_address_interval.into(),
             shutdown_sender: Some(server_shutdown_sender),
             server_join_handle,
+            addresses_gossiper_join_handle,
             _phantom_data: PhantomData,
         };
         Ok((network, Effects::new()))
@@ -393,12 +414,14 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     event_queue: EventQueueHandle<REv>,
     // Receives outgoing one-way messages to be sent out via libp2p.
     mut one_way_outgoing_message_receiver: mpsc::UnboundedReceiver<OneWayOutgoingMessage<P>>,
+    // Receives notifications that we should begin a new round of gossiping our listening
+    // addresses.
+    mut gossip_our_addresses_receiver: mpsc::UnboundedReceiver<()>,
     // Receives notification to shut down the server loop.
     mut shutdown_receiver: watch::Receiver<()>,
     our_id: NodeId,
     mut swarm: Swarm<Behavior<P>>,
 ) {
-    let our_id_cloned = our_id.clone();
     let main_task = async move {
         loop {
             // Note that `select!` will cancel all futures on branches not eventually selected by
@@ -407,11 +430,11 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                 // `swarm.next_event()` is cancellation-safe - see
                 // https://github.com/libp2p/rust-libp2p/issues/1876
                 swarm_event = swarm.next_event() => {
-                    trace!("{}: {:?}", our_id_cloned, swarm_event);
-                    handle_swarm_event(event_queue, swarm_event).await;
+                    trace!("{}: {:?}", Swarm::local_peer_id(&swarm), swarm_event);
+                    handle_swarm_event(&mut swarm, event_queue, swarm_event).await;
                 }
 
-                // `UnboundedReceiver::recv()` is also cancellation safe - see
+                // `UnboundedReceiver::recv()` is cancellation safe - see
                 // https://tokio.rs/tokio/tutorial/select#cancellation
                 maybe_outgoing_message = one_way_outgoing_message_receiver.recv() => {
                     match maybe_outgoing_message {
@@ -421,7 +444,23 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                         }
                         None => {
                             // The data sender has been dropped - exit the loop.
-                            info!("{}: exiting network server task", our_id_cloned);
+                            info!("{}: exiting network server task", Swarm::local_peer_id(&swarm));
+                            break;
+                        }
+                    }
+                }
+
+                // `UnboundedReceiver::recv()` is cancellation safe - see
+                // https://tokio.rs/tokio/tutorial/select#cancellation
+                maybe_notification = gossip_our_addresses_receiver.recv() => {
+                    match maybe_notification {
+                        Some(()) => {
+                            let listening_addresses = Swarm::listeners(&swarm).cloned().collect();
+                            swarm.gossip_our_listening_addresses(listening_addresses);
+                        }
+                        None => {
+                            // The data sender has been dropped - exit the loop.
+                            info!("{}: exiting network server task", Swarm::local_peer_id(&swarm));
                             break;
                         }
                     }
@@ -441,6 +480,7 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
 }
 
 async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
+    swarm: &mut Swarm<Behavior<P>>,
     event_queue: EventQueueHandle<REv>,
     swarm_event: SwarmEvent<SwarmBehaviorEvent<P>, E>,
 ) {
@@ -509,6 +549,27 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
                 )
                 .await;
         }
+        SwarmEvent::Behaviour(SwarmBehaviorEvent::AddressesGossiper(ListeningAddresses {
+            source,
+            addresses,
+        })) => {
+            // We've received a set of listening addresses gossiped from a peer - try to connect if
+            // we aren't already.
+            if Swarm::connection_info(swarm, &source).is_some() {
+                debug!(
+                    "{}: already connected to {}",
+                    Swarm::local_peer_id(&swarm),
+                    source
+                );
+                return;
+            }
+            for address in addresses {
+                if let Err(error) = Swarm::dial_addr(swarm, address.clone()) {
+                    debug!(%error, %address, "{}: failed to dial peer", Swarm::local_peer_id(&swarm));
+                }
+            }
+            return;
+        }
         SwarmEvent::Behaviour(SwarmBehaviorEvent::Ping(ping_event)) => {
             trace!("{:?}", ping_event);
             // Nothing to do here - just return.
@@ -520,6 +581,32 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
         | SwarmEvent::Dialing(_) => return,
     };
     event_queue.schedule(event, QueueKind::Network).await;
+}
+
+/// Sends notifications at `period` intervals via the `notify_sender` channel to the `server_task()`
+/// in order to trigger a fresh round of gossiping our listening addresses.
+async fn addresses_gossiper_task(
+    period: Duration,
+    notify_sender: mpsc::UnboundedSender<()>,
+    // Receives notification to shut down the addresses-gossiper loop.
+    mut shutdown_receiver: watch::Receiver<()>,
+) {
+    let main_task = async move {
+        let mut interval = time::interval(period);
+        loop {
+            interval.tick().await;
+            let _ = notify_sender.send(());
+        }
+    };
+
+    let shutdown_messages = async move { while shutdown_receiver.recv().await.is_some() {} };
+
+    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
+    // infinite loop to terminate, which never happens.
+    match future::select(Box::pin(shutdown_messages), Box::pin(main_task)).await {
+        Either::Left(_) => info!("shutting down addresses-gossiper task"),
+        Either::Right(_) => unreachable!(),
+    }
 }
 
 /// Converts a string of the form "127.0.0.1:34553" into a Multiaddr equivalent to

@@ -8,7 +8,15 @@ use thiserror::Error;
 pub enum Error {
     /// Invalid configuration: must have at least one known address.
     #[error("config must have at least one known address")]
-    InvalidConfig,
+    NoKnownAddress,
+
+    /// Invalid configuration: gossip_address_interval must not be less than
+    /// gossip_duplicate_cache_timeout.
+    #[error(
+        "gossip_address_interval must not be less than gossip_duplicate_cache_timeout so that \
+        gossiped addresses are not blocked as duplicates"
+    )]
+    InvalidAddressGossipConfig,
 
     /// Signing libp2p-noise static ID keypair failed.
     #[error("signing libp2p-noise static ID keypair failed: {0}")]
