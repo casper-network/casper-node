@@ -199,7 +199,7 @@ impl Display for LinearChainAnnouncement {
                 write!(f, "block added {}", block_hash)
             }
             LinearChainAnnouncement::NewFinalitySignature(fs) => {
-                write!(f, "new finsliaty signature {}", fs.block_hash)
+                write!(f, "new finality signature {}", fs.block_hash)
             }
         }
     }

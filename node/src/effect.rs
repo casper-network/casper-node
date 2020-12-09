@@ -960,7 +960,7 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// The linear chain has stored new finality signature.
+    /// The linear chain has stored a new finality signature.
     pub(crate) async fn announce_finality_signature(self, fs: Box<FinalitySignature>)
     where
         REv: From<LinearChainAnnouncement>,
