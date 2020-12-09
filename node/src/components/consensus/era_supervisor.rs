@@ -723,6 +723,7 @@ where
                 })
                 .collect(),
             ProtocolOutcome::WeAreFaulty => Default::default(),
+            ProtocolOutcome::DoppelgangerDetected => Default::default(),
         }
     }
 

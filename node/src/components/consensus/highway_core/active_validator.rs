@@ -37,6 +37,8 @@ pub(crate) enum Effect<C: Context> {
     ///
     /// When this is returned, the validator automatically deactivates.
     WeAreFaulty(Fault<C>),
+    /// A unit signed by the same public key has been received by this instance of the node.
+    DoppelgangerDetected(C::Hash),
 }
 
 /// A validator that actively participates in consensus by creating new vertices.
@@ -145,6 +147,10 @@ impl<C: Context> ActiveValidator<C> {
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
+        let creator = state.unit(uhash).creator;
+        if creator == self.vidx {
+            return vec![Effect::DoppelgangerDetected(*uhash)];
+        }
         if let Some(fault) = state.opt_fault(self.vidx) {
             return vec![Effect::WeAreFaulty(fault.clone())];
         }

@@ -182,6 +182,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 error!("this validator is faulty: {:?}", fault);
                 vec![ProtocolOutcome::WeAreFaulty]
             }
+            AvEffect::DoppelgangerDetected(uhash) => {
+                error!("received unit from a doppelganger: {}", uhash);
+                vec![ProtocolOutcome::DoppelgangerDetected]
+            }
         }
     }
 
