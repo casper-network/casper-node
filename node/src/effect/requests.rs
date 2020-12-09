@@ -828,7 +828,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
 /// Consensus component requests.
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
-    HandleLinearBlock(Box<BlockHeader>, Responder<FinalitySignature>),
+    HandleLinearBlock(Box<BlockHeader>, Responder<Option<FinalitySignature>>),
 }
 
 /// ChainspecLoader componenent requests.
