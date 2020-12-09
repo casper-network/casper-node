@@ -9,7 +9,6 @@ use std::{
     iter,
 };
 
-use casper_execution_engine::shared::motes::Motes;
 use datasize::DataSize;
 use itertools::Itertools;
 use num_traits::AsPrimitive;
@@ -40,6 +39,10 @@ use crate::{
     NodeRng,
 };
 
+/// Never allow more than this many units in a piece of evidence for conflicting endorsements,
+/// even if eras are longer than this.
+const MAX_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 10000;
+
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
 where
@@ -62,23 +65,23 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// Creates a new boxed `HighwayProtocol` instance.
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
-        validator_stakes: Vec<(C::ValidatorId, Motes)>,
+        validator_stakes: BTreeMap<C::ValidatorId, U512>,
         slashed: &HashSet<C::ValidatorId>,
         chainspec: &Chainspec,
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
         start_time: Timestamp,
         seed: u64,
     ) -> Box<dyn ConsensusProtocol<I, C>> {
-        let sum_stakes: Motes = validator_stakes.iter().map(|(_, stake)| *stake).sum();
+        let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         assert!(
-            !sum_stakes.value().is_zero(),
+            !sum_stakes.is_zero(),
             "cannot start era with total weight 0"
         );
         // For Highway, we need u64 weights. Scale down by  sum / u64::MAX,  rounded up.
         // If we round up the divisor, the resulting sum is guaranteed to be  <= u64::MAX.
-        let scaling_factor = (sum_stakes.value() + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
-        let scale_stake = |(key, stake): (C::ValidatorId, Motes)| {
-            (key, AsPrimitive::<u64>::as_(stake.value() / scaling_factor))
+        let scaling_factor = (sum_stakes + U512::from(u64::MAX) - 1) / U512::from(u64::MAX);
+        let scale_stake = |(key, stake): (C::ValidatorId, U512)| {
+            (key, AsPrimitive::<u64>::as_(stake / scaling_factor))
         };
         let mut validators: Validators<C::ValidatorId> =
             validator_stakes.into_iter().map(scale_stake).collect();
@@ -91,8 +94,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let highway_config = &chainspec.genesis.highway_config;
 
         let total_weight = u128::from(validators.total_weight());
-        let ftt_percent = u128::from(highway_config.finality_threshold_percent);
-        let ftt = ((total_weight * ftt_percent / 100) as u64).into();
+        let ftt_fraction = highway_config.finality_threshold_fraction;
+        let ftt = ((total_weight * *ftt_fraction.numer() as u128 / *ftt_fraction.denom() as u128)
+            as u64)
+            .into();
 
         let init_round_exp = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<I, C>>())
@@ -104,16 +109,27 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             "initializing Highway instance",
         );
 
+        // Allow about as many units as part of evidence for conflicting endorsements as we expect
+        // a validator to create during an era. After that, they can endorse two conflicting forks
+        // without getting slashed.
+        let min_round_len = 1 << highway_config.minimum_round_exponent;
+        let min_rounds_per_era = highway_config
+            .minimum_era_height
+            .max(1 + highway_config.era_duration.millis() / min_round_len);
+        let endorsement_evidence_limit =
+            (2 * min_rounds_per_era).min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
+
         let params = Params::new(
             seed,
             BLOCK_REWARD,
-            BLOCK_REWARD / 5, // TODO: Make reduced block reward configurable?
+            (highway_config.reduced_reward_multiplier * BLOCK_REWARD).to_integer(),
             highway_config.minimum_round_exponent,
             highway_config.maximum_round_exponent,
             init_round_exp,
             highway_config.minimum_era_height,
             start_time,
             start_time + highway_config.era_duration,
+            endorsement_evidence_limit,
         );
 
         let min_round_exp = params.min_round_exp();

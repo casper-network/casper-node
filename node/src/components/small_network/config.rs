@@ -67,7 +67,7 @@ impl Config {
         Config {
             bind_address: bind_address.to_string(),
             public_address: bind_address.to_string(),
-            known_addresses: Vec::new(),
+            known_addresses: vec![bind_address.to_string()],
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
             systemd_support: false,
         }

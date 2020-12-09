@@ -119,6 +119,7 @@ where
                 public_key,
                 timestamp,
             }),
+            Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
         }
     }
 }

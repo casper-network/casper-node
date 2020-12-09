@@ -5,7 +5,10 @@ use casper_types::ExecutionResult;
 use crate::{
     components::consensus::EraId,
     crypto::asymmetric_key::PublicKey,
-    types::{BlockHash, BlockHeader, DeployHash, DeployHeader, FinalizedBlock, Timestamp},
+    types::{
+        BlockHash, BlockHeader, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
+        Timestamp,
+    },
 };
 
 #[derive(Debug)]
@@ -26,6 +29,7 @@ pub enum Event {
         public_key: PublicKey,
         timestamp: Timestamp,
     },
+    FinalitySignature(Box<FinalitySignature>),
 }
 
 impl Display for Event {
@@ -46,9 +50,10 @@ impl Display for Event {
                 timestamp,
             } => write!(
                 formatter,
-                "equivocation event detected for publickey:{} at time:{} in era:{}",
+                "An equivocator with publickey: {} has been identified at time: {} in era: {}",
                 public_key, timestamp, era_id,
             ),
+            Event::FinalitySignature(fs) => write!(formatter, "finality signature {}", fs),
         }
     }
 }

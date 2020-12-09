@@ -189,8 +189,8 @@ pub fn transfer(
     maybe_target_purse: &str,
     maybe_target_account: &str,
     maybe_id: &str,
-    deploy: DeployStrParams<'_>,
-    payment: PaymentStrParams<'_>,
+    deploy_params: DeployStrParams<'_>,
+    payment_params: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
     let target = parsing::get_transfer_target(maybe_target_account, maybe_target_purse)?;
 
@@ -206,8 +206,8 @@ pub fn transfer(
         source_purse,
         target,
         maybe_id,
-        deploy.try_into()?,
-        payment.try_into()?,
+        deploy_params.try_into()?,
+        payment_params.try_into()?,
     )
 }
 

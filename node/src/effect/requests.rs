@@ -5,9 +5,8 @@
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    net::SocketAddr,
     sync::Arc,
 };
 
@@ -42,13 +41,12 @@ use crate::{
         chainspec_loader::ChainspecInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
-        linear_chain::FinalitySignature,
     },
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalizedBlock, Item, StatusFeed, Timestamp,
+        DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -173,7 +171,8 @@ pub enum NetworkInfoRequest<I> {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
-        responder: Responder<HashMap<I, SocketAddr>>,
+        // TODO - change the `String` field to a `libp2p::Multiaddr` once small_network is removed.
+        responder: Responder<BTreeMap<I, String>>,
     },
 }
 
@@ -375,7 +374,7 @@ impl Display for StateStoreRequest {
 
 /// Details of a request for a list of deploys to propose in a new block.
 #[derive(DataSize, Debug)]
-pub struct ListForInclusionRequest {
+pub struct ProtoBlockRequest {
     /// The instant for which the deploy is requested.
     pub(crate) current_instant: Timestamp,
     /// Set of deploy hashes of deploys that should be excluded in addition to the finalized ones.
@@ -385,8 +384,10 @@ pub struct ListForInclusionRequest {
     /// request was made. Block Proposer uses this in order to determine if there might be any
     /// deploys that are neither in `past_deploys`, nor among the finalized deploys it knows of.
     pub(crate) next_finalized: u64,
+    /// Random bit with which to construct the `ProtoBlock` requested.
+    pub(crate) random_bit: bool,
     /// Responder to call with the result.
-    pub(crate) responder: Responder<HashSet<DeployHash>>,
+    pub(crate) responder: Responder<ProtoBlock>,
 }
 
 /// A `BlockProposer` request.
@@ -394,17 +395,18 @@ pub struct ListForInclusionRequest {
 #[must_use]
 pub enum BlockProposerRequest {
     /// Request a list of deploys to propose in a new block.
-    ListForInclusion(ListForInclusionRequest),
+    RequestProtoBlock(ProtoBlockRequest),
 }
 
 impl Display for BlockProposerRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            BlockProposerRequest::ListForInclusion(ListForInclusionRequest {
+            BlockProposerRequest::RequestProtoBlock(ProtoBlockRequest {
                 current_instant,
                 past_deploys,
                 next_finalized,
                 responder: _,
+                random_bit: _,
             }) => write!(
                 formatter,
                 "list for inclusion: instant {} past {} next_finalized {}",
@@ -491,7 +493,7 @@ pub enum RpcRequest<I> {
     /// Return the connected peers.
     GetPeers {
         /// Responder to call with the result.
-        responder: Responder<HashMap<I, SocketAddr>>,
+        responder: Responder<BTreeMap<I, String>>,
     },
     /// Return string formatted status or `None` if an error occurred.
     GetStatus {

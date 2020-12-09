@@ -116,6 +116,13 @@ where
     Ok(auction_delay)
 }
 
+fn get_unbonding_delay<P>(provider: &mut P) -> Result<EraId>
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    read_from(provider, UNBONDING_DELAY_KEY)
+}
+
 /// Iterates over unbonding entries and checks if a locked amount can be paid already if
 /// a specific era is reached.
 ///
@@ -130,13 +137,15 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
 
     let current_era_id = provider.read_era_id()?;
 
+    let unbonding_delay = get_unbonding_delay(provider)?;
+
     for unbonding_list in unbonding_purses.values_mut() {
         let mut new_unbonding_list = Vec::new();
         for unbonding_purse in unbonding_list.iter() {
             // Since `process_unbond_requests` is run before `run_auction`, we should check if
-            // current era id + unbonding deal is equal or greater than the `era_of_creation` that
+            // current era id + unbonding delay is equal or greater than the `era_of_creation` that
             // was calculated on `unbond` attempt.
-            if current_era_id >= unbonding_purse.era_of_creation() + DEFAULT_UNBONDING_DELAY {
+            if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
                 // Move funds from bid purse to unbonding purse
                 provider
                     .transfer_from_purse_to_purse(

@@ -15,8 +15,8 @@ use crate::{
     components::{consensus::EraId, small_network::GossipedAddress},
     crypto::asymmetric_key::PublicKey,
     types::{
-        Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalizedBlock, Item,
-        Timestamp,
+        Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
+        FinalizedBlock, Item, Timestamp,
     },
     utils::Source,
 };
@@ -126,11 +126,11 @@ pub enum ConsensusAnnouncement {
     Handled(Box<BlockHeader>),
     /// An equivocation has been detected.
     Equivocation {
-        /// The era in which the equivocation is detected
+        /// The Id of the era in which the equivocation was detected
         era_id: EraId,
-        /// The public key of the equivocator
+        /// The publickey of the equivocator.
         public_key: Box<PublicKey>,
-        /// The timestamp when the equivocation was detected by consensus
+        /// The timestamp when the evidence of the equivocation was detected.
         timestamp: Timestamp,
     },
 }
@@ -153,8 +153,8 @@ impl Display for ConsensusAnnouncement {
                 timestamp,
             } => write!(
                 formatter,
-                "An equivocator with PublicKey: {} has been identified at {} in era:{}",
-                public_key, timestamp, era_id
+                "An equivocatior with public_key: {} has been identified at time: {} in era: {}",
+                public_key, timestamp, era_id,
             ),
         }
     }
@@ -207,6 +207,8 @@ pub enum LinearChainAnnouncement {
         /// Block header.
         block_header: Box<BlockHeader>,
     },
+    /// New finality signature received.
+    NewFinalitySignature(Box<FinalitySignature>),
 }
 
 impl Display for LinearChainAnnouncement {
@@ -214,6 +216,9 @@ impl Display for LinearChainAnnouncement {
         match self {
             LinearChainAnnouncement::BlockAdded { block_hash, .. } => {
                 write!(f, "block added {}", block_hash)
+            }
+            LinearChainAnnouncement::NewFinalitySignature(fs) => {
+                write!(f, "new finality signature {}", fs.block_hash)
             }
         }
     }

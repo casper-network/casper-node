@@ -18,7 +18,9 @@ use casper_types::ExecutionResult;
 use crate::{
     components::{consensus::EraId, CLIENT_API_VERSION},
     crypto::asymmetric_key::PublicKey,
-    types::{BlockHash, BlockHeader, DeployHash, FinalizedBlock, TimeDiff, Timestamp},
+    types::{
+        BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
+    },
 };
 
 /// The URL path.
@@ -62,12 +64,14 @@ pub enum SseData {
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
-    /// An equivocation has been detected publish minimal evidence to the event stream.
+    /// Send Evidence of an equivocation to the event stream.
     Evidence {
         era_id: EraId,
         public_key: PublicKey,
         timestamp: Timestamp,
     },
+    /// New finality signature received.
+    FinalitySignature(Box<FinalitySignature>),
 }
 
 /// The components of a single SSE.
@@ -100,7 +104,7 @@ pub(super) struct NewSubscriberInfo {
     pub(super) initial_events_sender: mpsc::UnboundedSender<ServerSentEvent>,
 }
 
-/// The endpoint's query string, e.g. `http://localhost:22777?start_from=999`
+/// The endpoint's query string, e.g. `http://localhost:22777/events?start_from=999`
 #[derive(Deserialize, Debug)]
 struct Query {
     start_from: Option<Id>,
@@ -179,6 +183,7 @@ fn stream_to_client(
                     (Some(id), &SseData::BlockFinalized { .. })
                     | (Some(id), &SseData::BlockAdded { .. })
                     | (Some(id), &SseData::DeployProcessed { .. })
+                    | (Some(id), &SseData::FinalitySignature(_))
                     | (Some(id), &SseData::Evidence { .. }) => {
                         Ok((sse::id(id), sse::json(event.data)).boxed())
                     }

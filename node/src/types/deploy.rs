@@ -32,6 +32,7 @@ use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
+    components::block_proposer::DeployType,
     crypto::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
@@ -471,6 +472,20 @@ impl Deploy {
     /// Returns the `Approval`s for this deploy.
     pub fn approvals(&self) -> &[Approval] {
         &self.approvals
+    }
+
+    /// Returns the header() wrapped the correct DeployType given the `session`.
+    pub fn deploy_type(&self) -> DeployType {
+        match self.session() {
+            ExecutableDeployItem::Transfer { .. } => DeployType::Transfer(self.header().clone()),
+            ExecutableDeployItem::ModuleBytes { .. }
+            | ExecutableDeployItem::StoredContractByHash { .. }
+            | ExecutableDeployItem::StoredContractByName { .. }
+            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
+            | ExecutableDeployItem::StoredVersionedContractByName { .. } => {
+                DeployType::Wasm(self.header().clone())
+            }
+        }
     }
 
     /// Returns true if and only if:

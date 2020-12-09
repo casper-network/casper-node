@@ -13,9 +13,10 @@ use casper_types::{
         Bid, Bids, EraId, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_AUCTION_DELAY,
         ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY, DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY,
-        INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
+        ARG_UNBONDING_DELAY, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY,
+        DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
+        VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
@@ -35,6 +36,7 @@ pub extern "C" fn install() {
 
     let validator_slots: u32 = runtime::get_named_arg(ARG_VALIDATOR_SLOTS);
     let locked_funds_period: EraId = runtime::get_named_arg(ARG_LOCKED_FUNDS_PERIOD);
+    let unbonding_delay: EraId = runtime::get_named_arg(ARG_UNBONDING_DELAY);
 
     let entry_points = auction::get_entry_points();
     let (contract_package_hash, access_uref) = storage::create_contract_package_at_hash();
@@ -96,12 +98,14 @@ pub extern "C" fn install() {
             AUCTION_DELAY_KEY.into(),
             storage::new_uref(auction_delay).into(),
         );
-
         named_keys.insert(
             LOCKED_FUNDS_PERIOD_KEY.into(),
             storage::new_uref(locked_funds_period).into(),
         );
-
+        named_keys.insert(
+            UNBONDING_DELAY_KEY.into(),
+            storage::new_uref(unbonding_delay).into(),
+        );
         named_keys
     };
 

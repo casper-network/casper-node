@@ -1,6 +1,7 @@
 use std::{collections::BTreeSet, iter, rc::Rc};
 
-use casper_execution_engine::shared::motes::Motes;
+use datasize::DataSize;
+use derive_more::Display;
 
 use crate::{
     components::consensus::{
@@ -14,16 +15,16 @@ use crate::{
             State,
         },
         protocols::highway::HighwayMessage,
-        tests::{
-            mock_proto::NodeId,
-            utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
-        },
+        tests::utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
         traits::Context,
         HighwayProtocol,
     },
     testing::TestRng,
     types::Timestamp,
 };
+
+#[derive(DataSize, Debug, Ord, PartialOrd, Clone, Display, Hash, Eq, PartialEq)]
+pub(crate) struct NodeId(pub u8);
 
 /// Returns a new `State` with `ClContext` parameters suitable for tests.
 pub(crate) fn new_test_state(weights: &[state::Weight], seed: u64) -> State<ClContext> {
@@ -37,6 +38,7 @@ pub(crate) fn new_test_state(weights: &[state::Weight], seed: u64) -> State<ClCo
         u64::MAX,
         0.into(),
         Timestamp::from(u64::MAX),
+        highway_testing::TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     state::State::new(weights, params, vec![])
 }
@@ -44,13 +46,14 @@ pub(crate) fn new_test_state(weights: &[state::Weight], seed: u64) -> State<ClCo
 const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];
 
 pub(crate) fn new_test_highway_protocol() -> Box<dyn ConsensusProtocol<NodeId, ClContext>> {
-    let chainspec = new_test_chainspec(vec![(*ALICE_PUBLIC_KEY, 100)]);
+    let validators = vec![
+        (*ALICE_PUBLIC_KEY, 100.into()),
+        (*BOB_PUBLIC_KEY, 10.into()),
+    ];
+    let chainspec = new_test_chainspec(validators.clone());
     HighwayProtocol::<NodeId, ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
-        vec![
-            (*ALICE_PUBLIC_KEY, Motes::new(100.into())),
-            (*BOB_PUBLIC_KEY, Motes::new(10.into())),
-        ],
+        validators.into_iter().collect(),
         &iter::once(*BOB_PUBLIC_KEY).collect(),
         &chainspec,
         None,

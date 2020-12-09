@@ -494,7 +494,7 @@ impl<C: Context> Highway<C> {
                 Ok(self.state.pre_validate_unit(unit)?)
             }
             Vertex::Evidence(evidence) => {
-                Ok(evidence.validate(&self.validators, &self.instance_id)?)
+                Ok(evidence.validate(&self.validators, &self.instance_id, &self.state)?)
             }
             Vertex::Endorsements(endorsements) => {
                 let unit = *endorsements.unit();

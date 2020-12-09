@@ -11,7 +11,7 @@ use libp2p::{
 };
 use serde::Serialize;
 
-use super::Message;
+use super::OneWayMessage;
 use crate::{
     effect::requests::{NetworkInfoRequest, NetworkRequest},
     types::NodeId,
@@ -87,8 +87,11 @@ pub enum Event<P> {
     },
 
     // ========== Other events ==========
-    /// Received network message.
-    IncomingMessage { peer_id: NodeId, msg: Message<P> },
+    /// Received one-way network message.
+    IncomingOneWayMessage {
+        source: NodeId,
+        message: OneWayMessage<P>,
+    },
 
     /// Incoming network request.
     #[from]
@@ -163,10 +166,10 @@ impl<P: Display> Display for Event<P> {
                 reason: Err(error),
             } => write!(f, "closed listener {:?}: {}", addresses, error),
             Event::ListenerError { error } => write!(f, "non-fatal listener error: {}", error),
-            Event::IncomingMessage {
-                peer_id: node_id,
-                msg,
-            } => write!(f, "msg from {}: {}", node_id, msg),
+            Event::IncomingOneWayMessage {
+                source: node_id,
+                message,
+            } => write!(f, "message from {}: {}", node_id, message),
             Event::NetworkRequest { request } => write!(f, "request: {}", request),
             Event::NetworkInfoRequest { info_request } => {
                 write!(f, "info request: {}", info_request)

@@ -12,8 +12,11 @@ use crate::{
     components::consensus::{
         highway_core::{
             endorsement::{Endorsement, SignedEndorsement},
+            evidence::EvidenceError,
             highway::{Dependency, Endorsements},
-            highway_testing::{TEST_BLOCK_REWARD, TEST_INSTANCE_ID},
+            highway_testing::{
+                TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT, TEST_INSTANCE_ID,
+            },
         },
         traits::ValidatorSecret,
     },
@@ -113,21 +116,25 @@ impl<C: Context> SignedWireUnit<C> {
     }
 }
 
+fn test_params(seed: u64) -> Params {
+    Params::new(
+        seed,
+        TEST_BLOCK_REWARD,
+        TEST_BLOCK_REWARD / 5,
+        TEST_MIN_ROUND_EXP,
+        TEST_MAX_ROUND_EXP,
+        TEST_INIT_ROUND_EXP,
+        TEST_ERA_HEIGHT,
+        Timestamp::from(0),
+        Timestamp::from(0),
+        TEST_ENDORSEMENT_EVIDENCE_LIMIT,
+    )
+}
+
 impl State<TestContext> {
     /// Returns a new `State` with `TestContext` parameters suitable for tests.
     pub(crate) fn new_test(weights: &[Weight], seed: u64) -> Self {
-        let params = Params::new(
-            seed,
-            TEST_BLOCK_REWARD,
-            TEST_BLOCK_REWARD / 5,
-            TEST_MIN_ROUND_EXP,
-            TEST_MAX_ROUND_EXP,
-            TEST_INIT_ROUND_EXP,
-            TEST_ERA_HEIGHT,
-            Timestamp::from(0),
-            Timestamp::from(0),
-        );
-        State::new(weights, params, vec![])
+        State::new(weights, test_params(seed), vec![])
     }
 
     /// Adds the unit to the protocol state, or returns an error if it is invalid.
@@ -240,8 +247,9 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
         19,
         4,
         u64::MAX,
+        Timestamp::zero(),
         Timestamp::from(u64::MAX),
-        Timestamp::from(u64::MAX),
+        TEST_ENDORSEMENT_EVIDENCE_LIMIT,
     );
     // Everyone already knows Alice is faulty, so she is banned.
     let mut state = State::new(WEIGHTS, params, vec![ALICE]);
@@ -776,7 +784,43 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
         .opt_evidence(BOB)
         .expect("Bob should be considered faulty")
         .clone();
-    assert_eq!(Ok(()), evidence.validate(&validators, &TEST_INSTANCE_ID));
+    assert_eq!(
+        Ok(()),
+        evidence.validate(&validators, &TEST_INSTANCE_ID, &state)
+    );
+
+    let limit = TEST_ENDORSEMENT_EVIDENCE_LIMIT as usize;
+
+    let mut a = vec![a0, a1, a2];
+    while a.len() <= limit + 1 {
+        let prev_a = *a.last().unwrap();
+        a.push(add_unit!(state, rng, ALICE, None; prev_a, N, N)?);
+    }
+
+    // Carol endorses a0_prime.
+    endorse!(state, rng, CAROL, a0_prime);
+
+    // She also endorses a[limit + 1], and gets away with it because the evidence would be too big.
+    endorse!(state, rng, CAROL, a[limit + 1]);
+    assert!(!state.is_faulty(CAROL));
+
+    // But if she endorses a[limit], the units fit into an evidence vertex.
+    endorse!(state, rng, CAROL, a[limit]);
+    assert!(state.is_faulty(CAROL));
+
+    let evidence = state.opt_evidence(CAROL).expect("Carol is faulty").clone();
+    assert_eq!(
+        Ok(()),
+        evidence.validate(&validators, &TEST_INSTANCE_ID, &state)
+    );
+
+    // If the limit were less, that evidence would be considered invalid.
+    let params2 = test_params(0).with_endorsement_evidence_limit(limit as u64 - 1);
+    let state2 = State::new(WEIGHTS, params2, vec![]);
+    assert_eq!(
+        Err(EvidenceError::EndorsementTooManyUnits),
+        evidence.validate(&validators, &TEST_INSTANCE_ID, &state2)
+    );
 
     Ok(())
 }

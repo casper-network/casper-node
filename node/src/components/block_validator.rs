@@ -121,14 +121,14 @@ where
                     .iter()
                     .flat_map(|deploy_hash| {
                         // For every request, increase the number of in-flight...
-                        self.in_flight.inc(deploy_hash);
+                        self.in_flight.inc(*deploy_hash);
 
                         // ...then request it.
-                        let dh_found = *deploy_hash;
-                        let dh_not_found = *deploy_hash;
+                        let dh_found = **deploy_hash;
+                        let dh_not_found = **deploy_hash;
                         effect_builder
-                            .fetch_deploy(*deploy_hash, sender.clone())
-                            .option(
+                            .fetch_deploy(**deploy_hash, sender.clone())
+                            .map_or_else(
                                 move |result: FetchResult<Deploy>| match result {
                                     FetchResult::FromStorage(deploy)
                                     | FetchResult::FromPeer(deploy, _) => {
@@ -155,7 +155,7 @@ where
                     Entry::Vacant(entry) => {
                         // Our entry is vacant - create an entry to track the state.
                         let missing_deploys: HashSet<DeployHash> =
-                            entry.key().deploys().iter().cloned().collect();
+                            entry.key().deploys().iter().map(|hash| **hash).collect();
 
                         entry.insert(BlockValidationState {
                             missing_deploys,
