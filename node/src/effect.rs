@@ -944,7 +944,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// An equivocation has been detected.
-    pub(crate) async fn announce_equivocation_event(
+    pub(crate) async fn announce_fault_event(
         self,
         era_id: EraId,
         public_key: PublicKey,

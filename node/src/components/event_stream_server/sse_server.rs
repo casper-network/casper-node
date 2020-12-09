@@ -64,7 +64,7 @@ pub enum SseData {
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
-    /// Send Evidence of an equivocation to the event stream.
+    /// Generic representation of validator's fault in an era.
     Fault {
         era_id: EraId,
         public_key: PublicKey,

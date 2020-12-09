@@ -153,7 +153,7 @@ impl Display for ConsensusAnnouncement {
                 timestamp,
             } => write!(
                 formatter,
-                "An equivocator with public key: {} has been identified at time: {} in era: {}",
+                "Validator fault with public key: {} has been identified at time: {} in era: {}",
                 public_key, timestamp, era_id,
             ),
         }
