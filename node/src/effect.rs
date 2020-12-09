@@ -1257,7 +1257,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn handle_linear_chain_block(
         self,
         block_header: BlockHeader,
-    ) -> FinalitySignature
+    ) -> Option<FinalitySignature>
     where
         REv: From<ConsensusRequest>,
     {

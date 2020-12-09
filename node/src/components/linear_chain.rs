@@ -16,7 +16,7 @@ use crate::{
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{ConsensusRequest, LinearChainRequest, NetworkRequest, StorageRequest},
-        EffectExt, Effects, Responder,
+        EffectExt, EffectOptionExt, Effects, Responder,
     },
     protocol::Message,
     types::{Block, BlockByHeight, BlockHash, DeployHash, FinalitySignature},
@@ -219,7 +219,7 @@ where
                 effects.extend(
                     effect_builder
                         .handle_linear_chain_block(block_header.clone())
-                        .event(move |fs| Event::FinalitySignatureReceived(Box::new(fs))),
+                        .map_some(move |fs| Event::FinalitySignatureReceived(Box::new(fs))),
                 );
                 effects.extend(
                     effect_builder
