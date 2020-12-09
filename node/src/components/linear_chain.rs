@@ -25,13 +25,13 @@ use crate::{
 
 impl<I> From<FinalitySignature> for Event<I> {
     fn from(fs: FinalitySignature) -> Self {
-        Event::NewFinalitySignature(Box::new(fs))
+        Event::FinalitySignatureReceived(Box::new(fs))
     }
 }
 
 impl<I> From<Box<FinalitySignature>> for Event<I> {
     fn from(fs: Box<FinalitySignature>) -> Self {
-        Event::NewFinalitySignature(fs)
+        Event::FinalitySignatureReceived(fs)
     }
 }
 
@@ -53,8 +53,9 @@ pub enum Event<I> {
     GetBlockByHeightResult(u64, Option<Box<Block>>, I),
     /// A continuation for `BlockAtHeightLocal` scenario.
     GetBlockByHeightResultLocal(u64, Option<Box<Block>>, Responder<Option<Block>>),
-    /// New finality signature.
-    NewFinalitySignature(Box<FinalitySignature>),
+    /// Finality signature received.
+    /// Not necessarily _new_ finality signature.
+    FinalitySignatureReceived(Box<FinalitySignature>),
     /// The result of putting a block to storage.
     PutBlockResult {
         /// The block.
@@ -78,7 +79,7 @@ impl<I: Display> Display for Event<I> {
                 peer,
                 maybe_block.is_some()
             ),
-            Event::NewFinalitySignature(fs) => write!(
+            Event::FinalitySignatureReceived(fs) => write!(
                 f,
                 "linear-chain new finality signature for block: {}, from: {}",
                 fs.block_hash, fs.public_key,
@@ -218,7 +219,7 @@ where
                 effects.extend(
                     effect_builder
                         .handle_linear_chain_block(block_header.clone())
-                        .event(move |fs| Event::NewFinalitySignature(Box::new(fs))),
+                        .event(move |fs| Event::FinalitySignatureReceived(Box::new(fs))),
                 );
                 effects.extend(
                     effect_builder
@@ -227,7 +228,7 @@ where
                 );
                 effects
             }
-            Event::NewFinalitySignature(fs) => {
+            Event::FinalitySignatureReceived(fs) => {
                 let FinalitySignature {
                     block_hash,
                     public_key,
