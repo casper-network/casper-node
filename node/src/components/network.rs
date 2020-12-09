@@ -401,12 +401,18 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     let our_id_cloned = our_id.clone();
     let main_task = async move {
         loop {
+            // Note that `select!` will cancel all futures on branches not eventually selected by
+            // dropping them.  Each future inside this macro must be cancellation-safe.
             select! {
+                // `swarm.next_event()` is cancellation-safe - see
+                // https://github.com/libp2p/rust-libp2p/issues/1876
                 swarm_event = swarm.next_event() => {
                     trace!("{}: {:?}", our_id_cloned, swarm_event);
                     handle_swarm_event(event_queue, swarm_event).await;
                 }
 
+                // `UnboundedReceiver::recv()` is also cancellation safe - see
+                // https://tokio.rs/tokio/tutorial/select#cancellation
                 maybe_outgoing_message = one_way_outgoing_message_receiver.recv() => {
                     match maybe_outgoing_message {
                         Some(outgoing_message) => {
