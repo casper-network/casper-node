@@ -256,13 +256,14 @@ where
                                     .put_block_to_storage(Box::new(block))
                                     .await;
                                 let _ = effect_builder
-                                    .broadcast_message(Message::FinalitySignature(fs))
+                                    .broadcast_message(Message::FinalitySignature(fs.clone()))
                                     .await;
+                                let _ = effect_builder.announce_finality_signature(fs).await;
                             }
                         }
                     }
-                }.ignore()
-            }
+                }
+            }.ignore()
         }
     }
 }

@@ -962,6 +962,19 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// The linear chain has stored new finality signature.
+    pub(crate) async fn announce_finality_signature(self, fs: Box<FinalitySignature>)
+    where
+        REv: From<LinearChainAnnouncement>,
+    {
+        self.0
+            .schedule(
+                LinearChainAnnouncement::NewFinalitySignature(fs),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
     /// Runs the genesis process on the contract runtime.
     pub(crate) async fn commit_genesis(
         self,
