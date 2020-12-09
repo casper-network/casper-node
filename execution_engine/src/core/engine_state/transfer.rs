@@ -172,16 +172,16 @@ impl TransferRuntimeArgsBuilder {
                     }
                 };
                 match account_key.into_account() {
-                    Some(public_key) => {
-                        self.to = Some(public_key.to_owned().into());
+                    Some(account_hash) => {
+                        self.to = Some(account_hash.to_owned());
                         match tracking_copy
                             .borrow_mut()
-                            .read_account(correlation_id, public_key)
+                            .read_account(correlation_id, account_hash)
                         {
                             Ok(account) => Ok(TransferTargetMode::PurseExists(
                                 account.main_purse().with_access_rights(AccessRights::ADD),
                             )),
-                            Err(_) => Ok(TransferTargetMode::CreateAccount(public_key)),
+                            Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
                         }
                     }
                     None => Err(Error::Exec(ExecError::Revert(ApiError::Transfer))),
