@@ -13,7 +13,7 @@ mod tests;
 mod traits;
 
 use std::{
-    convert::Infallible,
+    convert::{Infallible, TryInto},
     fmt::{self, Debug, Display, Formatter},
 };
 
@@ -260,7 +260,16 @@ where
                     panic!("couldn't get the seed from the key block");
                 });
                 let validators = match get_validators_result {
-                    Ok(Some(result)) => result,
+                    Ok(Some(validator_weights)) => validator_weights
+                        .into_iter()
+                        .filter_map(|(key, stake)| match key.try_into() {
+                            Ok(key) => Some((key, stake)),
+                            Err(error) => {
+                                error!(%error, "error converting the bonded key");
+                                None
+                            }
+                        })
+                        .collect(),
                     result => {
                         error!(
                             ?result,

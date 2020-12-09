@@ -42,6 +42,7 @@ pub struct DeployConfig {
     pub(crate) max_dependencies: u8,
     pub(crate) max_block_size: u32,
     pub(crate) block_max_deploy_count: u32,
+    pub(crate) block_max_transfer_count: u32,
     pub(crate) block_gas_limit: u64,
 }
 
@@ -53,6 +54,7 @@ impl Default for DeployConfig {
             max_dependencies: 10,
             max_block_size: 10_485_760,
             block_max_deploy_count: 10,
+            block_max_transfer_count: 1000,
             block_gas_limit: 10_000_000_000_000,
         }
     }
@@ -69,6 +71,7 @@ impl DeployConfig {
         let max_dependencies = rng.gen();
         let max_block_size = rng.gen_range(1_000_000, 1_000_000_000);
         let block_max_deploy_count = rng.gen();
+        let block_max_transfer_count = rng.gen();
         let block_gas_limit = rng.gen_range(100_000_000_000, 1_000_000_000_000_000);
 
         DeployConfig {
@@ -77,6 +80,7 @@ impl DeployConfig {
             max_dependencies,
             max_block_size,
             block_max_deploy_count,
+            block_max_transfer_count,
             block_gas_limit,
         }
     }
@@ -90,15 +94,14 @@ pub(crate) struct HighwayConfig {
     // TODO: Some should be defined on-chain in a contract instead, or be part of `UpgradePoint`.
     pub(crate) era_duration: TimeDiff,
     pub(crate) minimum_era_height: u64,
-    // TODO: This is duplicated (and probably in conflict with) `AUCTION_DELAY`.
-    pub(crate) booking_duration: TimeDiff,
-    pub(crate) entropy_duration: TimeDiff,
-    // TODO: Do we need this? When we see the switch block finalized it should suffice to keep
-    // gossiping, without producing new units. Everyone else will eventually see the same finality.
-    pub(crate) voting_period_duration: TimeDiff,
-    pub(crate) finality_threshold_percent: u8,
+    #[data_size(skip)]
+    pub(crate) finality_threshold_fraction: Ratio<u64>,
     pub(crate) minimum_round_exponent: u8,
     pub(crate) maximum_round_exponent: u8,
+    /// The factor by which rewards for a round are multiplied if the greatest summit has ≤50%
+    /// quorum, i.e. no finality.
+    #[data_size(skip)]
+    pub(crate) reduced_reward_multiplier: Ratio<u64>,
 }
 
 impl Default for HighwayConfig {
@@ -106,12 +109,10 @@ impl Default for HighwayConfig {
         HighwayConfig {
             era_duration: TimeDiff::from_str("1week").unwrap(),
             minimum_era_height: 100,
-            booking_duration: TimeDiff::from_str("10days").unwrap(),
-            entropy_duration: TimeDiff::from_str("3hours").unwrap(),
-            voting_period_duration: TimeDiff::from_str("2days").unwrap(),
-            finality_threshold_percent: 10,
+            finality_threshold_fraction: Ratio::new(1, 3),
             minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
             maximum_round_exponent: 19, // 2**19 ms = ~8.7 minutes
+            reduced_reward_multiplier: Ratio::new(1, 5),
         }
     }
 }
@@ -137,6 +138,22 @@ impl HighwayConfig {
                 max = self.maximum_round_exponent
             );
         }
+
+        if self.finality_threshold_fraction <= Ratio::new(0, 1)
+            || self.finality_threshold_fraction >= Ratio::new(1, 1)
+        {
+            panic!(
+                "Finality threshold fraction is not in the range (0, 1)! Finality threshold: {ftt}",
+                ftt = self.finality_threshold_fraction
+            );
+        }
+
+        if self.reduced_reward_multiplier > Ratio::new(1, 1) {
+            panic!(
+                "Reduced reward multiplier is not in the range [0, 1]! Multiplier: {rrm}",
+                rrm = self.reduced_reward_multiplier
+            );
+        }
     }
 }
 
@@ -147,12 +164,10 @@ impl HighwayConfig {
         HighwayConfig {
             era_duration: TimeDiff::from(rng.gen_range(600_000, 604_800_000)),
             minimum_era_height: rng.gen_range(5, 100),
-            booking_duration: TimeDiff::from(rng.gen_range(600_000, 864_000_000)),
-            entropy_duration: TimeDiff::from(rng.gen_range(600_000, 10_800_000)),
-            voting_period_duration: TimeDiff::from(rng.gen_range(600_000, 172_800_000)),
-            finality_threshold_percent: rng.gen_range(0, 101),
+            finality_threshold_fraction: Ratio::new(rng.gen_range(1, 100), 100),
             minimum_round_exponent: rng.gen_range(0, 16),
             maximum_round_exponent: rng.gen_range(16, 22),
+            reduced_reward_multiplier: Ratio::new(rng.gen_range(0, 10), 10),
         }
     }
 }
@@ -205,6 +220,8 @@ pub struct GenesisConfig {
     /// Round seigniorage rate represented as a fractional number.
     #[data_size(skip)]
     pub(crate) round_seigniorage_rate: Ratio<u64>,
+    /// The delay for paying out the the unbonding amount.
+    pub(crate) unbonding_delay: EraId,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -238,7 +255,6 @@ impl GenesisConfig {
                     None
                 }
             })
-            .clone()
             .collect()
     }
 
@@ -304,6 +320,7 @@ impl GenesisConfig {
         let costs = rng.gen();
         let deploy_config = DeployConfig::random(rng);
         let highway_config = HighwayConfig::random(rng);
+        let unbonding_delay = rng.gen();
 
         GenesisConfig {
             name,
@@ -321,6 +338,7 @@ impl GenesisConfig {
             wasm_config: costs,
             deploy_config,
             highway_config,
+            unbonding_delay,
         }
     }
 }
@@ -439,6 +457,7 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.auction_delay,
             self.genesis.locked_funds_period,
             self.genesis.round_seigniorage_rate,
+            self.genesis.unbonding_delay,
         )
     }
 }
@@ -585,20 +604,15 @@ mod tests {
         );
         assert_eq!(spec.genesis.highway_config.minimum_era_height, 9);
         assert_eq!(
-            spec.genesis.highway_config.booking_duration,
-            TimeDiff::from(14400000)
+            spec.genesis.highway_config.finality_threshold_fraction,
+            Ratio::new(2, 25)
         );
-        assert_eq!(
-            spec.genesis.highway_config.entropy_duration,
-            TimeDiff::from(432000000)
-        );
-        assert_eq!(
-            spec.genesis.highway_config.voting_period_duration,
-            TimeDiff::from(3628800000)
-        );
-        assert_eq!(spec.genesis.highway_config.finality_threshold_percent, 8);
         assert_eq!(spec.genesis.highway_config.minimum_round_exponent, 14);
         assert_eq!(spec.genesis.highway_config.maximum_round_exponent, 19);
+        assert_eq!(
+            spec.genesis.highway_config.reduced_reward_multiplier,
+            Ratio::new(1, 5)
+        );
 
         assert_eq!(
             spec.genesis.deploy_config.max_payment_cost,
@@ -652,6 +666,10 @@ mod tests {
         assert_eq!(
             upgrade0.new_deploy_config.unwrap().block_max_deploy_count,
             375
+        );
+        assert_eq!(
+            upgrade0.new_deploy_config.unwrap().block_max_transfer_count,
+            376
         );
         assert_eq!(upgrade0.new_deploy_config.unwrap().block_gas_limit, 38);
 

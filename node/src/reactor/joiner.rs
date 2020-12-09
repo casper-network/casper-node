@@ -178,7 +178,7 @@ pub enum Event {
     #[from]
     NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
 
-    /// Block executor annoncement.
+    /// Block executor announcement.
     #[from]
     BlockExecutorAnnouncement(#[serde(skip_serializing)] BlockExecutorAnnouncement),
 
@@ -366,7 +366,12 @@ impl reactor::Reactor for Reactor {
         let metrics = Metrics::new(registry.clone());
 
         let network_config = network::Config::from(&config.network);
-        let (network, network_effects) = Network::new(event_queue, network_config, false)?;
+        let (network, network_effects) = Network::new(
+            event_queue,
+            network_config,
+            chainspec_loader.chainspec(),
+            false,
+        )?;
         let genesis_config_hash = chainspec_loader.chainspec().hash();
         let (small_network, small_network_effects) = SmallNetwork::new(
             event_queue,
@@ -429,10 +434,13 @@ impl reactor::Reactor for Reactor {
 
         let linear_chain = linear_chain::LinearChain::new();
 
-        let validator_stakes = chainspec_loader
+        let validator_weights = chainspec_loader
             .chainspec()
             .genesis
-            .genesis_validator_stakes();
+            .genesis_validator_stakes()
+            .into_iter()
+            .map(|(pk, motes)| (pk, motes.value()))
+            .collect();
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
@@ -441,7 +449,7 @@ impl reactor::Reactor for Reactor {
             timestamp,
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
-            validator_stakes,
+            validator_weights,
             chainspec_loader.chainspec(),
             chainspec_loader
                 .genesis_state_root_hash()
@@ -486,16 +494,10 @@ impl reactor::Reactor for Reactor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::Network(event) => {
-                if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
-                    reactor::wrap_effects(
-                        Event::Network,
-                        self.network.handle_event(effect_builder, rng, event),
-                    )
-                } else {
-                    Effects::new()
-                }
-            }
+            Event::Network(event) => reactor::wrap_effects(
+                Event::Network,
+                self.network.handle_event(effect_builder, rng, event),
+            ),
             Event::SmallNetwork(event) => reactor::wrap_effects(
                 Event::SmallNetwork,
                 self.small_network.handle_event(effect_builder, rng, event),
@@ -728,6 +730,22 @@ impl reactor::Reactor for Reactor {
                         event_stream_server::Event::BlockFinalized(block),
                     ),
                 ),
+                ConsensusAnnouncement::Fault {
+                    era_id,
+                    public_key,
+                    timestamp,
+                } => reactor::wrap_effects(
+                    Event::EventStreamServer,
+                    self.event_stream_server.handle_event(
+                        effect_builder,
+                        rng,
+                        event_stream_server::Event::Fault {
+                            era_id,
+                            public_key: *public_key,
+                            timestamp,
+                        },
+                    ),
+                ),
             },
             Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining
@@ -768,6 +786,11 @@ impl reactor::Reactor for Reactor {
                     },
                 ),
             ),
+            Event::LinearChainAnnouncement(LinearChainAnnouncement::NewFinalitySignature(fs)) => {
+                let reactor_event =
+                    Event::EventStreamServer(event_stream_server::Event::FinalitySignature(fs));
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
             Event::RestServer(event) => reactor::wrap_effects(
                 Event::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),
@@ -789,11 +812,14 @@ impl reactor::Reactor for Reactor {
             Event::ChainspecLoaderRequest(req) => {
                 self.dispatch_event(effect_builder, rng, Event::ChainspecLoader(req.into()))
             }
-            Event::NetworkInfoRequest(req) => self.dispatch_event(
-                effect_builder,
-                rng,
-                Event::SmallNetwork(small_network::Event::from(req)),
-            ),
+            Event::NetworkInfoRequest(req) => {
+                let event = if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+                    Event::Network(network::Event::from(req))
+                } else {
+                    Event::SmallNetwork(small_network::Event::from(req))
+                };
+                self.dispatch_event(effect_builder, rng, event)
+            }
         }
     }
 

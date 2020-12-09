@@ -16,9 +16,11 @@ use warp::{
 use casper_types::ExecutionResult;
 
 use crate::{
-    components::CLIENT_API_VERSION,
+    components::{consensus::EraId, CLIENT_API_VERSION},
     crypto::asymmetric_key::PublicKey,
-    types::{BlockHash, BlockHeader, DeployHash, FinalizedBlock, TimeDiff, Timestamp},
+    types::{
+        BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
+    },
 };
 
 /// The URL path.
@@ -62,6 +64,14 @@ pub enum SseData {
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
+    /// Generic representation of validator's fault in an era.
+    Fault {
+        era_id: EraId,
+        public_key: PublicKey,
+        timestamp: Timestamp,
+    },
+    /// New finality signature received.
+    FinalitySignature(Box<FinalitySignature>),
 }
 
 /// The components of a single SSE.
@@ -94,7 +104,7 @@ pub(super) struct NewSubscriberInfo {
     pub(super) initial_events_sender: mpsc::UnboundedSender<ServerSentEvent>,
 }
 
-/// The endpoint's query string, e.g. `http://localhost:22777?start_from=999`
+/// The endpoint's query string, e.g. `http://localhost:22777/events?start_from=999`
 #[derive(Deserialize, Debug)]
 struct Query {
     start_from: Option<Id>,
@@ -172,7 +182,9 @@ fn stream_to_client(
                     (None, &SseData::ApiVersion { .. }) => Ok(sse::json(event.data).boxed()),
                     (Some(id), &SseData::BlockFinalized { .. })
                     | (Some(id), &SseData::BlockAdded { .. })
-                    | (Some(id), &SseData::DeployProcessed { .. }) => {
+                    | (Some(id), &SseData::DeployProcessed { .. })
+                    | (Some(id), &SseData::FinalitySignature(_))
+                    | (Some(id), &SseData::Fault { .. }) => {
                         Ok((sse::id(id), sse::json(event.data)).boxed())
                     }
                     _ => unreachable!("only ApiVersion may have no event ID"),

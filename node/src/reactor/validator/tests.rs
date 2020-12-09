@@ -10,6 +10,7 @@ use tempfile::TempDir;
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::U512;
 use log::info;
+use num_rational::Ratio;
 
 use crate::{
     components::{consensus::EraId, small_network, storage},
@@ -71,7 +72,7 @@ impl TestChain {
         chainspec.genesis.timestamp = Timestamp::now() + 45000.into();
 
         chainspec.genesis.highway_config.minimum_era_height = 1;
-        chainspec.genesis.highway_config.finality_threshold_percent = 34;
+        chainspec.genesis.highway_config.finality_threshold_fraction = Ratio::new(34, 100);
         chainspec.genesis.highway_config.era_duration = 10.into();
 
         TestChain {

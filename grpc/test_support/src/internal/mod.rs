@@ -37,6 +37,9 @@ pub const AUCTION_INSTALL_CONTRACT: &str = "auction_install.wasm";
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 pub const DEFAULT_AUCTION_DELAY: u64 = 3;
 pub const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
+/// Default number of eras that need to pass to be able to withdraw unbonded funds.
+pub const DEFAULT_UNBONDING_DELAY: EraId = 14;
+
 /// Default round seigniorage rate represented as a fractional number.
 ///
 /// Annual issuance: 2%
@@ -110,6 +113,7 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         DEFAULT_AUCTION_DELAY,
         DEFAULT_LOCKED_FUNDS_PERIOD,
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
+        DEFAULT_UNBONDING_DELAY,
     )
 });
 pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
