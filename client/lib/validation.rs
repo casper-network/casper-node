@@ -10,7 +10,7 @@ use casper_execution_engine::{
 use casper_node::{
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
-    types::{json_compatibility, Block, BlockValidationError},
+    types::{json_compatibility, Block, BlockValidationError, JsonBlock},
 };
 use casper_types::{bytesrepr, Key, U512};
 
@@ -184,15 +184,16 @@ pub(crate) fn validate_get_block_response(
     maybe_block_identifier: &Option<BlockIdentifier>,
 ) -> Result<(), ValidateResponseError> {
     let maybe_result = response.get_result();
-    let block_value = maybe_result
+    let json_block_value = maybe_result
         .and_then(|value| value.get("block"))
         .ok_or(ValidateResponseError::NoBlockInResponse)?;
-    let maybe_block: Option<Block> = serde_json::from_value(block_value.to_owned())?;
-    let block = if let Some(block) = maybe_block {
-        block
+    let maybe_json_block: Option<JsonBlock> = serde_json::from_value(json_block_value.to_owned())?;
+    let json_block = if let Some(json_block) = maybe_json_block {
+        json_block
     } else {
         return Ok(());
     };
+    let block = Block::from(json_block);
     block.verify()?;
     match maybe_block_identifier {
         Some(BlockIdentifier::Hash(block_hash)) => {

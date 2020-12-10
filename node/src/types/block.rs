@@ -1051,6 +1051,21 @@ pub(crate) mod json_compatibility {
         }
     }
 
+    impl From<JsonEraEnd> for EraEnd {
+        fn from(era_end: JsonEraEnd) -> Self {
+            let equivocators = era_end.equivocators;
+            let rewards = era_end
+                .rewards
+                .into_iter()
+                .map(|reward| (reward.validator, reward.amount))
+                .collect();
+            EraEnd {
+                equivocators,
+                rewards,
+            }
+        }
+    }
+
     #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     #[serde(deny_unknown_fields)]
     struct JsonBlockHeader {
@@ -1085,6 +1100,24 @@ pub(crate) mod json_compatibility {
         }
     }
 
+    impl From<JsonBlockHeader> for BlockHeader {
+        fn from(block_header: JsonBlockHeader) -> Self {
+            BlockHeader {
+                parent_hash: block_header.parent_hash,
+                state_root_hash: block_header.state_root_hash,
+                body_hash: block_header.body_hash,
+                deploy_hashes: block_header.deploy_hashes,
+                random_bit: block_header.random_bit,
+                accumulated_seed: block_header.accumulated_seed,
+                era_end: block_header.era_end.map(EraEnd::from),
+                timestamp: block_header.timestamp,
+                era_id: block_header.era_id,
+                height: block_header.height,
+                proposer: block_header.proposer,
+            }
+        }
+    }
+
     /// A JSON-friendly representation of `Block`.
     #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     #[serde(deny_unknown_fields)]
@@ -1107,6 +1140,17 @@ pub(crate) mod json_compatibility {
             JsonBlock {
                 hash: block.hash,
                 header: JsonBlockHeader::from(block.header),
+                body: block.body,
+                proofs: block.proofs,
+            }
+        }
+    }
+
+    impl From<JsonBlock> for Block {
+        fn from(block: JsonBlock) -> Self {
+            Block {
+                hash: block.hash,
+                header: BlockHeader::from(block.header),
                 body: block.body,
                 proofs: block.proofs,
             }
