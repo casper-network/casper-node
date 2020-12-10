@@ -174,11 +174,10 @@ fn detect_doppelganger() {
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a
     // doppelganger.
-    let effects =
-        highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), false, &mut rng);
+    let effects = highway_protocol.handle_message(sender, msg, false, &mut rng);
     assert_eq!(effects.len(), 1);
     match &*effects {
-        [ProtocolOutcome::DoppelgangerDetected] => assert!(true),
+        [ProtocolOutcome::DoppelgangerDetected] => (),
         other => panic!("unexpected protocol outcome: {:?}", other),
     }
     assert_eq!(highway_protocol.is_active(), false);
