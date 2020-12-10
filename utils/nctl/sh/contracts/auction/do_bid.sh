@@ -27,10 +27,6 @@ function do_auction_bid_submit()
     local GAS=${6}
     local PAYMENT=${7}
 
-    source $(get_path_to_net_vars $NET_ID)
-    echo $NCTL_NET_NODE_COUNT
-
-    
     local BIDDER_PUBLIC_KEY=$(get_account_key $NET_ID $NCTL_ACCOUNT_TYPE_NODE $BIDDER_ID)
     local BIDDER_SECRET_KEY=$(get_path_to_secret_key $NET_ID $NCTL_ACCOUNT_TYPE_NODE $BIDDER_ID)
     local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)

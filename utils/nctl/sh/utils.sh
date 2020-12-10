@@ -267,29 +267,6 @@ function get_account_prefix() {
 }
 
 #######################################
-# Returns network known addresses - i.e. those of bootstrap nodes.
-# Arguments:
-#   Network ordinal identifier.
-#   Count of bootstraps to setup.
-#######################################
-function get_bootstrap_known_addresses() {
-    local NET_ID=${1} 
-    local NET_BOOTSTRAP_COUNT=${2}
-
-    local RESULT=""
-    for IDX in $(seq 1 $NET_BOOTSTRAP_COUNT)
-    do
-        local ADDRESS=$(get_bootstrap_known_address $NET_ID $IDX)
-        RESULT=$RESULT$ADDRESS
-        if [ $IDX -lt $NET_BOOTSTRAP_COUNT ]; then
-            RESULT=$RESULT","
-        fi        
-    done
-
-    echo $RESULT
-}
-
-#######################################
 # Returns a network known addresses - i.e. those of bootstrap nodes.
 # Globals:
 #   NCTL_BASE_PORT_NETWORK - base network port number.
@@ -398,19 +375,24 @@ function get_network_bind_address() {
 # Returns network known addresses.
 # Arguments:
 #   Network ordinal identifier.
-#   Node ordinal identifier.
 #   Network bootstrap count.
 #######################################
 function get_network_known_addresses() {
     local NET_ID=${1}    
-    local NODE_ID=${2}   
-    local NET_BOOTSTRAP_COUNT=${3}    
+    local NET_BOOTSTRAP_COUNT=${2}    
 
-    if [ $NODE_ID -le $NET_BOOTSTRAP_COUNT ]; then
-        echo ""
-    else
-        echo "$(get_bootstrap_known_addresses $NET_ID $NET_BOOTSTRAP_COUNT)"
-    fi
+    local RESULT=""
+    local ADDRESS=""
+    for IDX in $(seq 1 $NET_BOOTSTRAP_COUNT)
+    do
+        ADDRESS=$(get_bootstrap_known_address $NET_ID $IDX)
+        RESULT=$RESULT$ADDRESS
+        if [ $IDX -lt $NET_BOOTSTRAP_COUNT ]; then
+            RESULT=$RESULT","
+        fi        
+    done
+
+    echo $RESULT
 }
 
 #######################################

@@ -66,7 +66,7 @@ NODE_API_PORT_SSE=$(get_node_port_sse $NET_ID $NODE_ID)
 
 # Set validator network addresses.
 NETWORK_BIND_ADDRESS=$(get_network_bind_address $NET_ID $NODE_ID $NCTL_NET_BOOTSTRAP_COUNT)
-NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $NET_ID $NODE_ID $NCTL_NET_BOOTSTRAP_COUNT)
+NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $NET_ID $NCTL_NET_BOOTSTRAP_COUNT)
 
 # Start node in validator mode.
 $PATH_NET/bin/casper-node validator $PATH_NODE_CONFIG \

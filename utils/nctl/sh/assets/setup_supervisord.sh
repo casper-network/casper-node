@@ -60,7 +60,9 @@ do
 
     # Set validator network addresses.
     NETWORK_BIND_ADDRESS=$(get_network_bind_address $NET_ID $IDX $COUNT_BOOTSTRAPS)
-    NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $NET_ID $IDX $COUNT_BOOTSTRAPS)
+    NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $NET_ID $COUNT_BOOTSTRAPS)
+
+    echo $NETWORK_KNOWN_ADDRESSES
 
     # Add supervisord application section.
     cat >> $PATH_TO_NET/daemon/config/supervisord.conf <<- EOM
