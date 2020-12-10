@@ -140,3 +140,43 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
         Some(protocol_outcome) => panic!("Unexpected protocol outcome {:?}", protocol_outcome),
     }
 }
+
+#[test]
+fn detect_doppelganger() {
+    let creator: ValidatorIndex = ValidatorIndex(0);
+    let state: State<ClContext> = new_test_state(&[100.into()], 0);
+    let panorama: ValidatorMap<Observation<ClContext>> = Panorama::from(vec![N, N]);
+    let seq_number = panorama.next_seq_num(&state, creator);
+    let mut rng = TestRng::new();
+    let wunit: WireUnit<ClContext> = WireUnit {
+        panorama,
+        creator,
+        instance_id: ClContext::hash(INSTANCE_ID_DATA),
+        value: None,
+        seq_number,
+        timestamp: 0.into(),
+        round_exp: 0,
+        endorsed: BTreeSet::new(),
+    };
+    let alice_keypair: Keypair = Keypair::from(Rc::new(ALICE_SECRET_KEY.clone()));
+    let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
+        SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
+    ));
+    let mut highway_protocol = new_test_highway_protocol();
+    // Activate ALICE as validator.
+    highway_protocol.activate_validator(*ALICE_PUBLIC_KEY, alice_keypair, 0.into());
+    assert_eq!(highway_protocol.is_active(), true);
+    let sender = NodeId(123);
+    let msg = bincode::serialize(&highway_message).unwrap();
+    // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
+    // An incoming unit, created by the same validator, should be properly detected as a
+    // doppelganger.
+    let effects =
+        highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), false, &mut rng);
+    assert_eq!(effects.len(), 1);
+    match &*effects {
+        [ProtocolOutcome::DoppelgangerDetected] => assert!(true),
+        other => panic!("unexpected protocol outcome: {:?}", other),
+    }
+    assert_eq!(highway_protocol.is_active(), false);
+}

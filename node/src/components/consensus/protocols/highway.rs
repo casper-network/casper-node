@@ -676,4 +676,8 @@ where
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn is_active(&self) -> bool {
+        self.highway.is_active()
+    }
 }

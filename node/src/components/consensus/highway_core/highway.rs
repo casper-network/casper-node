@@ -593,6 +593,11 @@ impl<C: Context> Highway<C> {
             .map(|av| av.vidx == creator)
             .unwrap_or(false)
     }
+
+    /// Returns whether this instance of protocol is an active validator.
+    pub(crate) fn is_active(&self) -> bool {
+        self.active_validator.is_some()
+    }
 }
 
 #[cfg(test)]

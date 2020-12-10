@@ -296,4 +296,8 @@ where
     fn has_received_messages(&self) -> bool {
         !self.pending_blocks.is_empty() || !self.finalized_blocks.is_empty()
     }
+
+    fn is_active(&self) -> bool {
+        self.active_validator.is_some()
+    }
 }

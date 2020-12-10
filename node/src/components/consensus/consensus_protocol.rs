@@ -156,4 +156,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
 
     /// Returns true if the protocol has received some messages since initialization.
     fn has_received_messages(&self) -> bool;
+
+    /// Returns whether this instance of a protocol is an active validator.
+    fn is_active(&self) -> bool;
 }
