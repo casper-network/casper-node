@@ -1,6 +1,6 @@
 [package]
 name = "casper-engine-test-support"
-version = "0.2.0" # when updating, also update 'html_root_url' in lib.rs
+version = "0.3.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Library to support testing of Wasm smart contracts for use on the Casper network."
@@ -11,10 +11,10 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/grpc/test_su
 license-file = "../../LICENSE"
 
 [dependencies]
-casper-contract = { version = "0.2.0", path = "../../smart_contracts/contract", features = ["std"] }
-casper-engine-grpc-server = { version = "0.2.0", path = "../server" }
-casper-execution-engine = { version = "0.2.0", path = "../../execution_engine" }
-casper-types = { version = "0.2.0", path = "../../types", features = ["std"] }
+casper-contract = { version = "0.3.0", path = "../../smart_contracts/contract", features = ["std"] }
+casper-engine-grpc-server = { version = "0.3.0", path = "../server" }
+casper-execution-engine = { version = "0.3.0", path = "../../execution_engine" }
+casper-types = { version = "0.3.0", path = "../../types", features = ["std"] }
 grpc = "0.6.1"
 lmdb = "0.8.0"
 log = "0.4.8"
