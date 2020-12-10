@@ -280,7 +280,7 @@ message SeigniorageAllocation {
     }
 }
 
-message AuctionInfo {
+message EraInfo {
     repeated SeigniorageAllocation seigniorage_allocations = 1;
 }
 
@@ -294,7 +294,7 @@ message StoredValue {
         ContractWasm contract_wasm = 5;
         Transfer transfer = 6;
         DeployInfo deploy_info = 7;
-        AuctionInfo auction_info = 8;
+        EraInfo era_info = 8;
     }
 }
 
@@ -333,7 +333,7 @@ message Key {
 		URef uref = 3;
 		TransferAddr transfer = 4;
 		DeployHash deploy_info = 5;
-		uint64 auction_info = 6;
+		uint64 era_info = 6;
 	}
 
 	message Address {

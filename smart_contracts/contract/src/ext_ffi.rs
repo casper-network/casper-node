@@ -426,20 +426,20 @@ extern "C" {
         id_ptr: *const u8,
         id_size: usize,
     ) -> i32;
-    /// Records auction info.  Can only be called from within the auction contract.
+    /// Records era info.  Can only be called from within the auction contract.
     /// Needed to support system contract-based execution.
     ///
     /// # Arguments
     ///
     /// * `era_id_ptr` - pointer in wasm memory to bytes representing the `EraId`
     /// * `era_id_size` - size of the `EraId` (in bytes)
-    /// * `auction_info_ptr` - pointer in wasm memory to bytes representing the `AuctionInfo`
-    /// * `auction_info_size` - size of the `AuctionInfo` (in bytes)
-    pub fn casper_record_auction_info(
+    /// * `era_info_ptr` - pointer in wasm memory to bytes representing the `EraInfo`
+    /// * `era_info_size` - size of the `EraInfo` (in bytes)
+    pub fn casper_record_era_info(
         era_id_ptr: *const u8,
         era_id_size: usize,
-        auction_info_ptr: *const u8,
-        auction_info_size: usize,
+        era_info_ptr: *const u8,
+        era_info_size: usize,
     ) -> i32;
     /// This function uses the mint contract's balance function to get the balance
     /// of the specified purse. It causes a `Trap` if the bytes in wasm memory

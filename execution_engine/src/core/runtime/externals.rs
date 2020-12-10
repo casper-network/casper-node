@@ -6,7 +6,7 @@ use casper_types::{
     account,
     account::AccountHash,
     api_error,
-    auction::{AuctionInfo, EraId},
+    auction::{EraId, EraInfo},
     bytesrepr::{self, ToBytes},
     contracts::{EntryPoints, NamedKeys},
     ContractHash, ContractPackageHash, ContractVersion, Group, Key, URef, U512,
@@ -981,23 +981,17 @@ where
                 Ok(Some(RuntimeValue::I32(0)))
             }
 
-            FunctionIndex::RecordAuctionInfo => {
-                // RecordAuctionInfo is a special cased internal host function only callable by the
+            FunctionIndex::RecordEraInfo => {
+                // RecordEraInfo is a special cased internal host function only callable by the
                 // auction contract and for accounting purposes it isn't represented in protocol
                 // data.
-                let (era_id_ptr, era_id_size, auction_info_ptr, auction_info_size): (
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                ) = Args::parse(args)?;
+                let (era_id_ptr, era_id_size, era_info_ptr, era_info_size): (u32, u32, u32, u32) =
+                    Args::parse(args)?;
                 scoped_instrumenter.add_property("era_id_size", era_id_size.to_string());
-                scoped_instrumenter
-                    .add_property("auction_info_size", auction_info_size.to_string());
+                scoped_instrumenter.add_property("era_info_size", era_info_size.to_string());
                 let era_id: EraId = self.t_from_mem(era_id_ptr, era_id_size)?;
-                let auction_info: AuctionInfo =
-                    self.t_from_mem(auction_info_ptr, auction_info_size)?;
-                self.record_auction_info(era_id, auction_info)?;
+                let era_info: EraInfo = self.t_from_mem(era_info_ptr, era_info_size)?;
+                self.record_era_info(era_id, era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
         }

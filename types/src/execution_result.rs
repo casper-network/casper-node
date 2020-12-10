@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
-    auction::AuctionInfo,
+    auction::EraInfo,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
@@ -53,7 +53,7 @@ const TRANSFORM_WRITE_CONTRACT_TAG: u8 = 4;
 const TRANSFORM_WRITE_CONTRACT_PACKAGE_TAG: u8 = 5;
 const TRANSFORM_WRITE_DEPLOY_INFO_TAG: u8 = 6;
 const TRANSFORM_WRITE_TRANSFER_TAG: u8 = 7;
-const TRANSFORM_WRITE_AUCTION_INFO_TAG: u8 = 8;
+const TRANSFORM_WRITE_ERA_INFO_TAG: u8 = 8;
 const TRANSFORM_ADD_INT32_TAG: u8 = 9;
 const TRANSFORM_ADD_UINT64_TAG: u8 = 10;
 const TRANSFORM_ADD_UINT128_TAG: u8 = 11;
@@ -444,8 +444,8 @@ pub enum Transform {
     WriteContractPackage,
     /// Writes the given DeployInfo to global state.
     WriteDeployInfo(DeployInfo),
-    /// Writes the given AuctionInfo to global state.
-    WriteAuctionInfo(AuctionInfo),
+    /// Writes the given EraInfo to global state.
+    WriteEraInfo(EraInfo),
     /// Writes the given Transfer to global state.
     WriteTransfer(Transfer),
     /// Adds the given `i32`.
@@ -486,9 +486,9 @@ impl ToBytes for Transform {
                 buffer.insert(0, TRANSFORM_WRITE_DEPLOY_INFO_TAG);
                 buffer.extend(deploy_info.to_bytes()?);
             }
-            Transform::WriteAuctionInfo(auction_info) => {
-                buffer.insert(0, TRANSFORM_WRITE_AUCTION_INFO_TAG);
-                buffer.extend(auction_info.to_bytes()?);
+            Transform::WriteEraInfo(era_info) => {
+                buffer.insert(0, TRANSFORM_WRITE_ERA_INFO_TAG);
+                buffer.extend(era_info.to_bytes()?);
             }
             Transform::WriteTransfer(transfer) => {
                 buffer.insert(0, TRANSFORM_WRITE_TRANSFER_TAG);
@@ -531,6 +531,7 @@ impl ToBytes for Transform {
             Transform::WriteCLValue(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::WriteAccount(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::WriteDeployInfo(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
+            Transform::WriteEraInfo(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::WriteTransfer(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::AddInt32(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
             Transform::AddUInt64(value) => value.serialized_length() + U8_SERIALIZED_LENGTH,
@@ -565,6 +566,10 @@ impl FromBytes for Transform {
             TRANSFORM_WRITE_DEPLOY_INFO_TAG => {
                 let (deploy_info, remainder) = DeployInfo::from_bytes(remainder)?;
                 Ok((Transform::WriteDeployInfo(deploy_info), remainder))
+            }
+            TRANSFORM_WRITE_ERA_INFO_TAG => {
+                let (era_info, remainder) = EraInfo::from_bytes(remainder)?;
+                Ok((Transform::WriteEraInfo(era_info), remainder))
             }
             TRANSFORM_WRITE_TRANSFER_TAG => {
                 let (transfer, remainder) = Transfer::from_bytes(remainder)?;

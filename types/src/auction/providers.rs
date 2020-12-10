@@ -1,6 +1,6 @@
 use crate::{
     account::AccountHash,
-    auction::{AuctionInfo, EraId},
+    auction::{EraId, EraInfo},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
     ApiError, CLTyped, Key, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
@@ -46,12 +46,8 @@ pub trait SystemProvider {
         amount: U512,
     ) -> Result<(), ApiError>;
 
-    /// Records auction info at the given era id.
-    fn record_auction_info(
-        &mut self,
-        era_id: EraId,
-        auction_info: AuctionInfo,
-    ) -> Result<(), Error>;
+    /// Records era info at the given era id.
+    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error>;
 }
 
 /// Provides an access to mint.

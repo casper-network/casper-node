@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 
 use casper_types::{
-    auction::AuctionInfo,
+    auction::EraInfo,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
     CLValue, Contract, ContractWasm, DeployInfo, Transfer,
@@ -18,7 +18,7 @@ enum Tag {
     ContractPackage = 4,
     Transfer = 5,
     DeployInfo = 6,
-    AuctionInfo = 7,
+    EraInfo = 7,
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -30,7 +30,7 @@ pub enum StoredValue {
     ContractPackage(ContractPackage),
     Transfer(Transfer),
     DeployInfo(DeployInfo),
-    AuctionInfo(AuctionInfo),
+    EraInfo(EraInfo),
 }
 
 impl StoredValue {
@@ -76,9 +76,9 @@ impl StoredValue {
         }
     }
 
-    pub fn as_auction_info(&self) -> Option<&AuctionInfo> {
+    pub fn as_era_info(&self) -> Option<&EraInfo> {
         match self {
-            StoredValue::AuctionInfo(auction_info) => Some(auction_info),
+            StoredValue::EraInfo(era_info) => Some(era_info),
             _ => None,
         }
     }
@@ -92,7 +92,7 @@ impl StoredValue {
             StoredValue::ContractPackage(_) => "ContractPackage".to_string(),
             StoredValue::Transfer(_) => "Transfer".to_string(),
             StoredValue::DeployInfo(_) => "DeployInfo".to_string(),
-            StoredValue::AuctionInfo(_) => "AuctionInfo".to_string(),
+            StoredValue::EraInfo(_) => "EraInfo".to_string(),
         }
     }
 }
@@ -218,16 +218,13 @@ impl TryFrom<StoredValue> for DeployInfo {
     }
 }
 
-impl TryFrom<StoredValue> for AuctionInfo {
+impl TryFrom<StoredValue> for EraInfo {
     type Error = TypeMismatch;
 
     fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
         match value {
-            StoredValue::AuctionInfo(auction_info) => Ok(auction_info),
-            _ => Err(TypeMismatch::new(
-                "AuctionInfo".to_string(),
-                value.type_name(),
-            )),
+            StoredValue::EraInfo(era_info) => Ok(era_info),
+            _ => Err(TypeMismatch::new("EraInfo".to_string(), value.type_name())),
         }
     }
 }
@@ -247,7 +244,7 @@ impl ToBytes for StoredValue {
             }
             StoredValue::Transfer(transfer) => (Tag::Transfer, transfer.to_bytes()?),
             StoredValue::DeployInfo(deploy_info) => (Tag::DeployInfo, deploy_info.to_bytes()?),
-            StoredValue::AuctionInfo(auction_info) => (Tag::AuctionInfo, auction_info.to_bytes()?),
+            StoredValue::EraInfo(era_info) => (Tag::EraInfo, era_info.to_bytes()?),
         };
         result.push(tag as u8);
         result.append(&mut serialized_data);
@@ -266,7 +263,7 @@ impl ToBytes for StoredValue {
                 }
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
-                StoredValue::AuctionInfo(auction_info) => auction_info.serialized_length(),
+                StoredValue::EraInfo(era_info) => era_info.serialized_length(),
             }
     }
 }
@@ -295,8 +292,8 @@ impl FromBytes for StoredValue {
                 .map(|(transfer, remainder)| (StoredValue::Transfer(transfer), remainder)),
             tag if tag == Tag::DeployInfo as u8 => DeployInfo::from_bytes(remainder)
                 .map(|(deploy_info, remainder)| (StoredValue::DeployInfo(deploy_info), remainder)),
-            tag if tag == Tag::AuctionInfo as u8 => AuctionInfo::from_bytes(remainder)
-                .map(|(deploy_info, remainder)| (StoredValue::AuctionInfo(deploy_info), remainder)),
+            tag if tag == Tag::EraInfo as u8 => EraInfo::from_bytes(remainder)
+                .map(|(deploy_info, remainder)| (StoredValue::EraInfo(deploy_info), remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

@@ -161,15 +161,15 @@ impl CLTyped for SeigniorageAllocation {
 #[derive(Debug, Default, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub struct AuctionInfo {
+pub struct EraInfo {
     seigniorage_allocations: Vec<SeigniorageAllocation>,
 }
 
-impl AuctionInfo {
-    /// Constructs a [`AuctionInfo`].
+impl EraInfo {
+    /// Constructs a [`EraInfo`].
     pub fn new() -> Self {
         let seigniorage_allocations = Vec::new();
-        AuctionInfo {
+        EraInfo {
             seigniorage_allocations,
         }
     }
@@ -206,7 +206,7 @@ impl AuctionInfo {
     }
 }
 
-impl ToBytes for AuctionInfo {
+impl ToBytes for EraInfo {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.seigniorage_allocations.to_bytes()
     }
@@ -216,11 +216,11 @@ impl ToBytes for AuctionInfo {
     }
 }
 
-impl FromBytes for AuctionInfo {
+impl FromBytes for EraInfo {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (seigniorage_allocations, rem) = Vec::<SeigniorageAllocation>::from_bytes(bytes)?;
         Ok((
-            AuctionInfo {
+            EraInfo {
                 seigniorage_allocations,
             },
             rem,
@@ -228,7 +228,7 @@ impl FromBytes for AuctionInfo {
     }
 }
 
-impl CLTyped for AuctionInfo {
+impl CLTyped for EraInfo {
     fn cl_type() -> CLType {
         CLType::List(Box::new(SeigniorageAllocation::cl_type()))
     }
@@ -243,7 +243,7 @@ pub(crate) mod gens {
     };
 
     use crate::{
-        auction::{AuctionInfo, SeigniorageAllocation},
+        auction::{EraInfo, SeigniorageAllocation},
         gens::u512_arb,
         public_key::gens::public_key_arb,
     };
@@ -269,11 +269,11 @@ pub(crate) mod gens {
         ]
     }
 
-    pub fn auction_info_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = AuctionInfo> {
+    pub fn era_info_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = EraInfo> {
         collection::vec(seigniorage_allocation_arb(), size).prop_map(|allocations| {
-            let mut auction_info = AuctionInfo::new();
-            *auction_info.seigniorage_allocations_mut() = allocations;
-            auction_info
+            let mut era_info = EraInfo::new();
+            *era_info.seigniorage_allocations_mut() = allocations;
+            era_info
         })
     }
 }
@@ -288,8 +288,8 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_serialization_roundtrip(auction_info in gens::auction_info_arb(0..32)) {
-            bytesrepr::test_serialization_roundtrip(&auction_info)
+        fn test_serialization_roundtrip(era_info in gens::era_info_arb(0..32)) {
+            bytesrepr::test_serialization_roundtrip(&era_info)
         }
     }
 }

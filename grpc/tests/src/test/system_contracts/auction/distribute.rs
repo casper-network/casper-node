@@ -317,33 +317,33 @@ fn should_distribute_delegation_rate_zero() {
     );
     assert!(delegator_2_balance.is_zero());
 
-    let auction_info = {
+    let era_info = {
         let era = builder.get_era();
 
-        let auction_info_value = builder
-            .query(None, Key::AuctionInfo(era), &[])
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
             .expect("should have value");
 
-        auction_info_value
-            .as_auction_info()
+        era_info_value
+            .as_era_info()
             .cloned()
-            .expect("should be auction info")
+            .expect("should be era info")
     };
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_1 && *amount == expected_delegator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_2 && *amount == expected_delegator_1_balance
     ));
@@ -514,33 +514,33 @@ fn should_distribute_delegation_rate_half() {
     let total_payout = validator_1_balance + delegator_1_balance + delegator_2_balance;
     assert_eq!(total_payout, expected_total_reward_integer);
 
-    let auction_info = {
+    let era_info = {
         let era = builder.get_era();
 
-        let auction_info_value = builder
-            .query(None, Key::AuctionInfo(era), &[])
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
             .expect("should have value");
 
-        auction_info_value
-            .as_auction_info()
+        era_info_value
+            .as_era_info()
             .cloned()
-            .expect("should be auction info")
+            .expect("should be era info")
     };
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_1 && *amount == expected_delegator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_2 && *amount == expected_delegator_1_balance
     ));
@@ -702,33 +702,33 @@ fn should_distribute_delegation_rate_full() {
     let total_payout = validator_1_balance + delegator_1_balance + delegator_2_balance;
     assert_eq!(total_payout, expected_total_reward_integer);
 
-    let auction_info = {
+    let era_info = {
         let era = builder.get_era();
 
-        let auction_info_value = builder
-            .query(None, Key::AuctionInfo(era), &[])
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
             .expect("should have value");
 
-        auction_info_value
-            .as_auction_info()
+        era_info_value
+            .as_era_info()
             .cloned()
-            .expect("should be auction info")
+            .expect("should be era info")
     };
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_1 && *amount == expected_delegator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_2 && *amount == expected_delegator_1_balance
     ));
@@ -896,33 +896,33 @@ fn should_distribute_uneven_delegation_rate_zero() {
     let total_payout = validator_1_balance + delegator_1_balance + delegator_2_balance;
     assert_eq!(total_payout, expected_total_reward_integer);
 
-    let auction_info = {
+    let era_info = {
         let era = builder.get_era();
 
-        let auction_info_value = builder
-            .query(None, Key::AuctionInfo(era), &[])
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
             .expect("should have value");
 
-        auction_info_value
-            .as_auction_info()
+        era_info_value
+            .as_era_info()
             .cloned()
-            .expect("should be auction info")
+            .expect("should be era info")
     };
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_1 && *amount == expected_delegator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_2 && *amount == expected_delegator_2_balance
     ));
@@ -1087,33 +1087,33 @@ fn should_distribute_by_factor() {
     let rounded_amount = U512::from(2);
     assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
 
-    let auction_info = {
+    let era_info = {
         let era = builder.get_era();
 
-        let auction_info_value = builder
-            .query(None, Key::AuctionInfo(era), &[])
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
             .expect("should have value");
 
-        auction_info_value
-            .as_auction_info()
+        era_info_value
+            .as_era_info()
             .cloned()
-            .expect("should be auction info")
+            .expect("should be era info")
     };
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_2).next(),
+        era_info.select(VALIDATOR_2).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_2 && *amount == expected_validator_2_balance
     ));
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_3).next(),
+        era_info.select(VALIDATOR_3).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_3 && *amount == expected_validator_3_balance
     ));
@@ -1277,33 +1277,33 @@ fn should_distribute_by_factor_regardless_of_stake() {
     let rounded_amount = U512::from(2);
     assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
 
-    let auction_info = {
+    let era_info = {
         let era = builder.get_era();
 
-        let auction_info_value = builder
-            .query(None, Key::AuctionInfo(era), &[])
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
             .expect("should have value");
 
-        auction_info_value
-            .as_auction_info()
+        era_info_value
+            .as_era_info()
             .cloned()
-            .expect("should be auction info")
+            .expect("should be era info")
     };
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_2).next(),
+        era_info.select(VALIDATOR_2).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_2 && *amount == expected_validator_2_balance
     ));
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_3).next(),
+        era_info.select(VALIDATOR_3).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_3 && *amount == expected_validator_3_balance
     ));
@@ -1465,33 +1465,33 @@ fn should_distribute_by_factor_uneven() {
     let rounded_amount = U512::one();
     assert_eq!(total_payout, expected_total_reward_integer - rounded_amount);
 
-    let auction_info = {
+    let era_info = {
         let era = builder.get_era();
 
-        let auction_info_value = builder
-            .query(None, Key::AuctionInfo(era), &[])
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
             .expect("should have value");
 
-        auction_info_value
-            .as_auction_info()
+        era_info_value
+            .as_era_info()
             .cloned()
-            .expect("should be auction info")
+            .expect("should be era info")
     };
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_2).next(),
+        era_info.select(VALIDATOR_2).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_2 && *amount == expected_validator_2_balance
     ));
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_3).next(),
+        era_info.select(VALIDATOR_3).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_3 && *amount == expected_validator_3_balance
     ));
@@ -1754,51 +1754,51 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     assert_eq!(total_payout, expected_total_reward_integer - remainder);
 
-    let auction_info = {
+    let era_info = {
         let era = builder.get_era();
 
-        let auction_info_value = builder
-            .query(None, Key::AuctionInfo(era), &[])
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
             .expect("should have value");
 
-        auction_info_value
-            .as_auction_info()
+        era_info_value
+            .as_era_info()
             .cloned()
-            .expect("should be auction info")
+            .expect("should be era info")
     };
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_1 && *amount == validator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_2).next(),
+        era_info.select(VALIDATOR_2).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_2 && *amount == validator_2_balance
     ));
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_3).next(),
+        era_info.select(VALIDATOR_3).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_3 && *amount == validator_3_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_1).next(),
+        era_info.select(DELEGATOR_1).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_1 && *amount == delegator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_2).next(),
+        era_info.select(DELEGATOR_2).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_2 && *amount == delegator_2_balance
     ));
 
     assert!(matches!(
-        auction_info.select(DELEGATOR_3).next(),
+        era_info.select(DELEGATOR_3).next(),
         Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
         if *delegator_public_key == DELEGATOR_3 && *amount == delegator_3_balance
     ));
@@ -2089,39 +2089,39 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     assert_eq!(total_payout, expected_total_reward_integer - remainder);
 
-    let auction_info = {
+    let era_info = {
         let era = builder.get_era();
 
-        let auction_info_value = builder
-            .query(None, Key::AuctionInfo(era), &[])
+        let era_info_value = builder
+            .query(None, Key::EraInfo(era), &[])
             .expect("should have value");
 
-        auction_info_value
-            .as_auction_info()
+        era_info_value
+            .as_era_info()
             .cloned()
-            .expect("should be auction info")
+            .expect("should be era info")
     };
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_1).next(),
+        era_info.select(VALIDATOR_1).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_1 && *amount == expected_validator_1_balance
     ));
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_2).next(),
+        era_info.select(VALIDATOR_2).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_2 && *amount == expected_validator_2_balance
     ));
 
     assert!(matches!(
-        auction_info.select(VALIDATOR_3).next(),
+        era_info.select(VALIDATOR_3).next(),
         Some(SeigniorageAllocation::Validator { validator_public_key, amount })
         if *validator_public_key == VALIDATOR_3 && *amount == expected_validator_3_balance
     ));
 
     let delegator_1_allocations: Vec<SeigniorageAllocation> =
-        auction_info.select(DELEGATOR_1).cloned().collect();
+        era_info.select(DELEGATOR_1).cloned().collect();
 
     assert_eq!(delegator_1_allocations.len(), 3);
 

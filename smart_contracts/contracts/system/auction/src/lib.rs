@@ -13,7 +13,7 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        Auction, AuctionInfo, DelegationRate, EraId, MintProvider, RuntimeProvider,
+        Auction, DelegationRate, EraId, EraInfo, MintProvider, RuntimeProvider,
         SeigniorageRecipients, StorageProvider, SystemProvider, ValidatorWeights, ARG_AMOUNT,
         ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY,
         ARG_REWARD_FACTORS, ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_UNBOND_PURSE, ARG_VALIDATOR,
@@ -61,12 +61,8 @@ impl SystemProvider for AuctionContract {
         system::transfer_from_purse_to_purse(source, target, amount, None)
     }
 
-    fn record_auction_info(
-        &mut self,
-        era_id: EraId,
-        auction_info: AuctionInfo,
-    ) -> Result<(), Error> {
-        system::record_auction_info(era_id, auction_info).map_err(|_| Error::RecordAuctionInfo)
+    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
+        system::record_era_info(era_id, era_info).map_err(|_| Error::RecordEraInfo)
     }
 }
 
