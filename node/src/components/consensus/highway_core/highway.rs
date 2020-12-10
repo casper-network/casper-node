@@ -413,13 +413,13 @@ impl<C: Context> Highway<C> {
 
     fn on_new_unit(
         &mut self,
-        vhash: &C::Hash,
+        uhash: &C::Hash,
         timestamp: Timestamp,
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
         self.map_active_validator(
-            |av, state, rng| av.on_new_unit(vhash, timestamp, state, instance_id, rng, false),
+            |av, state, rng| av.on_new_unit(uhash, timestamp, state, instance_id, rng),
             timestamp,
             rng,
         )
@@ -470,9 +470,7 @@ impl<C: Context> Highway<C> {
                 Effect::NewVertex(vv) => {
                     result.extend(self.add_valid_vertex(vv.clone(), rng, timestamp))
                 }
-                Effect::WeAreFaulty(_) | Effect::DoppelgangerDetected(_) => {
-                    self.deactivate_validator()
-                }
+                Effect::WeAreFaulty(_) => self.deactivate_validator(),
                 Effect::ScheduleTimer(_) | Effect::RequestNewBlock { .. } => (),
             }
         }
@@ -485,6 +483,9 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Unit(unit) => {
+                if self.is_doppelganger(unit) {
+                    return Err(UnitError::DoppelgangerUnit.into());
+                }
                 let creator = unit.wire_unit.creator;
                 let v_id = self.validators.id(creator).ok_or(UnitError::Creator)?;
                 if unit.wire_unit.instance_id != self.instance_id {
@@ -582,6 +583,15 @@ impl<C: Context> Highway<C> {
             Effect::NewVertex(ValidVertex(Vertex::Evidence(ev)))
         };
         evidence.into_iter().map(add_and_create_effect).collect()
+    }
+
+    /// Checks whether the unit was created by a doppelganger.
+    fn is_doppelganger(&self, swunit: &SignedWireUnit<C>) -> bool {
+        let creator = swunit.wire_unit.creator;
+        self.active_validator
+            .as_ref()
+            .map(|av| av.vidx == creator)
+            .unwrap_or(false)
     }
 }
 

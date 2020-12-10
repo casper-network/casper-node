@@ -55,7 +55,6 @@ enum HighwayMessage {
     NewVertex(Box<Vertex<TestContext>>),
     RequestBlock(BlockContext),
     WeAreFaulty(Box<Fault<TestContext>>),
-    Doppleganger(<TestContext as Context>::Hash),
 }
 
 impl Debug for HighwayMessage {
@@ -70,9 +69,6 @@ impl Debug for HighwayMessage {
                 f.debug_struct("NewVertex").field("vertex", &v).finish()
             }
             HighwayMessage::WeAreFaulty(ft) => f.debug_tuple("WeAreFaulty").field(&ft).finish(),
-            HighwayMessage::Doppleganger(uhash) => {
-                f.debug_tuple("Doppelganger").field(&uhash).finish()
-            }
         }
     }
 }
@@ -87,8 +83,7 @@ impl HighwayMessage {
             }
             HighwayMessage::Timer(_)
             | HighwayMessage::RequestBlock(_)
-            | HighwayMessage::WeAreFaulty(_)
-            | HighwayMessage::Doppleganger(_) => {
+            | HighwayMessage::WeAreFaulty(_) => {
                 TargetedMessage::new(create_msg(self), Target::SingleValidator(creator))
             }
         }
@@ -110,7 +105,6 @@ impl From<Effect<TestContext>> for HighwayMessage {
                 HighwayMessage::RequestBlock(block_context)
             }
             Effect::WeAreFaulty(fault) => HighwayMessage::WeAreFaulty(Box::new(fault)),
-            Effect::DoppelgangerDetected(uhash) => HighwayMessage::Doppleganger(uhash),
         }
     }
 }
@@ -226,9 +220,6 @@ impl HighwayValidator {
                     HighwayMessage::WeAreFaulty(ev) => {
                         panic!("validator equivocated unexpectedly: {:?}", ev);
                     }
-                    HighwayMessage::Doppleganger(uhash) => {
-                        panic!("unexpected doppelganger message {}", uhash)
-                    }
                 }
             }
             Some(DesFault::Mute) => {
@@ -241,9 +232,6 @@ impl HighwayValidator {
                     HighwayMessage::Timer(_) | HighwayMessage::RequestBlock(_) => vec![msg],
                     HighwayMessage::WeAreFaulty(ev) => {
                         panic!("validator equivocated unexpectedly: {:?}", ev);
-                    }
-                    HighwayMessage::Doppleganger(uhash) => {
-                        panic!("unexpected doppelganger message {}", uhash)
                     }
                 }
             }
@@ -270,9 +258,6 @@ impl HighwayValidator {
                     HighwayMessage::RequestBlock(_)
                     | HighwayMessage::WeAreFaulty(_)
                     | HighwayMessage::Timer(_) => vec![msg],
-                    HighwayMessage::Doppleganger(uhash) => {
-                        panic!("unexpected doppelganger message {}", uhash)
-                    }
                 }
             }
         }
@@ -450,9 +435,6 @@ where
                     })?
                 }
                 HighwayMessage::WeAreFaulty(_evidence) => vec![],
-                HighwayMessage::Doppleganger(uhash) => {
-                    panic!("unexpected doppelganger message {}", uhash)
-                }
             }
         };
 
@@ -709,9 +691,6 @@ impl DeliveryStrategy for InstantDeliveryNoDropping {
             }
             HighwayMessage::WeAreFaulty(_) => {
                 DeliverySchedule::AtInstant(base_delivery_timestamp + 1.into())
-            }
-            HighwayMessage::Doppleganger(uhash) => {
-                panic!("unexpected doppelganger message {}", uhash)
             }
         }
     }

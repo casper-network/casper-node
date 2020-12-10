@@ -28,8 +28,9 @@ use crate::{
                 finality_detector::FinalityDetector,
                 highway::{
                     Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
-                    Vertex,
+                    Vertex, VertexError,
                 },
+                state::UnitError,
                 validators::Validators,
             },
             traits::{Context, NodeIdT},
@@ -181,14 +182,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             AvEffect::WeAreFaulty(fault) => {
                 error!("this validator is faulty: {:?}", fault);
                 vec![ProtocolOutcome::WeAreFaulty]
-            }
-            AvEffect::DoppelgangerDetected(uhash) => {
-                error!(
-                    "received unit from a doppelganger: {}. \
-                Are you running multiple nodes with the same validator key?",
-                    uhash
-                );
-                vec![ProtocolOutcome::DoppelgangerDetected]
             }
         }
     }
@@ -501,6 +494,14 @@ where
                         // TODO: Disconnect from senders.
                         // drop the vertices that might have depended on this one
                         self.drop_dependent_vertices(vec![v_id]);
+                        if let VertexError::Unit(UnitError::DoppelgangerUnit) = err {
+                            error!(
+                                "received unit from a doppelganger. \
+                                Are you running multiple nodes with the same validator key?",
+                            );
+                            self.deactivate_validator();
+                            return vec![ProtocolOutcome::DoppelgangerDetected];
+                        }
                         return vec![ProtocolOutcome::InvalidIncomingMessage(
                             msg,
                             sender,

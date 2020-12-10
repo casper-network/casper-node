@@ -37,8 +37,6 @@ pub(crate) enum Effect<C: Context> {
     ///
     /// When this is returned, the validator automatically deactivates.
     WeAreFaulty(Fault<C>),
-    /// A unit signed by the same public key has been received by this instance of the node.
-    DoppelgangerDetected(C::Hash),
 }
 
 /// A validator that actively participates in consensus by creating new vertices.
@@ -57,7 +55,7 @@ pub(crate) enum Effect<C: Context> {
 /// units citing all those confirmations, to create a summit and finalize the proposal.
 pub(crate) struct ActiveValidator<C: Context> {
     /// Our own validator index.
-    vidx: ValidatorIndex,
+    pub(crate) vidx: ValidatorIndex,
     /// The validator's secret signing key.
     secret: C::ValidatorSecret,
     /// The next round exponent: Our next round will be `1 << next_round_exp` milliseconds long.
@@ -146,12 +144,7 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
-        own_unit: bool,
     ) -> Vec<Effect<C>> {
-        let creator = state.unit(uhash).creator;
-        if own_unit && creator == self.vidx {
-            return vec![Effect::DoppelgangerDetected(*uhash)];
-        }
         if let Some(fault) = state.opt_fault(self.vidx) {
             return vec![Effect::WeAreFaulty(fault.clone())];
         }
@@ -609,7 +602,6 @@ mod tests {
                 &self.state,
                 self.instance_id,
                 &mut self.rng,
-                true,
             );
             self.schedule_timer(vidx, &effects);
             (effects, proposal_wunit)
@@ -631,7 +623,6 @@ mod tests {
                 &self.state,
                 self.instance_id,
                 &mut self.rng,
-                false,
             );
             self.schedule_timer(vidx, &effects);
             self.add_new_unit(&effects);
