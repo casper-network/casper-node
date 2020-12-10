@@ -28,9 +28,8 @@ use crate::{
                 finality_detector::FinalityDetector,
                 highway::{
                     Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
-                    Vertex, VertexError,
+                    Vertex,
                 },
-                state::UnitError,
                 validators::Validators,
             },
             traits::{Context, NodeIdT},
@@ -284,6 +283,20 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                         sender,
                     ));
                 } else {
+                    // If unit is sent by a doppelganger, deactivate this instance of an active
+                    // validator. Continue processing the unit so that it can be added to the state.
+                    if let Some(swunit) = pvv.inner().signed_wire_unit() {
+                        if self.highway.is_doppelganger(swunit) {
+                            let uhash = swunit.hash();
+                            error!(
+                                "received unit from a doppelganger: {}. \
+                                    Are you running multiple nodes with the same validator key?",
+                                uhash
+                            );
+                            self.deactivate_validator();
+                            results.push(ProtocolOutcome::DoppelgangerDetected);
+                        }
+                    }
                     match self.highway.validate_vertex(pvv) {
                         Ok(vv) => {
                             let vertex = vv.inner();
@@ -494,14 +507,6 @@ where
                         // TODO: Disconnect from senders.
                         // drop the vertices that might have depended on this one
                         self.drop_dependent_vertices(vec![v_id]);
-                        if let VertexError::Unit(UnitError::DoppelgangerUnit) = err {
-                            error!(
-                                "received unit from a doppelganger. \
-                                Are you running multiple nodes with the same validator key?",
-                            );
-                            self.deactivate_validator();
-                            return vec![ProtocolOutcome::DoppelgangerDetected];
-                        }
                         return vec![ProtocolOutcome::InvalidIncomingMessage(
                             msg,
                             sender,

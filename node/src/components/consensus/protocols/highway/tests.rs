@@ -1,16 +1,17 @@
-use std::{collections::BTreeSet, iter, rc::Rc};
+use std::{collections::BTreeSet, rc::Rc};
 
 use datasize::DataSize;
 use derive_more::Display;
 
 use crate::{
     components::consensus::{
+        candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
         consensus_protocol::{ConsensusProtocol, ProtocolOutcome},
         highway_core::{
             highway::{SignedWireUnit, Vertex, WireUnit},
             highway_testing,
-            state::{self, Observation, Panorama},
+            state::{self, tests::ALICE, Observation, Panorama},
             validators::{ValidatorIndex, ValidatorMap},
             State,
         },
@@ -19,8 +20,9 @@ use crate::{
         traits::Context,
         HighwayProtocol,
     },
+    crypto::asymmetric_key::PublicKey,
     testing::TestRng,
-    types::Timestamp,
+    types::{ProtoBlock, Timestamp},
 };
 
 #[derive(DataSize, Debug, Ord, PartialOrd, Clone, Display, Hash, Eq, PartialEq)]
@@ -162,20 +164,21 @@ fn detect_doppelganger() {
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
-        instance_id: ClContext::hash(INSTANCE_ID_DATA),
-        value: None,
+        instance_id,
+        value: Some(value),
         seq_number,
         timestamp: 0.into(),
-        round_exp: 0,
+        round_exp,
         endorsed: BTreeSet::new(),
     };
     let alice_keypair: Keypair = Keypair::from(Rc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
     ));
-    let mut highway_protocol = new_test_highway_protocol();
-    // Activate ALICE as validator.
-    highway_protocol.activate_validator(*ALICE_PUBLIC_KEY, alice_keypair, 0.into());
+    let mut highway_protocol = new_test_highway_protocol(vec![]);
+    // Activate BOB as validator.
+    let _ =
+        highway_protocol.activate_validator(*ALICE_PUBLIC_KEY, alice_keypair, Timestamp::zero());
     assert_eq!(highway_protocol.is_active(), true);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
@@ -183,10 +186,8 @@ fn detect_doppelganger() {
     // An incoming unit, created by the same validator, should be properly detected as a
     // doppelganger.
     let effects = highway_protocol.handle_message(sender, msg, false, &mut rng);
-    assert_eq!(effects.len(), 1);
-    match &*effects {
-        [ProtocolOutcome::DoppelgangerDetected] => (),
-        other => panic!("unexpected protocol outcome: {:?}", other),
-    }
+    assert!(effects
+        .iter()
+        .any(|eff| matches!(eff, ProtocolOutcome::DoppelgangerDetected)));
     assert_eq!(highway_protocol.is_active(), false);
 }

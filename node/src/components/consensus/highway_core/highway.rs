@@ -483,9 +483,6 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Unit(unit) => {
-                if self.is_doppelganger(unit) {
-                    return Err(UnitError::DoppelgangerUnit.into());
-                }
                 let creator = unit.wire_unit.creator;
                 let v_id = self.validators.id(creator).ok_or(UnitError::Creator)?;
                 if unit.wire_unit.instance_id != self.instance_id {
@@ -586,7 +583,7 @@ impl<C: Context> Highway<C> {
     }
 
     /// Checks whether the unit was created by a doppelganger.
-    fn is_doppelganger(&self, swunit: &SignedWireUnit<C>) -> bool {
+    pub(crate) fn is_doppelganger(&self, swunit: &SignedWireUnit<C>) -> bool {
         let creator = swunit.wire_unit.creator;
         self.active_validator
             .as_ref()

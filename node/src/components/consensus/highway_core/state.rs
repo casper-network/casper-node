@@ -94,8 +94,6 @@ pub(crate) enum UnitError {
         wire_unit
     )]
     EndorsedButUnseen { hash: String, wire_unit: String },
-    #[error("Unit sent by doppelganger.")]
-    DoppelgangerUnit,
 }
 
 /// A reason for a validator to be marked as faulty.
