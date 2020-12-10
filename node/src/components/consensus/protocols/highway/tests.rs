@@ -176,7 +176,7 @@ fn detect_doppelganger() {
         SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
     ));
     let mut highway_protocol = new_test_highway_protocol(vec![]);
-    // Activate BOB as validator.
+    // Activate ALICE as validator.
     let _ =
         highway_protocol.activate_validator(*ALICE_PUBLIC_KEY, alice_keypair, Timestamp::zero());
     assert_eq!(highway_protocol.is_active(), true);
