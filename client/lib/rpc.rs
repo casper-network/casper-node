@@ -14,7 +14,7 @@ use casper_node::{
         account::{PutDeploy, PutDeployParams},
         chain::{
             BlockIdentifier, GetBlock, GetBlockParams, GetBlockTransfers, GetBlockTransfersParams,
-            GetStateRootHash, GetStateRootHashParams,
+            GetEraInfo, GetEraInfoParams, GetStateRootHash, GetStateRootHashParams,
         },
         docs::ListRpcs,
         info::{GetDeploy, GetDeployParams},
@@ -144,6 +144,18 @@ impl RpcCall {
         };
         let response = GetBalance::request_with_map_params(self, params)?;
         validation::validate_get_balance_response(&response, &state_root_hash, &key)?;
+        Ok(response)
+    }
+
+    pub(crate) fn get_era_info(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
+        let response = match Self::block_identifier(maybe_block_identifier)? {
+            None => GetEraInfo::request(self),
+            Some(block_identifier) => {
+                let params = GetEraInfoParams { block_identifier };
+                GetEraInfo::request_with_map_params(self, params)
+            }
+        }?;
+        validation::validate_get_era_info_response(&response)?;
         Ok(response)
     }
 
@@ -349,6 +361,10 @@ impl RpcClient for GetItem {
     const RPC_METHOD: &'static str = <Self as RpcWithParams>::METHOD;
 }
 
+impl RpcClient for GetEraInfo {
+    const RPC_METHOD: &'static str = Self::METHOD;
+}
+
 impl RpcClient for GetAuctionInfo {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
@@ -376,4 +392,5 @@ impl IntoJsonMap for GetStateRootHashParams {}
 impl IntoJsonMap for GetDeployParams {}
 impl IntoJsonMap for GetBalanceParams {}
 impl IntoJsonMap for GetItemParams {}
+impl IntoJsonMap for GetEraInfoParams {}
 impl IntoJsonMap for ListRpcs {}

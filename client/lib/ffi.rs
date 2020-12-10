@@ -565,6 +565,31 @@ pub extern "C" fn casper_get_balance(
     })
 }
 
+/// Retrieves era information from the network.
+///
+/// See [super::get_era_info](super::get_era_info) for more details.
+#[no_mangle]
+pub extern "C" fn casper_get_era_info(
+    maybe_rpc_id: *const c_char,
+    node_address: *const c_char,
+    verbose: bool,
+    maybe_block_id: *const c_char,
+    response_buf: *mut c_uchar,
+    response_buf_len: usize,
+) -> casper_error_t {
+    let mut runtime = RUNTIME.lock().expect("should lock");
+    let runtime = try_unwrap_option!(&mut *runtime, or_else => Error::FFISetupNotCalled);
+    let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
+    let node_address = try_unsafe_arg!(node_address);
+    let maybe_block_id = try_unsafe_arg!(maybe_block_id);
+    runtime.block_on(async move {
+        let result = super::get_era_info(maybe_rpc_id, node_address, verbose, maybe_block_id);
+        let response = try_unwrap_rpc!(result);
+        copy_str_to_buf(&response, response_buf, response_buf_len);
+        casper_error_t::CASPER_SUCCESS
+    })
+}
+
 /// Retrieves the bids and validators as of the most recently added `Block`.
 ///
 /// See [super::get_auction_info](super::get_auction_info) for more details.

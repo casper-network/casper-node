@@ -341,6 +341,25 @@ pub fn get_balance(
     RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_balance(state_root_hash, purse)
 }
 
+/// Retrieves era information from the network.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
+///   `Block` height or empty. If empty, the latest `Block` transfers will be retrieved.
+pub fn get_era_info(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbose: bool,
+    maybe_block_id: &str,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_era_info(maybe_block_id)
+}
+
 /// Retrieves the bids and validators as of the most recently added `Block`.
 ///
 /// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
