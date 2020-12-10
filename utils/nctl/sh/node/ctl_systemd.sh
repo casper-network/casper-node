@@ -41,10 +41,10 @@ function do_node_start()
 
     # Set validator network addresses.
     local NETWORK_BIND_ADDRESS=$(get_network_bind_address $NET_ID $NODE_ID $BOOTSTRAP_COUNT)
-    local NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $NET_ID $NODE_ID $BOOTSTRAP_COUNT)
+    local NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $NET_ID $BOOTSTRAP_COUNT)
 
     # Set daemon process unit.
-    local NODE_PROCESS_UNIT=$(get_node_process_name $NET_ID $NODE_ID)
+    local NODE_PROCESS_UNIT=$(get_process_name_of_node $NET_ID $NODE_ID)
 
     # Set trusted hash arg.
     if [ ! -z "$TRUSTED_HASH" ]; then
@@ -130,7 +130,7 @@ function do_node_status()
 {
     local NET_ID=${1}
     local NODE_ID=${2}
-    local NODE_PROCESS_UNIT=$(get_node_process_name $NET_ID $NODE_ID)
+    local NODE_PROCESS_UNIT=$(get_process_name_of_node $NET_ID $NODE_ID)
 
     systemctl --user status  $NODE_PROCESS_UNIT
 }
@@ -155,7 +155,7 @@ function do_node_stop()
 {
     local NET_ID=${1}
     local NODE_ID=${2}
-    local NODE_PROCESS_UNIT=$(get_node_process_name $NET_ID $NODE_ID)
+    local NODE_PROCESS_UNIT=$(get_process_name_of_node $NET_ID $NODE_ID)
     
     systemctl --user stop $NODE_PROCESS_UNIT
 }

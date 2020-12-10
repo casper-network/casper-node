@@ -17,13 +17,42 @@ function do_node_start()
 {
     local NET_ID=${1}
     local NODE_ID=${2}
-    local NODE_PROCESS_UNIT=$(get_node_process_name $NET_ID $NODE_ID)
+    local NODE_PROCESS_NAME=$(get_process_name_of_node_in_group $NET_ID $NODE_ID)
+    local PATH_TO_NODE_CONFIG=$PATH_NET/nodes/node-$NODE_ID/config/node-config.toml
+
+    # Import net vars.
+    source $(get_path_to_net_vars $NET_ID)
 
     # Ensure daemon is up.
     do_supervisord_start $NET_ID
-    
+
+    # Inject most recent trusted hash.
+    if [ $NODE_ID -gt $NCTL_NET_NODE_COUNT ]; then
+        local TRUSTED_HASH=$(get_chain_latest_block_hash $NET_ID)
+        sed -i "s/#trusted_hash/trusted_hash/g" $PATH_TO_NODE_CONFIG > /dev/null 2>&1
+        sed -i "s/^\(trusted_hash\) = .*/\1 = \'${TRUSTED_HASH}\'/" $PATH_TO_NODE_CONFIG > /dev/null 2>&1
+    fi
+
     # Signal to supervisorctl.
-    supervisorctl -c "$(get_path_net_supervisord_cfg $NET_ID)" start "$NODE_PROCESS_UNIT"  > /dev/null 2>&1
+    supervisorctl -c "$(get_path_net_supervisord_cfg $NET_ID)" start "$NODE_PROCESS_NAME"  > /dev/null 2>&1
+}
+
+#######################################
+# Spins up a node using supervisord.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function do_node_start_group()
+{
+    local NET_ID=${1}
+    local GROUP_ID=${2}
+
+    # Ensure daemon is up.
+    do_supervisord_start $NET_ID
+
+    # Signal to supervisorctl.
+    supervisorctl -c "$(get_path_net_supervisord_cfg $NET_ID)" start "$GROUP_ID":*  > /dev/null 2>&1
 }
 
 #######################################
@@ -40,19 +69,13 @@ function do_node_start_all()
     local NET_BOOTSTRAP_COUNT=${3}
         
     # Step 1: start bootstraps.
-    log "net-$NET_ID: starting bootstraps ... "
-    for IDX in $(seq 1 $NET_NODE_COUNT)
-    do
-        if [ $IDX -le $NET_BOOTSTRAP_COUNT ]; then
-            log "net-$NET_ID: bootstrapping node $IDX"
-            do_node_start $NET_ID $IDX
-        fi
-    done
+    log "net-$NET_ID: starting genesis bootstraps ... "
+    do_node_start_group $NET_ID $NCTL_PROCESS_GROUP_1
     sleep 1.0
 
     # Step 2: start non-bootstraps.
-    log "net-$NET_ID: starting non-bootstraps... "
-    supervisorctl -c "$(get_path_net_supervisord_cfg $NET_ID)" start all  > /dev/null 2>&1
+    log "net-$NET_ID: starting genesis non-bootstraps... "
+    do_node_start_group $NET_ID $NCTL_PROCESS_GROUP_2
 }
 
 #######################################
@@ -65,12 +88,13 @@ function do_node_status()
 {
     local NET_ID=${1}
     local NODE_ID=${2}
+    local NODE_PROCESS_NAME=$(get_process_name_of_node_in_group $NET_ID $NODE_ID)
 
     # Ensure daemon is up.
     do_supervisord_start $NET_ID
 
     # Signal to supervisorctl.
-    supervisorctl -c "$(get_path_net_supervisord_cfg $NET_ID)" status $(get_node_process_name $NET_ID $NODE_ID)
+    supervisorctl -c "$(get_path_net_supervisord_cfg $NET_ID)" status "$NODE_PROCESS_NAME"
 }
 
 #######################################
@@ -99,13 +123,13 @@ function do_node_stop()
 {
     local NET_ID=${1}
     local NODE_ID=${2}
-    local NODE_PROCESS_UNIT=$(get_node_process_name $NET_ID $NODE_ID)
+    local NODE_PROCESS_NAME=$(get_process_name_of_node_in_group $NET_ID $NODE_ID)
 
     # Ensure daemon is up.
     do_supervisord_start $NET_ID
     
     # Signal to supervisorctl.
-    supervisorctl -c "$(get_path_net_supervisord_cfg $NET_ID)" stop "$NODE_PROCESS_UNIT"  > /dev/null 2>&1
+    supervisorctl -c "$(get_path_net_supervisord_cfg $NET_ID)" stop "$NODE_PROCESS_NAME"  > /dev/null 2>&1
 }
 
 #######################################

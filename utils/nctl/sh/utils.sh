@@ -13,33 +13,6 @@ export NCTL_ACCOUNT_TYPE_NODE="node"
 # A type of actor representing a user.
 export NCTL_ACCOUNT_TYPE_USER="user"
 
-# Default amount used when making auction bids.
-export NCTL_DEFAULT_AUCTION_BID_AMOUNT=1000000000   # (1e9)
-
-# Default amount used when delegating.
-export NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT=1000000000   # (1e9)
-
-# Default motes to pay for consumed gas.
-export NCTL_DEFAULT_GAS_PAYMENT=1000000000   # (1e9)
-
-# Default gas price multiplier.
-export NCTL_DEFAULT_GAS_PRICE=10
-
-# Default amount used when making transfers.
-export NCTL_DEFAULT_TRANSFER_AMOUNT=1000000000   # (1e9)
-
-# Intitial balance of faucet account.
-export NCTL_INITIAL_BALANCE_FAUCET=1000000000000000000000000000000000   # (1e33)
-
-# Intitial balance of user account.
-export NCTL_INITIAL_BALANCE_USER=1000000000000000000   # (1e18)
-
-# Intitial balance of validator account.
-export NCTL_INITIAL_BALANCE_VALIDATOR=1000000000000000000000000000000000   # (1e33)
-
-# Base weight applied to a validator at genesis.
-export NCTL_VALIDATOR_BASE_WEIGHT=1000000000000000   # (1e15)
-
 # Base RPC server port number.
 export NCTL_BASE_PORT_RPC=40000
 
@@ -69,6 +42,42 @@ export NCTL_CONTRACTS_CLIENT=(
     undelegate.wasm
     withdraw_bid.wasm
 )
+
+# Default amount used when making auction bids.
+export NCTL_DEFAULT_AUCTION_BID_AMOUNT=1000000000   # (1e9)
+
+# Default amount used when delegating.
+export NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT=1000000000   # (1e9)
+
+# Default motes to pay for consumed gas.
+export NCTL_DEFAULT_GAS_PAYMENT=1000000000   # (1e9)
+
+# Default gas price multiplier.
+export NCTL_DEFAULT_GAS_PRICE=10
+
+# Default amount used when making transfers.
+export NCTL_DEFAULT_TRANSFER_AMOUNT=1000000000   # (1e9)
+
+# Intitial balance of faucet account.
+export NCTL_INITIAL_BALANCE_FAUCET=1000000000000000000000000000000000   # (1e33)
+
+# Intitial balance of user account.
+export NCTL_INITIAL_BALANCE_USER=1000000000000000000   # (1e18)
+
+# Intitial balance of validator account.
+export NCTL_INITIAL_BALANCE_VALIDATOR=1000000000000000000000000000000000   # (1e33)
+
+# Base weight applied to a validator at genesis.
+export NCTL_VALIDATOR_BASE_WEIGHT=1000000000000000   # (1e15)
+
+# Name of process group: boostrap validators.
+export NCTL_PROCESS_GROUP_1=validators-1
+
+# Name of process group: genesis validators.
+export NCTL_PROCESS_GROUP_2=validators-2
+
+# Name of process group: non-genesis validators.
+export NCTL_PROCESS_GROUP_3=validators-3
 
 # ###############################################################
 # UTILS: helper functions
@@ -244,8 +253,7 @@ function get_account_key() {
 #   Account type.
 #   Account index (optional).
 #######################################
-function get_account_prefix() 
-{
+function get_account_prefix() {
     local NET_ID=${1}
     local ACCOUNT_TYPE=${2}
     local ACCOUNT_IDX=${3:-}
@@ -256,29 +264,6 @@ function get_account_prefix()
     fi 
 
     echo $prefix
-}
-
-#######################################
-# Returns network known addresses - i.e. those of bootstrap nodes.
-# Arguments:
-#   Network ordinal identifier.
-#   Count of bootstraps to setup.
-#######################################
-function get_bootstrap_known_addresses() {
-    local NET_ID=${1} 
-    local NET_BOOTSTRAP_COUNT=${2}
-
-    local RESULT=""
-    for IDX in $(seq 1 $NET_BOOTSTRAP_COUNT)
-    do
-        local ADDRESS=$(get_bootstrap_known_address $NET_ID $IDX)
-        RESULT=$RESULT$ADDRESS
-        if [ $IDX -lt $NET_BOOTSTRAP_COUNT ]; then
-            RESULT=$RESULT","
-        fi        
-    done
-
-    echo $RESULT
 }
 
 #######################################
@@ -306,6 +291,23 @@ function get_chain_name() {
     local NET_ID=${1}
 
     echo casper-net-$NET_ID
+}
+
+#######################################
+# Returns latest block finalized at a node.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_chain_latest_block_hash() {
+    local NET_ID=${1}
+    local NODE_ID=${2:-1}
+    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
+
+    $(get_path_to_client $NET_ID) get-block \
+        --node-address $NODE_ADDRESS \
+        | jq '.result.block.hash' \
+        | sed -e 's/^"//' -e 's/"$//'
 }
 
 #######################################
@@ -357,7 +359,7 @@ function get_main_purse_uref() {
 #   Node ordinal identifier.
 #   Network bootstrap count.
 #######################################
-function get_network_bind_address {
+function get_network_bind_address() {
     local NET_ID=${1}    
     local NODE_ID=${2}   
     local NET_BOOTSTRAP_COUNT=${3}     
@@ -373,19 +375,61 @@ function get_network_bind_address {
 # Returns network known addresses.
 # Arguments:
 #   Network ordinal identifier.
-#   Node ordinal identifier.
 #   Network bootstrap count.
 #######################################
-function get_network_known_addresses {
+function get_network_known_addresses() {
     local NET_ID=${1}    
-    local NODE_ID=${2}   
-    local NET_BOOTSTRAP_COUNT=${3}    
+    local NET_BOOTSTRAP_COUNT=${2}    
 
-    if [ $NODE_ID -le $NET_BOOTSTRAP_COUNT ]; then
-        echo ""
-    else
-        echo "$(get_bootstrap_known_addresses $NET_ID $NET_BOOTSTRAP_COUNT)"
-    fi
+    local RESULT=""
+    local ADDRESS=""
+    for IDX in $(seq 1 $NET_BOOTSTRAP_COUNT)
+    do
+        ADDRESS=$(get_bootstrap_known_address $NET_ID $IDX)
+        RESULT=$RESULT$ADDRESS
+        if [ $IDX -lt $NET_BOOTSTRAP_COUNT ]; then
+            RESULT=$RESULT","
+        fi        
+    done
+
+    echo $RESULT
+}
+
+#######################################
+# Returns count of a network's bootstrap nodes.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_count_of_bootstrap_nodes() {
+    local NET_ID=${1}    
+    source $(get_path_to_net_vars $NET_ID)
+
+    echo $NCTL_NET_BOOTSTRAP_COUNT
+}
+
+#######################################
+# Returns count of a network's bootstrap nodes.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_count_of_genesis_nodes() {
+    local NET_ID=${1}    
+    source $(get_path_to_net_vars $NET_ID)
+
+    echo $NCTL_NET_NODE_COUNT
+}
+
+#######################################
+# Returns count of a network configured nodes.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_count_of_all_nodes() {    
+    local NET_ID=${1}
+
+    source $(get_path_to_net_vars $NET_ID)
+
+    echo $(($NCTL_NET_NODE_COUNT * 2))
 }
 
 #######################################
@@ -394,7 +438,7 @@ function get_network_known_addresses {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_address_event {
+function get_node_address_event() {
     local NET_ID=${1}    
     local NODE_ID=${2}    
 
@@ -407,7 +451,7 @@ function get_node_address_event {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_address_rest {
+function get_node_address_rest() {
     local NET_ID=${1}    
     local NODE_ID=${2}   
 
@@ -420,7 +464,7 @@ function get_node_address_rest {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_address_rpc {
+function get_node_address_rpc() {
     local NET_ID=${1}    
     local NODE_ID=${2}      
 
@@ -433,7 +477,7 @@ function get_node_address_rpc {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_address_rpc_for_curl {
+function get_node_address_rpc_for_curl() {
     local NET_ID=${1}    
     local NODE_ID=${2}   
 
@@ -449,7 +493,7 @@ function get_node_address_rpc_for_curl {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_port {
+function get_node_port() {
     local BASE_PORT=${1}    
     local NET_ID=${2}    
     local NODE_ID=${3}    
@@ -464,7 +508,7 @@ function get_node_port {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_port_rest {
+function get_node_port_rest() {
     local NET_ID=${1}    
     local NODE_ID=${2}    
 
@@ -477,7 +521,7 @@ function get_node_port_rest {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_port_rpc {
+function get_node_port_rpc() {
     local NET_ID=${1}    
     local NODE_ID=${2}    
 
@@ -490,7 +534,7 @@ function get_node_port_rpc {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_port_sse {
+function get_node_port_sse() {
     local NET_ID=${1}    
     local NODE_ID=${2}    
 
@@ -503,11 +547,88 @@ function get_node_port_sse {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_process_name() {
+function get_process_group_members() {
+    local NET_ID=${1}    
+    local PROCESS_GROUP=${2}
+
+    # Import net vars.
+    source $(get_path_to_net_vars $NET_ID)
+
+    # Set range.
+    if [ $PROCESS_GROUP == $NCTL_PROCESS_GROUP_1 ]; then
+        local SEQ_START=1
+        local SEQ_END=$NCTL_NET_BOOTSTRAP_COUNT
+    elif [ $PROCESS_GROUP == $NCTL_PROCESS_GROUP_2 ]; then
+        local SEQ_START=$(($NCTL_NET_BOOTSTRAP_COUNT + 1))
+        local SEQ_END=$NCTL_NET_NODE_COUNT
+    elif [ $PROCESS_GROUP == $NCTL_PROCESS_GROUP_3 ]; then
+        local SEQ_START=$(($NCTL_NET_NODE_COUNT + 1))
+        local SEQ_END=$(($NCTL_NET_NODE_COUNT * 2))
+    fi
+
+    # Set members of process group.
+    local result=""
+    for IDX in $(seq $SEQ_START $SEQ_END)
+    do
+        if [ $IDX -gt $SEQ_START ]; then
+            result=$result", "
+        fi
+        result=$result$(get_process_name_of_node $NET_ID $IDX)
+    done
+
+    echo $result
+}
+
+#######################################
+# Returns name of a daemonized node process within a group.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_process_name_of_node() {
     local NET_ID=${1}    
     local NODE_ID=${2} 
     
     echo "casper-net-$NET_ID-node-$NODE_ID"
+}
+
+#######################################
+# Returns name of a daemonized node process within a group.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_process_name_of_node_in_group() {
+    local NET_ID=${1}    
+    local NODE_ID=${2} 
+    local NODE_PROCESS_NAME=$(get_process_name_of_node $NET_ID $NODE_ID)
+    local PROCESS_GROUP_NAME=$(get_process_name_of_node_group $NET_ID $NODE_ID)
+    
+    echo "$PROCESS_GROUP_NAME:$NODE_PROCESS_NAME"
+}
+
+#######################################
+# Returns name of a daemonized node process group.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_process_name_of_node_group() {
+    local NET_ID=${1}    
+    local NODE_ID=${2}
+    
+    source $(get_path_to_net_vars $NET_ID)
+
+    # Boostraps.
+    if [ $NODE_ID -le $NCTL_NET_BOOTSTRAP_COUNT ]; then
+        echo $NCTL_PROCESS_GROUP_1
+    # Genesis validators.
+    elif [ $NODE_ID -le $NCTL_NET_NODE_COUNT ]; then
+        echo $NCTL_PROCESS_GROUP_2
+    # Other.
+    else
+        echo $NCTL_PROCESS_GROUP_3
+    fi
 }
 
 #######################################
@@ -879,7 +1000,6 @@ function render_chain_block() {
     local NET_ID=${1}
     local NODE_ID=${2}
     local BLOCK_HASH=${3}      
-
     local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
 
     if [ "$BLOCK_HASH" ]; then
@@ -890,6 +1010,7 @@ function render_chain_block() {
     else
         $(get_path_to_client $NET_ID) get-block \
             --node-address $NODE_ADDRESS \
+            --block-identifier "" \
             | jq '.result.block'
     fi
 }
