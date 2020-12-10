@@ -103,6 +103,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// Transfers `amount` of tokens from `source` purse to a `target` purse.
     fn transfer(
         &mut self,
+        maybe_to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
@@ -128,7 +129,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         };
         self.write(source_balance, source_value - amount)?;
         self.add(target_balance, amount)?;
-        self.record_transfer(source, target, amount, id)?;
+        self.record_transfer(maybe_to, source, target, amount, id)?;
         Ok(())
     }
 

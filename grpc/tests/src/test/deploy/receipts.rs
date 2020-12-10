@@ -100,6 +100,7 @@ fn should_record_wasmless_transfer() {
 
     assert_eq!(transfer.deploy_hash, deploy_hash);
     assert_eq!(transfer.from, *DEFAULT_ACCOUNT_ADDR);
+    assert_eq!(transfer.to, Some(*ALICE_ADDR));
     assert_eq!(transfer.source, default_account.main_purse());
     assert_eq!(transfer.target, alice_attenuated_main_purse);
     assert_eq!(transfer.amount, *TRANSFER_AMOUNT_1);
@@ -351,6 +352,7 @@ fn should_record_wasm_transfers() {
     assert!(transfers.contains(&Transfer {
         deploy_hash,
         from: *DEFAULT_ACCOUNT_ADDR,
+        to: Some(*ALICE_ADDR),
         source: default_account.main_purse(),
         target: alice_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_1,
@@ -361,6 +363,7 @@ fn should_record_wasm_transfers() {
     assert!(transfers.contains(&Transfer {
         deploy_hash,
         from: *DEFAULT_ACCOUNT_ADDR,
+        to: Some(*BOB_ADDR),
         source: default_account.main_purse(),
         target: bob_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_2,
@@ -371,6 +374,7 @@ fn should_record_wasm_transfers() {
     assert!(transfers.contains(&Transfer {
         deploy_hash,
         from: *DEFAULT_ACCOUNT_ADDR,
+        to: Some(*CAROL_ADDR),
         source: default_account.main_purse(),
         target: carol_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_3,
@@ -491,6 +495,7 @@ fn should_record_wasm_transfers_with_subcall() {
     let expected_alice = Transfer {
         deploy_hash: transfer_deploy_hash,
         from: *DEFAULT_ACCOUNT_ADDR,
+        to: Some(*ALICE_ADDR),
         source: default_account.main_purse(),
         target: alice_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_1,
@@ -501,6 +506,7 @@ fn should_record_wasm_transfers_with_subcall() {
     let expected_bob = Transfer {
         deploy_hash: transfer_deploy_hash,
         from: *DEFAULT_ACCOUNT_ADDR,
+        to: Some(*BOB_ADDR),
         source: default_account.main_purse(),
         target: bob_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_2,
@@ -511,6 +517,7 @@ fn should_record_wasm_transfers_with_subcall() {
     let expected_carol = Transfer {
         deploy_hash: transfer_deploy_hash,
         from: *DEFAULT_ACCOUNT_ADDR,
+        to: Some(*CAROL_ADDR),
         source: default_account.main_purse(),
         target: carol_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_3,

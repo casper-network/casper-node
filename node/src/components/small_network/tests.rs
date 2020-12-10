@@ -227,7 +227,7 @@ fn network_is_complete(
             return false;
         }
 
-        if net.is_isolated() {
+        if outgoing.is_empty() && incoming.is_empty() {
             return false;
         }
     }
@@ -250,7 +250,7 @@ async fn run_two_node_network_five_times() {
     let mut rng = crate::new_rng();
 
     // The networking port used by the tests for the root node.
-    let first_node_port = testing::unused_port_on_localhost();
+    let first_node_port = testing::unused_port_on_localhost() + 1;
 
     init_logging();
 
@@ -276,7 +276,7 @@ async fn run_two_node_network_five_times() {
             "finished setting up networking nodes"
         );
 
-        let timeout = Duration::from_secs(2);
+        let timeout = Duration::from_secs(20);
         let blocklist = HashSet::new();
         net.settle_on(
             &mut rng,

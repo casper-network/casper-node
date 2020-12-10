@@ -1,5 +1,8 @@
 use std::{collections::BTreeSet, iter, rc::Rc};
 
+use datasize::DataSize;
+use derive_more::Display;
+
 use crate::{
     components::consensus::{
         cl_context::{ClContext, Keypair},
@@ -12,16 +15,16 @@ use crate::{
             State,
         },
         protocols::highway::HighwayMessage,
-        tests::{
-            mock_proto::NodeId,
-            utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
-        },
+        tests::utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
         traits::Context,
         HighwayProtocol,
     },
     testing::TestRng,
     types::Timestamp,
 };
+
+#[derive(DataSize, Debug, Ord, PartialOrd, Clone, Display, Hash, Eq, PartialEq)]
+pub(crate) struct NodeId(pub u8);
 
 /// Returns a new `State` with `ClContext` parameters suitable for tests.
 pub(crate) fn new_test_state(weights: &[state::Weight], seed: u64) -> State<ClContext> {

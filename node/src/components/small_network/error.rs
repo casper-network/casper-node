@@ -22,8 +22,11 @@ pub enum Error {
     /// Peer ID presented does not match the expected one.
     #[error("remote node has wrong ID")]
     WrongId,
-    /// The config must have both or neither of certificate and secret key.
-    #[error("need either both or none of cert, secret_key in network config")]
+    /// The config must have both or neither of certificate and secret key, and must have at least
+    /// one known address.
+    #[error(
+        "need both or none of cert, secret_key in network config, and at least one known address"
+    )]
     InvalidConfig,
     /// Our own certificate is not valid.
     #[error("own certificate invalid")]
