@@ -51,7 +51,7 @@ pub enum FunctionIndex {
     RemoveContractUserGroupURefsIndex,
     Blake2b,
     RecordTransfer,
-    RecordAuctionInfo,
+    RecordEraInfo,
 }
 
 impl Into<usize> for FunctionIndex {

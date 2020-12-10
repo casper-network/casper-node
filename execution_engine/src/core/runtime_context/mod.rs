@@ -16,7 +16,7 @@ use casper_types::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
-    auction::AuctionInfo,
+    auction::EraInfo,
     bytesrepr,
     bytesrepr::ToBytes,
     contracts::NamedKeys,
@@ -247,10 +247,10 @@ where
                 // Users cannot remove deploy infos from global state
                 Ok(())
             }
-            auction_info_addr @ Key::AuctionInfo(_) => {
-                let _auction_info: AuctionInfo = self.read_gs_typed(&auction_info_addr)?;
+            era_info_addr @ Key::EraInfo(_) => {
+                let _era_info: EraInfo = self.read_gs_typed(&era_info_addr)?;
                 self.named_keys.remove(name);
-                // Users cannot remove auction infos from global state
+                // Users cannot remove era infos from global state
                 Ok(())
             }
         }
@@ -484,13 +484,13 @@ where
         }
     }
 
-    pub fn write_auction_info(&mut self, key: Key, value: AuctionInfo) {
-        if let Key::AuctionInfo(_) = key {
+    pub fn write_era_info(&mut self, key: Key, value: EraInfo) {
+        if let Key::EraInfo(_) = key {
             self.tracking_copy
                 .borrow_mut()
-                .write(key, StoredValue::AuctionInfo(value));
+                .write(key, StoredValue::EraInfo(value));
         } else {
-            panic!("Do not use this function for writing non-auction-info keys")
+            panic!("Do not use this function for writing non-era-info keys")
         }
     }
 
@@ -595,7 +595,7 @@ where
             StoredValue::ContractPackage(_) => Ok(()),
             StoredValue::Transfer(_) => Ok(()),
             StoredValue::DeployInfo(_) => Ok(()),
-            StoredValue::AuctionInfo(_) => Ok(()),
+            StoredValue::EraInfo(_) => Ok(()),
         }
     }
 
@@ -681,7 +681,7 @@ where
             Key::URef(uref) => uref.is_readable(),
             Key::Transfer(_) => true,
             Key::DeployInfo(_) => true,
-            Key::AuctionInfo(_) => true,
+            Key::EraInfo(_) => true,
         }
     }
 
@@ -692,7 +692,7 @@ where
             Key::URef(uref) => uref.is_addable(),
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
-            Key::AuctionInfo(_) => false,
+            Key::EraInfo(_) => false,
         }
     }
 
@@ -703,7 +703,7 @@ where
             Key::URef(uref) => uref.is_writeable(),
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
-            Key::AuctionInfo(_) => false,
+            Key::EraInfo(_) => false,
         }
     }
 

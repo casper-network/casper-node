@@ -1,9 +1,7 @@
 use casper_types::{
     account,
     account::AccountHash,
-    auction::{
-        Auction, AuctionInfo, MintProvider, RuntimeProvider, StorageProvider, SystemProvider,
-    },
+    auction::{Auction, EraInfo, MintProvider, RuntimeProvider, StorageProvider, SystemProvider},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
     ApiError, CLTyped, CLValue, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
@@ -66,9 +64,8 @@ where
         }
     }
 
-    fn record_auction_info(&mut self, era_id: u64, auction_info: AuctionInfo) -> Result<(), Error> {
-        Runtime::record_auction_info(self, era_id, auction_info)
-            .map_err(|_| Error::RecordAuctionInfo)
+    fn record_era_info(&mut self, era_id: u64, era_info: EraInfo) -> Result<(), Error> {
+        Runtime::record_era_info(self, era_id, era_info).map_err(|_| Error::RecordEraInfo)
     }
 }
 

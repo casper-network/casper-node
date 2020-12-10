@@ -34,7 +34,7 @@ impl From<Key> for state::Key {
                 pb_transfer_addr.set_transfer_addr(transfer_addr.value().to_vec());
                 pb_key.set_transfer(pb_transfer_addr)
             }
-            Key::AuctionInfo(era_id) => pb_key.set_auction_info(era_id),
+            Key::EraInfo(era_id) => pb_key.set_era_info(era_id),
         }
         pb_key
     }
@@ -75,7 +75,7 @@ impl TryFrom<state::Key> for Key {
                 )?);
                 Key::DeployInfo(deploy_hash)
             }
-            Key_oneof_value::auction_info(era_id) => Key::AuctionInfo(era_id),
+            Key_oneof_value::era_info(era_id) => Key::EraInfo(era_id),
         };
         Ok(key)
     }

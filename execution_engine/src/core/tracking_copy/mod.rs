@@ -424,8 +424,8 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 StoredValue::DeployInfo(_) => {
                     return Ok(query.into_not_found_result(&"DeployInfo value found."));
                 }
-                StoredValue::AuctionInfo(_) => {
-                    return Ok(query.into_not_found_result(&"AuctionInfo value found."));
+                StoredValue::EraInfo(_) => {
+                    return Ok(query.into_not_found_result(&"EraInfo value found."));
                 }
             }
         }

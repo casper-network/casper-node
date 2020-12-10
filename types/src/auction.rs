@@ -1,9 +1,9 @@
 //! Contains implementation of a Auction contract functionality.
-mod auction_info;
 mod bid;
 mod constants;
 mod delegator;
 mod detail;
+mod era_info;
 mod providers;
 mod seigniorage_recipient;
 mod types;
@@ -19,10 +19,10 @@ use crate::{
     PublicKey, URef, U512,
 };
 
-pub use auction_info::*;
 pub use bid::Bid;
 pub use constants::*;
 pub use delegator::Delegator;
+pub use era_info::*;
 pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider};
 pub use seigniorage_recipient::SeigniorageRecipient;
 pub use types::*;
@@ -420,8 +420,8 @@ pub trait Auction:
             return Err(Error::MismatchedEraValidators);
         }
 
-        let mut auction_info = AuctionInfo::new();
-        let mut seigniorage_allocations = auction_info.seigniorage_allocations_mut();
+        let mut era_info = EraInfo::new();
+        let mut seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
         for (public_key, reward_factor) in reward_factors {
             let recipient = seigniorage_recipients
@@ -510,7 +510,7 @@ pub trait Auction:
             .map_err(|_| Error::DelegatorRewardTransfer)?;
         }
 
-        self.record_auction_info(era_id, auction_info)?;
+        self.record_era_info(era_id, era_info)?;
 
         Ok(())
     }

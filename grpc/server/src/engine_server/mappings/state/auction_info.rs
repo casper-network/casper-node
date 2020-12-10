@@ -5,7 +5,7 @@ use crate::engine_server::{
 };
 
 use casper_types::{
-    auction::{AuctionInfo, SeigniorageAllocation},
+    auction::{EraInfo, SeigniorageAllocation},
     bytesrepr::{self, ToBytes},
     U512,
 };
@@ -80,11 +80,11 @@ impl TryFrom<state::SeigniorageAllocation> for SeigniorageAllocation {
     }
 }
 
-impl From<AuctionInfo> for state::AuctionInfo {
-    fn from(auction_info: AuctionInfo) -> Self {
-        let mut ret = state::AuctionInfo::new();
+impl From<EraInfo> for state::EraInfo {
+    fn from(era_info: EraInfo) -> Self {
+        let mut ret = state::EraInfo::new();
         let mut pb_vec_seigniorage_allocations = Vec::new();
-        for allocation in auction_info.seigniorage_allocations().iter() {
+        for allocation in era_info.seigniorage_allocations().iter() {
             pb_vec_seigniorage_allocations.push(allocation.to_owned().into());
         }
         ret.set_seigniorage_allocations(pb_vec_seigniorage_allocations.into());
@@ -92,15 +92,15 @@ impl From<AuctionInfo> for state::AuctionInfo {
     }
 }
 
-impl TryFrom<state::AuctionInfo> for AuctionInfo {
+impl TryFrom<state::EraInfo> for EraInfo {
     type Error = ParsingError;
 
-    fn try_from(pb_auction_info: state::AuctionInfo) -> Result<Self, Self::Error> {
+    fn try_from(pb_era_info: state::EraInfo) -> Result<Self, Self::Error> {
         let mut seigniorage_allocations = Vec::new();
-        for pb_seigniorage_allocation in pb_auction_info.get_seigniorage_allocations().iter() {
+        for pb_seigniorage_allocation in pb_era_info.get_seigniorage_allocations().iter() {
             seigniorage_allocations.push(pb_seigniorage_allocation.to_owned().try_into()?);
         }
-        let mut ret = AuctionInfo::new();
+        let mut ret = EraInfo::new();
         *ret.seigniorage_allocations_mut() = seigniorage_allocations;
         Ok(ret)
     }

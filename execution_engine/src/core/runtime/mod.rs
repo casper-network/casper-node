@@ -19,7 +19,7 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind
 
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
-    auction::{self, Auction, AuctionInfo, EraId},
+    auction::{self, Auction, EraId, EraInfo},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
@@ -108,7 +108,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Hash(_) => None,
         Key::Transfer(_) => None,
         Key::DeployInfo(_) => None,
-        Key::AuctionInfo(_) => None,
+        Key::EraInfo(_) => None,
     }
 }
 
@@ -2455,11 +2455,7 @@ where
     }
 
     /// Records given auction info at a given era id
-    fn record_auction_info(
-        &mut self,
-        era_id: EraId,
-        auction_info: AuctionInfo,
-    ) -> Result<(), Error> {
+    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
         if self.context.base_key() != Key::from(self.protocol_data().auction()) {
             return Err(Error::InvalidContext);
         }
@@ -2468,8 +2464,7 @@ where
             return Ok(());
         }
 
-        self.context
-            .write_auction_info(Key::AuctionInfo(era_id), auction_info);
+        self.context.write_era_info(Key::EraInfo(era_id), era_info);
 
         Ok(())
     }
