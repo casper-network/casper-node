@@ -5,9 +5,8 @@
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
-    net::SocketAddr,
     sync::Arc,
 };
 
@@ -42,13 +41,12 @@ use crate::{
         chainspec_loader::ChainspecInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
-        linear_chain::FinalitySignature,
     },
     crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalizedBlock, Item, ProtoBlock, StatusFeed, Timestamp,
+        DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock, StatusFeed, Timestamp,
     },
     utils::DisplayIter,
     Chainspec,
@@ -173,7 +171,8 @@ pub enum NetworkInfoRequest<I> {
     /// Get incoming and outgoing peers.
     GetPeers {
         /// Responder to be called with all connected peers.
-        responder: Responder<HashMap<I, SocketAddr>>,
+        // TODO - change the `String` field to a `libp2p::Multiaddr` once small_network is removed.
+        responder: Responder<BTreeMap<I, String>>,
     },
 }
 
@@ -494,7 +493,7 @@ pub enum RpcRequest<I> {
     /// Return the connected peers.
     GetPeers {
         /// Responder to call with the result.
-        responder: Responder<HashMap<I, SocketAddr>>,
+        responder: Responder<BTreeMap<I, String>>,
     },
     /// Return string formatted status or `None` if an error occurred.
     GetStatus {
@@ -829,7 +828,7 @@ impl<I: Display> Display for LinearChainRequest<I> {
 /// Consensus component requests.
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
-    HandleLinearBlock(Box<BlockHeader>, Responder<FinalitySignature>),
+    HandleLinearBlock(Box<BlockHeader>, Responder<Option<FinalitySignature>>),
 }
 
 /// ChainspecLoader componenent requests.

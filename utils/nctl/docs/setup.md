@@ -11,9 +11,10 @@
 # Supervisor - cross-platform process manager.
 python3 -m pip install supervisor
 
-# Rust toolchain - required by casper-node software.
+# Rust toolchain and smart contracts - required by casper-node software.
 cd YOUR_WORKING_DIRECTORY/casper-node
 make setup-rs
+make build-contracts-rs
 ```
 
 ### Step 2 - extend bashrc file to make NCTL commands available from terminal session.

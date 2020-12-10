@@ -64,10 +64,9 @@ pub mod requests;
 use std::{
     any::type_name,
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
-    net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -101,18 +100,17 @@ use casper_types::{
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
-        consensus::BlockContext,
+        consensus::{BlockContext, EraId},
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
-        linear_chain::FinalitySignature,
         small_network::GossipedAddress,
     },
-    crypto::hash::Digest,
+    crypto::{asymmetric_key::PublicKey, hash::Digest},
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
         Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalizedBlock, Item, ProtoBlock, Timestamp,
+        DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock, Timestamp,
     },
     utils::Source,
     Chainspec,
@@ -255,10 +253,19 @@ pub trait EffectOptionExt {
     ///
     /// The function `f_some` is used to translate the returned value from an effect into an event,
     /// while the function `f_none` does the same for a returned `None`.
-    fn option<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
+    fn map_or_else<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
     where
         F: FnOnce(Self::Value) -> U + 'static + Send,
         G: FnOnce() -> U + 'static + Send,
+        U: 'static;
+
+    /// Finalizes a future returning an `Option` into two different effects.
+    ///
+    /// The function `f` is used to translate the returned value from an effect into an event,
+    /// In the case of `None`, empty vector of effects is returned.
+    fn map_some<U, F>(self, f: F) -> Effects<U>
+    where
+        F: FnOnce(Self::Value) -> U + 'static + Send,
         U: 'static;
 }
 
@@ -307,7 +314,7 @@ where
 {
     type Value = V;
 
-    fn option<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
+    fn map_or_else<U, F, G>(self, f_some: F, f_none: G) -> Effects<U>
     where
         F: FnOnce(V) -> U + 'static + Send,
         G: FnOnce() -> U + 'static + Send,
@@ -316,6 +323,22 @@ where
         smallvec![self
             .map(|option| option.map_or_else(f_none, f_some))
             .map(|item| smallvec![item])
+            .boxed()]
+    }
+
+    /// Finalizes a future returning an `Option`.
+    ///
+    /// The function `f` is used to translate the returned value from an effect into an event,
+    /// In the case of `None`, empty vector is returned.
+    fn map_some<U, F>(self, f: F) -> Effects<U>
+    where
+        F: FnOnce(Self::Value) -> U + 'static + Send,
+        U: 'static,
+    {
+        smallvec![self
+            .map(|option| option
+                .map(|el| smallvec![f(el)])
+                .unwrap_or_else(|| smallvec![]))
             .boxed()]
     }
 }
@@ -498,7 +521,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets connected network peers.
-    pub async fn network_peers<I>(self) -> HashMap<I, SocketAddr>
+    pub async fn network_peers<I>(self) -> BTreeMap<I, String>
     where
         REv: From<NetworkInfoRequest<I>>,
         I: Send + 'static,
@@ -920,6 +943,27 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    /// An equivocation has been detected.
+    pub(crate) async fn announce_fault_event(
+        self,
+        era_id: EraId,
+        public_key: PublicKey,
+        timestamp: Timestamp,
+    ) where
+        REv: From<ConsensusAnnouncement>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::Fault {
+                    era_id,
+                    public_key: Box::new(public_key),
+                    timestamp,
+                },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
     /// The linear chain has stored a newly-created block.
     pub(crate) async fn announce_block_added(self, block_hash: BlockHash, block_header: BlockHeader)
     where
@@ -931,6 +975,19 @@ impl<REv> EffectBuilder<REv> {
                     block_hash,
                     block_header: Box::new(block_header),
                 },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// The linear chain has stored a new finality signature.
+    pub(crate) async fn announce_finality_signature(self, fs: Box<FinalitySignature>)
+    where
+        REv: From<LinearChainAnnouncement>,
+    {
+        self.0
+            .schedule(
+                LinearChainAnnouncement::NewFinalitySignature(fs),
                 QueueKind::Regular,
             )
             .await
@@ -1221,7 +1278,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn handle_linear_chain_block(
         self,
         block_header: BlockHeader,
-    ) -> FinalitySignature
+    ) -> Option<FinalitySignature>
     where
         REv: From<ConsensusRequest>,
     {

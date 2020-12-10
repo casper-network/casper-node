@@ -39,7 +39,6 @@ use crate::{
             traits::NodeIdT,
             Config, ConsensusMessage, Event, ReactorEventT,
         },
-        linear_chain::FinalitySignature,
     },
     crypto::{
         asymmetric_key::{self, PublicKey, SecretKey},
@@ -47,7 +46,9 @@ use crate::{
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
-    types::{BlockHash, BlockHeader, BlockLike, FinalizedBlock, ProtoBlock, Timestamp},
+    types::{
+        BlockHash, BlockHeader, BlockLike, FinalitySignature, FinalizedBlock, ProtoBlock, Timestamp,
+    },
     utils::WithDir,
     NodeRng,
 };
@@ -56,8 +57,6 @@ pub use self::era::{Era, EraId};
 use crate::components::contract_runtime::ValidatorWeightsByEraIdRequest;
 
 mod era;
-#[cfg(test)]
-mod tests;
 
 type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
@@ -427,18 +426,19 @@ where
     pub(super) fn handle_linear_chain_block(
         &mut self,
         block_header: BlockHeader,
-        responder: Responder<FinalitySignature>,
+        responder: Responder<Option<FinalitySignature>>,
     ) -> Effects<Event<I>> {
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block_header.era_id();
-        if self.era_supervisor.is_validator_in(&our_pk, era_id) {
-            // TODO: Only sign if a validator!
-        }
-        let block_hash = block_header.hash();
-        let signature = asymmetric_key::sign(block_hash.inner(), &our_sk, &our_pk, self.rng);
-        let fin_sig = FinalitySignature::new(block_hash, signature, our_pk);
-        let mut effects = responder.respond(fin_sig).ignore();
+        let opt_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
+            let block_hash = block_header.hash();
+            let signature = asymmetric_key::sign(block_hash.inner(), &our_sk, &our_pk, self.rng);
+            Some(FinalitySignature::new(block_hash, signature, our_pk))
+        } else {
+            None
+        };
+        let mut effects = responder.respond(opt_fin_sig).ignore();
         if era_id < self.era_supervisor.current_era {
             trace!(era = era_id.0, "executed block in old era");
             return effects;
@@ -698,7 +698,10 @@ where
             }
             ProtocolOutcome::NewEvidence(pub_key) => {
                 info!(%pub_key, era = era_id.0, "validator equivocated");
-                let mut effects = Effects::new();
+                let mut effects = self
+                    .effect_builder
+                    .announce_fault_event(era_id, pub_key, Timestamp::now())
+                    .ignore();
                 for e_id in (era_id.0..=(era_id.0 + self.era_supervisor.bonded_eras)).map(EraId) {
                     let candidate_blocks =
                         if let Some(era) = self.era_supervisor.active_eras.get_mut(&e_id) {
