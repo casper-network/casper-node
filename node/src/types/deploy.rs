@@ -44,6 +44,7 @@ use crate::{
     utils::DisplayIter,
     NodeRng,
 };
+use num_traits::Zero;
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let payment = ExecutableDeployItem::StoredContractByName {
@@ -476,28 +477,33 @@ impl Deploy {
         &self.approvals
     }
 
-    /// Returns the header() wrapped the correct DeployType given the `session`.
+    /// Returns the DeployType wrapped the correct DeployType.
     pub fn deploy_type(&self) -> DeployType {
-        match self.session() {
-            item @ ExecutableDeployItem::Transfer { .. } => {
+        let header = self.header().clone();
+        let size = self.serialized_length();
+        if self.session().is_transfer() {
+            // TODO: non-zero value
+            let payment_amount = Motes::zero();
+            DeployType::Transfer {
+                header,
+                payment_amount,
+                size,
+            }
+        } else {
+            let payment_item = self.payment().clone();
+            let payment_amount = {
                 // Some assumptions here:
                 // Since we are a Transfer variant, we expect: args to exist, contain "amount", and
                 // be a valid U512 value.
-                let args = item.clone().into_runtime_args().expect("should get");
+                let args = payment_item.into_runtime_args().expect("should get");
                 let value = args.get(ARG_AMOUNT).expect("should exist");
                 let value = value.clone().into_t::<U512>().expect("should be U512");
-                let payment_amount = Motes::new(value);
-                DeployType::Transfer {
-                    header: self.header().clone(),
-                    payment_amount,
-                }
-            }
-            ExecutableDeployItem::ModuleBytes { .. }
-            | ExecutableDeployItem::StoredContractByHash { .. }
-            | ExecutableDeployItem::StoredContractByName { .. }
-            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
-            | ExecutableDeployItem::StoredVersionedContractByName { .. } => {
-                DeployType::Wasm(self.header().clone())
+                Motes::new(value)
+            };
+            DeployType::Other {
+                header,
+                payment_amount,
+                size,
             }
         }
     }

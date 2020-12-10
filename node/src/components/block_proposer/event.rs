@@ -23,9 +23,14 @@ pub enum DeployType {
     Transfer {
         header: DeployHeader,
         payment_amount: Motes,
+        size: usize,
     },
     /// Represents a wasm deploy.
-    Wasm(DeployHeader),
+    Other {
+        header: DeployHeader,
+        payment_amount: Motes,
+        size: usize,
+    },
 }
 
 impl DeployType {
@@ -33,26 +38,34 @@ impl DeployType {
     pub fn header(&self) -> &DeployHeader {
         match self {
             Self::Transfer { header, .. } => header,
-            Self::Wasm(header) => header,
+            Self::Other { header, .. } => header,
         }
     }
 
-    /// If this DeployType is a Transfer, return the amount, otherwise None.
-    pub fn payment_amount(&self) -> Option<Motes> {
+    /// Access payment_amount from all variants.
+    pub fn payment_amount(&self) -> Motes {
         match self {
-            Self::Transfer { payment_amount, .. } => Some(*payment_amount),
-            Self::Wasm(_) => None,
+            Self::Transfer { payment_amount, .. } => *payment_amount,
+            Self::Other { payment_amount, .. } => *payment_amount,
+        }
+    }
+
+    /// Access size from all variants.
+    pub fn size(&self) -> usize {
+        match self {
+            Self::Transfer { size, .. } => *size,
+            Self::Other { size, .. } => *size,
         }
     }
 
     /// Asks if the variant is a Transfer.
     pub fn is_transfer(&self) -> bool {
-        matches!(self, Self::Transfer{..})
+        matches!(self, DeployType::Transfer{..})
     }
 
     /// Asks if the variant is Wasm.
     pub fn is_wasm(&self) -> bool {
-        matches!(self, Self::Wasm(_))
+        matches!(self, DeployType::Other{..})
     }
 }
 

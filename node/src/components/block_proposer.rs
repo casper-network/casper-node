@@ -27,10 +27,10 @@ use crate::{
         requests::{BlockProposerRequest, ProtoBlockRequest, StateStoreRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{DeployHash, ProtoBlock, Timestamp},
+    types::{DeployHash, DeployHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
-use casper_execution_engine::shared::motes::Motes;
+use casper_execution_engine::{core::engine_state::CONV_RATE, shared::gas::Gas};
 pub(crate) use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
@@ -355,21 +355,11 @@ impl BlockProposerReady {
     /// Checks if a deploy is valid (for inclusion into the next block).
     fn is_deploy_valid(
         &self,
-        deploy_type: &DeployType,
+        header: &DeployHeader,
         block_timestamp: Timestamp,
         deploy_config: &DeployConfig,
         past_deploys: &HashSet<DeployHash>,
     ) -> bool {
-        if deploy_config.max_payment_cost != Motes::zero()
-            && deploy_type.is_transfer()
-            && deploy_type
-                .payment_amount()
-                .expect("transfer has payment amount")
-                > deploy_config.max_payment_cost
-        {
-            return false;
-        }
-        let header = deploy_type.header();
         let all_deps_resolved = || {
             header.dependencies().iter().all(|dep| {
                 past_deploys.contains(dep) || self.sets.finalized_deploys.contains_key(dep)
@@ -392,42 +382,74 @@ impl BlockProposerReady {
     ) -> ProtoBlock {
         let max_transfers = deploy_config.block_max_transfer_count as usize;
         let max_deploys = deploy_config.block_max_deploy_count as usize;
+        let max_block_size_bytes = deploy_config.max_block_size as usize;
+        let block_gas_limit = Gas::from(deploy_config.block_gas_limit);
 
         let mut transfers = Vec::new();
         let mut wasm_deploys = Vec::new();
-        let mut block_gas_running_total = 0u64;
-
-        // TODO: is this possible to check this in BlockProposer:
-        //   deploy_config.max_block_size: u32
-        //      - max block size in bytes - zero means unlimited (according to chainspec docs)
-        //      - would require serialization of the block, to check size in bytes.
+        let mut block_gas_running_total = Gas::zero();
+        let mut block_size_running_total = 0usize;
 
         for (hash, deploy_type) in self.sets.pending.iter() {
-            let under_max_transfers = transfers.len() < max_transfers;
-            let under_max_deploys = wasm_deploys.len() < max_deploys;
-            if !under_max_deploys && !under_max_transfers {
+            let at_max_transfers = transfers.len() == max_transfers;
+            let at_max_deploys = wasm_deploys.len() == max_deploys;
+
+            // Early exit if block limits are met.
+            if block_gas_running_total >= block_gas_limit
+                && block_size_running_total >= max_block_size_bytes
+                && at_max_deploys
+                && at_max_transfers
+            {
                 break;
             }
 
-            if self.is_deploy_valid(&deploy_type, block_timestamp, &deploy_config, &past_deploys)
-                && !past_deploys.contains(hash)
-                && !self.sets.finalized_deploys.contains_key(hash)
-            {
-                let header = deploy_type.header();
-                let gas_price = header.gas_price();
-                if gas_price + block_gas_running_total > deploy_config.block_gas_limit {
-                    break;
-                }
-
-                // all deploys in pending that aren't in finalized blocks or
-                // proposed blocks from the set `past_blocks`
-                if under_max_transfers && deploy_type.is_transfer() {
-                    transfers.push(*hash);
-                } else if under_max_deploys && deploy_type.is_wasm() {
-                    wasm_deploys.push(*hash);
-                }
-                block_gas_running_total += header.gas_price();
+            // Skip this deploy, searching instead for another that may fit the bill.
+            if block_size_running_total + deploy_type.size() > max_block_size_bytes {
+                continue;
             }
+
+            if !self.is_deploy_valid(
+                &deploy_type.header(),
+                block_timestamp,
+                &deploy_config,
+                &past_deploys,
+            ) || past_deploys.contains(hash)
+                || self.sets.finalized_deploys.contains_key(hash)
+            {
+                continue;
+            }
+
+            let payment_amount_gas = match Gas::from_motes(deploy_type.payment_amount(), CONV_RATE)
+            {
+                Some(value) => value,
+                None => {
+                    tracing::error!("payment_amount couldn't be converted from motes to gas");
+                    continue;
+                }
+            };
+
+            let gas_running_total = if let Some(gas_running_total) =
+                block_gas_running_total.checked_add(payment_amount_gas)
+            {
+                gas_running_total
+            } else {
+                tracing::warn!("block gas would overflow");
+                break;
+            };
+
+            if gas_running_total > block_gas_limit {
+                continue;
+            }
+            if deploy_type.is_transfer() && !at_max_transfers {
+                println!("transfer running gas total {}", gas_running_total);
+                transfers.push(*hash);
+            } else if !at_max_deploys {
+                println!("deploy running gas total {}", gas_running_total);
+                wasm_deploys.push(*hash);
+            }
+            block_gas_running_total = gas_running_total;
+
+            block_size_running_total += deploy_type.size();
         }
 
         ProtoBlock::new(wasm_deploys, transfers, random_bit)

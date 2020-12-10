@@ -19,17 +19,17 @@ pub trait ExecutableDeployItemExt {
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem>;
 
-    /// Creates an `ExecutableDeployItem::StoredVersionedContractByHash`.
-    fn new_stored_versioned_contract_by_hash(
-        hash: ContractPackageHash,
+    /// Creates an `ExecutableDeployItem::StoredVersionedContractByName`.
+    fn new_stored_versioned_contract_by_name(
+        name: String,
         version: Option<u32>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem>;
 
-    /// Creates an `ExecutableDeployItem::StoredVersionedContractByName`.
-    fn new_stored_versioned_contract_by_name(
-        name: String,
+    /// Creates an `ExecutableDeployItem::StoredVersionedContractByHash`.
+    fn new_stored_versioned_contract_by_hash(
+        hash: ContractPackageHash,
         version: Option<u32>,
         entry_point: String,
         args: RuntimeArgs,
