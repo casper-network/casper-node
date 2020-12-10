@@ -45,7 +45,12 @@ pub(crate) fn new_test_state(weights: &[state::Weight], seed: u64) -> State<ClCo
 
 const INSTANCE_ID_DATA: &[u8; 1] = &[123u8; 1];
 
-pub(crate) fn new_test_highway_protocol() -> Box<dyn ConsensusProtocol<NodeId, ClContext>> {
+pub(crate) fn new_test_highway_protocol<I>(
+    init_slashed: I,
+) -> Box<dyn ConsensusProtocol<NodeId, ClContext>>
+where
+    I: IntoIterator<Item = PublicKey>,
+{
     let validators = vec![
         (*ALICE_PUBLIC_KEY, 100.into()),
         (*BOB_PUBLIC_KEY, 10.into()),
@@ -54,7 +59,7 @@ pub(crate) fn new_test_highway_protocol() -> Box<dyn ConsensusProtocol<NodeId, C
     HighwayProtocol::<NodeId, ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
         validators.into_iter().collect(),
-        &iter::once(*BOB_PUBLIC_KEY).collect(),
+        &init_slashed.into_iter().collect(),
         &chainspec,
         None,
         0.into(),
@@ -66,7 +71,7 @@ pub(crate) fn new_test_highway_protocol() -> Box<dyn ConsensusProtocol<NodeId, C
 fn test_highway_protocol_handle_message_parse_error() {
     // Build a highway_protocol for instrumentation
     let mut highway_protocol: Box<dyn ConsensusProtocol<NodeId, ClContext>> =
-        new_test_highway_protocol();
+        new_test_highway_protocol(vec![]);
 
     let sender = NodeId(123);
     let msg = vec![];
@@ -114,7 +119,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
         SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
     ));
-    let mut highway_protocol = new_test_highway_protocol();
+    let mut highway_protocol = new_test_highway_protocol(vec![]);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
     let mut effects =
@@ -146,11 +151,14 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
 
 #[test]
 fn detect_doppelganger() {
-    let creator: ValidatorIndex = ValidatorIndex(0);
-    let state: State<ClContext> = new_test_state(&[100.into()], 0);
+    let creator: ValidatorIndex = ALICE;
+    let state: State<ClContext> = new_test_state(&[100.into(), 100.into()], 0);
     let panorama: ValidatorMap<Observation<ClContext>> = Panorama::from(vec![N, N]);
     let seq_number = panorama.next_seq_num(&state, creator);
     let mut rng = TestRng::new();
+    let instance_id = ClContext::hash(INSTANCE_ID_DATA);
+    let round_exp = 14;
+    let value = CandidateBlock::new(ProtoBlock::new(vec![], vec![], false), vec![]);
     let wunit: WireUnit<ClContext> = WireUnit {
         panorama,
         creator,
