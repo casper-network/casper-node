@@ -1029,10 +1029,11 @@ pub(crate) mod json_compatibility {
     impl From<JsonEraEnd> for EraEnd {
         fn from(era_end: JsonEraEnd) -> Self {
             let equivocators = era_end.equivocators;
-            let mut rewards: BTreeMap<PublicKey, u64> = BTreeMap::new();
-            for reward in era_end.rewards {
-                rewards.insert(reward.validator, reward.amount);
-            }
+            let rewards = era_end
+                .rewards
+                .into_iter()
+                .map(|reward| (reward.validator, reward.amount))
+                .collect();
             EraEnd {
                 equivocators,
                 rewards,
