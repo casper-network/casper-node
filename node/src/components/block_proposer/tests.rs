@@ -13,11 +13,6 @@ use crate::{
 use super::*;
 use casper_types::standard_payment::ARG_AMOUNT;
 
-// For our testing purposes, these are the (approximate) sizes of generated deploys and transfers in
-// our test suite.
-const DEPLOY_SIZE: usize = 277;
-const TRANSFER_SIZE: usize = 273;
-
 fn default_gas_payment() -> Gas {
     Gas::from(1u32)
 }
@@ -145,8 +140,8 @@ fn should_add_and_take_deploys() {
         .is_empty());
 
     // add two deploys
-    proposer.add_deploy_or_transfer(block_time2, *deploy1.id(), deploy1.deploy_type());
-    proposer.add_deploy_or_transfer(block_time2, *deploy2.id(), deploy2.deploy_type());
+    proposer.add_deploy_or_transfer(block_time2, *deploy1.id(), deploy1.deploy_type().unwrap());
+    proposer.add_deploy_or_transfer(block_time2, *deploy2.id(), deploy2.deploy_type().unwrap());
 
     // if we try to create a block with a timestamp that is too early, we shouldn't get any
     // deploys
@@ -209,8 +204,8 @@ fn should_add_and_take_deploys() {
     proposer.finalized_deploys(deploys.iter().copied());
 
     // add more deploys
-    proposer.add_deploy_or_transfer(block_time2, *deploy3.id(), deploy3.deploy_type());
-    proposer.add_deploy_or_transfer(block_time2, *deploy4.id(), deploy4.deploy_type());
+    proposer.add_deploy_or_transfer(block_time2, *deploy3.id(), deploy3.deploy_type().unwrap());
+    proposer.add_deploy_or_transfer(block_time2, *deploy4.id(), deploy4.deploy_type().unwrap());
 
     let block =
         proposer.propose_proto_block(DeployConfig::default(), block_time2, no_deploys, true);
@@ -243,10 +238,10 @@ fn should_successfully_prune() {
     let mut proposer = create_test_proposer();
 
     // pending
-    proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type());
-    proposer.add_deploy_or_transfer(creation_time, *deploy2.id(), deploy2.deploy_type());
-    proposer.add_deploy_or_transfer(creation_time, *deploy3.id(), deploy3.deploy_type());
-    proposer.add_deploy_or_transfer(creation_time, *deploy4.id(), deploy4.deploy_type());
+    proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type().unwrap());
+    proposer.add_deploy_or_transfer(creation_time, *deploy2.id(), deploy2.deploy_type().unwrap());
+    proposer.add_deploy_or_transfer(creation_time, *deploy3.id(), deploy3.deploy_type().unwrap());
+    proposer.add_deploy_or_transfer(creation_time, *deploy4.id(), deploy4.deploy_type().unwrap());
 
     // pending => finalized
     proposer.finalized_deploys(vec![*deploy1.id()]);
@@ -358,7 +353,22 @@ fn should_propose_deploy_if_block_size_limit_met() {
         max_deploy_count: 2,
         proposed_count: 2,
         remaining_pending_count: 0,
-        max_block_size: Some(TRANSFER_SIZE + DEPLOY_SIZE),
+        max_block_size: Some(2 * DEPLOY_APPROX_MIN_SIZE),
+    });
+}
+
+#[test]
+fn should_not_propose_deploy_if_block_size_limit_within_threshold() {
+    test_proposer_with(TestArgs {
+        transfer_count: 2,
+        deploy_count: 2,
+        payment_amount: default_gas_payment(),
+        block_gas_limit: 10,
+        max_transfer_count: 3,
+        max_deploy_count: 3,
+        proposed_count: 2,
+        remaining_pending_count: 2,
+        max_block_size: Some(2 * DEPLOY_APPROX_MIN_SIZE),
     });
 }
 
@@ -433,7 +443,7 @@ fn test_proposer_with(
     for _ in 0..deploy_count {
         let deploy = generate_deploy(&mut rng, creation_time, ttl, vec![], payment_amount);
         println!("generated deploy with size {}", deploy.serialized_length());
-        proposer.add_deploy_or_transfer(creation_time, *deploy.id(), deploy.deploy_type());
+        proposer.add_deploy_or_transfer(creation_time, *deploy.id(), deploy.deploy_type().unwrap());
     }
     for _ in 0..transfer_count {
         let transfer = generate_transfer(&mut rng, creation_time, ttl, vec![], payment_amount);
@@ -441,7 +451,11 @@ fn test_proposer_with(
             "generated transfer with size {}",
             transfer.serialized_length()
         );
-        proposer.add_deploy_or_transfer(creation_time, *transfer.id(), transfer.deploy_type());
+        proposer.add_deploy_or_transfer(
+            creation_time,
+            *transfer.id(),
+            transfer.deploy_type().unwrap(),
+        );
     }
 
     let block = proposer.propose_proto_block(config, test_time, past_deploys, true);
@@ -485,7 +499,7 @@ fn should_return_deploy_dependencies() {
     let mut proposer = create_test_proposer();
 
     // add deploy2
-    proposer.add_deploy_or_transfer(creation_time, *deploy2.id(), deploy2.deploy_type());
+    proposer.add_deploy_or_transfer(creation_time, *deploy2.id(), deploy2.deploy_type().unwrap());
 
     // deploy2 has an unsatisfied dependency
     assert!(proposer
@@ -499,7 +513,7 @@ fn should_return_deploy_dependencies() {
         .is_empty());
 
     // add deploy1
-    proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type());
+    proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type().unwrap());
 
     let block = proposer.propose_proto_block(
         DeployConfig::default(),

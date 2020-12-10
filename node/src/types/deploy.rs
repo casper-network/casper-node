@@ -115,6 +115,10 @@ pub enum Error {
         /// The verification error.
         error: CryptoError,
     },
+
+    /// Failed to get "amount" from `payment()`'s runtime args.
+    #[error("invalid payment: missing \"amount\" arg")]
+    InvalidPayment,
 }
 
 impl From<FromHexError> for Error {
@@ -477,34 +481,40 @@ impl Deploy {
         &self.approvals
     }
 
-    /// Returns the DeployType wrapped the correct DeployType.
-    pub fn deploy_type(&self) -> DeployType {
+    /// Returns the `DeployType`.
+    pub fn deploy_type(&self) -> Result<DeployType, Error> {
         let header = self.header().clone();
         let size = self.serialized_length();
         if self.session().is_transfer() {
-            // TODO: non-zero value
+            // TODO: we need a non-zero value constant for wasm-less transfer cost.
             let payment_amount = Motes::zero();
-            DeployType::Transfer {
+            Ok(DeployType::Transfer {
                 header,
                 payment_amount,
                 size,
-            }
+            })
         } else {
             let payment_item = self.payment().clone();
             let payment_amount = {
-                // Some assumptions here:
-                // Since we are a Transfer variant, we expect: args to exist, contain "amount", and
-                // be a valid U512 value.
-                let args = payment_item.into_runtime_args().expect("should get");
-                let value = args.get(ARG_AMOUNT).expect("should exist");
-                let value = value.clone().into_t::<U512>().expect("should be U512");
+                // In the happy path for a payment we expect:
+                // - args to exist
+                // - contain "amount"
+                // - be a valid U512 value.
+                let args = payment_item
+                    .into_runtime_args()
+                    .map_err(|_| Error::InvalidPayment)?;
+                let value = args.get(ARG_AMOUNT).ok_or(Error::InvalidPayment)?;
+                let value = value
+                    .clone()
+                    .into_t::<U512>()
+                    .map_err(|_| Error::InvalidPayment)?;
                 Motes::new(value)
             };
-            DeployType::Other {
+            Ok(DeployType::Other {
                 header,
                 payment_amount,
                 size,
-            }
+            })
         }
     }
 

@@ -50,6 +50,10 @@ pub(crate) struct BlockProposer {
 // TODO: Make configurable.
 const PRUNE_INTERVAL: Duration = Duration::from_secs(10);
 
+/// Experimentally, deploys are int the range of 270-280 bytes, we use this to determine if we are
+/// within a threshold to break iteration of `pending` early.
+const DEPLOY_APPROX_MIN_SIZE: usize = 300;
+
 /// The type of values expressing the block height in the chain.
 type BlockHeight = u64;
 
@@ -395,10 +399,10 @@ impl BlockProposerReady {
             let at_max_deploys = wasm_deploys.len() == max_deploys;
 
             // Early exit if block limits are met.
-            if block_gas_running_total >= block_gas_limit
-                && block_size_running_total >= max_block_size_bytes
-                && at_max_deploys
-                && at_max_transfers
+            // TODO: break early if gas total is met, but only once we have a constant for the cost
+            // of wasm-less transfers. if block_gas_running_total >= block_gas_limit
+            if block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes
+                || (at_max_deploys && at_max_transfers)
             {
                 break;
             }
@@ -441,10 +445,8 @@ impl BlockProposerReady {
                 continue;
             }
             if deploy_type.is_transfer() && !at_max_transfers {
-                println!("transfer running gas total {}", gas_running_total);
                 transfers.push(*hash);
             } else if !at_max_deploys {
-                println!("deploy running gas total {}", gas_running_total);
                 wasm_deploys.push(*hash);
             }
             block_gas_running_total = gas_running_total;
