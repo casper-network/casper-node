@@ -240,21 +240,16 @@ where
                 }
                 debug!(%block_hash, %public_key, "received new finality signature");
                 async move {
-                    let maybe_block = effect_builder
-                        .get_block_from_storage(block_hash)
-                        .await;
+                    let maybe_block = effect_builder.get_block_from_storage(block_hash).await;
                     match maybe_block {
-                        None => {
-                            let block_hash = fs.block_hash;
-                            let public_key = fs.public_key;
-                            warn!(%block_hash, %public_key, "received a signature for a block that was not found in storage");
-                        }
+                        None => warn!(
+                            %block_hash, %public_key,
+                            "received a signature for a block that was not found in storage"
+                        ),
                         Some(mut block) => {
                             if !block.proofs().iter().any(|proof| proof == &fs.signature) {
                                 block.append_proof(fs.signature);
-                                let _ = effect_builder
-                                    .put_block_to_storage(Box::new(block))
-                                    .await;
+                                let _ = effect_builder.put_block_to_storage(Box::new(block)).await;
                                 let _ = effect_builder
                                     .broadcast_message(Message::FinalitySignature(fs.clone()))
                                     .await;
@@ -263,7 +258,8 @@ where
                         }
                     }
                 }
-            }.ignore()
+            }
+            .ignore(),
         }
     }
 }
