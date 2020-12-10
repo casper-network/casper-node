@@ -1360,15 +1360,17 @@ where
                     mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)?
             }
-            // Type: `fn transfer(source: URef, target: URef, amount: U512, id: Option<u64>) ->
-            // Result<(), Error>`
+            // Type: `fn transfer(maybe_to: Option<AccountHash>, source: URef, target: URef, amount:
+            // U512, id: Option<u64>) -> Result<(), Error>`
             mint::METHOD_TRANSFER => {
+                let maybe_to: Option<AccountHash> =
+                    Self::get_named_argument(&runtime_args, mint::ARG_TO)?;
                 let source: URef = Self::get_named_argument(&runtime_args, mint::ARG_SOURCE)?;
                 let target: URef = Self::get_named_argument(&runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
                 let id: Option<u64> = Self::get_named_argument(&runtime_args, mint::ARG_ID)?;
                 let result: Result<(), system_contract_errors::mint::Error> =
-                    mint_runtime.transfer(source, target, amount, id);
+                    mint_runtime.transfer(maybe_to, source, target, amount, id);
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             // Type: `fn read_base_round_reward() -> Result<U512, Error>`
@@ -2425,6 +2427,7 @@ where
     /// Records a transfer.
     fn record_transfer(
         &mut self,
+        maybe_to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
@@ -2443,7 +2446,7 @@ where
             let deploy_hash: DeployHash = self.context.get_deploy_hash();
             let from: AccountHash = self.context.account().account_hash();
             let fee: U512 = U512::zero(); // TODO
-            Transfer::new(deploy_hash, from, source, target, amount, fee, id)
+            Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
         };
         {
             let transfers = self.context.transfers_mut();
@@ -2747,12 +2750,14 @@ where
     fn mint_transfer(
         &mut self,
         mint_contract_hash: ContractHash,
+        to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), ApiError>, Error> {
         let args_values: RuntimeArgs = runtime_args! {
+            mint::ARG_TO => to,
             mint::ARG_SOURCE => source,
             mint::ARG_TARGET => target,
             mint::ARG_AMOUNT => amount,
@@ -2796,6 +2801,7 @@ where
 
         match self.mint_transfer(
             mint_contract_hash,
+            Some(target),
             source,
             target_purse.with_access_rights(AccessRights::ADD),
             amount,
@@ -2815,6 +2821,7 @@ where
     /// been created by the mint contract (or are the genesis account's).
     fn transfer_to_existing_account(
         &mut self,
+        to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
@@ -2825,7 +2832,7 @@ where
         // This appears to be a load-bearing use of `RuntimeContext::insert_uref`.
         self.context.insert_uref(target);
 
-        match self.mint_transfer(mint_contract_key, source, target, amount, id)? {
+        match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
             Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
             Err(error) => Ok(Err(error)),
         }
@@ -2861,12 +2868,12 @@ where
                 self.transfer_to_new_account(source, target, amount, id)
             }
             Some(StoredValue::Account(account)) => {
-                let target = account.main_purse_add_only();
-                if source == target {
+                let target_uref = account.main_purse_add_only();
+                if source == target_uref {
                     return Ok(Ok(TransferredTo::ExistingAccount));
                 }
                 // If an account exists, transfer the amount to its purse
-                self.transfer_to_existing_account(source, target, amount, id)
+                self.transfer_to_existing_account(Some(target), source, target_uref, amount, id)
             }
             Some(_) => {
                 // If some other value exists, return an error
@@ -2910,7 +2917,7 @@ where
 
         let mint_contract_key = self.get_mint_contract();
 
-        match self.mint_transfer(mint_contract_key, source, target, amount, id)? {
+        match self.mint_transfer(mint_contract_key, None, source, target, amount, id)? {
             Ok(()) => Ok(Ok(())),
             Err(api_error) => Ok(Err(api_error)),
         }

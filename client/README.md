@@ -98,8 +98,8 @@ Ensure the network has fully started before running client commands. This can be
 `nctl-view-node-peers` and checking each node has connections to all others.
 
 For client commands requiring a node address (specified via the `--node-address` or `-n` arg), the default value is
-`http://localhost:50101`, which should match the address of the first node of a testnet started via `nctl`, and thus
-can usually be omitted.
+`http://localhost:7777`, which is the address for a real network node.  The `--node-address=http://localhost:50101` 
+argument must be included for the address of the first node of a testnet started via `nctl`.
 
 
 ### Transfer funds between purses
@@ -120,6 +120,7 @@ node 3, and that we'll pay a maximum of 10,000 tokens to execute this deploy:
 
 ```
 cargo run --release -- transfer \
+    --node-address=http://localhost:50101 \
     --secret-key=../utils/nctl/assets/net-1/nodes/node-3/keys/secret_key.pem \
     --amount=1234567 \
     --target-account=$PUBLIC_KEY \
@@ -152,7 +153,7 @@ To see information about a deploy sent to the network via `transfer`, `put-deplo
 For example, to see if our previous `transfer` command generated a deploy which was executed by the network:
 
 ```
-cargo run --release -- get-deploy c42210759368a07a1b1ff4f019f7e77e7c9eaf2961b8c9dfc4237ea2218246c9
+cargo run --release -- get-deploy --node-address=http://localhost:50101 c42210759368a07a1b1ff4f019f7e77e7c9eaf2961b8c9dfc4237ea2218246c9
 ```
 
 <details><summary>example output</summary>
@@ -260,7 +261,9 @@ the deploy is included. If the deploy was successfully received and parsed by th
 To see information about a `Block` created by the network, you can use `get-block`. For example:
 
 ```
-cargo run --release -- get-block --block-hash=80a09df67f45bfb290c8f36021daf2fb898587a48fa0e4f7c506202ae8f791b8
+cargo run --release -- get-block \
+    --node-address=http://localhost:50101 \
+    --block-hash=80a09df67f45bfb290c8f36021daf2fb898587a48fa0e4f7c506202ae8f791b8
 ```
 
 <details><summary>example output</summary>
@@ -306,7 +309,9 @@ for the purposes of querying the global state.
 To retrieve all `Transfer` transactions processed in a `Block` created by the network, you can use `get-block-transfers`. For example:
 
 ```
-cargo run --release -- get-block-transfers --block-hash=80a09df67f45bfb290c8f36021daf2fb898587a48fa0e4f7c506202ae8f791b8
+cargo run --release -- get-block-transfers \
+    --node-address=http://localhost:50101 \
+    --block-hash=80a09df67f45bfb290c8f36021daf2fb898587a48fa0e4f7c506202ae8f791b8
 ```
 
 <details><summary>example output</summary>
@@ -342,6 +347,7 @@ stored under our new account's public key:
 
 ```
 cargo run --release -- query-state \
+    --node-address=http://localhost:50101 \
     --state-root-hash=242666f5959e6a51b7a75c23264f3cb326eecd6bec6dbab147f5801ec23daed6 \
     --key=$PUBLIC_KEY
 ```
@@ -385,6 +391,7 @@ This can be done via `get-balance`. For example, to get the balance of the main 
 
 ```
 cargo run --release -- get-balance \
+    --node-address=http://localhost:50101 \
     --state-root-hash=242666f5959e6a51b7a75c23264f3cb326eecd6bec6dbab147f5801ec23daed6 \
     --purse-uref=uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007
 ```

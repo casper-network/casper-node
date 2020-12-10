@@ -246,11 +246,12 @@ message TransferId {
 message Transfer {
     DeployHash deploy = 1;
     AccountHash from = 2;
-    Key.URef source = 3;
-    Key.URef target = 4;
-    BigInt amount = 5;
-    BigInt gas = 6;
-    TransferId id = 7;
+    AccountHash to = 3;
+    Key.URef source = 4;
+    Key.URef target = 5;
+    BigInt amount = 6;
+    BigInt gas = 7;
+    TransferId id = 8;
 }
 
 message DeployInfo {

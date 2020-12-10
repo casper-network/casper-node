@@ -201,17 +201,21 @@ pub fn transfer_from_purse_to_purse(
 /// Needed to support system contract-based execution.
 #[doc(hidden)]
 pub fn record_transfer(
+    maybe_to: Option<AccountHash>,
     source: URef,
     target: URef,
     amount: U512,
     id: Option<u64>,
 ) -> Result<(), ApiError> {
-    let (source_ptr, source_size, _bytes1) = contract_api::to_ptr(source);
-    let (target_ptr, target_size, _bytes2) = contract_api::to_ptr(target);
-    let (amount_ptr, amount_size, _bytes3) = contract_api::to_ptr(amount);
-    let (id_ptr, id_size, _bytes4) = contract_api::to_ptr(id);
+    let (maybe_to_ptr, maybe_to_size, _bytes1) = contract_api::to_ptr(maybe_to);
+    let (source_ptr, source_size, _bytes2) = contract_api::to_ptr(source);
+    let (target_ptr, target_size, _bytes3) = contract_api::to_ptr(target);
+    let (amount_ptr, amount_size, _bytes4) = contract_api::to_ptr(amount);
+    let (id_ptr, id_size, _bytes5) = contract_api::to_ptr(id);
     let result = unsafe {
         ext_ffi::casper_record_transfer(
+            maybe_to_ptr,
+            maybe_to_size,
             source_ptr,
             source_size,
             target_ptr,
