@@ -2,12 +2,12 @@
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
 # contributing to the seeding of the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
-name = 'casper-delta-1'
+name = 'casper-delta'
 # Timestamp for the genesis block.  This is the beginning of era 0. By this time, a sufficient majority (> 50% + F/2 —
 # see finality_threshold_percent below) of validator nodes must be up and running to start the blockchain.  This
 # timestamp is also used in seeding the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
-timestamp = '2020-11-05T17:00:00Z'
+timestamp = '2020-12-10T17:00:00Z'
 # Protocol version at genesis.
 protocol_version = '1.0.0'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the mint
@@ -25,7 +25,7 @@ auction_installer_path = '/etc/casper/wasm/auction_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the CSV file containing initial account balances and bonds.
 accounts_path = '/etc/casper/accounts.csv'
 # Number of slots available in validator auction.
-validator_slots = 50
+validator_slots = 100
 # Amount of auction delay
 auction_delay = 3
 # The delay for the payout of funds, in eras. If a withdraw request is included in a block in era N
@@ -55,7 +55,7 @@ minimum_era_height = 10
 finality_threshold_fraction = [1, 10]
 # Integer between 0 and 255. The power of two that is the number of milliseconds in the minimum round length, and
 # therefore the minimum delay between a block and its child. E.g. 14 means 2^14 milliseconds, i.e. about 16 seconds.
-minimum_round_exponent = 17
+minimum_round_exponent = 16
 # Integer between 0 and 255. Must be greater than `minimum_round_exponent`. The power of two that is the number of
 # milliseconds in the minimum round length, and therefore the minimum delay between a block and its child. E.g. 19
 # means 2^19 milliseconds, i.e. about 8.7 minutes.
@@ -74,7 +74,7 @@ max_dependencies = 10
 # Maximum block size in bytes.  0 means unlimited.
 max_block_size = 10_485_760
 # The maximum number of non-transfer deploys permitted in a single block.
-block_max_deploy_count = 10
+block_max_deploy_count = 100
 # The maximum number of wasm-less transfer deploys permitted in a single block.
 block_max_transfer_count = 1000
 # The upper limit of total gas of all deploys in a block.

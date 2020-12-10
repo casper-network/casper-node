@@ -1,6 +1,6 @@
 //! Logging via the tracing crate.
 
-use std::{fmt, io};
+use std::{env, fmt, io};
 
 use ansi_term::{Color, Style};
 use anyhow::anyhow;
@@ -20,6 +20,8 @@ use tracing_subscriber::{
     registry::LookupSpan,
     EnvFilter,
 };
+
+const LOG_CONFIGURATION_ENVVAR: &str = "RUST_LOG";
 
 const LOG_FIELD_MESSAGE: &str = "message";
 const LOG_FIELD_TARGET: &str = "log.target";
@@ -269,18 +271,24 @@ pub fn init_with_config(config: &LoggingConfig) -> anyhow::Result<()> {
         _ => write!(writer, "; {}={:?}", field, value),
     });
 
+    let filter = EnvFilter::new(
+        env::var(LOG_CONFIGURATION_ENVVAR)
+            .as_deref()
+            .unwrap_or("info"),
+    );
+
     match config.format {
         // Setup a new tracing-subscriber writing to `stdout` for logging.
         LoggingFormat::Text => tracing_subscriber::fmt()
             .with_writer(io::stdout)
-            .with_env_filter(EnvFilter::from_default_env())
+            .with_env_filter(filter)
             .fmt_fields(formatter)
             .event_format(FmtEvent::new(config.color, config.abbreviate_modules))
             .try_init(),
         // JSON logging writes to `stdout` as well but uses the JSON format.
         LoggingFormat::Json => tracing_subscriber::fmt()
             .with_writer(io::stdout)
-            .with_env_filter(EnvFilter::from_default_env())
+            .with_env_filter(filter)
             .json()
             .try_init(),
     }
