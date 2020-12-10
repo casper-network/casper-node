@@ -15,7 +15,7 @@ use casper_types::standard_payment::ARG_AMOUNT;
 
 // For our testing purposes, these are the (approximate) sizes of generated deploys and transfers in
 // our test suite.
-const DEPLOY_SIZE: usize = 275;
+const DEPLOY_SIZE: usize = 277;
 const TRANSFER_SIZE: usize = 273;
 
 fn default_gas_payment() -> Gas {
