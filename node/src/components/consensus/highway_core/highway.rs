@@ -583,7 +583,7 @@ impl<C: Context> Highway<C> {
     }
 
     /// Checks whether the unit was created by a doppelganger.
-    pub(crate) fn is_our_own(&self, vertex: &Vertex<C>) -> bool {
+    pub(crate) fn is_doppelganger_vertex(&self, vertex: &Vertex<C>) -> bool {
         match vertex {
             Vertex::Unit(swunit) => {
                 // If we already have the unit in our local state,
