@@ -114,9 +114,9 @@ impl<I: Display> Display for Event<I> {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
-    /// A temporary workaround.
-    // TODO: Refactor to proper LRU cache.
-    linear_chain: Vec<Block>,
+    /// The most recently added block.
+    // TODO: Refactor to proper LRU cache. Or read from storage?
+    latest_block: Option<Block>,
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, FinalitySignature>>,
     _marker: PhantomData<I>,
@@ -125,15 +125,15 @@ pub(crate) struct LinearChain<I> {
 impl<I> LinearChain<I> {
     pub fn new() -> Self {
         LinearChain {
-            linear_chain: Vec::new(),
+            latest_block: None,
             pending_finality_signatures: HashMap::new(),
             _marker: PhantomData,
         }
     }
 
     // TODO: Remove once we can return all linear chain blocks from persistent storage.
-    pub fn linear_chain(&self) -> &Vec<Block> {
-        &self.linear_chain
+    pub fn latest_block(&self) -> &Option<Block> {
+        &self.latest_block
     }
 
     /// Adds pending finality signatures to the block; returns events to announce and broadcast
@@ -259,7 +259,7 @@ where
                 execution_results,
             } => {
                 // TODO: Remove once we can return all linear chain blocks from persistent storage.
-                self.linear_chain.push(*block.clone());
+                self.latest_block = Some(*block.clone());
 
                 let block_header = block.take_header();
                 let block_hash = block_header.hash();

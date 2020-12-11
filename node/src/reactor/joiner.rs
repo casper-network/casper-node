@@ -849,7 +849,7 @@ impl Reactor {
                 storage: self.storage,
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
-                linear_chain: self.linear_chain.linear_chain().clone(),
+                latest_block: self.linear_chain.latest_block().clone(),
                 event_stream_server: self.event_stream_server,
             },
         );
