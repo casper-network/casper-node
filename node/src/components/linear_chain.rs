@@ -18,7 +18,7 @@ use crate::{
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{ConsensusRequest, LinearChainRequest, NetworkRequest, StorageRequest},
-        EffectExt, EffectOptionExt, Effects, Responder,
+        EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
     protocol::Message,
     types::{Block, BlockByHeight, BlockHash, DeployHash, FinalitySignature},
@@ -135,6 +135,42 @@ impl<I> LinearChain<I> {
     pub fn linear_chain(&self) -> &Vec<Block> {
         &self.linear_chain
     }
+
+    /// Adds pending finality signatures to the block; returns events to announce and broadcast
+    /// them.
+    fn add_pending_finality_signatures<REv>(
+        &mut self,
+        block: &mut Block,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Effects<Event<I>>
+    where
+        REv: From<StorageRequest>
+            + From<ConsensusRequest>
+            + From<NetworkRequest<I, Message>>
+            + From<LinearChainAnnouncement>
+            + Send,
+        I: Display + Send + 'static,
+    {
+        let mut effects = Effects::new();
+        let block_hash = block.hash();
+        let pending_sigs = self
+            .pending_finality_signatures
+            .values_mut()
+            .filter_map(|sigs| sigs.remove(&block_hash).map(Box::new))
+            // TODO: Store signatures by public key.
+            .filter(|fs| !block.proofs().iter().any(|proof| proof == &fs.signature))
+            .collect_vec();
+        self.pending_finality_signatures
+            .retain(|_, sigs| !sigs.is_empty());
+        // Add new signatures and send the updated block to storage.
+        for fs in pending_sigs {
+            block.append_proof(fs.signature);
+            let message = Message::FinalitySignature(fs.clone());
+            effects.extend(effect_builder.broadcast_message(message).ignore());
+            effects.extend(effect_builder.announce_finality_signature(fs).ignore());
+        }
+        effects
+    }
 }
 
 impl<I, REv> Component<REv> for LinearChain<I>
@@ -151,7 +187,7 @@ where
 
     fn handle_event(
         &mut self,
-        effect_builder: crate::effect::EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
@@ -206,14 +242,18 @@ where
                 },
             },
             Event::LinearChainBlock {
-                block,
+                mut block,
                 execution_results,
-            } => effect_builder
-                .put_block_to_storage(block.clone())
-                .event(move |_| Event::PutBlockResult {
-                    block,
-                    execution_results,
-                }),
+            } => {
+                let mut effects = self.add_pending_finality_signatures(&mut block, effect_builder);
+                effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
+                    move |_| Event::PutBlockResult {
+                        block,
+                        execution_results,
+                    },
+                ));
+                effects
+            }
             Event::PutBlockResult {
                 block,
                 execution_results,
@@ -292,29 +332,12 @@ where
                 }
                 Effects::new()
             }
-            Event::GetBlockForFinalitySignaturesResult(block_hash, Some(mut block)) => {
-                // Remove the signatures for the block from the pending ones.
-                let sigs: Vec<_> = self
-                    .pending_finality_signatures
-                    .values_mut()
-                    .filter_map(|sigs| sigs.remove(&block_hash).map(Box::new))
-                    // TODO: Store signatures by public key.
-                    .filter(|fs| !block.proofs().iter().any(|proof| proof == &fs.signature))
-                    .collect();
-                self.pending_finality_signatures
-                    .retain(|_, sigs| !sigs.is_empty());
-                let mut effects = Effects::new();
-                if sigs.is_empty() {
-                    return effects; // No new signatures to add.
+            Event::GetBlockForFinalitySignaturesResult(_block_hash, Some(mut block)) => {
+                let old_count = block.proofs().len();
+                let mut effects = self.add_pending_finality_signatures(&mut block, effect_builder);
+                if block.proofs().len() > old_count {
+                    effects.extend(effect_builder.put_block_to_storage(block).ignore());
                 }
-                // Add new signatures and send the updated block to storage.
-                for fs in sigs {
-                    block.append_proof(fs.signature);
-                    let message = Message::FinalitySignature(fs.clone());
-                    effects.extend(effect_builder.broadcast_message(message).ignore());
-                    effects.extend(effect_builder.announce_finality_signature(fs).ignore());
-                }
-                effects.extend(effect_builder.put_block_to_storage(block).ignore());
                 effects
             }
         }
