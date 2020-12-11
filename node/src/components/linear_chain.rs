@@ -115,7 +115,6 @@ impl<I: Display> Display for Event<I> {
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
     /// The most recently added block.
-    // TODO: Refactor to proper LRU cache. Or read from storage?
     latest_block: Option<Block>,
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, FinalitySignature>>,
