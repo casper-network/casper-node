@@ -244,7 +244,10 @@ impl HighwayValidator {
                                 // TODO: Don't send both messages to every peer. Add different
                                 // strategies.
                                 let mut wunit = swunit.wire_unit.clone();
-                                wunit.timestamp += 1.into();
+                                match wunit.value.as_mut() {
+                                    None => wunit.timestamp += 1.into(),
+                                    Some(v) => v.push(0),
+                                }
                                 let secret = TestSecret(wunit.creator.0.into());
                                 let swunit2 = SignedWireUnit::new(wunit, &secret, rng);
                                 vec![
