@@ -350,7 +350,8 @@ pub fn get_balance(
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
-///   `Block` height or empty. If empty, the latest `Block` transfers will be retrieved.
+///   `Block` height or empty. If empty, era information from the latest block will be returned if
+///   available.
 pub fn get_era_info(
     maybe_rpc_id: &str,
     node_address: &str,
