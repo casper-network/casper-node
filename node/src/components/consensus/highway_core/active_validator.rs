@@ -268,24 +268,24 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> bool {
-        let earliest_unit_time = self.earliest_unit_time(state);
-        if timestamp < earliest_unit_time {
-            warn!(
-                %earliest_unit_time, %timestamp,
-                "earliest_unit_time is greater than current time stamp"
+        let unit = state.unit(vhash);
+        // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
+        if unit.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(unit) {
+            return false;
+        }
+        let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
+        if unit.timestamp != r_id {
+            trace!(
+                %unit.timestamp, %r_id,
+                "not confirming proposal: wrong round",
             );
             return false;
         }
-        let unit = state.unit(vhash);
         if unit.timestamp > timestamp {
             error!(
                 %unit.timestamp, %timestamp,
                 "added a unit with a future timestamp, should never happen"
             );
-            return false;
-        }
-        // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
-        if unit.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(unit) {
             return false;
         }
         if let Some(unit) = self.latest_unit(state) {
@@ -294,11 +294,11 @@ impl<C: Context> ActiveValidator<C> {
                 return false; // We already sent a confirmation.
             }
         }
-        let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
-        if unit.timestamp != r_id {
-            trace!(
-                %unit.timestamp, %r_id,
-                "not confirming proposal: wrong round",
+        let earliest_unit_time = self.earliest_unit_time(state);
+        if timestamp < earliest_unit_time {
+            warn!(
+                %earliest_unit_time, %timestamp,
+                "earliest_unit_time is greater than current time stamp"
             );
             return false;
         }
