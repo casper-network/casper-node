@@ -857,7 +857,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     TEST_MAX_ROUND_EXP,
                     TEST_MIN_ROUND_EXP,
                     TEST_END_HEIGHT,
-                    Timestamp::now(),
+                    Timestamp::zero(),
                     Timestamp::zero(), // Length depends only on block number.
                     TEST_ENDORSEMENT_EVIDENCE_LIMIT,
                 );
