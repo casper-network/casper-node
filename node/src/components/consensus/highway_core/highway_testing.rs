@@ -1138,7 +1138,6 @@ mod test_harness {
     }
 
     #[test]
-    #[ignore] // TODO(HWY-206)
     fn liveness_test_some_equivocate() {
         let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 
