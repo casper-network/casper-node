@@ -22,3 +22,10 @@ pub const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
 pub const HASH_KEY: &str = "pos_hash";
 /// Storage for proof of stake access key.
 pub const ACCESS_KEY: &str = "pos_access";
+
+/// The uref name where the PoS accepts payment for computation on behalf of validators.
+pub const PAYMENT_PURSE_KEY: &str = "pos_payment_purse";
+
+/// The uref name where the PoS will refund unused payment back to the user. The uref this name
+/// corresponds to is set by the user.
+pub const REFUND_PURSE_KEY: &str = "pos_refund_purse";

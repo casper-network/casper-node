@@ -9,7 +9,7 @@ use crate::{
     storage,
 };
 
-#[derive(Error, Debug)]
+#[derive(Clone, Error, Debug)]
 pub enum Error {
     #[error("Invalid hash length: expected {expected}, actual {actual}")]
     InvalidHashLength { expected: usize, actual: usize },
@@ -39,10 +39,6 @@ pub enum Error {
     MissingSystemContract(String),
     #[error("Bytesrepr error: {0}")]
     Bytesrepr(String),
-    #[error("bincode serialization: {0}")]
-    BincodeSerialization(#[source] bincode::ErrorKind),
-    #[error("bincode deserialization: {0}")]
-    BincodeDeserialization(#[source] bincode::ErrorKind),
     #[error("Mint error: {0}")]
     Mint(String),
     #[error("Unsupported key type: {0}")]
@@ -51,12 +47,6 @@ pub enum Error {
     InvalidUpgradeResult,
     #[error("Unsupported deploy item variant: {0}")]
     InvalidDeployItemVariant(String),
-}
-
-impl Error {
-    pub fn from_serialization(error: bincode::ErrorKind) -> Self {
-        Error::BincodeSerialization(error)
-    }
 }
 
 impl From<execution::Error> for Error {

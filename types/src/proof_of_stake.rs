@@ -53,15 +53,10 @@ mod internal {
         Key, Phase, URef, U512,
     };
 
+    use super::{PAYMENT_PURSE_KEY, REFUND_PURSE_KEY};
+
     /// Account used to run system functions (in particular `finalize_payment`).
     const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0u8; 32]);
-
-    /// The uref name where the PoS accepts payment for computation on behalf of validators.
-    const PAYMENT_PURSE_KEY: &str = "pos_payment_purse";
-
-    /// The uref name where the PoS will refund unused payment back to the user. The uref this name
-    /// corresponds to is set by the user.
-    const REFUND_PURSE_KEY: &str = "pos_refund_purse";
 
     /// Attempts to look up a purse from the named_keys
     fn get_purse<R: RuntimeProvider>(

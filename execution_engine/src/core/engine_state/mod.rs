@@ -19,6 +19,7 @@ pub mod upgrade;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
+    convert::TryFrom,
     iter::FromIterator,
     rc::Rc,
 };
@@ -41,10 +42,10 @@ use casper_types::{
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY},
     proof_of_stake, runtime_args,
-    system_contract_errors::mint::Error as MintError,
-    AccessRights, BlockTime, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType, Key, Phase,
-    ProtocolVersion, RuntimeArgs, URef, U512,
+    system_contract_errors::{self, mint::Error as MintError},
+    AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, ContractPackage,
+    ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType,
+    Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -55,11 +56,12 @@ pub use self::{
     error::{Error, RootNotFound},
     executable_deploy_item::ExecutableDeployItem,
     execute_request::ExecuteRequest,
+    execution::Error as ExecError,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
     genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE},
     query::{QueryRequest, QueryResult},
     system_contract_cache::SystemContractCache,
-    transfer::{TransferRuntimeArgsBuilder, TransferTargetMode},
+    transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::{UpgradeConfig, UpgradeResult},
 };
 use crate::{
@@ -97,6 +99,10 @@ use crate::{
 pub const CONV_RATE: u64 = 1;
 
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000 * CONV_RATE));
+
+/// Default cost for wasmless transfer.
+pub static DEFAULT_WASMLESS_TRANSFER_COST: Lazy<Motes> =
+    Lazy::new(|| Motes::new(U512::from(10_000)));
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
@@ -917,6 +923,7 @@ where
                         exec_request.parent_state_hash,
                         BlockTime::new(exec_request.block_time),
                         deploy_item,
+                        exec_request.proposer,
                     ),
                     _ => self.deploy(
                         correlation_id,
@@ -1149,6 +1156,7 @@ where
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
         deploy_item: DeployItem,
+        proposer: casper_types::PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
         let protocol_data = match self.state.get_protocol_data(protocol_version) {
             Ok(Some(protocol_data)) => protocol_data,
@@ -1218,9 +1226,40 @@ where
             }
         };
 
-        let mut named_keys = mint_contract.named_keys().to_owned();
-        let mut extra_keys: Vec<Key> = vec![];
-        let base_key = Key::from(protocol_data.mint());
+        let mut mint_named_keys = mint_contract.named_keys().to_owned();
+        let mut mint_extra_keys: Vec<Key> = vec![];
+        let mint_base_key = Key::from(protocol_data.mint());
+
+        let pos_contract = match tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, protocol_data.proof_of_stake())
+        {
+            Ok(contract) => contract,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
+
+        let pos_module = {
+            let contract_wasm_hash = pos_contract.contract_wasm_hash();
+            let use_system_contracts = self.config.use_system_contracts();
+            match tracking_copy.borrow_mut().get_system_module(
+                correlation_id,
+                contract_wasm_hash,
+                use_system_contracts,
+                preprocessor,
+            ) {
+                Ok(module) => module,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
+        let mut pos_named_keys = pos_contract.named_keys().to_owned();
+        let pos_extra_keys: Vec<Key> = vec![];
+        let pos_base_key = Key::from(protocol_data.proof_of_stake());
+
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
         let input_runtime_args = match deploy_item.session.into_runtime_args() {
@@ -1238,9 +1277,9 @@ where
                             DirectSystemContractCall::CreatePurse,
                             mint_module.clone(),
                             runtime_args! {}, // mint create takes no arguments
-                            &mut named_keys,
+                            &mut mint_named_keys,
                             Default::default(),
-                            base_key,
+                            mint_base_key,
                             &account,
                             authorization_keys.clone(),
                             blocktime,
@@ -1257,7 +1296,7 @@ where
                         Some(main_purse) => {
                             let new_account =
                                 Account::create(public_key, Default::default(), main_purse);
-                            extra_keys.push(Key::from(main_purse));
+                            mint_extra_keys.push(Key::from(main_purse));
                             // write new account
                             tracking_copy
                                 .borrow_mut()
@@ -1279,7 +1318,171 @@ where
             }
         }
 
-        let runtime_args =
+        // Construct a payment code that will put cost of wasmless payment into payment purse
+        let payment_result = {
+            let transfer_args = match runtime_args_builder.clone().build(
+                &account,
+                correlation_id,
+                Rc::clone(&tracking_copy),
+            ) {
+                Ok(transfer_args) => transfer_args,
+                Err(error) => {
+                    return Ok(ExecutionResult::Failure {
+                        error,
+                        effect: Default::default(),
+                        transfers: Vec::default(),
+                        cost: Gas::default(),
+                    });
+                }
+            };
+
+            let (payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
+                executor.exec_system_contract(
+                    DirectSystemContractCall::GetPaymentPurse,
+                    pos_module.clone(),
+                    RuntimeArgs::default(),
+                    &mut pos_named_keys,
+                    pos_extra_keys.as_slice(),
+                    pos_base_key,
+                    &account,
+                    authorization_keys.clone(),
+                    blocktime,
+                    deploy_item.deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    correlation_id,
+                    Rc::clone(&tracking_copy),
+                    Phase::Payment,
+                    protocol_data,
+                    SystemContractCache::clone(&self.system_contract_cache),
+                );
+
+            let payment_uref = match payment_uref {
+                Some(payment_uref) => payment_uref,
+                None => {
+                    return Ok(ExecutionResult::Failure {
+                        error: Error::InsufficientPayment,
+                        effect: Default::default(),
+                        transfers: Vec::default(),
+                        cost: Gas::default(),
+                    })
+                }
+            };
+
+            if let Some(error) = get_payment_purse_result.take_error() {
+                return Ok(ExecutionResult::Failure {
+                    error,
+                    effect: Default::default(),
+                    transfers: Vec::default(),
+                    cost: Gas::default(),
+                });
+            }
+
+            let wasmless_transfer_gas_cost =
+                Gas::from_motes(*DEFAULT_WASMLESS_TRANSFER_COST, CONV_RATE)
+                    .expect("gas overflow")
+                    .value();
+
+            // Create a new transfer arguments that will transfer wasmless transfer cost into the
+            // payment purse.
+            let new_transfer_args = TransferArgs::new(
+                transfer_args.to(),
+                transfer_args.source(),
+                payment_uref,
+                wasmless_transfer_gas_cost,
+                transfer_args.arg_id(),
+            );
+
+            let (actual_result, payment_result): (Option<Result<(), u8>>, ExecutionResult) =
+                executor.exec_system_contract(
+                    DirectSystemContractCall::Transfer,
+                    mint_module.clone(),
+                    RuntimeArgs::from(new_transfer_args),
+                    &mut mint_named_keys,
+                    mint_extra_keys.as_slice(),
+                    mint_base_key,
+                    &account,
+                    authorization_keys.clone(),
+                    blocktime,
+                    deploy_item.deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    correlation_id,
+                    Rc::clone(&tracking_copy),
+                    Phase::Payment,
+                    protocol_data,
+                    SystemContractCache::clone(&self.system_contract_cache),
+                );
+
+            if let Some(error) = payment_result.as_error().cloned() {
+                return Ok(ExecutionResult::Failure {
+                    error,
+                    effect: Default::default(),
+                    transfers: Vec::default(),
+                    cost: Gas::default(),
+                });
+            }
+
+            let transfer_result = match actual_result {
+                Some(Ok(())) => Ok(()),
+                Some(Err(mint_error)) => {
+                    match system_contract_errors::mint::Error::try_from(mint_error) {
+                        Ok(mint_error) => Err(ApiError::from(mint_error)),
+                        Err(_) => Err(ApiError::Transfer),
+                    }
+                }
+                None => Err(ApiError::Transfer),
+            };
+
+            if let Err(transfer_result) = transfer_result {
+                return Ok(ExecutionResult::Failure {
+                    error: Error::Exec(ExecError::Revert(transfer_result)),
+                    effect: Default::default(),
+                    transfers: Vec::default(),
+                    cost: Gas::default(),
+                });
+            }
+
+            let payment_purse_balance_key = match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(correlation_id, Key::URef(payment_uref))
+            {
+                Ok(payment_purse_balance_key) => payment_purse_balance_key,
+                Err(error) => {
+                    return Ok(ExecutionResult::Failure {
+                        error: Error::Exec(error),
+                        effect: Default::default(),
+                        transfers: Vec::default(),
+                        cost: Gas::default(),
+                    })
+                }
+            };
+
+            let payment_purse_balance = match tracking_copy
+                .borrow_mut()
+                .get_purse_balance(correlation_id, payment_purse_balance_key)
+            {
+                Ok(payment_purse_balance) => payment_purse_balance,
+                Err(error) => {
+                    return Ok(ExecutionResult::Failure {
+                        error: Error::Exec(error),
+                        effect: Default::default(),
+                        transfers: Vec::default(),
+                        cost: Gas::default(),
+                    })
+                }
+            };
+
+            // Wasmless transfer payment code pre & post conditions:
+            // (a) payment purse should be empty before the payment operation
+            // (b) after executing payment code it's balance has to be equal to the wasmless gas
+            // cost price
+            debug_assert_eq!(payment_purse_balance.value(), wasmless_transfer_gas_cost);
+            // This assumes the cost incurred is already denominated in gas
+            payment_result.with_cost(Gas::new(payment_purse_balance.value()))
+        };
+
+        let transfer_args =
             match runtime_args_builder.build(&account, correlation_id, Rc::clone(&tracking_copy)) {
                 Ok(runtime_args) => runtime_args,
                 Err(error) => {
@@ -1296,12 +1499,12 @@ where
             .exec_system_contract(
                 DirectSystemContractCall::Transfer,
                 mint_module,
-                runtime_args,
-                &mut named_keys,
-                extra_keys.as_slice(),
-                base_key,
+                RuntimeArgs::from(transfer_args),
+                &mut mint_named_keys,
+                mint_extra_keys.as_slice(),
+                mint_base_key,
                 &account,
-                authorization_keys,
+                authorization_keys.clone(),
                 blocktime,
                 deploy_item.deploy_hash,
                 gas_limit,
@@ -1313,13 +1516,72 @@ where
                 SystemContractCache::clone(&self.system_contract_cache),
             );
 
-        let payment_result = ExecutionResult::default();
-        let payment_result_cost = payment_result.cost();
+        let finalize_result = {
+            let proposer_purse = {
+                let proposer_account: Account = match tracking_copy
+                    .borrow_mut()
+                    .get_account(correlation_id, proposer.into())
+                {
+                    Ok(account) => account,
+                    Err(error) => {
+                        return Ok(ExecutionResult::precondition_failure(error.into()));
+                    }
+                };
+                proposer_account.main_purse()
+            };
+
+            let proof_of_stake_args = {
+                //((gas spent during payment code execution) + (gas spent during session code execution)) * conv_rate
+                let finalize_cost_motes: Motes =
+                    Motes::from_gas(payment_result.cost(), CONV_RATE)
+                        .expect("motes overflow");
+                runtime_args! {
+                    proof_of_stake::ARG_AMOUNT => finalize_cost_motes.value(),
+                    proof_of_stake::ARG_ACCOUNT => deploy_item.address,
+                    proof_of_stake::ARG_TARGET => proposer_purse,
+                }
+            };
+
+            // let system_account = AccountHash::new([0; 32]);
+            let system_account = Account::new(
+                SYSTEM_ACCOUNT_ADDR,
+                Default::default(),
+                URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
+                Default::default(),
+                Default::default(),
+            );
+
+            let tc = tracking_copy.borrow();
+            let finalization_tc = Rc::new(RefCell::new(tc.fork()));
+
+            let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
+                .exec_system_contract(
+                    DirectSystemContractCall::FinalizePayment,
+                    pos_module,
+                    proof_of_stake_args,
+                    &mut pos_named_keys,
+                    Default::default(),
+                    Key::from(protocol_data.proof_of_stake()),
+                    &system_account,
+                    authorization_keys,
+                    blocktime,
+                    deploy_item.deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    correlation_id,
+                    finalization_tc,
+                    Phase::FinalizePayment,
+                    protocol_data,
+                    SystemContractCache::clone(&self.system_contract_cache),
+                );
+
+            finalize_result
+        };
 
         // Create + persist deploy info.
         {
             let transfers = session_result.transfers();
-            let cost = payment_result_cost.value() + session_result.cost().value();
+            let cost = payment_result.cost().value() + session_result.cost().value();
             let deploy_info = DeployInfo::new(
                 deploy_item.deploy_hash,
                 &transfers,
@@ -1340,7 +1602,7 @@ where
         let mut execution_result_builder = ExecutionResultBuilder::new();
         execution_result_builder.set_payment_execution_result(payment_result);
         execution_result_builder.set_session_execution_result(session_result);
-        execution_result_builder.set_finalize_execution_result(ExecutionResult::default());
+        execution_result_builder.set_finalize_execution_result(finalize_result);
 
         let execution_result = execution_result_builder
             .build(tracking_copy.borrow().reader(), correlation_id)

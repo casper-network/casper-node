@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use casper_execution_engine::core::engine_state::DEFAULT_WASMLESS_TRANSFER_COST;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -88,7 +89,7 @@ fn should_record_wasmless_transfer() {
 
     // TODO: this is borked
     if !cfg!(feature = "use-system-contracts") {
-        assert_eq!(deploy_info.gas, U512::zero());
+        assert_eq!(deploy_info.gas, DEFAULT_WASMLESS_TRANSFER_COST.value());
     }
 
     let transfers = deploy_info.transfers;
