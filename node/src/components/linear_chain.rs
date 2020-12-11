@@ -63,7 +63,7 @@ pub enum Event<I> {
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
-    /// The result of requresting a block from storage to add a finality signature to it.
+    /// The result of requesting a block from storage to add a finality signature to it.
     GetBlockForFinalitySignaturesResult(BlockHash, Option<Box<Block>>),
 }
 
