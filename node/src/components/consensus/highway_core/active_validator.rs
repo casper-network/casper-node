@@ -55,7 +55,7 @@ pub(crate) enum Effect<C: Context> {
 /// units citing all those confirmations, to create a summit and finalize the proposal.
 pub(crate) struct ActiveValidator<C: Context> {
     /// Our own validator index.
-    vidx: ValidatorIndex,
+    pub(crate) vidx: ValidatorIndex,
     /// The validator's secret signing key.
     secret: C::ValidatorSecret,
     /// The next round exponent: Our next round will be `1 << next_round_exp` milliseconds long.
@@ -457,6 +457,26 @@ impl<C: Context> ActiveValidator<C> {
         // delayed timer events.
         let past_panorama = state.panorama().cutoff(state, timestamp);
         state.valid_panorama(self.vidx, past_panorama)
+    }
+
+    /// Returns whether the unit was created by us.
+    pub(crate) fn is_our_unit(&self, wunit: &WireUnit<C>) -> bool {
+        self.vidx == wunit.creator
+    }
+
+    /// Returns whether a list of endorsements includes an endorsement created by a doppelganger.
+    /// An endorsement created by a doppelganger cannot be found in the local protocol state
+    /// (since we haven't created it ourselves).
+    pub(crate) fn includes_doppelgangers_endorsement(
+        &self,
+        endorsements: &Endorsements<C>,
+        state: &State<C>,
+    ) -> bool {
+        endorsements
+            .endorsers
+            .iter()
+            .any(|(vidx, _)| vidx == &self.vidx)
+            && !state.has_endorsement(endorsements.unit(), self.vidx)
     }
 }
 
