@@ -136,12 +136,12 @@ impl<I> LinearChain<I> {
     }
 
     /// Adds pending finality signatures to the block; returns events to announce and broadcast
-    /// them.
+    /// them, and the updated block.
     fn add_pending_finality_signatures<REv>(
         &mut self,
-        block: &mut Block,
+        mut block: Block,
         effect_builder: EffectBuilder<REv>,
-    ) -> Effects<Event<I>>
+    ) -> (Box<Block>, Effects<Event<I>>)
     where
         REv: From<StorageRequest>
             + From<ConsensusRequest>
@@ -168,7 +168,7 @@ impl<I> LinearChain<I> {
             effects.extend(effect_builder.broadcast_message(message).ignore());
             effects.extend(effect_builder.announce_finality_signature(fs).ignore());
         }
-        effects
+        (Box::new(block), effects)
     }
 }
 
@@ -241,10 +241,11 @@ where
                 },
             },
             Event::LinearChainBlock {
-                mut block,
+                block,
                 execution_results,
             } => {
-                let mut effects = self.add_pending_finality_signatures(&mut block, effect_builder);
+                let (block, mut effects) =
+                    self.add_pending_finality_signatures(*block, effect_builder);
                 effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
                     move |_| Event::PutBlockResult {
                         block,
@@ -257,7 +258,6 @@ where
                 block,
                 execution_results,
             } => {
-                // TODO: Remove once we can return all linear chain blocks from persistent storage.
                 self.latest_block = Some(*block.clone());
 
                 let block_header = block.take_header();
@@ -331,9 +331,10 @@ where
                 }
                 Effects::new()
             }
-            Event::GetBlockForFinalitySignaturesResult(_block_hash, Some(mut block)) => {
+            Event::GetBlockForFinalitySignaturesResult(_block_hash, Some(block)) => {
                 let old_count = block.proofs().len();
-                let mut effects = self.add_pending_finality_signatures(&mut block, effect_builder);
+                let (block, mut effects) =
+                    self.add_pending_finality_signatures(*block, effect_builder);
                 if block.proofs().len() > old_count {
                     effects.extend(effect_builder.put_block_to_storage(block).ignore());
                 }
