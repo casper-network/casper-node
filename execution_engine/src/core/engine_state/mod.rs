@@ -1336,6 +1336,51 @@ where
                 }
             };
 
+            // Check source purses minimum balance
+
+            let source_uref = transfer_args.source();
+
+            let source_purse_balance_key = match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(correlation_id, Key::URef(source_uref))
+            {
+                Ok(purse_balance_args) => purse_balance_args,
+                Err(error) => {
+                    return Ok(ExecutionResult::Failure {
+                        error: Error::Exec(error),
+                        effect: Default::default(),
+                        transfers: Vec::default(),
+                        cost: Gas::default(),
+                    });
+                }
+            };
+
+            let source_purse_balance = match tracking_copy
+                .borrow_mut()
+                .get_purse_balance(correlation_id, source_purse_balance_key)
+            {
+                Ok(transfer_args) => transfer_args,
+                Err(error) => {
+                    return Ok(ExecutionResult::Failure {
+                        error: Error::Exec(error),
+                        effect: Default::default(),
+                        transfers: Vec::default(),
+                        cost: Gas::default(),
+                    });
+                }
+            };
+
+            if source_purse_balance < *DEFAULT_WASMLESS_TRANSFER_COST {
+                // We can't continue if the minimum funds in source purse are lower than
+                // `DEFAULT_WASMLESS_TRANSFER_COST`.
+                return Ok(ExecutionResult::Failure {
+                    error: Error::InsufficientPayment,
+                    effect: Default::default(),
+                    transfers: Vec::default(),
+                    cost: Gas::default(),
+                });
+            }
+
             let (payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
                 executor.exec_system_contract(
                     DirectSystemContractCall::GetPaymentPurse,
@@ -1379,17 +1424,15 @@ where
             }
 
             let wasmless_transfer_gas_cost =
-                Gas::from_motes(*DEFAULT_WASMLESS_TRANSFER_COST, CONV_RATE)
-                    .expect("gas overflow")
-                    .value();
+                Gas::from_motes(*DEFAULT_WASMLESS_TRANSFER_COST, CONV_RATE).expect("gas overflow");
 
-            // Create a new transfer arguments that will transfer wasmless transfer cost into the
-            // payment purse.
+            // Create a new arguments to transfer cost of wasmless transfer into the payment purse.
+
             let new_transfer_args = TransferArgs::new(
                 transfer_args.to(),
                 transfer_args.source(),
                 payment_uref,
-                wasmless_transfer_gas_cost,
+                wasmless_transfer_gas_cost.value(),
                 transfer_args.arg_id(),
             );
 
@@ -1434,9 +1477,9 @@ where
                 None => Err(ApiError::Transfer),
             };
 
-            if let Err(transfer_result) = transfer_result {
+            if let Err(error) = transfer_result {
                 return Ok(ExecutionResult::Failure {
-                    error: Error::Exec(ExecError::Revert(transfer_result)),
+                    error: Error::Exec(ExecError::Revert(error)),
                     effect: Default::default(),
                     transfers: Vec::default(),
                     cost: Gas::default(),
@@ -1477,9 +1520,13 @@ where
             // (a) payment purse should be empty before the payment operation
             // (b) after executing payment code it's balance has to be equal to the wasmless gas
             // cost price
-            debug_assert_eq!(payment_purse_balance.value(), wasmless_transfer_gas_cost);
+            let payment_gas =
+                Gas::from_motes(payment_purse_balance, CONV_RATE).expect("gas overflow");
+
+            debug_assert_eq!(payment_gas, wasmless_transfer_gas_cost);
             // This assumes the cost incurred is already denominated in gas
-            payment_result.with_cost(Gas::new(payment_purse_balance.value()))
+
+            payment_result.with_cost(payment_gas)
         };
 
         let transfer_args =

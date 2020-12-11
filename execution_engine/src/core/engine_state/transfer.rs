@@ -14,8 +14,6 @@ use crate::{
     storage::global_state::StateReader,
 };
 
-use super::DEFAULT_WASMLESS_TRANSFER_COST;
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TransferTargetMode {
     Unknown,
@@ -324,20 +322,6 @@ impl TransferRuntimeArgsBuilder {
 
         if source_uref.addr() == target_uref.addr() {
             return Err(ExecError::Revert(ApiError::InvalidPurse).into());
-        }
-
-        let source_purse_balance_key = tracking_copy
-            .borrow_mut()
-            .get_purse_balance_key(correlation_id, Key::URef(source_uref))?;
-
-        let purse_balance = tracking_copy
-            .borrow_mut()
-            .get_purse_balance(correlation_id, source_purse_balance_key)?;
-
-        if purse_balance < *DEFAULT_WASMLESS_TRANSFER_COST {
-            // We can't continue if the minimum funds in source purse are lower than
-            // `DEFAULT_WASMLESS_TRANSFER_COST`.
-            return Err(Error::InsufficientPayment);
         }
 
         let amount = self.resolve_amount()?;

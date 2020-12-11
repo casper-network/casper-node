@@ -713,6 +713,93 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
 
 #[ignore]
 #[test]
+fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
+    let create_account_2: bool = false;
+    let mut builder = init_wasmless_transform_builder(create_account_2);
+    let account_1_to_account_2_amount: U512 =
+        DEFAULT_WASMLESS_TRANSFER_COST.value() + U512::from(1);
+    // This transfer should succeed as after paying for execution of wasmless transfer account_2's
+    // main purse would contain exactly 1 token.
+    let account_2_to_account_1_amount: U512 = U512::from(1);
+
+    let account_1_purse = builder
+        .get_account(ACCOUNT_1_ADDR)
+        .expect("should get account 1")
+        .main_purse();
+
+    assert_eq!(
+        builder.get_account(ACCOUNT_2_ADDR),
+        None,
+        "account 2 should not exist"
+    );
+
+    let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
+
+    let runtime_args = runtime_args! {
+       mint::ARG_TARGET => ACCOUNT_2_ADDR,
+       mint::ARG_AMOUNT => account_1_to_account_2_amount,
+       mint::ARG_ID => <Option<u64>>::None
+    };
+
+    let no_wasm_transfer_request_1 = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(ACCOUNT_1_ADDR)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(runtime_args)
+            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder
+        .exec(no_wasm_transfer_request_1)
+        .expect_success()
+        .commit();
+
+    let account_2 = builder
+        .get_account(ACCOUNT_2_ADDR)
+        .expect("account 2 should exist");
+
+    let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
+
+    assert_eq!(
+        account_1_starting_balance
+            - account_1_to_account_2_amount
+            - DEFAULT_WASMLESS_TRANSFER_COST.value(),
+        builder.get_purse_balance(account_1_purse),
+        "account 1 ending balance incorrect"
+    );
+    assert_eq!(
+        account_2_starting_balance, account_1_to_account_2_amount,
+        "account 2 ending balance incorrect"
+    );
+
+    // Another transfer but this time created account tries to do a transfer
+    assert!(account_2_to_account_1_amount <= DEFAULT_WASMLESS_TRANSFER_COST.value());
+    let runtime_args = runtime_args! {
+       mint::ARG_TARGET => ACCOUNT_1_ADDR,
+       mint::ARG_AMOUNT => account_2_to_account_1_amount,
+       mint::ARG_ID => <Option<u64>>::None
+    };
+
+    let no_wasm_transfer_request_2 = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(ACCOUNT_2_ADDR)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(runtime_args)
+            .with_authorization_keys(&[ACCOUNT_2_ADDR])
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder
+        .exec(no_wasm_transfer_request_2)
+        .commit()
+        .expect_success();
+}
+
+#[ignore]
+#[test]
 fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
