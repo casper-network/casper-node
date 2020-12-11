@@ -457,6 +457,19 @@ impl<C: Context> State<C> {
         }
     }
 
+    /// Returns whether this state already includes an endorsement of `uhash` by `vidx`.
+    pub(crate) fn has_endorsement(&self, uhash: &C::Hash, vidx: ValidatorIndex) -> bool {
+        self.endorsements
+            .get(uhash)
+            .map(|vmap| vmap[vidx].is_some())
+            .unwrap_or(false)
+            || self
+                .incomplete_endorsements
+                .get(uhash)
+                .map(|ends| ends.contains_key(&vidx))
+                .unwrap_or(false)
+    }
+
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
     /// ones.
     ///

@@ -285,17 +285,13 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 } else {
                     // If unit is sent by a doppelganger, deactivate this instance of an active
                     // validator. Continue processing the unit so that it can be added to the state.
-                    if let Some(swunit) = pvv.inner().signed_wire_unit() {
-                        if self.highway.is_doppelganger(swunit) {
-                            let uhash = swunit.hash();
-                            error!(
-                                "received unit from a doppelganger: {}. \
+                    if self.highway.is_our_own(pvv.inner()) {
+                        error!(
+                            "received vertex from a doppelganger. \
                                     Are you running multiple nodes with the same validator key?",
-                                uhash
-                            );
-                            self.deactivate_validator();
-                            results.push(ProtocolOutcome::DoppelgangerDetected);
-                        }
+                        );
+                        self.deactivate_validator();
+                        results.push(ProtocolOutcome::DoppelgangerDetected);
                     }
                     match self.highway.validate_vertex(pvv) {
                         Ok(vv) => {
