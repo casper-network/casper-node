@@ -141,7 +141,7 @@ impl<I> LinearChain<I> {
         &mut self,
         mut block: Block,
         effect_builder: EffectBuilder<REv>,
-    ) -> (Box<Block>, Effects<Event<I>>)
+    ) -> (Block, Effects<Event<I>>)
     where
         REv: From<StorageRequest>
             + From<ConsensusRequest>
@@ -168,7 +168,7 @@ impl<I> LinearChain<I> {
             effects.extend(effect_builder.broadcast_message(message).ignore());
             effects.extend(effect_builder.announce_finality_signature(fs).ignore());
         }
-        (Box::new(block), effects)
+        (block, effects)
     }
 }
 
@@ -246,6 +246,7 @@ where
             } => {
                 let (block, mut effects) =
                     self.add_pending_finality_signatures(*block, effect_builder);
+                let block = Box::new(block);
                 effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
                     move |_| Event::PutBlockResult {
                         block,
@@ -336,6 +337,7 @@ where
                 let (block, mut effects) =
                     self.add_pending_finality_signatures(*block, effect_builder);
                 if block.proofs().len() > old_count {
+                    let block = Box::new(block);
                     effects.extend(effect_builder.put_block_to_storage(block).ignore());
                 }
                 effects
