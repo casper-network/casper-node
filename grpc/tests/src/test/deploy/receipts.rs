@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use casper_execution_engine::core::engine_state::DEFAULT_WASMLESS_TRANSFER_COST;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_RUN_GENESIS_REQUEST},
     DEFAULT_ACCOUNT_ADDR,
 };
+use casper_execution_engine::storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST;
 use casper_types::{
     account::AccountHash, runtime_args, AccessRights, DeployHash, PublicKey, RuntimeArgs, Transfer,
     TransferAddr, U512,
@@ -89,7 +89,7 @@ fn should_record_wasmless_transfer() {
 
     // TODO: this is borked
     if !cfg!(feature = "use-system-contracts") {
-        assert_eq!(deploy_info.gas, DEFAULT_WASMLESS_TRANSFER_COST.value());
+        assert_eq!(deploy_info.gas, U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
     }
 
     let transfers = deploy_info.transfers;

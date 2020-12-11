@@ -100,10 +100,6 @@ pub const CONV_RATE: u64 = 1;
 
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000 * CONV_RATE));
 
-/// Default cost for wasmless transfer.
-pub static DEFAULT_WASMLESS_TRANSFER_COST: Lazy<Motes> =
-    Lazy::new(|| Motes::new(U512::from(10_000)));
-
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
 const GENESIS_INITIAL_BLOCKTIME: u64 = 0;
@@ -195,6 +191,8 @@ where
 
         let initial_root_hash = self.state.empty_root();
         let wasm_config = ee_config.wasm_config();
+        let wasmless_transfer_cost = ee_config.wasmless_transfer_cost();
+
         let preprocessor = Preprocessor::new(*wasm_config);
 
         // Spec #3: Create "virtual system account" object.
@@ -476,6 +474,7 @@ where
             proof_of_stake_hash,
             standard_payment_hash,
             auction_hash,
+            wasmless_transfer_cost,
         );
 
         self.state
@@ -664,6 +663,7 @@ where
             current_protocol_data.proof_of_stake(),
             current_protocol_data.standard_payment(),
             current_protocol_data.auction(),
+            current_protocol_data.wasmless_transfer_cost(),
         );
 
         self.state
@@ -1370,9 +1370,18 @@ where
                 }
             };
 
-            if source_purse_balance < *DEFAULT_WASMLESS_TRANSFER_COST {
-                // We can't continue if the minimum funds in source purse are lower than
-                // `DEFAULT_WASMLESS_TRANSFER_COST`.
+            let wasmless_transfer_gas_cost =
+                Gas::new(U512::from(protocol_data.wasmless_transfer_cost()));
+            eprintln!(
+                "wasmless_transfer_gas_cost {:?}",
+                wasmless_transfer_gas_cost
+            );
+
+            if source_purse_balance
+                < Motes::from_gas(wasmless_transfer_gas_cost, CONV_RATE).expect("gas overflow")
+            {
+                // We can't continue if the minimum funds in source purse are lower than the
+                // required cost.
                 return Ok(ExecutionResult::Failure {
                     error: Error::InsufficientPayment,
                     effect: Default::default(),
@@ -1422,9 +1431,6 @@ where
                     cost: Gas::default(),
                 });
             }
-
-            let wasmless_transfer_gas_cost =
-                Gas::from_motes(*DEFAULT_WASMLESS_TRANSFER_COST, CONV_RATE).expect("gas overflow");
 
             // Create a new arguments to transfer cost of wasmless transfer into the payment purse.
 

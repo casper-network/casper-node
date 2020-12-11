@@ -36,6 +36,7 @@ const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
 /// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
 const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
 const DEFAULT_UNBONDING_DELAY: EraId = 14;
+const DEFAULT_WASMLESS_TRANSFER_COST: u64 = 10_000;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 struct Genesis {
@@ -47,6 +48,7 @@ struct Genesis {
     protocol_version: Version,
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
+    wasmless_transfer_cost: u64,
     mint_installer_path: External<Vec<u8>>,
     pos_installer_path: External<Vec<u8>>,
     standard_payment_installer_path: External<Vec<u8>>,
@@ -65,6 +67,7 @@ impl Default for Genesis {
             protocol_version: Version::from((1, 0, 0)),
             round_seigniorage_rate: DEFAULT_ROUND_SEIGNIORAGE_RATE,
             unbonding_delay: DEFAULT_UNBONDING_DELAY,
+            wasmless_transfer_cost: DEFAULT_WASMLESS_TRANSFER_COST,
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
             standard_payment_installer_path: External::path(
@@ -147,6 +150,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             protocol_version: chainspec.genesis.protocol_version.clone(),
             round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
             unbonding_delay: chainspec.genesis.unbonding_delay,
+            wasmless_transfer_cost: chainspec.genesis.wasmless_transfer_cost,
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
             standard_payment_installer_path: External::path(
@@ -228,6 +232,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         locked_funds_period: chainspec.genesis.locked_funds_period,
         round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
         unbonding_delay: chainspec.genesis.unbonding_delay,
+        wasmless_transfer_cost: chainspec.genesis.wasmless_transfer_cost,
         protocol_version: chainspec.genesis.protocol_version,
         mint_installer_bytes,
         pos_installer_bytes,

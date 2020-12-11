@@ -17,6 +17,7 @@ use casper_execution_engine::{
         run_genesis_request::RunGenesisRequest,
     },
     shared::{motes::Motes, newtypes::Blake2bHash, wasm_config::WasmConfig},
+    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{account::AccountHash, auction::EraId, ProtocolVersion, PublicKey, U512};
 
@@ -114,6 +115,7 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         DEFAULT_LOCKED_FUNDS_PERIOD,
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
+        DEFAULT_WASMLESS_TRANSFER_COST,
     )
 });
 pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {

@@ -299,6 +299,8 @@ message ChainSpec {
             Ratio round_seigniorage_rate = 11;
             // Unbonding delay expressed in eras.
             uint64 unbonding_delay = 12;
+            // Wasmless transfer cost expressed in gas.
+            uint64 wasmless_transfer_cost = 13;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;

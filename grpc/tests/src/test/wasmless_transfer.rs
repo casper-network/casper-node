@@ -5,9 +5,9 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::core::{
-    engine_state::{Error as CoreError, DEFAULT_WASMLESS_TRANSFER_COST},
-    execution::Error as ExecError,
+use casper_execution_engine::{
+    core::{engine_state::Error as CoreError, execution::Error as ExecError},
+    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
     account::AccountHash, mint, proof_of_stake, runtime_args, AccessRights, ApiError, Key,
@@ -136,7 +136,7 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         .commit();
 
     assert_eq!(
-        account_1_starting_balance - transfer_amount - DEFAULT_WASMLESS_TRANSFER_COST.value(),
+        account_1_starting_balance - transfer_amount - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -555,7 +555,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
 
     assert_eq!(
-        account_1_starting_balance - transfer_amount - DEFAULT_WASMLESS_TRANSFER_COST.value(),
+        account_1_starting_balance - transfer_amount - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -627,7 +627,8 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
 fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
-    let account_1_to_account_2_amount: U512 = DEFAULT_WASMLESS_TRANSFER_COST.value() - U512::one();
+    let account_1_to_account_2_amount: U512 =
+        U512::from(DEFAULT_WASMLESS_TRANSFER_COST) - U512::one();
     let account_2_to_account_1_amount: U512 = U512::one();
 
     let account_1_purse = builder
@@ -673,7 +674,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     assert_eq!(
         account_1_starting_balance
             - account_1_to_account_2_amount
-            - DEFAULT_WASMLESS_TRANSFER_COST.value(),
+            - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -683,7 +684,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     );
 
     // Another transfer but this time created account tries to do a transfer
-    assert!(account_2_to_account_1_amount < DEFAULT_WASMLESS_TRANSFER_COST.value());
+    assert!(account_2_to_account_1_amount < U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
     let runtime_args = runtime_args! {
        mint::ARG_TARGET => ACCOUNT_1_ADDR,
        mint::ARG_AMOUNT => account_2_to_account_1_amount,
@@ -703,7 +704,9 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     builder.exec(no_wasm_transfer_request_2).commit();
 
     let exec_result = &builder.get_exec_responses().last().unwrap()[0];
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result
+        .as_error()
+        .unwrap_or_else(|| panic!("should have error {:?}", exec_result));
     assert!(
         matches!(error, CoreError::InsufficientPayment),
         "{:?}",
@@ -717,10 +720,10 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     let create_account_2: bool = false;
     let mut builder = init_wasmless_transform_builder(create_account_2);
     let account_1_to_account_2_amount: U512 =
-        DEFAULT_WASMLESS_TRANSFER_COST.value() + U512::from(1);
+        U512::from(DEFAULT_WASMLESS_TRANSFER_COST) + U512::one();
     // This transfer should succeed as after paying for execution of wasmless transfer account_2's
     // main purse would contain exactly 1 token.
-    let account_2_to_account_1_amount: U512 = U512::from(1);
+    let account_2_to_account_1_amount: U512 = U512::one();
 
     let account_1_purse = builder
         .get_account(ACCOUNT_1_ADDR)
@@ -765,7 +768,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     assert_eq!(
         account_1_starting_balance
             - account_1_to_account_2_amount
-            - DEFAULT_WASMLESS_TRANSFER_COST.value(),
+            - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -775,7 +778,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     );
 
     // Another transfer but this time created account tries to do a transfer
-    assert!(account_2_to_account_1_amount <= DEFAULT_WASMLESS_TRANSFER_COST.value());
+    assert!(account_2_to_account_1_amount <= U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
     let runtime_args = runtime_args! {
        mint::ARG_TARGET => ACCOUNT_1_ADDR,
        mint::ARG_AMOUNT => account_2_to_account_1_amount,
