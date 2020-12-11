@@ -7,27 +7,27 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
+use itertools::Itertools;
 use tracing::{debug, error, info, warn};
 
 use casper_types::ExecutionResult;
 
 use super::Component;
 use crate::{
+    crypto::asymmetric_key::PublicKey,
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{ConsensusRequest, LinearChainRequest, NetworkRequest, StorageRequest},
-        EffectExt, EffectOptionExt, Effects, Responder,
+        EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
     protocol::Message,
     types::{Block, BlockByHeight, BlockHash, DeployHash, FinalitySignature},
     NodeRng,
 };
 
-impl<I> From<FinalitySignature> for Event<I> {
-    fn from(fs: FinalitySignature) -> Self {
-        Event::FinalitySignatureReceived(Box::new(fs))
-    }
-}
+/// The maximum number of finality signatures from a single validator we keep in memory while
+/// waiting for their block.
+const MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR: usize = 1000;
 
 impl<I> From<Box<FinalitySignature>> for Event<I> {
     fn from(fs: Box<FinalitySignature>) -> Self {
@@ -63,18 +63,20 @@ pub enum Event<I> {
         /// The deploys' execution results.
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
+    /// The result of requesting a block from storage to add a finality signature to it.
+    GetBlockForFinalitySignaturesResult(BlockHash, Option<Box<Block>>),
 }
 
 impl<I: Display> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Request(req) => write!(f, "linear-chain request: {}", req),
+            Event::Request(req) => write!(f, "linear chain request: {}", req),
             Event::LinearChainBlock { block, .. } => {
-                write!(f, "linear-chain new block: {}", block.hash())
+                write!(f, "linear chain new block: {}", block.hash())
             }
             Event::GetBlockResult(block_hash, maybe_block, peer) => write!(
                 f,
-                "linear-chain get-block for {} from {} found: {}",
+                "linear chain get-block for {} from {} found: {}",
                 block_hash,
                 peer,
                 maybe_block.is_some()
@@ -98,29 +100,75 @@ impl<I: Display> Display for Event<I> {
                 height,
                 block.is_some()
             ),
+            Event::GetBlockForFinalitySignaturesResult(block_hash, maybe_block) => {
+                write!(
+                    f,
+                    "linear chain get-block-for-finality-signatures-result for {} found: {}",
+                    block_hash,
+                    maybe_block.is_some()
+                )
+            }
         }
     }
 }
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
-    /// A temporary workaround.
-    // TODO: Refactor to proper LRU cache.
-    linear_chain: Vec<Block>,
+    /// The most recently added block.
+    latest_block: Option<Block>,
+    /// Finality signatures to be inserted in a block once it is available.
+    pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, FinalitySignature>>,
     _marker: PhantomData<I>,
 }
 
 impl<I> LinearChain<I> {
     pub fn new() -> Self {
         LinearChain {
-            linear_chain: Vec::new(),
+            latest_block: None,
+            pending_finality_signatures: HashMap::new(),
             _marker: PhantomData,
         }
     }
 
     // TODO: Remove once we can return all linear chain blocks from persistent storage.
-    pub fn linear_chain(&self) -> &Vec<Block> {
-        &self.linear_chain
+    pub fn latest_block(&self) -> &Option<Block> {
+        &self.latest_block
+    }
+
+    /// Adds pending finality signatures to the block; returns events to announce and broadcast
+    /// them, and the updated block.
+    fn add_pending_finality_signatures<REv>(
+        &mut self,
+        mut block: Block,
+        effect_builder: EffectBuilder<REv>,
+    ) -> (Block, Effects<Event<I>>)
+    where
+        REv: From<StorageRequest>
+            + From<ConsensusRequest>
+            + From<NetworkRequest<I, Message>>
+            + From<LinearChainAnnouncement>
+            + Send,
+        I: Display + Send + 'static,
+    {
+        let mut effects = Effects::new();
+        let block_hash = block.hash();
+        let pending_sigs = self
+            .pending_finality_signatures
+            .values_mut()
+            .filter_map(|sigs| sigs.remove(&block_hash).map(Box::new))
+            // TODO: Store signatures by public key.
+            .filter(|fs| !block.proofs().iter().any(|proof| proof == &fs.signature))
+            .collect_vec();
+        self.pending_finality_signatures
+            .retain(|_, sigs| !sigs.is_empty());
+        // Add new signatures and send the updated block to storage.
+        for fs in pending_sigs {
+            block.append_proof(fs.signature);
+            let message = Message::FinalitySignature(fs.clone());
+            effects.extend(effect_builder.broadcast_message(message).ignore());
+            effects.extend(effect_builder.announce_finality_signature(fs).ignore());
+        }
+        (block, effects)
     }
 }
 
@@ -138,7 +186,7 @@ where
 
     fn handle_event(
         &mut self,
-        effect_builder: crate::effect::EffectBuilder<REv>,
+        effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
@@ -195,18 +243,23 @@ where
             Event::LinearChainBlock {
                 block,
                 execution_results,
-            } => effect_builder
-                .put_block_to_storage(block.clone())
-                .event(move |_| Event::PutBlockResult {
-                    block,
-                    execution_results,
-                }),
+            } => {
+                let (block, mut effects) =
+                    self.add_pending_finality_signatures(*block, effect_builder);
+                let block = Box::new(block);
+                effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
+                    move |_| Event::PutBlockResult {
+                        block,
+                        execution_results,
+                    },
+                ));
+                effects
+            }
             Event::PutBlockResult {
                 block,
                 execution_results,
             } => {
-                // TODO: Remove once we can return all linear chain blocks from persistent storage.
-                self.linear_chain.push(*block.clone());
+                self.latest_block = Some(*block.clone());
 
                 let block_header = block.take_header();
                 let block_hash = block_header.hash();
@@ -234,36 +287,61 @@ where
                     public_key,
                     ..
                 } = *fs;
+                // TODO: Also verify that the public key belongs to a bonded validator!
                 if let Err(err) = fs.verify() {
-                    error!(%block_hash, %public_key, %err, "received invalid finality signature");
+                    warn!(%block_hash, %public_key, %err, "received invalid finality signature");
                     return Effects::new();
                 }
                 debug!(%block_hash, %public_key, "received new finality signature");
-                async move {
-                    let maybe_block = effect_builder
-                        .get_block_from_storage(block_hash)
-                        .await;
-                    match maybe_block {
-                        None => {
-                            let block_hash = fs.block_hash;
-                            let public_key = fs.public_key;
-                            warn!(%block_hash, %public_key, "received a signature for a block that was not found in storage");
-                        }
-                        Some(mut block) => {
-                            if !block.proofs().iter().any(|proof| proof == &fs.signature) {
-                                block.append_proof(fs.signature);
-                                let _ = effect_builder
-                                    .put_block_to_storage(Box::new(block))
-                                    .await;
-                                let _ = effect_builder
-                                    .broadcast_message(Message::FinalitySignature(fs.clone()))
-                                    .await;
-                                let _ = effect_builder.announce_finality_signature(fs).await;
-                            }
-                        }
-                    }
+                let sigs = self
+                    .pending_finality_signatures
+                    .entry(public_key)
+                    .or_default();
+                // Limit the memory we use for storing unknown signatures from each validator.
+                if sigs.len() >= MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR {
+                    warn!(
+                        %block_hash, %public_key,
+                        "received too many finality signatures for unknown blocks"
+                    );
+                    return Effects::new();
                 }
-            }.ignore()
+                // Add the pending signature and request the block from storage.
+                if sigs.insert(block_hash, *fs).is_some() {
+                    return Effects::new(); // Signature was already known.
+                }
+                effect_builder
+                    .get_block_from_storage(block_hash)
+                    .event(move |maybe_block| {
+                        let maybe_box_block = maybe_block.map(Box::new);
+                        Event::GetBlockForFinalitySignaturesResult(block_hash, maybe_box_block)
+                    })
+            }
+            Event::GetBlockForFinalitySignaturesResult(block_hash, None) => {
+                let signers = self
+                    .pending_finality_signatures
+                    .values()
+                    .filter_map(|sigs| sigs.get(&block_hash))
+                    .map(|fs| format!("{}", fs.public_key))
+                    .collect_vec();
+                if !signers.is_empty() {
+                    // We have signatures for an unknown block. Print log messages.
+                    warn!(
+                       %block_hash, signers = %signers.join(", "),
+                       "received signatures for a block that was not found in storage"
+                    )
+                }
+                Effects::new()
+            }
+            Event::GetBlockForFinalitySignaturesResult(_block_hash, Some(block)) => {
+                let old_count = block.proofs().len();
+                let (block, mut effects) =
+                    self.add_pending_finality_signatures(*block, effect_builder);
+                if block.proofs().len() > old_count {
+                    let block = Box::new(block);
+                    effects.extend(effect_builder.put_block_to_storage(block).ignore());
+                }
+                effects
+            }
         }
     }
 }
