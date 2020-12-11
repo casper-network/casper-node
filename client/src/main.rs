@@ -6,6 +6,7 @@ mod docs;
 mod generate_completion;
 mod get_auction_info;
 mod get_balance;
+mod get_era_info;
 mod get_state_hash;
 mod keygen;
 mod query_state;
@@ -14,7 +15,7 @@ use clap::{crate_description, crate_version, App};
 
 use casper_node::rpcs::{
     account::PutDeploy,
-    chain::{GetBlock, GetBlockTransfers, GetStateRootHash},
+    chain::{GetBlock, GetBlockTransfers, GetEraInfo, GetStateRootHash},
     docs::ListRpcs,
     info::GetDeploy,
     state::{GetAuctionInfo, GetBalance, GetItem as QueryState},
@@ -43,6 +44,7 @@ enum DisplayOrder {
     GetStateRootHash,
     QueryState,
     GetBalance,
+    GetEraInfo,
     GetAuctionInfo,
     Keygen,
     GenerateCompletion,
@@ -69,6 +71,7 @@ fn cli<'a, 'b>() -> App<'a, 'b> {
             DisplayOrder::GetStateRootHash as usize,
         ))
         .subcommand(QueryState::build(DisplayOrder::QueryState as usize))
+        .subcommand(GetEraInfo::build(DisplayOrder::GetEraInfo as usize))
         .subcommand(GetAuctionInfo::build(DisplayOrder::GetAuctionInfo as usize))
         .subcommand(Keygen::build(DisplayOrder::Keygen as usize))
         .subcommand(GenerateCompletion::build(
@@ -93,6 +96,7 @@ async fn main() {
         (GetBalance::NAME, Some(matches)) => GetBalance::run(matches),
         (GetStateRootHash::NAME, Some(matches)) => GetStateRootHash::run(matches),
         (QueryState::NAME, Some(matches)) => QueryState::run(matches),
+        (GetEraInfo::NAME, Some(matches)) => GetEraInfo::run(matches),
         (GetAuctionInfo::NAME, Some(matches)) => GetAuctionInfo::run(matches),
         (Keygen::NAME, Some(matches)) => Keygen::run(matches),
         (GenerateCompletion::NAME, Some(matches)) => GenerateCompletion::run(matches),

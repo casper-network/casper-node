@@ -9,7 +9,7 @@ use casper_execution_engine::{
 };
 use casper_node::{
     crypto::hash::Digest,
-    rpcs::chain::BlockIdentifier,
+    rpcs::chain::{BlockIdentifier, GetEraInfoResult},
     types::{json_compatibility, Block, BlockValidationError, JsonBlock},
 };
 use casper_types::{bytesrepr, Key, U512};
@@ -67,6 +67,50 @@ impl From<bytesrepr::Error> for ValidateResponseError {
 impl From<BlockValidationError> for ValidateResponseError {
     fn from(e: BlockValidationError) -> Self {
         ValidateResponseError::BlockValidationError(e)
+    }
+}
+
+pub(crate) fn validate_get_era_info_response(
+    response: &JsonRpc,
+) -> Result<(), ValidateResponseError> {
+    let value = response
+        .get_result()
+        .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
+
+    let result: GetEraInfoResult = serde_json::from_value(value.to_owned())?;
+
+    match (
+        result.state_root_hash,
+        result.era_id,
+        result.merkle_proof,
+        result.stored_value,
+    ) {
+        (Some(state_root_hash), Some(era_id), Some(merkle_proof), Some(stored_value)) => {
+            let proof_bytes = hex::decode(merkle_proof)
+                .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
+            let proofs: Vec<TrieMerkleProof<Key, StoredValue>> =
+                bytesrepr::deserialize(proof_bytes)?;
+            let key = Key::EraInfo(era_id);
+            let path = &[];
+
+            let proof_value = match stored_value {
+                json_compatibility::StoredValue::EraInfo(era_info) => {
+                    StoredValue::EraInfo(era_info)
+                }
+                _ => return Err(ValidateResponseError::ValidateResponseFailedToParse),
+            };
+
+            core::validate_query_proof(
+                &state_root_hash.to_owned().into(),
+                &proofs,
+                &key,
+                path,
+                &proof_value,
+            )
+            .map_err(Into::into)
+        }
+        (None, None, None, None) => Ok(()),
+        _ => Err(ValidateResponseError::ValidateResponseFailedToParse),
     }
 }
 
