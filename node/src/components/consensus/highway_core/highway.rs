@@ -413,13 +413,13 @@ impl<C: Context> Highway<C> {
 
     fn on_new_unit(
         &mut self,
-        vhash: &C::Hash,
+        uhash: &C::Hash,
         timestamp: Timestamp,
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let instance_id = self.instance_id;
         self.map_active_validator(
-            |av, state, rng| av.on_new_unit(vhash, timestamp, state, instance_id, rng),
+            |av, state, rng| av.on_new_unit(uhash, timestamp, state, instance_id, rng),
             timestamp,
             rng,
         )
@@ -580,6 +580,33 @@ impl<C: Context> Highway<C> {
             Effect::NewVertex(ValidVertex(Vertex::Evidence(ev)))
         };
         evidence.into_iter().map(add_and_create_effect).collect()
+    }
+
+    /// Checks whether the unit was created by a doppelganger.
+    pub(crate) fn is_doppelganger_vertex(&self, vertex: &Vertex<C>) -> bool {
+        match vertex {
+            Vertex::Unit(swunit) => {
+                // If we already have the unit in our local state,
+                // we must have had created it ourselves earlier and it is now gossiped back to us.
+                !self.state.has_unit(&swunit.wire_unit.hash())
+                    && self
+                        .active_validator
+                        .as_ref()
+                        .map(|av| av.is_our_unit(&swunit.wire_unit))
+                        .unwrap_or(false)
+            }
+            Vertex::Endorsements(endorsements) => self
+                .active_validator
+                .as_ref()
+                .map(|av| av.includes_doppelgangers_endorsement(endorsements, &self.state))
+                .unwrap_or(false),
+            Vertex::Evidence(_) => false,
+        }
+    }
+
+    /// Returns whether this instance of protocol is an active validator.
+    pub(crate) fn is_active(&self) -> bool {
+        self.active_validator.is_some()
     }
 }
 

@@ -291,7 +291,7 @@ pub struct ValidatorInitConfig {
     pub(super) contract_runtime: ContractRuntime,
     pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
-    pub(super) linear_chain: Vec<Block>,
+    pub(super) latest_block: Option<Block>,
     pub(super) event_stream_server: EventStreamServer,
 }
 
@@ -357,7 +357,7 @@ impl reactor::Reactor for Reactor {
             contract_runtime,
             consensus,
             init_consensus_effects,
-            linear_chain,
+            latest_block,
             event_stream_server,
         } = config;
 
@@ -401,7 +401,7 @@ impl reactor::Reactor for Reactor {
             .genesis_state_root_hash()
             .expect("should have state root hash");
         let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone())
-            .with_parent_map(linear_chain.last().cloned());
+            .with_parent_map(latest_block);
         let proto_block_validator = BlockValidator::new();
         let linear_chain = LinearChain::new();
 

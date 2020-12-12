@@ -55,7 +55,7 @@ pub(crate) enum Effect<C: Context> {
 /// units citing all those confirmations, to create a summit and finalize the proposal.
 pub(crate) struct ActiveValidator<C: Context> {
     /// Our own validator index.
-    vidx: ValidatorIndex,
+    pub(crate) vidx: ValidatorIndex,
     /// The validator's secret signing key.
     secret: C::ValidatorSecret,
     /// The next round exponent: Our next round will be `1 << next_round_exp` milliseconds long.
@@ -268,24 +268,24 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> bool {
-        let earliest_unit_time = self.earliest_unit_time(state);
-        if timestamp < earliest_unit_time {
-            warn!(
-                %earliest_unit_time, %timestamp,
-                "earliest_unit_time is greater than current time stamp"
+        let unit = state.unit(vhash);
+        // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
+        if unit.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(unit) {
+            return false;
+        }
+        let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
+        if unit.timestamp != r_id {
+            trace!(
+                %unit.timestamp, %r_id,
+                "not confirming proposal: wrong round",
             );
             return false;
         }
-        let unit = state.unit(vhash);
         if unit.timestamp > timestamp {
             error!(
                 %unit.timestamp, %timestamp,
                 "added a unit with a future timestamp, should never happen"
             );
-            return false;
-        }
-        // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
-        if unit.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(unit) {
             return false;
         }
         if let Some(unit) = self.latest_unit(state) {
@@ -294,11 +294,11 @@ impl<C: Context> ActiveValidator<C> {
                 return false; // We already sent a confirmation.
             }
         }
-        let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
-        if unit.timestamp != r_id {
-            trace!(
-                %unit.timestamp, %r_id,
-                "not confirming proposal: wrong round",
+        let earliest_unit_time = self.earliest_unit_time(state);
+        if timestamp < earliest_unit_time {
+            warn!(
+                %earliest_unit_time, %timestamp,
+                "earliest_unit_time is greater than current time stamp"
             );
             return false;
         }
@@ -457,6 +457,26 @@ impl<C: Context> ActiveValidator<C> {
         // delayed timer events.
         let past_panorama = state.panorama().cutoff(state, timestamp);
         state.valid_panorama(self.vidx, past_panorama)
+    }
+
+    /// Returns whether the unit was created by us.
+    pub(crate) fn is_our_unit(&self, wunit: &WireUnit<C>) -> bool {
+        self.vidx == wunit.creator
+    }
+
+    /// Returns whether a list of endorsements includes an endorsement created by a doppelganger.
+    /// An endorsement created by a doppelganger cannot be found in the local protocol state
+    /// (since we haven't created it ourselves).
+    pub(crate) fn includes_doppelgangers_endorsement(
+        &self,
+        endorsements: &Endorsements<C>,
+        state: &State<C>,
+    ) -> bool {
+        endorsements
+            .endorsers
+            .iter()
+            .any(|(vidx, _)| vidx == &self.vidx)
+            && !state.has_endorsement(endorsements.unit(), self.vidx)
     }
 }
 

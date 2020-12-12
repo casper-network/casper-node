@@ -244,7 +244,10 @@ impl HighwayValidator {
                                 // TODO: Don't send both messages to every peer. Add different
                                 // strategies.
                                 let mut wunit = swunit.wire_unit.clone();
-                                wunit.timestamp += 1.into();
+                                match wunit.value.as_mut() {
+                                    None => wunit.timestamp += 1.into(),
+                                    Some(v) => v.push(0),
+                                }
                                 let secret = TestSecret(wunit.creator.0.into());
                                 let swunit2 = SignedWireUnit::new(wunit, &secret, rng);
                                 vec![
@@ -857,7 +860,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     TEST_MAX_ROUND_EXP,
                     TEST_MIN_ROUND_EXP,
                     TEST_END_HEIGHT,
-                    Timestamp::now(),
+                    Timestamp::zero(),
                     Timestamp::zero(), // Length depends only on block number.
                     TEST_ENDORSEMENT_EVIDENCE_LIMIT,
                 );
@@ -1135,7 +1138,6 @@ mod test_harness {
     }
 
     #[test]
-    #[ignore] // TODO(HWY-206)
     fn liveness_test_some_equivocate() {
         let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 

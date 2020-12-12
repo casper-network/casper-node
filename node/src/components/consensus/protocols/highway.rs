@@ -283,6 +283,16 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                         sender,
                     ));
                 } else {
+                    // If unit is sent by a doppelganger, deactivate this instance of an active
+                    // validator. Continue processing the unit so that it can be added to the state.
+                    if self.highway.is_doppelganger_vertex(pvv.inner()) {
+                        error!(
+                            "received vertex from a doppelganger. \
+                            Are you running multiple nodes with the same validator key?",
+                        );
+                        self.deactivate_validator();
+                        results.push(ProtocolOutcome::DoppelgangerDetected);
+                    }
                     match self.highway.validate_vertex(pvv) {
                         Ok(vv) => {
                             let vertex = vv.inner();
@@ -666,5 +676,9 @@ where
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn is_active(&self) -> bool {
+        self.highway.is_active()
     }
 }
