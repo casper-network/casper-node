@@ -364,11 +364,12 @@ function get_network_bind_address() {
     local NODE_ID=${2}   
     local NET_BOOTSTRAP_COUNT=${3}     
 
-    if [ $NODE_ID -le $NET_BOOTSTRAP_COUNT ]; then
-        echo "0.0.0.0:$(get_node_port $NCTL_BASE_PORT_NETWORK $NET_ID $NODE_ID)"   
-    else
-        echo "0.0.0.0:0"   
-    fi
+    echo "0.0.0.0:$(get_node_port $NCTL_BASE_PORT_NETWORK $NET_ID $NODE_ID)"   
+    # if [ $NODE_ID -le $NET_BOOTSTRAP_COUNT ]; then
+    #     echo "0.0.0.0:$(get_node_port $NCTL_BASE_PORT_NETWORK $NET_ID $NODE_ID)"   
+    # else
+    #     echo "0.0.0.0:0"   
+    # fi
 }
 
 #######################################
@@ -1010,7 +1011,6 @@ function render_chain_block() {
     else
         $(get_path_to_client $NET_ID) get-block \
             --node-address $NODE_ADDRESS \
-            --block-identifier "" \
             | jq '.result.block'
     fi
 }
@@ -1052,7 +1052,7 @@ function render_chain_state_root_hash() {
     local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
     local STATE_ROOT_HASH=$(get_state_root_hash $NET_ID $NODE_ID $BLOCK_HASH)
 
-    log "STATE ROOT HASH @ "$NODE_ADDRESS" :: "$STATE_ROOT_HASH
+    log "state root hash @ "$NODE_ADDRESS" :: "$STATE_ROOT_HASH
 }
 
 #######################################

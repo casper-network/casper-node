@@ -59,7 +59,7 @@ source $NCTL/sh/node/ctl_$NCTL_DAEMON_TYPE.sh
 if [ $NODE_ID == "all" ]; then
     do_node_start_all $NET_ID $NCTL_NET_NODE_COUNT $NCTL_NET_BOOTSTRAP_COUNT
 else
-    log "net-$NET_ID: starting node ... "
+    log "starting node :: net-$NET_ID.node-$NODE_ID"
     do_node_start $NET_ID $NODE_ID
 fi
 
