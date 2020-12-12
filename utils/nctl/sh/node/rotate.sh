@@ -59,7 +59,7 @@ done
 
 
 log "------------------------------------------------------------"
-log "STEP 02: starting non-genesis nodes"
+log "STEP 02: starting non-genesis nodes:"
 for IDX in $(seq 1 $NET_NODE_COUNT)
 do
     NODE_ID=$(($NET_NODE_COUNT + $IDX))
@@ -125,18 +125,22 @@ log "STEP 07: awaiting 180 seconds for genesis nodes to be ejected from active v
 # sleep 180.0
 
 
-log "------------------------------------------------------------"
-log "STEP 08: stopping genesis nodes"
-for NODE_ID in $(seq 1 $NET_NODE_COUNT)
-do
-    do_node_stop $NET_ID $NODE_ID
-    sleep 1.0
-    log "net-$NET_ID:node-$NODE_ID stopped"
-done
+# log "------------------------------------------------------------"
+# log "STEP 08: stopping genesis nodes"
+# for NODE_ID in $(seq 1 $NET_NODE_COUNT)
+# do
+#     do_node_stop $NET_ID $NODE_ID
+#     sleep 1.0
+#     log "net-$NET_ID:node-$NODE_ID stopped"
+# done
 
 log "------------------------------------------------------------"
 log "STEP 09: state root hash at active nodes:"
 for NODE_ID in $(seq 1 $NET_NODE_COUNT)
+do
+    render_chain_state_root_hash $NET_ID $NODE_ID
+done
+for IDX in $(seq 1 $NET_NODE_COUNT)
 do
     NODE_ID=$(($NET_NODE_COUNT + $IDX))
     render_chain_state_root_hash $NET_ID $NODE_ID
