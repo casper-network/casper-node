@@ -32,7 +32,7 @@ use crate::{
                 },
                 validators::Validators,
             },
-            traits::{Context, NodeIdT},
+            traits::{ConsensusValueT, Context, NodeIdT},
         },
     },
     types::Timestamp,
@@ -299,14 +299,22 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                             if let (Some(value), Some(timestamp)) =
                                 (vertex.value().cloned(), vertex.timestamp())
                             {
-                                // It's a block: Request validation before adding it to the state.
-                                self.pending_values
-                                    .entry(value.clone())
-                                    .or_default()
-                                    .push(vv);
-                                results.push(ProtocolOutcome::ValidateConsensusValue(
-                                    sender, value, timestamp,
-                                ));
+                                // It's a block…
+                                if value.is_empty() {
+                                    // Consensus value is empty. Nothing to validate.
+                                    let now = Timestamp::now();
+                                    results.extend(self.add_valid_vertex(vv, rng, now));
+                                    state_changed = true;
+                                } else {
+                                    // Request validation before adding it to the state.
+                                    self.pending_values
+                                        .entry(value.clone())
+                                        .or_default()
+                                        .push(vv);
+                                    results.push(ProtocolOutcome::ValidateConsensusValue(
+                                        sender, value, timestamp,
+                                    ));
+                                }
                             } else {
                                 // It's not a block: Add it to the state.
                                 let now = Timestamp::now();
