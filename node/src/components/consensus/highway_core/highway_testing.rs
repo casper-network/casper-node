@@ -43,7 +43,7 @@ type ConsensusValue = Vec<u32>;
 
 impl ConsensusValueT for ConsensusValue {
     fn needs_validation(&self) -> bool {
-        self.is_empty()
+        !self.is_empty()
     }
 }
 
