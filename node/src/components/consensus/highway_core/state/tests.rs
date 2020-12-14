@@ -18,7 +18,7 @@ use crate::{
                 TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT, TEST_INSTANCE_ID,
             },
         },
-        traits::ValidatorSecret,
+        traits::{ConsensusValueT, ValidatorSecret},
     },
     NodeRng,
 };
@@ -60,6 +60,12 @@ impl ValidatorSecret for TestSecret {
 pub(crate) const ALICE_SEC: TestSecret = TestSecret(0);
 pub(crate) const BOB_SEC: TestSecret = TestSecret(1);
 pub(crate) const CAROL_SEC: TestSecret = TestSecret(2);
+
+impl ConsensusValueT for u32 {
+    fn needs_validation(&self) -> bool {
+        false
+    }
+}
 
 impl Context for TestContext {
     type ConsensusValue = u32;

@@ -101,6 +101,13 @@ impl From<u32> for Gas {
     }
 }
 
+impl From<u64> for Gas {
+    fn from(gas: u64) -> Self {
+        let gas_u512: U512 = gas.into();
+        Gas::new(gas_u512)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use casper_types::U512;

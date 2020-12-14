@@ -32,7 +32,7 @@ use crate::{
             },
             queue::QueueEntry,
         },
-        traits::{Context, ValidatorSecret},
+        traits::{ConsensusValueT, Context, ValidatorSecret},
         BlockContext,
     },
     types::Timestamp,
@@ -40,6 +40,12 @@ use crate::{
 };
 
 type ConsensusValue = Vec<u32>;
+
+impl ConsensusValueT for ConsensusValue {
+    fn needs_validation(&self) -> bool {
+        !self.is_empty()
+    }
+}
 
 const TEST_MIN_ROUND_EXP: u8 = 12;
 const TEST_MAX_ROUND_EXP: u8 = 19;

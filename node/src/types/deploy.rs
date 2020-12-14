@@ -20,12 +20,14 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use casper_execution_engine::core::engine_state::{
-    executable_deploy_item::ExecutableDeployItem, DeployItem,
+use casper_execution_engine::{
+    core::engine_state::{executable_deploy_item::ExecutableDeployItem, DeployItem},
+    shared::motes::Motes,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ExecutionResult,
+    standard_payment::ARG_AMOUNT,
+    ExecutionResult, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
@@ -42,6 +44,7 @@ use crate::{
     utils::DisplayIter,
     NodeRng,
 };
+use num_traits::Zero;
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let payment = ExecutableDeployItem::StoredContractByName {
@@ -112,6 +115,10 @@ pub enum Error {
         /// The verification error.
         error: CryptoError,
     },
+
+    /// Failed to get "amount" from `payment()`'s runtime args.
+    #[error("invalid payment: missing \"amount\" arg")]
+    InvalidPayment,
 }
 
 impl From<FromHexError> for Error {
@@ -474,17 +481,40 @@ impl Deploy {
         &self.approvals
     }
 
-    /// Returns the header() wrapped the correct DeployType given the `session`.
-    pub fn deploy_type(&self) -> DeployType {
-        match self.session() {
-            ExecutableDeployItem::Transfer { .. } => DeployType::Transfer(self.header().clone()),
-            ExecutableDeployItem::ModuleBytes { .. }
-            | ExecutableDeployItem::StoredContractByHash { .. }
-            | ExecutableDeployItem::StoredContractByName { .. }
-            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
-            | ExecutableDeployItem::StoredVersionedContractByName { .. } => {
-                DeployType::Wasm(self.header().clone())
-            }
+    /// Returns the `DeployType`.
+    pub fn deploy_type(&self) -> Result<DeployType, Error> {
+        let header = self.header().clone();
+        let size = self.serialized_length();
+        if self.session().is_transfer() {
+            // TODO: we need a non-zero value constant for wasm-less transfer cost.
+            let payment_amount = Motes::zero();
+            Ok(DeployType::Transfer {
+                header,
+                payment_amount,
+                size,
+            })
+        } else {
+            let payment_item = self.payment().clone();
+            let payment_amount = {
+                // In the happy path for a payment we expect:
+                // - args to exist
+                // - contain "amount"
+                // - be a valid U512 value.
+                let args = payment_item
+                    .into_runtime_args()
+                    .map_err(|_| Error::InvalidPayment)?;
+                let value = args.get(ARG_AMOUNT).ok_or(Error::InvalidPayment)?;
+                let value = value
+                    .clone()
+                    .into_t::<U512>()
+                    .map_err(|_| Error::InvalidPayment)?;
+                Motes::new(value)
+            };
+            Ok(DeployType::Other {
+                header,
+                payment_amount,
+                size,
+            })
         }
     }
 

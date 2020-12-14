@@ -14,23 +14,58 @@ use crate::{
     types::{DeployHash, DeployHeader, ProtoBlock},
     Chainspec,
 };
+use casper_execution_engine::shared::motes::Motes;
 
 /// A wrapper over `DeployHeader` to differentiate between wasm-less transfers and wasm headers.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 pub enum DeployType {
     /// Represents a wasm-less transfer.
-    Transfer(DeployHeader),
+    Transfer {
+        header: DeployHeader,
+        payment_amount: Motes,
+        size: usize,
+    },
     /// Represents a wasm deploy.
-    Wasm(DeployHeader),
+    Other {
+        header: DeployHeader,
+        payment_amount: Motes,
+        size: usize,
+    },
 }
 
 impl DeployType {
     /// Access header in all variants of `DeployType`.
     pub fn header(&self) -> &DeployHeader {
         match self {
-            Self::Transfer(header) => header,
-            Self::Wasm(header) => header,
+            Self::Transfer { header, .. } => header,
+            Self::Other { header, .. } => header,
         }
+    }
+
+    /// Access payment_amount from all variants.
+    pub fn payment_amount(&self) -> Motes {
+        match self {
+            Self::Transfer { payment_amount, .. } => *payment_amount,
+            Self::Other { payment_amount, .. } => *payment_amount,
+        }
+    }
+
+    /// Access size from all variants.
+    pub fn size(&self) -> usize {
+        match self {
+            Self::Transfer { size, .. } => *size,
+            Self::Other { size, .. } => *size,
+        }
+    }
+
+    /// Asks if the variant is a Transfer.
+    pub fn is_transfer(&self) -> bool {
+        matches!(self, DeployType::Transfer{..})
+    }
+
+    /// Asks if the variant is Wasm.
+    pub fn is_wasm(&self) -> bool {
+        matches!(self, DeployType::Other{..})
     }
 }
 
