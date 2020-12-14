@@ -121,6 +121,14 @@ impl Drop for TestRng {
     }
 }
 
+impl SeedableRng for TestRng {
+    type Seed = <Pcg64Mcg as SeedableRng>::Seed;
+
+    fn from_seed(seed: Self::Seed) -> Self {
+        Self::from_seed(seed)
+    }
+}
+
 impl RngCore for TestRng {
     fn next_u32(&mut self) -> u32 {
         self.rng.next_u32()
