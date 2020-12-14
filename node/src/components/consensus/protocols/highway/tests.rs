@@ -178,8 +178,7 @@ fn send_a_valid_wire_unit() {
     let mut highway_protocol = new_test_highway_protocol(vec![]);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
-    let mut effects =
-        highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), false, &mut rng);
+    let mut effects = highway_protocol.handle_message(sender, msg, false, &mut rng);
     assert_eq!(effects.len(), 1);
 
     let opt_protocol_outcome = effects.pop();
