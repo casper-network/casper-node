@@ -407,11 +407,6 @@ impl BlockProposerReady {
                 break;
             }
 
-            // Skip this deploy, searching instead for another that may fit the bill.
-            if block_size_running_total + deploy_type.size() > max_block_size_bytes {
-                continue;
-            }
-
             if !self.is_deploy_valid(
                 &deploy_type.header(),
                 block_timestamp,
@@ -419,6 +414,7 @@ impl BlockProposerReady {
                 &past_deploys,
             ) || past_deploys.contains(hash)
                 || self.sets.finalized_deploys.contains_key(hash)
+                || block_size_running_total + deploy_type.size() > max_block_size_bytes
             {
                 continue;
             }
