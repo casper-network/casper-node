@@ -1586,7 +1586,7 @@ where
             };
 
             let proof_of_stake_args = {
-                //((gas spent during payment code execution) + (gas spent during session code execution)) * conv_rate
+                // Gas spent during payment code execution
                 let finalize_cost_motes: Motes =
                     Motes::from_gas(payment_result.cost(), CONV_RATE)
                         .expect("motes overflow");
@@ -1597,7 +1597,6 @@ where
                 }
             };
 
-            // let system_account = AccountHash::new([0; 32]);
             let system_account = Account::new(
                 SYSTEM_ACCOUNT_ADDR,
                 Default::default(),
