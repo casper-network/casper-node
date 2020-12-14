@@ -188,7 +188,9 @@ where
 struct BlockProposerReady {
     /// Set of deploys currently stored in the block proposer.
     sets: BlockProposerDeploySets,
-    /// "Unhandled" deploys are deploys that the BlockProposer have not yet been seen.
+    /// `unhandled_finalized` is a set of hashes for deploys that the `BlockProposer` has not yet
+    /// seen but were reported as reported to `finalized_deploys()`. They are used to
+    /// filter deploys for proposal, similar to `self.sets.finalized_deploys`.
     unhandled_finalized: HashSet<DeployHash>,
     // We don't need the whole Chainspec here, just the deploy config.
     deploy_config: DeployConfig,
