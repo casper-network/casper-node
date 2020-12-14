@@ -1532,7 +1532,7 @@ where
                 Gas::from_motes(payment_purse_balance, CONV_RATE).expect("gas overflow");
 
             debug_assert_eq!(payment_gas, wasmless_transfer_gas_cost);
-            
+
             // This assumes the cost incurred is already denominated in gas
 
             payment_result.with_cost(payment_gas)
