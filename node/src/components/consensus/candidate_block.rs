@@ -42,6 +42,6 @@ impl From<CandidateBlock> for ProtoBlock {
 
 impl ConsensusValueT for CandidateBlock {
     fn needs_validation(&self) -> bool {
-        self.proto_block.wasm_deploys().is_empty() && self.proto_block.transfers().is_empty()
+        !self.proto_block.wasm_deploys().is_empty() || !self.proto_block.transfers().is_empty()
     }
 }

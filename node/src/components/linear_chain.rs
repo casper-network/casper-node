@@ -156,14 +156,13 @@ impl<I> LinearChain<I> {
             .pending_finality_signatures
             .values_mut()
             .filter_map(|sigs| sigs.remove(&block_hash).map(Box::new))
-            // TODO: Store signatures by public key.
-            .filter(|fs| !block.proofs().iter().any(|proof| proof == &fs.signature))
+            .filter(|fs| !block.proofs().contains_key(&fs.public_key))
             .collect_vec();
         self.pending_finality_signatures
             .retain(|_, sigs| !sigs.is_empty());
         // Add new signatures and send the updated block to storage.
         for fs in pending_sigs {
-            block.append_proof(fs.signature);
+            block.append_proof(fs.public_key, fs.signature);
             let message = Message::FinalitySignature(fs.clone());
             effects.extend(effect_builder.broadcast_message(message).ignore());
             effects.extend(effect_builder.announce_finality_signature(fs).ignore());
