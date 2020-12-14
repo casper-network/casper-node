@@ -83,9 +83,9 @@ fn test_highway_protocol_handle_message_parse_error() {
 
     assert_eq!(effects.len(), 1);
 
-    let opt_protocol_outcome = effects.pop();
+    let maybe_protocol_outcome = effects.pop();
 
-    match &opt_protocol_outcome {
+    match &maybe_protocol_outcome {
         None => panic!("We just checked that effects has length 1!"),
         Some(ProtocolOutcome::InvalidIncomingMessage(invalid_msg, offending_sender, _err)) => {
             assert_eq!(
@@ -128,8 +128,8 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
         highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), false, &mut rng);
     assert_eq!(effects.len(), 1);
 
-    let opt_protocol_outcome = effects.pop();
-    match &opt_protocol_outcome {
+    let maybe_protocol_outcome = effects.pop();
+    match &maybe_protocol_outcome {
         None => panic!("We just checked that effects has length 1!"),
         Some(ProtocolOutcome::InvalidIncomingMessage(invalid_msg, offending_sender, err)) => {
             assert_eq!(

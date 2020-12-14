@@ -32,7 +32,7 @@ use crate::{
                 },
                 validators::Validators,
             },
-            traits::{Context, NodeIdT},
+            traits::{ConsensusValueT, Context, NodeIdT},
         },
     },
     types::Timestamp,
@@ -296,22 +296,25 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     match self.highway.validate_vertex(pvv) {
                         Ok(vv) => {
                             let vertex = vv.inner();
-                            if let (Some(value), Some(timestamp)) =
-                                (vertex.value().cloned(), vertex.timestamp())
-                            {
-                                // It's a block: Request validation before adding it to the state.
-                                self.pending_values
-                                    .entry(value.clone())
-                                    .or_default()
-                                    .push(vv);
-                                results.push(ProtocolOutcome::ValidateConsensusValue(
-                                    sender, value, timestamp,
-                                ));
-                            } else {
-                                // It's not a block: Add it to the state.
-                                let now = Timestamp::now();
-                                results.extend(self.add_valid_vertex(vv, rng, now));
-                                state_changed = true;
+                            match (vertex.value().cloned(), vertex.timestamp()) {
+                                (Some(value), Some(timestamp)) if value.needs_validation() => {
+                                    // Request validation before adding it to the state.
+                                    self.pending_values
+                                        .entry(value.clone())
+                                        .or_default()
+                                        .push(vv);
+                                    results.push(ProtocolOutcome::ValidateConsensusValue(
+                                        sender, value, timestamp,
+                                    ));
+                                }
+                                _ => {
+                                    // Either consensus value doesn't need validation or it's not a
+                                    // proposal. We can add it
+                                    // to the state.
+                                    let now = Timestamp::now();
+                                    results.extend(self.add_valid_vertex(vv, rng, now));
+                                    state_changed = true;
+                                }
                             }
                         }
                         Err((pvv, err)) => {
@@ -453,9 +456,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             if fork_choice.as_ref() == last_finalized {
                 return None;
             }
-            let opt_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
-            let value = opt_block.map(|block| &block.value);
-            fork_choice = opt_block.and_then(|block| block.parent().cloned());
+            let maybe_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
+            let value = maybe_block.map(|block| &block.value);
+            fork_choice = maybe_block.and_then(|block| block.parent().cloned());
             value
         })
     }

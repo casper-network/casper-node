@@ -145,7 +145,7 @@ impl<C: Context> ActiveValidator<C> {
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
-        if let Some(fault) = state.opt_fault(self.vidx) {
+        if let Some(fault) = state.maybe_fault(self.vidx) {
             return vec![Effect::WeAreFaulty(fault.clone())];
         }
         let mut effects = vec![];
@@ -208,19 +208,19 @@ impl<C: Context> ActiveValidator<C> {
             return None;
         }
         let panorama = self.panorama_at(state, timestamp);
-        let opt_parent_hash = state.fork_choice(&panorama);
-        if opt_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
+        let maybe_parent_hash = state.fork_choice(&panorama);
+        if maybe_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
             return self
                 .new_unit(panorama, timestamp, None, state, instance_id, rng)
                 .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))));
         }
-        let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
-        let height = opt_parent.map_or(0, |block| block.height);
+        let maybe_parent = maybe_parent_hash.map(|bh| state.block(bh));
+        let height = maybe_parent.map_or(0, |block| block.height);
         self.next_proposal = Some((timestamp, panorama));
         let block_context = BlockContext::new(timestamp, height);
         Some(Effect::RequestNewBlock {
             block_context,
-            fork_choice: opt_parent_hash.cloned(),
+            fork_choice: maybe_parent_hash.cloned(),
         })
     }
 

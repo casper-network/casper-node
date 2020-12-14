@@ -18,7 +18,7 @@ use crate::{
                 TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT, TEST_INSTANCE_ID,
             },
         },
-        traits::ValidatorSecret,
+        traits::{ConsensusValueT, ValidatorSecret},
     },
     NodeRng,
 };
@@ -60,6 +60,12 @@ impl ValidatorSecret for TestSecret {
 pub(crate) const ALICE_SEC: TestSecret = TestSecret(0);
 pub(crate) const BOB_SEC: TestSecret = TestSecret(1);
 pub(crate) const CAROL_SEC: TestSecret = TestSecret(2);
+
+impl ConsensusValueT for u32 {
+    fn needs_validation(&self) -> bool {
+        false
+    }
+}
 
 impl Context for TestContext {
     type ConsensusValue = u32;
@@ -186,29 +192,29 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
         endorsed: BTreeSet::new(),
     };
     let unit = SignedWireUnit::new(wunit.clone(), &BOB_SEC, &mut rng);
-    let opt_err = state.add_unit(unit).err().map(unit_err);
-    assert_eq!(Some(UnitError::SequenceNumber), opt_err);
+    let maybe_err = state.add_unit(unit).err().map(unit_err);
+    assert_eq!(Some(UnitError::SequenceNumber), maybe_err);
     // Still not valid: This would be the third unit in the first round.
     wunit.seq_number = 2;
     let unit = SignedWireUnit::new(wunit, &BOB_SEC, &mut rng);
-    let opt_err = state.add_unit(unit).err().map(unit_err);
-    assert_eq!(Some(UnitError::ThreeUnitsInRound), opt_err);
+    let maybe_err = state.add_unit(unit).err().map(unit_err);
+    assert_eq!(Some(UnitError::ThreeUnitsInRound), maybe_err);
 
     // Inconsistent panorama: If you see b1, you have to see c0, too.
-    let opt_err = add_unit!(state, rng, CAROL, None; N, b1, N)
+    let maybe_err = add_unit!(state, rng, CAROL, None; N, b1, N)
         .err()
         .map(unit_err);
-    assert_eq!(Some(UnitError::InconsistentPanorama(BOB)), opt_err);
+    assert_eq!(Some(UnitError::InconsistentPanorama(BOB)), maybe_err);
     // And you can't make the round exponent too small
-    let opt_err = add_unit!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
+    let maybe_err = add_unit!(state, rng, CAROL, 50, 5u8, None; N, b1, c0)
         .err()
         .map(unit_err);
-    assert_eq!(Some(UnitError::RoundLengthExpChangedWithinRound), opt_err);
+    assert_eq!(Some(UnitError::RoundLengthExpChangedWithinRound), maybe_err);
     // And you can't make the round exponent too big
-    let opt_err = add_unit!(state, rng, CAROL, 50, 40u8, None; N, b1, c0)
+    let maybe_err = add_unit!(state, rng, CAROL, 50, 40u8, None; N, b1, c0)
         .err()
         .map(unit_err);
-    assert_eq!(Some(UnitError::RoundLengthExpGreaterThanMaximum), opt_err);
+    assert_eq!(Some(UnitError::RoundLengthExpGreaterThanMaximum), maybe_err);
     // After the round from 48 to 64 has ended, the exponent can change.
     let c1 = add_unit!(state, rng, CAROL, 65, 5u8, None; N, b1, c0)?;
 
@@ -255,20 +261,20 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
     let mut state = State::new(WEIGHTS, params, vec![ALICE]);
 
     assert_eq!(panorama![F, N, N], *state.panorama());
-    assert_eq!(Some(&Fault::Banned), state.opt_fault(ALICE));
+    assert_eq!(Some(&Fault::Banned), state.maybe_fault(ALICE));
     let err = unit_err(add_unit!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
     assert_eq!(UnitError::Banned, err);
 
     state.mark_faulty(ALICE); // No change: Banned state is permanent.
     assert_eq!(panorama![F, N, N], *state.panorama());
-    assert_eq!(Some(&Fault::Banned), state.opt_fault(ALICE));
+    assert_eq!(Some(&Fault::Banned), state.maybe_fault(ALICE));
     let err = unit_err(add_unit!(state, rng, ALICE, 0xA; N, N, N).err().unwrap());
     assert_eq!(UnitError::Banned, err);
 
     // Now we also received external evidence (i.e. not in this instance) that Bob is faulty.
     state.mark_faulty(BOB);
     assert_eq!(panorama![F, F, N], *state.panorama());
-    assert_eq!(Some(&Fault::Indirect), state.opt_fault(BOB));
+    assert_eq!(Some(&Fault::Indirect), state.maybe_fault(BOB));
 
     // However, we still accept messages from Bob, since he is not banned.
     add_unit!(state, rng, BOB, 0xB; F, N, N)?;
@@ -781,7 +787,7 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
     assert!(state.is_faulty(BOB));
 
     let evidence = state
-        .opt_evidence(BOB)
+        .maybe_evidence(BOB)
         .expect("Bob should be considered faulty")
         .clone();
     assert_eq!(
@@ -808,7 +814,10 @@ fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
     endorse!(state, rng, CAROL, a[limit]);
     assert!(state.is_faulty(CAROL));
 
-    let evidence = state.opt_evidence(CAROL).expect("Carol is faulty").clone();
+    let evidence = state
+        .maybe_evidence(CAROL)
+        .expect("Carol is faulty")
+        .clone();
     assert_eq!(
         Ok(()),
         evidence.validate(&validators, &TEST_INSTANCE_ID, &state)
