@@ -22,6 +22,7 @@ use hex_fmt::{HexFmt, HexList};
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
+use rand::SeedableRng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -31,19 +32,19 @@ use casper_types::auction::BLOCK_REWARD;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::{Item, Tag, Timestamp};
+#[cfg(test)]
+use crate::testing::TestRng;
 use crate::{
     components::consensus::{self, EraId},
     crypto::{
         self,
-        asymmetric_key::{PublicKey, SecretKey, Signature},
+        asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash},
+    types::{Deploy, DeployHash, NodeRng},
     utils::DisplayIter,
 };
-#[cfg(test)]
-use crate::{crypto::asymmetric_key, testing::TestRng};
 
 static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
     let secret_key_1 = SecretKey::new_ed25519([0; 32]);
@@ -86,13 +87,11 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
     let parent_seed = Digest::from([9u8; Digest::LENGTH]);
 
     let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
-    let signature = Signature::from_hex(
-        "01bd9a3d1fe100345702c4631ce1e22b7dd7c2cd5b3808744efd36fdfc900bff30b19d4fdc369c104924a9\
-            f62ccfa91f3a9fc013b9066224a7ebdfe39579892200"
-            .as_bytes(),
-    )
-    .unwrap();
-    block.append_proof(signature);
+    let secret_key = SecretKey::doc_example();
+    let public_key = PublicKey::from(secret_key);
+    let mut rng = NodeRng::seed_from_u64(0);
+    let signature = asymmetric_key::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
+    block.append_proof(public_key, signature);
     block
 });
 
@@ -744,7 +743,7 @@ pub struct Block {
     hash: BlockHash,
     header: BlockHeader,
     body: (), // TODO: implement body of block
-    proofs: Vec<Signature>,
+    proofs: BTreeMap<PublicKey, Signature>,
 }
 
 impl Block {
@@ -791,7 +790,7 @@ impl Block {
             hash,
             header,
             body,
-            proofs: vec![],
+            proofs: BTreeMap::new(),
         }
     }
 
@@ -824,12 +823,16 @@ impl Block {
 
     /// Appends the given signature to this block's proofs.  It should have been validated prior to
     /// this via `BlockHash::verify()`.
-    pub(crate) fn append_proof(&mut self, proof: Signature) {
-        self.proofs.push(proof)
+    pub(crate) fn append_proof(
+        &mut self,
+        pub_key: PublicKey,
+        proof: Signature,
+    ) -> Option<Signature> {
+        self.proofs.insert(pub_key, proof)
     }
 
     /// Provide proofs for an OpenRPC compatible representation.
-    pub fn proofs(&self) -> &Vec<Signature> {
+    pub fn proofs(&self) -> &BTreeMap<PublicKey, Signature> {
         &self.proofs
     }
 
@@ -879,7 +882,7 @@ impl Block {
             let secret_key = SecretKey::random(rng);
             let public_key = PublicKey::from(&secret_key);
             let signature = asymmetric_key::sign(block.hash.inner(), &secret_key, &public_key, rng);
-            block.append_proof(signature);
+            block.append_proof(public_key, signature);
         }
 
         block
@@ -936,7 +939,7 @@ impl FromBytes for Block {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
         let (header, remainder) = BlockHeader::from_bytes(remainder)?;
-        let (proofs, remainder) = Vec::<Signature>::from_bytes(remainder)?;
+        let (proofs, remainder) = BTreeMap::<PublicKey, Signature>::from_bytes(remainder)?;
         let block = Block {
             hash,
             header,
@@ -1125,7 +1128,7 @@ pub(crate) mod json_compatibility {
         hash: BlockHash,
         header: JsonBlockHeader,
         body: (),
-        proofs: Vec<Signature>,
+        proofs: BTreeMap<PublicKey, Signature>,
     }
 
     impl JsonBlock {
