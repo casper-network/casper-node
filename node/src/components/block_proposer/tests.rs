@@ -96,6 +96,7 @@ fn create_test_proposer() -> BlockProposerReady {
         deploy_config: Default::default(),
         state_key: b"block-proposer-test".to_vec(),
         request_queue: Default::default(),
+        unhandled_finalized: Default::default(),
     }
 }
 
@@ -263,6 +264,43 @@ fn should_successfully_prune() {
 
     assert_eq!(proposer.sets.pending.len(), 1); // deploy4 is still valid
     assert_eq!(proposer.sets.finalized_deploys.len(), 0);
+}
+
+#[test]
+fn should_keep_track_of_unhandled_deploys() {
+    let creation_time = Timestamp::from(100);
+    let test_time = Timestamp::from(120);
+    let ttl = TimeDiff::from(Duration::from_millis(100));
+
+    let mut rng = crate::new_rng();
+    let deploy1 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
+    let deploy2 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
+    let mut proposer = create_test_proposer();
+
+    // We do NOT add deploy2...
+    proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type().unwrap());
+    // But we DO mark it as finalized, by it's hash
+    proposer.finalized_deploys(vec![*deploy1.id(), *deploy2.id()]);
+
+    assert!(
+        proposer.contains_finalized(deploy1.id()),
+        "should contain deploy1"
+    );
+    assert!(
+        proposer.contains_finalized(deploy2.id()),
+        "should contain deploy2"
+    );
+
+    let past_deploys = HashSet::new();
+    assert!(
+        proposer.is_deploy_valid(
+            deploy2.header(),
+            test_time,
+            &proposer.deploy_config,
+            &past_deploys
+        ),
+        "deploy2 should -not- be valid"
+    );
 }
 
 #[test]
