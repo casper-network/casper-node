@@ -89,84 +89,86 @@ do
 done
 
 
-# log "------------------------------------------------------------"
-# log "STEP 03: submitting POS auction bids:"
-# for NODE_ID in $(seq $(($NET_NODE_COUNT_GENESIS + 1)) $NET_NODE_COUNT_ALL)
-# do
-#     BID_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
-#     DELEGATION_RATE=125
+log "------------------------------------------------------------"
+log "STEP 03: submitting POS auction bids:"
+for NODE_ID in $(seq $(($NET_NODE_COUNT_GENESIS + 1)) $NET_NODE_COUNT_ALL)
+do
+    BID_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
+    DELEGATION_RATE=125
 
-#     do_auction_bid_submit \
-#         $NET_ID \
-#         $NODE_ID_FOR_DISPATCH \
-#         $NODE_ID \
-#         $BID_AMOUNT \
-#         $DELEGATION_RATE \
-#         $NCTL_DEFAULT_GAS_PRICE \
-#         $NCTL_DEFAULT_GAS_PAYMENT \
-#         "TRUE"
+    do_auction_bid_submit \
+        $NET_ID \
+        $NODE_ID_FOR_DISPATCH \
+        $NODE_ID \
+        $BID_AMOUNT \
+        $DELEGATION_RATE \
+        $NCTL_DEFAULT_GAS_PRICE \
+        $NCTL_DEFAULT_GAS_PAYMENT \
+        "TRUE"
 
-#     log "net-$NET_ID:node-$NODE_ID auction bid submitted -> $BID_AMOUNT CSPR"
-# done
-
-
-# log "------------------------------------------------------------"
-# log "STEP 04: awaiting 4 eras"
-# await_n_eras $NET_ID $NODE_ID_FOR_DISPATCH 4
+    log "net-$NET_ID:node-$NODE_ID auction bid submitted -> $BID_AMOUNT CSPR"
+done
 
 
-# log "------------------------------------------------------------"
-# log "STEP 05: starting non-genesis nodes:"
-# for NODE_ID in $(seq $(($NET_NODE_COUNT_GENESIS + 1)) $NET_NODE_COUNT_ALL)
-# do
-#     do_node_start $NET_ID $NODE_ID
-#     log "net-$NET_ID:node-$NODE_ID started"
-# done
+log "------------------------------------------------------------"
+log "STEP 04: awaiting 4 eras"
+await_n_eras $NET_ID $NODE_ID_FOR_DISPATCH 4
 
 
-# log "------------------------------------------------------------"
-# log "STEP 06: awaiting 10 seconds for non-genesis nodes to spin-up & join network"
-# sleep 10.0
+log "------------------------------------------------------------"
+log "STEP 05: starting non-genesis nodes:"
+for NODE_ID in $(seq $(($NET_NODE_COUNT_GENESIS + 1)) $NET_NODE_COUNT_ALL)
+do
+    do_node_start $NET_ID $NODE_ID
+    log "net-$NET_ID:node-$NODE_ID started"
+done
 
 
-# log "------------------------------------------------------------"
-# log "STEP 06: submitting auction withdrawals:"
-# for NODE_ID in $(seq 1 $NET_NODE_COUNT)
-# do
-#     WITHDRAWAL_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
-#     do_auction_bid_withdraw \
-#         $NET_ID \
-#         $NODE_ID_FOR_DISPATCH \
-#         $NODE_ID \
-#         $WITHDRAWAL_AMOUNT \
-#         $NCTL_DEFAULT_GAS_PRICE \
-#         $NCTL_DEFAULT_GAS_PAYMENT \
-#         "TRUE"
-#     log "net-$NET_ID:node-$NODE_ID auction bid withdrawn -> $WITHDRAWAL_AMOUNT CSPR"
-# done
+log "------------------------------------------------------------"
+log "STEP 06: awaiting 10 seconds for non-genesis nodes to spin-up & join network"
+sleep 10.0
 
 
-# log "------------------------------------------------------------"
-# log "STEP 07: awaiting 15 eras prior to bringing down genesis nodes"
-# await_n_eras $NET_ID $NODE_ID_FOR_DISPATCH 15
+log "------------------------------------------------------------"
+log "STEP 06: submitting auction withdrawals:"
+for NODE_ID in $(seq 1 $NET_NODE_COUNT)
+do
+    WITHDRAWAL_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
+
+    do_auction_bid_withdraw \
+        $NET_ID \
+        $NODE_ID_FOR_DISPATCH \
+        $NODE_ID \
+        $WITHDRAWAL_AMOUNT \
+        $NCTL_DEFAULT_GAS_PRICE \
+        $NCTL_DEFAULT_GAS_PAYMENT \
+        "TRUE"
+
+    log "net-$NET_ID:node-$NODE_ID auction bid withdrawn -> $WITHDRAWAL_AMOUNT CSPR"
+done
 
 
-# log "------------------------------------------------------------"
-# log "STEP 08: stopping genesis nodes"
-# for NODE_ID in $(seq 1 $NET_NODE_COUNT)
-# do
-#     do_node_stop $NET_ID $NODE_ID
-#     sleep 1.0
-#     log "net-$NET_ID:node-$NODE_ID stopped"
-# done
+log "------------------------------------------------------------"
+log "STEP 07: awaiting 15 eras prior to bringing down genesis nodes"
+await_n_eras $NET_ID $NODE_ID_FOR_DISPATCH 15
 
-# log "------------------------------------------------------------"
-# log "STEP 09: state root hash at nodes:"
-# for NODE_ID in $(seq 1 $NET_NODE_COUNT_ALL)
-# do
-#     render_chain_state_root_hash $NET_ID $NODE_ID
-# done
 
-# log "------------------------------------------------------------"
-# log "Network nodeset rotation complete"
-# log "------------------------------------------------------------"
+log "------------------------------------------------------------"
+log "STEP 08: stopping genesis nodes"
+for NODE_ID in $(seq 1 $NET_NODE_COUNT)
+do
+    do_node_stop $NET_ID $NODE_ID
+    sleep 1.0
+    log "net-$NET_ID:node-$NODE_ID stopped"
+done
+
+log "------------------------------------------------------------"
+log "STEP 09: state root hash at nodes:"
+for NODE_ID in $(seq 1 $NET_NODE_COUNT_ALL)
+do
+    render_chain_state_root_hash $NET_ID $NODE_ID
+done
+
+log "------------------------------------------------------------"
+log "Network nodeset rotation complete"
+log "------------------------------------------------------------"
