@@ -34,7 +34,7 @@ pub(crate) fn new_test_state(weights: &[state::Weight], seed: u64) -> State<ClCo
         seed,
         highway_testing::TEST_BLOCK_REWARD,
         highway_testing::TEST_BLOCK_REWARD / 5,
-        4,
+        14,
         19,
         4,
         u64::MAX,
@@ -148,6 +148,69 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
             )
         }
         Some(protocol_outcome) => panic!("Unexpected protocol outcome {:?}", protocol_outcome),
+    }
+}
+
+#[test]
+fn send_a_valid_wire_unit() {
+    let creator: ValidatorIndex = ValidatorIndex(0);
+    let state: State<ClContext> = new_test_state(&[100.into()], 0);
+    let panorama: ValidatorMap<Observation<ClContext>> = Panorama::from(vec![N, N]);
+    let seq_number = panorama.next_seq_num(&state, creator);
+    let mut rng = TestRng::new();
+    let wunit: WireUnit<ClContext> = WireUnit {
+        panorama,
+        creator,
+        instance_id: ClContext::hash(INSTANCE_ID_DATA),
+        value: Some(CandidateBlock::new(
+            ProtoBlock::new(vec![], vec![], false),
+            vec![],
+        )),
+        seq_number,
+        timestamp: 0.into(),
+        round_exp: 14,
+        endorsed: BTreeSet::new(),
+    };
+    let alice_keypair: Keypair = Keypair::from(Rc::new(ALICE_SECRET_KEY.clone()));
+    let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
+        SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
+    ));
+    let mut highway_protocol = new_test_highway_protocol(vec![]);
+    let sender = NodeId(123);
+    let msg = bincode::serialize(&highway_message).unwrap();
+    let mut effects =
+        highway_protocol.handle_message(sender.to_owned(), msg.to_owned(), false, &mut rng);
+    assert_eq!(effects.len(), 1);
+
+    let opt_protocol_outcome = effects.pop();
+
+    let mut new_effects = match &opt_protocol_outcome {
+        None => panic!("We just checked that effects has length 1!"),
+        Some(ProtocolOutcome::ValidateConsensusValue(node_id, candidate_block, timestamp)) => {
+            assert_eq!(*node_id, NodeId(123));
+            assert_eq!(*timestamp, Timestamp::from(0));
+            highway_protocol.resolve_validity(candidate_block, true, &mut rng)
+        }
+        Some(protocol_outcome) => panic!("Unexpected protocol outcome {:?}", protocol_outcome),
+    };
+
+    assert_eq!(new_effects.len(), 2);
+
+    let second_effect = new_effects
+        .pop()
+        .expect("We just checked that there were effects!");
+    let first_effect = new_effects
+        .pop()
+        .expect("We just checked that there were 2 effects!");
+
+    match first_effect {
+        ProtocolOutcome::CreatedGossipMessage(_) => (),
+        outcome => panic!("Unexpected protocol outcome: {:?}", outcome),
+    }
+
+    match second_effect {
+        ProtocolOutcome::FinalizedBlock(_) => (),
+        outcome => panic!("Unexpected protocol outcome: {:?}", outcome),
     }
 }
 
