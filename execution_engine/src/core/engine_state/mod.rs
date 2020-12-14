@@ -1588,8 +1588,7 @@ where
             let proof_of_stake_args = {
                 // Gas spent during payment code execution
                 let finalize_cost_motes: Motes =
-                    Motes::from_gas(payment_result.cost(), CONV_RATE)
-                        .expect("motes overflow");
+                    Motes::from_gas(payment_result.cost(), CONV_RATE).expect("motes overflow");
                 runtime_args! {
                     proof_of_stake::ARG_AMOUNT => finalize_cost_motes.value(),
                     proof_of_stake::ARG_ACCOUNT => deploy_item.address,
