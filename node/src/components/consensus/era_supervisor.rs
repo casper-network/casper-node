@@ -431,14 +431,14 @@ where
         let our_pk = self.era_supervisor.public_signing_key;
         let our_sk = self.era_supervisor.secret_signing_key.clone();
         let era_id = block_header.era_id();
-        let opt_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
+        let maybe_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
             let block_hash = block_header.hash();
             let signature = asymmetric_key::sign(block_hash.inner(), &our_sk, &our_pk, self.rng);
             Some(FinalitySignature::new(block_hash, signature, our_pk))
         } else {
             None
         };
-        let mut effects = responder.respond(opt_fin_sig).ignore();
+        let mut effects = responder.respond(maybe_fin_sig).ignore();
         if era_id < self.era_supervisor.current_era {
             trace!(era = era_id.0, "executed block in old era");
             return effects;

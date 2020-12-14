@@ -311,7 +311,7 @@ impl<C: Context> Highway<C> {
                 None => GetDepOutcome::None,
                 Some(unit) => GetDepOutcome::Vertex(ValidVertex(Vertex::Unit(unit))),
             },
-            Dependency::Evidence(idx) => match self.state.opt_fault(*idx) {
+            Dependency::Evidence(idx) => match self.state.maybe_fault(*idx) {
                 None | Some(Fault::Banned) => GetDepOutcome::None,
                 Some(Fault::Direct(ev)) => {
                     GetDepOutcome::Vertex(ValidVertex(Vertex::Evidence(ev.clone())))
@@ -321,7 +321,7 @@ impl<C: Context> Highway<C> {
                     GetDepOutcome::Evidence(vid)
                 }
             },
-            Dependency::Endorsement(hash) => match self.state.opt_endorsements(hash) {
+            Dependency::Endorsement(hash) => match self.state.maybe_endorsements(hash) {
                 None => GetDepOutcome::None,
                 Some(e) => {
                     GetDepOutcome::Vertex(ValidVertex(Vertex::Endorsements(Endorsements::new(e))))
@@ -506,7 +506,7 @@ impl<C: Context> Highway<C> {
                         .validators
                         .id(*creator)
                         .ok_or(EndorsementError::Creator)?;
-                    if self.state.opt_fault(*creator) == Some(&Fault::Banned) {
+                    if self.state.maybe_fault(*creator) == Some(&Fault::Banned) {
                         return Err(EndorsementError::Banned.into());
                     }
                     let endorsement: Endorsement<C> = Endorsement::new(unit, *creator);
@@ -554,7 +554,7 @@ impl<C: Context> Highway<C> {
         self.state.add_valid_unit(swunit);
         let mut evidence_effects = self
             .state
-            .opt_evidence(creator)
+            .maybe_evidence(creator)
             .cloned()
             .map(|ev| {
                 if was_honest {
