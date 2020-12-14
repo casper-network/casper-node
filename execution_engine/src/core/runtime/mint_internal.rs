@@ -22,9 +22,7 @@ where
 
     fn put_key(&mut self, name: &str, key: Key) {
         // TODO: update RuntimeProvider to better handle errors
-        self.context
-            .put_key(name.to_string(), key)
-            .expect("should put key")
+        let _res = self.context.put_key(name.to_string(), key);
     }
     fn get_key(&self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
