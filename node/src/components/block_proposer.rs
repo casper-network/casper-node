@@ -50,7 +50,7 @@ pub(crate) struct BlockProposer {
 // TODO: Make configurable.
 const PRUNE_INTERVAL: Duration = Duration::from_secs(10);
 
-/// Experimentally, deploys are int the range of 270-280 bytes, we use this to determine if we are
+/// Experimentally, deploys are in the range of 270-280 bytes, we use this to determine if we are
 /// within a threshold to break iteration of `pending` early.
 const DEPLOY_APPROX_MIN_SIZE: usize = 300;
 
@@ -438,7 +438,7 @@ impl BlockProposerReady {
                 gas_running_total
             } else {
                 tracing::warn!("block gas would overflow");
-                break;
+                continue;
             };
 
             if gas_running_total > block_gas_limit {
