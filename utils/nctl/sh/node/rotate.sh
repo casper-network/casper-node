@@ -35,6 +35,7 @@ NET_ID=${NET_ID:-1}
 source $NCTL/sh/utils.sh
 source $NCTL/sh/contracts/auction/funcs.sh
 source $NCTL/sh/node/ctl_$NCTL_DAEMON_TYPE.sh
+source $NCTL/sh/views/funcs.sh
 
 #######################################
 # FUNCS
