@@ -38,9 +38,9 @@ impl<'a, C: Context> Horizon<'a, C> {
         latest: &'a ValidatorMap<Option<&'a C::Hash>>,
     ) -> Self {
         let height = state.block(candidate).height;
-        let to_lvl0unit = |&opt_vhash: &Option<&'a C::Hash>| {
+        let to_lvl0unit = |&maybe_vhash: &Option<&'a C::Hash>| {
             state
-                .swimlane(opt_vhash?)
+                .swimlane(maybe_vhash?)
                 .take_while(|(_, unit)| state.find_ancestor(&unit.block, height) == Some(candidate))
                 .last()
                 .map(|(_, unit)| unit.seq_number)

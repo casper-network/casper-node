@@ -453,9 +453,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             if fork_choice.as_ref() == last_finalized {
                 return None;
             }
-            let opt_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
-            let value = opt_block.map(|block| &block.value);
-            fork_choice = opt_block.and_then(|block| block.parent().cloned());
+            let maybe_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
+            let value = maybe_block.map(|block| &block.value);
+            fork_choice = maybe_block.and_then(|block| block.parent().cloned());
             value
         })
     }
