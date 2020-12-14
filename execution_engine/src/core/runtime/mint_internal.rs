@@ -39,17 +39,16 @@ where
 {
     fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> URef {
         let cl_value: CLValue = CLValue::from_t(init).expect("should convert value");
-        self.context
-            .new_uref(StoredValue::CLValue(cl_value))
-            .expect("should create new uref")
+        match self.context.new_uref(StoredValue::CLValue(cl_value)) {
+            Ok(result) => result,
+            Err(_err) => URef::default(),
+        }
     }
 
     fn write_local<K: ToBytes, V: CLTyped + ToBytes>(&mut self, key: K, value: V) {
         let key_bytes = key.to_bytes().expect("should serialize");
         let cl_value = CLValue::from_t(value).expect("should convert");
-        self.context
-            .write_ls(&key_bytes, cl_value)
-            .expect("should write local state")
+        let _res = self.context.write_ls(&key_bytes, cl_value);
     }
 
     fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
