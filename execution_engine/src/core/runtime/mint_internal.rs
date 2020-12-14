@@ -21,7 +21,8 @@ where
     }
 
     fn put_key(&mut self, name: &str, key: Key) {
-        // TODO: update RuntimeProvider to better handle errors
+        // NOTE: This is just quick and dirty hack to trade panic into an unrelated runtime error
+        // (EE-1129)
         let _res = self.context.put_key(name.to_string(), key);
     }
     fn get_key(&self, name: &str) -> Option<Key> {
@@ -37,6 +38,8 @@ where
 {
     fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> URef {
         let cl_value: CLValue = CLValue::from_t(init).expect("should convert value");
+        // NOTE: This is just quick and dirty hack to trade panic into an unrelated runtime error
+        // (EE-1129)
         match self.context.new_uref(StoredValue::CLValue(cl_value)) {
             Ok(result) => result,
             Err(_err) => URef::default(),
@@ -46,6 +49,8 @@ where
     fn write_local<K: ToBytes, V: CLTyped + ToBytes>(&mut self, key: K, value: V) {
         let key_bytes = key.to_bytes().expect("should serialize");
         let cl_value = CLValue::from_t(value).expect("should convert");
+        // NOTE: This is just quick and dirty hack to trade panic into an unrelated runtime error
+        // (EE-1129)
         let _res = self.context.write_ls(&key_bytes, cl_value);
     }
 
