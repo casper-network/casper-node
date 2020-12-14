@@ -188,7 +188,7 @@ where
 struct BlockProposerReady {
     /// Set of deploys currently stored in the block proposer.
     sets: BlockProposerDeploySets,
-    /// "Unhandled" deploys are deploys that the BlockProposer have not yet been seen.
+    /// "Unhandled" deploys are deploys that the BlockProposer has not yet seen.
     unhandled_finalized: HashSet<DeployHash>,
     // We don't need the whole Chainspec here, just the deploy config.
     deploy_config: DeployConfig,
