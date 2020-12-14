@@ -1,17 +1,20 @@
 use casper_engine_test_support::{
     internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+        DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
 use casper_execution_engine::{
-    core::{engine_state::Error as CoreError, execution::Error as ExecError},
+    core::{
+        engine_state::{upgrade::ActivationPoint, Error as CoreError},
+        execution::Error as ExecError,
+    },
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
     account::AccountHash, mint, proof_of_stake, runtime_args, AccessRights, ApiError, Key,
-    RuntimeArgs, URef, U512,
+    ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -857,5 +860,73 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
         matches!(error, CoreError::InsufficientPayment),
         "{:?}",
         error
+    );
+}
+
+#[ignore]
+#[test]
+fn transfer_wasmless_should_observe_upgraded_cost() {
+    let transfer_amount = U512::one();
+    const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
+
+    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST * 2;
+    let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
+    let new_protocol_version = ProtocolVersion::from_parts(
+        old_protocol_version.value().major,
+        old_protocol_version.value().minor,
+        old_protocol_version.value().patch + 1,
+    );
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let default_account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should get default_account");
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_new_wasmless_transfer_cost(new_wasmless_transfer_cost)
+            .build()
+    };
+
+    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+
+    let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
+
+    let no_wasm_transfer_request_1 = {
+        let wasmless_transfer_args = runtime_args! {
+        mint::ARG_TARGET => ACCOUNT_2_ADDR,
+        mint::ARG_AMOUNT => transfer_amount,
+        mint::ARG_ID => <Option<u64>>::None
+        };
+
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(wasmless_transfer_args)
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item)
+            .with_protocol_version(new_protocol_version)
+            .build()
+    };
+
+    builder
+        .exec(no_wasm_transfer_request_1)
+        .expect_success()
+        .commit();
+
+    let default_account_balance_after = builder.get_purse_balance(default_account.main_purse());
+
+    assert_eq!(
+        default_account_balance_before - transfer_amount - new_wasmless_transfer_cost,
+        default_account_balance_after,
+        "expected wasmless transfer cost to be {} but it was {}",
+        new_wasmless_transfer_cost,
+        default_account_balance_before - default_account_balance_after - transfer_amount
     );
 }

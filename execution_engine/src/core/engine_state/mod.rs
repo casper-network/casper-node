@@ -656,6 +656,11 @@ where
             None => current_protocol_data.wasm_config(),
         };
 
+        let new_wasmless_transfer_cost = match upgrade_config.new_wasmless_transfer_cost() {
+            Some(new_wasmless_transfer_cost) => new_wasmless_transfer_cost,
+            None => current_protocol_data.wasmless_transfer_cost(),
+        };
+
         // 3.1.2.2 persist wasm CostTable
         let mut new_protocol_data = ProtocolData::new(
             *new_wasm_config,
@@ -663,7 +668,7 @@ where
             current_protocol_data.proof_of_stake(),
             current_protocol_data.standard_payment(),
             current_protocol_data.auction(),
-            current_protocol_data.wasmless_transfer_cost(),
+            new_wasmless_transfer_cost,
         );
 
         self.state
@@ -1372,14 +1377,11 @@ where
 
             let wasmless_transfer_gas_cost =
                 Gas::new(U512::from(protocol_data.wasmless_transfer_cost()));
-            eprintln!(
-                "wasmless_transfer_gas_cost {:?}",
-                wasmless_transfer_gas_cost
-            );
 
-            if source_purse_balance
-                < Motes::from_gas(wasmless_transfer_gas_cost, CONV_RATE).expect("gas overflow")
-            {
+            let wasmless_transfer_cost =
+                Motes::from_gas(wasmless_transfer_gas_cost, CONV_RATE).expect("gas overflow");
+
+            if source_purse_balance < wasmless_transfer_cost {
                 // We can't continue if the minimum funds in source purse are lower than the
                 // required cost.
                 return Ok(ExecutionResult::Failure {

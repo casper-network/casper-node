@@ -88,6 +88,7 @@ struct UpgradePoint {
     new_wasm_config: Option<WasmConfig>,
     new_deploy_config: Option<DeployConfig>,
     new_validator_slots: Option<u32>,
+    new_wasmless_transfer_cost: Option<u64>,
 }
 
 impl From<&chainspec::UpgradePoint> for UpgradePoint {
@@ -99,6 +100,7 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
             new_wasm_config: upgrade_point.new_wasm_config,
             new_deploy_config: upgrade_point.new_deploy_config,
             new_validator_slots: upgrade_point.new_validator_slots,
+            new_wasmless_transfer_cost: upgrade_point.new_wasmless_transfer_cost,
         }
     }
 }
@@ -124,6 +126,7 @@ impl UpgradePoint {
             new_wasm_config: self.new_wasm_config,
             new_deploy_config: self.new_deploy_config,
             new_validator_slots: self.new_validator_slots,
+            new_wasmless_transfer_cost: self.new_wasmless_transfer_cost,
         })
     }
 }

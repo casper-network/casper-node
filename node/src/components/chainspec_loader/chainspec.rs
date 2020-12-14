@@ -362,6 +362,7 @@ pub(crate) struct UpgradePoint {
     pub(crate) new_wasm_config: Option<WasmConfig>,
     pub(crate) new_deploy_config: Option<DeployConfig>,
     pub(crate) new_validator_slots: Option<u32>,
+    pub(crate) new_wasmless_transfer_cost: Option<u64>,
 }
 
 #[cfg(test)]
@@ -393,6 +394,7 @@ impl UpgradePoint {
             None
         };
         let new_validator_slots = rng.gen::<Option<u32>>();
+        let new_wasmless_transfer_cost = rng.gen();
 
         UpgradePoint {
             activation_point,
@@ -402,6 +404,7 @@ impl UpgradePoint {
             new_wasm_config: new_costs,
             new_deploy_config,
             new_validator_slots,
+            new_wasmless_transfer_cost,
         }
     }
 }

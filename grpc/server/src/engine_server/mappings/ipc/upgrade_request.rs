@@ -90,6 +90,17 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             )
         };
 
+        let new_wasmless_transfer_cost: Option<u64> =
+            if !upgrade_point.has_new_wasmless_transfer_cost() {
+                None
+            } else {
+                Some(
+                    upgrade_point
+                        .take_new_wasmless_transfer_cost()
+                        .get_new_wasmless_transfer_cost(),
+                )
+            };
+
         Ok(UpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
@@ -103,6 +114,7 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             new_locked_funds_period,
             new_round_seigniorage_rate,
             new_unbonding_delay,
+            new_wasmless_transfer_cost,
         ))
     }
 }
