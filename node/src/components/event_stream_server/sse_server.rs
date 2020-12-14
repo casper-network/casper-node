@@ -25,10 +25,6 @@ use crate::{
 
 /// The URL path.
 pub const SSE_API_PATH: &str = "events";
-/// The number of events to buffer in the tokio broadcast channel to help slower clients to try to
-/// avoid missing events.  See <https://docs.rs/tokio/0.2.22/tokio/sync/broadcast/index.html#lagging>
-/// for further details.
-const BROADCAST_CHANNEL_SIZE: usize = 10;
 
 /// The first event sent to every subscribing client.
 pub(super) static SSE_INITIAL_EVENT: Lazy<ServerSentEvent> = Lazy::new(|| ServerSentEvent {
@@ -112,13 +108,15 @@ struct Query {
 
 /// Creates the message-passing channels required to run the event-stream server and the warp filter
 /// for the event-stream server.
-pub(super) fn create_channels_and_filter() -> (
+pub(super) fn create_channels_and_filter(
+    broadcast_channel_size: usize,
+) -> (
     broadcast::Sender<BroadcastChannelMessage>,
     mpsc::UnboundedReceiver<NewSubscriberInfo>,
     BoxedFilter<(impl Reply,)>,
 ) {
     // Create a channel to broadcast new events to all subscribed clients' streams.
-    let (broadcaster, _) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
+    let (broadcaster, _) = broadcast::channel(broadcast_channel_size);
     let cloned_broadcaster = broadcaster.clone();
 
     // Create a channel for `NewSubscriberInfo`s to pass the information required to handle a new
