@@ -1,17 +1,8 @@
 #!/usr/bin/env bash
-#
-# Renders node rpc schema to stdout.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
 
-#######################################
-# Destructure input args.
-#######################################
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
-# Unset to avoid parameter collisions.
 unset NET_ID
 unset NODE_ID
 
@@ -26,19 +17,6 @@ do
     esac
 done
 
-# Set defaults.
-NET_ID=${NET_ID:-1}
-NODE_ID=${NODE_ID:-1}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
-source $(get_path_to_net_vars $NET_ID)
-
-# Render node status.
-render_node_rpc_schema $NET_ID $NODE_ID
+render_node_rpc_schema \
+    ${NET_ID:-1} \
+    ${NODE_ID:-1}

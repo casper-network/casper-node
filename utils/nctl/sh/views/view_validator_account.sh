@@ -1,55 +1,34 @@
 #!/usr/bin/env bash
-#
-# Renders a validator account.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
 
-#######################################
-# Destructure input args.
-#######################################
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
-# Unset to avoid parameter collisions.
-unset net
-unset node
+unset NET_ID
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-net=${net:-1}
-node=${node:-"all"}
+NET_ID=${NET_ID:-1}
+NODE_ID=${NODE_ID:-"all"}
 
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
-source $(get_path_to_net_vars $net)
-
-# Render account(s).
-if [ $node = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
+if [ $NODE_ID = "all" ]; then
+    for NODE_ID in $(seq 1 $(get_count_of_all_nodes $NET_ID))
     do
         echo "------------------------------------------------------------------------------------------------------------------------------------"
-        log "net-$net :: node #$IDX :: on-chain account details:"
-        render_account $net $IDX $NCTL_ACCOUNT_TYPE_NODE $IDX
+        log "net-$NET_ID :: node #$NODE_ID :: on-chain account details:"
+        render_account $NET_ID 1 $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
     done
-    echo "------------------------------------------------------------------------------------------------------------------------------------"
 else
-    log "net-$net :: node #$node :: on-chain account details:"
-    render_account $net $node $NCTL_ACCOUNT_TYPE_NODE $node
+    echo "------------------------------------------------------------------------------------------------------------------------------------"
+    log "net-$NET_ID :: node #$NODE_ID :: on-chain account details:"
+    render_account $NET_ID 1 $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
 fi

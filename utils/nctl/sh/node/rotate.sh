@@ -37,6 +37,26 @@ source $NCTL/sh/contracts/auction/funcs.sh
 source $NCTL/sh/node/ctl_$NCTL_DAEMON_TYPE.sh
 
 #######################################
+# FUNCS
+#######################################
+
+function await_n_eras()
+{
+    local NET_ID=${1}
+    local NODE_ID=${2}
+    local ERA_OFFSET=${3}
+
+    local ERA_ID=$(get_chain_era $NET_ID $NODE_ID)
+    local ERA_ID_OFFSET=$(($ERA_ID + $ERA_OFFSET))
+
+    while [ $ERA_ID -lt $ERA_ID_OFFSET ];
+    do
+        sleep 10.0
+        ERA_ID=$(get_chain_era $NET_ID $NODE_ID)
+    done
+}
+
+#######################################
 # Main
 #######################################
 
@@ -44,85 +64,91 @@ log "------------------------------------------------------------"
 log "Network nodeset rotation begins"
 
 # Set network node count - we will be doubling the size & then contracting.
-NET_NODE_COUNT=$(get_count_of_genesis_nodes $NET_ID)
+NET_NODE_COUNT_ALL=$(get_count_of_all_nodes $NET_ID)
+NET_NODE_COUNT_GENESIS=$(get_count_of_genesis_nodes $NET_ID)
 
 # Dispatch deploys to node 1.
-DEPLOY_DISPATCH_NODE_ID=1
+NODE_ID_FOR_DISPATCH=1
 
 
 log "------------------------------------------------------------"
-log "STEP 01: state root hash at active nodes:"
-for NODE_ID in $(seq 1 $NET_NODE_COUNT)
+log "STEP 01: state root hash at nodes:"
+
+for NODE_ID in $(seq 1 $NET_NODE_COUNT_ALL)
 do
     render_chain_state_root_hash $NET_ID $NODE_ID
 done
 
 
 log "------------------------------------------------------------"
-log "STEP 02: starting non-genesis nodes:"
-for IDX in $(seq 1 $NET_NODE_COUNT)
+log "STEP 02: awaiting genesis era to complete"
+
+while [ $(get_chain_era $NET_ID $NODE_ID_FOR_DISPATCH) -lt 1 ];
 do
-    NODE_ID=$(($NET_NODE_COUNT + $IDX))
-    do_node_start $NET_ID $NODE_ID
-    log "net-$NET_ID:node-$NODE_ID started"
+    sleep 1.0
 done
 
 
-log "------------------------------------------------------------"
-log "STEP 03: awaiting 60 seconds for non-genesis nodes to fully bind"
-sleep 60.0
+# log "------------------------------------------------------------"
+# log "STEP 03: submitting POS auction bids:"
+# for NODE_ID in $(seq $(($NET_NODE_COUNT_GENESIS + 1)) $NET_NODE_COUNT_ALL)
+# do
+#     BID_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
+#     DELEGATION_RATE=125
+
+#     do_auction_bid_submit \
+#         $NET_ID \
+#         $NODE_ID_FOR_DISPATCH \
+#         $NODE_ID \
+#         $BID_AMOUNT \
+#         $DELEGATION_RATE \
+#         $NCTL_DEFAULT_GAS_PRICE \
+#         $NCTL_DEFAULT_GAS_PAYMENT \
+#         "TRUE"
+
+#     log "net-$NET_ID:node-$NODE_ID auction bid submitted -> $BID_AMOUNT CSPR"
+# done
 
 
-log "------------------------------------------------------------"
-log "STEP 04: state root hash at active nodes:"
-for NODE_ID in $(seq 1 $(($NET_NODE_COUNT * 2)))
-do
-    render_chain_state_root_hash $NET_ID $NODE_ID
-done
+# log "------------------------------------------------------------"
+# log "STEP 04: awaiting 4 eras"
+# await_n_eras $NET_ID $NODE_ID_FOR_DISPATCH 4
 
 
-log "------------------------------------------------------------"
-log "STEP 05: submitting auction bids:"
-for IDX in $(seq 1 $NET_NODE_COUNT)
-do
-    NODE_ID=$(($NET_NODE_COUNT + $IDX))
-    BID_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
-    DELEGATION_RATE=125
-
-    do_auction_bid_submit \
-        $NET_ID \
-        $DEPLOY_DISPATCH_NODE_ID \
-        $NODE_ID \
-        $BID_AMOUNT \
-        $DELEGATION_RATE \
-        $NCTL_DEFAULT_GAS_PRICE \
-        $NCTL_DEFAULT_GAS_PAYMENT \
-        "TRUE"
-
-    log "net-$NET_ID:node-$NODE_ID auction bid submitted -> $BID_AMOUNT CSPR"
-done
-sleep 1.0
+# log "------------------------------------------------------------"
+# log "STEP 05: starting non-genesis nodes:"
+# for NODE_ID in $(seq $(($NET_NODE_COUNT_GENESIS + 1)) $NET_NODE_COUNT_ALL)
+# do
+#     do_node_start $NET_ID $NODE_ID
+#     log "net-$NET_ID:node-$NODE_ID started"
+# done
 
 
-log "------------------------------------------------------------"
-log "STEP 06: submitting auction withdrawals:"
-for NODE_ID in $(seq 1 $NET_NODE_COUNT)
-do
-    WITHDRAWAL_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
-    do_auction_bid_withdraw \
-        $NET_ID \
-        $DEPLOY_DISPATCH_NODE_ID \
-        $NODE_ID \
-        $WITHDRAWAL_AMOUNT \
-        $NCTL_DEFAULT_GAS_PRICE \
-        $NCTL_DEFAULT_GAS_PAYMENT \
-        "TRUE"
-    log "net-$NET_ID:node-$NODE_ID auction bid withdrawn -> $WITHDRAWAL_AMOUNT CSPR"
-done
+# log "------------------------------------------------------------"
+# log "STEP 06: awaiting 10 seconds for non-genesis nodes to spin-up & join network"
+# sleep 10.0
 
-log "------------------------------------------------------------"
-log "STEP 07: awaiting 180 seconds for genesis nodes to be ejected from active validator set"
-# sleep 180.0
+
+# log "------------------------------------------------------------"
+# log "STEP 06: submitting auction withdrawals:"
+# for NODE_ID in $(seq 1 $NET_NODE_COUNT)
+# do
+#     WITHDRAWAL_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
+#     do_auction_bid_withdraw \
+#         $NET_ID \
+#         $NODE_ID_FOR_DISPATCH \
+#         $NODE_ID \
+#         $WITHDRAWAL_AMOUNT \
+#         $NCTL_DEFAULT_GAS_PRICE \
+#         $NCTL_DEFAULT_GAS_PAYMENT \
+#         "TRUE"
+#     log "net-$NET_ID:node-$NODE_ID auction bid withdrawn -> $WITHDRAWAL_AMOUNT CSPR"
+# done
+
+
+# log "------------------------------------------------------------"
+# log "STEP 07: awaiting 15 eras prior to bringing down genesis nodes"
+# await_n_eras $NET_ID $NODE_ID_FOR_DISPATCH 15
 
 
 # log "------------------------------------------------------------"
@@ -134,18 +160,13 @@ log "STEP 07: awaiting 180 seconds for genesis nodes to be ejected from active v
 #     log "net-$NET_ID:node-$NODE_ID stopped"
 # done
 
-log "------------------------------------------------------------"
-log "STEP 09: state root hash at active nodes:"
-for NODE_ID in $(seq 1 $NET_NODE_COUNT)
-do
-    render_chain_state_root_hash $NET_ID $NODE_ID
-done
-for IDX in $(seq 1 $NET_NODE_COUNT)
-do
-    NODE_ID=$(($NET_NODE_COUNT + $IDX))
-    render_chain_state_root_hash $NET_ID $NODE_ID
-done
+# log "------------------------------------------------------------"
+# log "STEP 09: state root hash at nodes:"
+# for NODE_ID in $(seq 1 $NET_NODE_COUNT_ALL)
+# do
+#     render_chain_state_root_hash $NET_ID $NODE_ID
+# done
 
-log "------------------------------------------------------------"
-log "Network nodeset rotation complete"
-log "------------------------------------------------------------"
+# log "------------------------------------------------------------"
+# log "Network nodeset rotation complete"
+# log "------------------------------------------------------------"

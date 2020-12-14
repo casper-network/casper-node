@@ -63,12 +63,13 @@ function do_transfer_native()
     # Round robin dispatch.
     if [ $NODE_ID = "all" ]; then
         local IDX
+        local NODE_ADDRESS
         local TRANSFERRED=0
         while [ $TRANSFERRED -lt $TRANSFERS ];
         do
-            for IDX in $(seq 1 $(get_count_of_genesis_nodes $NET_ID))
+            for NODE_ID in $(seq 1 $(get_count_of_genesis_nodes $NET_ID))
             do
-                local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $IDX)
+                NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
                 DEPLOY_HASH=$(_dispatch_deploy)
                 TRANSFERRED=$((TRANSFERRED + 1))
                 log "... ... #$TRANSFERRED :: $DEPLOY_HASH"
@@ -82,10 +83,10 @@ function do_transfer_native()
     # Specific node dispatch.
     else
         local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
-        for IDX in $(seq 1 $TRANSFERS)
+        for TRANSFER_ID in $(seq 1 $TRANSFERS)
         do
             DEPLOY_HASH=$(_dispatch_deploy)
-            log "... ... #$IDX :: $DEPLOY_HASH"
+            log "... ... #$TRANSFER_ID :: $DEPLOY_HASH"
             sleep $TRANSFER_INTERVAL
         done
     fi

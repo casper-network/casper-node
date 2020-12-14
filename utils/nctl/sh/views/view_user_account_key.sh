@@ -1,51 +1,30 @@
 #!/usr/bin/env bash
-#
-# Renders a user account key.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   User ordinal identifier.
 
-#######################################
-# Destructure input args.
-#######################################
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
-# Unset to avoid parameter collisions.
-unset net
-unset user
+unset NET_ID
+unset USER_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
-        user) user=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
+        user) USER_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-net=${net:-1}
-user=${user:-"all"}
+NET_ID=${NET_ID:-1}
+USER_ID=${USER_ID:-"all"}
 
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
-source $(get_path_to_net_vars $net)
-
-# Render account key(s).
-if [ $user = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_USER_COUNT)
+if [ $USER_ID = "all" ]; then
+    for USER_ID in $(seq 1 $(get_count_of_users $NET_ID))
     do
-        render_account_key $net $NCTL_ACCOUNT_TYPE_USER $IDX
+        render_account_key $NET_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID
     done
 else
-    render_account_key $net $NCTL_ACCOUNT_TYPE_USER $user
+    render_account_key $NET_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID
 fi
