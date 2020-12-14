@@ -1128,7 +1128,7 @@ pub(crate) mod json_compatibility {
         hash: BlockHash,
         header: JsonBlockHeader,
         body: (),
-        proofs: BTreeMap<PublicKey, Signature>,
+        proofs: Vec<JsonProof>,
     }
 
     impl JsonBlock {
@@ -1144,7 +1144,7 @@ pub(crate) mod json_compatibility {
                 hash: block.hash,
                 header: JsonBlockHeader::from(block.header),
                 body: block.body,
-                proofs: block.proofs,
+                proofs: block.proofs.into_iter().map(JsonProof::from).collect(),
             }
         }
     }
@@ -1155,8 +1155,31 @@ pub(crate) mod json_compatibility {
                 hash: block.hash,
                 header: BlockHeader::from(block.header),
                 body: block.body,
-                proofs: block.proofs,
+                proofs: block.proofs.into_iter().map(JsonProof::into).collect(),
             }
+        }
+    }
+
+    /// A JSON-friendly representation of a proof, i.e. a block's finality signature.
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    pub struct JsonProof {
+        public_key: PublicKey,
+        signature: Signature,
+    }
+
+    impl From<(PublicKey, Signature)> for JsonProof {
+        fn from((public_key, signature): (PublicKey, Signature)) -> JsonProof {
+            JsonProof {
+                public_key,
+                signature,
+            }
+        }
+    }
+
+    impl From<JsonProof> for (PublicKey, Signature) {
+        fn from(proof: JsonProof) -> (PublicKey, Signature) {
+            (proof.public_key, proof.signature)
         }
     }
 }
