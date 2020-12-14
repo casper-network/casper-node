@@ -33,15 +33,15 @@ macro_rules! add_unit {
         let creator = $creator;
         let panorama = panorama!($($obs),*);
         let seq_number = panorama.next_seq_num(&$state, creator);
-        let opt_parent_hash = panorama[creator].correct();
+        let maybe_parent_hash = panorama[creator].correct();
         // Use our most recent round exponent, or the configured initial one.
-        let round_exp = opt_parent_hash.map_or_else(
+        let round_exp = maybe_parent_hash.map_or_else(
             || $state.params().init_round_exp(),
             |vh| $state.unit(vh).round_exp,
         );
         let value = Option::from($val);
         // At most two units per round are allowed.
-        let two_units_limit = opt_parent_hash
+        let two_units_limit = maybe_parent_hash
             .and_then(|ph| $state.unit(ph).previous())
             .map(|pph| $state.unit(pph))
             .map(|unit| unit.round_id() + unit.round_len());

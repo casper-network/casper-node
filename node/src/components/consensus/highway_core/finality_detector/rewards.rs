@@ -113,14 +113,14 @@ fn round_participation<'a, C: Context>(
     r_id: Timestamp,
 ) -> RoundParticipation<'a, C> {
     // Find the validator's latest unit in or before round `r_id`.
-    let opt_unit = match obs {
+    let maybe_unit = match obs {
         Observation::Faulty => return RoundParticipation::Unassigned,
         Observation::None => return RoundParticipation::No,
         Observation::Correct(latest_vh) => state
             .swimlane(latest_vh)
             .find(|&(_, unit)| unit.round_id() <= r_id),
     };
-    opt_unit.map_or(RoundParticipation::No, |(vh, unit)| {
+    maybe_unit.map_or(RoundParticipation::No, |(vh, unit)| {
         if unit.round_exp > r_id.trailing_zeros() {
             // Round length doesn't divide `r_id`, so the validator was not assigned to that round.
             RoundParticipation::Unassigned

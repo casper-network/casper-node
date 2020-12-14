@@ -247,12 +247,12 @@ impl<C: Context> State<C> {
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
-    pub(crate) fn opt_evidence(&self, idx: ValidatorIndex) -> Option<&Evidence<C>> {
-        self.opt_fault(idx).and_then(Fault::evidence)
+    pub(crate) fn maybe_evidence(&self, idx: ValidatorIndex) -> Option<&Evidence<C>> {
+        self.maybe_fault(idx).and_then(Fault::evidence)
     }
 
     /// Returns endorsements for `unit`, if any.
-    pub(crate) fn opt_endorsements(&self, unit: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
+    pub(crate) fn maybe_endorsements(&self, unit: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
         self.endorsements.get(unit).map(|signatures| {
             signatures
                 .iter_some()
@@ -263,7 +263,7 @@ impl<C: Context> State<C> {
 
     /// Returns whether evidence against validator nr. `idx` is known.
     pub(crate) fn has_evidence(&self, idx: ValidatorIndex) -> bool {
-        self.opt_evidence(idx).is_some()
+        self.maybe_evidence(idx).is_some()
     }
 
     /// Returns whether we have all endorsements for `unit`.
@@ -303,7 +303,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the fault type of validator nr. `idx`, if it is known to be faulty.
-    pub(crate) fn opt_fault(&self, idx: ValidatorIndex) -> Option<&Fault<C>> {
+    pub(crate) fn maybe_fault(&self, idx: ValidatorIndex) -> Option<&Fault<C>> {
         self.faults.get(&idx)
     }
 
@@ -323,7 +323,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the unit with the given hash, if present.
-    pub(crate) fn opt_unit(&self, hash: &C::Hash) -> Option<&Unit<C>> {
+    pub(crate) fn maybe_unit(&self, hash: &C::Hash) -> Option<&Unit<C>> {
         self.units.get(hash)
     }
 
@@ -334,17 +334,17 @@ impl<C: Context> State<C> {
 
     /// Returns the unit with the given hash. Panics if not found.
     pub(crate) fn unit(&self, hash: &C::Hash) -> &Unit<C> {
-        self.opt_unit(hash).expect("unit hash must exist")
+        self.maybe_unit(hash).expect("unit hash must exist")
     }
 
     /// Returns the block contained in the unit with the given hash, if present.
-    pub(crate) fn opt_block(&self, hash: &C::Hash) -> Option<&Block<C>> {
+    pub(crate) fn maybe_block(&self, hash: &C::Hash) -> Option<&Block<C>> {
         self.blocks.get(hash)
     }
 
     /// Returns the block contained in the unit with the given hash. Panics if not found.
     pub(crate) fn block(&self, hash: &C::Hash) -> &Block<C> {
-        self.opt_block(hash).expect("block hash must exist")
+        self.maybe_block(hash).expect("block hash must exist")
     }
 
     /// Returns the complete protocol state's latest panorama.
@@ -376,8 +376,8 @@ impl<C: Context> State<C> {
         }
         let instance_id = wunit.instance_id;
         let fork_choice = self.fork_choice(&wunit.panorama).cloned();
-        let (unit, opt_value) = Unit::new(swunit, fork_choice.as_ref(), self);
-        if let Some(value) = opt_value {
+        let (unit, maybe_value) = Unit::new(swunit, fork_choice.as_ref(), self);
+        if let Some(value) = maybe_value {
             let block = Block::new(fork_choice, value, self);
             self.blocks.insert(hash, block);
         }
@@ -560,9 +560,9 @@ impl<C: Context> State<C> {
         hash: &C::Hash,
         instance_id: C::InstanceId,
     ) -> Option<SignedWireUnit<C>> {
-        let unit = self.opt_unit(hash)?.clone();
-        let opt_block = self.opt_block(hash);
-        let value = opt_block.map(|block| block.value.clone());
+        let unit = self.maybe_unit(hash)?.clone();
+        let maybe_block = self.maybe_block(hash);
+        let value = maybe_block.map(|block| block.value.clone());
         let endorsed = unit.claims_endorsed().cloned().collect();
         let wunit = WireUnit {
             panorama: unit.panorama.clone(),
@@ -677,8 +677,8 @@ impl<C: Context> State<C> {
             return Err(UnitError::SequenceNumber);
         }
         let r_id = round_id(timestamp, wunit.round_exp);
-        let opt_prev_unit = wunit.previous().map(|vh| self.unit(vh));
-        if let Some(prev_unit) = opt_prev_unit {
+        let maybe_prev_unit = wunit.previous().map(|vh| self.unit(vh));
+        if let Some(prev_unit) = maybe_prev_unit {
             if prev_unit.round_exp != wunit.round_exp {
                 // The round exponent must not change within a round: Even with respect to the
                 // greater of the two exponents, a round boundary must be between the units.
@@ -708,7 +708,7 @@ impl<C: Context> State<C> {
         if wunit.value.is_some() {
             // If this unit is a block, it must be the first unit in this round, its timestamp must
             // match the round ID, and the creator must be the round leader.
-            if opt_prev_unit.map_or(false, |pv| pv.round_id() == r_id)
+            if maybe_prev_unit.map_or(false, |pv| pv.round_id() == r_id)
                 || timestamp != r_id
                 || self.leader(r_id) != creator
             {
@@ -858,7 +858,7 @@ impl<C: Context> State<C> {
         //   citations by creator's earlier units. So the latest of those earlier units would
         //   already be violating the LNC itself, and thus would not have been added to the state.
         // * Otherwise store the unique naively cited fork in naive_fork.
-        let mut opt_naive_fork = None;
+        let mut maybe_naive_fork = None;
         {
             // Returns true if any endorsed unit cites the given unit.
             let seen_by_endorsed = |hash| endorsed.iter().any(|e_hash| self.sees(e_hash, hash));
@@ -878,14 +878,14 @@ impl<C: Context> State<C> {
                         // No need to traverse further downward.
                         if !seen_by_endorsed(eq_hash) {
                             // The fork is cited naively!
-                            match opt_naive_fork {
+                            match maybe_naive_fork {
                                 // It's the first naively cited fork we found.
-                                None => opt_naive_fork = Some(eq_hash),
+                                None => maybe_naive_fork = Some(eq_hash),
                                 Some(other_hash) => {
                                     // If eq_hash is later than other_hash, it is the tip of the
                                     // same fork. If it is earlier, then other_hash is the tip.
                                     if self.sees_correct(eq_hash, other_hash) {
-                                        opt_naive_fork = Some(eq_hash);
+                                        maybe_naive_fork = Some(eq_hash);
                                     } else if !self.sees_correct(other_hash, eq_hash) {
                                         return false; // We found two incompatible forks!
                                     }
@@ -905,7 +905,7 @@ impl<C: Context> State<C> {
                 }
             }
         }
-        let naive_fork = match opt_naive_fork {
+        let naive_fork = match maybe_naive_fork {
             None => return true, // No forks are cited naively.
             Some(naive_fork) => naive_fork,
         };
@@ -913,8 +913,8 @@ impl<C: Context> State<C> {
         // Iterate over all earlier units by creator, and find all forks by eq_idx they
         // naively cite. If any of those forks are incompatible with naive_fork, the LNC is
         // violated.
-        let mut opt_pred_hash = panorama[creator].correct();
-        while let Some(pred_hash) = opt_pred_hash {
+        let mut maybe_pred_hash = panorama[creator].correct();
+        while let Some(pred_hash) = maybe_pred_hash {
             let pred_unit = self.unit(pred_hash);
             // Returns true if any endorsed (according to pred_unit) unit cites the given unit.
             let seen_by_endorsed = |hash| {
@@ -954,7 +954,7 @@ impl<C: Context> State<C> {
                 // haven't found conflicting naively cited forks yet, there are none.
                 return true;
             }
-            opt_pred_hash = pred_unit.previous();
+            maybe_pred_hash = pred_unit.previous();
         }
         true // No earlier messages, so no conflicting naively cited forks.
     }
@@ -996,8 +996,8 @@ impl<C: Context> State<C> {
         mut pan: Panorama<C>,
     ) -> Panorama<C> {
         // Make sure the panorama sees the creator's own previous unit.
-        let opt_prev_uhash = self.panorama()[creator].correct();
-        if let Some(prev_uhash) = opt_prev_uhash {
+        let maybe_prev_uhash = self.panorama()[creator].correct();
+        if let Some(prev_uhash) = maybe_prev_uhash {
             if pan[creator].correct() != Some(prev_uhash) {
                 pan = pan.merge(self, &self.inclusive_panorama(prev_uhash));
             }
@@ -1009,7 +1009,7 @@ impl<C: Context> State<C> {
         // `pan` violates the LNC.
         // Start from the creator's previous unit, mark all faulty
         // validators as faulty, and add only endorsed units from correct validators.
-        pan = opt_prev_uhash.map_or_else(
+        pan = maybe_prev_uhash.map_or_else(
             || Panorama::new(self.validator_count()),
             |prev_uhash| self.inclusive_panorama(prev_uhash),
         );
