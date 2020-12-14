@@ -25,7 +25,7 @@ use crate::utils;
 pub(super) async fn run(config: Config, mut data_receiver: mpsc::UnboundedReceiver<SseData>) {
     // Event stream channels and filter.
     let (broadcaster, mut new_subscriber_info_receiver, sse_filter) =
-        sse_server::create_channels_and_filter();
+        sse_server::create_channels_and_filter(config.broadcast_channel_size);
 
     let service = warp_json_rpc::service(sse_filter);
 
