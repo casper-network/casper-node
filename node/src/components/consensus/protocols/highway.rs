@@ -300,7 +300,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                                 (vertex.value().cloned(), vertex.timestamp())
                             {
                                 // It's a block…
-                                if value.is_empty() {
+                                if value.needs_validation() {
                                     // Consensus value is empty. Nothing to validate.
                                     let now = Timestamp::now();
                                     results.extend(self.add_valid_vertex(vv, rng, now));

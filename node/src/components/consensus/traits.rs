@@ -19,8 +19,8 @@ impl<VID> ValidatorIdT for VID where VID: Eq + Ord + Clone + Debug + Hash {}
 pub(crate) trait ConsensusValueT:
     Eq + Clone + Debug + Hash + Serialize + DeserializeOwned
 {
-    /// Returns whether the consensus value is empty.
-    fn is_empty(&self) -> bool;
+    /// Returns whether the consensus value needs validation.
+    fn needs_validation(&self) -> bool;
 }
 
 /// A hash, as an identifier for a block or unit.

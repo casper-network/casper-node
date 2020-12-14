@@ -42,7 +42,7 @@ use crate::{
 type ConsensusValue = Vec<u32>;
 
 impl ConsensusValueT for ConsensusValue {
-    fn is_empty(&self) -> bool {
+    fn needs_validation(&self) -> bool {
         self.is_empty()
     }
 }

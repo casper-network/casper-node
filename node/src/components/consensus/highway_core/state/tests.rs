@@ -62,7 +62,7 @@ pub(crate) const BOB_SEC: TestSecret = TestSecret(1);
 pub(crate) const CAROL_SEC: TestSecret = TestSecret(2);
 
 impl ConsensusValueT for u32 {
-    fn is_empty(&self) -> bool {
+    fn needs_validation(&self) -> bool {
         false
     }
 }
