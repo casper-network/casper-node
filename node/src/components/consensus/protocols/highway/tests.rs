@@ -189,23 +189,10 @@ fn send_a_valid_wire_unit() {
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
-    let mut outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
 
-    assert_eq!(outcomes.len(), 1, "Unexpected outcomes: {:?}", outcomes);
+    let outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
 
-    let opt_protocol_outcome = outcomes.pop();
-
-    let new_outcomes = match &opt_protocol_outcome {
-        None => unreachable!("We just checked that effects has length 1!"),
-        Some(ProtocolOutcome::ValidateConsensusValue(node_id, candidate_block, timestamp)) => {
-            assert_eq!(*node_id, NodeId(123));
-            assert_eq!(*timestamp, Timestamp::from(0));
-            highway_protocol.resolve_validity(candidate_block, true, &mut rng)
-        }
-        Some(protocol_outcome) => panic!("Unexpected protocol outcome {:?}", protocol_outcome),
-    };
-
-    match &new_outcomes[..] {
+    match &outcomes[..] {
         &[ProtocolOutcome::CreatedGossipMessage(_), ProtocolOutcome::FinalizedBlock(_)] => (),
         outcomes => panic!("Unexpected outcomes: {:?}", outcomes),
     }
