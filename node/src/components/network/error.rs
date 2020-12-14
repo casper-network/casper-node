@@ -10,14 +10,6 @@ pub enum Error {
     #[error("config must have at least one known address")]
     NoKnownAddress,
 
-    /// Invalid configuration: gossip_address_interval must not be less than
-    /// gossip_duplicate_cache_timeout.
-    #[error(
-        "gossip_address_interval must not be less than gossip_duplicate_cache_timeout so that \
-        gossiped addresses are not blocked as duplicates"
-    )]
-    InvalidAddressGossipConfig,
-
     /// Signing libp2p-noise static ID keypair failed.
     #[error("signing libp2p-noise static ID keypair failed: {0}")]
     StaticKeypairSigning(NoiseError),
@@ -35,4 +27,16 @@ pub enum Error {
         address: Multiaddr,
         error: ConnectionLimit,
     },
+
+    /// Failed to serialize a message.
+    #[error("failed to serialize: {0}")]
+    Serialization(bincode::ErrorKind),
+
+    /// Failed to deserialize a message.
+    #[error("failed to deserialize: {0}")]
+    Deserialization(bincode::ErrorKind),
+
+    /// Message too large.
+    #[error("message of {actual_size} bytes exceeds limit of {max_size} bytes")]
+    MessageTooLarge { max_size: u32, actual_size: u64 },
 }
