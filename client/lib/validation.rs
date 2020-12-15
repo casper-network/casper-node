@@ -9,7 +9,7 @@ use casper_execution_engine::{
 };
 use casper_node::{
     crypto::hash::Digest,
-    rpcs::chain::{BlockIdentifier, GetEraInfoResult},
+    rpcs::chain::{BlockIdentifier, EraSummary, GetEraInfoResult},
     types::{json_compatibility, Block, BlockValidationError, JsonBlock},
 };
 use casper_types::{bytesrepr, Key, U512};
@@ -79,13 +79,14 @@ pub(crate) fn validate_get_era_info_response(
 
     let result: GetEraInfoResult = serde_json::from_value(value.to_owned())?;
 
-    match (
-        result.state_root_hash,
-        result.era_id,
-        result.merkle_proof,
-        result.stored_value,
-    ) {
-        (Some(state_root_hash), Some(era_id), Some(merkle_proof), Some(stored_value)) => {
+    match result.era_summary {
+        Some(EraSummary {
+            state_root_hash,
+            era_id,
+            merkle_proof,
+            stored_value,
+            ..
+        }) => {
             let proof_bytes = hex::decode(merkle_proof)
                 .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
             let proofs: Vec<TrieMerkleProof<Key, StoredValue>> =
@@ -109,8 +110,7 @@ pub(crate) fn validate_get_era_info_response(
             )
             .map_err(Into::into)
         }
-        (None, None, None, None) => Ok(()),
-        _ => Err(ValidateResponseError::ValidateResponseFailedToParse),
+        None => Ok(()),
     }
 }
 

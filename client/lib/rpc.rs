@@ -14,7 +14,7 @@ use casper_node::{
         account::{PutDeploy, PutDeployParams},
         chain::{
             BlockIdentifier, GetBlock, GetBlockParams, GetBlockTransfers, GetBlockTransfersParams,
-            GetEraInfo, GetEraInfoParams, GetStateRootHash, GetStateRootHashParams,
+            GetEraInfoBySwitchBlock, GetEraInfoParams, GetStateRootHash, GetStateRootHashParams,
         },
         docs::ListRpcs,
         info::{GetDeploy, GetDeployParams},
@@ -147,12 +147,15 @@ impl RpcCall {
         Ok(response)
     }
 
-    pub(crate) fn get_era_info(self, maybe_block_identifier: &str) -> Result<JsonRpc> {
+    pub(crate) fn get_era_info_by_switch_block(
+        self,
+        maybe_block_identifier: &str,
+    ) -> Result<JsonRpc> {
         let response = match Self::block_identifier(maybe_block_identifier)? {
-            None => GetEraInfo::request(self),
+            None => GetEraInfoBySwitchBlock::request(self),
             Some(block_identifier) => {
                 let params = GetEraInfoParams { block_identifier };
-                GetEraInfo::request_with_map_params(self, params)
+                GetEraInfoBySwitchBlock::request_with_map_params(self, params)
             }
         }?;
         validation::validate_get_era_info_response(&response)?;
@@ -361,7 +364,7 @@ impl RpcClient for GetItem {
     const RPC_METHOD: &'static str = <Self as RpcWithParams>::METHOD;
 }
 
-impl RpcClient for GetEraInfo {
+impl RpcClient for GetEraInfoBySwitchBlock {
     const RPC_METHOD: &'static str = Self::METHOD;
 }
 

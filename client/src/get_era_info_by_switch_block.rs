@@ -2,7 +2,7 @@ use std::str;
 
 use clap::{App, ArgMatches, SubCommand};
 
-use casper_node::rpcs::chain::GetEraInfo;
+use casper_node::rpcs::chain::GetEraInfoBySwitchBlock;
 
 use crate::{command::ClientCommand, common};
 
@@ -14,8 +14,8 @@ enum DisplayOrder {
     BlockIdentifier,
 }
 
-impl<'a, 'b> ClientCommand<'a, 'b> for GetEraInfo {
-    const NAME: &'static str = "get-era-info";
+impl<'a, 'b> ClientCommand<'a, 'b> for GetEraInfoBySwitchBlock {
+    const NAME: &'static str = "get-era-info-by-switch-block";
     const ABOUT: &'static str = "Retrieves era information from the network";
 
     fn build(display_order: usize) -> App<'a, 'b> {
@@ -38,9 +38,13 @@ impl<'a, 'b> ClientCommand<'a, 'b> for GetEraInfo {
         let verbose = common::verbose::get(matches);
         let maybe_block_id = common::block_identifier::get(&matches);
 
-        let response =
-            casper_client::get_era_info(maybe_rpc_id, node_address, verbose, maybe_block_id)
-                .unwrap_or_else(|error| panic!("response error: {}", error));
+        let response = casper_client::get_era_info_by_switch_block(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            maybe_block_id,
+        )
+        .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",
             serde_json::to_string_pretty(&response).expect("should encode to JSON")
