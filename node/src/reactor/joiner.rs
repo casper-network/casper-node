@@ -184,7 +184,7 @@ pub enum Event {
 
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement<NodeId>),
 
     /// Address Gossiper announcement.
     #[from]
@@ -746,6 +746,9 @@ impl reactor::Reactor for Reactor {
                         },
                     ),
                 ),
+                ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
+                    todo!("implement disconnecting")
+                }
             },
             Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining

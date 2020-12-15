@@ -170,7 +170,7 @@ pub enum Event {
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement<NodeId>),
     /// BlockExecutor announcement.
     #[from]
     BlockExecutorAnnouncement(#[serde(skip_serializing)] BlockExecutorAnnouncement),
@@ -789,6 +789,9 @@ impl reactor::Reactor for Reactor {
                                 timestamp,
                             });
                         self.dispatch_event(effect_builder, rng, reactor_event)
+                    }
+                    ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
+                        todo!("implement disconnection")
                     }
                 }
             }
