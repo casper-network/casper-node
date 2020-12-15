@@ -187,6 +187,11 @@ where
     }
 }
 
+use static_assertions::const_assert;
+use std::mem;
+const _EVENT_SIZE: usize = mem::size_of::<StorageRequest>();
+const_assert!(_EVENT_SIZE < 96);
+
 #[derive(Debug, Serialize)]
 /// A storage request.
 #[must_use]
@@ -246,14 +251,14 @@ pub enum StorageRequest {
     /// Retrieve deploys with given hashes.
     GetDeploys {
         /// Hashes of deploys to be retrieved.
-        deploy_hashes: Multiple<DeployHash>,
+        deploy_hashes: Box<Multiple<DeployHash>>,
         /// Responder to call with the results.
         responder: Responder<Vec<Option<Deploy>>>,
     },
     /// Retrieve deploy headers with given hashes.
     GetDeployHeaders {
         /// Hashes of deploy headers to be retrieved.
-        deploy_hashes: Multiple<DeployHash>,
+        deploy_hashes: Box<Multiple<DeployHash>>,
         /// Responder to call with the results.
         responder: Responder<Vec<Option<DeployHeader>>>,
     },
@@ -266,7 +271,7 @@ pub enum StorageRequest {
     /// is not an error and will silently be ignored.
     PutExecutionResults {
         /// Hash of block.
-        block_hash: BlockHash,
+        block_hash: Box<BlockHash>,
         /// Mapping of deploys to execution results of the block.
         execution_results: HashMap<DeployHash, ExecutionResult>,
         /// Responder to call when done storing.
@@ -336,6 +341,36 @@ impl Display for StorageRequest {
         }
     }
 }
+
+
+const _EVENT_SIZE_2: usize = mem::size_of::<StateStoreRequest2>();
+const_assert!(_EVENT_SIZE_2 < 96);
+
+
+
+/// State store request.
+#[derive(DataSize, Debug, Serialize)]
+pub enum StateStoreRequest2 {
+    /// Stores a piece of state to storage.
+    Save {
+        /// Key to store under.
+        key: Cow<'static, [u8]>,
+        /// Value to store, already serialized.
+        #[serde(skip_serializing)]
+        data: Vec<u8>,
+        /// Notification when storing is complete.
+        responder: Responder<()>,
+    },
+    /// Loads a piece of state from storage.
+    Load {
+        /// Key to load from.
+        key: Cow<'static, [u8]>,
+        /// Responder for value, if found, returning the previously passed in serialization form.
+        responder: Responder<Option<Vec<u8>>>,
+    },
+}
+
+
 
 /// State store request.
 #[derive(DataSize, Debug, Serialize)]

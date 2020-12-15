@@ -450,7 +450,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             endpoint,
             num_established,
         } => Event::ConnectionEstablished {
-            peer_id: NodeId::from(peer_id),
+            peer_id: Box::new(NodeId::from(peer_id)),
             endpoint,
             num_established,
         },
@@ -460,7 +460,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             num_established,
             cause,
         } => Event::ConnectionClosed {
-            peer_id: NodeId::from(peer_id),
+            peer_id: Box::new(NodeId::from(peer_id)),
             endpoint,
             num_established,
             cause: cause.map(|error| error.to_string()),
@@ -471,7 +471,7 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             error,
             attempts_remaining,
         } => Event::UnreachableAddress {
-            peer_id: NodeId::from(peer_id),
+            peer_id: Box::new(NodeId::from(peer_id)),
             address,
             error,
             attempts_remaining,
@@ -502,8 +502,8 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
             return event_queue
                 .schedule(
                     Event::IncomingOneWayMessage {
-                        source: one_way_incoming_message.source,
-                        message: one_way_incoming_message.message,
+                        source: Box::new(one_way_incoming_message.source),
+                        message: Box::new(one_way_incoming_message.message),
                     },
                     QueueKind::NetworkIncoming,
                 )
@@ -590,7 +590,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 peer_id,
                 endpoint,
                 num_established,
-            } => self.handle_connection_established(peer_id, endpoint, num_established),
+            } => self.handle_connection_established(*peer_id, endpoint, num_established),
             Event::ConnectionClosed {
                 peer_id,
                 endpoint,
@@ -649,55 +649,53 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             }
 
             Event::IncomingOneWayMessage { source, message } => {
-                self.handle_incoming_one_way_message(effect_builder, source, message)
+                self.handle_incoming_one_way_message(effect_builder, *source, *message)
             }
-            Event::NetworkRequest {
-                request:
+            Event::NetworkRequest {request} => {
+                match *request {
                     NetworkRequest::SendMessage {
                         dest,
                         payload,
                         responder,
+                    } => {
+                        self.send_message(dest, OneWayMessage::new(payload));
+                        responder.respond(()).ignore()
                     },
-            } => {
-                self.send_message(dest, OneWayMessage::new(payload));
-                responder.respond(()).ignore()
-            }
-            Event::NetworkRequest {
-                request: NetworkRequest::Broadcast { payload, responder },
-            } => {
-                self.broadcast_message(OneWayMessage::new(payload));
-                responder.respond(()).ignore()
-            }
-            Event::NetworkRequest {
-                request:
+                    NetworkRequest::Broadcast { payload, responder } => {
+                        self.broadcast_message(OneWayMessage::new(payload));
+                        responder.respond(()).ignore()
+                    },
                     NetworkRequest::Gossip {
                         payload,
                         count,
                         exclude,
                         responder,
-                    },
-            } => {
-                let sent_to = self.gossip_message(rng, OneWayMessage::new(payload), count, exclude);
-                responder.respond(sent_to).ignore()
-            }
-            Event::NetworkInfoRequest {
-                info_request: NetworkInfoRequest::GetPeers { responder },
-            } => {
-                let peers = self
-                    .peers
-                    .iter()
-                    .map(|(node_id, endpoint)| {
-                        let peer_address = match endpoint {
-                            ConnectedPoint::Dialer { address } => address.to_string(),
-                            ConnectedPoint::Listener { send_back_addr, .. } => {
-                                send_back_addr.to_string()
-                            }
-                        };
+                    } => {
+                        let sent_to = self.gossip_message(rng, OneWayMessage::new(payload), count, exclude);
+                        responder.respond(sent_to).ignore()
+                    }
+                }
+            },
+            Event::NetworkInfoRequest { info_request } => {
+                match *info_request {
+                    NetworkInfoRequest::GetPeers { responder } => {
+                        let peers = self
+                            .peers
+                            .iter()
+                            .map(|(node_id, endpoint)| {
+                                let peer_address = match endpoint {
+                                    ConnectedPoint::Dialer { address } => address.to_string(),
+                                    ConnectedPoint::Listener { send_back_addr, .. } => {
+                                        send_back_addr.to_string()
+                                    }
+                                };
 
-                        (node_id.clone(), peer_address)
-                    })
-                    .collect();
-                responder.respond(peers).ignore()
+                                (node_id.clone(), peer_address)
+                            })
+                            .collect();
+                        responder.respond(peers).ignore()
+                    }
+                }
             }
         }
     }

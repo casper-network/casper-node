@@ -17,13 +17,22 @@ use crate::{
     types::NodeId,
 };
 
-#[derive(Debug, From, Serialize)]
+
+use static_assertions::const_assert;
+use std::mem;
+use crate::protocol::Message;
+
+const _EVENT_SIZE: usize = mem::size_of::<Event<Message>>();
+const_assert!(_EVENT_SIZE < 96);
+
+#[derive(Debug, From,  Serialize)]
 pub enum Event<P> {
+
     // ========== Events triggered by the libp2p network behavior ==========
     /// A connection to the given peer has been opened.
     ConnectionEstablished {
         /// Identity of the peer that we have connected to.
-        peer_id: NodeId,
+        peer_id: Box<NodeId>,
         /// Endpoint of the connection that has been opened.
         #[serde(skip_serializing)]
         endpoint: ConnectedPoint,
@@ -34,7 +43,7 @@ pub enum Event<P> {
     /// A connection with the given peer has been closed, possibly as a result of an error.
     ConnectionClosed {
         /// Identity of the peer that we have connected to.
-        peer_id: NodeId,
+        peer_id: Box<NodeId>,
         /// Endpoint of the connection that has been closed.
         #[serde(skip_serializing)]
         endpoint: ConnectedPoint,
@@ -46,7 +55,7 @@ pub enum Event<P> {
     /// Tried to dial an address but it ended up being unreachable.
     UnreachableAddress {
         /// `NodeId` that we were trying to reach.
-        peer_id: NodeId,
+        peer_id: Box<NodeId>,
         /// Address that we failed to reach.
         address: Multiaddr,
         /// Error that has been encountered.
@@ -55,6 +64,7 @@ pub enum Event<P> {
         /// Number of remaining connection attempts that are being tried for this peer.
         attempts_remaining: u32,
     },
+
     /// Tried to dial an address but it ended up being unreachable.  Contrary to
     /// `UnreachableAddress`, we don't know the identity of the peer that we were trying to reach.
     UnknownPeerUnreachableAddress {
@@ -89,23 +99,24 @@ pub enum Event<P> {
     // ========== Other events ==========
     /// Received one-way network message.
     IncomingOneWayMessage {
-        source: NodeId,
-        message: OneWayMessage<P>,
+        source: Box<NodeId>,
+        message: Box<OneWayMessage<P>>,
     },
 
     /// Incoming network request.
     #[from]
     NetworkRequest {
         #[serde(skip_serializing)]
-        request: NetworkRequest<NodeId, P>,
+        request: Box<NetworkRequest<NodeId, P>>,
     },
 
     /// Incoming network info request.
     #[from]
     NetworkInfoRequest {
         #[serde(skip_serializing)]
-        info_request: NetworkInfoRequest<NodeId>,
+        info_request: Box<NetworkInfoRequest<NodeId>>,
     },
+
 }
 
 impl<P: Display> Display for Event<P> {

@@ -302,11 +302,11 @@ where
                         )
                         .result(
                             move |(peer_id, transport)| Event::OutgoingEstablished {
-                                peer_id,
+                                peer_id: Box::new(peer_id),
                                 transport,
                             },
                             move |error| Event::BootstrappingFailed {
-                                peer_address: known_address,
+                                peer_address: Box::new(known_address),
                                 error,
                             },
                         ),
@@ -452,8 +452,8 @@ where
                     )
                     .event(move |result| Event::IncomingClosed {
                         result,
-                        peer_id,
-                        peer_address,
+                        peer_id: Box::new(peer_id),
+                        peer_address: Box::new(peer_address),
                     }),
                 );
 
@@ -525,9 +525,9 @@ where
         let peer_id_cloned = peer_id.clone();
         effects.extend(
             message_sender(receiver, sink, handshake).event(move |result| Event::OutgoingFailed {
-                peer_id: Some(peer_id),
-                peer_address,
-                error: result.err().map(Into::into),
+                peer_id: Box::new(Some(peer_id)),
+                peer_address: Box::new(peer_address),
+                error: Box::new(result.err().map(Into::into)),
             }),
         );
         effects.extend(
@@ -694,11 +694,14 @@ where
                 Arc::clone(&self.is_stopped),
             )
             .result(
-                move |(peer_id, transport)| Event::OutgoingEstablished { peer_id, transport },
+                move |(peer_id, transport)| Event::OutgoingEstablished {
+                    peer_id: Box::new(peer_id),
+                    transport
+                },
                 move |error| Event::OutgoingFailed {
-                    peer_id: None,
-                    peer_address,
-                    error: Some(error),
+                    peer_id: Box::new(None),
+                    peer_address: Box::new(peer_address),
+                    error: Box::new(Some(error)),
                 },
             )
         }
@@ -836,16 +839,16 @@ where
                 setup_tls(stream, self.certificate.clone(), self.secret_key.clone())
                     .boxed()
                     .event(move |result| Event::IncomingHandshakeCompleted {
-                        result,
-                        peer_address,
+                        result: Box::new(result),
+                        peer_address: Box::new(*peer_address),
                     })
             }
             Event::IncomingHandshakeCompleted {
                 result,
                 peer_address,
-            } => self.handle_incoming_tls_handshake_completed(effect_builder, result, peer_address),
+            } => self.handle_incoming_tls_handshake_completed(effect_builder, *result, *peer_address),
             Event::IncomingMessage { peer_id, msg } => {
-                self.handle_message(effect_builder, peer_id, msg)
+                self.handle_message(effect_builder, *peer_id, *msg)
             }
             Event::IncomingClosed {
                 result,
@@ -861,48 +864,47 @@ where
                 self.remove(effect_builder, &peer_id, false)
             }
             Event::OutgoingEstablished { peer_id, transport } => {
-                self.setup_outgoing(effect_builder, peer_id, transport)
+                self.setup_outgoing(effect_builder, *peer_id, transport)
             }
             Event::OutgoingFailed {
                 peer_id,
                 peer_address,
                 error,
-            } => self.handle_outgoing_lost(effect_builder, peer_id, peer_address, error),
-            Event::NetworkRequest {
-                req:
+            } => self.handle_outgoing_lost(effect_builder, *peer_id, *peer_address, *error),
+            Event::NetworkRequest {req } => {
+                match *req {
                     NetworkRequest::SendMessage {
                         dest,
                         payload,
-                        responder,
+                        responder
+                    } => {
+                        self.send_message(dest, Message::Payload(payload));
+                        responder.respond(()).ignore()
                     },
-            } => {
-                // We're given a message to send out.
-                self.send_message(dest, Message::Payload(payload));
-                responder.respond(()).ignore()
-            }
-            Event::NetworkRequest {
-                req: NetworkRequest::Broadcast { payload, responder },
-            } => {
-                // We're given a message to broadcast.
-                self.broadcast_message(Message::Payload(payload));
-                responder.respond(()).ignore()
-            }
-            Event::NetworkRequest {
-                req:
+                    NetworkRequest::Broadcast { payload, responder } => {
+                        // We're given a message to broadcast.
+                        self.broadcast_message(Message::Payload(payload));
+                        responder.respond(()).ignore()
+                    },
                     NetworkRequest::Gossip {
                         payload,
                         count,
                         exclude,
                         responder,
+                    } => {
+                        // We're given a message to gossip.
+                        let sent_to = self.gossip_message(rng, Message::Payload(payload), count, exclude);
+                        responder.respond(sent_to).ignore()
                     },
-            } => {
-                // We're given a message to gossip.
-                let sent_to = self.gossip_message(rng, Message::Payload(payload), count, exclude);
-                responder.respond(sent_to).ignore()
-            }
-            Event::NetworkInfoRequest {
-                req: NetworkInfoRequest::GetPeers { responder },
-            } => responder.respond(self.peers()).ignore(),
+                }
+            },
+            Event::NetworkInfoRequest {req} => {
+                match *req {
+                    NetworkInfoRequest::GetPeers { responder } => {
+                        responder.respond(self.peers()).ignore()
+                    }
+                }
+            },
             Event::GossipOurAddress => {
                 let mut effects = self.gossip_our_address(effect_builder);
                 effects.extend(self.enforce_symmetric_connections(effect_builder));
@@ -942,7 +944,7 @@ async fn server_task<P, REv>(
                     // Move the incoming connection to the event queue for handling.
                     let event = Event::IncomingNew {
                         stream,
-                        peer_address,
+                        peer_address: Box::new(peer_address),
                     };
                     event_queue
                         .schedule(event, QueueKind::NetworkIncoming)
@@ -1018,7 +1020,10 @@ async fn handshake_reader<REv, P>(
             debug!(%msg, %peer_id, "{}: handshake received", our_id);
             return event_queue
                 .schedule(
-                    Event::IncomingMessage { peer_id, msg },
+                    Event::IncomingMessage {
+                        peer_id: Box::new(peer_id),
+                        msg: Box::new(msg)
+                    },
                     QueueKind::NetworkIncoming,
                 )
                 .await;
@@ -1028,9 +1033,9 @@ async fn handshake_reader<REv, P>(
     event_queue
         .schedule(
             Event::OutgoingFailed {
-                peer_id: Some(peer_id),
-                peer_address,
-                error: None,
+                peer_id: Box::new(Some(peer_id)),
+                peer_address: Box::new(peer_address),
+                error: Box::new(None),
             },
             QueueKind::Network,
         )
@@ -1062,8 +1067,8 @@ where
                     event_queue
                         .schedule(
                             Event::IncomingMessage {
-                                peer_id: peer_id_cloned.clone(),
-                                msg,
+                                peer_id: Box::new(peer_id_cloned.clone()),
+                                msg: Box::new(msg),
                             },
                             QueueKind::NetworkIncoming,
                         )

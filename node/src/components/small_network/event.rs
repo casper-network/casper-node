@@ -11,60 +11,133 @@ use tokio::net::TcpStream;
 use super::{Error, GossipedAddress, Message, NodeId, Transport};
 use crate::effect::requests::{NetworkInfoRequest, NetworkRequest};
 
+use static_assertions::const_assert;
+use std::mem;
+use crate::protocol::Message as EventMessage;
+const _EVENT_SIZE: usize = mem::size_of::<Event<EventMessage>>();
+const_assert!(_EVENT_SIZE < 96);
+
 #[derive(Debug, From, Serialize)]
-pub enum Event<P> {
+#[allow(dead_code, clippy::large_enum_variant)]
+pub enum Event2 {
+    /*
     /// Connection to the known node failed.
     BootstrappingFailed {
-        peer_address: SocketAddr,
+        peer_address: Box<SocketAddr>,
         error: Error,
     },
     /// A new TCP connection has been established from an incoming connection.
     IncomingNew {
         #[serde(skip_serializing)]
         stream: TcpStream,
-        peer_address: SocketAddr,
+        peer_address: Box<SocketAddr>,
     },
     /// The TLS handshake completed on the incoming connection.
     IncomingHandshakeCompleted {
         #[serde(skip_serializing)]
-        result: Result<(NodeId, Transport), Error>,
-        peer_address: SocketAddr,
+        result: Box<Result<(NodeId, Transport), Error>>,
+        peer_address: Box<SocketAddr>,
     },
     /// Received network message.
-    IncomingMessage { peer_id: NodeId, msg: Message<P> },
+    IncomingMessage { peer_id: Box<NodeId>, msg: Box<Message<P>> },
     /// Incoming connection closed.
     IncomingClosed {
         #[serde(skip_serializing)]
         result: io::Result<()>,
-        peer_id: NodeId,
-        peer_address: SocketAddr,
+        peer_id: Box<NodeId>,
+        peer_address: Box<SocketAddr>,
     },
 
     /// A new outgoing connection was successfully established.
     OutgoingEstablished {
-        peer_id: NodeId,
+        peer_id: Box<NodeId>,
         #[serde(skip_serializing)]
         transport: Transport,
     },
     /// An outgoing connection failed to connect or was terminated.
     OutgoingFailed {
-        peer_id: Option<NodeId>,
-        peer_address: SocketAddr,
-        error: Option<Error>,
+        peer_id: Box<Option<NodeId>>,
+        peer_address: Box<SocketAddr>,
+        error: Box<Option<Error>>,
     },
 
     /// Incoming network request.
     #[from]
     NetworkRequest {
         #[serde(skip_serializing)]
-        req: NetworkRequest<NodeId, P>,
+        req: Box<NetworkRequest<NodeId, P>>,
     },
 
     /// Incoming network info request.
     #[from]
     NetworkInfoRequest {
         #[serde(skip_serializing)]
-        req: NetworkInfoRequest<NodeId>,
+        req: Box<NetworkInfoRequest<NodeId>>,
+    },
+
+    /// The node should gossip its own public listening address.
+    GossipOurAddress,
+    */
+    /// We received a peer's public listening address via gossip.
+    PeerAddressReceived(GossipedAddress),
+
+}
+
+
+#[derive(Debug, From, Serialize)]
+pub enum Event<P> {
+    /// Connection to the known node failed.
+    BootstrappingFailed {
+        peer_address: Box<SocketAddr>,
+        error: Error,
+    },
+    /// A new TCP connection has been established from an incoming connection.
+    IncomingNew {
+        #[serde(skip_serializing)]
+        stream: TcpStream,
+        peer_address: Box<SocketAddr>,
+    },
+    /// The TLS handshake completed on the incoming connection.
+    IncomingHandshakeCompleted {
+        #[serde(skip_serializing)]
+        result: Box<Result<(NodeId, Transport), Error>>,
+        peer_address: Box<SocketAddr>,
+    },
+    /// Received network message.
+    IncomingMessage { peer_id: Box<NodeId>, msg: Box<Message<P>> },
+    /// Incoming connection closed.
+    IncomingClosed {
+        #[serde(skip_serializing)]
+        result: io::Result<()>,
+        peer_id: Box<NodeId>,
+        peer_address: Box<SocketAddr>,
+    },
+
+    /// A new outgoing connection was successfully established.
+    OutgoingEstablished {
+        peer_id: Box<NodeId>,
+        #[serde(skip_serializing)]
+        transport: Transport,
+    },
+    /// An outgoing connection failed to connect or was terminated.
+    OutgoingFailed {
+        peer_id: Box<Option<NodeId>>,
+        peer_address: Box<SocketAddr>,
+        error: Box<Option<Error>>,
+    },
+
+    /// Incoming network request.
+    #[from]
+    NetworkRequest {
+        #[serde(skip_serializing)]
+        req: Box<NetworkRequest<NodeId, P>>,
+    },
+
+    /// Incoming network info request.
+    #[from]
+    NetworkInfoRequest {
+        #[serde(skip_serializing)]
+        req: Box<NetworkInfoRequest<NodeId>>,
     },
 
     /// The node should gossip its own public listening address.
@@ -107,26 +180,26 @@ impl<P: Display> Display for Event<P> {
                 peer_id: node_id, ..
             } => write!(f, "established outgoing to {}", node_id),
             Event::OutgoingFailed {
-                peer_id: Some(node_id),
+                peer_id,
                 peer_address,
-                error,
-            } => write!(
-                f,
-                "failed outgoing {} {}: (is_err {})",
-                node_id,
-                peer_address,
-                error.is_some()
-            ),
-            Event::OutgoingFailed {
-                peer_id: None,
-                peer_address,
-                error,
-            } => write!(
-                f,
-                "failed outgoing {}: (is_err {})",
-                peer_address,
-                error.is_some()
-            ),
+                error
+            } => {
+                match &**peer_id {
+                    Some(node_id) => write!(
+                        f,
+                        "failed outgoing {} {}: (is_err {})",
+                        node_id,
+                        peer_address,
+                        error.is_some()
+                    ),
+                    None => write!(
+                        f,
+                        "failed outgoing {}: (is_err {})",
+                        peer_address,
+                        error.is_some()
+                    )
+                }
+            },
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
             Event::NetworkInfoRequest { req } => write!(f, "request: {}", req),
             Event::GossipOurAddress => write!(f, "gossip our address"),

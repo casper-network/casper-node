@@ -68,6 +68,13 @@ pub use error::Error;
 use linear_chain::LinearChain;
 use memory_metrics::MemoryMetrics;
 
+
+use static_assertions::const_assert;
+use std::mem;
+const _EVENT_SIZE: usize = mem::size_of::<Event2>();
+const_assert!(_EVENT_SIZE <= 112);
+
+
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
@@ -184,6 +191,128 @@ pub enum Event {
     #[from]
     LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
 }
+
+/// Debug Event. Must be removed.
+#[derive(Debug, From, Serialize)]
+#[must_use]
+#[allow(clippy::large_enum_variant)]
+pub enum Event2 {
+    /// Network event.
+    #[from]
+    Network(network::Event<Message>),
+    /// Small network event.
+    #[from]
+    SmallNetwork(small_network::Event<Message>),
+    #[from]
+    /// Storage event.
+    Storage(#[serde(skip_serializing)] storage::Event),
+    /// Block proposer event.
+    #[from]
+    BlockProposer(#[serde(skip_serializing)] block_proposer::Event),
+    #[from]
+    /// REST server event.
+    RestServer(#[serde(skip_serializing)] rest_server::Event),
+    /*
+    #[from]
+    /// RPC server event.
+    RpcServer(#[serde(skip_serializing)] rpc_server::Event),
+
+    #[from]
+    /// Event stream server event.
+    EventStreamServer(#[serde(skip_serializing)] event_stream_server::Event),
+    #[from]
+    /// Chainspec Loader event.
+    ChainspecLoader(#[serde(skip_serializing)] chainspec_loader::Event),
+    #[from]
+    /// Consensus event.
+    Consensus(#[serde(skip_serializing)] consensus::Event<NodeId>),
+    /// Deploy acceptor event.
+    #[from]
+    DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
+    /// Deploy fetcher event.
+    #[from]
+    DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
+    /// Deploy gossiper event.
+    #[from]
+    DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
+    /// Address gossiper event.
+    #[from]
+    AddressGossiper(gossiper::Event<GossipedAddress>),
+    /// Contract runtime event.
+    #[from]
+    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
+    /// Block executor event.
+    #[from]
+    BlockExecutor(#[serde(skip_serializing)] block_executor::Event),
+    /// Block validator event.
+    #[from]
+    ProtoBlockValidator(#[serde(skip_serializing)] block_validator::Event<ProtoBlock, NodeId>),
+    /// Linear chain event.
+    #[from]
+    LinearChain(#[serde(skip_serializing)] linear_chain::Event<NodeId>),
+
+    // Requests
+    /// Network request.
+    #[from]
+    NetworkRequest(#[serde(skip_serializing)] NetworkRequest<NodeId, Message>),
+    /// Network info request.
+    #[from]
+    NetworkInfoRequest(#[serde(skip_serializing)] NetworkInfoRequest<NodeId>),
+    /// Deploy fetcher request.
+    #[from]
+    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<NodeId, Deploy>),
+    /// Block proposer request.
+    #[from]
+    BlockProposerRequest(#[serde(skip_serializing)] BlockProposerRequest),
+    /// Block executor request.
+    #[from]
+    BlockExecutorRequest(#[serde(skip_serializing)] BlockExecutorRequest),
+    /// Block validator request.
+    #[from]
+    ProtoBlockValidatorRequest(
+        #[serde(skip_serializing)] BlockValidationRequest<ProtoBlock, NodeId>,
+    ),
+    /// Metrics request.
+    #[from]
+    MetricsRequest(#[serde(skip_serializing)] MetricsRequest),
+    /// Chainspec info request
+    #[from]
+    ChainspecLoaderRequest(#[serde(skip_serializing)] ChainspecLoaderRequest),
+    /// Storage request.
+    #[from]
+    StorageRequest(#[serde(skip_serializing)] StorageRequest),
+    /// Request for state storage.
+    #[from]
+    StateStoreRequest(StateStoreRequest),
+
+    // Announcements
+    /// Network announcement.
+    #[from]
+    NetworkAnnouncement(#[serde(skip_serializing)] NetworkAnnouncement<NodeId, Message>),
+    /// API server announcement.
+    #[from]
+    RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
+    /// DeployAcceptor announcement.
+    #[from]
+    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
+    /// Consensus announcement.
+    #[from]
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
+    /// BlockExecutor announcement.
+    #[from]
+    BlockExecutorAnnouncement(#[serde(skip_serializing)] BlockExecutorAnnouncement),
+    /// Deploy Gossiper announcement.
+    #[from]
+    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
+    /// Address Gossiper announcement.
+    #[from]
+    AddressGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<GossipedAddress>),
+    /// Linear chain announcement.
+    #[from]
+    LinearChainAnnouncement(#[serde(skip_serializing)] LinearChainAnnouncement),
+     */
+}
+
 
 impl From<RpcRequest<NodeId>> for Event {
     fn from(request: RpcRequest<NodeId>) -> Self {
@@ -540,17 +669,17 @@ impl reactor::Reactor for Reactor {
             // Requests:
             Event::NetworkRequest(req) => {
                 let event = if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
-                    Event::Network(network::Event::from(req))
+                    Event::Network(network::Event::NetworkRequest {request: Box::new(req)})
                 } else {
-                    Event::SmallNetwork(small_network::Event::from(req))
+                    Event::SmallNetwork(small_network::Event::NetworkRequest {req: Box::new(req)})
                 };
                 self.dispatch_event(effect_builder, rng, event)
             }
             Event::NetworkInfoRequest(req) => {
                 let event = if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
-                    Event::Network(network::Event::from(req))
+                    Event::Network(network::Event::NetworkInfoRequest {info_request: Box::new(req)})
                 } else {
-                    Event::SmallNetwork(small_network::Event::from(req))
+                    Event::SmallNetwork(small_network::Event::NetworkInfoRequest {req: Box::new(req)})
                 };
                 self.dispatch_event(effect_builder, rng, event)
             }
@@ -764,7 +893,7 @@ impl reactor::Reactor for Reactor {
                     ConsensusAnnouncement::Finalized(block) => {
                         let mut effects =
                             reactor_event_dispatch(block_proposer::Event::FinalizedProtoBlock {
-                                block: block.proto_block().clone(),
+                                block: Box::new(block.proto_block().clone()),
                                 height: block.height(),
                             });
                         let reactor_event = Event::EventStreamServer(

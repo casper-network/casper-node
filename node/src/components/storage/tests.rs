@@ -104,7 +104,7 @@ fn get_deploys(
 ) -> Vec<Option<Deploy>> {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::GetDeploys {
-            deploy_hashes,
+            deploy_hashes: Box::new(deploy_hashes),
             responder,
         }
         .into()
@@ -200,7 +200,7 @@ fn put_execution_results(
 ) {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutExecutionResults {
-            block_hash,
+            block_hash: Box::new(block_hash),
             execution_results,
             responder,
         }
@@ -411,7 +411,7 @@ fn can_retrieve_store_and_load_deploys() {
     // Also ensure we can retrieve just the header.
     let response = harness.send_request(&mut storage, |responder| {
         StorageRequest::GetDeployHeaders {
-            deploy_hashes: smallvec![*deploy.id()],
+            deploy_hashes: Box::new(smallvec![*deploy.id()]),
             responder,
         }
         .into()

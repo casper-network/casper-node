@@ -743,7 +743,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
-                deploy_hashes,
+                deploy_hashes: Box::new(deploy_hashes),
                 responder,
             },
             QueueKind::Regular,
@@ -762,7 +762,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::PutExecutionResults {
-                block_hash,
+                block_hash: Box::new(block_hash),
                 execution_results,
                 responder,
             },

@@ -913,6 +913,7 @@ dependencies = [
  "signal-hook",
  "signature",
  "smallvec 1.5.0",
+ "static_assertions",
  "structopt",
  "tempfile",
  "thiserror",
