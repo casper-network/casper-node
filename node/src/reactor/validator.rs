@@ -792,7 +792,7 @@ impl reactor::Reactor for Reactor {
                     }
                     ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
                         // TODO: handle the announcement and acutally disconnect
-                        debug!("Disconnecting from a given peer not yet implemented.");
+                        warn!("Disconnecting from a given peer not yet implemented.");
                         Effects::new()
                     }
                 }

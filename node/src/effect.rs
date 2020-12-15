@@ -964,8 +964,7 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Announce the intent to disconnect from a specific peer, which consensus thinks should be
-    /// punished.
+    /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
     pub(crate) async fn announce_disconnect_from_peer<I>(self, peer: I)
     where
         REv: From<ConsensusAnnouncement<I>>,

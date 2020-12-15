@@ -9,7 +9,7 @@ use datasize::DataSize;
 use derive_more::From;
 use prometheus::Registry;
 use serde::Serialize;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use crate::{
     components::{
@@ -748,7 +748,7 @@ impl reactor::Reactor for Reactor {
                 ),
                 ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
                     // TODO: handle the announcement and acutally disconnect
-                    debug!("Disconnecting from a given peer not yet implemented.");
+                    warn!("Disconnecting from a given peer not yet implemented.");
                     Effects::new()
                 }
             },

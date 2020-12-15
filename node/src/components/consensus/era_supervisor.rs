@@ -588,6 +588,15 @@ where
                     .announce_disconnect_from_peer(sender)
                     .ignore()
             }
+            ProtocolOutcome::Disconnect(sender) => {
+                error!(
+                    %sender,
+                    "disconnecting from the sender of invalid data"
+                );
+                self.effect_builder
+                    .announce_disconnect_from_peer(sender)
+                    .ignore()
+            }
             ProtocolOutcome::CreatedGossipMessage(out_msg) => {
                 // TODO: we'll want to gossip instead of broadcast here
                 self.effect_builder

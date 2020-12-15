@@ -266,6 +266,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // returned vertex that needs to be requeued, also return an `EnqueueVertex`
         // effect.
         let mut results = Vec::new();
+        let mut faulty_senders = HashSet::new();
         while !pvvs.is_empty() {
             let mut state_changed = false;
             for (sender, pvv) in pvvs.drain(..) {
@@ -320,8 +321,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                         Err((pvv, err)) => {
                             info!(?pvv, ?err, "invalid vertex");
                             // drop all the vertices that might have depended on this one
-                            self.drop_dependent_vertices(vec![pvv.inner().id()]);
-                            // TODO: Disconnect from senders!
+                            faulty_senders
+                                .extend(self.drop_dependent_vertices(vec![pvv.inner().id()]));
                         }
                     }
                 }
@@ -334,6 +335,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 results.extend(self.detect_finality());
             }
         }
+        results.extend(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect));
         results
     }
 
@@ -399,13 +401,20 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.highway.state().median_round_exp()
     }
 
-    fn drop_dependent_vertices(&mut self, mut vertices: Vec<Dependency<C>>) {
+    fn drop_dependent_vertices(&mut self, mut vertices: Vec<Dependency<C>>) -> HashSet<I> {
+        let mut senders = HashSet::new();
         while !vertices.is_empty() {
-            vertices = self.do_drop_dependent_vertices(vertices);
+            let (new_vertices, new_senders) = self.do_drop_dependent_vertices(vertices);
+            vertices = new_vertices;
+            senders.extend(new_senders);
         }
+        senders
     }
 
-    fn do_drop_dependent_vertices(&mut self, vertices: Vec<Dependency<C>>) -> Vec<Dependency<C>> {
+    fn do_drop_dependent_vertices(
+        &mut self,
+        vertices: Vec<Dependency<C>>,
+    ) -> (Vec<Dependency<C>>, HashSet<I>) {
         // collect the vertices that depend on the ones we got in the argument and their senders
         let (senders, mut dropped_vertices): (HashSet<I>, Vec<Dependency<C>>) = vertices
             .into_iter()
@@ -418,8 +427,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .map(|(sender, pvv)| (sender, pvv.inner().id()))
             .unzip();
 
-        dropped_vertices.extend(self.drop_by_senders(senders));
-        dropped_vertices
+        dropped_vertices.extend(self.drop_by_senders(senders.clone()));
+        (dropped_vertices, senders)
     }
 
     fn drop_by_senders(&mut self, senders: HashSet<I>) -> Vec<Dependency<C>> {
@@ -505,12 +514,14 @@ where
                     Err((_, err)) => {
                         // TODO: Disconnect from senders.
                         // drop the vertices that might have depended on this one
-                        self.drop_dependent_vertices(vec![v_id]);
-                        return vec![ProtocolOutcome::InvalidIncomingMessage(
+                        let faulty_senders = self.drop_dependent_vertices(vec![v_id]);
+                        return iter::once(ProtocolOutcome::InvalidIncomingMessage(
                             msg,
                             sender,
                             err.into(),
-                        )];
+                        ))
+                        .chain(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect))
+                        .collect();
                     }
                 };
                 let is_faulty = match pvv.inner().signed_wire_unit() {
@@ -605,7 +616,6 @@ where
             results
         } else {
             // TODO: Slash proposer?
-            // TODO: Disconnect from senders.
             // Drop vertices dependent on the invalid value.
             let dropped_vertices = self.pending_values.remove(value);
             // recursively remove vertices depending on the dropped ones
@@ -614,14 +624,17 @@ where
                 ?dropped_vertices,
                 "consensus value is invalid; dropping dependent vertices"
             );
-            self.drop_dependent_vertices(
+            let faulty_senders = self.drop_dependent_vertices(
                 dropped_vertices
                     .into_iter()
                     .flatten()
                     .map(|vv| vv.inner().id())
                     .collect(),
             );
-            vec![]
+            faulty_senders
+                .into_iter()
+                .map(ProtocolOutcome::Disconnect)
+                .collect()
         }
     }
 
