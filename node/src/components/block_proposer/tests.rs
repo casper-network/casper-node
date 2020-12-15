@@ -288,7 +288,7 @@ fn should_keep_track_of_unhandled_deploys() {
     );
     assert!(
         proposer.contains_finalized(deploy2.id()),
-        "should deploy2's hash should be considered seen"
+        "deploy2's hash should be considered seen"
     );
     assert!(
         !proposer.sets.finalized_deploys.contains_key(deploy2.id()),
