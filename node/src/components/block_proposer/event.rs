@@ -43,7 +43,7 @@ impl DeployType {
     }
 
     /// Extract into header and drop `DeployType`.
-    pub fn into_header(self) -> DeployHeader {
+    pub fn take_header(self) -> DeployHeader {
         match self {
             Self::Transfer { header, .. } => header,
             Self::Other { header, .. } => header,

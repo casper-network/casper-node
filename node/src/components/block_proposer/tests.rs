@@ -288,7 +288,11 @@ fn should_keep_track_of_unhandled_deploys() {
     );
     assert!(
         proposer.contains_finalized(deploy2.id()),
-        "should contain deploy2"
+        "should deploy2's hash should be considered seen"
+    );
+    assert!(
+        !proposer.sets.finalized_deploys.contains_key(deploy2.id()),
+        "should not yet contain deploy2"
     );
 
     let past_deploys = HashSet::new();
@@ -300,6 +304,17 @@ fn should_keep_track_of_unhandled_deploys() {
             &past_deploys
         ),
         "deploy2 should -not- be valid"
+    );
+
+    // Now we add Deploy2
+    proposer.add_deploy_or_transfer(creation_time, *deploy2.id(), deploy2.deploy_type().unwrap());
+    assert!(
+        proposer.sets.finalized_deploys.contains_key(deploy2.id()),
+        "deploy2 should now be in finalized_deploys"
+    );
+    assert!(
+        !proposer.unhandled_finalized.contains(deploy2.id()),
+        "deploy2 should not be in unhandled_finalized"
     );
 }
 

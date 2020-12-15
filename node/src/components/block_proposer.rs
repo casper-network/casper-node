@@ -297,8 +297,18 @@ impl BlockProposerReady {
             trace!("expired deploy {} rejected from the buffer", hash);
             return;
         }
+        if self.unhandled_finalized.remove(&hash) {
+            info!(
+                "deploy {} was previously marked as finalized, storing header",
+                hash
+            );
+            self.sets
+                .finalized_deploys
+                .insert(hash, deploy_or_transfer.take_header());
+            return;
+        }
         // only add the deploy if it isn't contained in a finalized block
-        if self.contains_finalized(&hash) {
+        if self.sets.finalized_deploys.contains_key(&hash) {
             info!("deploy {} rejected from the buffer", hash);
         } else {
             self.sets.pending.insert(hash, deploy_or_transfer);
@@ -316,7 +326,7 @@ impl BlockProposerReady {
                 Some(deploy_type) => {
                     self.sets
                         .finalized_deploys
-                        .insert(deploy_hash, deploy_type.into_header());
+                        .insert(deploy_hash, deploy_type.take_header());
                 }
                 // If we haven't seen this deploy before, we still need to take note of it.
                 _ => {
