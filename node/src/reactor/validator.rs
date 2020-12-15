@@ -791,7 +791,9 @@ impl reactor::Reactor for Reactor {
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
                     ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
-                        todo!("implement disconnection")
+                        // TODO: handle the announcement and acutally disconnect
+                        debug!("Disconnecting from a given peer not yet implemented.");
+                        Effects::new()
                     }
                 }
             }
