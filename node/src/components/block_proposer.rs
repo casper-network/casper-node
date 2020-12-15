@@ -147,6 +147,7 @@ where
                     deploy_config: chainspec.genesis.deploy_config,
                     state_key: deploy_sets::create_storage_key(&chainspec),
                     request_queue: Default::default(),
+                    unhandled_finalized: Default::default(),
                 };
 
                 // Replay postponed events onto new state.
@@ -187,6 +188,10 @@ where
 struct BlockProposerReady {
     /// Set of deploys currently stored in the block proposer.
     sets: BlockProposerDeploySets,
+    /// `unhandled_finalized` is a set of hashes for deploys that the `BlockProposer` has not yet
+    /// seen but were reported as reported to `finalized_deploys()`. They are used to
+    /// filter deploys for proposal, similar to `self.sets.finalized_deploys`.
+    unhandled_finalized: HashSet<DeployHash>,
     // We don't need the whole Chainspec here, just the deploy config.
     deploy_config: DeployConfig,
     /// Key for storing the block proposer state.
@@ -292,12 +297,22 @@ impl BlockProposerReady {
             trace!("expired deploy {} rejected from the buffer", hash);
             return;
         }
+        if self.unhandled_finalized.remove(&hash) {
+            info!(
+                "deploy {} was previously marked as finalized, storing header",
+                hash
+            );
+            self.sets
+                .finalized_deploys
+                .insert(hash, deploy_or_transfer.take_header());
+            return;
+        }
         // only add the deploy if it isn't contained in a finalized block
-        if !self.sets.finalized_deploys.contains_key(&hash) {
+        if self.sets.finalized_deploys.contains_key(&hash) {
+            info!("deploy {} rejected from the buffer", hash);
+        } else {
             self.sets.pending.insert(hash, deploy_or_transfer);
             info!("added deploy {} to the buffer", hash);
-        } else {
-            info!("deploy {} rejected from the buffer", hash);
         }
     }
 
@@ -306,21 +321,19 @@ impl BlockProposerReady {
     where
         I: IntoIterator<Item = DeployHash>,
     {
-        // TODO: This will ignore deploys that weren't in `pending`. They might be added
-        // later, and then would be proposed as duplicates.
-        let deploys: HashMap<_, _> = deploys
-            .into_iter()
-            .filter_map(|deploy_hash| {
-                self.sets
-                    .pending
-                    .get(&deploy_hash)
-                    .map(|deploy_type| (deploy_hash, deploy_type.header().clone()))
-            })
-            .collect();
-        self.sets
-            .pending
-            .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
-        self.sets.finalized_deploys.extend(deploys);
+        for deploy_hash in deploys.into_iter() {
+            match self.sets.pending.remove(&deploy_hash) {
+                Some(deploy_type) => {
+                    self.sets
+                        .finalized_deploys
+                        .insert(deploy_hash, deploy_type.take_header());
+                }
+                // If we haven't seen this deploy before, we still need to take note of it.
+                _ => {
+                    self.unhandled_finalized.insert(deploy_hash);
+                }
+            }
+        }
     }
 
     /// Handles finalization of a block.
@@ -365,9 +378,10 @@ impl BlockProposerReady {
         past_deploys: &HashSet<DeployHash>,
     ) -> bool {
         let all_deps_resolved = || {
-            header.dependencies().iter().all(|dep| {
-                past_deploys.contains(dep) || self.sets.finalized_deploys.contains_key(dep)
-            })
+            header
+                .dependencies()
+                .iter()
+                .all(|dep| past_deploys.contains(dep) || self.contains_finalized(dep))
         };
         let ttl_valid = header.ttl() <= deploy_config.max_ttl;
         let timestamp_valid = header.timestamp() <= block_timestamp;
@@ -456,5 +470,9 @@ impl BlockProposerReady {
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.
     fn prune(&mut self, current_instant: Timestamp) -> usize {
         self.sets.prune(current_instant)
+    }
+
+    fn contains_finalized(&self, dep: &DeployHash) -> bool {
+        self.sets.finalized_deploys.contains_key(dep) || self.unhandled_finalized.contains(dep)
     }
 }
