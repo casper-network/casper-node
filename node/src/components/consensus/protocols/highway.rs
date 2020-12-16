@@ -19,21 +19,18 @@ use self::round_success_meter::RoundSuccessMeter;
 use casper_types::{auction::BLOCK_REWARD, U512};
 
 use crate::{
-    components::{
-        chainspec_loader::Chainspec,
-        consensus::{
-            consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome},
-            highway_core::{
-                active_validator::Effect as AvEffect,
-                finality_detector::FinalityDetector,
-                highway::{
-                    Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
-                    Vertex,
-                },
-                validators::Validators,
+    components::consensus::{
+        config::ProtocolConfig,
+        consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome},
+        highway_core::{
+            active_validator::Effect as AvEffect,
+            finality_detector::FinalityDetector,
+            highway::{
+                Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex, Vertex,
             },
-            traits::{ConsensusValueT, Context, NodeIdT},
+            validators::Validators,
         },
+        traits::{ConsensusValueT, Context, NodeIdT},
     },
     types::Timestamp,
     NodeRng,
@@ -67,7 +64,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
         slashed: &HashSet<C::ValidatorId>,
-        chainspec: &Chainspec,
+        protocol_config: &ProtocolConfig,
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
         start_time: Timestamp,
         seed: u64,
@@ -91,7 +88,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         }
 
         // TODO: Apply all upgrades with a height less than or equal to the start height.
-        let highway_config = &chainspec.genesis.highway_config;
+        let highway_config = &protocol_config.highway_config;
 
         let total_weight = u128::from(validators.total_weight());
         let ftt_fraction = highway_config.finality_threshold_fraction;

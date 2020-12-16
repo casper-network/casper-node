@@ -26,19 +26,16 @@ use tracing::{error, info, trace, warn};
 use casper_types::{ProtocolVersion, U512};
 
 use crate::{
-    components::{
-        chainspec_loader::Chainspec,
-        consensus::{
-            candidate_block::CandidateBlock,
-            cl_context::{ClContext, Keypair},
-            consensus_protocol::{
-                BlockContext, ConsensusProtocol, EraEnd, FinalizedBlock as CpFinalizedBlock,
-                ProtocolOutcome,
-            },
-            metrics::ConsensusMetrics,
-            traits::NodeIdT,
-            Config, ConsensusMessage, Event, ReactorEventT,
+    components::consensus::{
+        candidate_block::CandidateBlock,
+        cl_context::{ClContext, Keypair},
+        consensus_protocol::{
+            BlockContext, ConsensusProtocol, EraEnd, FinalizedBlock as CpFinalizedBlock,
+            ProtocolOutcome,
         },
+        metrics::ConsensusMetrics,
+        traits::NodeIdT,
+        Config, ConsensusMessage, Event, ReactorEventT,
     },
     crypto::{
         asymmetric_key::{self, PublicKey, SecretKey},
@@ -54,7 +51,9 @@ use crate::{
 };
 
 pub use self::era::{Era, EraId};
-use crate::components::contract_runtime::ValidatorWeightsByEraIdRequest;
+use crate::components::{
+    consensus::config::ProtocolConfig, contract_runtime::ValidatorWeightsByEraIdRequest,
+};
 
 mod era;
 
@@ -62,7 +61,7 @@ type ConsensusConstructor<I> = dyn Fn(
     Digest,                                       // the era's unique instance ID
     BTreeMap<PublicKey, U512>,                    // validator weights
     &HashSet<PublicKey>,                          // slashed validators that are banned in this era
-    &Chainspec,                                   // the network's chainspec
+    &ProtocolConfig,                              // the network's chainspec
     Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
     Timestamp,                                    // start time for this era
     u64,                                          // random seed
@@ -79,7 +78,7 @@ pub struct EraSupervisor<I> {
     pub(super) secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
     current_era: EraId,
-    chainspec: Chainspec,
+    protocol_config: ProtocolConfig,
     #[data_size(skip)] // Negligible for most closures, zero for functions.
     new_consensus: Box<ConsensusConstructor<I>>,
     node_start_time: Timestamp,
@@ -118,7 +117,7 @@ where
         config: WithDir<Config>,
         effect_builder: EffectBuilder<REv>,
         validators: BTreeMap<PublicKey, U512>,
-        chainspec: &Chainspec,
+        protocol_config: ProtocolConfig,
         genesis_state_root_hash: Digest,
         registry: &Registry,
         new_consensus: Box<ConsensusConstructor<I>>,
@@ -127,16 +126,17 @@ where
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
-        let bonded_eras: u64 = chainspec.genesis.unbonding_delay - chainspec.genesis.auction_delay;
+        let bonded_eras: u64 = protocol_config.unbonding_delay - protocol_config.auction_delay;
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
+        let genesis_start_time = protocol_config.timestamp;
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),
             secret_signing_key,
             public_signing_key,
             current_era: EraId(0),
-            chainspec: chainspec.clone(),
+            protocol_config,
             new_consensus,
             node_start_time: Timestamp::now(),
             bonded_eras,
@@ -150,7 +150,7 @@ where
             validators,
             vec![], // no banned validators in era 0
             0,      // hardcoded seed for era 0
-            chainspec.genesis.timestamp,
+            genesis_start_time,
             0, // the first block has height 0
             genesis_state_root_hash,
         );
@@ -178,11 +178,8 @@ where
     fn booking_block_height(&self, era_id: EraId) -> u64 {
         // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
         // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1
-        let after_booking_era_id = EraId(
-            era_id
-                .0
-                .saturating_sub(self.chainspec.genesis.auction_delay),
-        );
+        let after_booking_era_id =
+            EraId(era_id.0.saturating_sub(self.protocol_config.auction_delay));
         self.active_eras
             .get(&after_booking_era_id)
             .expect("should have era after booking block")
@@ -228,7 +225,7 @@ where
         }
         self.current_era = era_id;
         self.metrics.current_era.set(self.current_era.0 as i64);
-        let instance_id = instance_id(&self.chainspec, state_root_hash, start_height);
+        let instance_id = instance_id(&self.protocol_config, state_root_hash, start_height);
 
         info!(
             ?validators,
@@ -272,7 +269,7 @@ where
             instance_id,
             validators.clone(),
             &slashed,
-            &self.chainspec,
+            &self.protocol_config,
             prev_era.map(|era| &*era.consensus),
             start_time,
             seed,
@@ -750,15 +747,19 @@ where
 }
 
 /// Computes the instance ID for an era, given the state root hash, block height and chainspec.
-fn instance_id(chainspec: &Chainspec, state_root_hash: Digest, block_height: u64) -> Digest {
+fn instance_id(
+    protocol_config: &ProtocolConfig,
+    state_root_hash: Digest,
+    block_height: u64,
+) -> Digest {
     let mut result = [0; Digest::LENGTH];
     let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
 
-    hasher.update(&chainspec.genesis.name);
-    hasher.update(chainspec.genesis.timestamp.millis().to_le_bytes());
+    hasher.update(&protocol_config.name);
+    hasher.update(protocol_config.timestamp.millis().to_le_bytes());
     hasher.update(state_root_hash);
 
-    for upgrade_point in chainspec
+    for upgrade_point in protocol_config
         .upgrades
         .iter()
         .take_while(|up| up.activation_point.height <= block_height)

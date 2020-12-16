@@ -34,7 +34,7 @@ use crate::{
     NodeRng,
 };
 pub use chainspec::Chainspec;
-pub(crate) use chainspec::{DeployConfig, HighwayConfig};
+pub(crate) use chainspec::{DeployConfig, HighwayConfig, UpgradePoint};
 pub use error::Error;
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| ChainspecInfo {
