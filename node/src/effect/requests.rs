@@ -39,10 +39,11 @@ use super::{Multiple, Responder};
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
+        consensus::EraId,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
     },
-    crypto::hash::Digest,
+    crypto::{asymmetric_key::PublicKey, hash::Digest},
     rpcs::chain::BlockIdentifier,
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader,
@@ -829,6 +830,8 @@ impl<I: Display> Display for LinearChainRequest<I> {
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
     HandleLinearBlock(Box<BlockHeader>, Responder<Option<FinalitySignature>>),
+    /// Check whether validator identifying with the public key is bonded.
+    IsBondedValidator(EraId, PublicKey, Responder<bool>),
 }
 
 /// ChainspecLoader componenent requests.

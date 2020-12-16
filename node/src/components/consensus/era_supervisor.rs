@@ -821,6 +821,15 @@ where
         let results = self.era_supervisor.finished_joining(now);
         self.handle_consensus_results(self.era_supervisor.current_era, results)
     }
+
+    /// Returns whether validator is bonded in any of currently active eras.
+    pub(super) fn is_bonded_validator(&self, era_id: EraId, vid: PublicKey) -> bool {
+        self.era_supervisor
+            .active_eras
+            .get(&era_id)
+            .map(|cp| cp.is_bonded_validator(&vid))
+            .unwrap_or(false)
+    }
 }
 
 /// Computes the instance ID for an era, given the state root hash, block height and chainspec.

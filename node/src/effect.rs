@@ -1301,6 +1301,18 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
+
+    /// Check if validator is bonded in the era.
+    pub(crate) async fn is_bonded_validator(self, era_id: EraId, public_key: PublicKey) -> bool
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(
+            |responder| ConsensusRequest::IsBondedValidator(era_id, public_key, responder),
+            QueueKind::Regular,
+        )
+        .await
+    }
 }
 
 /// Construct a fatal error effect.
