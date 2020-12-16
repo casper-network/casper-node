@@ -1,36 +1,17 @@
 #!/usr/bin/env bash
-#
-# Displays chain spec toml file.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
 
-#######################################
-# Destructure input args.
-#######################################
+source $NCTL/sh/utils.sh
 
-# Unset to avoid parameter collisions.
-unset net
+unset NET_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-net=${net:-1}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-less $NCTL/assets/net-$net/chainspec/chainspec.toml
+less $(get_path_to_net ${NET_ID:-1})/chainspec/chainspec.toml

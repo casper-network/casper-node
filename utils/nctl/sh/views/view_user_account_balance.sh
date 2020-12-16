@@ -1,16 +1,8 @@
 #!/usr/bin/env bash
-#
-# Renders a user's account balance.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
 
-#######################################
-# Destructure input args.
-#######################################
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
-# Unset to avoid parameter collisions.
 unset NET_ID
 unset NODE_ID
 unset USER_ID
@@ -27,26 +19,14 @@ do
     esac
 done
 
-# Set defaults.
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-1}
 USER_ID=${USER_ID:-"all"}
 
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
-source $(get_path_to_net_vars $NET_ID)
-
-# Render account balance(s).
 if [ $USER_ID = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_USER_COUNT)
+    for USER_ID in $(seq 1 $(get_count_of_users $NET_ID))
     do
-        render_account_balance $NET_ID $NODE_ID $NCTL_ACCOUNT_TYPE_USER $IDX
+        render_account_balance $NET_ID $NODE_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID
     done
 else
     render_account_balance $NET_ID $NODE_ID $NCTL_ACCOUNT_TYPE_USER $USER_ID

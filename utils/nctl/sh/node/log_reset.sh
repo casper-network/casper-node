@@ -1,17 +1,7 @@
 #!/usr/bin/env bash
-#
-# Resets node logs.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
 
-#######################################
-# Destructure input args.
-#######################################
+source $NCTL/sh/utils.sh
 
-# Unset to avoid parameter collisions.
 unset NET_ID
 unset NODE_ID
 
@@ -26,29 +16,14 @@ do
     esac
 done
 
-# Set defaults.
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-"all"}
 
-#######################################
-# Imports
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
 source $(get_path_to_net_vars $NET_ID)
-
-#######################################
-# Main
-#######################################
-
-# Reset logs.
 if [ $NODE_ID = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
+    for NODE_ID in $(seq 1 $NCTL_NET_NODE_COUNT)
     do
-        rm $(get_path_to_node $NET_ID $IDX)/logs/*.log > /dev/null 2>&1
+        rm $(get_path_to_node $NET_ID $NODE_ID)/logs/*.log > /dev/null 2>&1
     done
 else
     rm $(get_path_to_node $NET_ID $NODE_ID)/logs/*.log > /dev/null 2>&1

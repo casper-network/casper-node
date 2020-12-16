@@ -9,6 +9,13 @@
 #   Delay in seconds to apply to genesis timestamp.
 
 #######################################
+# Imports
+#######################################
+
+source $NCTL/sh/utils.sh
+source $NCTL/sh/assets/setup_node.sh
+
+#######################################
 # Sets assets pertaining to network binaries.
 # Globals:
 #   NCTL_CASPER_HOME - path to node software github repo.
@@ -18,7 +25,7 @@
 function _set_bin() {
     local PATH_TO_NET=${1}
 
-    log "... binaries"
+    log "... setting binaries"
 
     # Set directory.
     mkdir $PATH_TO_NET/bin
@@ -53,7 +60,7 @@ function _set_chainspec() {
     local GENESIS_DELAY=${3}
     local PATH_TO_CHAINSPEC=$PATH_TO_NET/chainspec/chainspec.toml
 
-    log "... chainspec"
+    log "... setting chainspec"
 
     # Set directory.
     mkdir $PATH_TO_NET/chainspec
@@ -119,7 +126,7 @@ function _set_daemon() {
     local COUNT_NODES=${3}
     local COUNT_BOOTSTRAPS=${4}
 
-    log "... daemon"
+    log "... setting daemon"
 
     # Set directory.
     mkdir $PATH_TO_NET/daemon
@@ -141,7 +148,7 @@ function _set_daemon() {
 function _set_faucet() {
     local PATH_TO_NET=${1}
 
-    log "... faucet"
+    log "... setting faucet"
 
     # Set directory.
     mkdir $PATH_TO_NET/faucet
@@ -162,20 +169,20 @@ function _set_faucet() {
 # Arguments:
 #   Path to network directory.
 #   Network ordinal identifier.
-#   Count of nodes to setup.
+#   Count of genesis nodes to setup.
 #   Count of bootstraps to setup.
 #######################################
 function _set_nodes() {
     local PATH_TO_NET=${1}
     local NET_ID=${2}
-    local COUNT_NODES=${3}
+    local COUNT_GENESIS_NODES=${3}
     local COUNT_BOOTSTRAPS=${4}
 
-    log "... nodes"
+    log "... setting nodes"
     mkdir $PATH_TO_NET/nodes
-    for IDX in $(seq 1 $(($COUNT_NODES * 2)))
+    for IDX in $(seq 1 $(($COUNT_GENESIS_NODES * 2)))
     do
-        _set_node $PATH_TO_NET $NET_ID $IDX $COUNT_NODES
+        setup_node $NET_ID $IDX $COUNT_GENESIS_NODES
     done
 }
 
@@ -236,7 +243,7 @@ function _set_users() {
     local PATH_TO_NET=${1}
     local COUNT_USERS=${2}
 
-    log "... users"
+    log "... setting users"
     mkdir $PATH_TO_NET/users
     for IDX in $(seq 1 $COUNT_USERS)
     do
@@ -265,7 +272,7 @@ function _set_vars() {
     local COUNT_BOOTSTRAPS=${4}
     local COUNT_USERS=${5}
 
-    log "... variables"
+    log "... setting variables"
 
     touch $PATH_TO_NET/vars
 	cat >> $PATH_TO_NET/vars <<- EOM
@@ -316,7 +323,6 @@ function _main() {
     _set_vars $PATH_TO_NET $NET_ID $COUNT_NODES $COUNT_BOOTSTRAPS $COUNT_USERS
 
     # Set artefacts.
-    log "setting network artefacts:"
     _set_bin $PATH_TO_NET
     _set_chainspec $PATH_TO_NET $NET_ID $GENESIS_DELAY
     _set_daemon $PATH_TO_NET $NET_ID $COUNT_NODES $COUNT_BOOTSTRAPS
@@ -331,7 +337,6 @@ function _main() {
 # Destructure input args.
 #######################################
 
-# Unset to avoid parameter collisions.
 unset BOOTSTRAP_COUNT
 unset GENESIS_DELAY_SECONDS
 unset NET_ID
@@ -352,25 +357,12 @@ do
     esac
 done
 
-# Set defaults.
-BOOTSTRAP_COUNT=${BOOTSTRAP_COUNT:-1}
+BOOTSTRAP_COUNT=${BOOTSTRAP_COUNT:-3}
 GENESIS_DELAY_SECONDS=${GENESIS_DELAY_SECONDS:-30}
 NET_ID=${NET_ID:-1}
 NODE_COUNT=${NODE_COUNT:-5}
 USER_COUNT=${USER_COUNT:-5}
 
-#######################################
-# Imports
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-#######################################
-# Main
-#######################################
-
-# Execute when inputs are valid.
 if [ $BOOTSTRAP_COUNT -ge $NODE_COUNT ]; then
     log_error "Invalid input: bootstraps MUST BE < nodes"
 else
