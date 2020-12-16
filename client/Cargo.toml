@@ -9,6 +9,9 @@ documentation = "https://docs.rs/casper-client"
 homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/client"
 license-file = "../LICENSE"
+include = [
+    "headers/casper_client.h"
+]
 
 [lib]
 name = "casper_client"
