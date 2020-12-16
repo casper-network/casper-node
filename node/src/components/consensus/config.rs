@@ -8,7 +8,6 @@ use crate::{
     utils::External,
     Chainspec,
 };
-use casper_types::auction::EraId;
 
 /// Consensus configuration.
 #[derive(DataSize, Debug, Deserialize, Serialize, Default, Clone)]
@@ -27,10 +26,10 @@ pub(crate) struct ProtocolConfig {
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
     /// auction_delay + 1
     pub(crate) auction_delay: u64,
-    pub(crate) unbonding_delay: EraId,
-    /// Name of the Genesis network.
+    pub(crate) unbonding_delay: u64,
+    /// Name of the network.
     pub(crate) name: String,
-    /// Timestamp for the Genesis block.
+    /// Genesis timestamp.
     pub(crate) timestamp: Timestamp,
     pub(crate) upgrades: Vec<UpgradePoint>,
 }
