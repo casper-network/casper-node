@@ -919,9 +919,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a proto block has been finalized.
-    pub(crate) async fn announce_finalized_block(self, finalized_block: FinalizedBlock)
+    pub(crate) async fn announce_finalized_block<I>(self, finalized_block: FinalizedBlock)
     where
-        REv: From<ConsensusAnnouncement>,
+        REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
@@ -931,9 +931,9 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn announce_block_handled(self, block_header: BlockHeader)
+    pub(crate) async fn announce_block_handled<I>(self, block_header: BlockHeader)
     where
-        REv: From<ConsensusAnnouncement>,
+        REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
@@ -944,13 +944,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// An equivocation has been detected.
-    pub(crate) async fn announce_fault_event(
+    pub(crate) async fn announce_fault_event<I>(
         self,
         era_id: EraId,
         public_key: PublicKey,
         timestamp: Timestamp,
     ) where
-        REv: From<ConsensusAnnouncement>,
+        REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
@@ -959,6 +959,19 @@ impl<REv> EffectBuilder<REv> {
                     public_key: Box::new(public_key),
                     timestamp,
                 },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
+    pub(crate) async fn announce_disconnect_from_peer<I>(self, peer: I)
+    where
+        REv: From<ConsensusAnnouncement<I>>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::DisconnectFromPeer(peer),
                 QueueKind::Regular,
             )
             .await

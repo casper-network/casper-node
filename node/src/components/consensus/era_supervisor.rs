@@ -576,13 +576,23 @@ where
     ) -> Effects<Event<I>> {
         match consensus_result {
             ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => {
-                // TODO: we will probably want to disconnect from the sender here
                 error!(
                     %sender,
                     %error,
-                    "invalid incoming message to consensus instance"
+                    "invalid incoming message to consensus instance; disconnecting from the sender"
                 );
-                Default::default()
+                self.effect_builder
+                    .announce_disconnect_from_peer(sender)
+                    .ignore()
+            }
+            ProtocolOutcome::Disconnect(sender) => {
+                error!(
+                    %sender,
+                    "disconnecting from the sender of invalid data"
+                );
+                self.effect_builder
+                    .announce_disconnect_from_peer(sender)
+                    .ignore()
             }
             ProtocolOutcome::CreatedGossipMessage(out_msg) => {
                 // TODO: we'll want to gossip instead of broadcast here
