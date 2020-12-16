@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
 
-#######################################
-# Imports
-#######################################
-
 source $NCTL/sh/utils.sh
 source $NCTL/sh/contracts/auction/funcs.sh
-
-#######################################
-# Destructure input args.
-#######################################
 
 unset AMOUNT
 unset BIDDER_ID

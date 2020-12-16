@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-#
-# Set of supervisord node process control functions.
-# Globals:
-#   NCTL - path to nctl home directory.
-
-# Import utils.
-source $NCTL/sh/utils.sh
 
 #######################################
 # Spins up a node using supervisord.
