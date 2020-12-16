@@ -39,7 +39,7 @@ use crate::{
         Config, ConsensusMessage, Event, ReactorEventT,
     },
     crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey},
+        asymmetric_key::{PublicKey, SecretKey},
         hash::Digest,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
@@ -457,8 +457,13 @@ where
         let era_id = block_header.era_id();
         let maybe_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
             let block_hash = block_header.hash();
-            let signature = asymmetric_key::sign(block_hash.inner(), &our_sk, &our_pk, self.rng);
-            Some(FinalitySignature::new(block_hash, signature, our_pk))
+            Some(FinalitySignature::new(
+                block_hash,
+                era_id,
+                &our_sk,
+                our_pk,
+                &mut self.rng,
+            ))
         } else {
             None
         };
