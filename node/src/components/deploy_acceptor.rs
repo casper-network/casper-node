@@ -5,6 +5,7 @@ use std::{collections::HashMap, convert::Infallible, fmt::Debug};
 
 use semver::Version;
 use serde::Serialize;
+use thiserror::Error;
 use tracing::{debug, error, warn};
 
 use crate::{
@@ -21,6 +22,7 @@ use crate::{
 pub use event::Event;
 
 use super::chainspec_loader::DeployConfig;
+use crate::effect::Responder;
 
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
 pub trait ReactorEventT:
@@ -48,6 +50,13 @@ impl From<Chainspec> for DeployAcceptorConfig {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum Error {
+    /// A invalid deploy was received from the client.
+    #[error("invalid deploy from client")]
+    InvalidDeploy,
+}
+
 /// The `DeployAcceptor` is the component which handles all new `Deploy`s immediately after they're
 /// received by this node, regardless of whether they were provided by a peer or a client.
 ///
@@ -71,6 +80,7 @@ impl DeployAcceptor {
         effect_builder: EffectBuilder<REv>,
         deploy: Box<Deploy>,
         source: Source<NodeId>,
+        responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
         // TODO - where to get version from?
         let chainspec_version = Version::new(1, 0, 0);
@@ -84,6 +94,7 @@ impl DeployAcceptor {
                         source,
                         chainspec_version,
                         maybe_deploy_config: Box::new(Some(genesis_config)),
+                        maybe_responder: responder,
                     })
             }
             None => effect_builder
@@ -93,6 +104,7 @@ impl DeployAcceptor {
                     source,
                     chainspec_version,
                     maybe_deploy_config: Box::new(maybe_chainspec.map(|c| (*c).clone().into())),
+                    maybe_responder: responder,
                 }),
         }
     }
@@ -103,21 +115,32 @@ impl DeployAcceptor {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         deploy_config: DeployAcceptorConfig,
+        maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
         let mut cloned_deploy = deploy.clone();
+        let mut effects = Effects::new();
         if is_valid(&mut cloned_deploy, deploy_config) {
-            effect_builder
-                .put_deploy_to_storage(cloned_deploy)
-                .event(move |is_new| Event::PutToStorageResult {
+            if let Some(responder) = maybe_responder {
+                effects.extend(responder.respond(Ok(())).ignore());
+            }
+            effects.extend(effect_builder.put_deploy_to_storage(cloned_deploy).event(
+                move |is_new| Event::PutToStorageResult {
                     deploy,
                     source,
                     is_new,
-                })
+                },
+            ));
         } else {
-            effect_builder
-                .announce_invalid_deploy(deploy, source)
-                .ignore()
+            if let Some(responder) = maybe_responder {
+                effects.extend(responder.respond(Err(Error::InvalidDeploy)).ignore());
+            }
+            effects.extend(
+                effect_builder
+                    .announce_invalid_deploy(deploy, source)
+                    .ignore(),
+            );
         }
+        effects
     }
 
     fn failed_to_get_chainspec(
@@ -158,18 +181,29 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
         match event {
-            Event::Accept { deploy, source } => self.accept(effect_builder, deploy, source),
+            Event::Accept {
+                deploy,
+                source,
+                responder,
+            } => self.accept(effect_builder, deploy, source, responder),
             Event::GetChainspecResult {
                 deploy,
                 source,
                 chainspec_version,
                 maybe_deploy_config,
+                maybe_responder,
             } => match *maybe_deploy_config {
                 Some(deploy_config) => {
                     // Update chainspec cache.
                     self.cached_deploy_configs
                         .insert(chainspec_version, deploy_config.clone());
-                    self.validate(effect_builder, deploy, source, deploy_config)
+                    self.validate(
+                        effect_builder,
+                        deploy,
+                        source,
+                        deploy_config,
+                        maybe_responder,
+                    )
                 }
                 None => self.failed_to_get_chainspec(deploy, source, chainspec_version),
             },

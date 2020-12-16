@@ -687,6 +687,7 @@ impl reactor::Reactor for Reactor {
                             Event::DeployAcceptor(deploy_acceptor::Event::Accept {
                                 deploy,
                                 source: Source::Peer(sender),
+                                responder: None,
                             })
                         }
                         Tag::Block => todo!("Handle GET block response"),
@@ -711,10 +712,14 @@ impl reactor::Reactor for Reactor {
                 debug!(%peer_id, "new peer announcement event ignored (validator reactor does not care)");
                 Effects::new()
             }
-            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
+            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
+                deploy,
+                responder,
+            }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
+                    responder,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }

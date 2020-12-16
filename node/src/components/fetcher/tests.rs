@@ -12,7 +12,10 @@ use crate::{
     components::{
         chainspec_loader::Chainspec, deploy_acceptor, in_memory_network::NetworkController, storage,
     },
-    effect::announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
+    effect::{
+        announcements::{DeployAcceptorAnnouncement, NetworkAnnouncement},
+        Responder,
+    },
     protocol::Message,
     reactor::{Reactor as ReactorTrait, Runner},
     testing::{
@@ -156,6 +159,7 @@ impl Reactor {
                         ReactorEvent::DeployAcceptor(deploy_acceptor::Event::Accept {
                             deploy,
                             source: Source::Peer(sender),
+                            responder: None,
                         }),
                     )
                 }
@@ -176,10 +180,11 @@ impl NetworkedReactor for Reactor {
 
 fn announce_deploy_received(
     deploy: Deploy,
+    responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
 ) -> impl FnOnce(EffectBuilder<ReactorEvent>) -> Effects<ReactorEvent> {
     |effect_builder: EffectBuilder<ReactorEvent>| {
         effect_builder
-            .announce_deploy_received(Box::new(deploy))
+            .announce_deploy_received(Box::new(deploy), responder)
             .ignore()
     }
 }
@@ -206,10 +211,11 @@ async fn store_deploy(
     deploy: &Deploy,
     node_id: &NodeId,
     network: &mut Network<Reactor>,
+    responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
     mut rng: &mut TestRng,
 ) {
     network
-        .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone()))
+        .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone(), responder))
         .await;
 
     // cycle to deploy acceptor announcement
@@ -275,7 +281,7 @@ async fn should_fetch_from_local() {
 
     // Store deploy on a node.
     let node_to_store_on = &node_ids[0];
-    store_deploy(&deploy, node_to_store_on, &mut network, &mut rng).await;
+    store_deploy(&deploy, node_to_store_on, &mut network, None, &mut rng).await;
 
     // Try to fetch the deploy from a node that holds it.
     let node_id = &node_ids[0];
@@ -320,7 +326,7 @@ async fn should_fetch_from_peer() {
 
     // Store deploy on a node.
     let node_with_deploy = &node_ids[0];
-    store_deploy(&deploy, node_with_deploy, &mut network, &mut rng).await;
+    store_deploy(&deploy, node_with_deploy, &mut network, None, &mut rng).await;
 
     let node_without_deploy = &node_ids[1];
     let deploy_hash = *deploy.id();
@@ -372,7 +378,7 @@ async fn should_timeout_fetch_from_peer() {
     let requesting_node = node_ids[1].clone();
 
     // Store deploy on holding node.
-    store_deploy(&deploy, &holding_node, &mut network, &mut rng).await;
+    store_deploy(&deploy, &holding_node, &mut network, None, &mut rng).await;
 
     // Initiate requesting node asking for deploy from holding node.
     let fetched = Arc::new(Mutex::new((false, None)));

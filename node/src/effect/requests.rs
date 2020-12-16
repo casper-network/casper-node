@@ -40,6 +40,7 @@ use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
+        deploy_acceptor::Error,
         fetcher::FetchResult,
     },
     crypto::hash::Digest,
@@ -430,7 +431,7 @@ pub enum RpcRequest<I> {
         /// The deploy to be announced.
         deploy: Box<Deploy>,
         /// Responder to call.
-        responder: Responder<()>,
+        responder: Responder<Result<(), Error>>,
     },
     /// If `maybe_hash` is `Some`, return the specified block if it exists, else `None`.  If
     /// `maybe_hash` is `None`, return the latest block.

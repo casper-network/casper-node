@@ -177,9 +177,11 @@ where
     ) -> Effects<Self::Event> {
         match event {
             Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => {
-                let mut effects = effect_builder.announce_deploy_received(deploy).ignore();
-                effects.extend(responder.respond(()).ignore());
-                effects
+                effect_builder
+                    .announce_deploy_received(deploy, Some(responder))
+                    .ignore()
+                //effects.extend(responder.respond(()).ignore());
+                //effects
             }
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),

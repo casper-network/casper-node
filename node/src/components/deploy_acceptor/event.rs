@@ -5,7 +5,8 @@ use serde::Serialize;
 
 use super::{DeployAcceptorConfig, Source};
 use crate::{
-    effect::announcements::RpcServerAnnouncement,
+    components::deploy_acceptor::Error,
+    effect::{announcements::RpcServerAnnouncement, Responder},
     types::{Deploy, NodeId},
 };
 
@@ -16,6 +17,7 @@ pub enum Event {
     Accept {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
+        responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of getting the chainspec from the storage component.
     GetChainspecResult {
@@ -23,6 +25,7 @@ pub enum Event {
         source: Source<NodeId>,
         chainspec_version: Version,
         maybe_deploy_config: Box<Option<DeployAcceptorConfig>>,
+        maybe_responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
     PutToStorageResult {
@@ -35,9 +38,10 @@ pub enum Event {
 impl From<RpcServerAnnouncement> for Event {
     fn from(announcement: RpcServerAnnouncement) -> Self {
         match announcement {
-            RpcServerAnnouncement::DeployReceived { deploy } => Event::Accept {
+            RpcServerAnnouncement::DeployReceived { deploy, responder } => Event::Accept {
                 deploy,
                 source: Source::<NodeId>::Client,
+                responder,
             },
         }
     }
@@ -46,7 +50,7 @@ impl From<RpcServerAnnouncement> for Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Accept { deploy, source } => {
+            Event::Accept { deploy, source, .. } => {
                 write!(formatter, "accept {} from {}", deploy.id(), source)
             }
             Event::GetChainspecResult {
