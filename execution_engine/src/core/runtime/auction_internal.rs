@@ -43,7 +43,7 @@ where
     R::Error: Into<execution::Error>,
 {
     fn create_purse(&mut self) -> URef {
-        Runtime::create_purse(self).unwrap()
+        Runtime::create_purse(self).expect("create_purse")
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {

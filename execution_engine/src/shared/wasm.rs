@@ -5,7 +5,7 @@ use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
 use crate::shared::wasm_prep::{PreprocessingError, Preprocessor};
 
 /// Creates minimal session code that does nothing
-fn do_nothing_bytes() -> Vec<u8> {
+pub fn do_nothing_bytes() -> Vec<u8> {
     let module = builder::module()
         .function()
         // A signature with 0 params and no return type
