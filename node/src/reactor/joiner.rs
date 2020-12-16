@@ -450,7 +450,7 @@ impl reactor::Reactor for Reactor {
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
-            chainspec_loader.chainspec(),
+            chainspec_loader.chainspec().into(),
             chainspec_loader
                 .genesis_state_root_hash()
                 .expect("should have genesis post state hash"),
