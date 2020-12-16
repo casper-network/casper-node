@@ -774,7 +774,12 @@ impl Block {
             parent_hash,
             state_root_hash,
             body_hash,
-            deploy_hashes: finalized_block.proto_block.wasm_deploys,
+            deploy_hashes: finalized_block
+                .proto_block
+                .wasm_deploys
+                .into_iter()
+                .chain(finalized_block.proto_block.transfers.into_iter())
+                .collect(),
             random_bit: finalized_block.proto_block.random_bit,
             accumulated_seed: accumulated_seed.into(),
             era_end: finalized_block.era_end,
