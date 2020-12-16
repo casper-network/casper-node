@@ -512,7 +512,6 @@ where
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
-                        // TODO: Disconnect from senders.
                         // drop the vertices that might have depended on this one
                         let faulty_senders = self.drop_dependent_vertices(vec![v_id]);
                         return iter::once(ProtocolOutcome::InvalidIncomingMessage(
