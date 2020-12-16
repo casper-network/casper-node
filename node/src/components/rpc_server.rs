@@ -176,13 +176,9 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => {
-                effect_builder
-                    .announce_deploy_received(deploy, Some(responder))
-                    .ignore()
-                //effects.extend(responder.respond(()).ignore());
-                //effects
-            }
+            Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => effect_builder
+                .announce_deploy_received(deploy, Some(responder))
+                .ignore(),
             Event::RpcRequest(RpcRequest::GetBlock {
                 maybe_id: Some(BlockIdentifier::Hash(hash)),
                 responder,
