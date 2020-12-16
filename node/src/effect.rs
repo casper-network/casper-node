@@ -102,6 +102,7 @@ use crate::{
         chainspec_loader::ChainspecInfo,
         consensus::{BlockContext, EraId},
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
+        deploy_acceptor,
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
@@ -118,6 +119,9 @@ use crate::{
 use announcements::{
     BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
     GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
+};
+use casper_execution_engine::shared::{
+    account::Account, newtypes::Blake2bHash, stored_value::StoredValue,
 };
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
@@ -991,6 +995,54 @@ impl<REv> EffectBuilder<REv> {
                 QueueKind::Regular,
             )
             .await
+    }
+
+    /// Get the balance in the main purse of an account with key `Key`.
+    pub(crate) async fn get_account_main_purse_balance(
+        self,
+        account_key: Key,
+    ) -> Result<BalanceResult, deploy_acceptor::Error>
+    where
+        REv: From<StorageRequest> + From<ContractRuntimeRequest>,
+    {
+        let state_root_hash: Blake2bHash = match self.get_highest_block().await {
+            Some(block) => block.state_root_hash().clone().into(),
+            _ => return Err(deploy_acceptor::Error::NoHighestBlock),
+        };
+
+        let account = match self.get_account(state_root_hash, account_key).await {
+            Ok(None) => return Err(deploy_acceptor::Error::InvalidAccount),
+            Ok(Some(account)) => account,
+            Err(error) => return Err(deploy_acceptor::Error::GlobalState(error)),
+        };
+        match self
+            .get_balance(BalanceRequest::new(state_root_hash, account.main_purse()))
+            .await
+        {
+            Ok(balance_result) => Ok(balance_result),
+            Err(error) => return Err(deploy_acceptor::Error::GlobalState(error)),
+        }
+    }
+
+    /// Query for an account by `Key`.
+    pub(crate) async fn get_account(
+        self,
+        state_root_hash: Blake2bHash,
+        account_key: Key,
+    ) -> Result<Option<Account>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        match self
+            .query_global_state(QueryRequest::new(state_root_hash, account_key, vec![]))
+            .await?
+        {
+            QueryResult::Success { value, .. } => match *value {
+                StoredValue::Account(account) => Ok(Some(account)),
+                _ => Ok(None),
+            },
+            _ => Ok(None),
+        }
     }
 
     /// Runs the genesis process on the contract runtime.

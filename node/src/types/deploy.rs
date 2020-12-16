@@ -539,6 +539,13 @@ impl Deploy {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
+        let secret_key = SecretKey::random(rng);
+        Self::random_with_secret_key(rng, secret_key)
+    }
+
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(test)]
+    pub fn random_with_secret_key(rng: &mut TestRng, secret_key: SecretKey) -> Self {
         let timestamp = Timestamp::random(rng);
         let ttl = TimeDiff::from(rng.gen_range(60_000, 3_600_000));
         let gas_price = rng.gen_range(1, 100);
@@ -552,8 +559,6 @@ impl Deploy {
 
         let payment = rng.gen();
         let session = rng.gen();
-
-        let secret_key = SecretKey::random(rng);
 
         Deploy::new(
             timestamp,

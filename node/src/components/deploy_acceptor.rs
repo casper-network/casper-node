@@ -21,16 +21,42 @@ use crate::{
 pub use event::Event;
 
 use super::chainspec_loader::DeployConfig;
+use crate::{
+    components::deploy_acceptor::event::AccountValidation, effect::requests::ContractRuntimeRequest,
+};
+use casper_execution_engine::core::{
+    engine_state,
+    engine_state::{BalanceResult, MAX_PAYMENT},
+};
+use casper_types::Key;
 
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
 pub trait ReactorEventT:
-    From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest> + Send
+    From<Event>
+    + From<DeployAcceptorAnnouncement<NodeId>>
+    + From<StorageRequest>
+    + From<ContractRuntimeRequest>
+    + Send
 {
 }
 
 impl<REv> ReactorEventT for REv where
-    REv: From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest> + Send
+    REv: From<Event>
+        + From<DeployAcceptorAnnouncement<NodeId>>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + Send
 {
+}
+
+#[derive(thiserror::Error, Debug)]
+pub(crate) enum Error {
+    #[error("account does not exist")]
+    InvalidAccount,
+    #[error("no highest block")]
+    NoHighestBlock,
+    #[error("global state error {0}")]
+    GlobalState(#[from] engine_state::Error),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -63,6 +89,28 @@ impl DeployAcceptor {
         DeployAcceptor {
             cached_deploy_configs: HashMap::new(),
         }
+    }
+
+    fn check_account<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        deploy: Box<Deploy>,
+        source: Source<NodeId>,
+    ) -> Effects<Event> {
+        let account = deploy.header().account();
+        let account_key = Key::Account(account.to_account_hash());
+        effect_builder
+            .get_account_main_purse_balance(account_key)
+            .event(|balance_result| {
+                let validation = match balance_result {
+                    Ok(BalanceResult::Success { motes, .. }) if motes >= *MAX_PAYMENT => {
+                        AccountValidation::Valid { deploy, source }
+                    }
+                    Ok(BalanceResult::Success { .. }) => AccountValidation::InsufficientFunds,
+                    _ => AccountValidation::InvalidAccount,
+                };
+                Event::AccountValidationResult(validation)
+            })
     }
 
     /// Handles receiving a new `Deploy` from a peer or client.
@@ -100,14 +148,13 @@ impl DeployAcceptor {
     fn validate<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        deploy: Box<Deploy>,
+        mut deploy: Box<Deploy>,
         source: Source<NodeId>,
         deploy_config: DeployAcceptorConfig,
     ) -> Effects<Event> {
-        let mut cloned_deploy = deploy.clone();
-        if is_valid(&mut cloned_deploy, deploy_config) {
+        if is_valid(&mut deploy, deploy_config) {
             effect_builder
-                .put_deploy_to_storage(cloned_deploy)
+                .put_deploy_to_storage(deploy.clone())
                 .event(move |is_new| Event::PutToStorageResult {
                     deploy,
                     source,
@@ -158,7 +205,21 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
     ) -> Effects<Self::Event> {
         debug!(?event, "handling event");
         match event {
-            Event::Accept { deploy, source } => self.accept(effect_builder, deploy, source),
+            Event::Accept { deploy, source } => match source {
+                Source::Client => self.check_account(effect_builder, deploy, source),
+                Source::Peer(_) => self.accept(effect_builder, deploy, source),
+            },
+            Event::AccountValidationResult(AccountValidation::Valid { deploy, source }) => {
+                self.accept(effect_builder, deploy, source)
+            }
+            Event::AccountValidationResult(AccountValidation::InsufficientFunds) => {
+                // TODO: responder.respond(Err(InsufficientFunds))
+                Effects::new()
+            }
+            Event::AccountValidationResult(AccountValidation::InvalidAccount) => {
+                // TODO: responder.respond(Err(InvalidAccount))
+                Effects::new()
+            }
             Event::GetChainspecResult {
                 deploy,
                 source,

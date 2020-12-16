@@ -9,6 +9,28 @@ use crate::{
     types::{Deploy, NodeId},
 };
 
+#[derive(Debug, Serialize)]
+pub enum AccountValidation {
+    Valid {
+        deploy: Box<Deploy>,
+        source: Source<NodeId>,
+    },
+    InvalidAccount,
+    InsufficientFunds,
+}
+
+impl Display for AccountValidation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            AccountValidation::Valid { deploy, source } => {
+                write!(f, "account valid deploy {} source {}", deploy, source)
+            }
+            AccountValidation::InvalidAccount => write!(f, "InvalidAccount"),
+            AccountValidation::InsufficientFunds => write!(f, "InsufficientFunds"),
+        }
+    }
+}
+
 /// `DeployAcceptor` events.
 #[derive(Debug, Serialize)]
 pub enum Event {
@@ -30,6 +52,8 @@ pub enum Event {
         source: Source<NodeId>,
         is_new: bool,
     },
+    /// The result of the `DeployAcceptor` validating an account's balance.
+    AccountValidationResult(AccountValidation),
 }
 
 impl From<RpcServerAnnouncement> for Event {
@@ -70,6 +94,9 @@ impl Display for Event {
                 } else {
                     write!(formatter, "had already stored {}", deploy.id())
                 }
+            }
+            Event::AccountValidationResult(validation) => {
+                write!(formatter, "account validation {}", validation,)
             }
         }
     }

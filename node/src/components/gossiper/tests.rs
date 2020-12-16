@@ -19,13 +19,18 @@ use super::*;
 use crate::{
     components::{
         chainspec_loader::Chainspec,
+        contract_runtime::{self, ContractRuntime},
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
     },
-    effect::announcements::{
-        DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
-        RpcServerAnnouncement,
+    crypto::asymmetric_key::SecretKey,
+    effect::{
+        announcements::{
+            DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
+            RpcServerAnnouncement,
+        },
+        requests::ContractRuntimeRequest,
     },
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, Runner},
@@ -60,6 +65,8 @@ enum Event {
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
+    #[from]
+    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
 }
 
 impl From<StorageRequest> for Event {
@@ -71,6 +78,12 @@ impl From<StorageRequest> for Event {
 impl From<NetworkRequest<NodeId, Message<Deploy>>> for Event {
     fn from(request: NetworkRequest<NodeId, Message<Deploy>>) -> Self {
         Event::NetworkRequest(request.map_payload(NodeMessage::from))
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(request: ContractRuntimeRequest) -> Self {
+        Event::ContractRuntime(contract_runtime::Event::Request(request))
     }
 }
 
@@ -92,6 +105,9 @@ impl Display for Event {
             Event::DeployGossiperAnnouncement(ann) => {
                 write!(formatter, "deploy-gossiper announcement: {}", ann)
             }
+            Event::ContractRuntime(event) => {
+                write!(formatter, "contract-runtime event: {}", event)
+            }
         }
     }
 }
@@ -108,6 +124,7 @@ struct Reactor {
     storage: Storage,
     deploy_acceptor: DeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
+    contract_runtime: ContractRuntime,
     _storage_tempdir: TempDir,
 }
 
@@ -131,7 +148,8 @@ impl reactor::Reactor for Reactor {
         let network = NetworkController::create_node(event_queue, rng);
 
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
-        let storage = Storage::new(&WithDir::new(storage_tempdir.path(), storage_config)).unwrap();
+        let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
+        let storage = Storage::new(&storage_withdir).unwrap();
 
         let deploy_acceptor = DeployAcceptor::new();
         let deploy_gossiper = Gossiper::new_for_partial_items(
@@ -141,11 +159,17 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
+        let contract_runtime_config = contract_runtime::Config::default();
+        let registry = prometheus::Registry::new();
+        let contract_runtime =
+            ContractRuntime::new(storage_withdir, &contract_runtime_config, &registry).unwrap();
+
         let reactor = Reactor {
             network,
             storage,
             deploy_acceptor,
             deploy_gossiper,
+            contract_runtime,
             _storage_tempdir: storage_tempdir,
         };
 
@@ -293,6 +317,11 @@ impl reactor::Reactor for Reactor {
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
             ),
+            Event::ContractRuntime(event) => reactor::wrap_effects(
+                Event::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
+            ),
         }
     }
 }
@@ -311,6 +340,15 @@ fn announce_deploy_received(
     |effect_builder: EffectBuilder<Event>| effect_builder.announce_deploy_received(deploy).ignore()
 }
 
+fn create_secret_key() -> SecretKey {
+    // this was lifted from accounts.csv - gossiper tests need a 'real' account to validate
+    // against
+    let secret_key =
+        hex::decode("f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18").unwrap();
+
+    SecretKey::ed25519_from_bytes(&secret_key[..]).unwrap()
+}
+
 async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize) {
     const TIMEOUT: Duration = Duration::from_secs(20);
     const QUIET_FOR: Duration = Duration::from_millis(50);
@@ -323,7 +361,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
 
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
-        let deploy = Box::new(Deploy::random(rng));
+        let deploy = Box::new(Deploy::random_with_secret_key(rng, create_secret_key()));
         (*deploy.id(), deploy)
     })
     .take(deploy_count)
