@@ -1,18 +1,8 @@
 #!/usr/bin/env bash
-#
-# Displays node status.
-# Globals:
-#   NCTL - path to nctl home directory.
-#   NCTL_DAEMON_TYPE - type of daemon service manager.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier (optional).
 
-#######################################
-# Destructure input args.
-#######################################
+source $NCTL/sh/utils.sh
+source $NCTL/sh/node/ctl_$NCTL_DAEMON_TYPE.sh
 
-# Unset to avoid parameter collisions.
 unset NET_ID
 unset NODE_ID
 
@@ -27,25 +17,9 @@ do
     esac
 done
 
-# Set defaults.
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-"all"}
 
-#######################################
-# Imports
-#######################################
-
-# Import daemon specific node control functions.
-source $NCTL/sh/node/ctl_$NCTL_DAEMON_TYPE.sh
-
-# Import net specific vars.
-source $(get_path_to_net_vars $NET_ID)
-
-#######################################
-# Main
-#######################################
-
-# Display node status.
 if [ $NODE_ID == "all" ]; then
     do_node_status_all $NET_ID $NCTL_NET_NODE_COUNT
 else

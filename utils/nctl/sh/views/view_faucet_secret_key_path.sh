@@ -1,37 +1,20 @@
 #!/usr/bin/env bash
-#
-# Renders a network faucet account key.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
 
-#######################################
-# Destructure input args.
-#######################################
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
-# Unset to avoid parameter collisions.
-unset net
+unset NET_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
+        net) NET_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-net=${net:-1}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Render path to secret key.
-render_account_secret_key $net $NCTL_ACCOUNT_TYPE_FAUCET $node
+render_account_secret_key \
+    ${NET_ID:-1} \
+    $NCTL_ACCOUNT_TYPE_FAUCET

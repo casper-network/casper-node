@@ -1,18 +1,8 @@
 #!/usr/bin/env bash
-#
-# Displays node logs.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   Log type.
 
-#######################################
-# Destructure input args.
-#######################################
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
-# Unset to avoid parameter collisions.
 unset NET_ID
 unset NODE_ID
 unset LOG_TYPE
@@ -29,17 +19,4 @@ do
     esac
 done
 
-# Set defaults.
-NET_ID=${NET_ID:-1}
-NODE_ID=${NODE_ID:-1}
-LOG_TYPE=${LOG_TYPE:-stdout}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# View log via less.
-less $(get_path_to_node $NET_ID $NODE_ID)/logs/$LOG_TYPE.log
+less $(get_path_to_node ${NET_ID:-1} ${NODE_ID:-1})/logs/${LOG_TYPE:-stdout}.log

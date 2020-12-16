@@ -283,6 +283,46 @@ function get_bootstrap_known_address() {
 }
 
 #######################################
+# Returns a chain era.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_chain_era() {
+    local NET_ID=${1}
+    local NODE_ID=${2}
+
+    if [ $(get_node_is_up $NET_ID $NODE_ID) = true ]; then
+        $(get_path_to_client $NET_ID) get-block \
+            --node-address $(get_node_address_rpc $NET_ID $NODE_ID) \
+            --block-identifier "" \
+            | jq '.result.block.header.era_id'    
+    else
+        echo "N/A"
+    fi
+}
+
+#######################################
+# Returns a chain height.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_chain_height() {
+    local NET_ID=${1}
+    local NODE_ID=${2}
+
+    if [ $(get_node_is_up $NET_ID $NODE_ID) = true ]; then
+        $(get_path_to_client $NET_ID) get-block \
+            --node-address $(get_node_address_rpc $NET_ID $NODE_ID) \
+            --block-identifier "" \
+            | jq '.result.block.header.height'    
+    else
+        echo "N/A"
+    fi
+}
+
+#######################################
 # Returns a chain name.
 # Arguments:
 #   Network ordinal identifier.
@@ -349,7 +389,7 @@ function get_main_purse_uref() {
             net=$NET_ID node=$NODE_ID account-key=$ACCOUNT_KEY root-hash=$STATE_ROOT_HASH \
             | jq '.stored_value.Account.main_purse' \
             | sed -e 's/^"//' -e 's/"$//'
-    )        
+    )
 }
 
 #######################################
@@ -364,11 +404,7 @@ function get_network_bind_address() {
     local NODE_ID=${2}   
     local NET_BOOTSTRAP_COUNT=${3}     
 
-    if [ $NODE_ID -le $NET_BOOTSTRAP_COUNT ]; then
-        echo "0.0.0.0:$(get_node_port $NCTL_BASE_PORT_NETWORK $NET_ID $NODE_ID)"   
-    else
-        echo "0.0.0.0:0"   
-    fi
+    echo "0.0.0.0:$(get_node_port $NCTL_BASE_PORT_NETWORK $NET_ID $NODE_ID)"   
 }
 
 #######################################
@@ -430,6 +466,19 @@ function get_count_of_all_nodes() {
     source $(get_path_to_net_vars $NET_ID)
 
     echo $(($NCTL_NET_NODE_COUNT * 2))
+}
+
+#######################################
+# Returns count of test users.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_count_of_users() {    
+    local NET_ID=${1}
+
+    source $(get_path_to_net_vars $NET_ID)
+
+    echo $NCTL_NET_USER_COUNT
 }
 
 #######################################
@@ -539,6 +588,29 @@ function get_node_port_sse() {
     local NODE_ID=${2}    
 
     echo $(get_node_port $NCTL_BASE_PORT_SSE $NET_ID $NODE_ID)
+}
+
+function xxx() {
+    nmap -p 59105 127.0.0.1 | grep "open"
+}
+
+#######################################
+# Returns flag indicating whether a node is currently up.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_node_is_up() {
+    local NET_ID=${1}    
+    local NODE_ID=${2}    
+
+    local NODE_PORT=$(get_node_port_rest $NET_ID $NODE_ID)
+
+    if grep -q "open" <<< "$(nmap -p $NODE_PORT 127.0.0.1)"; then
+        echo true
+    else
+        echo false
+    fi
 }
 
 #######################################
@@ -806,368 +878,12 @@ function get_state_root_hash() {
     local NET_ID=${1}
     local NODE_ID=${2} 
     local BLOCK_HASH=${3}
-    
-    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
-
-    if [ "$BLOCK_HASH" ]; then
-        $(get_path_to_client $NET_ID) get-state-root-hash \
-            --node-address $NODE_ADDRESS \
-            --block-identifier $BLOCK_HASH \
-            | jq '.result.state_root_hash' \
-            | sed -e 's/^"//' -e 's/"$//'
-    else
-        $(get_path_to_client $NET_ID) get-state-root-hash \
-            --node-address $NODE_ADDRESS \
-            | jq '.result.state_root_hash' \
-            | sed -e 's/^"//' -e 's/"$//'
-    fi
-}
-
-# ###############################################################
-# UTILS: rendering functions
-# ###############################################################
-
-#######################################
-# Renders an account.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Dispatch node ordinal identifier.
-#   Account type (node | user | faucet).
-#   Account ordinal identifier (optional).
-#######################################
-function render_account() {
-    local NET_ID=${1}
-    local NODE_ID=${2}      
-    local ACCOUNT_TYPE=${3}
-    local ACCOUNT_IDX=${4}   
-
-    local ACCOUNT_KEY=$(get_account_key $NET_ID $ACCOUNT_TYPE $ACCOUNT_IDX)
-    local STATE_ROOT_HASH=$(get_state_root_hash $NET_ID $NODE_ID)
-
-    source $NCTL/sh/views/view_chain_account.sh \
-        net=$NET_ID \
-        node=$NODE_ID \
-        root-hash=$STATE_ROOT_HASH \
-        account-key=$ACCOUNT_KEY
-}
-
-#######################################
-# Renders an account balance.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Dispatch node ordinal identifier.
-#   Account type (node | user | faucet).
-#   Account ordinal identifier (optional).
-#######################################
-function render_account_balance() {
-    local NET_ID=${1}
-    local NODE_ID=${2}      
-    local ACCOUNT_TYPE=${3}
-    local ACCOUNT_IDX=${4} 
-    
-    local ACCOUNT_KEY=$(get_account_key $NET_ID $ACCOUNT_TYPE $ACCOUNT_IDX)
-    local ACCOUNT_PREFIX=$(get_account_prefix $NET_ID $ACCOUNT_TYPE $ACCOUNT_IDX)
-    local STATE_ROOT_HASH=$(get_state_root_hash $NET_ID $NODE_ID)
-    local PURSE_UREF=$(get_main_purse_uref $NET_ID $NODE_ID $ACCOUNT_KEY $STATE_ROOT_HASH)
-
-    source $NCTL/sh/views/view_chain_account_balance.sh \
-        net=$NET_ID \
-        node=$NODE_ID \
-        root-hash=$STATE_ROOT_HASH \
-        purse-uref=$PURSE_UREF \
-        prefix=$ACCOUNT_PREFIX
-}
-
-#######################################
-# Renders an account hash.
-# Arguments:
-#   Network ordinal identifier.
-#   Account type (node | user | faucet).
-#   Account ordinal identifier (optional).
-#######################################
-function render_account_hash() {
-    local NET_ID=${1}
-    local ACCOUNT_TYPE=${2}
-    local ACCOUNT_IDX=${3}   
-
-    local ACCOUNT_KEY=$(get_account_key $net $ACCOUNT_TYPE $ACCOUNT_IDX)
-    local ACCOUNT_HASH=$(get_account_hash $ACCOUNT_KEY)
-    local ACCOUNT_PREFIX=$(get_account_prefix $net $ACCOUNT_TYPE $ACCOUNT_IDX)
-
-    log "$ACCOUNT_PREFIX.account-hash = $ACCOUNT_HASH"
-}
-
-#######################################
-# Renders an account key.
-# Globals:
-#   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
-#   NCTL_ACCOUNT_TYPE_NODE - node account type.
-#   NCTL_ACCOUNT_TYPE_USER - user account type.
-# Arguments:
-#   Network ordinal identifier.
-#   Account type (node | user | faucet).
-#   Account ordinal identifier (optional).
-#######################################
-function render_account_key() {
-    local NET_ID=${1}
-    local ACCOUNT_TYPE=${2}
-    local ACCOUNT_IDX=${3}  
-
-    local ACCOUNT_KEY=$(get_account_key $net $ACCOUNT_TYPE $ACCOUNT_IDX)
-    local ACCOUNT_PREFIX=$(get_account_prefix $net $ACCOUNT_TYPE $ACCOUNT_IDX)
-
-    log "$ACCOUNT_PREFIX.account-key = $ACCOUNT_KEY"
-}
-
-#######################################
-# Renders an account's main purse uref.
-# Globals:
-#   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
-#   NCTL_ACCOUNT_TYPE_NODE - node account type.
-#   NCTL_ACCOUNT_TYPE_USER - user account type.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   Account type (node | user | faucet).
-#   Account ordinal identifier (optional).
-#######################################
-function render_account_main_purse_uref() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local ACCOUNT_TYPE=${3}
-    local ACCOUNT_IDX=${4}  
-    local STATE_ROOT_HASH=${5:-$(get_state_root_hash $NET_ID $NODE_ID)}
-
-    local ACCOUNT_KEY=$(get_account_key $NET_ID $ACCOUNT_TYPE $ACCOUNT_IDX)
-    local ACCOUNT_PREFIX=$(get_account_prefix $NET_ID $ACCOUNT_TYPE $ACCOUNT_IDX)
-    local PURSE_UREF=$(get_main_purse_uref $NET_ID $NODE_ID $ACCOUNT_KEY $STATE_ROOT_HASH)
-
-    log "$ACCOUNT_PREFIX.main-purse-uref = $PURSE_UREF"
-}
-
-#######################################
-# Renders an account secret key path.
-# Globals:
-#   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
-#   NCTL_ACCOUNT_TYPE_NODE - node account type.
-#   NCTL_ACCOUNT_TYPE_USER - user account type.
-# Arguments:
-#   Network ordinal identifier.
-#   Account type (node | user | faucet).
-#   Account ordinal identifier (optional).
-#######################################
-function render_account_secret_key() {
-    local NET_ID=${1}
-    local ACCOUNT_TYPE=${2}
-    local ACCOUNT_IDX=${3}    
-
-    local ACCOUNT_PREFIX=$(get_account_prefix $NET_ID $ACCOUNT_TYPE $ACCOUNT_IDX)
-    local PATH_TO_KEY=$(get_path_to_secret_key $NET_ID $ACCOUNT_TYPE $ACCOUNT_IDX)
-
-    log "$ACCOUNT_PREFIX.secret-key-path = $PATH_TO_KEY"
-}
-
-#######################################
-# Renders on-chain auction information.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#######################################
-function render_chain_auction_info() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
 
     local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
 
-    $(get_path_to_client $NET_ID) get-auction-info \
+    $(get_path_to_client $NET_ID) get-state-root-hash \
         --node-address $NODE_ADDRESS \
-        | jq '.result'
-}
-
-#######################################
-# Renders on-chain block information.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   Account type (node | user | faucet).
-#   Account ordinal identifier (optional).
-#######################################
-function render_chain_block() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local BLOCK_HASH=${3}      
-    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
-
-    if [ "$BLOCK_HASH" ]; then
-        $(get_path_to_client $NET_ID) get-block \
-            --node-address $NODE_ADDRESS \
-            --block-identifier $BLOCK_HASH \
-            | jq '.result.block'
-    else
-        $(get_path_to_client $NET_ID) get-block \
-            --node-address $NODE_ADDRESS \
-            --block-identifier "" \
-            | jq '.result.block'
-    fi
-}
-
-#######################################
-# Renders on-chain deploy information.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   Account type (node | user | faucet).
-#   Account ordinal identifier (optional).
-#######################################
-function render_chain_deploy() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local DEPLOY_HASH=${3}     
-
-    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
-
-    $(get_path_to_client $NET_ID) get-deploy \
-        --node-address $NODE_ADDRESS \
-        $DEPLOY_HASH \
-        | jq '.result'
-}
-
-#######################################
-# Renders a state root hash at a certain node.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   User ordinal identifier.
-#######################################
-function render_chain_state_root_hash() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local BLOCK_HASH=${3}
-
-    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
-    local STATE_ROOT_HASH=$(get_state_root_hash $NET_ID $NODE_ID $BLOCK_HASH)
-
-    log "STATE ROOT HASH @ "$NODE_ADDRESS" :: "$STATE_ROOT_HASH
-}
-
-#######################################
-# Displays to stdout current node peers.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#######################################
-function render_node_peers() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    
-    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
-    local NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl $NET_ID $NODE_ID)
-
-    log "net #$NET_ID :: node #$NODE_ID :: $NODE_ADDRESS :: peers:"
-
-    curl -s --header 'Content-Type: application/json' \
-        --request POST $NODE_ADDRESS_CURL \
-        --data-raw '{
-            "id": 1,
-            "jsonrpc": "2.0",
-            "method": "info_get_peers"
-        }' | jq '.result.peers'
-}
-
-#######################################
-# Displays to stdout current node ports.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#######################################
-function render_node_ports() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-
-    local PORT_REST=$(get_node_port_rest $NET_ID $NODE_ID)
-    local PORT_RPC=$(get_node_port_rpc $NET_ID $NODE_ID)
-    local PORT_SSE=$(get_node_port_sse $NET_ID $NODE_ID)
-
-    log "net #$NET_ID :: node #$NODE_ID :: RPC @ $PORT_RPC :: REST @ $PORT_REST :: SSE @ $PORT_SSE"
-}
-
-#######################################
-# Displays to stdout current node status.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#######################################
-function render_node_rpc_schema() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    
-    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
-    local NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl $NET_ID $NODE_ID)
-
-    log "net #$NET_ID :: node #$NODE_ID :: $NODE_ADDRESS :: rpc schema:"
-
-    curl -s --header 'Content-Type: application/json' \
-        --request POST $NODE_ADDRESS_CURL \
-        --data-raw '{
-            "id": 1,
-            "jsonrpc": "2.0",
-            "method": "rpc.discover"
-        }' | jq '.result'
-}
-
-#######################################
-# Displays to stdout current node status.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#######################################
-function render_node_status() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    
-    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
-    local NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl $NET_ID $NODE_ID)
-
-    log "net #$NET_ID :: node #$NODE_ID :: $NODE_ADDRESS :: status:"
-
-    curl -s --header 'Content-Type: application/json' \
-        --request POST $NODE_ADDRESS_CURL \
-        --data-raw '{
-            "id": 1,
-            "jsonrpc": "2.0",
-            "method": "info_get_status"
-        }' | jq '.result'
-}
-
-#######################################
-# Displays to stdout current node storage stats.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#######################################
-function render_node_storage() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    
-    local OS_TYPE="$(get_os)"
-    local PATH_TO_NODE_STORAGE=$(get_path_to_node $NET_ID $NODE_ID)/storage/*.*db*
-
-    log "net #$NET_ID :: node #$NODE_ID :: storage stats:"
-
-    if [[ $OS_TYPE == $_OS_LINUX* ]]; then
-        ll $PATH_TO_NODE_STORAGE
-    elif [[ $OS_TYPE == $_OS_MACOSX ]]; then
-        ls -lG $PATH_TO_NODE_STORAGE
-    fi
+        --block-identifier ${BLOCK_HASH:-""} \
+        | jq '.result.state_root_hash' \
+        | sed -e 's/^"//' -e 's/"$//'
 }

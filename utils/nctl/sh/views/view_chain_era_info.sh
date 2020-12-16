@@ -4,6 +4,7 @@ source $NCTL/sh/utils.sh
 source $NCTL/sh/views/funcs.sh
 
 unset NET_ID
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
@@ -11,10 +12,11 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         net) NET_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-render_account_key \
+render_chain_era_info \
     ${NET_ID:-1} \
-    $NCTL_ACCOUNT_TYPE_FAUCET
+    ${NODE_ID:-1}

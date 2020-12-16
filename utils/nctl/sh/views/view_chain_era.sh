@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
 
 unset NET_ID
 unset NODE_ID
@@ -23,10 +22,8 @@ NODE_ID=${NODE_ID:-"all"}
 if [ $NODE_ID = "all" ]; then
     for NODE_ID in $(seq 1 $(get_count_of_all_nodes $NET_ID))
     do
-        echo "------------------------------------------------------------------------------------------------------------------------------------"
-        render_node_status $NET_ID $NODE_ID
+        log "chain era @ net-$NET_ID.node-$NODE_ID = $(get_chain_era $NET_ID $NODE_ID)"
     done
-    echo "------------------------------------------------------------------------------------------------------------------------------------"
 else
-    render_node_status $NET_ID $NODE_ID
+    log "chain era @ net-$NET_ID.node-$NODE_ID = $(get_chain_era $NET_ID $NODE_ID)"
 fi

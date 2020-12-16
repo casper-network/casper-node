@@ -19,15 +19,7 @@ do
     esac
 done
 
-NET_ID=${NET_ID:-1}
-NODE_ID=${NODE_ID:-"all"}
-BLOCK_HASH=${BLOCK_HASH:-""}
-
-if [ $NODE_ID = "all" ]; then
-    for NODE_ID in $(seq 1 $(get_count_of_all_nodes $NET_ID))
-    do
-        render_chain_state_root_hash $NET_ID $NODE_ID $BLOCK_HASH
-    done
-else
-    render_chain_state_root_hash $NET_ID $NODE_ID $BLOCK_HASH
-fi
+render_chain_block_transfers \
+    ${NET_ID:-1} \
+    ${NODE_ID:-1} \
+    ${BLOCK_HASH:-""}

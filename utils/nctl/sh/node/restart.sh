@@ -1,17 +1,5 @@
 #!/usr/bin/env bash
-#
-# Reloads a network node.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
 
-#######################################
-# Destructure input args.
-#######################################
-
-# Unset to avoid parameter collisions.
 unset NET_ID
 unset NODE_ID
 
@@ -26,13 +14,8 @@ do
     esac
 done
 
-# Set defaults.
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-"all"}
-
-#######################################
-# Main
-#######################################
 
 source $NCTL/sh/node/stop.sh net=$NET_ID node=$NODE_ID
 source $NCTL/sh/node/start.sh net=$NET_ID node=$NODE_ID
