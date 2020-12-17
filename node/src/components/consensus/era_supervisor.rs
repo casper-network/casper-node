@@ -98,6 +98,8 @@ pub struct EraSupervisor<I> {
     next_block_height: u64,
     #[data_size(skip)]
     metrics: ConsensusMetrics,
+    // TODO: discuss this quick fix
+    finished_joining: bool,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -143,6 +145,7 @@ where
             bonded_eras,
             next_block_height: 0,
             metrics,
+            finished_joining: false,
         };
 
         let results = era_supervisor.new_era(
@@ -257,6 +260,9 @@ where
         } else if !validators.contains_key(&our_id) {
             info!(era = era_id.0, %our_id, "not voting; not a validator");
             false
+        } else if !self.finished_joining {
+            info!(era = era_id.0, "not voting; still joining");
+            false
         } else {
             info!(era = era_id.0, "start voting");
             true
@@ -283,7 +289,14 @@ where
             Vec::new()
         };
 
-        let era = Era::new(consensus, start_height, newly_slashed, slashed, validators);
+        let era = Era::new(
+            consensus,
+            start_time,
+            start_height,
+            newly_slashed,
+            slashed,
+            validators,
+        );
         let _ = self.active_eras.insert(era_id, era);
 
         // Remove the era that has become obsolete now. We keep 2 * bonded_eras past eras because
@@ -311,6 +324,26 @@ where
     #[cfg(test)]
     pub(crate) fn active_eras(&self) -> &HashMap<EraId, Era<I>> {
         &self.active_eras
+    }
+
+    /// To be called when we transition from the joiner to the validator reactor.
+    pub(crate) fn finished_joining(
+        &mut self,
+        now: Timestamp,
+    ) -> Vec<ProtocolOutcome<I, ClContext>> {
+        self.finished_joining = true;
+        let secret = Keypair::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
+        let public_key = self.public_signing_key;
+        self.active_eras
+            .get_mut(&self.current_era)
+            .map(|era| {
+                if era.start_time > now && era.validators().contains_key(&public_key) {
+                    era.consensus.activate_validator(public_key, secret, now)
+                } else {
+                    Vec::new()
+                }
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -782,6 +815,11 @@ where
         } else {
             Default::default()
         }
+    }
+
+    pub(crate) fn finished_joining(&mut self, now: Timestamp) -> Effects<Event<I>> {
+        let results = self.era_supervisor.finished_joining(now);
+        self.handle_consensus_results(self.era_supervisor.current_era, results)
     }
 }
 
