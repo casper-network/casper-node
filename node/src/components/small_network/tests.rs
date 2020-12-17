@@ -143,7 +143,7 @@ impl Reactor for TestReactor {
             Event::NetworkRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
-                Event::SmallNet(SmallNetworkEvent::NetworkRequest {req: Box::new(req)}),
+                Event::SmallNet(SmallNetworkEvent::NetworkRequest { req: Box::new(req) }),
             ),
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,

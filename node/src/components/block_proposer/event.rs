@@ -33,11 +33,6 @@ impl DeployType {
         }
     }
 }
-use static_assertions::const_assert;
-use std::mem;
-const _EVENT_SIZE: usize = mem::size_of::<Event>();
-const_assert!(_EVENT_SIZE < 96);
-
 
 /// An event for when using the block proposer as a component.
 #[derive(DataSize, Debug, From)]
@@ -70,14 +65,12 @@ impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Request(req) => write!(f, "block-proposer request: {}", req),
-            Event::Loaded {sets, .. } => {
-                match &**sets {
-                    Some(deploy_set) => write!(f, "loaded block-proposer deploy sets: {}", deploy_set),
-                    None => write!(
-                        f,
-                        "loaded block-proposer deploy sets, none found in storage"
-                    ),
-                }
+            Event::Loaded { sets, .. } => match &**sets {
+                Some(deploy_set) => write!(f, "loaded block-proposer deploy sets: {}", deploy_set),
+                None => write!(
+                    f,
+                    "loaded block-proposer deploy sets, none found in storage"
+                ),
             },
             Event::BufferDeploy { hash, .. } => write!(f, "block-proposer add {}", hash),
             Event::Prune => write!(f, "block-proposer prune"),

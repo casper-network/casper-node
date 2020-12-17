@@ -696,7 +696,7 @@ where
             .result(
                 move |(peer_id, transport)| Event::OutgoingEstablished {
                     peer_id: Box::new(peer_id),
-                    transport
+                    transport,
                 },
                 move |error| Event::OutgoingFailed {
                     peer_id: Box::new(None),
@@ -846,7 +846,9 @@ where
             Event::IncomingHandshakeCompleted {
                 result,
                 peer_address,
-            } => self.handle_incoming_tls_handshake_completed(effect_builder, *result, *peer_address),
+            } => {
+                self.handle_incoming_tls_handshake_completed(effect_builder, *result, *peer_address)
+            }
             Event::IncomingMessage { peer_id, msg } => {
                 self.handle_message(effect_builder, *peer_id, *msg)
             }
@@ -871,21 +873,21 @@ where
                 peer_address,
                 error,
             } => self.handle_outgoing_lost(effect_builder, *peer_id, *peer_address, *error),
-            Event::NetworkRequest {req } => {
+            Event::NetworkRequest { req } => {
                 match *req {
                     NetworkRequest::SendMessage {
                         dest,
                         payload,
-                        responder
+                        responder,
                     } => {
                         self.send_message(dest, Message::Payload(payload));
                         responder.respond(()).ignore()
-                    },
+                    }
                     NetworkRequest::Broadcast { payload, responder } => {
                         // We're given a message to broadcast.
                         self.broadcast_message(Message::Payload(payload));
                         responder.respond(()).ignore()
-                    },
+                    }
                     NetworkRequest::Gossip {
                         payload,
                         count,
@@ -893,16 +895,15 @@ where
                         responder,
                     } => {
                         // We're given a message to gossip.
-                        let sent_to = self.gossip_message(rng, Message::Payload(payload), count, exclude);
+                        let sent_to =
+                            self.gossip_message(rng, Message::Payload(payload), count, exclude);
                         responder.respond(sent_to).ignore()
-                    },
-                }
-            },
-            Event::NetworkInfoRequest {req} => {
-                match *req {
-                    NetworkInfoRequest::GetPeers { responder } => {
-                        responder.respond(self.peers()).ignore()
                     }
+                }
+            }
+            Event::NetworkInfoRequest { req } => match *req {
+                NetworkInfoRequest::GetPeers { responder } => {
+                    responder.respond(self.peers()).ignore()
                 }
             },
             Event::GossipOurAddress => {
@@ -1022,7 +1023,7 @@ async fn handshake_reader<REv, P>(
                 .schedule(
                     Event::IncomingMessage {
                         peer_id: Box::new(peer_id),
-                        msg: Box::new(msg)
+                        msg: Box::new(msg),
                     },
                     QueueKind::NetworkIncoming,
                 )

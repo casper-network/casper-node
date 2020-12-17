@@ -213,16 +213,17 @@ impl From<StorageRequest> for Event {
 
 impl From<NetworkRequest<NodeId, Message>> for Event {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
-        Event::SmallNetwork(small_network::Event::NetworkRequest {req: Box::new(request)})
+        Event::SmallNetwork(small_network::Event::NetworkRequest {
+            req: Box::new(request),
+        })
     }
 }
 
 impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
     fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
         Event::SmallNetwork(small_network::Event::NetworkRequest {
-            req: Box::new(request.map_payload(Message::from))
-        }
-        )
+            req: Box::new(request.map_payload(Message::from)),
+        })
     }
 }
 
@@ -799,9 +800,13 @@ impl reactor::Reactor for Reactor {
             }
             Event::NetworkInfoRequest(req) => {
                 let event = if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
-                    Event::Network(network::Event::NetworkInfoRequest {info_request: Box::new(req)})
+                    Event::Network(network::Event::NetworkInfoRequest {
+                        info_request: Box::new(req),
+                    })
                 } else {
-                    Event::SmallNetwork(small_network::Event::NetworkInfoRequest {req: Box::new(req)})
+                    Event::SmallNetwork(small_network::Event::NetworkInfoRequest {
+                        req: Box::new(req),
+                    })
                 };
                 self.dispatch_event(effect_builder, rng, event)
             }

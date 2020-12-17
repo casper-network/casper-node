@@ -187,11 +187,6 @@ where
     }
 }
 
-use static_assertions::const_assert;
-use std::mem;
-const _EVENT_SIZE: usize = mem::size_of::<StorageRequest>();
-const_assert!(_EVENT_SIZE < 96);
-
 #[derive(Debug, Serialize)]
 /// A storage request.
 #[must_use]
@@ -341,36 +336,6 @@ impl Display for StorageRequest {
         }
     }
 }
-
-
-const _EVENT_SIZE_2: usize = mem::size_of::<StateStoreRequest2>();
-const_assert!(_EVENT_SIZE_2 < 96);
-
-
-
-/// State store request.
-#[derive(DataSize, Debug, Serialize)]
-pub enum StateStoreRequest2 {
-    /// Stores a piece of state to storage.
-    Save {
-        /// Key to store under.
-        key: Cow<'static, [u8]>,
-        /// Value to store, already serialized.
-        #[serde(skip_serializing)]
-        data: Vec<u8>,
-        /// Notification when storing is complete.
-        responder: Responder<()>,
-    },
-    /// Loads a piece of state from storage.
-    Load {
-        /// Key to load from.
-        key: Cow<'static, [u8]>,
-        /// Responder for value, if found, returning the previously passed in serialization form.
-        responder: Responder<Option<Vec<u8>>>,
-    },
-}
-
-
 
 /// State store request.
 #[derive(DataSize, Debug, Serialize)]

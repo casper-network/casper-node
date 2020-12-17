@@ -17,8 +17,6 @@ use crate::{
     types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata, NodeId},
 };
 
-
-
 #[derive(Debug, From)]
 pub enum Event {
     #[from]

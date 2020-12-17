@@ -17,17 +17,8 @@ use crate::{
     types::NodeId,
 };
 
-
-use static_assertions::const_assert;
-use std::mem;
-use crate::protocol::Message;
-
-const _EVENT_SIZE: usize = mem::size_of::<Event<Message>>();
-const_assert!(_EVENT_SIZE < 96);
-
-#[derive(Debug, From,  Serialize)]
+#[derive(Debug, From, Serialize)]
 pub enum Event<P> {
-
     // ========== Events triggered by the libp2p network behavior ==========
     /// A connection to the given peer has been opened.
     ConnectionEstablished {
@@ -116,7 +107,6 @@ pub enum Event<P> {
         #[serde(skip_serializing)]
         info_request: Box<NetworkInfoRequest<NodeId>>,
     },
-
 }
 
 impl<P: Display> Display for Event<P> {

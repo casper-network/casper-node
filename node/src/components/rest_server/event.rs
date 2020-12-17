@@ -7,22 +7,6 @@ use crate::{
     types::NodeId,
 };
 
-use static_assertions::const_assert;
-use std::mem;
-const _EVENT_SIZE: usize = mem::size_of::<Event2>();
-const_assert!(_EVENT_SIZE < 96);
-
-#[derive(Debug, From)]
-#[allow(dead_code, clippy::large_enum_variant)]
-pub enum Event2 {
-    #[from]
-    RestRequest(RestRequest<NodeId>),
-    GetMetricsResult {
-        text: Option<String>,
-        main_responder: Responder<Option<String>>,
-    },
-}
-
 #[derive(Debug, From)]
 pub enum Event {
     #[from]

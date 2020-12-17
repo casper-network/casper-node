@@ -651,52 +651,49 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
             Event::IncomingOneWayMessage { source, message } => {
                 self.handle_incoming_one_way_message(effect_builder, *source, *message)
             }
-            Event::NetworkRequest {request} => {
-                match *request {
-                    NetworkRequest::SendMessage {
-                        dest,
-                        payload,
-                        responder,
-                    } => {
-                        self.send_message(dest, OneWayMessage::new(payload));
-                        responder.respond(()).ignore()
-                    },
-                    NetworkRequest::Broadcast { payload, responder } => {
-                        self.broadcast_message(OneWayMessage::new(payload));
-                        responder.respond(()).ignore()
-                    },
-                    NetworkRequest::Gossip {
-                        payload,
-                        count,
-                        exclude,
-                        responder,
-                    } => {
-                        let sent_to = self.gossip_message(rng, OneWayMessage::new(payload), count, exclude);
-                        responder.respond(sent_to).ignore()
-                    }
+            Event::NetworkRequest { request } => match *request {
+                NetworkRequest::SendMessage {
+                    dest,
+                    payload,
+                    responder,
+                } => {
+                    self.send_message(dest, OneWayMessage::new(payload));
+                    responder.respond(()).ignore()
+                }
+                NetworkRequest::Broadcast { payload, responder } => {
+                    self.broadcast_message(OneWayMessage::new(payload));
+                    responder.respond(()).ignore()
+                }
+                NetworkRequest::Gossip {
+                    payload,
+                    count,
+                    exclude,
+                    responder,
+                } => {
+                    let sent_to =
+                        self.gossip_message(rng, OneWayMessage::new(payload), count, exclude);
+                    responder.respond(sent_to).ignore()
                 }
             },
-            Event::NetworkInfoRequest { info_request } => {
-                match *info_request {
-                    NetworkInfoRequest::GetPeers { responder } => {
-                        let peers = self
-                            .peers
-                            .iter()
-                            .map(|(node_id, endpoint)| {
-                                let peer_address = match endpoint {
-                                    ConnectedPoint::Dialer { address } => address.to_string(),
-                                    ConnectedPoint::Listener { send_back_addr, .. } => {
-                                        send_back_addr.to_string()
-                                    }
-                                };
+            Event::NetworkInfoRequest { info_request } => match *info_request {
+                NetworkInfoRequest::GetPeers { responder } => {
+                    let peers = self
+                        .peers
+                        .iter()
+                        .map(|(node_id, endpoint)| {
+                            let peer_address = match endpoint {
+                                ConnectedPoint::Dialer { address } => address.to_string(),
+                                ConnectedPoint::Listener { send_back_addr, .. } => {
+                                    send_back_addr.to_string()
+                                }
+                            };
 
-                                (node_id.clone(), peer_address)
-                            })
-                            .collect();
-                        responder.respond(peers).ignore()
-                    }
+                            (node_id.clone(), peer_address)
+                        })
+                        .collect();
+                    responder.respond(peers).ignore()
                 }
-            }
+            },
         }
     }
 }

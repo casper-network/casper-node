@@ -476,7 +476,8 @@ impl Storage {
                     );
                 }
 
-                let was_written = txn.put_value(self.transfer_db, &*block_hash, &transfers, true)?;
+                let was_written =
+                    txn.put_value(self.transfer_db, &*block_hash, &transfers, true)?;
                 assert!(
                     was_written,
                     "failed to write transfers for block_hash {}",
