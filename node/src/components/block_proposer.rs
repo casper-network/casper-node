@@ -152,9 +152,9 @@ where
                 },
             ) => {
                 let mut new_ready_state = BlockProposerReady {
-                    sets: sets.unwrap_or_else(|| {
-                        BlockProposerDeploySets::with_next_finalized(next_finalized_block)
-                    }),
+                    sets: sets
+                        .unwrap_or_default()
+                        .with_next_finalized(next_finalized_block),
                     deploy_config: chainspec.genesis.deploy_config,
                     state_key: deploy_sets::create_storage_key(&chainspec),
                     request_queue: Default::default(),

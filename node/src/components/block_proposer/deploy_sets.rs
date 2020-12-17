@@ -45,10 +45,10 @@ impl Default for BlockProposerDeploySets {
 }
 
 impl BlockProposerDeploySets {
-    pub(super) fn with_next_finalized(next_finalized: BlockHeight) -> Self {
+    pub(super) fn with_next_finalized(self, next_finalized: BlockHeight) -> Self {
         BlockProposerDeploySets {
             next_finalized,
-            ..Default::default()
+            ..self
         }
     }
 }
