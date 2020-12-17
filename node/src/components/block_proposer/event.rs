@@ -89,6 +89,8 @@ pub enum Event {
         chainspec: Arc<Chainspec>,
         /// Loaded previously stored block proposer sets.
         sets: Option<BlockProposerDeploySets>,
+        /// The height of the next expected finalized block.
+        next_finalized_block: BlockHeight,
     },
     /// A new deploy should be buffered.
     BufferDeploy {
@@ -109,11 +111,23 @@ impl Display for Event {
         match self {
             Event::Request(req) => write!(f, "block-proposer request: {}", req),
             Event::Loaded {
-                sets: Some(sets), ..
-            } => write!(f, "loaded block-proposer deploy sets: {}", sets),
-            Event::Loaded { sets: None, .. } => write!(
+                sets: Some(sets),
+                next_finalized_block,
+                ..
+            } => write!(
                 f,
-                "loaded block-proposer deploy sets, none found in storage"
+                "loaded block-proposer deploy sets: {}; expected next finalized block: {}",
+                sets, next_finalized_block
+            ),
+            Event::Loaded {
+                sets: None,
+                next_finalized_block,
+                ..
+            } => write!(
+                f,
+                "loaded block-proposer deploy sets, none found in storage; \
+                expected next finalized block: {}",
+                next_finalized_block
             ),
             Event::BufferDeploy { hash, .. } => write!(f, "block-proposer add {}", hash),
             Event::Prune => write!(f, "block-proposer prune"),

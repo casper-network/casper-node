@@ -82,6 +82,7 @@ impl BlockProposer {
     pub(crate) fn new<REv>(
         registry: Registry,
         effect_builder: EffectBuilder<REv>,
+        next_finalized_block: BlockHeight,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
         REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
@@ -106,7 +107,11 @@ impl BlockProposer {
 
             (chainspec, sets)
         }
-        .event(|(chainspec, sets)| Event::Loaded { chainspec, sets });
+        .event(move |(chainspec, sets)| Event::Loaded {
+            chainspec,
+            sets,
+            next_finalized_block,
+        });
 
         let block_proposer = BlockProposer {
             state: BlockProposerState::Initializing {
@@ -140,10 +145,16 @@ where
         match (&mut self.state, event) {
             (
                 BlockProposerState::Initializing { ref mut pending },
-                Event::Loaded { chainspec, sets },
+                Event::Loaded {
+                    chainspec,
+                    sets,
+                    next_finalized_block,
+                },
             ) => {
                 let mut new_ready_state = BlockProposerReady {
-                    sets: sets.unwrap_or_default(),
+                    sets: sets.unwrap_or_else(|| {
+                        BlockProposerDeploySets::with_next_finalized(next_finalized_block)
+                    }),
                     deploy_config: chainspec.genesis.deploy_config,
                     state_key: deploy_sets::create_storage_key(&chainspec),
                     request_queue: Default::default(),
