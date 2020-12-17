@@ -10,6 +10,7 @@ use std::{
     convert::TryInto,
     fmt::{self, Debug, Formatter},
     rc::Rc,
+    time::Duration,
 };
 
 use anyhow::Error;
@@ -295,13 +296,6 @@ where
         results
     }
 
-    /// Returns the current era.
-    fn current_era_mut(&mut self) -> &mut Era<I> {
-        self.active_eras
-            .get_mut(&self.current_era)
-            .expect("current era does not exist")
-    }
-
     /// Returns `true` if the specified era is active and bonded.
     fn is_bonded(&self, era_id: EraId) -> bool {
         era_id.0 + self.bonded_eras >= self.current_era.0 && era_id <= self.current_era
@@ -480,6 +474,33 @@ where
         effects
     }
 
+    pub(super) fn handle_deactivate_era(
+        &mut self,
+        era_id: EraId,
+        old_faulty_num: usize,
+        delay: Duration,
+    ) -> Effects<Event<I>> {
+        let era = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
+            era
+        } else {
+            warn!(era = era_id.0, "trying to deactivate obsolete era");
+            return Effects::new();
+        };
+        let faulty_num = era.consensus.validators_with_evidence().len();
+        if faulty_num == old_faulty_num {
+            info!(era = era_id.0, "stop voting in era");
+            era.consensus.deactivate_validator();
+            Effects::new()
+        } else {
+            let deactivate_era = move |_| Event::DeactivateEra {
+                era_id,
+                faulty_num,
+                delay,
+            };
+            self.effect_builder.set_timeout(delay).event(deactivate_era)
+        }
+    }
+
     pub(super) fn handle_create_new_era(
         &mut self,
         block_header: BlockHeader,
@@ -487,10 +508,6 @@ where
         key_block_seed: Digest,
         validators: BTreeMap<PublicKey, U512>,
     ) -> Effects<Event<I>> {
-        self.era_supervisor
-            .current_era_mut()
-            .consensus
-            .deactivate_validator();
         let newly_slashed = block_header
             .era_end()
             .expect("switch block must have era_end")
@@ -640,20 +657,21 @@ where
                 equivocators,
                 proposer,
             }) => {
-                self.era_mut(era_id).add_accusations(&equivocators);
-                self.era_mut(era_id).add_accusations(value.accusations());
+                let era = self.era_supervisor.active_eras.get_mut(&era_id).unwrap();
+                era.add_accusations(&equivocators);
+                era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets slashed.
                 let era_end = rewards.map(|rewards| EraEnd {
                     rewards,
-                    equivocators: self.era(era_id).accusations(),
+                    equivocators: era.accusations(),
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.proto_block().clone(),
                     timestamp,
                     era_end,
                     era_id,
-                    self.era(era_id).start_height + height,
+                    era.start_height + height,
                     proposer,
                 );
                 self.era_supervisor
@@ -665,6 +683,17 @@ where
                     .announce_finalized_block(finalized_block.clone())
                     .ignore();
                 self.era_supervisor.next_block_height = finalized_block.height() + 1;
+                if finalized_block.era_end().is_some() {
+                    // This was the era's last block. Schedule deactivating this era.
+                    let delay = Timestamp::now().saturating_sub(timestamp).into();
+                    let faulty_num = era.consensus.validators_with_evidence().len();
+                    let deactivate_era = move |_| Event::DeactivateEra {
+                        era_id,
+                        faulty_num,
+                        delay,
+                    };
+                    effects.extend(self.effect_builder.set_timeout(delay).event(deactivate_era));
+                }
                 // Request execution of the finalized block.
                 effects.extend(self.effect_builder.execute_block(finalized_block).ignore());
                 effects
