@@ -393,8 +393,14 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
-        let (block_proposer, block_proposer_effects) =
-            BlockProposer::new(registry.clone(), effect_builder)?;
+        let (block_proposer, block_proposer_effects) = BlockProposer::new(
+            registry.clone(),
+            effect_builder,
+            latest_block
+                .as_ref()
+                .map(|block| block.height() + 1)
+                .unwrap_or(0),
+        )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         // Post state hash is expected to be present.
         let genesis_state_root_hash = chainspec_loader
