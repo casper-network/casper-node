@@ -57,8 +57,6 @@ impl From<(EngineStateError, ExecutionEffect, Gas)> for DeployResult {
             | error @ EngineStateError::Deploy
             | error @ EngineStateError::Finalization
             | error @ EngineStateError::Bytesrepr(_)
-            | error @ EngineStateError::BincodeSerialization(_)
-            | error @ EngineStateError::BincodeDeserialization(_)
             | error @ EngineStateError::Mint(_) => detail::execution_error(error, effect, cost),
             EngineStateError::Exec(exec_error) => (exec_error, effect, cost).into(),
         }

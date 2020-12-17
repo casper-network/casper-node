@@ -3,14 +3,16 @@ use num_rational::Ratio;
 use casper_engine_grpc_server::engine_server::{
     ipc::{
         ChainSpec_ActivationPoint, ChainSpec_NewAuctionDelay, ChainSpec_NewLockedFundsPeriod,
-        ChainSpec_NewUnbondingDelay, ChainSpec_NewValidatorSlots, ChainSpec_UpgradePoint,
-        ChainSpec_WasmConfig, DeployCode, UpgradeRequest,
+        ChainSpec_NewUnbondingDelay, ChainSpec_NewValidatorSlots,
+        ChainSpec_NewWasmlessTransferCost, ChainSpec_UpgradePoint, ChainSpec_WasmConfig,
+        DeployCode, UpgradeRequest,
     },
     state,
 };
 use casper_execution_engine::shared::wasm_config::WasmConfig;
 use casper_types::{auction::EraId, ProtocolVersion};
 
+#[derive(Default)]
 pub struct UpgradeRequestBuilder {
     pre_state_hash: Vec<u8>,
     current_protocol_version: state::ProtocolVersion,
@@ -23,6 +25,7 @@ pub struct UpgradeRequestBuilder {
     new_locked_funds_period: Option<EraId>,
     new_round_seigniorage_rate: Option<Ratio<u64>>,
     new_unbonding_delay: Option<EraId>,
+    new_wasmless_transfer_cost: Option<EraId>,
 }
 
 impl UpgradeRequestBuilder {
@@ -79,6 +82,11 @@ impl UpgradeRequestBuilder {
         self
     }
 
+    pub fn with_new_wasmless_transfer_cost(mut self, wasmless_transfer_cost: u64) -> Self {
+        self.new_wasmless_transfer_cost = Some(wasmless_transfer_cost);
+        self
+    }
+
     pub fn with_activation_point(mut self, height: u64) -> Self {
         self.activation_point = {
             let mut ret = ChainSpec_ActivationPoint::new();
@@ -125,6 +133,13 @@ impl UpgradeRequestBuilder {
             upgrade_point.set_new_unbonding_delay(chainspec_new_unbonding_delay);
         }
 
+        if let Some(new_wasmless_transfer_cost) = self.new_wasmless_transfer_cost {
+            let mut chainspec_new_wasmless_transfer_cost = ChainSpec_NewWasmlessTransferCost::new();
+            chainspec_new_wasmless_transfer_cost
+                .set_new_wasmless_transfer_cost(new_wasmless_transfer_cost);
+            upgrade_point.set_new_wasmless_transfer_cost(chainspec_new_wasmless_transfer_cost);
+        }
+
         upgrade_point.set_protocol_version(self.new_protocol_version);
         upgrade_point.set_upgrade_installer(self.upgrade_installer);
 
@@ -132,23 +147,5 @@ impl UpgradeRequestBuilder {
         upgrade_request.set_protocol_version(self.current_protocol_version);
         upgrade_request.set_upgrade_point(upgrade_point);
         upgrade_request
-    }
-}
-
-impl Default for UpgradeRequestBuilder {
-    fn default() -> Self {
-        UpgradeRequestBuilder {
-            pre_state_hash: Default::default(),
-            current_protocol_version: Default::default(),
-            new_protocol_version: Default::default(),
-            upgrade_installer: Default::default(),
-            new_wasm_config: None,
-            activation_point: Default::default(),
-            new_validator_slots: Default::default(),
-            new_auction_delay: Default::default(),
-            new_locked_funds_period: Default::default(),
-            new_round_seigniorage_rate: Default::default(),
-            new_unbonding_delay: Default::default(),
-        }
     }
 }

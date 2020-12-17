@@ -9,9 +9,9 @@ use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
-    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, AccessRights,
-    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
-    Phase, ProtocolVersion, RuntimeArgs,
+    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, proof_of_stake,
+    AccessRights, BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint,
+    EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
 };
 
 use crate::{
@@ -310,7 +310,8 @@ impl Executor {
                     );
                 }
             }
-            DirectSystemContractCall::FinalizePayment => {
+            DirectSystemContractCall::FinalizePayment
+            | DirectSystemContractCall::GetPaymentPurse => {
                 if protocol_data.proof_of_stake() != base_key.into_seed() {
                     panic!(
                         "{} should only be called with the proof of stake contract",
@@ -645,6 +646,7 @@ pub enum DirectSystemContractCall {
     CreatePurse,
     Transfer,
     GetEraValidators,
+    GetPaymentPurse,
 }
 
 impl DirectSystemContractCall {
@@ -657,6 +659,7 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::CreatePurse => "create",
             DirectSystemContractCall::Transfer => "transfer",
             DirectSystemContractCall::GetEraValidators => auction::METHOD_GET_ERA_VALIDATORS,
+            DirectSystemContractCall::GetPaymentPurse => proof_of_stake::METHOD_GET_PAYMENT_PURSE,
         }
     }
 
@@ -701,6 +704,14 @@ impl DirectSystemContractCall {
                     extra_keys,
                 ),
             DirectSystemContractCall::GetEraValidators => runtime.call_host_auction(
+                protocol_version,
+                entry_point_name,
+                named_keys,
+                runtime_args,
+                extra_keys,
+            ),
+
+            DirectSystemContractCall::GetPaymentPurse => runtime.call_host_proof_of_stake(
                 protocol_version,
                 entry_point_name,
                 named_keys,

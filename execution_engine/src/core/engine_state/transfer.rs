@@ -21,6 +21,60 @@ pub enum TransferTargetMode {
     CreateAccount(AccountHash),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TransferArgs {
+    to: Option<AccountHash>,
+    source: URef,
+    target: URef,
+    amount: U512,
+    arg_id: Option<u64>,
+}
+
+impl TransferArgs {
+    pub fn new(
+        to: Option<AccountHash>,
+        source: URef,
+        target: URef,
+        amount: U512,
+        arg_id: Option<u64>,
+    ) -> Self {
+        Self {
+            to,
+            source,
+            target,
+            amount,
+            arg_id,
+        }
+    }
+
+    pub fn to(&self) -> Option<AccountHash> {
+        self.to
+    }
+
+    pub fn source(&self) -> URef {
+        self.source
+    }
+
+    pub fn arg_id(&self) -> Option<u64> {
+        self.arg_id
+    }
+}
+
+impl From<TransferArgs> for RuntimeArgs {
+    fn from(transfer_args: TransferArgs) -> Self {
+        let mut runtime_args = RuntimeArgs::new();
+
+        runtime_args.insert(mint::ARG_TO, transfer_args.to);
+        runtime_args.insert(mint::ARG_SOURCE, transfer_args.source);
+        runtime_args.insert(mint::ARG_TARGET, transfer_args.target);
+        runtime_args.insert(mint::ARG_AMOUNT, transfer_args.amount);
+        runtime_args.insert(mint::ARG_ID, transfer_args.arg_id);
+
+        runtime_args
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TransferRuntimeArgsBuilder {
     inner: RuntimeArgs,
     transfer_target_mode: TransferTargetMode,
@@ -248,7 +302,7 @@ impl TransferRuntimeArgsBuilder {
         from: &Account,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<RuntimeArgs, Error>
+    ) -> Result<TransferArgs, Error>
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
@@ -283,18 +337,12 @@ impl TransferRuntimeArgsBuilder {
             }
         };
 
-        let runtime_args = {
-            let mut runtime_args = RuntimeArgs::new();
-
-            runtime_args.insert(mint::ARG_TO, to);
-            runtime_args.insert(mint::ARG_SOURCE, source_uref);
-            runtime_args.insert(mint::ARG_TARGET, target_uref);
-            runtime_args.insert(mint::ARG_AMOUNT, amount);
-            runtime_args.insert(mint::ARG_ID, id);
-
-            runtime_args
-        };
-
-        Ok(runtime_args)
+        Ok(TransferArgs {
+            to,
+            source: source_uref,
+            target: target_uref,
+            amount,
+            arg_id: id,
+        })
     }
 }

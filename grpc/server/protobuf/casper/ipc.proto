@@ -299,6 +299,8 @@ message ChainSpec {
             Ratio round_seigniorage_rate = 11;
             // Unbonding delay expressed in eras.
             uint64 unbonding_delay = 12;
+            // Wasmless transfer cost expressed in gas.
+            uint64 wasmless_transfer_cost = 13;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;
@@ -465,6 +467,8 @@ message ChainSpec {
         Ratio new_round_seigniorage_rate = 10;
         // Change the unbonding delay (optional)
         NewUnbondingDelay new_unbonding_delay = 11;
+        // Change the wasmless transfer cost (optional)
+        NewWasmlessTransferCost new_wasmless_transfer_cost = 12;
     }
 
     message NewValidatorSlots {
@@ -486,6 +490,10 @@ message ChainSpec {
 
     message NewUnbondingDelay {
         uint64 new_unbonding_delay = 1;
+    }
+
+    message NewWasmlessTransferCost {
+        uint64 new_wasmless_transfer_cost = 1;
     }
 }
 

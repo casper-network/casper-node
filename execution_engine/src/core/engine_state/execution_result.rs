@@ -43,7 +43,7 @@ fn make_payment_error_effects(
     ExecutionEffect::new(ops, transforms)
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ExecutionResult {
     /// An error condition that happened during execution
     Failure {

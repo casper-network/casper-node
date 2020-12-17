@@ -13,6 +13,8 @@ locked_funds_period = 0
 # (1+0.02)^((2^14)/31536000000)-1 is expressed as a fractional number below.
 round_seigniorage_rate = [6_414, 623_437_335_209]
 unbonding_delay = 14
+# Wasmless transfer cost expressed in gas.
+wasmless_transfer_cost = 10_000
 
 [highway]
 era_duration = '3minutes'

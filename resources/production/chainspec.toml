@@ -41,6 +41,8 @@ unbonding_delay = 14
 #
 # (1+0.02)^((2^17)/31536000000)-1 is expressed as a fractional number below.
 round_seigniorage_rate = [16_837, 204_568_405_924]
+# Wasmless transfer cost expressed in gas.
+wasmless_transfer_cost = 10_000
 
 [highway]
 # Era duration.

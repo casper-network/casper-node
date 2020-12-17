@@ -222,6 +222,8 @@ pub struct GenesisConfig {
     pub(crate) round_seigniorage_rate: Ratio<u64>,
     /// The delay for paying out the the unbonding amount.
     pub(crate) unbonding_delay: EraId,
+    /// Wasmless transfer cost expressed in gas.
+    pub(crate) wasmless_transfer_cost: u64,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -321,6 +323,7 @@ impl GenesisConfig {
         let deploy_config = DeployConfig::random(rng);
         let highway_config = HighwayConfig::random(rng);
         let unbonding_delay = rng.gen();
+        let wasmless_transfer_cost = rng.gen();
 
         GenesisConfig {
             name,
@@ -329,6 +332,8 @@ impl GenesisConfig {
             auction_delay,
             locked_funds_period,
             round_seigniorage_rate,
+            unbonding_delay,
+            wasmless_transfer_cost,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
@@ -338,7 +343,6 @@ impl GenesisConfig {
             wasm_config: costs,
             deploy_config,
             highway_config,
-            unbonding_delay,
         }
     }
 }
@@ -358,6 +362,7 @@ pub(crate) struct UpgradePoint {
     pub(crate) new_wasm_config: Option<WasmConfig>,
     pub(crate) new_deploy_config: Option<DeployConfig>,
     pub(crate) new_validator_slots: Option<u32>,
+    pub(crate) new_wasmless_transfer_cost: Option<u64>,
 }
 
 #[cfg(test)]
@@ -389,6 +394,7 @@ impl UpgradePoint {
             None
         };
         let new_validator_slots = rng.gen::<Option<u32>>();
+        let new_wasmless_transfer_cost = rng.gen();
 
         UpgradePoint {
             activation_point,
@@ -398,6 +404,7 @@ impl UpgradePoint {
             new_wasm_config: new_costs,
             new_deploy_config,
             new_validator_slots,
+            new_wasmless_transfer_cost,
         }
     }
 }
@@ -458,6 +465,7 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.locked_funds_period,
             self.genesis.round_seigniorage_rate,
             self.genesis.unbonding_delay,
+            self.genesis.wasmless_transfer_cost,
         )
     }
 }
