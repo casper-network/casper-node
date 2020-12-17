@@ -15,6 +15,7 @@ mod traits;
 use std::{
     convert::{Infallible, TryInto},
     fmt::{self, Debug, Display, Formatter},
+    time::Duration,
 };
 
 use datasize::DataSize;
@@ -78,6 +79,12 @@ pub enum Event<I> {
         sender: I,
         proto_block: ProtoBlock,
         valid: bool,
+    },
+    /// Deactivate the era with the given ID, unless the number of faulty validators increases.
+    DeactivateEra {
+        era_id: EraId,
+        faulty_num: usize,
+        delay: Duration,
     },
     /// Event raised when a new era should be created: once we get the set of validators, the
     /// booking block hash and the seed from the key block
@@ -160,6 +167,13 @@ impl<I: Debug> Display for Event<I> {
                 if *valid { "valid" } else { "invalid" },
                 proto_block
             ),
+            Event::DeactivateEra {
+                era_id, faulty_num, ..
+            } => write!(
+                f,
+                "Deactivate old era {} unless additional faults are observed; faults so far: {}",
+                era_id.0, faulty_num
+            ),
             Event::CreateNewEra {
                 booking_block_hash,
                 key_block_seed,
@@ -237,6 +251,11 @@ where
                 proto_block,
                 valid,
             } => handling_es.resolve_validity(era_id, sender, proto_block, valid),
+            Event::DeactivateEra {
+                era_id,
+                faulty_num,
+                delay,
+            } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
             Event::CreateNewEra {
                 block_header,
                 booking_block_hash,
