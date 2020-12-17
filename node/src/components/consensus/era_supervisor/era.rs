@@ -20,7 +20,7 @@ use crate::{
         ConsensusMessage,
     },
     crypto::asymmetric_key::PublicKey,
-    types::ProtoBlock,
+    types::{ProtoBlock, Timestamp},
 };
 
 #[derive(
@@ -126,6 +126,8 @@ impl PendingCandidate {
 pub struct Era<I> {
     /// The consensus protocol instance.
     pub(crate) consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
+    /// The scheduled starting time of this era.
+    pub(crate) start_time: Timestamp,
     /// The height of this era's first block.
     pub(crate) start_height: u64,
     /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
@@ -146,6 +148,7 @@ pub struct Era<I> {
 impl<I> Era<I> {
     pub(crate) fn new(
         consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
+        start_time: Timestamp,
         start_height: u64,
         newly_slashed: Vec<PublicKey>,
         slashed: HashSet<PublicKey>,
@@ -153,6 +156,7 @@ impl<I> Era<I> {
     ) -> Self {
         Era {
             consensus,
+            start_time,
             start_height,
             candidates: Vec::new(),
             newly_slashed,
@@ -262,6 +266,7 @@ where
         // Destructure self, so we can't miss any fields.
         let Era {
             consensus,
+            start_time,
             start_height,
             candidates,
             newly_slashed,
@@ -288,6 +293,7 @@ where
         };
 
         consensus_heap_size
+            + start_time.estimate_heap_size()
             + start_height.estimate_heap_size()
             + candidates.estimate_heap_size()
             + newly_slashed.estimate_heap_size()

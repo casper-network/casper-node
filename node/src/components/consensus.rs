@@ -99,6 +99,8 @@ pub enum Event<I> {
     },
     /// An event instructing us to shutdown if the latest era received no votes
     Shutdown,
+    /// An event fired when the joiner reactor transitions into validator.
+    FinishedJoining(Timestamp),
 }
 
 impl Debug for ConsensusMessage {
@@ -186,6 +188,9 @@ impl<I: Debug> Display for Event<I> {
                 booking_block_hash, key_block_seed, get_validators_result
             ),
             Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
+            Event::FinishedJoining(timestamp) => {
+                write!(f, "The node finished joining the network at {}", timestamp)
+            }
         }
     }
 }
@@ -307,6 +312,7 @@ where
                 )
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
+            Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
         }
     }
 }

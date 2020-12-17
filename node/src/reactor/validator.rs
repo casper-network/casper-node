@@ -433,6 +433,13 @@ impl reactor::Reactor for Reactor {
                 .event(|_| consensus::Event::Shutdown),
         ));
 
+        effects.extend(reactor::wrap_effects(
+            Event::Consensus,
+            effect_builder
+                .immediately()
+                .event(move |_| consensus::Event::FinishedJoining(now)),
+        ));
+
         Ok((
             Reactor {
                 metrics,
