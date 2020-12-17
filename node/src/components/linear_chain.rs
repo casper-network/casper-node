@@ -64,7 +64,8 @@ pub enum Event<I> {
         execution_results: HashMap<DeployHash, ExecutionResult>,
     },
     /// The result of requesting a block from storage to add a finality signature to it.
-    GetBlockForFinalitySignaturesResult(BlockHash, Option<Box<Block>>),
+    GetBlockForFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<Block>>),
+    IsBondedContinuation(Option<Box<Block>>, Box<FinalitySignature>, bool),
 }
 
 impl<I: Display> Display for Event<I> {
@@ -100,12 +101,19 @@ impl<I: Display> Display for Event<I> {
                 height,
                 block.is_some()
             ),
-            Event::GetBlockForFinalitySignaturesResult(block_hash, maybe_block) => {
+            Event::GetBlockForFinalitySignaturesResult(finality_signature, maybe_block) => {
                 write!(
                     f,
                     "linear chain get-block-for-finality-signatures-result for {} found: {}",
-                    block_hash,
+                    finality_signature.block_hash,
                     maybe_block.is_some()
+                )
+            }
+            Event::IsBondedContinuation(_block, fs, is_bonded) => {
+                write!(
+                    f,
+                    "linear chain is-bonded-continuation for era {} validator {}, is_bonded: {}",
+                    fs.era_id, fs.public_key, is_bonded
                 )
             }
         }
@@ -168,6 +176,30 @@ impl<I> LinearChain<I> {
             effects.extend(effect_builder.announce_finality_signature(fs).ignore());
         }
         (block, effects)
+    }
+
+    /// Adds finality signature to the collection of pending finality signatures.
+    fn add_finality_signature(&mut self, fs: FinalitySignature) {
+        let FinalitySignature {
+            block_hash,
+            public_key,
+            ..
+        } = fs;
+        debug!(%block_hash, %public_key, "received new finality signature");
+        let sigs = self
+            .pending_finality_signatures
+            .entry(public_key)
+            .or_default();
+        // Limit the memory we use for storing unknown signatures from each validator.
+        if sigs.len() >= MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR {
+            warn!(
+                %block_hash, %public_key,
+                "received too many finality signatures for unknown blocks"
+            );
+            return;
+        }
+        // Add the pending signature.
+        let _ = sigs.insert(block_hash, fs);
     }
 }
 
@@ -286,60 +318,98 @@ where
                     public_key,
                     ..
                 } = *fs;
-                // TODO: Also verify that the public key belongs to a bonded validator!
                 if let Err(err) = fs.verify() {
                     warn!(%block_hash, %public_key, %err, "received invalid finality signature");
                     return Effects::new();
-                }
-                debug!(%block_hash, %public_key, "received new finality signature");
-                let sigs = self
-                    .pending_finality_signatures
-                    .entry(public_key)
-                    .or_default();
-                // Limit the memory we use for storing unknown signatures from each validator.
-                if sigs.len() >= MAX_PENDING_FINALITY_SIGNATURES_PER_VALIDATOR {
-                    warn!(
-                        %block_hash, %public_key,
-                        "received too many finality signatures for unknown blocks"
-                    );
-                    return Effects::new();
-                }
-                // Add the pending signature and request the block from storage.
-                if sigs.insert(block_hash, *fs).is_some() {
-                    return Effects::new(); // Signature was already known.
                 }
                 effect_builder
                     .get_block_from_storage(block_hash)
                     .event(move |maybe_block| {
                         let maybe_box_block = maybe_block.map(Box::new);
-                        Event::GetBlockForFinalitySignaturesResult(block_hash, maybe_box_block)
+                        Event::GetBlockForFinalitySignaturesResult(fs, maybe_box_block)
                     })
             }
-            Event::GetBlockForFinalitySignaturesResult(block_hash, None) => {
-                let signers = self
-                    .pending_finality_signatures
-                    .values()
-                    .filter_map(|sigs| sigs.get(&block_hash))
-                    .map(|fs| format!("{}", fs.public_key))
-                    .collect_vec();
-                if !signers.is_empty() {
-                    // We have signatures for an unknown block. Print log messages.
-                    warn!(
-                       %block_hash, signers = %signers.join(", "),
-                       "received signatures for a block that was not found in storage"
+            Event::GetBlockForFinalitySignaturesResult(fs, maybe_block) => {
+                if let Some(block) = &maybe_block {
+                    assert_eq!(
+                        block.hash(),
+                        &fs.block_hash,
+                        "block loaded from storage should have a matching block hash."
                     )
                 }
-                Effects::new()
+                // Check if validator is bonded in the era in which the block was created in.
+                effect_builder
+                    .is_bonded_validator(fs.era_id, fs.public_key)
+                    .event(|is_bonded| Event::IsBondedContinuation(maybe_block, fs, is_bonded))
             }
-            Event::GetBlockForFinalitySignaturesResult(_block_hash, Some(block)) => {
-                let old_count = block.proofs().len();
-                let (block, mut effects) =
-                    self.add_pending_finality_signatures(*block, effect_builder);
-                if block.proofs().len() > old_count {
-                    let block = Box::new(block);
-                    effects.extend(effect_builder.put_block_to_storage(block).ignore());
+            Event::IsBondedContinuation(maybe_block, fs, is_bonded) => {
+                match maybe_block {
+                    Some(block) if is_bonded => {
+                        // Known block and signature from a bonded validator.
+                        self.add_finality_signature(*fs);
+                        let old_count = block.proofs().len();
+                        let (block, mut effects) =
+                            self.add_pending_finality_signatures(*block, effect_builder);
+                        if block.proofs().len() > old_count {
+                            let block = Box::new(block);
+                            effects.extend(effect_builder.put_block_to_storage(block).ignore());
+                        }
+                        effects
+                    }
+                    Some(_block) if !is_bonded => {
+                        // Known block but not a valid validator.
+                        // Validator cannot be from the future era b/c we wouldn't have the block.
+                        let FinalitySignature {
+                            public_key,
+                            block_hash,
+                            ..
+                        } = *fs;
+                        warn!(
+                            validator = %public_key,
+                            %block_hash,
+                            "Received a signature from a validator that is not bonded."
+                        );
+                        // TODO: Disconnect from the sender.
+                        Effects::new()
+                    }
+                    None if is_bonded => {
+                        // Unknown block but validator is bonded.
+                        let block_hash = fs.block_hash;
+                        let signers = self
+                            .pending_finality_signatures
+                            .values()
+                            .filter_map(|sigs| sigs.get(&block_hash))
+                            .map(|fs| format!("{}", fs.public_key))
+                            .collect_vec();
+                        if !signers.is_empty() {
+                            // We have signatures for an unknown block. Print log messages.
+                            warn!(
+                               %block_hash, signers = %signers.join(", "),
+                               "received signatures for a block that was not found in storage"
+                            )
+                        }
+                        Effects::new()
+                    }
+                    None if !is_bonded => {
+                        // Unknown block from unknown validator.
+                        // TODO: Check if validator will be bonded in the next era.
+                        let FinalitySignature {
+                            public_key,
+                            block_hash,
+                            ..
+                        } = *fs;
+                        warn!(
+                            validator = %public_key,
+                            %block_hash,
+                            "Received a signature from a validator that is not bonded."
+                        );
+                        self.add_finality_signature(*fs);
+                        Effects::new()
+                    }
+                    other => {
+                        unreachable!("{:?} state should not be reachable", other)
+                    }
                 }
-                effects
             }
         }
     }
