@@ -19,7 +19,7 @@ use std::{
 use datasize::DataSize;
 use prometheus::{self, Registry};
 use semver::Version;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     components::{chainspec_loader::DeployConfig, Component},
@@ -151,7 +151,7 @@ where
                 };
 
                 // Replay postponed events onto new state.
-                for ev in pending.drain(0..pending.len()) {
+                for ev in pending.drain(..) {
                     effects.extend(new_ready_state.handle_event(effect_builder, ev));
                 }
 
@@ -212,6 +212,11 @@ impl BlockProposerReady {
         match event {
             Event::Request(BlockProposerRequest::RequestProtoBlock(request)) => {
                 if request.next_finalized > self.sets.next_finalized {
+                    warn!(
+                        request_next_finalized = %request.next_finalized,
+                        self_next_finalized = %self.sets.next_finalized,
+                        "received request before finalization announcement"
+                    );
                     self.request_queue
                         .entry(request.next_finalized)
                         .or_default()
@@ -253,7 +258,7 @@ impl BlockProposerReady {
             }
             Event::Loaded { sets, .. } => {
                 // This should never happen, but we can just ignore the event and carry on.
-                warn!(
+                error!(
                     ?sets,
                     "got loaded event for block proposer state during ready state"
                 );
@@ -264,6 +269,11 @@ impl BlockProposerReady {
                 deploys.extend(transfers);
 
                 if height > self.sets.next_finalized {
+                    warn!(
+                        %height,
+                        next_finalized = %self.sets.next_finalized,
+                        "received finalized blocks out of order; queueing"
+                    );
                     // safe to subtract 1 - height will never be 0 in this branch, because
                     // next_finalized is at least 0, and height has to be greater
                     self.sets.finalization_queue.insert(height - 1, deploys);
@@ -271,6 +281,7 @@ impl BlockProposerReady {
                 } else {
                     let mut effects = self.handle_finalized_block(effect_builder, height, deploys);
                     while let Some(deploys) = self.sets.finalization_queue.remove(&height) {
+                        info!(%height, "removed finalization queue entry");
                         height += 1;
                         effects.extend(self.handle_finalized_block(
                             effect_builder,
@@ -350,6 +361,7 @@ impl BlockProposerReady {
         self.sets.next_finalized = height + 1;
 
         if let Some(requests) = self.request_queue.remove(&self.sets.next_finalized) {
+            info!(height = %(height + 1), "handling queued requests");
             requests
                 .into_iter()
                 .flat_map(|request| {
