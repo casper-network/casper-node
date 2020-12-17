@@ -34,7 +34,8 @@ use crate::{
     effect::{
         announcements::BlockExecutorAnnouncement,
         requests::{
-            BlockExecutorRequest, ContractRuntimeRequest, LinearChainRequest, StorageRequest,
+            BlockExecutorRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -53,6 +54,7 @@ pub trait ReactorEventT:
     + From<LinearChainRequest<NodeId>>
     + From<ContractRuntimeRequest>
     + From<BlockExecutorAnnouncement>
+    + From<ConsensusRequest>
     + Send
 {
 }
@@ -63,6 +65,7 @@ impl<REv> ReactorEventT for REv where
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
         + From<BlockExecutorAnnouncement>
+        + From<ConsensusRequest>
         + Send
 {
 }
@@ -439,16 +442,18 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                 effect_builder
                     .get_block_at_height_local(finalized_block.height())
                     .event(move |maybe_block| {
-                        Event::BlockAlreadyExists(maybe_block.is_some(), finalized_block)
+                        Event::BlockAlreadyExists(maybe_block.map(Box::new), finalized_block)
                     })
             }
-            Event::BlockAlreadyExists(exists, finalized_block) => {
-                if !exists {
+            Event::BlockAlreadyExists(maybe_block, finalized_block) => {
+                if let Some(block) = maybe_block {
+                    effect_builder
+                        .handle_linear_chain_block(block.take_header())
+                        .ignore()
+                } else {
                     // If we haven't executed the block before in the past (for example during
                     // joining), do it now.
                     self.get_deploys(effect_builder, finalized_block)
-                } else {
-                    Effects::new()
                 }
             }
             Event::GetDeploysResult {

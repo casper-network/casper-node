@@ -17,14 +17,14 @@ use casper_types::ExecutionResult;
 use crate::{
     crypto::hash::Digest,
     effect::requests::BlockExecutorRequest,
-    types::{BlockHash, Deploy, DeployHash, DeployHeader, FinalizedBlock},
+    types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
 
 /// Block executor component event.
 #[derive(Debug, From)]
 pub enum Event {
     /// Indicates whether block has already been finalized and executed in the past.
-    BlockAlreadyExists(bool, FinalizedBlock),
+    BlockAlreadyExists(Option<Box<Block>>, FinalizedBlock),
     /// A request made of the Block executor component.
     #[from]
     Request(BlockExecutorRequest),
@@ -150,12 +150,12 @@ impl Display for Event {
                 state.state_root_hash,
                 result
             ),
-            Event::BlockAlreadyExists(flag, fb) => {
+            Event::BlockAlreadyExists(maybe_block, fb) => {
                 write!(
                     f,
                     "Block at height: {} was executed before: {}",
                     fb.height(),
-                    flag
+                    maybe_block.is_some()
                 )
             }
         }
