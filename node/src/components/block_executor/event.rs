@@ -23,8 +23,10 @@ use crate::{
 /// Block executor component event.
 #[derive(Debug, From)]
 pub enum Event {
-    /// Indicates whether block has already been finalized and executed in the past.
-    BlockAlreadyExists(Option<Box<Block>>, FinalizedBlock),
+    /// Indicates that block has already been finalized and executed in the past.
+    BlockAlreadyExists(Box<Block>),
+    /// Indicates that a block is not known yet, and needs to be executed.
+    BlockIsNew(FinalizedBlock),
     /// A request made of the Block executor component.
     #[from]
     Request(BlockExecutorRequest),
@@ -150,14 +152,10 @@ impl Display for Event {
                 state.state_root_hash,
                 result
             ),
-            Event::BlockAlreadyExists(maybe_block, fb) => {
-                write!(
-                    f,
-                    "Block at height: {} was executed before: {}",
-                    fb.height(),
-                    maybe_block.is_some()
-                )
+            Event::BlockAlreadyExists(block) => {
+                write!(f, "Block at height {} was executed before", block.height())
             }
+            Event::BlockIsNew(fb) => write!(f, "Block at height {} is new", fb.height(),),
         }
     }
 }

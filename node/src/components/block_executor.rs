@@ -143,6 +143,14 @@ impl BlockExecutor {
             .iter()
             .map(|hash| **hash)
             .collect::<SmallVec<_>>();
+        if deploy_hashes.is_empty() {
+            let result_event = move |_| Event::GetDeploysResult {
+                finalized_block,
+                deploys: VecDeque::new(),
+            };
+            return effect_builder.immediately().event(result_event);
+        }
+
         let era_id = finalized_block.era_id();
         let height = finalized_block.height();
 
@@ -431,31 +439,21 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
         match event {
             Event::Request(BlockExecutorRequest::ExecuteBlock(finalized_block)) => {
                 debug!(?finalized_block, "execute block");
-                if finalized_block.proto_block().deploys().is_empty() {
-                    return effect_builder
-                        .immediately()
-                        .event(move |_| Event::GetDeploysResult {
-                            finalized_block,
-                            deploys: VecDeque::new(),
-                        });
-                }
                 effect_builder
                     .get_block_at_height_local(finalized_block.height())
                     .event(move |maybe_block| {
-                        Event::BlockAlreadyExists(maybe_block.map(Box::new), finalized_block)
+                        maybe_block.map(Box::new).map_or_else(
+                            || Event::BlockIsNew(finalized_block),
+                            Event::BlockAlreadyExists,
+                        )
                     })
             }
-            Event::BlockAlreadyExists(maybe_block, finalized_block) => {
-                if let Some(block) = maybe_block {
-                    effect_builder
-                        .handle_linear_chain_block(block.take_header())
-                        .ignore()
-                } else {
-                    // If we haven't executed the block before in the past (for example during
-                    // joining), do it now.
-                    self.get_deploys(effect_builder, finalized_block)
-                }
-            }
+            Event::BlockAlreadyExists(block) => effect_builder
+                .handle_linear_chain_block(block.take_header())
+                .ignore(),
+            // If we haven't executed the block before in the past (for example during
+            // joining), do it now.
+            Event::BlockIsNew(finalized_block) => self.get_deploys(effect_builder, finalized_block),
             Event::GetDeploysResult {
                 finalized_block,
                 deploys,
