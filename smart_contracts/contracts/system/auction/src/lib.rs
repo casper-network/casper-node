@@ -44,8 +44,8 @@ impl StorageProvider for AuctionContract {
 }
 
 impl SystemProvider for AuctionContract {
-    fn create_purse(&mut self) -> URef {
-        system::create_purse()
+    fn create_purse(&mut self) -> Result<URef, Error> {
+        Ok(system::create_purse())
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {

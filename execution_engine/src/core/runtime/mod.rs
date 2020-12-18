@@ -54,6 +54,8 @@ use crate::{
 };
 use scoped_instrumenter::ScopedInstrumenter;
 
+use super::execution;
+
 pub struct Runtime<'a, R> {
     system_contract_cache: SystemContractCache,
     config: EngineConfig,
@@ -1270,7 +1272,33 @@ where
 
     fn reverter<T: Into<ApiError>>(error: T) -> Error {
         let api_error: ApiError = error.into();
-        Error::Revert(api_error)
+        // NOTE: This is special casing needed to keep the native system contracts propagate
+        // GasLimit properly to the user. Once support for wasm system contract will be dropped this
+        // won't be necessary anymore.
+        match api_error {
+            ApiError::Mint(mint_error)
+                if mint_error == system_contract_errors::mint::Error::GasLimit as u8 =>
+            {
+                Error::GasLimit
+            }
+            ApiError::Mint(mint_error)
+                if mint_error == system_contract_errors::mint::Error::InvalidContext as u8 =>
+            {
+                Error::InvalidContext
+            }
+            ApiError::AuctionError(auction_error)
+                if auction_error == system_contract_errors::auction::Error::GasLimit as u8 =>
+            {
+                Error::GasLimit
+            }
+            ApiError::AuctionError(auction_error)
+                if auction_error
+                    == system_contract_errors::auction::Error::InvalidContext as u8 =>
+            {
+                Error::InvalidContext
+            }
+            api_error => Error::Revert(api_error),
+        }
     }
 
     pub fn call_host_mint(
@@ -1340,6 +1368,9 @@ where
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
                 let result: Result<URef, system_contract_errors::mint::Error> =
                     mint_runtime.mint(amount);
+                if let Err(system_contract_errors::mint::Error::GasLimit) = result {
+                    return Err(execution::Error::GasLimit);
+                }
                 CLValue::from_t(result)?
             }
             mint::METHOD_REDUCE_TOTAL_SUPPLY => {

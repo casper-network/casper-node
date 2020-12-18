@@ -86,7 +86,22 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 
     let exec_request = ExecuteRequestBuilder::new().push_deploy(deploy).build();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder.exec(exec_request).commit();
+
+    let error = builder
+        .get_exec_responses()
+        .last()
+        .expect("should have results")
+        .get(0)
+        .expect("should have first result")
+        .as_error()
+        .expect("should have error");
+
+    assert!(
+        matches!(error, Error::Exec(execution::Error::GasLimit)),
+        "Unexpected error {:?}",
+        error
+    );
 }
 
 #[ignore]
@@ -143,7 +158,22 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 
     let exec_request = ExecuteRequestBuilder::new().push_deploy(deploy).build();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder.exec(exec_request).commit();
+
+    let error = builder
+        .get_exec_responses()
+        .last()
+        .expect("should have results")
+        .get(0)
+        .expect("should have first result")
+        .as_error()
+        .expect("should have error");
+
+    assert!(
+        matches!(error, Error::Exec(execution::Error::GasLimit)),
+        "Unexpected error {:?}",
+        error
+    );
 }
 
 #[ignore]

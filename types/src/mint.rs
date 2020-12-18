@@ -27,23 +27,23 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::InvalidNonEmptyPurseCreation);
         }
 
-        let balance_key: Key = self.new_uref(initial_balance).into();
-        let purse_uref: URef = self.new_uref(());
+        let balance_key: Key = self.new_uref(initial_balance)?.into();
+        let purse_uref: URef = self.new_uref(())?;
         let purse_uref_name = purse_uref.remove_access_rights().to_formatted_string();
 
         // store balance uref so that the runtime knows the mint has full access
-        self.put_key(&purse_uref_name, balance_key);
+        self.put_key(&purse_uref_name, balance_key)?;
 
         // store association between purse id and balance uref
-        self.write_local(purse_uref.addr(), balance_key);
+        self.write_local(purse_uref.addr(), balance_key)?;
 
         if !is_empty_purse {
             // get total supply uref if exists, otherwise create it.
             let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
                 None => {
                     // create total_supply value and track in mint context
-                    let uref: URef = self.new_uref(U512::zero());
-                    self.put_key(TOTAL_SUPPLY_KEY, uref.into());
+                    let uref: URef = self.new_uref(U512::zero())?;
+                    self.put_key(TOTAL_SUPPLY_KEY, uref.into())?;
                     uref
                 }
                 Some(Key::URef(uref)) => uref,

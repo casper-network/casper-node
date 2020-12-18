@@ -12,6 +12,18 @@ use crate::{
     core::execution, shared::stored_value::StoredValue, storage::global_state::StateReader,
 };
 
+/// Translates [`execution::Error`] into auction-specific [`Error`].
+///
+/// This function is primarily used to propagate [`Error::GasLimit`] to make sure [`Auction`]
+/// contract running natively supports propagating gas limit errors without a panic.
+fn to_auction_error(exec_error: execution::Error, unhandled: Error) -> Error {
+    match exec_error {
+        execution::Error::GasLimit => Error::GasLimit,
+        // There are possibly other exec errors happening but such transalation would be lossy.
+        _ => unhandled,
+    }
+}
+
 impl<'a, R> StorageProvider for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
@@ -42,8 +54,8 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn create_purse(&mut self) -> URef {
-        Runtime::create_purse(self).expect("create_purse")
+    fn create_purse(&mut self) -> Result<URef, Error> {
+        Runtime::create_purse(self).map_err(|e| to_auction_error(e, Error::CreatePurseFailed))
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {

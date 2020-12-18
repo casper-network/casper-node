@@ -123,6 +123,12 @@ pub enum Error {
     #[fail(display = "Record era info error")]
     RecordEraInfo = 33,
 
+    // NOTE: These variants below and related plumbing will be removed once support for WASM
+    // system contracts will be dropped.
+    #[doc(hidden)]
+    #[fail(display = "GasLimit")]
+    GasLimit = 34,
+
     #[cfg(test)]
     #[doc(hidden)]
     #[fail(display = "Sentinel error")]
@@ -187,6 +193,8 @@ impl TryFrom<u8> for Error {
             d if d == Error::WithdrawValidatorReward as u8 => Ok(Error::WithdrawValidatorReward),
             d if d == Error::TransferToUnbondingPurse as u8 => Ok(Error::TransferToUnbondingPurse),
             d if d == Error::RecordEraInfo as u8 => Ok(Error::RecordEraInfo),
+            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
+            d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
             _ => Err(TryFromU8ForError(())),
         }
     }

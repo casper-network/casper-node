@@ -33,7 +33,7 @@ pub trait StorageProvider {
 /// Provides functionality of a system module.
 pub trait SystemProvider {
     /// Creates new purse.
-    fn create_purse(&mut self) -> URef;
+    fn create_purse(&mut self) -> Result<URef, Error>;
 
     /// Gets purse balance.
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
