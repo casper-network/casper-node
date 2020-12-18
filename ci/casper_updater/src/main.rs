@@ -71,6 +71,9 @@ const DRY_RUN_ARG_NAME: &str = "dry-run";
 const DRY_RUN_ARG_SHORT: &str = "d";
 const DRY_RUN_ARG_HELP: &str = "Check all regexes get matches in current casper-node repo";
 
+const ALLOW_EARLIER_VERSION_NAME: &str = "allow-earlier-version";
+const ALLOW_EARLIER_VERSION_HELP: &str = "Allow manual setting of version earlier than current";
+
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub(crate) enum BumpVersion {
     Major,
@@ -82,6 +85,7 @@ struct Args {
     root_dir: PathBuf,
     bump_version: Option<BumpVersion>,
     dry_run: bool,
+    allow_earlier_version: bool,
 }
 
 /// The full path to the casper-node root directory.
@@ -97,6 +101,11 @@ pub(crate) fn bump_version() -> Option<BumpVersion> {
 /// Whether we're doing a dry run or not.
 pub(crate) fn is_dry_run() -> bool {
     ARGS.dry_run
+}
+
+/// If we allow reverting version to previous (used for master back to previous release branch)
+pub(crate) fn allow_earlier_version() -> bool {
+    ARGS.allow_earlier_version
 }
 
 static ARGS: Lazy<Args> = Lazy::new(get_args);
@@ -127,6 +136,11 @@ fn get_args() -> Args {
                 .short(DRY_RUN_ARG_SHORT)
                 .help(DRY_RUN_ARG_HELP),
         )
+        .arg(
+            Arg::with_name(ALLOW_EARLIER_VERSION_NAME)
+                .long(ALLOW_EARLIER_VERSION_NAME)
+                .help(ALLOW_EARLIER_VERSION_HELP),
+        )
         .get_matches();
 
     let root_dir = match arg_matches.value_of(ROOT_DIR_ARG_NAME) {
@@ -151,10 +165,13 @@ fn get_args() -> Args {
 
     let dry_run = arg_matches.is_present(DRY_RUN_ARG_NAME);
 
+    let allow_earlier_version = arg_matches.is_present(ALLOW_EARLIER_VERSION_NAME);
+
     Args {
         root_dir,
         bump_version,
         dry_run,
+        allow_earlier_version,
     }
 }
 
