@@ -12,6 +12,7 @@ use casper_types::{
     proof_of_stake::{
         MintProvider, ProofOfStake, RuntimeProvider, ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE,
     },
+    system_contract_errors::pos::Error,
     ApiError, BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
 };
 
@@ -36,34 +37,36 @@ impl MintProvider for ProofOfStakeContract {
         system::transfer_from_purse_to_purse(source, target, amount, None)
     }
 
-    fn balance(&mut self, purse: URef) -> Option<U512> {
-        system::get_balance(purse)
+    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Ok(system::get_balance(purse))
     }
 }
 
 impl RuntimeProvider for ProofOfStakeContract {
-    fn get_key(&self, name: &str) -> Option<Key> {
-        runtime::get_key(name)
+    fn get_key(&self, name: &str) -> Result<Option<Key>, Error> {
+        Ok(runtime::get_key(name))
     }
 
-    fn put_key(&mut self, name: &str, key: Key) {
-        runtime::put_key(name, key)
+    fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
+        runtime::put_key(name, key);
+        Ok(())
     }
 
-    fn remove_key(&mut self, name: &str) {
-        runtime::remove_key(name)
+    fn remove_key(&mut self, name: &str) -> Result<(), Error> {
+        runtime::remove_key(name);
+        Ok(())
     }
 
-    fn get_phase(&self) -> Phase {
-        runtime::get_phase()
+    fn get_phase(&self) -> Result<Phase, Error> {
+        Ok(runtime::get_phase())
     }
 
-    fn get_block_time(&self) -> BlockTime {
-        runtime::get_blocktime()
+    fn get_block_time(&self) -> Result<BlockTime, Error> {
+        Ok(runtime::get_blocktime())
     }
 
-    fn get_caller(&self) -> AccountHash {
-        runtime::get_caller()
+    fn get_caller(&self) -> Result<AccountHash, Error> {
+        Ok(runtime::get_caller())
     }
 }
 

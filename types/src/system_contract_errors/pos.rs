@@ -105,6 +105,21 @@ pub enum Error {
     /// deploy, but was called by the session code.
     #[fail(display = "Set refund purse was called outside payment")]
     SetRefundPurseCalledOutsidePayment,
+    /// Raised when the system is unable to determine purse balance.
+    #[fail(display = "Unable to get purse balance")]
+    GetBalance,
+    /// Raised when the system is unable to put named key.
+    #[fail(display = "Unable to put named key")]
+    PutKey,
+    /// Raised when the system is unable to remove given named key.
+    #[fail(display = "Unable to remove named key")]
+    RemoveKey,
+
+    // NOTE: These variants below will be removed once support for WASM system contracts will be
+    // dropped.
+    #[doc(hidden)]
+    #[fail(display = "GasLimit")]
+    GasLimit,
 }
 
 impl CLTyped for Error {
@@ -126,35 +141,3 @@ impl ToBytes for Error {
 
 /// An alias for `Result<T, pos::Error>`.
 pub type Result<T> = result::Result<T, Error>;
-
-// This error type is not intended to be used by third party crates.
-#[doc(hidden)]
-pub enum PurseLookupError {
-    KeyNotFound,
-    KeyUnexpectedType,
-}
-
-// This error type is not intended to be used by third party crates.
-#[doc(hidden)]
-impl PurseLookupError {
-    pub fn bonding(err: PurseLookupError) -> Error {
-        match err {
-            PurseLookupError::KeyNotFound => Error::BondingPurseNotFound,
-            PurseLookupError::KeyUnexpectedType => Error::BondingPurseKeyUnexpectedType,
-        }
-    }
-
-    pub fn payment(err: PurseLookupError) -> Error {
-        match err {
-            PurseLookupError::KeyNotFound => Error::PaymentPurseNotFound,
-            PurseLookupError::KeyUnexpectedType => Error::PaymentPurseKeyUnexpectedType,
-        }
-    }
-
-    pub fn rewards(err: PurseLookupError) -> Error {
-        match err {
-            PurseLookupError::KeyNotFound => Error::RewardsPurseNotFound,
-            PurseLookupError::KeyUnexpectedType => Error::RewardsPurseKeyUnexpectedType,
-        }
-    }
-}

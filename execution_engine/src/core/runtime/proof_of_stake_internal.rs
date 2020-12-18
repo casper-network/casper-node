@@ -1,6 +1,7 @@
 use casper_types::{
     account::AccountHash,
     proof_of_stake::{MintProvider, ProofOfStake, RuntimeProvider},
+    system_contract_errors::pos::Error,
     ApiError, BlockTime, Key, Phase, TransferredTo, URef, U512,
 };
 
@@ -9,6 +10,18 @@ use crate::{
     shared::stored_value::StoredValue,
     storage::global_state::StateReader,
 };
+
+/// Translates [`execution::Error`] into PoS-specific [`Error`].
+///
+/// This function is primarily used to propagate [`Error::GasLimit`] to make sure [`ProofOfStake`]
+/// contract running natively supports propagating gas limit errors without a panic.
+fn to_pos_error(exec_error: execution::Error) -> Option<Error> {
+    match exec_error {
+        execution::Error::GasLimit => Some(Error::GasLimit),
+        // There are possibly other exec errors happening but such transalation would be lossy.
+        _ => None,
+    }
+}
 
 // TODO: Update MintProvider to better handle errors
 impl<'a, R> MintProvider for Runtime<'a, R>
@@ -22,8 +35,11 @@ where
         target: AccountHash,
         amount: U512,
     ) -> Result<TransferredTo, ApiError> {
-        self.transfer_from_purse_to_account(source, target, amount, None)
-            .expect("should transfer from purse to account")
+        match self.transfer_from_purse_to_account(source, target, amount, None) {
+            Ok(Ok(transferred_to)) => Ok(transferred_to),
+            Ok(Err(api_error)) => Err(api_error),
+            Err(exec_error) => Err(to_pos_error(exec_error).ok_or(ApiError::Transfer)?.into()),
+        }
     }
 
     fn transfer_purse_to_purse(
@@ -36,12 +52,15 @@ where
         match self.mint_transfer(mint_contract_key, None, source, target, amount, None) {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(api_error)) => Err(api_error),
-            Err(_) => Err(ApiError::Transfer),
+            Err(exec_error) => Err(to_pos_error(exec_error).ok_or(ApiError::Transfer)?.into()),
         }
     }
 
-    fn balance(&mut self, purse: URef) -> Option<U512> {
-        self.get_balance(purse).expect("should get balance")
+    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        match self.get_balance(purse) {
+            Ok(maybe_balance) => Ok(maybe_balance),
+            Err(exec_error) => Err(to_pos_error(exec_error).ok_or(Error::GetBalance)?),
+        }
     }
 }
 
@@ -51,30 +70,34 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn get_key(&self, name: &str) -> Option<Key> {
-        self.context.named_keys_get(name).cloned()
+    fn get_key(&self, name: &str) -> Result<Option<Key>, Error> {
+        Ok(self.context.named_keys_get(name).cloned())
     }
 
-    fn put_key(&mut self, name: &str, key: Key) {
-        self.context
-            .put_key(name.to_string(), key)
-            .expect("should put key")
+    fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
+        match self.context.put_key(name.to_string(), key) {
+            Ok(()) => Ok(()),
+            Err(exec_error) => Err(to_pos_error(exec_error).ok_or(Error::PutKey)?),
+        }
     }
 
-    fn remove_key(&mut self, name: &str) {
-        self.context.remove_key(name).expect("should remove key")
+    fn remove_key(&mut self, name: &str) -> Result<(), Error> {
+        match self.context.remove_key(name) {
+            Ok(()) => Ok(()),
+            Err(exec_error) => Err(to_pos_error(exec_error).ok_or(Error::RemoveKey)?),
+        }
     }
 
-    fn get_phase(&self) -> Phase {
-        self.context.phase()
+    fn get_phase(&self) -> Result<Phase, Error> {
+        Ok(self.context.phase())
     }
 
-    fn get_block_time(&self) -> BlockTime {
-        self.context.get_blocktime()
+    fn get_block_time(&self) -> Result<BlockTime, Error> {
+        Ok(self.context.get_blocktime())
     }
 
-    fn get_caller(&self) -> AccountHash {
-        self.context.get_caller()
+    fn get_caller(&self) -> Result<AccountHash, Error> {
+        Ok(self.context.get_caller())
     }
 }
 

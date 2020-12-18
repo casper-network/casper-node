@@ -1297,6 +1297,11 @@ where
             {
                 Error::InvalidContext
             }
+            ApiError::ProofOfStake(pos_error)
+                if pos_error == system_contract_errors::pos::Error::GasLimit as u8 =>
+            {
+                Error::GasLimit
+            }
             api_error => Error::Revert(api_error),
         }
     }

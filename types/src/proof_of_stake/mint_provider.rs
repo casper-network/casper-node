@@ -1,4 +1,6 @@
-use crate::{account::AccountHash, ApiError, TransferResult, URef, U512};
+use crate::{
+    account::AccountHash, system_contract_errors::pos::Error, ApiError, TransferResult, URef, U512,
+};
 
 /// Provides an access to mint.
 pub trait MintProvider {
@@ -19,5 +21,5 @@ pub trait MintProvider {
     ) -> Result<(), ApiError>;
 
     /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
-    fn balance(&mut self, purse: URef) -> Option<U512>;
+    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
 }
