@@ -139,7 +139,7 @@ impl<C: Context> Panorama<C> {
 
     /// Returns `true` if `self` sees the unit with the specified `hash`.
     pub(crate) fn sees(&self, state: &State<C>, hash_to_be_found: &C::Hash) -> bool {
-        // TODO: Optimize this!
+        let unit_to_be_found = state.unit(hash_to_be_found);
         let mut visited = HashSet::new();
         let mut to_visit: Vec<_> = self.iter_correct_hashes().collect();
         while let Some(hash) = to_visit.pop() {
@@ -147,7 +147,14 @@ impl<C: Context> Panorama<C> {
                 if hash == hash_to_be_found {
                     return true;
                 }
-                to_visit.extend(state.unit(hash).panorama.iter_correct_hashes());
+                let unit = state.unit(hash);
+                // If the creator is seen as faulty, we need to continue traversing the whole DAG.
+                // If it is correct, we only need to follow their own units.
+                match &unit.panorama[unit_to_be_found.creator] {
+                    Observation::Faulty => to_visit.extend(unit.panorama.iter_correct_hashes()),
+                    Observation::Correct(prev_hash) => to_visit.push(prev_hash),
+                    Observation::None => (),
+                }
             }
         }
         false
