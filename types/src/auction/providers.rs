@@ -9,13 +9,10 @@ use crate::{
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
     /// This method should return the caller of the current context.
-    fn get_caller(&self) -> AccountHash;
+    fn get_caller(&self) -> Result<AccountHash, Error>;
 
     /// Gets named key under a `name`.
-    fn get_key(&self, name: &str) -> Option<Key>;
-
-    /// Puts key under a `name`.
-    fn put_key(&mut self, name: &str, key: Key);
+    fn get_key(&self, name: &str) -> Result<Option<Key>, Error>;
 
     /// Returns a 32-byte BLAKE2b digest
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
@@ -69,7 +66,7 @@ pub trait MintProvider {
     ) -> Result<(), ApiError>;
 
     /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
-    fn balance(&mut self, purse: URef) -> Option<U512>;
+    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
 
     /// Reads the base round reward.
     fn read_base_round_reward(&mut self) -> Result<U512, Error>;

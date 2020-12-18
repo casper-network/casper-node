@@ -59,15 +59,21 @@ pub enum Error {
     /// Failed to write local key.
     #[fail(display = "Failed to write local key")]
     WriteLocal = 14,
+    /// Failed to create a [`crate::CLValue`].
+    #[fail(display = "Failed to create a CLValue")]
+    CLValue = 15,
+    /// Failed to serialize data.
+    #[fail(display = "Failed to serialize data")]
+    Serialize = 16,
 
     // NOTE: These variants below will be removed once support for WASM system contracts will be
     // dropped.
     #[doc(hidden)]
     #[fail(display = "GasLimit")]
-    GasLimit = 15,
+    GasLimit = 17,
     #[doc(hidden)]
     #[fail(display = "InvalidContext")]
-    InvalidContext = 16,
+    InvalidContext = 18,
 
     #[cfg(test)]
     #[doc(hidden)]
@@ -129,6 +135,8 @@ impl TryFrom<u8> for Error {
             d if d == Error::NewURef as u8 => Ok(Error::NewURef),
             d if d == Error::PutKey as u8 => Ok(Error::PutKey),
             d if d == Error::WriteLocal as u8 => Ok(Error::WriteLocal),
+            d if d == Error::CLValue as u8 => Ok(Error::CLValue),
+            d if d == Error::Serialize as u8 => Ok(Error::Serialize),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
             _ => Err(TryFromU8ForError(())),

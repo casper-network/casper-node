@@ -38,6 +38,7 @@ where
             .put_key(name.to_string(), key)
             .map_err(|e| to_mint_error(e, Error::PutKey))
     }
+
     fn get_key(&self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
     }
@@ -50,7 +51,7 @@ where
     R::Error: Into<execution::Error>,
 {
     fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> Result<URef, Error> {
-        let cl_value: CLValue = CLValue::from_t(init).expect("should convert value");
+        let cl_value: CLValue = CLValue::from_t(init).map_err(|_| Error::CLValue)?;
         self.context
             .new_uref(StoredValue::CLValue(cl_value))
             .map_err(|e| to_mint_error(e, Error::NewURef))
@@ -61,8 +62,8 @@ where
         key: K,
         value: V,
     ) -> Result<(), Error> {
-        let key_bytes = key.to_bytes().expect("should serialize");
-        let cl_value = CLValue::from_t(value).expect("should convert");
+        let key_bytes = key.to_bytes().map_err(|_| Error::Serialize)?;
+        let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         self.context
             .write_ls(&key_bytes, cl_value)
             .map_err(|e| to_mint_error(e, Error::WriteLocal))
@@ -72,14 +73,14 @@ where
         &mut self,
         key: &K,
     ) -> Result<Option<V>, Error> {
-        let key_bytes = key.to_bytes().expect("should serialize");
+        let key_bytes = key.to_bytes().map_err(|_| Error::Serialize)?;
         let maybe_value = self
             .context
             .read_ls(&key_bytes)
-            .map_err(|_| Error::Storage)?;
+            .map_err(|e| to_mint_error(e, Error::Storage))?;
         match maybe_value {
             Some(value) => {
-                let value = CLValue::into_t(value).unwrap();
+                let value = CLValue::into_t(value).map_err(|_| Error::CLValue)?;
                 Ok(Some(value))
             }
             None => Ok(None),
@@ -90,26 +91,26 @@ where
         let maybe_value = self
             .context
             .read_gs(&Key::URef(uref))
-            .map_err(|_| Error::Storage)?;
+            .map_err(|e| to_mint_error(e, Error::Storage))?;
         match maybe_value {
             Some(StoredValue::CLValue(value)) => {
-                let value = CLValue::into_t(value).unwrap();
+                let value = CLValue::into_t(value).map_err(|_| Error::CLValue)?;
                 Ok(Some(value))
             }
-            Some(error) => panic!("should have received value: {:?}", error),
+            Some(_cl_value) => Err(Error::CLValue),
             None => Ok(None),
         }
     }
 
     fn write<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
-        let cl_value = CLValue::from_t(value).expect("should convert");
+        let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         self.context
             .metered_write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
             .map_err(|e| to_mint_error(e, Error::Storage))
     }
 
     fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
-        let cl_value = CLValue::from_t(value).expect("should convert");
+        let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         self.context
             .metered_add_gs(uref, cl_value)
             .map_err(|e| to_mint_error(e, Error::Storage))
@@ -130,7 +131,7 @@ where
         id: Option<u64>,
     ) -> Result<(), Error> {
         let result = Runtime::record_transfer(self, maybe_to, source, target, amount, id);
-        result.map_err(|_| Error::RecordTransferFailure)
+        result.map_err(|e| to_mint_error(e, Error::RecordTransferFailure))
     }
 }
 

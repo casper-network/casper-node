@@ -67,16 +67,12 @@ impl SystemProvider for AuctionContract {
 }
 
 impl RuntimeProvider for AuctionContract {
-    fn get_caller(&self) -> AccountHash {
-        runtime::get_caller()
+    fn get_caller(&self) -> Result<AccountHash, Error> {
+        Ok(runtime::get_caller())
     }
 
-    fn get_key(&self, name: &str) -> Option<Key> {
-        runtime::get_key(name)
-    }
-
-    fn put_key(&mut self, name: &str, key: Key) {
-        runtime::put_key(name, key)
+    fn get_key(&self, name: &str) -> Result<Option<Key>, Error> {
+        Ok(runtime::get_key(name))
     }
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
@@ -103,8 +99,8 @@ impl MintProvider for AuctionContract {
         system::transfer_from_purse_to_purse(source, target, amount, None)
     }
 
-    fn balance(&mut self, purse: URef) -> Option<U512> {
-        system::get_balance(purse)
+    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Ok(system::get_balance(purse))
     }
 
     fn read_base_round_reward(&mut self) -> Result<U512, Error> {
