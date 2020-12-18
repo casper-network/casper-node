@@ -192,7 +192,7 @@ impl<T> Drop for Responder<T> {
     fn drop(&mut self) {
         if self.0.is_some() {
             // This is usually a very serious error, as another component will now be stuck.
-            warn!(
+            error!(
                 "{} dropped without being responded to --- \
                  this is always a bug and will likely cause another component to be stuck!",
                 self

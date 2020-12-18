@@ -75,6 +75,9 @@ impl DeployAcceptor {
     }
 
     /// Handles receiving a new `Deploy` from a peer or client.
+    /// In the case of a peer, there should be no responder and the variant should be `None`
+    /// In the case of a client, there should be a responder to communicate the validity of the
+    /// deploy and the variant will be `Some`
     fn accept<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -120,6 +123,8 @@ impl DeployAcceptor {
         let mut cloned_deploy = deploy.clone();
         let mut effects = Effects::new();
         if is_valid(&mut cloned_deploy, deploy_config) {
+            // The client submitted a valid deploy. Return an Ok status to the RPC component via the
+            // responder.
             if let Some(responder) = maybe_responder {
                 effects.extend(responder.respond(Ok(())).ignore());
             }
@@ -131,6 +136,8 @@ impl DeployAcceptor {
                 },
             ));
         } else {
+            // The client has submitted an invalid deploy. Return an error message to the RPC
+            // component via the responder.
             if let Some(responder) = maybe_responder {
                 effects.extend(responder.respond(Err(Error::InvalidDeploy)).ignore());
             }
