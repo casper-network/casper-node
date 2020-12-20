@@ -6,7 +6,7 @@ Upon successful setup, NCTL commands are made available via aliases for executio
 
 ## Node Control Commands
 
-- For setting up a network see [here](commands-assets.md).
+- For setting up a network see [here](commands-setup.md).
 
 - For controlling a network see [here](commands-ctl.md).
 
