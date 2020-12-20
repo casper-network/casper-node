@@ -19,6 +19,5 @@ done
 # ----------------------------------------------------------------
 
 source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
 
-less $(get_path_to_node ${NET_ID:-1} ${NODE_ID:-1})/logs/stderr.log
+less $(get_path_to_node ${NET_ID:-1} ${NODE_ID:-1})/logs/stdout.log

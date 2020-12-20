@@ -2,7 +2,6 @@
 
 unset NET_ID
 unset NODE_ID
-unset LOG_TYPE
 
 for ARGUMENT in "$@"
 do
@@ -11,7 +10,6 @@ do
     case "$KEY" in
         net) NET_ID=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
-        typeof) LOG_TYPE=${VALUE} ;;
         *)
     esac
 done
@@ -21,6 +19,5 @@ done
 # ----------------------------------------------------------------
 
 source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
 
-less $(get_path_to_node ${NET_ID:-1} ${NODE_ID:-1})/logs/${LOG_TYPE:-stdout}.log
+less $(get_path_to_node ${NET_ID:-1} ${NODE_ID:-1})/logs/stderr.log

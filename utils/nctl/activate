@@ -34,14 +34,12 @@ alias nctl-compile-client='source $NCTL/sh/assets/compile_client.sh'
 alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
 
 # Node control.
-alias nctl-down='source $NCTL/sh/node/stop.sh'
 alias nctl-restart='source $NCTL/sh/node/restart.sh'
 alias nctl-start='source $NCTL/sh/node/start.sh'
 alias nctl-start-after-n-blocks='source $NCTL/sh/node/start_after_n_blocks.sh'
 alias nctl-start-after-n-eras='source $NCTL/sh/node/start_after_n_eras.sh'
 alias nctl-status='source $NCTL/sh/node/status.sh'
 alias nctl-stop='source $NCTL/sh/node/stop.sh'
-alias nctl-up='source $NCTL/sh/node/start.sh'
 
 # Node utils.
 alias nctl-await-n-blocks='source $NCTL/sh/utils/await_n_blocks.sh'
@@ -66,8 +64,8 @@ alias nctl-view-chain-spec-accounts='source $NCTL/sh/views/view_chain_spec_accou
 
 # Views #2: node.
 alias nctl-view-node-config='source $NCTL/sh/views/view_node_config.sh'
-alias nctl-view-node-error-log='source $NCTL/sh/views/view_node_log_error.sh'
-alias nctl-view-node-log='source $NCTL/sh/views/view_node_log.sh'
+alias nctl-view-node-error-log='source $NCTL/sh/views/view_node_log_stderr.sh'
+alias nctl-view-node-log='source $NCTL/sh/views/view_node_log_stdout.sh'
 alias nctl-view-node-peers='source $NCTL/sh/views/view_node_peers.sh'
 alias nctl-view-node-ports='source $NCTL/sh/views/view_node_ports.sh'
 alias nctl-view-node-rpc-schema='source $NCTL/sh/views/view_node_rpc_schema.sh'
@@ -104,8 +102,9 @@ alias nctl-view-validator-main-purse-uref='source $NCTL/sh/views/view_validator_
 alias nctl-view-validator-secret-key-path='source $NCTL/sh/views/view_validator_secret_key_path.sh'
 
 # Contracts #1: Transfers.
-alias nctl-do-transfer='source $NCTL/sh/contracts/transfers/do_transfer_native.sh'
-alias nctl-do-transfer-wasm='source $NCTL/sh/contracts/transfers/do_transfer_wasm.sh'
+alias nctl-transfer='source $NCTL/sh/contracts/transfers/do_native.sh'
+alias nctl-transfer-native='source $NCTL/sh/contracts/transfers/do_native.sh'
+alias nctl-transfer-wasm='source $NCTL/sh/contracts/transfers/do_wasm.sh'
 
 # Contracts #2: Auction.
 alias nctl-auction-bid='source $NCTL/sh/contracts/auction/do_bid.sh'
