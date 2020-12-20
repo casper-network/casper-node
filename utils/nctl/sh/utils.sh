@@ -44,7 +44,7 @@ export NCTL_CONTRACTS_CLIENT=(
 )
 
 # Default amount used when making auction bids.
-export NCTL_DEFAULT_AUCTION_BID_AMOUNT=1000000000   # (1e9)
+export NCTL_DEFAULT_AUCTION_BID_AMOUNT=1000000000000000   # (1e15)
 
 # Default amount used when delegating.
 export NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT=1000000000   # (1e9)

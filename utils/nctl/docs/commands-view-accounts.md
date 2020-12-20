@@ -2,7 +2,7 @@
 
 ## Overview
 
-As part of the process of setting up a network, NCTL creates various on-chain accounts.  Such accounts relate either to node operators (i.e. validators), to a network faucet, or to tests user accounts.  Each account is initialised with a valid key pair and an on-chain CSPR balance.
+As part of the process of setting up a network, NCTL creates various on-chain accounts.  Such accounts relate either to node operators (i.e. validators), to a network level faucet, or to tests user accounts.  Each account is initialised with a valid key pair and an on-chain CSPR balance.  NCTL greatly simplifies account management in a test setting.
 
 ## Viewing faucet information
 

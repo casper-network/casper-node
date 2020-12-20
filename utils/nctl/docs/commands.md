@@ -10,7 +10,11 @@ Upon successful setup, NCTL commands are made available via aliases for executio
 
 - For dispatching deploys to a network see [here](commands-deploys.md).
 
-- For viewing on-chain information see [here](commands-views.md).
+- For viewing account information see [here](commands-view-accounts.md).
+
+- For viewing chain information see [here](commands-view-chain.md).
+
+- For viewing node information see [here](commands-view-node.md).
 
 ## Notes
 

@@ -2,9 +2,7 @@
 
 ## Overview
 
-The aim of NCTL is to enable a user to spin up a test network within 15-20 seconds.  Once a network is up & running the user should be able to control each of the node's within the network as well as add new nodes to the network.  Hereby are listed the set of NCTL commands to control a test network.
-
-## Controlling network nodes
+The aim of NCTL is to enable a user to spin up a test network within 15-20 seconds.  Once a network is up & running the user can control each node as well adding new nodes to the network.  Hereby are listed the set of NCTL commands to control a test network.
 
 ### nctl-interactive net={X:-1} node={Y:-1} loglevel={Z:-($RUST_LOG | debug)}
 

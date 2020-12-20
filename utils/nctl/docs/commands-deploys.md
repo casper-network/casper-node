@@ -2,7 +2,7 @@
 
 ## Overview
 
-NCTL provides many commands for dispatching deploys (i.e. transactions) to the target test network.  The deploys may pertain to either simple token transfers, ERC-20 token smart contracts, and/or the network's Proof of Stake contract(s).
+NCTL provides commands for dispatching deploys (i.e. transactions) to a target test network.  The deploys may pertain to either simple token transfers, ERC-20 token smart contracts, and/or the network's Proof of Stake contract(s).
 
 Many of the below commands take the following arguments as default:
 
@@ -12,78 +12,80 @@ net={A:-1} node={B:-1} gas={C:-1000000000} payment={D:-10}
 
 ## Simple Token Transfers 
 
-### nctl-do-transfer net={X:-1} node={Y:-1} payment={P:-200000} gas={G:-10} transfers={T:-100} interval={I:-0.01} user={U:-1}
+### nctl-transfer-native net={X:-1} node={Y:-1} payment={P:-1000000000} gas={G:-10} transfers={T:-100} interval={I:-0.01} user={U:-1}
 
 Dispatches to node Y in network X, T wasmless transfers from network faucet to user U.  If node=all then transfers are dispatched to nodes in a round-robin fashion.
 
 ```
-nctl-do-transfer
+nctl-transfer-native
 
-nctl-do-transfer net=1 node=1 payment=200000 gas=10 transfers=100 interval=0.01 user=1  (same as above)
+nctl-transfer-native net=1 node=1 payment=1000000000 gas=10 transfers=100 interval=0.01 user=1  (same as above)
 
-nctl-do-transfer transfers=10000 interval=0.001
+nctl-transfer-native transfers=10000 interval=0.001
 ```
 
-### nctl-do-transfer-wasm net={X:-1} node={Y:-1} payment={P:-200000} gas={G:-10} transfers={T:-100} interval={I:-0.01} user={U:-1}
+Note: has a synonym: `nctl-transfer`
+
+### nctl-do-transfer-wasm net={X:-1} node={Y:-1} payment={P:-1000000000} gas={G:-10} transfers={T:-100} interval={I:-0.01} user={U:-1}
 
 Dispatches to node Y in network X, T wasm based transfers from network faucet to user U.  If node=all then transfers are dispatched to nodes in a round-robin fashion.
 
 ```
 nctl-do-transfer-wasm
 
-nctl-do-transfer-wasm net=1 node=1 payment=200000 gas=10 transfers=100 interval=0.01 user=1  (same as above)
+nctl-do-transfer-wasm net=1 node=1 payment=1000000000 gas=10 transfers=100 interval=0.01 user=1  (same as above)
 
 nctl-do-transfer-wasm transfers=10000 interval=0.001
 ```
 
 ## Proof-Of-Stake 
 
-### nctl-auction-submit net={X:-1} node={Y:-1} amount={A:-1000000} rate={R:-125} payment={P:-200000} gas={G:-10} user={U:-1}
+### nctl-auction-bid bidder={B:-6} amount={A:-1000000} rate={R:-125} net={X:-1} node={Y:-1} payment={P:-1000000000} gas={G:-10}
 
-Dispatches to node Y in network X from user U, a Proof-Of-Stake auction bid **submission** for amount A (motes) with a delegation rate of R.  Displays relevant deploy hash for subsequent querying.
+Dispatches to node Y in network X from bidder B, a Proof-Of-Stake auction bid **submission** for amount A (motes) with a delegation rate of R.  Displays relevant deploy hash for subsequent querying.
 
 ```
-nctl-auction-submit
+nctl-auction-bid
 
-nctl-auction-submit net=1 node=1 amount=1000000 rate=125 payment=200000 gas=10 user=1  (same as above)
+nctl-auction-bid bidder=6 amount=6000000000000000 rate=125 net=1 node=1 payment=1000000000 gas=10  (same as above)
 
-nctl-auction-submit amount=2000000 rate=250
+nctl-auction-bid bidder=7 amount=7000000000000000 rate=250 net=1 node=4 payment=5000000000 gas=20
 ```
 
-### nctl-auction-withdraw net={X:-1} node={Y:-1} amount={A:-1000000} payment={P:-200000} gas={G:-10} user={U:-1}
+### nctl-auction-withdraw bidder={B:-6} amount={A:-1000000} rate={R:-125} net={X:-1} node={Y:-1} payment={P:-1000000000} gas={G:-10}
 
 Dispatches to node Y in network X from user U, a Proof-Of-Stake auction bid **withdrawal** for amount A (motes).  Displays relevant deploy hash for subsequent querying.
 
 ```
 nctl-auction-withdraw
 
-nctl-auction-withdraw net=1 node=1 amount=1000000 payment=200000 gas=10 user=1  (same as above)
+nctl-auction-withdraw bidder=6 amount=6000000000000000 net=1 node=1 payment=1000000000 gas=10  (same as above)
 
-nctl-auction-withdraw amount=2000000
+nctl-auction-withdraw bidder=7 amount=7000000000000000 net=1 node=4 payment=5000000000 gas=20
 ```
 
-### nctl-auction-delegate net={X:-1} node={Y:-1} amount={A:-1000000} payment={P:-200000} gas={G:-10} user={U:-1}
+### nctl-auction-delegate amount={A:-1000000} delegator={D:-1} validator={V:-1} net={X:-1} node={Y:-1} payment={P:-1000000000} gas={G:-10}
 
-Dispatches to node Y in network X from user U, a Proof-Of-Stake **delegate** bid for amount A (motes).  Displays relevant deploy hash for subsequent querying.
+Dispatches to node Y in network X from delegator D, a Proof-Of-Stake **delegate** bid for amount A (motes) nominating validator V.  Displays relevant deploy hash for subsequent querying.
 
 ```
 nctl-auction-delegate
 
-nctl-auction-delegate net=1 node=1 amount=1000000 payment=200000 gas=10 user=1  (same as above)
+nctl-auction-delegate amount=1000000 delegator=1 validator=1 net=1 node=1 payment=1000000000 gas=10 user=1  (same as above)
 
-nctl-auction-delegate amount=2000000
+nctl-auction-delegate amount=2000000 delegator=3 validator=4
 ```
 
-### nctl-auction-undelegate net={X:-1} node={Y:-1} amount={A:-1000000} payment={P:-200000} gas={G:-10} user={U:-1}
+### nctl-auction-undelegate net={X:-1} node={Y:-1} amount={A:-1000000} payment={P:-1000000000} gas={G:-10} user={U:-1}
 
-Dispatches to node Y in network X from user U, a Proof-Of-Stake **undelegate** bid for amount A (motes).  Displays relevant deploy hash for subsequent querying.
+Dispatches to node Y in network X from delegator D, a Proof-Of-Stake **undelegate** bid for amount A (motes) unnominating validator V.  Displays relevant deploy hash for subsequent querying.
 
 ```
 nctl-auction-undelegate
 
-nctl-auction-undelegate net=1 node=1 amount=1000000 payment=200000 gas=10 user=1  (same as above)
+nctl-auction-undelegate amount=1000000 delegator=1 validator=1 net=1 node=1 payment=1000000000 gas=10 user=1  (same as above)
 
-nctl-auction-undelegate amount=2000000
+nctl-auction-undelegate amount=2000000 delegator=3 validator=4
 ```
 
 ## ERC-20 Token Standard 
@@ -126,19 +128,7 @@ nctl-erc20-install name="Acme Token" symbol="ACME" supply=1000000000000000000000
 nctl-erc20-install name="Casper Labs" symbol="CSPR" supply=1000000000000000000000000000
 ```
 
-### nctl-erc20-transfer user={X:-1} amount={Y:-1000000000} 
-
-Transfers Y tokens to user X.  
-
-```
-nctl-erc20-transfer 
-
-nctl-erc20-transfer user=1 amount=1000000000  (same as above)
-
-nctl-erc20-transfer user=2 amount=4440000000  
-```
-
-### nctl-erc20-transfer-from from={X:-1} to={Y:-1} amount={Z:-1000000000} 
+### nctl-erc20-transfer from={X:-1} to={Y:-1} amount={Z:-1000000000} 
 
 Transfers Z tokens from user X to user Y.  
 
@@ -148,18 +138,6 @@ nctl-erc20-transfer-from
 nctl-erc20-transfer-from from=1 to=2 amount=1000000000  (same as above)
 
 nctl-erc20-transfer-from from=2 to=5 amount=4440000000  
-```
-
-### nctl-erc20-view-allowances spender={X:-2}   
-
-Returns amount which spender is allowed to withdraw from other users.  
-
-```
-nctl-erc20-view-allowances 
-
-nctl-erc20-view-allowances user=1  (same as above)
-
-nctl-erc20-view-allowances user=3  
 ```
 
 ### nctl-erc20-view-balances net={X:-1} node={Y:-1} 
