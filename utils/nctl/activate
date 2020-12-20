@@ -35,14 +35,20 @@ alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
 
 # Node control.
 alias nctl-down='source $NCTL/sh/node/stop.sh'
-alias nctl-interactive='source $NCTL/sh/node/interactive.sh'
-alias nctl-log-reset='source $NCTL/sh/node/log_reset.sh'
 alias nctl-restart='source $NCTL/sh/node/restart.sh'
-alias nctl-rotate='source $NCTL/sh/node/rotate.sh'
 alias nctl-start='source $NCTL/sh/node/start.sh'
+alias nctl-start-after-n-blocks='source $NCTL/sh/node/start_after_n_blocks.sh'
+alias nctl-start-after-n-eras='source $NCTL/sh/node/start_after_n_eras.sh'
 alias nctl-status='source $NCTL/sh/node/status.sh'
 alias nctl-stop='source $NCTL/sh/node/stop.sh'
 alias nctl-up='source $NCTL/sh/node/start.sh'
+
+# Node utils.
+alias nctl-await-n-blocks='source $NCTL/sh/utils/await_n_blocks.sh'
+alias nctl-await-n-eras='source $NCTL/sh/utils/await_n_eras.sh'
+alias nctl-interactive='source $NCTL/sh/node/interactive.sh'
+alias nctl-log-reset='source $NCTL/sh/node/log_reset.sh'
+alias nctl-rotate='source $NCTL/sh/utils/rotate_nodeset.sh'
 
 # Views #1: chain.
 alias nctl-view-chain-account='source $NCTL/sh/views/view_chain_account.sh'
@@ -60,8 +66,8 @@ alias nctl-view-chain-spec-accounts='source $NCTL/sh/views/view_chain_spec_accou
 
 # Views #2: node.
 alias nctl-view-node-config='source $NCTL/sh/views/view_node_config.sh'
+alias nctl-view-node-error-log='source $NCTL/sh/views/view_node_log_error.sh'
 alias nctl-view-node-log='source $NCTL/sh/views/view_node_log.sh'
-alias nctl-view-node-log-error='source $NCTL/sh/views/view_node_log_error.sh'
 alias nctl-view-node-peers='source $NCTL/sh/views/view_node_peers.sh'
 alias nctl-view-node-ports='source $NCTL/sh/views/view_node_ports.sh'
 alias nctl-view-node-rpc-schema='source $NCTL/sh/views/view_node_rpc_schema.sh'

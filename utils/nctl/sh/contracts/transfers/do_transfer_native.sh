@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/contracts/transfers/funcs.sh
-
 unset AMOUNT
 unset GAS
 unset TRANSFER_INTERVAL
@@ -28,6 +25,9 @@ do
         *)
     esac
 done
+
+source $NCTL/sh/utils.sh
+source $NCTL/sh/contracts/transfers/funcs.sh
 
 do_transfer_native \
     ${NET_ID:-1} \

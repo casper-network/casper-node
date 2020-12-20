@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-
 unset NET_ID
 
 for ARGUMENT in "$@"
@@ -13,5 +11,11 @@ do
         *)
     esac
 done
+
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
+source $NCTL/sh/utils.sh
 
 less $(get_path_to_net ${NET_ID:-1})/chainspec/chainspec.toml

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 source $NCTL/sh/utils.sh
-source $NCTL/sh/node/ctl_$NCTL_DAEMON_TYPE.sh
+source $NCTL/sh/node/funcs_$NCTL_DAEMON_TYPE.sh
 
 unset NET_ID
 unset NODE_ID
@@ -19,6 +19,10 @@ done
 
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-"all"}
+
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
 
 if [ $NODE_ID == "all" ]; then
     do_node_status_all $NET_ID $NCTL_NET_NODE_COUNT

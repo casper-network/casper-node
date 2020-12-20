@@ -19,6 +19,10 @@ done
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-"all"}
 
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
 source $(get_path_to_net_vars $NET_ID)
 if [ $NODE_ID = "all" ]; then
     for NODE_ID in $(seq 1 $NCTL_NET_NODE_COUNT)

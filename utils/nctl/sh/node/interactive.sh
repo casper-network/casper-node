@@ -23,6 +23,10 @@ LOG_LEVEL=${LOG_LEVEL:-debug}
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-1}
 
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
 source $(get_path_to_net_vars $NET_ID)
 
 PATH_NET=$(get_path_to_net $NET_ID)
