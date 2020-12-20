@@ -4,17 +4,27 @@
 
 Upon successful setup, NCTL commands are made available via aliases for execution from within a terminal session.  All such commands are prefixed by `nctl-` and allow you to perform various tasks:
 
+## Node Control Commands
+
 - For setting up a network see [here](commands-assets.md).
 
 - For controlling a network see [here](commands-ctl.md).
 
-- For dispatching deploys to a network see [here](commands-deploys.md).
+## View Commands
 
 - For viewing account information see [here](commands-view-accounts.md).
 
 - For viewing chain information see [here](commands-view-chain.md).
 
 - For viewing node information see [here](commands-view-node.md).
+
+## Deploy Dispatch Commands
+
+- For dispatching simple transfer deploys see [here](commands-deploy-transfers.md).
+
+- For dispatching auction deploys see [here](commands-deploy-auction.md).
+
+- For dispatching ERC-20 deploys see [here](commands-deploy-erc20.md).
 
 ## Notes
 
