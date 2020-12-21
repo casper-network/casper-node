@@ -79,7 +79,7 @@ pub struct ContractRuntimeMetrics {
     get_balance: Histogram,
     get_validator_weights: Histogram,
     get_era_validators: Counter,
-    get_era_validators_by_era_id: Counter,
+    get_era_validator_weights_by_era_id: Counter,
 }
 
 /// Value of upper bound of histogram.
@@ -127,8 +127,8 @@ impl ContractRuntimeMetrics {
             "counter to track number of ContractRuntimeRequest::GetEraValidators requests made",
         )?;
         registry.register(Box::new(get_era_validators.clone()))?;
-        let get_era_validators_by_era_id = Counter::new("get_era_validators_by_weight", "counter to track number of ContractRuntimeRequest::GetValidatorWeightsByEraId requests made")?;
-        registry.register(Box::new(get_era_validators_by_era_id.clone()))?;
+        let get_era_validator_weights_by_era_id = Counter::new("get_era_validators_by_weight", "counter to track number of ContractRuntimeRequest::GetValidatorWeightsByEraId requests made")?;
+        registry.register(Box::new(get_era_validator_weights_by_era_id.clone()))?;
         Ok(ContractRuntimeMetrics {
             run_execute: register_histogram_metric(registry, RUN_EXECUTE_NAME, RUN_EXECUTE_HELP)?,
             apply_effect: register_histogram_metric(
@@ -149,7 +149,7 @@ impl ContractRuntimeMetrics {
                 GET_VALIDATOR_WEIGHTS_HELP,
             )?,
             get_era_validators,
-            get_era_validators_by_era_id,
+            get_era_validator_weights_by_era_id,
         })
     }
 }
@@ -340,7 +340,7 @@ where
                 let metrics = Arc::clone(&self.metrics);
                 // Increment the counter to track the amount of times GetEraValidatorsByEraId was
                 // requested.
-                metrics.get_era_validators_by_era_id.inc();
+                metrics.get_era_validator_weights_by_era_id.inc();
                 async move {
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
