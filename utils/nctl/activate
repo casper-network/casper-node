@@ -72,7 +72,7 @@ alias nctl-view-node-rpc-schema='source $NCTL/sh/views/view_node_rpc_schema.sh'
 alias nctl-view-node-status='source $NCTL/sh/views/view_node_status.sh'
 alias nctl-view-node-storage='source $NCTL/sh/views/view_node_storage.sh'
 
-# Views #3: node metrcs.
+# Views #3: node metrics.
 alias nctl-view-node-metrics='source $NCTL/sh/views/view_node_metrics.sh'
 alias nctl-view-node-pending-deploy-count='source $NCTL/sh/views/view_node_metrics.sh metric=pending_deploy'
 alias nctl-view-node-finalised-block-count='source $NCTL/sh/views/view_node_metrics.sh metric=amount_of_blocks'
@@ -104,7 +104,11 @@ alias nctl-view-validator-secret-key-path='source $NCTL/sh/views/view_validator_
 # Contracts #1: Transfers.
 alias nctl-transfer='source $NCTL/sh/contracts/transfers/do_native.sh'
 alias nctl-transfer-native='source $NCTL/sh/contracts/transfers/do_native.sh'
+alias nctl-transfer-native-batch-dispatch='source $NCTL/sh/contracts/transfers/do_native_batch_dispatch.sh'
+alias nctl-transfer-native-batch-prepare='source $NCTL/sh/contracts/transfers/do_native_batch_prepare.sh'
 alias nctl-transfer-wasm='source $NCTL/sh/contracts/transfers/do_wasm.sh'
+alias nctl-transfer-wasm-batch-dispatch='source $NCTL/sh/contracts/transfers/do_wasm_batch_dispatch.sh'
+alias nctl-transfer-wasm-batch-prepare='source $NCTL/sh/contracts/transfers/do_wasm_batch_prepare.sh'
 
 # Contracts #2: Auction.
 alias nctl-auction-bid='source $NCTL/sh/contracts/auction/do_bid.sh'
