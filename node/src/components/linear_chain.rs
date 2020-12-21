@@ -10,20 +10,25 @@ use derive_more::From;
 use itertools::Itertools;
 use tracing::{debug, error, info, warn};
 
-use casper_types::ExecutionResult;
+use casper_types::{ExecutionResult, ProtocolVersion, SemVer};
 
 use super::Component;
 use crate::{
     crypto::asymmetric_key::PublicKey,
     effect::{
         announcements::LinearChainAnnouncement,
-        requests::{ConsensusRequest, LinearChainRequest, NetworkRequest, StorageRequest},
-        EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
+        requests::{
+            ConsensusRequest, ContractRuntimeRequest, LinearChainRequest, NetworkRequest,
+            StorageRequest,
+        },
+        EffectBuilder, EffectExt, EffectOptionExt, EffectResultExt, Effects, Responder,
     },
     protocol::Message,
     types::{Block, BlockByHeight, BlockHash, DeployHash, FinalitySignature},
     NodeRng,
 };
+
+use futures::FutureExt;
 
 /// The maximum number of finality signatures from a single validator we keep in memory while
 /// waiting for their block.
@@ -65,7 +70,8 @@ pub enum Event<I> {
     },
     /// The result of requesting a block from storage to add a finality signature to it.
     GetBlockForFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<Block>>),
-    IsBondedContinuation(Option<Box<Block>>, Box<FinalitySignature>, bool),
+    IsBondedFutureEra(Option<Box<Block>>, Box<FinalitySignature>),
+    IsBonded(Option<Box<Block>>, Box<FinalitySignature>, bool),
 }
 
 impl<I: Display> Display for Event<I> {
@@ -109,11 +115,18 @@ impl<I: Display> Display for Event<I> {
                     maybe_block.is_some()
                 )
             }
-            Event::IsBondedContinuation(_block, fs, is_bonded) => {
+            Event::IsBonded(_block, fs, is_bonded) => {
                 write!(
                     f,
-                    "linear chain is-bonded-continuation for era {} validator {}, is_bonded: {}",
+                    "linear chain is-bonded for era {} validator {}, is_bonded: {}",
                     fs.era_id, fs.public_key, is_bonded
+                )
+            }
+            Event::IsBondedFutureEra(_block, fs) => {
+                write!(
+                    f,
+                    "linear chain is-bonded for future era {} validator {}",
+                    fs.era_id, fs.public_key
                 )
             }
         }
@@ -209,6 +222,7 @@ where
         + From<ConsensusRequest>
         + From<NetworkRequest<I, Message>>
         + From<LinearChainAnnouncement>
+        + From<ContractRuntimeRequest>
         + Send,
     I: Display + Send + 'static,
 {
@@ -340,9 +354,50 @@ where
                 // Check if validator is bonded in the era in which the block was created in.
                 effect_builder
                     .is_bonded_validator(fs.era_id, fs.public_key)
-                    .event(|is_bonded| Event::IsBondedContinuation(maybe_block, fs, is_bonded))
+                    .map(|is_bonded| {
+                        if is_bonded {
+                            Ok((maybe_block, fs, is_bonded))
+                        } else {
+                            // If it's not bonded in that era, we will check if it's bonded in the
+                            // future era.
+                            Err((maybe_block, fs))
+                        }
+                    })
             }
-            Event::IsBondedContinuation(maybe_block, fs, is_bonded) => {
+            .result(
+                |(maybe_block, fs, is_bonded)| Event::IsBonded(maybe_block, fs, is_bonded),
+                |(maybe_block, fs)| Event::IsBondedFutureEra(maybe_block, fs),
+            ),
+            Event::IsBondedFutureEra(maybe_block, fs) => {
+                let state_root_hash = self
+                    .latest_block
+                    .as_ref()
+                    .map(|lb| *lb.header().state_root_hash())
+                    .unwrap();
+                let next_era_id = self
+                    .latest_block
+                    .as_ref()
+                    .map(|lb| lb.header().era_id().successor())
+                    .unwrap();
+                // TODO:
+                let protocol_version = ProtocolVersion::new(SemVer::V1_0_0);
+                effect_builder
+                    .is_bonded_in_future_era(
+                        state_root_hash,
+                        next_era_id,
+                        protocol_version,
+                        fs.public_key,
+                    )
+                    .map(|is_bonded_res| match is_bonded_res {
+                        Ok(is_bonded) => (maybe_block, fs, is_bonded),
+                        Err(error) => {
+                            error!(%error, "is_bonded_in_future_era returned an error.");
+                            panic!("couldn't check if validator is bonded")
+                        }
+                    })
+            }
+            .event(|(maybe_block, fs, is_bonded)| Event::IsBonded(maybe_block, fs, is_bonded)),
+            Event::IsBonded(maybe_block, fs, is_bonded) => {
                 match maybe_block {
                     Some(block) if is_bonded => {
                         // Known block and signature from a bonded validator.

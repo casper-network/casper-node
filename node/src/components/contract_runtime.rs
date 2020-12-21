@@ -23,6 +23,7 @@ use tracing::trace;
 use casper_execution_engine::{
     core::engine_state::{
         genesis::GenesisResult, EngineConfig, EngineState, Error, GetEraValidatorsError,
+        GetEraValidatorsRequest,
     },
     shared::newtypes::CorrelationId,
     storage::{
@@ -294,6 +295,43 @@ where
                     .expect("should run");
                     trace!(?result, "balance result");
                     responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::IsBonded {
+                state_root_hash,
+                era_id,
+                protocol_version,
+                public_key: validator_key,
+                responder,
+            }) => {
+                trace!("is validator bonded request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                let request =
+                    GetEraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let era_validators =
+                            engine_state.get_era_validators(correlation_id, request);
+                        metrics
+                            .get_validator_weights
+                            .observe(start.elapsed().as_secs_f64());
+                        era_validators
+                    })
+                    .await
+                    .expect("should run");
+                    trace!("");
+                    let is_bonded =
+                        result.and_then(|validator_map| match validator_map.get(&era_id.0) {
+                            None => Err(GetEraValidatorsError::EraValidatorsMissing),
+                            Some(era_validators) => {
+                                Ok(era_validators.contains_key(&validator_key.into()))
+                            }
+                        });
+                    responder.respond(is_bonded).await
                 }
                 .ignore()
             }

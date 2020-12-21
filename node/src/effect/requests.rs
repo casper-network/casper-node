@@ -670,6 +670,19 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<StepResult, engine_state::Error>>,
     },
+    /// Check if validator is bonded in any of the eras that we already have validators for.
+    IsBonded {
+        /// State root hash of the LFB.
+        state_root_hash: Digest,
+        /// Validator public key.
+        public_key: PublicKey,
+        /// Era ID in which validator should be bonded in.
+        era_id: EraId,
+        /// Protocol version at the `state_root_hash`.
+        protocol_version: ProtocolVersion,
+        /// Responder,
+        responder: Responder<Result<bool, GetEraValidatorsError>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -725,6 +738,12 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::GetProtocolData {
                 protocol_version, ..
             } => write!(formatter, "protocol_version: {}", protocol_version),
+
+            ContractRuntimeRequest::IsBonded {
+                public_key, era_id, ..
+            } => {
+                write!(formatter, "is {} bonded in era {}", public_key, era_id)
+            }
         }
     }
 }

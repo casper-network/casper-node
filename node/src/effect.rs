@@ -1313,6 +1313,30 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
+
+    /// Check if validator is bonded in any of the future eras.
+    pub(crate) async fn is_bonded_in_future_era(
+        self,
+        state_root_hash: Digest,
+        era_id: EraId,
+        protocol_version: ProtocolVersion,
+        public_key: PublicKey,
+    ) -> Result<bool, GetEraValidatorsError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::IsBonded {
+                state_root_hash,
+                era_id,
+                protocol_version,
+                public_key,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
 }
 
 /// Construct a fatal error effect.
