@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
 unset BLOCK_HASH
 unset NET_ID
 unset NODE_ID
@@ -18,6 +15,13 @@ do
         *)
     esac
 done
+
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
 render_chain_block_transfers \
     ${NET_ID:-1} \

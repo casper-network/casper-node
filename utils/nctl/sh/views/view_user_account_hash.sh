@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
 unset NET_ID
 unset USER_ID
 
@@ -19,6 +16,13 @@ done
 
 NET_ID=${NET_ID:-1}
 USER_ID=${USER_ID:-"all"}
+
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
 if [ $USER_ID = "all" ]; then
     for USER_ID in $(seq 1 $(get_count_of_users $NET_ID))

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-
 unset NET_ID
 unset NODE_ID
 unset PURSE_UREF
@@ -25,6 +23,13 @@ done
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-1}
 PREFIX=${PREFIX:-"account"}
+
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
+source $NCTL/sh/utils.sh
+
 STATE_ROOT_HASH=${STATE_ROOT_HASH:-$(get_state_root_hash $NET_ID $NODE_ID)}
 
 ACCOUNT_BALANCE=$(

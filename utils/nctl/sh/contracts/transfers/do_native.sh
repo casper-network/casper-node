@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/contracts/auction/funcs.sh
-
 unset AMOUNT
-unset BIDDER_ID
-unset DELEGATION_RATE
 unset GAS
+unset TRANSFER_INTERVAL
 unset NET_ID
 unset NODE_ID
 unset PAYMENT
-unset QUIET
+unset TRANSFERS
+unset USER_ID
 
 for ARGUMENT in "$@"
 do
@@ -18,23 +15,26 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         amount) AMOUNT=${VALUE} ;;
-        bidder) BIDDER_ID=${VALUE} ;;
         gas) GAS=${VALUE} ;;
+        interval) TRANSFER_INTERVAL=${VALUE} ;;
         net) NET_ID=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
         payment) PAYMENT=${VALUE} ;;
-        quiet) QUIET=${VALUE} ;;
-        rate) DELEGATION_RATE=${VALUE} ;;
+        transfers) TRANSFERS=${VALUE} ;;
+        user) USER_ID=${VALUE} ;;
         *)
     esac
 done
 
-do_auction_bid_submit \
+source $NCTL/sh/utils.sh
+source $NCTL/sh/contracts/transfers/funcs.sh
+
+do_transfer_native \
     ${NET_ID:-1} \
     ${NODE_ID:-1} \
-    ${BIDDER_ID:-6} \
-    ${AMOUNT:-$(($NCTL_DEFAULT_AUCTION_BID_AMOUNT * ${BIDDER_ID:-6}))} \
-    ${DELEGATION_RATE:-125} \
+    ${AMOUNT:-$NCTL_DEFAULT_TRANSFER_AMOUNT} \
+    ${USER_ID:-1} \
+    ${TRANSFERS:-100} \
+    ${TRANSFER_INTERVAL:-0.01} \
     ${GAS:-$NCTL_DEFAULT_GAS_PRICE} \
-    ${PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT} \
-    ${QUIET:-"FALSE"}
+    ${PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}

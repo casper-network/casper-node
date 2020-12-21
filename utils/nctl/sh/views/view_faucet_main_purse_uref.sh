@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
 unset NET_ID
 unset NODE_ID
 
@@ -16,6 +13,13 @@ do
         *)
     esac
 done
+
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
 render_account_main_purse_uref \
     ${NET_ID:-1} \

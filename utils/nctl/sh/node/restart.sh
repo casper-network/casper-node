@@ -17,5 +17,9 @@ done
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-"all"}
 
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
 source $NCTL/sh/node/stop.sh net=$NET_ID node=$NODE_ID
 source $NCTL/sh/node/start.sh net=$NET_ID node=$NODE_ID
