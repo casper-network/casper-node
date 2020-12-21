@@ -451,7 +451,11 @@ where
         };
 
         let response = match self.commit_step(correlation_id, request) {
-            Ok(StepResult::Success { post_state_hash }) => {
+            // TODO: Update protobufs for StepResult to use GetEraValidatorsError and have the
+            // validator weights
+            Ok(StepResult::Success {
+                post_state_hash, ..
+            }) => {
                 info!("step successful: {}", post_state_hash);
                 let mut ret = ipc::StepResponse::new();
                 let success = ret.mut_step_result().mut_success();

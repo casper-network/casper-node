@@ -32,6 +32,7 @@ use crate::{
         storage::{self, Storage},
         Component,
     },
+    crypto::asymmetric_key::PublicKey,
     effect::{
         announcements::{
             BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
@@ -57,6 +58,8 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
+use casper_types::U512;
+use smallvec::alloc::collections::BTreeMap;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -411,8 +414,6 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let linear_chain_sync = LinearChainSync::new(init_hash);
-
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
 
         let event_stream_server =
@@ -434,13 +435,15 @@ impl reactor::Reactor for Reactor {
 
         let linear_chain = linear_chain::LinearChain::new();
 
-        let validator_weights = chainspec_loader
+        let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
             .chainspec()
             .genesis
             .genesis_validator_stakes()
             .into_iter()
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
+
+        let linear_chain_sync = LinearChainSync::new(init_hash, validator_weights.clone());
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();

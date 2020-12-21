@@ -8,7 +8,7 @@ use derive_more::From;
 use casper_execution_engine::{
     core::{
         engine_state,
-        engine_state::{step::StepResult, ExecutionResults, RootNotFound},
+        engine_state::{step::StepResult, ExecutionResults, GetEraValidatorsError, RootNotFound},
     },
     storage::global_state::CommitResult,
 };
@@ -69,7 +69,7 @@ pub enum Event {
         /// State of this request.
         state: Box<State>,
         /// The result.
-        result: Result<StepResult, engine_state::Error>,
+        result: Result<StepResult, GetEraValidatorsError>,
     },
 }
 

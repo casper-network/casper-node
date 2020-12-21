@@ -557,6 +557,7 @@ message StepRequest {
     repeated SlashItem slash_items = 3;
     repeated RewardItem reward_items = 4;
     bool run_auction = 5;
+    uint64 next_era_id = 6;
 }
 
 message SlashItem{

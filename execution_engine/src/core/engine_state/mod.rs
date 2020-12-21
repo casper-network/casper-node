@@ -33,7 +33,7 @@ use tracing::{debug, error, warn};
 use casper_types::{
     account::AccountHash,
     auction::{
-        EraValidators, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
+        EraId, EraValidators, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
         ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_UNBONDING_DELAY,
         ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
         UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
@@ -2476,7 +2476,7 @@ where
         &self,
         correlation_id: CorrelationId,
         step_request: StepRequest,
-    ) -> Result<StepResult, Error> {
+    ) -> Result<StepResult, GetEraValidatorsError> {
         let protocol_data = match self.state.get_protocol_data(step_request.protocol_version) {
             Ok(Some(protocol_data)) => protocol_data,
             Ok(None) => {
@@ -2543,7 +2543,12 @@ where
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
         let deploy_hash = {
             // seeds address generator w/ protocol version
-            let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();
+            let bytes: Vec<u8> = step_request
+                .protocol_version
+                .value()
+                .into_bytes()
+                .map_err(Error::from)?
+                .to_vec();
             DeployHash::new(Blake2bHash::new(&bytes).value())
         };
 
@@ -2678,20 +2683,33 @@ where
                 step_request.pre_state_hash,
                 effects.transforms,
             )
-            .map_err(Into::into)?;
+            .map_err(|err| Error::Exec(Into::into(err)))?;
 
-        match commit_result {
-            CommitResult::Success { state_root } => Ok(StepResult::Success {
-                post_state_hash: state_root,
-            }),
-            CommitResult::RootNotFound => Ok(StepResult::RootNotFound),
-            CommitResult::KeyNotFound(key) => Ok(StepResult::KeyNotFound(key)),
+        let post_state_hash = match commit_result {
+            CommitResult::Success { state_root } => state_root,
+            CommitResult::RootNotFound => return Ok(StepResult::RootNotFound),
+            CommitResult::KeyNotFound(key) => return Ok(StepResult::KeyNotFound(key)),
             CommitResult::TypeMismatch(type_mismatch) => {
-                Ok(StepResult::TypeMismatch(type_mismatch))
+                return Ok(StepResult::TypeMismatch(type_mismatch))
             }
             CommitResult::Serialization(bytesrepr_error) => {
-                Ok(StepResult::Serialization(bytesrepr_error))
+                return Ok(StepResult::Serialization(bytesrepr_error))
             }
-        }
+        };
+        let mut era_validators_b_tree_map: BTreeMap<
+            EraId,
+            BTreeMap<casper_types::PublicKey, U512>,
+        > = self.get_era_validators(
+            correlation_id,
+            GetEraValidatorsRequest::new(post_state_hash.clone(), step_request.protocol_version),
+        )?;
+        let next_era_validators = era_validators_b_tree_map
+            .remove(&step_request.next_era_id)
+            .ok_or_else(|| GetEraValidatorsError::EraValidatorsMissing)?
+            .clone();
+        Ok(StepResult::Success {
+            post_state_hash,
+            next_era_validators,
+        })
     }
 }
