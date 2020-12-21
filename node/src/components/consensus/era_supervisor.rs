@@ -827,7 +827,7 @@ where
         self.handle_consensus_results(self.era_supervisor.current_era, results)
     }
 
-    /// Returns whether validator is bonded in any of currently active eras.
+    /// Returns whether validator is bonded in an era.
     pub(super) fn is_bonded_validator(&self, era_id: EraId, vid: PublicKey) -> bool {
         self.era_supervisor
             .active_eras

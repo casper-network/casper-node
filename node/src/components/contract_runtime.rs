@@ -323,7 +323,7 @@ where
                     })
                     .await
                     .expect("should run");
-                    trace!("");
+                    trace!(?result, "is validator bonded result");
                     let is_bonded =
                         result.and_then(|validator_map| match validator_map.get(&era_id.0) {
                             None => Err(GetEraValidatorsError::EraValidatorsMissing),

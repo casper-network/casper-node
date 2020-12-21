@@ -70,7 +70,10 @@ pub enum Event<I> {
     },
     /// The result of requesting a block from storage to add a finality signature to it.
     GetBlockForFinalitySignaturesResult(Box<FinalitySignature>, Option<Box<Block>>),
+    /// Check if validator is bonded in the future era.
+    /// Validator's public key and the block's era are part of the finality signature.
     IsBondedFutureEra(Option<Box<Block>>, Box<FinalitySignature>),
+    /// Result of testing if creator of the finality signature is bonded validator.
     IsBonded(Option<Box<Block>>, Box<FinalitySignature>, bool),
 }
 

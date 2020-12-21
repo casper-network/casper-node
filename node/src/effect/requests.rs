@@ -670,7 +670,7 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<StepResult, engine_state::Error>>,
     },
-    /// Check if validator is bonded in any of the eras that we already have validators for.
+    /// Check if validator is bonded in the future era (identified by `era_id`).
     IsBonded {
         /// State root hash of the LFB.
         state_root_hash: Digest,

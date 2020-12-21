@@ -1314,7 +1314,9 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Check if validator is bonded in any of the future eras.
+    /// Check if validator is bonded in the future era (`era_id`).
+    /// This information is known only by the Contract Runtime since consensus component
+    /// knows only about currently active eras.
     pub(crate) async fn is_bonded_in_future_era(
         self,
         state_root_hash: Digest,
