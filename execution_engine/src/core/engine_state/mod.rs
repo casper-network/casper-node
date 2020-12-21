@@ -1248,7 +1248,7 @@ where
                 correlation_id,
                 contract_wasm_hash,
                 use_system_contracts,
-                preprocessor,
+                &preprocessor,
             ) {
                 Ok(module) => module,
                 Err(error) => {
