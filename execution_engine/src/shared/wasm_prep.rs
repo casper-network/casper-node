@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use parity_wasm::elements::{self, Module};
+use parity_wasm::elements::{self, MemorySection, Module, Section};
 use pwasm_utils::{self, stack_height};
 use thiserror::Error;
 
@@ -11,6 +11,7 @@ pub enum PreprocessingError {
     Deserialize(String),
     OperationForbiddenByGasRules,
     StackLimiter,
+    MissingMemorySection,
 }
 
 impl From<elements::Error> for PreprocessingError {
@@ -25,8 +26,19 @@ impl Display for PreprocessingError {
             PreprocessingError::Deserialize(error) => write!(f, "Deserialization error: {}", error),
             PreprocessingError::OperationForbiddenByGasRules => write!(f, "Encountered operation forbidden by gas rules. Consult instruction -> metering config map"),
             PreprocessingError::StackLimiter => write!(f, "Stack limiter error"),
+            PreprocessingError::MissingMemorySection => write!(f, "Memory section should exist"),
         }
     }
+}
+
+/// Checks if given wasm module contains a memory section.
+fn module_has_memory_section(module: &Module) -> Option<&MemorySection> {
+    for section in module.sections() {
+        if let Section::Memory(section) = section {
+            return Some(section);
+        }
+    }
+    None
 }
 
 pub struct Preprocessor {
@@ -40,6 +52,13 @@ impl Preprocessor {
 
     pub fn preprocess(&self, module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
         let module = deserialize(module_bytes)?;
+
+        if module_has_memory_section(&module).is_none() {
+            // `pwasm_utils::externalize_mem` expects a memory section to exist in the module, and
+            // panics otherwise.
+            return Err(PreprocessingError::MissingMemorySection);
+        }
+
         let module = pwasm_utils::externalize_mem(module, None, self.wasm_config.max_memory);
         let module =
             pwasm_utils::inject_gas_counter(module, &self.wasm_config.opcode_costs().to_set())

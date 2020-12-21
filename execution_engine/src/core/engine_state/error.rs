@@ -41,8 +41,8 @@ pub enum Error {
     Bytesrepr(String),
     #[error("Mint error: {0}")]
     Mint(String),
-    #[error("Unsupported key type: {0}")]
-    InvalidKeyVariant(String),
+    #[error("Unsupported key type")]
+    InvalidKeyVariant,
     #[error("Invalid upgrade result value")]
     InvalidUpgradeResult,
     #[error("Unsupported deploy item variant: {0}")]

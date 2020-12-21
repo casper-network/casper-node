@@ -83,7 +83,6 @@ use crate::{
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
         transform::Transform,
-        wasm_config::WasmConfig,
         wasm_prep::{self, Preprocessor},
     },
     storage::{
@@ -155,16 +154,6 @@ where
         &self.config
     }
 
-    pub fn wasm_config(
-        &self,
-        protocol_version: ProtocolVersion,
-    ) -> Result<Option<WasmConfig>, Error> {
-        match self.get_protocol_data(protocol_version)? {
-            Some(protocol_data) => Ok(Some(*protocol_data.wasm_config())),
-            None => Ok(None),
-        }
-    }
-
     pub fn get_protocol_data(
         &self,
         protocol_version: ProtocolVersion,
@@ -205,6 +194,8 @@ where
         // Spec #4: Create a runtime.
         let tracking_copy = match self.tracking_copy(initial_root_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            // NOTE: As genesis is ran once per instane condition below is considered programming
+            // error
             Ok(None) => panic!("state has not been initialized properly"),
             Err(error) => return Err(error),
         };
@@ -905,13 +896,7 @@ where
         correlation_id: CorrelationId,
         mut exec_request: ExecuteRequest,
     ) -> Result<ExecutionResults, RootNotFound> {
-        // TODO: do not unwrap
-        let wasm_config = self
-            .wasm_config(exec_request.protocol_version)
-            .unwrap()
-            .unwrap();
         let executor = Executor::new(self.config);
-        let preprocessor = Preprocessor::new(wasm_config);
 
         let deploys = exec_request.take_deploys();
         let mut results = ExecutionResults::with_capacity(deploys.len());
@@ -923,7 +908,6 @@ where
                     ExecutableDeployItem::Transfer { .. } => self.transfer(
                         correlation_id,
                         &executor,
-                        &preprocessor,
                         exec_request.protocol_version,
                         exec_request.parent_state_hash,
                         BlockTime::new(exec_request.block_time),
@@ -933,7 +917,6 @@ where
                     _ => self.deploy(
                         correlation_id,
                         &executor,
-                        &preprocessor,
                         exec_request.protocol_version,
                         exec_request.parent_state_hash,
                         BlockTime::new(exec_request.block_time),
@@ -973,11 +956,16 @@ where
             }
             ExecutableDeployItem::StoredContractByHash { .. }
             | ExecutableDeployItem::StoredContractByName { .. } => {
+                // NOTE: `to_contract_hash_key` ensures it returns valid value only for
+                // ByHash/ByName variants
                 let stored_contract_key = deploy_item.to_contract_hash_key(&account)?.unwrap();
 
+                let contract_hash = stored_contract_key
+                    .into_hash()
+                    .ok_or(Error::InvalidKeyVariant)?;
                 let contract = tracking_copy
                     .borrow_mut()
-                    .get_contract(correlation_id, stored_contract_key.into_hash().unwrap())?;
+                    .get_contract(correlation_id, contract_hash)?;
 
                 if !contract.is_compatible_protocol_version(*protocol_version) {
                     let exec_error = execution::Error::IncompatibleProtocolMajorVersion {
@@ -995,8 +983,12 @@ where
             }
             ExecutableDeployItem::StoredVersionedContractByName { version, .. }
             | ExecutableDeployItem::StoredVersionedContractByHash { version, .. } => {
+                // NOTE: `to_contract_hash_key` ensures it returns valid value only for
+                // ByHash/ByName variants
                 let contract_package_key = deploy_item.to_contract_hash_key(&account)?.unwrap();
-                let contract_package_hash = contract_package_key.into_seed();
+                let contract_package_hash = contract_package_key
+                    .into_hash()
+                    .ok_or(Error::InvalidKeyVariant)?;
 
                 let contract_package = tracking_copy
                     .borrow_mut()
@@ -1156,7 +1148,6 @@ where
         &self,
         correlation_id: CorrelationId,
         executor: &Executor,
-        preprocessor: &Preprocessor,
         protocol_version: ProtocolVersion,
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
@@ -1174,6 +1165,11 @@ where
                     error.into(),
                 )));
             }
+        };
+
+        let preprocessor = {
+            let wasm_config = protocol_data.wasm_config();
+            Preprocessor::new(*wasm_config)
         };
 
         let tracking_copy = match self.tracking_copy(prestate_hash) {
@@ -1222,7 +1218,7 @@ where
                 correlation_id,
                 contract_wasm_hash,
                 use_system_contracts,
-                preprocessor,
+                &preprocessor,
             ) {
                 Ok(module) => module,
                 Err(error) => {
@@ -1670,7 +1666,6 @@ where
         &self,
         correlation_id: CorrelationId,
         executor: &Executor,
-        preprocessor: &Preprocessor,
         protocol_version: ProtocolVersion,
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
@@ -1692,6 +1687,11 @@ where
                     error.into(),
                 )));
             }
+        };
+
+        let preprocessor = {
+            let wasm_config = protocol_data.wasm_config();
+            Preprocessor::new(*wasm_config)
         };
 
         // Create tracking copy (which functions as a deploy context)
@@ -1742,7 +1742,7 @@ where
             &session,
             &account,
             correlation_id,
-            preprocessor,
+            &preprocessor,
             &protocol_version,
         ) {
             Ok(module) => module,
@@ -1771,7 +1771,7 @@ where
                 correlation_id,
                 mint_contract.contract_wasm_hash(),
                 self.config.use_system_contracts(),
-                preprocessor,
+                &preprocessor,
             ) {
                 Ok(contract) => contract,
                 Err(error) => {
@@ -1803,7 +1803,7 @@ where
             correlation_id,
             proof_of_stake_contract.contract_wasm_hash(),
             self.config.use_system_contracts(),
-            preprocessor,
+            &preprocessor,
         ) {
             Ok(module) => module,
             Err(error) => {
@@ -1910,7 +1910,7 @@ where
                     &payment,
                     &account,
                     correlation_id,
-                    preprocessor,
+                    &preprocessor,
                     &protocol_version,
                 )
             };
@@ -2117,7 +2117,9 @@ where
 
             let error = match forced_transfer {
                 ForcedTransferResult::InsufficientPayment => Error::InsufficientPayment,
-                ForcedTransferResult::PaymentFailure => payment_result.take_error().unwrap(),
+                ForcedTransferResult::PaymentFailure => payment_result
+                    .take_error()
+                    .unwrap_or(Error::InsufficientPayment),
             };
             return Ok(ExecutionResult::new_payment_code_error(
                 error,
@@ -2442,11 +2444,8 @@ where
         let executor = Executor::new(self.config);
 
         let preprocessor = {
-            let wasm_config = self
-                .wasm_config(step_request.protocol_version)
-                .unwrap()
-                .unwrap();
-            Preprocessor::new(wasm_config)
+            let wasm_config = protocol_data.wasm_config();
+            Preprocessor::new(*wasm_config)
         };
 
         let auction_hash = protocol_data.auction();
@@ -2531,10 +2530,8 @@ where
             SystemContractCache::clone(&self.system_contract_cache),
         );
 
-        if execution_result.is_failure() {
-            return Ok(StepResult::SlashingError(
-                execution_result.take_error().unwrap(),
-            ));
+        if let Some(exec_error) = execution_result.take_error() {
+            return Ok(StepResult::SlashingError(exec_error));
         }
 
         let reward_factors = match step_request.reward_factors() {
@@ -2570,10 +2567,8 @@ where
             SystemContractCache::clone(&self.system_contract_cache),
         );
 
-        if execution_result.is_failure() {
-            return Ok(StepResult::DistributeError(
-                execution_result.take_error().unwrap(),
-            ));
+        if let Some(exec_error) = execution_result.take_error() {
+            return Ok(StepResult::DistributeError(exec_error));
         }
 
         if step_request.run_auction {
@@ -2600,10 +2595,8 @@ where
                     SystemContractCache::clone(&self.system_contract_cache),
                 );
 
-            if execution_result.is_failure() {
-                return Ok(StepResult::AuctionError(
-                    execution_result.take_error().unwrap(),
-                ));
+            if let Some(exec_error) = execution_result.take_error() {
+                return Ok(StepResult::AuctionError(exec_error));
             }
         }
 

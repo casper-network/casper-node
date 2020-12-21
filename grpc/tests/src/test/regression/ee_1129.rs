@@ -1,9 +1,10 @@
 use once_cell::sync::Lazy;
+use parity_wasm::builder;
 
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
-        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
@@ -12,18 +13,20 @@ use casper_execution_engine::{
         engine_state::{genesis::GenesisAccount, Error},
         execution,
     },
-    shared::motes::Motes,
+    shared::{motes::Motes, wasm::do_nothing_bytes, wasm_prep::PreprocessingError},
 };
 use casper_types::{
     account::AccountHash,
     auction::{self, DelegationRate},
+    contracts::DEFAULT_ENTRY_POINT_NAME,
     runtime_args, PublicKey, RuntimeArgs, U512,
 };
 
 const ENTRY_POINT_NAME: &str = "create_purse";
 const CONTRACT_KEY: &str = "contract";
-const CONTRACT_EE_1129_REGRESSION: &str = "ee_1129_regression.wasm";
+const ACCESS_KEY: &str = "access";
 
+const CONTRACT_EE_1129_REGRESSION: &str = "ee_1129_regression.wasm";
 const ARG_AMOUNT: &str = "amount";
 
 const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
@@ -220,6 +223,262 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
         .expect("should have error");
     assert!(
         matches!(error, Error::Exec(execution::Error::GasLimit)),
+        "Unexpected error {:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn should_not_panic_when_calling_session_contract_by_uref() {
+    let payment_amount = *CALL_STORED_CONTRACT_OVERHEAD;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let install_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_EE_1129_REGRESSION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    let exec_request = {
+        let deploy = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_stored_session_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
+            .with_empty_payment_bytes(runtime_args! {
+                ARG_AMOUNT => payment_amount,
+            })
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(install_exec_request).expect_success().commit();
+
+    builder.exec(exec_request).commit();
+
+    let error = builder
+        .get_exec_responses()
+        .last()
+        .expect("should have results")
+        .get(0)
+        .expect("should have first result")
+        .as_error()
+        .expect("should have error");
+    assert!(
+        matches!(error, Error::InvalidKeyVariant),
+        "Unexpected error {:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn should_not_panic_when_calling_payment_contract_by_uref() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let install_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_EE_1129_REGRESSION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    let exec_request = {
+        let deploy = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_session_bytes(do_nothing_bytes(), RuntimeArgs::new())
+            .with_stored_payment_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::new())
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(install_exec_request).expect_success().commit();
+
+    builder.exec(exec_request).commit();
+
+    let error = builder
+        .get_exec_responses()
+        .last()
+        .expect("should have results")
+        .get(0)
+        .expect("should have first result")
+        .as_error()
+        .expect("should have error");
+    assert!(
+        matches!(error, Error::InvalidKeyVariant),
+        "Unexpected error {:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn should_not_panic_when_calling_contract_package_by_uref() {
+    let payment_amount = *CALL_STORED_CONTRACT_OVERHEAD;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let install_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_EE_1129_REGRESSION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    let exec_request = {
+        let deploy = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_stored_versioned_contract_by_name(
+                ACCESS_KEY,
+                None,
+                ENTRY_POINT_NAME,
+                RuntimeArgs::default(),
+            )
+            .with_empty_payment_bytes(runtime_args! {
+                ARG_AMOUNT => payment_amount,
+            })
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(install_exec_request).expect_success().commit();
+
+    builder.exec(exec_request).commit();
+
+    let error = builder
+        .get_exec_responses()
+        .last()
+        .expect("should have results")
+        .get(0)
+        .expect("should have first result")
+        .as_error()
+        .expect("should have error");
+    assert!(
+        matches!(error, Error::InvalidKeyVariant),
+        "Unexpected error {:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let install_exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_EE_1129_REGRESSION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    let exec_request = {
+        let deploy = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_session_bytes(do_nothing_bytes(), RuntimeArgs::new())
+            .with_stored_versioned_payment_contract_by_name(
+                ACCESS_KEY,
+                None,
+                ENTRY_POINT_NAME,
+                RuntimeArgs::new(),
+            )
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(install_exec_request).expect_success().commit();
+
+    builder.exec(exec_request).commit();
+
+    let error = builder
+        .get_exec_responses()
+        .last()
+        .expect("should have results")
+        .get(0)
+        .expect("should have first result")
+        .as_error()
+        .expect("should have error");
+    assert!(
+        matches!(error, Error::InvalidKeyVariant),
+        "Unexpected error {:?}",
+        error
+    );
+}
+
+fn do_nothing_without_memory() -> Vec<u8> {
+    let module = builder::module()
+        .function()
+        // A signature with 0 params and no return type
+        .signature()
+        .build()
+        .body()
+        .build()
+        .build()
+        // Export above function
+        .export()
+        .field(DEFAULT_ENTRY_POINT_NAME)
+        .build()
+        .build();
+    parity_wasm::serialize(module).expect("should serialize")
+}
+
+#[ignore]
+#[test]
+fn should_not_panic_when_calling_module_without_memory() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let exec_request = {
+        let deploy = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_session_bytes(do_nothing_without_memory(), RuntimeArgs::new())
+            .with_empty_payment_bytes(runtime_args! {
+                ARG_AMOUNT => *DEFAULT_PAYMENT,
+            })
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .with_deploy_hash([42; 32])
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    };
+
+    builder.exec(exec_request).commit();
+
+    let error = builder
+        .get_exec_responses()
+        .last()
+        .expect("should have results")
+        .get(0)
+        .expect("should have first result")
+        .as_error()
+        .expect("should have error");
+    assert!(
+        matches!(
+            error,
+            Error::WasmPreprocessing(PreprocessingError::MissingMemorySection)
+        ),
         "Unexpected error {:?}",
         error
     );

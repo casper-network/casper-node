@@ -377,13 +377,11 @@ where
 
     pub fn read_ls(&mut self, key_bytes: &[u8]) -> Result<Option<CLValue>, Error> {
         let actual_length = key_bytes.len();
-        if actual_length != KEY_HASH_LENGTH {
-            return Err(Error::InvalidKeyLength {
+        let hash: [u8; KEY_HASH_LENGTH] =
+            key_bytes.try_into().map_err(|_| Error::InvalidKeyLength {
                 actual: actual_length,
                 expected: KEY_HASH_LENGTH,
-            });
-        }
-        let hash: [u8; KEY_HASH_LENGTH] = key_bytes.try_into().unwrap();
+            })?;
         let key: Key = hash.into();
         let maybe_stored_value = self
             .tracking_copy
@@ -400,13 +398,11 @@ where
 
     pub fn write_ls(&mut self, key_bytes: &[u8], cl_value: CLValue) -> Result<(), Error> {
         let actual_length = key_bytes.len();
-        if actual_length != KEY_HASH_LENGTH {
-            return Err(Error::InvalidKeyLength {
+        let hash: [u8; KEY_HASH_LENGTH] =
+            key_bytes.try_into().map_err(|_| Error::InvalidKeyLength {
                 actual: actual_length,
                 expected: KEY_HASH_LENGTH,
-            });
-        }
-        let hash: [u8; KEY_HASH_LENGTH] = key_bytes.try_into().unwrap();
+            })?;
         self.metered_write_gs_unsafe(hash, cl_value)?;
         Ok(())
     }
