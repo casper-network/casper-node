@@ -90,7 +90,7 @@ sleep 10.0
 
 
 log_step "submitting auction withdrawals:"
-for NODE_ID in $(seq 1 $NET_NODE_COUNT)
+for NODE_ID in $(seq 1 $NET_NODE_COUNT_GENESIS)
 do
     WITHDRAWAL_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
 
@@ -112,7 +112,7 @@ await_n_eras $NET_ID $NODE_ID_FOR_DISPATCH 15
 
 
 log_step "stopping genesis nodes"
-for NODE_ID in $(seq 1 $NET_NODE_COUNT)
+for NODE_ID in $(seq 1 $NET_NODE_COUNT_GENESIS)
 do
     source $NCTL/sh/node/stop.sh net=$NET_ID node=$NET_ID
     sleep 1.0
