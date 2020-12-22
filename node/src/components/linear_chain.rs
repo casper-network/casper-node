@@ -372,6 +372,11 @@ where
                 |(maybe_block, fs)| Event::IsBondedFutureEra(maybe_block, fs),
             ),
             Event::IsBondedFutureEra(maybe_block, fs) => {
+                // This should be safe to do. `self.latest_block` will be None only if ew haven't
+                // finalized *any* block yet. which will be just after the Genesis
+                // era start. Even if we receive a finality signature before finalizing anything,
+                // that will be for the *current* era and we won't be looking up whether validator
+                // is bonded in the Contract Runtime.
                 let state_root_hash = self
                     .latest_block
                     .as_ref()
@@ -382,7 +387,7 @@ where
                     .as_ref()
                     .map(|lb| lb.header().era_id().successor())
                     .unwrap();
-                // TODO:
+                // TODO: Use protocol version that is valid for the block's height.
                 let protocol_version = ProtocolVersion::new(SemVer::V1_0_0);
                 effect_builder
                     .is_bonded_in_future_era(
@@ -415,8 +420,9 @@ where
                         effects
                     }
                     Some(_block) if !is_bonded => {
-                        // Known block but not a valid validator.
-                        // Validator cannot be from the future era b/c we wouldn't have the block.
+                        // Known block but not a bonded validator (neither in current nor in future
+                        // era). Validator cannot be from the future era b/c
+                        // we wouldn't have the block.
                         let FinalitySignature {
                             public_key,
                             block_hash,
@@ -432,25 +438,15 @@ where
                     }
                     None if is_bonded => {
                         // Unknown block but validator is bonded.
-                        let block_hash = fs.block_hash;
-                        let signers = self
-                            .pending_finality_signatures
-                            .values()
-                            .filter_map(|sigs| sigs.get(&block_hash))
-                            .map(|fs| format!("{}", fs.public_key))
-                            .collect_vec();
-                        if !signers.is_empty() {
-                            // We have signatures for an unknown block. Print log messages.
-                            warn!(
-                               %block_hash, signers = %signers.join(", "),
-                               "received signatures for a block that was not found in storage"
-                            )
-                        }
+                        // We should finalize the same block eventually. Either in this or in the
+                        // next era.
+                        self.add_finality_signature(*fs);
                         Effects::new()
                     }
                     None if !is_bonded => {
                         // Unknown block from unknown validator.
-                        // TODO: Check if validator will be bonded in the next era.
+                        // We don't have the block in storage and validator is not bonded in this
+                        // era or in the next one.
                         let FinalitySignature {
                             public_key,
                             block_hash,
@@ -461,7 +457,7 @@ where
                             %block_hash,
                             "Received a signature from a validator that is not bonded."
                         );
-                        self.add_finality_signature(*fs);
+                        // TODO: Disconnect from the sender.
                         Effects::new()
                     }
                     other => {
