@@ -32,8 +32,8 @@ done
 do_auction_bid_submit \
     ${NET_ID:-1} \
     ${NODE_ID:-1} \
-    ${BIDDER_ID:-1} \
-    ${AMOUNT:-$NCTL_DEFAULT_AUCTION_BID_AMOUNT} \
+    ${BIDDER_ID:-6} \
+    ${AMOUNT:-$(($NCTL_DEFAULT_AUCTION_BID_AMOUNT * ${BIDDER_ID:-6}))} \
     ${DELEGATION_RATE:-125} \
     ${GAS:-$NCTL_DEFAULT_GAS_PRICE} \
     ${PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT} \

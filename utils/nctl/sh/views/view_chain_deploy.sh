@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
-unset DEPLOY_HASH
 unset NET_ID
 unset NODE_ID
 
@@ -18,6 +14,13 @@ do
         *)
     esac
 done
+
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
 render_chain_deploy \
     ${NET_ID:-1} \

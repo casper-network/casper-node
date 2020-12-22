@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
 unset NET_ID
 
 for ARGUMENT in "$@"
@@ -14,6 +11,13 @@ do
         *)
     esac
 done
+
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
+source $NCTL/sh/utils.sh
+source $NCTL/sh/views/funcs.sh
 
 render_account_hash \
     ${NET_ID:-1} \

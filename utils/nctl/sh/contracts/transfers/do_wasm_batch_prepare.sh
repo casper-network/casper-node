@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/contracts/transfers/funcs.sh
-
 unset AMOUNT
+unset BATCH_COUNT
+unset BATCH_SIZE
 unset GAS
-unset TRANSFER_INTERVAL
 unset NET_ID
 unset NODE_ID
 unset PAYMENT
-unset TRANSFERS
-unset USER_ID
 
 for ARGUMENT in "$@"
 do
@@ -18,23 +14,24 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         amount) AMOUNT=${VALUE} ;;
+        count) BATCH_COUNT=${VALUE} ;;
+        size) BATCH_SIZE=${VALUE} ;;
         gas) GAS=${VALUE} ;;
-        interval) TRANSFER_INTERVAL=${VALUE} ;;
         net) NET_ID=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
         payment) PAYMENT=${VALUE} ;;
-        transfers) TRANSFERS=${VALUE} ;;
-        user) USER_ID=${VALUE} ;;
         *)
     esac
 done
 
-do_transfer_native \
+source $NCTL/sh/utils.sh
+source $NCTL/sh/contracts/transfers/funcs.sh
+
+do_transfer_wasm_prepare \
     ${NET_ID:-1} \
     ${NODE_ID:-1} \
     ${AMOUNT:-$NCTL_DEFAULT_TRANSFER_AMOUNT} \
-    ${USER_ID:-1} \
-    ${TRANSFERS:-100} \
-    ${TRANSFER_INTERVAL:-0.01} \
-    ${GAS:-$NCTL_DEFAULT_GAS_PRICE} \
-    ${PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT}
+    ${BATCH_COUNT:-10} \
+    ${BATCH_SIZE:-10} \
+    $NCTL_DEFAULT_GAS_PRICE \
+    $NCTL_DEFAULT_GAS_PAYMENT
