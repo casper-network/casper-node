@@ -124,8 +124,19 @@ impl ToBytes for AssociatedKeys {
 
 impl FromBytes for AssociatedKeys {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (associated_keys, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((AssociatedKeys(associated_keys), rem))
+        let (num_keys, mut stream) = u32::from_bytes(bytes)?;
+        if num_keys as usize > MAX_ASSOCIATED_KEYS {
+            return Err(Error::Formatting);
+        }
+
+        let mut associated_keys = BTreeMap::new();
+        for _ in 0..num_keys {
+            let (k, rem) = FromBytes::from_bytes(stream)?;
+            let (v, rem) = FromBytes::from_bytes(rem)?;
+            associated_keys.insert(k, v);
+            stream = rem;
+        }
+        Ok((AssociatedKeys(associated_keys), stream))
     }
 }
 
@@ -347,8 +358,10 @@ mod tests {
             .collect();
 
         let bytes = malicious_map.to_bytes().expect("should serialize");
-        let associated_keys: AssociatedKeys =
-            bytesrepr::deserialize(bytes).expect("should deserialize");
-        assert_eq!(associated_keys.len(), malicious_map.len());
+
+        assert_eq!(
+            bytesrepr::deserialize::<AssociatedKeys>(bytes).expect_err("should deserialize"),
+            bytesrepr::Error::Formatting
+        );
     }
 }
