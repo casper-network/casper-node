@@ -32,7 +32,7 @@ impl Display for PreprocessingError {
 }
 
 /// Checks if given wasm module contains a memory section.
-fn module_has_memory_section(module: &Module) -> Option<&MemorySection> {
+fn memory_section(module: &Module) -> Option<&MemorySection> {
     for section in module.sections() {
         if let Section::Memory(section) = section {
             return Some(section);
@@ -53,7 +53,7 @@ impl Preprocessor {
     pub fn preprocess(&self, module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
         let module = deserialize(module_bytes)?;
 
-        if module_has_memory_section(&module).is_none() {
+        if memory_section(&module).is_none() {
             // `pwasm_utils::externalize_mem` expects a memory section to exist in the module, and
             // panics otherwise.
             return Err(PreprocessingError::MissingMemorySection);

@@ -117,7 +117,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
             VALIDATOR_1,
             *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
-            Motes::new(U512::zero()), //VALIDATOR_1_STAKE.into()),
+            Motes::new(U512::zero()),
         );
 
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
@@ -182,8 +182,6 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 #[ignore]
 #[test]
 fn should_run_ee_1129_underfunded_mint_contract_call() {
-    let payment_amount = *CALL_STORED_CONTRACT_OVERHEAD;
-
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -200,7 +198,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(CONTRACT_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
             .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount,
+                ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
             })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([42; 32])
@@ -221,6 +219,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
         .expect("should have first result")
         .as_error()
         .expect("should have error");
+
     assert!(
         matches!(error, Error::Exec(execution::Error::GasLimit)),
         "Unexpected error {:?}",
@@ -231,8 +230,6 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_session_contract_by_uref() {
-    let payment_amount = *CALL_STORED_CONTRACT_OVERHEAD;
-
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -249,7 +246,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
             .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount,
+                ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
             })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([42; 32])
@@ -270,6 +267,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
         .expect("should have first result")
         .as_error()
         .expect("should have error");
+
     assert!(
         matches!(error, Error::InvalidKeyVariant),
         "Unexpected error {:?}",
@@ -315,6 +313,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
         .expect("should have first result")
         .as_error()
         .expect("should have error");
+
     assert!(
         matches!(error, Error::InvalidKeyVariant),
         "Unexpected error {:?}",
@@ -325,8 +324,6 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
 #[ignore]
 #[test]
 fn should_not_panic_when_calling_contract_package_by_uref() {
-    let payment_amount = *CALL_STORED_CONTRACT_OVERHEAD;
-
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -348,7 +345,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
                 RuntimeArgs::default(),
             )
             .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount,
+                ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
             })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([42; 32])
@@ -369,6 +366,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
         .expect("should have first result")
         .as_error()
         .expect("should have error");
+
     assert!(
         matches!(error, Error::InvalidKeyVariant),
         "Unexpected error {:?}",
@@ -474,6 +472,7 @@ fn should_not_panic_when_calling_module_without_memory() {
         .expect("should have first result")
         .as_error()
         .expect("should have error");
+
     assert!(
         matches!(
             error,
