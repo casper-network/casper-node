@@ -21,7 +21,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// Mint new token with given `initial_balance` balance. Returns new purse on success, otherwise
     /// an error.
     fn mint(&mut self, initial_balance: U512) -> Result<URef, Error> {
-        let caller = self.get_caller();
+        let caller = self.get_caller()?;
         let is_empty_purse = initial_balance.is_zero();
         if !is_empty_purse && caller != SYSTEM_ACCOUNT {
             return Err(Error::InvalidNonEmptyPurseCreation);
@@ -39,7 +39,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
 
         if !is_empty_purse {
             // get total supply uref if exists, otherwise create it.
-            let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
+            let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY)? {
                 None => {
                     // create total_supply value and track in mint context
                     let uref: URef = self.new_uref(U512::zero())?;
@@ -60,7 +60,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// an error.
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
         // only system may reduce total supply
-        let caller = self.get_caller();
+        let caller = self.get_caller()?;
         if caller != SYSTEM_ACCOUNT {
             return Err(Error::InvalidTotalSupplyReductionAttempt);
         }
@@ -70,7 +70,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         }
 
         // get total supply or error
-        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
+        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY)? {
             Some(Key::URef(uref)) => uref,
             Some(_) => return Err(Error::MissingKey), // TODO
             None => return Err(Error::MissingKey),
@@ -135,7 +135,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
 
     /// Retrieves the base round reward.
     fn read_base_round_reward(&mut self) -> Result<U512, Error> {
-        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
+        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY)? {
             Some(Key::URef(uref)) => uref,
             Some(_) => return Err(Error::MissingKey), // TODO
             None => return Err(Error::MissingKey),
@@ -144,7 +144,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .read(total_supply_uref)?
             .ok_or(Error::TotalSupplyNotFound)?;
 
-        let round_seigniorage_rate_uref = match self.get_key(ROUND_SEIGNIORAGE_RATE_KEY) {
+        let round_seigniorage_rate_uref = match self.get_key(ROUND_SEIGNIORAGE_RATE_KEY)? {
             Some(Key::URef(uref)) => uref,
             Some(_) => return Err(Error::MissingKey), // TODO
             None => return Err(Error::MissingKey),

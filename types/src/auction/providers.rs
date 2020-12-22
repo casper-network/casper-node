@@ -3,7 +3,7 @@ use crate::{
     auction::{EraId, EraInfo},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
-    ApiError, CLTyped, Key, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -41,7 +41,7 @@ pub trait SystemProvider {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ApiError>;
+    ) -> Result<(), Error>;
 
     /// Records era info at the given era id.
     fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error>;
@@ -55,7 +55,7 @@ pub trait MintProvider {
         source: URef,
         target: AccountHash,
         amount: U512,
-    ) -> TransferResult;
+    ) -> Result<TransferredTo, Error>;
 
     /// Transfers `amount` from `source` purse to a `target` purse.
     fn transfer_purse_to_purse(
@@ -63,7 +63,7 @@ pub trait MintProvider {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ApiError>;
+    ) -> Result<(), Error>;
 
     /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
     fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;

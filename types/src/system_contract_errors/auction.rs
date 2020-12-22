@@ -125,12 +125,15 @@ pub enum Error {
     /// Failed to create a [`crate::CLValue`].
     #[fail(display = "CLValue error")]
     CLValue = 34,
+    #[fail(display = "Transfer error")]
+    /// Failed to transfer funds.
+    Transfer = 35,
 
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
     #[doc(hidden)]
     #[fail(display = "GasLimit")]
-    GasLimit = 35,
+    GasLimit = 36,
 
     #[cfg(test)]
     #[doc(hidden)]
@@ -198,8 +201,8 @@ impl TryFrom<u8> for Error {
 
             d if d == Error::RecordEraInfo as u8 => Ok(Error::RecordEraInfo),
             d if d == Error::CLValue as u8 => Ok(Error::CLValue),
+            d if d == Error::Transfer as u8 => Ok(Error::Transfer),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
-            d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
             _ => Err(TryFromU8ForError(())),
         }
     }

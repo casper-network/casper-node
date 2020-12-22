@@ -114,7 +114,9 @@ pub enum Error {
     /// Raised when the system is unable to remove given named key.
     #[fail(display = "Unable to remove named key")]
     RemoveKey,
-
+    /// Failed to transfer funds.
+    #[fail(display = "Failed to transfer funds")]
+    Transfer,
     // NOTE: These variants below will be removed once support for WASM system contracts will be
     // dropped.
     #[doc(hidden)]

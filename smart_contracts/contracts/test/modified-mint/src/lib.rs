@@ -26,8 +26,8 @@ use casper_types::{
 pub struct MintContract;
 
 impl RuntimeProvider for MintContract {
-    fn get_caller(&self) -> AccountHash {
-        runtime::get_caller()
+    fn get_caller(&self) -> Result<AccountHash, Error> {
+        Ok(runtime::get_caller())
     }
 
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
@@ -35,8 +35,8 @@ impl RuntimeProvider for MintContract {
         Ok(())
     }
 
-    fn get_key(&self, name: &str) -> Option<Key> {
-        runtime::get_key(name)
+    fn get_key(&self, name: &str) -> Result<Option<Key>, Error> {
+        Ok(runtime::get_key(name))
     }
 }
 

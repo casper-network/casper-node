@@ -35,8 +35,6 @@ static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(6_000
 #[ignore]
 #[test]
 fn should_run_ee_1129_underfunded_delegate_call() {
-    let payment_amount = *UNDERFUNDED_PAYMENT_AMOUNT;
-
     let accounts = {
         let validator_1 = GenesisAccount::new(
             VALIDATOR_1,
@@ -78,7 +76,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_stored_session_hash(auction, auction::METHOD_DELEGATE, args)
         .with_empty_payment_bytes(runtime_args! {
-            ARG_AMOUNT => payment_amount, // underfunded deploy
+            ARG_AMOUNT => *UNDERFUNDED_PAYMENT_AMOUNT, // underfunded deploy
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash(deploy_hash)
@@ -107,8 +105,6 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 #[ignore]
 #[test]
 fn should_run_ee_1129_underfunded_add_bid_call() {
-    let payment_amount = *UNDERFUNDED_PAYMENT_AMOUNT;
-
     let accounts = {
         let validator_1 = GenesisAccount::new(
             VALIDATOR_1,
@@ -121,6 +117,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
         tmp.push(validator_1);
         tmp
     };
+
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let mut builder = InMemoryWasmTestBuilder::default();
@@ -132,10 +129,11 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
+    let amount = U512::one();
+
     let deploy_hash = [42; 32];
 
     let unbond_purse = account.main_purse();
-    let amount = U512::one();
 
     let delegation_rate: DelegationRate = 10;
 
@@ -150,7 +148,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
         .with_address(*VALIDATOR_1_ADDR)
         .with_stored_session_hash(auction, auction::METHOD_ADD_BID, args)
         .with_empty_payment_bytes(runtime_args! {
-            ARG_AMOUNT => payment_amount,
+            ARG_AMOUNT => *UNDERFUNDED_PAYMENT_AMOUNT,
         })
         .with_authorization_keys(&[*VALIDATOR_1_ADDR])
         .with_deploy_hash(deploy_hash)
@@ -179,8 +177,6 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 #[ignore]
 #[test]
 fn should_run_ee_1129_underfunded_mint_contract_call() {
-    let payment_amount = *CALL_STORED_CONTRACT_OVERHEAD;
-
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -197,7 +193,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(CONTRACT_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
             .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount,
+                ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
             })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([42; 32])
@@ -218,6 +214,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
         .expect("should have first result")
         .as_error()
         .expect("should have error");
+
     assert!(
         matches!(error, Error::Exec(execution::Error::GasLimit)),
         "Unexpected error {:?}",
