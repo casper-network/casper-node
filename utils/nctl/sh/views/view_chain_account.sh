@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-
 unset ACCOUNT_KEY
 unset NET_ID
 unset NODE_ID
@@ -22,6 +20,13 @@ done
 
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-1}
+
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
+source $NCTL/sh/utils.sh
+
 STATE_ROOT_HASH=${STATE_ROOT_HASH:-$(get_state_root_hash $NET_ID $NODE_ID)}
 
 $(get_path_to_client $NET_ID) query-state \

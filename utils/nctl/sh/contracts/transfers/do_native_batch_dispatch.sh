@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
 unset NET_ID
 unset NODE_ID
+unset TRANSFER_INTERVAL
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
+        interval) TRANSFER_INTERVAL=${VALUE} ;;
         net) NET_ID=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-less $(get_path_to_node ${NET_ID:-1} ${NODE_ID:-1})/logs/stderr.log
+source $NCTL/sh/utils.sh
+source $NCTL/sh/contracts/transfers/funcs.sh
+
+do_transfer_native_dispatch \
+    ${NET_ID:-1} \
+    ${NODE_ID:-1} \
+    ${TRANSFER_INTERVAL:-0.01} \

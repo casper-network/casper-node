@@ -44,7 +44,7 @@ export NCTL_CONTRACTS_CLIENT=(
 )
 
 # Default amount used when making auction bids.
-export NCTL_DEFAULT_AUCTION_BID_AMOUNT=1000000000   # (1e9)
+export NCTL_DEFAULT_AUCTION_BID_AMOUNT=1000000000000000   # (1e15)
 
 # Default amount used when delegating.
 export NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT=1000000000   # (1e9)
@@ -193,6 +193,116 @@ function resetd () {
         rm -rf $DPATH
     fi
     mkdir -p $DPATH
+}
+
+# ###############################################################
+# UTILS: await functions
+# ###############################################################
+
+#######################################
+# Awaits for the chain to proceed N eras.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#   Future era offset to apply.
+#######################################
+function await_n_eras()
+{
+    local NET_ID=${1}
+    local NODE_ID=${2}
+    local OFFSET=${3}
+    local EMIT_LOG=${4:-false}
+
+    local CURRENT=$(get_chain_era $NET_ID $NODE_ID)
+    local FUTURE=$(($CURRENT + $OFFSET))
+
+    while [ $CURRENT -lt $FUTURE ];
+    do
+        if [ $EMIT_LOG = true ]; then
+            log "current era = $CURRENT :: future era = $FUTURE ... sleeping 5 seconds"
+        fi
+        sleep 5.0
+        CURRENT=$(get_chain_era $NET_ID $NODE_ID)
+    done
+
+    if [ $EMIT_LOG = true ]; then
+        log "current era = $CURRENT"
+    fi
+}
+
+#######################################
+# Awaits for the chain to proceed N blocks.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#   Future block height offset to apply.
+#######################################
+function await_n_blocks()
+{
+    local NET_ID=${1}
+    local NODE_ID=${2}
+    local OFFSET=${3}
+    local EMIT_LOG=${4:-false}
+
+    local CURRENT=$(get_chain_height $NET_ID $NODE_ID)
+    local FUTURE=$(($CURRENT + $OFFSET))
+
+    while [ $CURRENT -lt $FUTURE ];
+    do
+        if [ $EMIT_LOG = true ]; then
+            log "current block height = $CURRENT :: future height = $FUTURE ... sleeping 2 seconds"
+        fi
+        sleep 2.0
+        CURRENT=$(get_chain_height $NET_ID $NODE_ID)
+    done
+
+    if [ $EMIT_LOG = true ]; then
+        log "current block height = $CURRENT"
+    fi
+}
+
+#######################################
+# Awaits for the chain to proceed N eras.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#   Future era offset to apply.
+#######################################
+function await_until_era_n()
+{
+    local NET_ID=${1}
+    local NODE_ID=${2}
+    local ERA_ID=${3}
+
+    local CURRENT=$(get_chain_era $NET_ID $NODE_ID)
+
+    while [ $ERA_ID -lt $CURRENT ];
+    do
+        sleep 10.0
+        CURRENT=$(get_chain_era $NET_ID $NODE_ID)
+    done
+}
+
+#######################################
+# Awaits for the chain to proceed N blocks.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#   Future block offset to apply.
+#######################################
+function await_until_block_n()
+{
+    local NET_ID=${1}
+    local NODE_ID=${2}
+    local HEIGHT=${3}
+
+    local CURRENT=$(get_chain_height $NET_ID $NODE_ID)
+
+    while [ $HEIGHT -lt $CURRENT ];
+    do
+        sleep 10.0
+        CURRENT=$(get_chain_height $NET_ID $NODE_ID)
+    done
 }
 
 # ###############################################################
@@ -351,6 +461,56 @@ function get_chain_latest_block_hash() {
 }
 
 #######################################
+# Returns count of a network's bootstrap nodes.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_count_of_bootstrap_nodes() {
+    local NET_ID=${1}    
+    source $(get_path_to_net_vars $NET_ID)
+
+    echo $NCTL_NET_BOOTSTRAP_COUNT
+}
+
+#######################################
+# Returns count of a network's bootstrap nodes.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_count_of_genesis_nodes() {
+    local NET_ID=${1}    
+    source $(get_path_to_net_vars $NET_ID)
+
+    echo $NCTL_NET_NODE_COUNT
+}
+
+#######################################
+# Returns count of a network configured nodes.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_count_of_all_nodes() {    
+    local NET_ID=${1}
+
+    source $(get_path_to_net_vars $NET_ID)
+
+    echo $(($NCTL_NET_NODE_COUNT * 2))
+}
+
+#######################################
+# Returns count of test users.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_count_of_users() {    
+    local NET_ID=${1}
+
+    source $(get_path_to_net_vars $NET_ID)
+
+    echo $NCTL_NET_USER_COUNT
+}
+
+#######################################
 # Returns a timestamp for use in chainspec.toml.
 # Arguments:
 #   Delay in seconds to apply to genesis timestamp.
@@ -432,56 +592,6 @@ function get_network_known_addresses() {
 }
 
 #######################################
-# Returns count of a network's bootstrap nodes.
-# Arguments:
-#   Network ordinal identifier.
-#######################################
-function get_count_of_bootstrap_nodes() {
-    local NET_ID=${1}    
-    source $(get_path_to_net_vars $NET_ID)
-
-    echo $NCTL_NET_BOOTSTRAP_COUNT
-}
-
-#######################################
-# Returns count of a network's bootstrap nodes.
-# Arguments:
-#   Network ordinal identifier.
-#######################################
-function get_count_of_genesis_nodes() {
-    local NET_ID=${1}    
-    source $(get_path_to_net_vars $NET_ID)
-
-    echo $NCTL_NET_NODE_COUNT
-}
-
-#######################################
-# Returns count of a network configured nodes.
-# Arguments:
-#   Network ordinal identifier.
-#######################################
-function get_count_of_all_nodes() {    
-    local NET_ID=${1}
-
-    source $(get_path_to_net_vars $NET_ID)
-
-    echo $(($NCTL_NET_NODE_COUNT * 2))
-}
-
-#######################################
-# Returns count of test users.
-# Arguments:
-#   Network ordinal identifier.
-#######################################
-function get_count_of_users() {    
-    local NET_ID=${1}
-
-    source $(get_path_to_net_vars $NET_ID)
-
-    echo $NCTL_NET_USER_COUNT
-}
-
-#######################################
 # Returns node event address.
 # Arguments:
 #   Network ordinal identifier.
@@ -533,6 +643,23 @@ function get_node_address_rpc_for_curl() {
     # For cURL, need to append '/rpc' to the RPC endpoint URL.
     # This suffix is not needed for use with the client via '--node-address'.
     echo "$(get_node_address_rpc $NET_ID $NODE_ID)/rpc"
+}
+
+#######################################
+# Returns ordinal identifier of a validator node able to be used for deploy dispatch.
+# Arguments:
+#   Network ordinal identifier.
+#######################################
+function get_node_for_dispatch() {
+    local NET_ID=${1}    
+
+    for NODE_ID in $(seq 1 $(get_count_of_all_nodes $NET_ID))
+    do
+        if [ $(get_node_is_up $NET_ID $NODE_ID) = true ]; then
+            echo $NODE_ID
+            break
+        fi
+    done
 }
 
 #######################################
@@ -614,7 +741,7 @@ function get_node_is_up() {
 }
 
 #######################################
-# Returns name of a daemonized node process.
+# Returns set of nodes within a process group.
 # Arguments:
 #   Network ordinal identifier.
 #   Node ordinal identifier.
@@ -640,12 +767,12 @@ function get_process_group_members() {
 
     # Set members of process group.
     local result=""
-    for IDX in $(seq $SEQ_START $SEQ_END)
+    for NODE_ID in $(seq $SEQ_START $SEQ_END)
     do
-        if [ $IDX -gt $SEQ_START ]; then
+        if [ $NODE_ID -gt $SEQ_START ]; then
             result=$result", "
         fi
-        result=$result$(get_process_name_of_node $NET_ID $IDX)
+        result=$result$(get_process_name_of_node $NET_ID $NODE_ID)
     done
 
     echo $result
