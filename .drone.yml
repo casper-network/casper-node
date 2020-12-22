@@ -300,20 +300,10 @@ type: docker
 name: release-by-tag
 
 steps:
-- name: update-revision
-  image: casperlabs/node-build-u1804
-  commands:
-    - "./update-rev.sh"
-
 - name: build-deb
   image: casperlabs/node-build-u1804
   commands:
     - "make deb"
-
-- name: publish-crate-tag-TODO
-  image: casperlabs/node-build-u1804
-  commands:
-  - "echo TODO"
 
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
@@ -341,6 +331,15 @@ steps:
   when:
     ref:
     - refs/tags/v*
+
+- name: publish-crate-tag
+  image: casperlabs/node-build-u1804
+  commands:
+    - "cargo login ${CRATES_TOKEN}"
+    - "./ci/publish_to_crates_io.sh"
+  environment:
+    CRATES_TOKEN:
+      from_secret: crates_io_token
 
 # push to test repo every time we are going to merge to master (via staging), trying or pushing to release (hot fix)
 trigger:
