@@ -95,12 +95,12 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn get_caller(&self) -> Result<AccountHash, Error> {
-        Ok(self.context.get_caller())
+    fn get_caller(&self) -> AccountHash {
+        self.context.get_caller()
     }
 
-    fn get_key(&self, name: &str) -> Result<Option<Key>, Error> {
-        Ok(self.context.named_keys_get(name).cloned())
+    fn get_key(&self, name: &str) -> Option<Key> {
+        self.context.named_keys_get(name).cloned()
     }
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {

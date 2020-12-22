@@ -9,10 +9,10 @@ use crate::{
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
     /// This method should return the caller of the current context.
-    fn get_caller(&self) -> Result<AccountHash, Error>;
+    fn get_caller(&self) -> AccountHash;
 
     /// Gets named key under a `name`.
-    fn get_key(&self, name: &str) -> Result<Option<Key>, Error>;
+    fn get_key(&self, name: &str) -> Option<Key>;
 
     /// Returns a 32-byte BLAKE2b digest
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];

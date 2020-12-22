@@ -3,7 +3,7 @@ use crate::{account::AccountHash, system_contract_errors::pos::Error, BlockTime,
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
     /// Get named key under a `name`.
-    fn get_key(&self, name: &str) -> Result<Option<Key>, Error>;
+    fn get_key(&self, name: &str) -> Option<Key>;
 
     /// Put key under a `name`.
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error>;
@@ -12,11 +12,11 @@ pub trait RuntimeProvider {
     fn remove_key(&mut self, name: &str) -> Result<(), Error>;
 
     /// Get current execution phase.
-    fn get_phase(&self) -> Result<Phase, Error>;
+    fn get_phase(&self) -> Phase;
 
     /// Get current block time.
-    fn get_block_time(&self) -> Result<BlockTime, Error>;
+    fn get_block_time(&self) -> BlockTime;
 
     /// Get caller.
-    fn get_caller(&self) -> Result<AccountHash, Error>;
+    fn get_caller(&self) -> AccountHash;
 }

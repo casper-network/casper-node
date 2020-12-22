@@ -45,8 +45,8 @@ impl MintProvider for ProofOfStakeContract {
 }
 
 impl RuntimeProvider for ProofOfStakeContract {
-    fn get_key(&self, name: &str) -> Result<Option<Key>, Error> {
-        Ok(runtime::get_key(name))
+    fn get_key(&self, name: &str) -> Option<Key> {
+        runtime::get_key(name)
     }
 
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
@@ -59,16 +59,16 @@ impl RuntimeProvider for ProofOfStakeContract {
         Ok(())
     }
 
-    fn get_phase(&self) -> Result<Phase, Error> {
-        Ok(runtime::get_phase())
+    fn get_phase(&self) -> Phase {
+        runtime::get_phase()
     }
 
-    fn get_block_time(&self) -> Result<BlockTime, Error> {
-        Ok(runtime::get_blocktime())
+    fn get_block_time(&self) -> BlockTime {
+        runtime::get_blocktime()
     }
 
-    fn get_caller(&self) -> Result<AccountHash, Error> {
-        Ok(runtime::get_caller())
+    fn get_caller(&self) -> AccountHash {
+        runtime::get_caller()
     }
 }
 

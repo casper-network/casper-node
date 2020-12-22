@@ -68,12 +68,12 @@ impl SystemProvider for AuctionContract {
 }
 
 impl RuntimeProvider for AuctionContract {
-    fn get_caller(&self) -> Result<AccountHash, Error> {
-        Ok(runtime::get_caller())
+    fn get_caller(&self) -> AccountHash {
+        runtime::get_caller()
     }
 
-    fn get_key(&self, name: &str) -> Result<Option<Key>, Error> {
-        Ok(runtime::get_key(name))
+    fn get_key(&self, name: &str) -> Option<Key> {
+        runtime::get_key(name)
     }
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {

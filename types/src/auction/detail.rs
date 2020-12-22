@@ -19,7 +19,7 @@ where
     P: StorageProvider + RuntimeProvider + ?Sized,
     T: FromBytes + CLTyped,
 {
-    let key = provider.get_key(name)?.ok_or(Error::MissingKey)?;
+    let key = provider.get_key(name).ok_or(Error::MissingKey)?;
     let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
     let value: T = provider.read(uref)?.ok_or(Error::MissingValue)?;
     Ok(value)
@@ -30,7 +30,7 @@ where
     P: StorageProvider + RuntimeProvider + ?Sized,
     T: ToBytes + CLTyped,
 {
-    let key = provider.get_key(name)?.ok_or(Error::MissingKey)?;
+    let key = provider.get_key(name).ok_or(Error::MissingKey)?;
     let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
     provider.write(uref, value)?;
     Ok(())
@@ -128,7 +128,7 @@ where
 ///
 /// This function can be called by the system only.
 pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> Result<()> {
-    if provider.get_caller()? != SYSTEM_ACCOUNT {
+    if provider.get_caller() != SYSTEM_ACCOUNT {
         return Err(Error::InvalidCaller);
     }
 
