@@ -1,7 +1,8 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_types::{
-    account::AccountHash, mint, AccessRights, ApiError, CLType, Key, RuntimeArgs, URef, U512,
+    account::AccountHash, mint, AccessRights, ApiError, CLType, CLValueError, Key, RuntimeArgs,
+    URef, U512,
 };
 
 use crate::{
@@ -60,17 +61,19 @@ impl TransferArgs {
     }
 }
 
-impl From<TransferArgs> for RuntimeArgs {
-    fn from(transfer_args: TransferArgs) -> Self {
+impl TryFrom<TransferArgs> for RuntimeArgs {
+    type Error = CLValueError;
+
+    fn try_from(transfer_args: TransferArgs) -> Result<Self, Self::Error> {
         let mut runtime_args = RuntimeArgs::new();
 
-        runtime_args.insert(mint::ARG_TO, transfer_args.to);
-        runtime_args.insert(mint::ARG_SOURCE, transfer_args.source);
-        runtime_args.insert(mint::ARG_TARGET, transfer_args.target);
-        runtime_args.insert(mint::ARG_AMOUNT, transfer_args.amount);
-        runtime_args.insert(mint::ARG_ID, transfer_args.arg_id);
+        runtime_args.insert(mint::ARG_TO, transfer_args.to)?;
+        runtime_args.insert(mint::ARG_SOURCE, transfer_args.source)?;
+        runtime_args.insert(mint::ARG_TARGET, transfer_args.target)?;
+        runtime_args.insert(mint::ARG_AMOUNT, transfer_args.amount)?;
+        runtime_args.insert(mint::ARG_ID, transfer_args.arg_id)?;
 
-        runtime_args
+        Ok(runtime_args)
     }
 }
 

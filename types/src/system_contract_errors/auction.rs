@@ -125,12 +125,15 @@ pub enum Error {
     /// Failed to create a [`crate::CLValue`].
     #[fail(display = "CLValue error")]
     CLValue = 34,
+    /// Missing seigniorage recipients for given era.
+    #[fail(display = "Missing seigniorage recipients for given era")]
+    MissingSeigniorageRecipients = 35,
 
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
     #[doc(hidden)]
     #[fail(display = "GasLimit")]
-    GasLimit = 35,
+    GasLimit = 36,
 
     #[cfg(test)]
     #[doc(hidden)]
@@ -198,6 +201,9 @@ impl TryFrom<u8> for Error {
 
             d if d == Error::RecordEraInfo as u8 => Ok(Error::RecordEraInfo),
             d if d == Error::CLValue as u8 => Ok(Error::CLValue),
+            d if d == Error::MissingSeigniorageRecipients as u8 => {
+                Ok(Error::MissingSeigniorageRecipients)
+            }
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
             _ => Err(TryFromU8ForError(())),

@@ -4,7 +4,7 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
-    CLTyped, CLValue,
+    CLTyped, CLValue, CLValueError,
 };
 
 /// Named arguments to a contract
@@ -85,13 +85,14 @@ impl RuntimeArgs {
     }
 
     /// Insert new named argument into the collection.
-    pub fn insert<K, V>(&mut self, key: K, value: V)
+    pub fn insert<K, V>(&mut self, key: K, value: V) -> Result<(), CLValueError>
     where
         K: Into<String>,
         V: CLTyped + ToBytes,
     {
-        let cl_value = CLValue::from_t(value).expect("should create CLValue");
+        let cl_value = CLValue::from_t(value)?;
         self.0.push(NamedArg(key.into(), cl_value));
+        Ok(())
     }
 
     /// Insert new named argument into the collection.
@@ -165,7 +166,7 @@ macro_rules! runtime_args {
         {
             let mut named_args = RuntimeArgs::new();
             $(
-                named_args.insert($key, $value);
+                named_args.insert($key, $value).unwrap();
             )*
             named_args
         }

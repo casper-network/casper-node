@@ -115,7 +115,7 @@ impl MintProvider for AuctionContract {
         let mint_contract = system::get_mint();
         let runtime_args = {
             let mut tmp = RuntimeArgs::new();
-            tmp.insert(ARG_AMOUNT, amount);
+            tmp.insert(ARG_AMOUNT, amount).map_err(|_| Error::CLValue)?;
             tmp
         };
         let result: Result<URef, system_contract_errors::mint::Error> =
@@ -127,7 +127,7 @@ impl MintProvider for AuctionContract {
         let mint_contract = system::get_mint();
         let runtime_args = {
             let mut tmp = RuntimeArgs::new();
-            tmp.insert(ARG_AMOUNT, amount);
+            tmp.insert(ARG_AMOUNT, amount).map_err(|_| Error::CLValue)?;
             tmp
         };
         let result: Result<(), system_contract_errors::mint::Error> =

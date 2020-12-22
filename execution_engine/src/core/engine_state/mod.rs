@@ -1440,11 +1440,23 @@ where
                 transfer_args.arg_id(),
             );
 
+            let runtime_args = match RuntimeArgs::try_from(new_transfer_args) {
+                Ok(runtime_args) => runtime_args,
+                Err(error) => {
+                    return Ok(ExecutionResult::Failure {
+                        error: ExecError::from(error).into(),
+                        effect: Default::default(),
+                        transfers: Vec::default(),
+                        cost: Gas::default(),
+                    })
+                }
+            };
+
             let (actual_result, payment_result): (Option<Result<(), u8>>, ExecutionResult) =
                 executor.exec_system_contract(
                     DirectSystemContractCall::Transfer,
                     mint_module.clone(),
-                    RuntimeArgs::from(new_transfer_args),
+                    runtime_args,
                     &mut mint_named_keys,
                     mint_extra_keys.as_slice(),
                     mint_base_key,
@@ -1547,11 +1559,23 @@ where
                 }
             };
 
+        let runtime_args = match RuntimeArgs::try_from(transfer_args) {
+            Ok(runtime_args) => runtime_args,
+            Err(error) => {
+                return Ok(ExecutionResult::Failure {
+                    error: ExecError::from(error).into(),
+                    effect: Default::default(),
+                    transfers: Vec::default(),
+                    cost: Gas::default(),
+                })
+            }
+        };
+
         let (_, mut session_result): (Option<Result<(), u8>>, ExecutionResult) = executor
             .exec_system_contract(
                 DirectSystemContractCall::Transfer,
                 mint_module,
-                RuntimeArgs::from(transfer_args),
+                runtime_args,
                 &mut mint_named_keys,
                 mint_extra_keys.as_slice(),
                 mint_base_key,
@@ -2121,14 +2145,20 @@ where
                     .take_error()
                     .unwrap_or(Error::InsufficientPayment),
             };
-            return Ok(ExecutionResult::new_payment_code_error(
+            match ExecutionResult::new_payment_code_error(
                 error,
                 max_payment_cost,
                 account_main_purse_balance,
                 account_main_purse_balance_key,
                 proposer_main_purse_balance_key,
-            ));
-        }
+            ) {
+                Ok(execution_result) => return Ok(execution_result),
+                Err(error) => {
+                    let exec_error = ExecError::from(error);
+                    return Ok(ExecutionResult::precondition_failure(exec_error.into()));
+                }
+            }
+        };
 
         // Transfer the contents of the rewards purse to block proposer
 

@@ -62,7 +62,7 @@ pub trait Auction:
             detail::get_seigniorage_recipients_snapshot(self)?;
         let seigniorage_recipients = seigniorage_recipients_snapshot
             .remove(&era_index)
-            .unwrap_or_else(|| panic!("No seigniorage_recipients for era {}", era_index));
+            .ok_or(Error::MissingSeigniorageRecipients)?;
         Ok(seigniorage_recipients)
     }
 
@@ -144,6 +144,7 @@ pub trait Auction:
         let new_amount = bid.decrease_stake(amount)?;
 
         if new_amount.is_zero() {
+            // NOTE: Assumed safe as we're checking for existence above
             bids.remove(&public_key).unwrap();
         }
 
