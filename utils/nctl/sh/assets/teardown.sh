@@ -6,8 +6,6 @@ source $NCTL/sh/utils.sh
 # Destructure input args.
 #######################################
 
-unset NET_ID
-
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
@@ -18,23 +16,23 @@ do
     esac
 done
 
-NET_ID=${NET_ID:-1}
+export NET_ID=${NET_ID:-1}
 
 #######################################
 # Main
 #######################################
 
-log "net-$NET_ID: tearing down assets ... please wait"
+log "net-$NET_ID: asset tear-down begins ... please wait"
 
-# Stop all spinning nodes.
-source $NCTL/sh/node/stop.sh net=$NET_ID node=all
+log "... stopping nodes"
+source $NCTL/sh/node/stop.sh node=all
 
-# If supervisord - kill.
 if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-    do_supervisord_kill $NET_ID
+    log "... stopping supervisord"
+    do_supervisord_kill
 fi
 
-# Delete artefacts.
-rm -rf $NCTL/assets/net-$NET_ID
+log "... deleting files"
+rm -rf $(get_path_to_net)
 
-log "net-$NET_ID: assets torn down."
+log "net-$NET_ID: asset tear-down complete"

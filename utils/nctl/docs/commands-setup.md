@@ -54,12 +54,10 @@ nctl-assets-teardown net=1  (same as above)
 nctl-assets-teardown net=2
 ```
 
-### nctl-assets-dump net={X:-1}
+### nctl-assets-dump 
 
 Dumps transient network assets such as logs + configuration.
 
 ```
 nctl-assets-dump
-
-nctl-assets-dump net=1  (same as above)
 ```

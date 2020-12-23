@@ -17,34 +17,33 @@ source $NCTL/sh/utils.sh
 #######################################
 function do_node_start()
 {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local BOOTSTRAP_COUNT=${3}
-    local TRUSTED_HASH=${4:-}
+    local NODE_ID=${1}
+    local BOOTSTRAP_COUNT=${2}
+    local TRUSTED_HASH=${3:-}
     
     # Set net asset paths.
-    local PATH_TO_NET=$(get_path_to_net $NET_ID)
+    local PATH_TO_NET=$(get_path_to_net)
     local PATH_TO_NET_CHAINSPEC=$PATH_TO_NET/chainspec/chainspec.toml
 
     # Set node asset paths.
-    local PATH_TO_NODE=$(get_path_to_node $NET_ID $NODE_ID)
+    local PATH_TO_NODE=$(get_path_to_node $NODE_ID)
     local PATH_TO_NODE_CONFIG=$PATH_TO_NODE/config/node-config.toml
     local PATH_TO_NODE_SECRET_KEY=$PATH_TO_NODE/keys/secret_key.pem
     local PATH_TO_NODE_STORAGE=$PATH_TO_NODE/storage
-    local PATH_TO_NODE_LOG_FILE_STDOUT=$PATH_TO_NODE/logs/net-${NET_ID}-node-${NODE_ID}-stdout.log
-    local PATH_TO_NODE_LOG_FILE_STDERR=$PATH_TO_NODE/logs/net-${NET_ID}-node-${NODE_ID}-stderr.log
+    local PATH_TO_NODE_LOG_FILE_STDOUT=$PATH_TO_NODE/logs/stdout.log
+    local PATH_TO_NODE_LOG_FILE_STDERR=$PATH_TO_NODE/logs/stderr.log
 
     # Set node ports.
-    local PORT_NODE_API_REST=$(get_node_port_rest $NET_ID $NODE_ID)
-    local PORT_NODE_API_RPC=$(get_node_port_rpc $NET_ID $NODE_ID)
-    local PORT_NODE_API_EVENT=$(get_node_port_sse $NET_ID $NODE_ID)
+    local PORT_NODE_API_REST=$(get_node_port_rest $NODE_ID)
+    local PORT_NODE_API_RPC=$(get_node_port_rpc $NODE_ID)
+    local PORT_NODE_API_EVENT=$(get_node_port_sse $NODE_ID)
 
     # Set validator network addresses.
-    local NETWORK_BIND_ADDRESS=$(get_network_bind_address $NET_ID $NODE_ID $BOOTSTRAP_COUNT)
-    local NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $NET_ID $BOOTSTRAP_COUNT)
+    local NETWORK_BIND_ADDRESS=$(get_network_bind_address $NODE_ID $BOOTSTRAP_COUNT)
+    local NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $BOOTSTRAP_COUNT)
 
     # Set daemon process unit.
-    local NODE_PROCESS_UNIT=$(get_process_name_of_node $NET_ID $NODE_ID)
+    local NODE_PROCESS_UNIT=$(get_process_name_of_node $NODE_ID)
 
     # Set trusted hash arg.
     if [ ! -z "$TRUSTED_HASH" ]; then
@@ -87,35 +86,30 @@ function do_node_start()
 
 #######################################
 # Spins up all nodes using systemd.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   Count of bootstraps within network.
 #######################################
 function do_node_start_all()
 {
-    local NET_ID=${1}
-    local NET_NODE_COUNT=${2}
-    local NET_BOOTSTRAP_COUNT=${3}
+    local NODE_COUNT=$(get_count_of_genesis_nodes)
+    local BOOTSTRAP_COUNT=$(get_count_of_bootstrap_nodes)    
         
     # Step 1: start bootstraps.
-    log "net-$NET_ID: starting bootstraps ... "
-    for IDX in $(seq 1 $NET_NODE_COUNT)
+    log "starting bootstraps ... "
+    for NODE_ID in $(seq 1 $NODE_COUNT)
     do
-        if [ $IDX -le $NET_BOOTSTRAP_COUNT ]; then
-            log "net-$NET_ID: bootstrapping node $IDX"
-            do_node_start $NET_ID $IDX
+        if [ $NODE_ID -le $BOOTSTRAP_COUNT ]; then
+            log "bootstrapping node $NODE_ID"
+            do_node_start $NODE_ID
         fi
     done
     sleep 1.0
 
     # Step 2: start non-bootstraps.
-    log "net-$NET_ID: starting non-bootstraps... "
-    for IDX in $(seq 1 $NET_NODE_COUNT)
+    log "starting non-bootstraps... "
+    for NODE_ID in $(seq 1 $NODE_COUNT)
     do
-        if [ $IDX -gt $NET_BOOTSTRAP_COUNT ]; then
-            log "net-$NET_ID: starting node $IDX"
-            do_node_start $NET_ID $IDX
+        if [ $NODE_ID -gt $BOOTSTRAP_COUNT ]; then
+            log "starting node $NODE_ID"
+            do_node_start $NODE_ID
         fi
     done
 }
@@ -123,14 +117,12 @@ function do_node_start_all()
 #######################################
 # Renders to stdout status of a node running under systemd.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
 function do_node_status()
 {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local NODE_PROCESS_UNIT=$(get_process_name_of_node $NET_ID $NODE_ID)
+    local NODE_ID=${1}
+    local NODE_PROCESS_UNIT=$(get_process_name_of_node $NODE_ID)
 
     systemctl --user status  $NODE_PROCESS_UNIT
 }
@@ -148,14 +140,12 @@ function do_node_status_all()
 #######################################
 # Stops a node running via systemd.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
 function do_node_stop()
 {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local NODE_PROCESS_UNIT=$(get_process_name_of_node $NET_ID $NODE_ID)
+    local NODE_ID=${1}
+    local NODE_PROCESS_UNIT=$(get_process_name_of_node $NODE_ID)
     
     systemctl --user stop $NODE_PROCESS_UNIT
 }

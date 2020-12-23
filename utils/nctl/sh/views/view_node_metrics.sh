@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-unset NET_ID
 unset NODE_ID
 unset METRIC
 
@@ -10,14 +9,12 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         metric) METRIC=${VALUE} ;;
-        net) NET_ID=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
 METRIC=${METRIC:-"all"}
-NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-"all"}
 
 # ----------------------------------------------------------------
@@ -28,10 +25,10 @@ source $NCTL/sh/utils.sh
 source $NCTL/sh/views/funcs.sh
 
 if [ $NODE_ID = "all" ]; then
-    for NODE_ID in $(seq 1 $(get_count_of_all_nodes $NET_ID))
+    for NODE_ID in $(seq 1 $(get_count_of_all_nodes))
     do
-        render_node_metrics $NET_ID $NODE_ID $METRIC
+        render_node_metrics $NODE_ID $METRIC
     done
 else
-    render_node_metrics $NET_ID $NODE_ID $METRIC
+    render_node_metrics $NODE_ID $METRIC
 fi

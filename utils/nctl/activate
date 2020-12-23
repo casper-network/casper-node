@@ -34,6 +34,8 @@ alias nctl-compile-client='source $NCTL/sh/assets/compile_client.sh'
 alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
 
 # Node control.
+alias nctl-join='source $NCTL/sh/node/join.sh'
+alias nctl-leave='source $NCTL/sh/node/leave.sh'
 alias nctl-restart='source $NCTL/sh/node/restart.sh'
 alias nctl-start='source $NCTL/sh/node/start.sh'
 alias nctl-start-after-n-blocks='source $NCTL/sh/node/start_after_n_blocks.sh'
@@ -102,13 +104,13 @@ alias nctl-view-validator-main-purse-uref='source $NCTL/sh/views/view_validator_
 alias nctl-view-validator-secret-key-path='source $NCTL/sh/views/view_validator_secret_key_path.sh'
 
 # Contracts #1: Transfers.
-alias nctl-transfer='source $NCTL/sh/contracts/transfers/do_native.sh'
-alias nctl-transfer-native='source $NCTL/sh/contracts/transfers/do_native.sh'
-alias nctl-transfer-native-batch-dispatch='source $NCTL/sh/contracts/transfers/do_native_batch_dispatch.sh'
-alias nctl-transfer-native-batch-prepare='source $NCTL/sh/contracts/transfers/do_native_batch_prepare.sh'
-alias nctl-transfer-wasm='source $NCTL/sh/contracts/transfers/do_wasm.sh'
-alias nctl-transfer-wasm-batch-dispatch='source $NCTL/sh/contracts/transfers/do_wasm_batch_dispatch.sh'
-alias nctl-transfer-wasm-batch-prepare='source $NCTL/sh/contracts/transfers/do_wasm_batch_prepare.sh'
+alias nctl-transfer='source $NCTL/sh/contracts/transfers/do_dispatch_native.sh'
+alias nctl-transfer-native='source $NCTL/sh/contracts/transfers/do_dispatch_native.sh'
+alias nctl-transfer-native-batch-dispatch='source $NCTL/sh/contracts/transfers/do_dispatch_native_batch.sh'
+alias nctl-transfer-native-batch-prepare='source $NCTL/sh/contracts/transfers/do_prepare_native_batch.sh'
+alias nctl-transfer-wasm='source $NCTL/sh/contracts/transfers/do_dispatch_wasm.sh'
+alias nctl-transfer-wasm-batch-dispatch='source $NCTL/sh/contracts/transfers/do_dispatch_wasm_batch.sh'
+alias nctl-transfer-wasm-batch-prepare='source $NCTL/sh/contracts/transfers/do_prepare_wasm_batch.sh'
 
 # Contracts #2: Auction.
 alias nctl-auction-bid='source $NCTL/sh/contracts/auction/do_bid.sh'

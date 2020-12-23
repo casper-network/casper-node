@@ -5,16 +5,13 @@
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Path to network directory.
-#   Network ordinal identifier.
 #   Nodeset count.
 #   Boostrap count.
 #######################################
 
-PATH_TO_NET=$1
-NET_ID=$2
-COUNT_NODES=$3
-COUNT_BOOTSTRAPS=$4
+COUNT_NODES=$1
+COUNT_BOOTSTRAPS=$2
+PATH_TO_NET=$(get_path_to_net)
 
 # Set supervisord.conf file.
 touch  $PATH_TO_NET/daemon/config/supervisord.conf
@@ -54,13 +51,13 @@ do
     PATH_NODE_SECRET_KEY=$PATH_NODE/keys/secret_key.pem
 
     # Set ports.
-    NODE_API_PORT_REST=$(get_node_port_rest $NET_ID $IDX)
-    NODE_API_PORT_RPC=$(get_node_port_rpc $NET_ID $IDX)
-    NODE_API_PORT_SSE=$(get_node_port_sse $NET_ID $IDX)
+    NODE_API_PORT_REST=$(get_node_port_rest $IDX)
+    NODE_API_PORT_RPC=$(get_node_port_rpc $IDX)
+    NODE_API_PORT_SSE=$(get_node_port_sse $IDX)
 
     # Set validator network addresses.
-    NETWORK_BIND_ADDRESS=$(get_network_bind_address $NET_ID $IDX $COUNT_BOOTSTRAPS)
-    NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $NET_ID $COUNT_BOOTSTRAPS)
+    NETWORK_BIND_ADDRESS=$(get_network_bind_address $IDX $COUNT_BOOTSTRAPS)
+    NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $COUNT_BOOTSTRAPS)
 
     # Add supervisord application section.
     cat >> $PATH_TO_NET/daemon/config/supervisord.conf <<- EOM
@@ -95,12 +92,12 @@ done
 cat >> $PATH_TO_NET/daemon/config/supervisord.conf <<- EOM
 
 [group:$NCTL_PROCESS_GROUP_1]
-programs=$(get_process_group_members $NET_ID $NCTL_PROCESS_GROUP_1)
+programs=$(get_process_group_members $NCTL_PROCESS_GROUP_1 $COUNT_NODES $COUNT_BOOTSTRAPS)
 
 [group:$NCTL_PROCESS_GROUP_2]
-programs=$(get_process_group_members $NET_ID $NCTL_PROCESS_GROUP_2)
+programs=$(get_process_group_members $NCTL_PROCESS_GROUP_2 $COUNT_NODES $COUNT_BOOTSTRAPS)
 
 [group:$NCTL_PROCESS_GROUP_3]
-programs=$(get_process_group_members $NET_ID $NCTL_PROCESS_GROUP_3)
+programs=$(get_process_group_members $NCTL_PROCESS_GROUP_3 $COUNT_NODES $COUNT_BOOTSTRAPS)
 
 EOM
