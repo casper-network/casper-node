@@ -31,7 +31,7 @@ do_auction_bid_withdraw \
     ${NET_ID:-1} \
     ${NODE_ID:-1} \
     ${BIDDER_ID:-1} \
-    ${AMOUNT:-$NCTL_DEFAULT_AUCTION_BID_AMOUNT} \
+    ${AMOUNT:-$(($NCTL_DEFAULT_AUCTION_BID_AMOUNT * ${BIDDER_ID:-1}))} \
     ${GAS:-$NCTL_DEFAULT_GAS_PRICE} \
     ${PAYMENT:-$NCTL_DEFAULT_GAS_PAYMENT} \
     ${QUIET:-"FALSE"}

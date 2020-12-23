@@ -60,7 +60,7 @@ mod internal {
 
     /// Returns the purse for accepting payment for transactions.
     pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef> {
-        match runtime_provider.get_key(PAYMENT_PURSE_KEY)? {
+        match runtime_provider.get_key(PAYMENT_PURSE_KEY) {
             Some(Key::URef(uref)) => Ok(uref),
             Some(_) => Err(Error::PaymentPurseKeyUnexpectedType),
             None => Err(Error::PaymentPurseNotFound),
@@ -71,7 +71,7 @@ mod internal {
     /// Note that if this function is never called, the default location is the main purse of the
     /// deployer's account.
     pub fn set_refund<R: RuntimeProvider>(runtime_provider: &mut R, purse: URef) -> Result<()> {
-        if let Phase::Payment = runtime_provider.get_phase()? {
+        if let Phase::Payment = runtime_provider.get_phase() {
             runtime_provider.put_key(REFUND_PURSE_KEY, Key::URef(purse))?;
             return Ok(());
         }
@@ -80,7 +80,7 @@ mod internal {
 
     /// Returns the currently set refund purse.
     pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Option<URef>> {
-        match runtime_provider.get_key(REFUND_PURSE_KEY)? {
+        match runtime_provider.get_key(REFUND_PURSE_KEY) {
             Some(Key::URef(uref)) => Ok(Some(uref)),
             Some(_) => Err(Error::RefundPurseKeyUnexpectedType),
             None => Ok(None),
@@ -97,7 +97,7 @@ mod internal {
         account: AccountHash,
         target: URef,
     ) -> Result<()> {
-        let caller = provider.get_caller()?;
+        let caller = provider.get_caller();
         if caller != SYSTEM_ACCOUNT {
             return Err(Error::SystemFunctionCalledByUserAccount);
         }

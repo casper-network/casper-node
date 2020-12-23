@@ -65,15 +65,15 @@ pub enum Error {
     /// Failed to serialize data.
     #[fail(display = "Failed to serialize data")]
     Serialize = 16,
+    /// Source and target purse [`crate::URef`]s are equal.
+    #[fail(display = "Invalid target purse")]
+    EqualSourceAndTarget = 17,
 
     // NOTE: These variants below will be removed once support for WASM system contracts will be
     // dropped.
     #[doc(hidden)]
     #[fail(display = "GasLimit")]
-    GasLimit = 17,
-    #[doc(hidden)]
-    #[fail(display = "InvalidContext")]
-    InvalidContext = 18,
+    GasLimit = 18,
 
     #[cfg(test)]
     #[doc(hidden)]
@@ -137,8 +137,8 @@ impl TryFrom<u8> for Error {
             d if d == Error::WriteLocal as u8 => Ok(Error::WriteLocal),
             d if d == Error::CLValue as u8 => Ok(Error::CLValue),
             d if d == Error::Serialize as u8 => Ok(Error::Serialize),
+            d if d == Error::EqualSourceAndTarget as u8 => Ok(Error::EqualSourceAndTarget),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
-            d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
             _ => Err(TryFromU8ForError(())),
         }
     }

@@ -34,6 +34,7 @@ impl RuntimeProvider for MintContract {
         runtime::put_key(name, key);
         Ok(())
     }
+
     fn get_key(&self, name: &str) -> Option<Key> {
         runtime::get_key(name)
     }

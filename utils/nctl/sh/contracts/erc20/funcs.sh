@@ -179,7 +179,7 @@ function do_erc20_install_contract()
     local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
     local CHAIN_NAME=$(get_chain_name $NET_ID)
 
-    local DEPLOY_HASH=$(
+    DEPLOY_HASH=$(
         $(get_path_to_client $NET_ID) put-deploy \
             --chain-name $CHAIN_NAME \
             --gas-price $GAS_PRICE \
@@ -199,6 +199,8 @@ function do_erc20_install_contract()
     log "... network = $NET_ID"
     log "... node = $NODE_ID"
     log "... node address = "$NODE_ADDRESS
+    log "... gas payment = $GAS_PAYMENT"
+    log "... gas price = $GAS_PRICE"
     log "contract constructor args:"
     log "... token name = "$TOKEN_NAME
     log "... token symbol = "$TOKEN_SYMBOL

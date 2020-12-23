@@ -77,7 +77,7 @@ pub trait Auction:
         amount: U512,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
-        if self.get_caller()? != account_hash {
+        if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
 
@@ -123,7 +123,7 @@ pub trait Auction:
         unbonding_purse: URef,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
-        if self.get_caller()? != account_hash {
+        if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
 
@@ -166,7 +166,7 @@ pub trait Auction:
         amount: U512,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
-        if self.get_caller()? != account_hash {
+        if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
 
@@ -220,7 +220,7 @@ pub trait Auction:
         unbonding_purse: URef,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
-        if self.get_caller()? != account_hash {
+        if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
 
@@ -262,7 +262,7 @@ pub trait Auction:
     ///
     /// This can be only invoked through a system call.
     fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<()> {
-        if self.get_caller()? != SYSTEM_ACCOUNT {
+        if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
 
@@ -309,7 +309,7 @@ pub trait Auction:
     ///
     /// Accessed by: node
     fn run_auction(&mut self) -> Result<()> {
-        if self.get_caller()? != SYSTEM_ACCOUNT {
+        if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
 
@@ -403,7 +403,7 @@ pub trait Auction:
     /// Mint and distribute seigniorage rewards to validators and their delegators,
     /// according to `reward_factors` returned by the consensus component.
     fn distribute(&mut self, reward_factors: BTreeMap<PublicKey, u64>) -> Result<()> {
-        if self.get_caller()? != SYSTEM_ACCOUNT {
+        if self.get_caller() != SYSTEM_ACCOUNT {
             return Err(Error::InvalidCaller);
         }
 
@@ -475,7 +475,7 @@ pub trait Auction:
 
             // TODO: add "mint into existing purse" facility
             let validator_reward_purse = self
-                .get_key(VALIDATOR_REWARD_PURSE_KEY)?
+                .get_key(VALIDATOR_REWARD_PURSE_KEY)
                 .ok_or(Error::MissingKey)?
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
@@ -490,7 +490,7 @@ pub trait Auction:
 
             // TODO: add "mint into existing purse" facility
             let delegator_reward_purse = self
-                .get_key(DELEGATOR_REWARD_PURSE_KEY)?
+                .get_key(DELEGATOR_REWARD_PURSE_KEY)
                 .ok_or(Error::MissingKey)?
                 .into_uref()
                 .ok_or(Error::InvalidKeyVariant)?;
@@ -519,7 +519,7 @@ pub trait Auction:
         target_purse: URef,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
-        if self.get_caller()? != account_hash {
+        if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
 
@@ -542,7 +542,7 @@ pub trait Auction:
         }
 
         let source_purse = self
-            .get_key(DELEGATOR_REWARD_PURSE_KEY)?
+            .get_key(DELEGATOR_REWARD_PURSE_KEY)
             .ok_or(Error::MissingKey)?
             .into_uref()
             .ok_or(Error::InvalidKeyVariant)?;
@@ -565,7 +565,7 @@ pub trait Auction:
         target_purse: URef,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(validator_public_key, |x| self.blake2b(x));
-        if self.get_caller()? != account_hash {
+        if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
 
@@ -583,7 +583,7 @@ pub trait Auction:
         }
 
         let source_purse = self
-            .get_key(VALIDATOR_REWARD_PURSE_KEY)?
+            .get_key(VALIDATOR_REWARD_PURSE_KEY)
             .ok_or(Error::MissingKey)?
             .into_uref()
             .ok_or(Error::InvalidKeyVariant)?;

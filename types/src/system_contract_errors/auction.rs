@@ -129,11 +129,15 @@ pub enum Error {
     #[fail(display = "Missing seigniorage recipients for given era")]
     MissingSeigniorageRecipients = 35,
 
+    /// Failed to transfer funds.
+    #[fail(display = "Transfer error")]
+    Transfer = 36,
+
     // NOTE: These variants below and related plumbing will be removed once support for WASM
     // system contracts will be dropped.
     #[doc(hidden)]
     #[fail(display = "GasLimit")]
-    GasLimit = 36,
+    GasLimit = 37,
 
     #[cfg(test)]
     #[doc(hidden)]
@@ -204,8 +208,8 @@ impl TryFrom<u8> for Error {
             d if d == Error::MissingSeigniorageRecipients as u8 => {
                 Ok(Error::MissingSeigniorageRecipients)
             }
+            d if d == Error::Transfer as u8 => Ok(Error::Transfer),
             d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
-            d if d == Error::InvalidContext as u8 => Ok(Error::InvalidContext),
             _ => Err(TryFromU8ForError(())),
         }
     }

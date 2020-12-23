@@ -13,7 +13,7 @@ use casper_types::{
         MintProvider, ProofOfStake, RuntimeProvider, ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE,
     },
     system_contract_errors::pos::Error,
-    ApiError, BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
+    BlockTime, CLValue, Key, Phase, TransferredTo, URef, U512,
 };
 
 pub struct ProofOfStakeContract;
@@ -24,8 +24,9 @@ impl MintProvider for ProofOfStakeContract {
         source: URef,
         target: AccountHash,
         amount: U512,
-    ) -> TransferResult {
+    ) -> Result<TransferredTo, Error> {
         system::transfer_from_purse_to_account(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
     fn transfer_purse_to_purse(
@@ -33,8 +34,9 @@ impl MintProvider for ProofOfStakeContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ApiError> {
+    ) -> Result<(), Error> {
         system::transfer_from_purse_to_purse(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
     fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
@@ -43,8 +45,8 @@ impl MintProvider for ProofOfStakeContract {
 }
 
 impl RuntimeProvider for ProofOfStakeContract {
-    fn get_key(&self, name: &str) -> Result<Option<Key>, Error> {
-        Ok(runtime::get_key(name))
+    fn get_key(&self, name: &str) -> Option<Key> {
+        runtime::get_key(name)
     }
 
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
@@ -57,16 +59,16 @@ impl RuntimeProvider for ProofOfStakeContract {
         Ok(())
     }
 
-    fn get_phase(&self) -> Result<Phase, Error> {
-        Ok(runtime::get_phase())
+    fn get_phase(&self) -> Phase {
+        runtime::get_phase()
     }
 
-    fn get_block_time(&self) -> Result<BlockTime, Error> {
-        Ok(runtime::get_blocktime())
+    fn get_block_time(&self) -> BlockTime {
+        runtime::get_blocktime()
     }
 
-    fn get_caller(&self) -> Result<AccountHash, Error> {
-        Ok(runtime::get_caller())
+    fn get_caller(&self) -> AccountHash {
+        runtime::get_caller()
     }
 }
 
