@@ -27,8 +27,7 @@ use casper_types::{
     },
     mint::{self, Mint},
     proof_of_stake::{self, ProofOfStake},
-    runtime_args, standard_payment,
-    standard_payment::StandardPayment,
+    standard_payment::{self, StandardPayment},
     system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
     ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, SystemContractType, Transfer, TransferResult,
@@ -61,22 +60,6 @@ pub struct Runtime<'a, R> {
     module: Module,
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
-}
-
-/// Rename function called `name` in the `module` to `call`.
-/// wasmi's entrypoint for a contracts is a function called `call`,
-/// so we have to rename function before storing it in the GlobalState.
-pub fn rename_export_to_call(module: &mut Module, name: String) {
-    let main_export = module
-        .export_section_mut()
-        .unwrap()
-        .entries_mut()
-        .iter_mut()
-        .find(|e| e.field() == name)
-        .unwrap()
-        .field_mut();
-    main_export.clear();
-    main_export.push_str("call");
 }
 
 pub fn instance_and_memory(
@@ -1069,7 +1052,7 @@ where
             Err(Error::FunctionNotFound(missing_name))
         } else {
             let mut module = self.module.clone();
-            pwasm_utils::optimize(&mut module, entry_point_names).unwrap();
+            pwasm_utils::optimize(&mut module, entry_point_names)?;
             parity_wasm::serialize(module).map_err(Error::ParityWasm)
         }
     }
@@ -2052,9 +2035,9 @@ where
             // If the "error" was in fact a trap caused by calling `ret` then
             // this is normal operation and we should return the value captured
             // in the Runtime result field.
-            let downcasted_error = host_error.downcast_ref::<Error>().unwrap();
+            let downcasted_error = host_error.downcast_ref::<Error>();
             match downcasted_error {
-                Error::Ret(ref ret_urefs) => {
+                Some(Error::Ret(ref ret_urefs)) => {
                     // insert extra urefs returned from call
                     let ret_urefs_map: HashMap<Address, HashSet<AccessRights>> =
                         extract_access_rights_from_urefs(ret_urefs.clone());
@@ -2069,7 +2052,8 @@ where
                     }
                     return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
                 }
-                error => return Err(error.clone()),
+                Some(error) => return Err(error.clone()),
+                None => return Err(Error::Interpreter(host_error.to_string())),
             }
         }
 
@@ -2723,8 +2707,10 @@ where
     /// Calls the `mint` method on the mint contract at the given mint
     /// contract key
     fn mint_mint(&mut self, mint_contract_hash: ContractHash, amount: U512) -> Result<URef, Error> {
-        let runtime_args = runtime_args! {
-            mint::ARG_AMOUNT => amount,
+        let runtime_args = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(mint::ARG_AMOUNT, amount)?;
+            runtime_args
         };
         let result = self.call_contract(mint_contract_hash, mint::METHOD_MINT, runtime_args)?;
         let result: Result<URef, system_contract_errors::mint::Error> = result.into_t()?;
@@ -2738,8 +2724,10 @@ where
         mint_contract_hash: ContractHash,
         amount: U512,
     ) -> Result<(), Error> {
-        let runtime_args = runtime_args! {
-            mint::ARG_AMOUNT => amount,
+        let runtime_args = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(mint::ARG_AMOUNT, amount)?;
+            runtime_args
         };
         let result = self.call_contract(
             mint_contract_hash,
@@ -2774,12 +2762,14 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), system_contract_errors::mint::Error>, Error> {
-        let args_values: RuntimeArgs = runtime_args! {
-            mint::ARG_TO => to,
-            mint::ARG_SOURCE => source,
-            mint::ARG_TARGET => target,
-            mint::ARG_AMOUNT => amount,
-            mint::ARG_ID => id,
+        let args_values = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(mint::ARG_TO, to)?;
+            runtime_args.insert(mint::ARG_SOURCE, source)?;
+            runtime_args.insert(mint::ARG_TARGET, target)?;
+            runtime_args.insert(mint::ARG_AMOUNT, amount)?;
+            runtime_args.insert(mint::ARG_ID, id)?;
+            runtime_args
         };
 
         let call_result =
@@ -2946,10 +2936,9 @@ where
 
         let uref_key = match self.context.read_ls(&key)? {
             Some(cl_value) => {
-                let key: Key = cl_value.into_t().expect("expected Key type");
-                match key {
-                    Key::URef(_) => (),
-                    _ => panic!("expected Key::Uref(_)"),
+                let key: Key = cl_value.into_t()?;
+                if key.as_uref().is_none() {
+                    return Err(Error::KeyIsNotAURef(key));
                 }
                 key
             }
@@ -2958,14 +2947,10 @@ where
 
         let ret = match self.context.read_gs_direct(&uref_key)? {
             Some(StoredValue::CLValue(cl_value)) => {
-                if *cl_value.cl_type() == CLType::U512 {
-                    let balance: U512 = cl_value.into_t()?;
-                    Some(balance)
-                } else {
-                    panic!("expected U512")
-                }
+                let balance: U512 = cl_value.into_t()?;
+                Some(balance)
             }
-            Some(_) => panic!("expected U512"),
+            Some(_) => return Err(Error::UnexpectedStoredValueVariant),
             None => None,
         };
 

@@ -48,6 +48,7 @@ impl AddressGeneratorBuilder {
 
     pub fn build(self) -> AddressGenerator {
         let mut seed: [u8; SEED_LENGTH] = [0u8; SEED_LENGTH];
+        // NOTE: Unwrap below is assumed safe as output size of `SEED_LENGTH` is a valid value.
         let mut hasher = VarBlake2b::new(SEED_LENGTH).unwrap();
         hasher.update(self.data);
         hasher.finalize_variable(|hash| seed.clone_from_slice(hash));

@@ -12,6 +12,7 @@ use casper_types::{
 
 const ENTRY_POINT_NAME: &str = "create_purse";
 const CONTRACT_KEY: &str = "contract";
+const ACCESS_KEY: &str = "access";
 const CONTRACT_PACKAGE_KEY: &str = "contract_package";
 
 #[no_mangle]
@@ -39,11 +40,11 @@ pub extern "C" fn call() {
         entry_points
     };
 
-    let (contract_hash, _access_key) = storage::new_contract(
+    let (contract_hash, _version) = storage::new_contract(
         entry_points,
         None,
         Some(CONTRACT_PACKAGE_KEY.to_string()),
-        None,
+        Some(ACCESS_KEY.to_string()),
     );
 
     runtime::put_key(CONTRACT_KEY, contract_hash.into());

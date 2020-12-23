@@ -361,7 +361,7 @@ fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
         NonNull::<T>::dangling()
     } else {
         let align = mem::align_of::<T>();
-        let layout = Layout::from_size_align(alloc_size, align).unwrap();
+        let layout = Layout::from_size_align(alloc_size, align).map_err(|_| Error::OutOfMemory)?;
         let raw_ptr = unsafe { alloc(layout) };
         let non_null_ptr = NonNull::<u8>::new(raw_ptr).ok_or(Error::OutOfMemory)?;
         non_null_ptr.cast()

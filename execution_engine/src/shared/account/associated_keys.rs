@@ -106,6 +106,12 @@ impl AssociatedKeys {
     }
 }
 
+impl From<BTreeMap<AccountHash, Weight>> for AssociatedKeys {
+    fn from(associated_keys: BTreeMap<AccountHash, Weight>) -> Self {
+        Self(associated_keys)
+    }
+}
+
 impl ToBytes for AssociatedKeys {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         self.0.to_bytes()
@@ -118,15 +124,19 @@ impl ToBytes for AssociatedKeys {
 
 impl FromBytes for AssociatedKeys {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (keys_map, rem) = BTreeMap::<AccountHash, Weight>::from_bytes(bytes)?;
-        let mut keys = AssociatedKeys::default();
-        keys_map.into_iter().for_each(|(k, v)| {
-            // NOTE: we're ignoring potential errors (duplicate key, maximum number of
-            // elements). This is safe, for now, as we were the ones that
-            // serialized `AssociatedKeys` in the first place.
-            keys.add_key(k, v).unwrap();
-        });
-        Ok((keys, rem))
+        let (num_keys, mut stream) = u32::from_bytes(bytes)?;
+        if num_keys as usize > MAX_ASSOCIATED_KEYS {
+            return Err(Error::Formatting);
+        }
+
+        let mut associated_keys = BTreeMap::new();
+        for _ in 0..num_keys {
+            let (k, rem) = FromBytes::from_bytes(stream)?;
+            let (v, rem) = FromBytes::from_bytes(rem)?;
+            associated_keys.insert(k, v);
+            stream = rem;
+        }
+        Ok((AssociatedKeys(associated_keys), stream))
     }
 }
 
@@ -134,28 +144,35 @@ impl FromBytes for AssociatedKeys {
 pub mod gens {
     use proptest::prelude::*;
 
-    use casper_types::gens::{account_hash_arb, weight_arb};
+    use casper_types::{
+        account::MAX_ASSOCIATED_KEYS,
+        gens::{account_hash_arb, weight_arb},
+    };
 
     use super::AssociatedKeys;
 
-    pub fn associated_keys_arb(size: usize) -> impl Strategy<Value = AssociatedKeys> {
-        proptest::collection::btree_map(account_hash_arb(), weight_arb(), size).prop_map(|keys| {
-            let mut associated_keys = AssociatedKeys::default();
-            keys.into_iter().for_each(|(k, v)| {
-                associated_keys.add_key(k, v).unwrap();
-            });
-            associated_keys
-        })
+    pub fn associated_keys_arb() -> impl Strategy<Value = AssociatedKeys> {
+        proptest::collection::btree_map(account_hash_arb(), weight_arb(), MAX_ASSOCIATED_KEYS - 1)
+            .prop_map(|keys| {
+                let mut associated_keys = AssociatedKeys::default();
+                keys.into_iter().for_each(|(k, v)| {
+                    associated_keys.add_key(k, v).unwrap();
+                });
+                associated_keys
+            })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, iter::FromIterator};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        iter::FromIterator,
+    };
 
     use casper_types::{
         account::{AccountHash, AddKeyFailure, Weight, ACCOUNT_HASH_LENGTH, MAX_ASSOCIATED_KEYS},
-        bytesrepr,
+        bytesrepr::{self, ToBytes},
     };
 
     use super::AssociatedKeys;
@@ -327,5 +344,24 @@ mod tests {
         keys.add_key(AccountHash::new([3; 32]), Weight::new(3))
             .unwrap();
         bytesrepr::test_serialization_roundtrip(&keys);
+    }
+
+    #[test]
+    fn should_not_panic_deserializing_malicious_data() {
+        let malicious_map: BTreeMap<AccountHash, Weight> = (1usize..=(MAX_ASSOCIATED_KEYS + 1))
+            .map(|i| {
+                let i_bytes = i.to_be_bytes();
+                let mut account_hash_bytes = [0u8; 32];
+                account_hash_bytes[32 - i_bytes.len()..].copy_from_slice(&i_bytes);
+                (AccountHash::new(account_hash_bytes), Weight::new(i as u8))
+            })
+            .collect();
+
+        let bytes = malicious_map.to_bytes().expect("should serialize");
+
+        assert_eq!(
+            bytesrepr::deserialize::<AssociatedKeys>(bytes).expect_err("should deserialize"),
+            bytesrepr::Error::Formatting
+        );
     }
 }

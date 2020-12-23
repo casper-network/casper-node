@@ -102,14 +102,15 @@ fn should_upgrade_only_protocol_version() {
 
     assert!(upgrade_response.has_success(), "expected success");
 
-    let upgraded_wasm_costs = builder
+    let upgraded_protocol_data = builder
         .get_engine_state()
-        .wasm_config(new_protocol_version)
+        .get_protocol_data(new_protocol_version)
         .expect("should have result")
-        .expect("should have costs");
+        .expect("should have protocol data");
 
     assert_eq!(
-        *DEFAULT_WASM_CONFIG, upgraded_wasm_costs,
+        *DEFAULT_WASM_CONFIG,
+        *upgraded_protocol_data.wasm_config(),
         "upgraded costs should equal original costs"
     );
 }
@@ -378,14 +379,15 @@ fn should_allow_only_wasm_costs_patch_version() {
 
     assert!(upgrade_response.has_success(), "expected success");
 
-    let upgraded_wasm_config = builder
+    let upgraded_protocol_data = builder
         .get_engine_state()
-        .wasm_config(new_protocol_version)
+        .get_protocol_data(new_protocol_version)
         .expect("should have result")
-        .expect("should have upgraded costs");
+        .expect("should have upgraded protocol data");
 
     assert_eq!(
-        new_wasm_config, upgraded_wasm_config,
+        new_wasm_config,
+        *upgraded_protocol_data.wasm_config(),
         "upgraded costs should equal new costs"
     );
 }
@@ -428,14 +430,15 @@ fn should_allow_only_wasm_costs_minor_version() {
         upgrade_response
     );
 
-    let upgraded_wasm_costs = builder
+    let upgraded_protocol_data = builder
         .get_engine_state()
-        .wasm_config(new_protocol_version)
+        .get_protocol_data(new_protocol_version)
         .expect("should have result")
-        .expect("should have upgraded costs");
+        .expect("should have upgraded protocol data");
 
     assert_eq!(
-        new_wasm_config, upgraded_wasm_costs,
+        new_wasm_config,
+        *upgraded_protocol_data.wasm_config(),
         "upgraded costs should equal new costs"
     );
 }
@@ -515,14 +518,15 @@ fn should_upgrade_system_contract_and_wasm_costs_major() {
         "expected new version endpoint output"
     );
 
-    let upgraded_wasm_costs = builder
+    let upgraded_protocol_data = builder
         .get_engine_state()
-        .wasm_config(new_protocol_version)
+        .get_protocol_data(new_protocol_version)
         .expect("should have result")
-        .expect("should have upgraded costs");
+        .expect("should have upgraded protocol data");
 
     assert_eq!(
-        new_wasm_config, upgraded_wasm_costs,
+        new_wasm_config,
+        *upgraded_protocol_data.wasm_config(),
         "upgraded costs should equal new costs"
     );
 }
@@ -560,14 +564,15 @@ fn should_not_downgrade() {
         upgrade_response
     );
 
-    let upgraded_wasm_costs = builder
+    let upgraded_protocol_data = builder
         .get_engine_state()
-        .wasm_config(new_protocol_version)
+        .get_protocol_data(new_protocol_version)
         .expect("should have result")
-        .expect("should have costs");
+        .expect("should have protocol data");
 
     assert_eq!(
-        *DEFAULT_WASM_CONFIG, upgraded_wasm_costs,
+        *DEFAULT_WASM_CONFIG,
+        *upgraded_protocol_data.wasm_config(),
         "upgraded costs should equal original costs"
     );
 
