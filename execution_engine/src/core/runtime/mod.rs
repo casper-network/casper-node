@@ -38,8 +38,9 @@ use casper_types::{
 use crate::{
     core::{
         engine_state::{system_contract_cache::SystemContractCache, EngineConfig},
-        execution::Error,
+        execution::{self, Error},
         resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
+        runtime::scoped_instrumenter::ScopedInstrumenter,
         runtime_context::{self, RuntimeContext},
         Address,
     },
@@ -52,7 +53,6 @@ use crate::{
     },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
-use scoped_instrumenter::ScopedInstrumenter;
 
 pub struct Runtime<'a, R> {
     system_contract_cache: SystemContractCache,
@@ -1270,7 +1270,27 @@ where
 
     fn reverter<T: Into<ApiError>>(error: T) -> Error {
         let api_error: ApiError = error.into();
-        Error::Revert(api_error)
+        // NOTE: This is special casing needed to keep the native system contracts propagate
+        // GasLimit properly to the user. Once support for wasm system contract will be dropped this
+        // won't be necessary anymore.
+        match api_error {
+            ApiError::Mint(mint_error)
+                if mint_error == system_contract_errors::mint::Error::GasLimit as u8 =>
+            {
+                Error::GasLimit
+            }
+            ApiError::AuctionError(auction_error)
+                if auction_error == system_contract_errors::auction::Error::GasLimit as u8 =>
+            {
+                Error::GasLimit
+            }
+            ApiError::ProofOfStake(pos_error)
+                if pos_error == system_contract_errors::pos::Error::GasLimit as u8 =>
+            {
+                Error::GasLimit
+            }
+            api_error => Error::Revert(api_error),
+        }
     }
 
     pub fn call_host_mint(
@@ -1340,6 +1360,9 @@ where
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
                 let result: Result<URef, system_contract_errors::mint::Error> =
                     mint_runtime.mint(amount);
+                if let Err(system_contract_errors::mint::Error::GasLimit) = result {
+                    return Err(execution::Error::GasLimit);
+                }
                 CLValue::from_t(result)?
             }
             mint::METHOD_REDUCE_TOTAL_SUPPLY => {
@@ -2750,7 +2773,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), system_contract_errors::mint::Error>, Error> {
         let args_values: RuntimeArgs = runtime_args! {
             mint::ARG_TO => to,
             mint::ARG_SOURCE => source,
@@ -2762,9 +2785,7 @@ where
         let call_result =
             self.call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values)?;
 
-        let mint_result: Result<(), system_contract_errors::mint::Error> = call_result.into_t()?;
-
-        Ok(mint_result.map_err(ApiError::from))
+        Ok(call_result.into_t()?)
     }
 
     /// Creates a new account at a given public key, transferring a given amount
@@ -2791,7 +2812,9 @@ where
         let target_purse = self.mint_create(mint_contract_hash)?;
 
         if source == target_purse {
-            return Ok(Err(ApiError::Transfer));
+            return Ok(Err(
+                system_contract_errors::mint::Error::EqualSourceAndTarget.into(),
+            ));
         }
 
         match self.mint_transfer(
@@ -2807,7 +2830,7 @@ where
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
-            Err(api_error) => Ok(Err(api_error)),
+            Err(mint_error) => Ok(Err(mint_error.into())),
         }
     }
 
@@ -2829,7 +2852,7 @@ where
 
         match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
             Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
-            Err(error) => Ok(Err(error)),
+            Err(error) => Ok(Err(error.into())),
         }
     }
 
@@ -2889,7 +2912,7 @@ where
         amount_size: u32,
         id_ptr: u32,
         id_size: u32,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), system_contract_errors::mint::Error>, Error> {
         let source: URef = {
             let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
             bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
@@ -2914,7 +2937,7 @@ where
 
         match self.mint_transfer(mint_contract_key, None, source, target, amount, id)? {
             Ok(()) => Ok(Ok(())),
-            Err(api_error) => Ok(Err(api_error)),
+            Err(mint_error) => Ok(Err(mint_error)),
         }
     }
 

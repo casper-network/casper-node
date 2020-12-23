@@ -26,8 +26,8 @@ use casper_types::{
     mint::{METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD, METHOD_REDUCE_TOTAL_SUPPLY},
     system_contract_errors,
     system_contract_errors::auction::Error,
-    ApiError, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Key, Parameter, PublicKey, RuntimeArgs, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    Parameter, PublicKey, RuntimeArgs, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 struct AuctionContract;
@@ -44,8 +44,8 @@ impl StorageProvider for AuctionContract {
 }
 
 impl SystemProvider for AuctionContract {
-    fn create_purse(&mut self) -> URef {
-        system::create_purse()
+    fn create_purse(&mut self) -> Result<URef, Error> {
+        Ok(system::create_purse())
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
@@ -57,8 +57,9 @@ impl SystemProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> StdResult<(), ApiError> {
+    ) -> StdResult<(), Error> {
         system::transfer_from_purse_to_purse(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
     fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
@@ -75,10 +76,6 @@ impl RuntimeProvider for AuctionContract {
         runtime::get_key(name)
     }
 
-    fn put_key(&mut self, name: &str, key: Key) {
-        runtime::put_key(name, key)
-    }
-
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
         runtime::blake2b(data)
     }
@@ -90,8 +87,9 @@ impl MintProvider for AuctionContract {
         source: URef,
         target: AccountHash,
         amount: U512,
-    ) -> TransferResult {
+    ) -> Result<TransferredTo, Error> {
         system::transfer_from_purse_to_account(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
     fn transfer_purse_to_purse(
@@ -99,12 +97,13 @@ impl MintProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ApiError> {
+    ) -> Result<(), Error> {
         system::transfer_from_purse_to_purse(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
-    fn balance(&mut self, purse: URef) -> Option<U512> {
-        system::get_balance(purse)
+    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Ok(system::get_balance(purse))
     }
 
     fn read_base_round_reward(&mut self) -> Result<U512, Error> {

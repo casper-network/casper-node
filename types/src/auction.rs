@@ -95,7 +95,7 @@ pub trait Auction:
                     .increase_stake(amount)?
             }
             None => {
-                let bonding_purse = self.create_purse();
+                let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToBidPurse)?;
                 let bid = Bid::unlocked(bonding_purse, amount, delegation_rate);
@@ -191,7 +191,7 @@ pub trait Auction:
                 *delegator.staked_amount()
             }
             None => {
-                let bonding_purse = self.create_purse();
+                let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToDelegatorPurse)?;
                 let delegator = Delegator::new(amount, bonding_purse, validator_public_key);

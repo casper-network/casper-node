@@ -122,6 +122,18 @@ pub enum Error {
     /// Failed to record era info.
     #[fail(display = "Record era info error")]
     RecordEraInfo = 33,
+    /// Failed to create a [`crate::CLValue`].
+    #[fail(display = "CLValue error")]
+    CLValue = 34,
+    #[fail(display = "Transfer error")]
+    /// Failed to transfer funds.
+    Transfer = 35,
+
+    // NOTE: These variants below and related plumbing will be removed once support for WASM
+    // system contracts will be dropped.
+    #[doc(hidden)]
+    #[fail(display = "GasLimit")]
+    GasLimit = 36,
 
     #[cfg(test)]
     #[doc(hidden)]
@@ -186,7 +198,11 @@ impl TryFrom<u8> for Error {
             d if d == Error::WithdrawDelegatorReward as u8 => Ok(Error::WithdrawDelegatorReward),
             d if d == Error::WithdrawValidatorReward as u8 => Ok(Error::WithdrawValidatorReward),
             d if d == Error::TransferToUnbondingPurse as u8 => Ok(Error::TransferToUnbondingPurse),
+
             d if d == Error::RecordEraInfo as u8 => Ok(Error::RecordEraInfo),
+            d if d == Error::CLValue as u8 => Ok(Error::CLValue),
+            d if d == Error::Transfer as u8 => Ok(Error::Transfer),
+            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             _ => Err(TryFromU8ForError(())),
         }
     }
