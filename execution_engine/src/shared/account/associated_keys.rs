@@ -152,7 +152,7 @@ pub mod gens {
     use super::AssociatedKeys;
 
     pub fn associated_keys_arb() -> impl Strategy<Value = AssociatedKeys> {
-        proptest::collection::btree_map(account_hash_arb(), weight_arb(), MAX_ASSOCIATED_KEYS)
+        proptest::collection::btree_map(account_hash_arb(), weight_arb(), MAX_ASSOCIATED_KEYS - 1)
             .prop_map(|keys| {
                 let mut associated_keys = AssociatedKeys::default();
                 keys.into_iter().for_each(|(k, v)| {
