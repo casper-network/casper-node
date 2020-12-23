@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $(get_path_to_net_vars $NET_ID)
-source $NCTL/sh/node/ctl_$NCTL_DAEMON_TYPE.sh
-
 unset LOG_LEVEL
 unset NET_ID
 unset NODE_ID
@@ -22,13 +18,22 @@ done
 
 LOG_LEVEL=${LOG_LEVEL:-$RUST_LOG}
 LOG_LEVEL=${LOG_LEVEL:-debug}
+export RUST_LOG=$LOG_LEVEL
 NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-"all"}
 
-export RUST_LOG=$LOG_LEVEL
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
+
+source $NCTL/sh/utils.sh
+source $NCTL/sh/node/funcs_$NCTL_DAEMON_TYPE.sh
 
 if [ $NODE_ID == "all" ]; then
-    do_node_start_all $NET_ID $NCTL_NET_NODE_COUNT $NCTL_NET_BOOTSTRAP_COUNT
+    do_node_start_all \
+        $NET_ID \
+        $(get_count_of_genesis_nodes $NET_ID) \
+        $(get_count_of_bootstrap_nodes $NET_ID)
 else
     log "starting node :: net-$NET_ID.node-$NODE_ID"
     do_node_start $NET_ID $NODE_ID
