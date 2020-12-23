@@ -37,7 +37,7 @@ function render_account_balance()
     local STATE_ROOT_HASH=$(get_state_root_hash)
     local PURSE_UREF=$(get_main_purse_uref $ACCOUNT_KEY $STATE_ROOT_HASH)
 
-    source $NCTL/sh/views/view_chain_account_balance.sh \
+    source $NCTL/sh/views/view_chain_balance.sh \
         root-hash=$STATE_ROOT_HASH \
         purse-uref=$PURSE_UREF \
         prefix=$ACCOUNT_PREFIX

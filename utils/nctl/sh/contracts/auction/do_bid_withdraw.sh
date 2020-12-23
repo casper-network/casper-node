@@ -65,7 +65,7 @@ function main()
 # ----------------------------------------------------------------
 
 unset AMOUNT
-unset BIDDER_ID
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
@@ -73,11 +73,11 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         amount) AMOUNT=${VALUE} ;;
-        bidder) BIDDER_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
 main \
-    ${BIDDER_ID:-1} \
-    ${AMOUNT:-$(($NCTL_DEFAULT_AUCTION_BID_AMOUNT * ${BIDDER_ID:-1}))}
+    ${NODE_ID:-1} \
+    ${AMOUNT:-$(($NCTL_DEFAULT_AUCTION_BID_AMOUNT * ${NODE_ID:-1}))}

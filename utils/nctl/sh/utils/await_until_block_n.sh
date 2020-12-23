@@ -1,28 +1,26 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/node/funcs_$NCTL_DAEMON_TYPE.sh
-
-unset NODE_ID
+unset FUTURE_HEIGHT
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
-    case "$KEY" in
-        node) NODE_ID=${VALUE} ;;
+    case "$KEY" in        
+        height) FUTURE_HEIGHT=${VALUE} ;;
         *)
     esac
 done
 
-NODE_ID=${NODE_ID:-"all"}
+FUTURE_HEIGHT=${FUTURE_HEIGHT:-1}
 
 # ----------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------
 
-if [ $NODE_ID == "all" ]; then
-    do_node_status_all
-else
-    do_node_status $NODE_ID
-fi
+source $NCTL/sh/utils.sh
+
+while [ $(get_chain_height) -lt $FUTURE_HEIGHT ];
+do
+    sleep 1.0
+done

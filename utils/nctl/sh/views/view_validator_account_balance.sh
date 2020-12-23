@@ -22,7 +22,7 @@ source $NCTL/sh/utils.sh
 source $NCTL/sh/views/funcs.sh
 
 if [ $NODE_ID = "all" ]; then
-    for NODE_ID in $(seq 1 $(get_count_of_all_nodes))
+    for NODE_ID in $(seq 1 $(get_count_of_nodes))
     do
         render_account_balance $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
     done

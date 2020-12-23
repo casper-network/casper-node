@@ -14,12 +14,12 @@ Displays on-chain faucet account information.
 nctl-view-faucet-account
 ```
 
-### nctl-view-faucet-account-balance
+### nctl-view-faucet-balance
 
 Displays faucet main purse balance.
 
 ```
-nctl-view-faucet-account-balance
+nctl-view-faucet-balance
 ```
 
 ### nctl-view-faucet-account-hash
@@ -68,18 +68,6 @@ nctl-view-user-account user=1  (same as above)
 nctl-view-user-account user=3  
 ```
 
-### nctl-view-user-account-balance user={X:-all}
-
-Displays main purse balance of user X.
-
-```
-nctl-view-user-account-balance
-
-nctl-view-user-account-balance user=all  (same as above)
-
-nctl-view-user-account-balance user=1  (same as above)
-```
-
 ### nctl-view-user-account-key user={X:-all}
 
 Displays public key in HEX format of user X.
@@ -102,6 +90,18 @@ nctl-view-user-account-hash
 nctl-view-user-account-hash user=all  (same as above)
 
 nctl-view-user-account-hash user=3  
+```
+
+### nctl-view-user-balance user={X:-all}
+
+Displays main purse balance of user X.
+
+```
+nctl-view-user-balance
+
+nctl-view-user-balance user=all  (same as above)
+
+nctl-view-user-balance user=1  (same as above)
 ```
 
 ### nctl-view-user-main-purse-uref user={X:-all}
@@ -142,18 +142,6 @@ nctl-view-validator-account node=1  (same as above)
 nctl-view-validator-account node=4  
 ```
 
-### nctl-view-validator-account-balance node={X:-all}
-
-Displays main purse balance of validator X.
-
-```
-nctl-view-validator-account-balance
-
-nctl-view-validator-account-balance node=all  (same as above)
-
-nctl-view-validator-account-balance node=4
-```
-
 ### nctl-view-validator-account-key node={X:-all}
 
 Displays public key in HEX format of validator X.
@@ -176,6 +164,18 @@ nctl-view-validator-account-hash
 nctl-view-validator-account-hash node=all  (same as above)
 
 nctl-view-validator-account-hash node=4  
+```
+
+### nctl-view-validator-balance node={X:-all}
+
+Displays main purse balance of validator X.
+
+```
+nctl-view-validator-balance
+
+nctl-view-validator-balance node=all  (same as above)
+
+nctl-view-validator-balance node=4
 ```
 
 ### nctl-view-validator-main-purse-uref node={X:-all}

@@ -39,8 +39,8 @@ function do_node_start()
     local PORT_NODE_API_EVENT=$(get_node_port_sse $NODE_ID)
 
     # Set validator network addresses.
-    local NETWORK_BIND_ADDRESS=$(get_network_bind_address $NODE_ID $BOOTSTRAP_COUNT)
-    local NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses $BOOTSTRAP_COUNT)
+    local NETWORK_BIND_ADDRESS=$(get_network_bind_address $NODE_ID)
+    local NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses)
 
     # Set daemon process unit.
     local NODE_PROCESS_UNIT=$(get_process_name_of_node $NODE_ID)
@@ -88,15 +88,12 @@ function do_node_start()
 # Spins up all nodes using systemd.
 #######################################
 function do_node_start_all()
-{
-    local NODE_COUNT=$(get_count_of_genesis_nodes)
-    local BOOTSTRAP_COUNT=$(get_count_of_bootstrap_nodes)    
-        
+{        
     # Step 1: start bootstraps.
     log "starting bootstraps ... "
-    for NODE_ID in $(seq 1 $NODE_COUNT)
+    for NODE_ID in $(seq 1 $(get_count_of_genesis_nodes))
     do
-        if [ $NODE_ID -le $BOOTSTRAP_COUNT ]; then
+        if [ $NODE_ID -le $(get_count_of_bootstrap_nodes) ]; then
             log "bootstrapping node $NODE_ID"
             do_node_start $NODE_ID
         fi
@@ -105,9 +102,9 @@ function do_node_start_all()
 
     # Step 2: start non-bootstraps.
     log "starting non-bootstraps... "
-    for NODE_ID in $(seq 1 $NODE_COUNT)
+    for NODE_ID in $(seq 1 $(get_count_of_genesis_nodes))
     do
-        if [ $NODE_ID -gt $BOOTSTRAP_COUNT ]; then
+        if [ $NODE_ID -gt $(get_count_of_bootstrap_nodes) ]; then
             log "starting node $NODE_ID"
             do_node_start $NODE_ID
         fi

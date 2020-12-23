@@ -10,22 +10,22 @@ nctl-view-chain-account account-key=AN_ACCOUNT_KEY
 nctl-view-chain-account account-key=AN_ACCOUNT_KEY root-hash=A_STATE_ROOT_HASH
 ```
 
-### nctl-view-chain-account-balance purse-uref=X root-hash={Y:-LATEST}
-
-Displays balance of an account purse with uref X at state root hash Y.  If state root hash is undefined then it defaults to latest.
-
-```
-nctl-view-chain-account-balance purse-uref=A_PURSE_UREF
-
-nctl-view-chain-account-balance purse-uref=A_PURSE_UREF root-hash=A_STATE_ROOT_HASH
-```
-
 ### nctl-view-chain-auction-info
 
 Displays Proof of Stake auction contract information.
 
 ```
 nctl-view-chain-auction-info
+```
+
+### nctl-view-chain-balance purse-uref=X root-hash={Y:-LATEST}
+
+Displays balance of an account purse with uref X at state root hash Y.  If state root hash is undefined then it defaults to latest.
+
+```
+nctl-view-chain-balance purse-uref=A_PURSE_UREF
+
+nctl-view-chain-balance purse-uref=A_PURSE_UREF root-hash=A_STATE_ROOT_HASH
 ```
 
 ### nctl-view-chain-block block={X:-LATEST}

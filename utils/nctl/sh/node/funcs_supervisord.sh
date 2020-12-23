@@ -10,19 +10,17 @@ function do_node_start()
 {
     local NODE_ID=${1}
     local NODE_PROCESS_NAME=$(get_process_name_of_node_in_group $NODE_ID)
-    local PATH_TO_NODE_CONFIG=$PATH_NET/nodes/node-$NODE_ID/config/node-config.toml
-
-    # Import net vars.
-    source $(get_path_to_net_vars)
+    local PATH_TO_NODE_CONFIG=$(get_path_to_net)/nodes/node-$NODE_ID/config/node-config.toml
 
     # Ensure daemon is up.
     do_supervisord_start
 
-    # Inject most recent trusted hash.
-    if [ $NODE_ID -gt $NCTL_NET_NODE_COUNT ]; then
+    # If non-genesis node then inject a trusted hash.
+    if [ $NODE_ID -gt $(get_count_of_genesis_nodes) ]; then
         local TRUSTED_HASH=$(get_chain_latest_block_hash)
         sed -i "s/#trusted_hash/trusted_hash/g" $PATH_TO_NODE_CONFIG > /dev/null 2>&1
         sed -i "s/^\(trusted_hash\) = .*/\1 = \'${TRUSTED_HASH}\'/" $PATH_TO_NODE_CONFIG > /dev/null 2>&1
+        log "... trusted hash=$TRUSTED_HASH"
     fi
 
     # Signal to supervisorctl.

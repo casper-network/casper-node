@@ -22,7 +22,7 @@ source $NCTL/sh/utils.sh
 source $NCTL/sh/views/funcs.sh
 
 if [ $NODE_ID = "all" ]; then
-    for IDX in $(seq 1 $(get_count_of_all_nodes))
+    for IDX in $(seq 1 $(get_count_of_nodes))
     do
         render_node_ports $IDX
     done

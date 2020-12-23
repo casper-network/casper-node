@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 source $NCTL/sh/utils.sh
-source $(get_path_to_net_vars)
 
 log "dumping transient assets ... please wait"
 
@@ -31,7 +30,7 @@ cp $PATH_TO_NET/faucet/public_key.pem $PATH_TO_DUMP/faucet-public_key.pem
 cp $PATH_TO_NET/faucet/secret_key.pem $PATH_TO_DUMP/faucet-secret_key.pem
 
 # Dump nodes.
-for NODE_ID in $(seq 1 $NCTL_NET_NODE_COUNT)
+for NODE_ID in $(seq 1 $(get_count_of_genesis_nodes))
 do
     PATH_TO_NODE=$(get_path_to_node $NODE_ID)
     cp $PATH_TO_NODE/config/node-config.toml $PATH_TO_DUMP/node-$NODE_ID-config.toml
@@ -43,7 +42,7 @@ do
 done
 
 # Dump users.
-for USER_ID in $(seq 1 $NCTL_NET_USER_COUNT)
+for USER_ID in $(seq 1 $(get_count_of_users))
 do
     PATH_TO_USER=$(get_path_to_user $USER_ID)
     cp $PATH_TO_USER/public_key_hex $PATH_TO_DUMP/user-$USER_ID-public_key_hex

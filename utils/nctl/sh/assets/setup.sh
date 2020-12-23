@@ -108,15 +108,9 @@ function _set_chainspec_account()
 # Globals:
 #   NCTL - path to nctl home directory.
 #   NCTL_DAEMON_TYPE - type of daemon service manager.
-# Arguments:
-#   Nodeset count.
-#   Boostrap count.
 #######################################
 function _set_daemon()
 {
-    local COUNT_NODES=${1}
-    local COUNT_BOOTSTRAPS=${2}
-    
     # Set directory.
     local PATH_TO_NET=$(get_path_to_net)
     mkdir $PATH_TO_NET/daemon
@@ -126,7 +120,7 @@ function _set_daemon()
 
     # Set daemon specific artefacts.
     if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
-        source $NCTL/sh/assets/setup_supervisord.sh $COUNT_NODES $COUNT_BOOTSTRAPS
+        source $NCTL/sh/assets/setup_supervisord.sh
     fi
 }
 
@@ -193,49 +187,19 @@ function _set_users()
 }
 
 #######################################
-# Sets assets pertaining to network variables.
-# Arguments:
-#   Count of nodes to setup.
-#   Count of bootstraps to setup.
-#   Count of users to setup.
-#######################################
-function _set_vars()
-{
-    local COUNT_NODES=${1}
-    local COUNT_BOOTSTRAPS=${2}
-    local COUNT_USERS=${3}
-
-    local PATH_TO_VARS=$(get_path_to_net_vars)
-
-    touch $PATH_TO_VARS
-	cat >> $PATH_TO_VARS <<- EOM
-# Count of nodes to setup.
-export NCTL_NET_BOOTSTRAP_COUNT=$COUNT_BOOTSTRAPS
-
-# Count of nodes to setup.
-export NCTL_NET_NODE_COUNT=$COUNT_NODES
-
-# Count of users to setup.
-export NCTL_NET_USER_COUNT=$COUNT_USERS
-	EOM
-}
-
-#######################################
 # Main
 # Globals:
 #   NET_ID - ordinal identifier of network being setup.
 # Arguments:
 #   Count of nodes to setup.
-#   Count of bootstraps to setup.
 #   Count of users to setup.
 #   Delay in seconds to apply to genesis timestamp.
 #######################################
 function _main()
 {
     local COUNT_NODES=${1}
-    local COUNT_BOOTSTRAPS=${2}
-    local COUNT_USERS=${3}
-    local GENESIS_DELAY=${4}
+    local COUNT_USERS=${2}
+    local GENESIS_DELAY=${3}
 
     # Tear down previous.
     PATH_TO_NET=$(get_path_to_net)
@@ -246,18 +210,12 @@ function _main()
 
     log "net-$NET_ID: asset setup begins ... please wait"
 
-    # Set artefacts.
-    log "... setting variables"
-    _set_vars $COUNT_NODES $COUNT_BOOTSTRAPS $COUNT_USERS
-    
+    # Set artefacts.    
     log "... setting binaries"    
     _set_bin
 
     log "... setting chainspec"
     _set_chainspec $GENESIS_DELAY
-
-    log "... setting daemon"
-    _set_daemon $COUNT_NODES $COUNT_BOOTSTRAPS
 
     log "... setting faucet"
     _set_faucet 
@@ -268,6 +226,9 @@ function _main()
     log "... setting users"
     _set_users $COUNT_USERS
 
+    log "... setting daemon"
+    _set_daemon
+
     log "net-$NET_ID: asset setup complete"
 }
 
@@ -275,7 +236,6 @@ function _main()
 # Destructure input args.
 #######################################
 
-unset BOOTSTRAP_COUNT
 unset GENESIS_DELAY_SECONDS
 unset NET_ID
 unset NODE_COUNT
@@ -286,7 +246,6 @@ do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        bootstraps) BOOTSTRAP_COUNT=${VALUE} ;;
         delay) GENESIS_DELAY_SECONDS=${VALUE} ;;
         net) NET_ID=${VALUE} ;;
         nodes) NODE_COUNT=${VALUE} ;;
@@ -297,13 +256,12 @@ done
 
 
 export NET_ID=${NET_ID:-1}
-BOOTSTRAP_COUNT=${BOOTSTRAP_COUNT:-3}
 GENESIS_DELAY_SECONDS=${GENESIS_DELAY_SECONDS:-30}
 NODE_COUNT=${NODE_COUNT:-5}
 USER_COUNT=${USER_COUNT:-5}
 
-if [ $BOOTSTRAP_COUNT -ge $NODE_COUNT ]; then
-    log_error "Invalid input: bootstraps MUST BE < nodes"
+if [ 3 -gt $NODE_COUNT ]; then
+    log_error "Invalid input: |nodes| MUST BE >= 3"
 else
-    _main $NODE_COUNT $BOOTSTRAP_COUNT $USER_COUNT $GENESIS_DELAY_SECONDS
+    _main $NODE_COUNT $USER_COUNT $GENESIS_DELAY_SECONDS
 fi

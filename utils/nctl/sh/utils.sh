@@ -452,9 +452,8 @@ function get_chain_latest_block_hash()
 #######################################
 function get_count_of_bootstrap_nodes()
 {
-    source $(get_path_to_net_vars)
-
-    echo $NCTL_NET_BOOTSTRAP_COUNT
+    # Hard-coded.
+    echo 3
 }
 
 #######################################
@@ -462,19 +461,15 @@ function get_count_of_bootstrap_nodes()
 #######################################
 function get_count_of_genesis_nodes()
 {
-    source $(get_path_to_net_vars)
-
-    echo $NCTL_NET_NODE_COUNT
+    echo $(($(get_count_of_nodes) / 2))
 }
 
 #######################################
-# Returns count of a network configured nodes.
+# Returns count of all network nodes.
 #######################################
-function get_count_of_all_nodes()
+function get_count_of_nodes()
 {    
-    source $(get_path_to_net_vars)
-
-    echo $(($NCTL_NET_NODE_COUNT * 2))
+    echo $(ls -l $(get_path_to_net)/nodes | grep -c ^d)
 }
 
 #######################################
@@ -482,9 +477,7 @@ function get_count_of_all_nodes()
 #######################################
 function get_count_of_users()
 {    
-    source $(get_path_to_net_vars)
-
-    echo $NCTL_NET_USER_COUNT
+    echo $(ls -l $(get_path_to_net)/users | grep -c ^d)
 }
 
 #######################################
@@ -529,32 +522,26 @@ function get_main_purse_uref()
 # Returns network bind address.
 # Arguments:
 #   Node ordinal identifier.
-#   Network bootstrap count.
 #######################################
 function get_network_bind_address()
 {
     local NODE_ID=${1}
-    local NET_BOOTSTRAP_COUNT=${2}     
 
     echo "0.0.0.0:$(get_node_port $NCTL_BASE_PORT_NETWORK $NODE_ID)"   
 }
 
 #######################################
 # Returns network known addresses.
-# Arguments:
-#   Network bootstrap count.
 #######################################
 function get_network_known_addresses()
 {
-    local BOOTSTRAP_COUNT=${1}    
-
     local RESULT=""
     local ADDRESS=""
-    for NODE_ID in $(seq 1 $BOOTSTRAP_COUNT)
+    for NODE_ID in $(seq 1 $(get_count_of_bootstrap_nodes))
     do
         ADDRESS=$(get_bootstrap_known_address $NODE_ID)
         RESULT=$RESULT$ADDRESS
-        if [ $NODE_ID -lt $BOOTSTRAP_COUNT ]; then
+        if [ $NODE_ID -lt $(get_count_of_bootstrap_nodes) ]; then
             RESULT=$RESULT","
         fi
     done
@@ -620,7 +607,7 @@ function get_node_address_rpc_for_curl()
 function get_node_for_dispatch()
 {
     local NET_ID=${NET_ID:-1}
-    local NODESET=$(seq 1 $(get_count_of_all_nodes) | shuf)
+    local NODESET=$(seq 1 $(get_count_of_nodes) | shuf)
 
     for NODE_ID in $NODESET
     do
@@ -691,7 +678,7 @@ function get_node_port_sse()
 function get_node_is_up()
 {
     local NODE_ID=${1}    
-    local NODE_PORT=$(get_node_port_rest $NODE_ID)
+    local NODE_PORT=$(get_node_port_rpc $NODE_ID)
 
     if grep -q "open" <<< "$(nmap -p $NODE_PORT 127.0.0.1)"; then
         echo true
@@ -704,28 +691,21 @@ function get_node_is_up()
 # Returns set of nodes within a process group.
 # Arguments:
 #   Process group identifier.
-#   Count of nodes in target network.
-#   Count of bootstraps in target network.
 #######################################
 function get_process_group_members()
 {
     local PROCESS_GROUP=${1}
-    local COUNT_NODES=${2}
-    local COUNT_BOOTSTRAPS=${3}
-
-    # Import net vars.
-    source $(get_path_to_net_vars)
 
     # Set range.
     if [ $PROCESS_GROUP == $NCTL_PROCESS_GROUP_1 ]; then
         local SEQ_START=1
-        local SEQ_END=$COUNT_BOOTSTRAPS
+        local SEQ_END=$(get_count_of_bootstrap_nodes)
     elif [ $PROCESS_GROUP == $NCTL_PROCESS_GROUP_2 ]; then
-        local SEQ_START=$(($COUNT_BOOTSTRAPS + 1))
-        local SEQ_END=$COUNT_NODES
+        local SEQ_START=$(($(get_count_of_bootstrap_nodes) + 1))
+        local SEQ_END=$(get_count_of_genesis_nodes)
     elif [ $PROCESS_GROUP == $NCTL_PROCESS_GROUP_3 ]; then
-        local SEQ_START=$(($COUNT_NODES + 1))
-        local SEQ_END=$(($COUNT_NODES * 2))
+        local SEQ_START=$(($(get_count_of_genesis_nodes) + 1))
+        local SEQ_END=$(get_count_of_nodes)
     fi
 
     # Set members of process group.
@@ -780,15 +760,10 @@ function get_process_name_of_node_group()
 {
     local NODE_ID=${1} 
     
-    source $(get_path_to_net_vars)
-
-    # Boostraps.
-    if [ $NODE_ID -le $NCTL_NET_BOOTSTRAP_COUNT ]; then
+    if [ $NODE_ID -le $(get_count_of_bootstrap_nodes) ]; then
         echo $NCTL_PROCESS_GROUP_1
-    # Genesis validators.
-    elif [ $NODE_ID -le $NCTL_NET_NODE_COUNT ]; then
+    elif [ $NODE_ID -le $(get_count_of_genesis_nodes) ]; then
         echo $NCTL_PROCESS_GROUP_2
-    # Other.
     else
         echo $NCTL_PROCESS_GROUP_3
     fi
@@ -879,14 +854,6 @@ function get_path_net_supervisord_sock()
 }
 
 #######################################
-# Returns path to a network's variables.
-#######################################
-function get_path_to_net_vars()
-{
-    echo $(get_path_to_net)/vars
-}
-
-#######################################
 # Returns path to a node's assets.
 # Arguments:
 #   Node ordinal identifier.
@@ -942,7 +909,7 @@ function get_path_to_user()
 #   CL type suffix to apply to argument type.
 #   CL type prefix to apply to argument value.
 #######################################
-function get_session_arg()
+function get_cl_arg()
 {
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
@@ -963,7 +930,7 @@ function get_cl_arg_account_hash()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_session_arg $ARG_NAME $ARG_VALUE "account_hash" "account-hash-")
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "account_hash" "account-hash-")
 }
 
 #######################################
@@ -977,7 +944,7 @@ function get_cl_arg_account_key()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_session_arg $ARG_NAME $ARG_VALUE "public_key")
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "public_key")
 }
 
 #######################################
@@ -991,7 +958,7 @@ function get_cl_arg_opt_uref()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_session_arg $ARG_NAME $ARG_VALUE "opt_uref")
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "opt_uref")
 }
 
 #######################################
@@ -1005,7 +972,7 @@ function get_cl_arg_string()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_session_arg $ARG_NAME $ARG_VALUE "string")
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "string")
 }
 
 #######################################
@@ -1019,7 +986,7 @@ function get_cl_arg_u64()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_session_arg $ARG_NAME $ARG_VALUE "U64")
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "U64")
 }
 
 #######################################
@@ -1033,7 +1000,7 @@ function get_cl_arg_u256()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_session_arg $ARG_NAME $ARG_VALUE "U256")
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "U256")
 }
 
 #######################################
@@ -1047,7 +1014,7 @@ function get_cl_arg_u512()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_session_arg $ARG_NAME $ARG_VALUE "U512")
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "U512")
 }
 
 #######################################

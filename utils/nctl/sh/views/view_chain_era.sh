@@ -21,7 +21,7 @@ NODE_ID=${NODE_ID:-"all"}
 source $NCTL/sh/utils.sh
 
 if [ $NODE_ID = "all" ]; then
-    for NODE_ID in $(seq 1 $(get_count_of_all_nodes))
+    for NODE_ID in $(seq 1 $(get_count_of_nodes))
     do
         log "chain era @ node-$NODE_ID = $(get_chain_era $NODE_ID)"
     done
