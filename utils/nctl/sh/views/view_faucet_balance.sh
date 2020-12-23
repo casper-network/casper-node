@@ -3,4 +3,4 @@
 source $NCTL/sh/utils.sh
 source $NCTL/sh/views/funcs.sh
 
-render_account_main_purse_uref $NCTL_ACCOUNT_TYPE_FAUCET
+render_account_balance $NCTL_ACCOUNT_TYPE_FAUCET

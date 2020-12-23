@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 unset BLOCK_HASH
-unset NET_ID
 unset NODE_ID
 
 for ARGUMENT in "$@"
@@ -10,13 +9,11 @@ do
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
         block) BLOCK_HASH=${VALUE} ;;
-        net) NET_ID=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-NET_ID=${NET_ID:-1}
 NODE_ID=${NODE_ID:-"all"}
 BLOCK_HASH=${BLOCK_HASH:-""}
 
@@ -28,10 +25,10 @@ source $NCTL/sh/utils.sh
 source $NCTL/sh/views/funcs.sh
 
 if [ $NODE_ID = "all" ]; then
-    for NODE_ID in $(seq 1 $(get_count_of_all_nodes $NET_ID))
+    for NODE_ID in $(seq 1 $(get_count_of_nodes))
     do
-        render_chain_state_root_hash $NET_ID $NODE_ID $BLOCK_HASH
+        render_chain_state_root_hash $NODE_ID $BLOCK_HASH
     done
 else
-    render_chain_state_root_hash $NET_ID $NODE_ID $BLOCK_HASH
+    render_chain_state_root_hash $NODE_ID $BLOCK_HASH
 fi

@@ -50,7 +50,7 @@ export NCTL_DEFAULT_AUCTION_BID_AMOUNT=1000000000000000   # (1e15)
 export NCTL_DEFAULT_AUCTION_DELEGATE_AMOUNT=1000000000   # (1e9)
 
 # Default motes to pay for consumed gas.
-export NCTL_DEFAULT_GAS_PAYMENT=1000000000   # (1e9)
+export NCTL_DEFAULT_GAS_PAYMENT=10000000000   # (1e10)
 
 # Default gas price multiplier.
 export NCTL_DEFAULT_GAS_PRICE=10
@@ -131,12 +131,12 @@ function log ()
             do
                 TABS+='\t'
             done
-            echo $NOW" [INFO] [$$] NCTL :: "$TABS$MSG
+            echo -e "$NOW [INFO] [$$] NCTL :: $TABS$MSG"
         else
-            echo $NOW" [INFO] [$$] NCTL :: "$MSG
+            echo -e "$NOW [INFO] [$$] NCTL :: $MSG"
         fi
     else
-        echo $NOW" [INFO] [$$] NCTL :: "
+        echo -e "$NOW [INFO] [$$] NCTL :: "
     fi
 }
 
@@ -186,7 +186,8 @@ function popd ()
 # Arguments:
 #   Directory to be reset / recreated.
 #######################################
-function resetd () {
+function resetd ()
+{
     local DPATH=${1}
 
     if [ -d $DPATH ]; then
@@ -208,21 +209,19 @@ function resetd () {
 #######################################
 function await_n_eras()
 {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local OFFSET=${3}
-    local EMIT_LOG=${4:-false}
+    local OFFSET=${1}
+    local EMIT_LOG=${2:-false}
 
-    local CURRENT=$(get_chain_era $NET_ID $NODE_ID)
+    local CURRENT=$(get_chain_era)
     local FUTURE=$(($CURRENT + $OFFSET))
 
     while [ $CURRENT -lt $FUTURE ];
     do
         if [ $EMIT_LOG = true ]; then
-            log "current era = $CURRENT :: future era = $FUTURE ... sleeping 5 seconds"
+            log "current era = $CURRENT :: future era = $FUTURE ... sleeping 10 seconds"
         fi
-        sleep 5.0
-        CURRENT=$(get_chain_era $NET_ID $NODE_ID)
+        sleep 10.0
+        CURRENT=$(get_chain_era)
     done
 
     if [ $EMIT_LOG = true ]; then
@@ -239,12 +238,10 @@ function await_n_eras()
 #######################################
 function await_n_blocks()
 {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local OFFSET=${3}
-    local EMIT_LOG=${4:-false}
+    local OFFSET=${1}
+    local EMIT_LOG=${2:-false}
 
-    local CURRENT=$(get_chain_height $NET_ID $NODE_ID)
+    local CURRENT=$(get_chain_height)
     local FUTURE=$(($CURRENT + $OFFSET))
 
     while [ $CURRENT -lt $FUTURE ];
@@ -253,7 +250,7 @@ function await_n_blocks()
             log "current block height = $CURRENT :: future height = $FUTURE ... sleeping 2 seconds"
         fi
         sleep 2.0
-        CURRENT=$(get_chain_height $NET_ID $NODE_ID)
+        CURRENT=$(get_chain_height)
     done
 
     if [ $EMIT_LOG = true ]; then
@@ -270,16 +267,11 @@ function await_n_blocks()
 #######################################
 function await_until_era_n()
 {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local ERA_ID=${3}
+    local ERA=${1}
 
-    local CURRENT=$(get_chain_era $NET_ID $NODE_ID)
-
-    while [ $ERA_ID -lt $CURRENT ];
+    while [ $ERA -lt $(get_chain_era) ];
     do
         sleep 10.0
-        CURRENT=$(get_chain_era $NET_ID $NODE_ID)
     done
 }
 
@@ -292,16 +284,11 @@ function await_until_era_n()
 #######################################
 function await_until_block_n()
 {
-    local NET_ID=${1}
-    local NODE_ID=${2}
-    local HEIGHT=${3}
+    local HEIGHT=${1}
 
-    local CURRENT=$(get_chain_height $NET_ID $NODE_ID)
-
-    while [ $HEIGHT -lt $CURRENT ];
+    while [ $HEIGHT -lt $(get_chain_height) ];
     do
         sleep 10.0
-        CURRENT=$(get_chain_height $NET_ID $NODE_ID)
     done
 }
 
@@ -314,7 +301,8 @@ function await_until_block_n()
 # Arguments:
 #   Data to be hashed.
 #######################################
-function get_account_hash() {
+function get_account_hash()
+{
     local ACCOUNT_KEY=${1}
     local ACCOUNT_PBK=${ACCOUNT_KEY:2}
 
@@ -336,21 +324,20 @@ function get_account_hash() {
 #   NCTL_ACCOUNT_TYPE_NODE - node account type.
 #   NCTL_ACCOUNT_TYPE_USER - user account type.
 # Arguments:
-#   Network ordinal identifier.
 #   Account type (node | user | faucet).
 #   Account ordinal identifier (optional).
 #######################################
-function get_account_key() {
-    local NET_ID=${1}
-    local ACCOUNT_TYPE=${2}
-    local ACCOUNT_IDX=${3}
+function get_account_key()
+{
+    local ACCOUNT_TYPE=${1}
+    local ACCOUNT_IDX=${2}
 
     if [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_FAUCET ]; then
-        echo `cat $(get_path_to_faucet $NET_ID)/public_key_hex`
+        echo `cat $(get_path_to_faucet)/public_key_hex`
     elif [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_NODE ]; then
-        echo `cat $(get_path_to_node $NET_ID $ACCOUNT_IDX)/keys/public_key_hex`
+        echo `cat $(get_path_to_node $ACCOUNT_IDX)/keys/public_key_hex`
     elif [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_USER ]; then
-        echo `cat $(get_path_to_user $NET_ID $ACCOUNT_IDX)/public_key_hex`
+        echo `cat $(get_path_to_user $ACCOUNT_IDX)/public_key_hex`
     fi
 }
 
@@ -359,14 +346,14 @@ function get_account_key() {
 # Globals:
 #   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.
 # Arguments:
-#   Network ordinal identifier.
 #   Account type.
 #   Account index (optional).
 #######################################
-function get_account_prefix() {
-    local NET_ID=${1}
-    local ACCOUNT_TYPE=${2}
-    local ACCOUNT_IDX=${3:-}
+function get_account_prefix()
+{
+    local ACCOUNT_TYPE=${1}
+    local ACCOUNT_IDX=${2:-}
+    local NET_ID=${NET_ID:-1}
 
     local prefix="net-$NET_ID.$ACCOUNT_TYPE"
     if [ $ACCOUNT_TYPE != $NCTL_ACCOUNT_TYPE_FAUCET ]; then
@@ -384,9 +371,10 @@ function get_account_prefix() {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_bootstrap_known_address() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}
+function get_bootstrap_known_address()
+{
+    local NODE_ID=${1}
+    local NET_ID=${NET_ID:-1}    
     local NODE_PORT=$(($NCTL_BASE_PORT_NETWORK + ($NET_ID * 100) + $NODE_ID))
 
     echo "127.0.0.1:$NODE_PORT"
@@ -398,13 +386,14 @@ function get_bootstrap_known_address() {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_chain_era() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
+function get_chain_era()
+{
+    local NODE_ID=${1:-$(get_node_for_dispatch)}
+    local NODE_ADDRESS=$(get_node_address_rpc $NODE_ID)
 
-    if [ $(get_node_is_up $NET_ID $NODE_ID) = true ]; then
-        $(get_path_to_client $NET_ID) get-block \
-            --node-address $(get_node_address_rpc $NET_ID $NODE_ID) \
+    if [ $(get_node_is_up $NODE_ID) = true ]; then
+        $(get_path_to_client) get-block \
+            --node-address $NODE_ADDRESS \
             --block-identifier "" \
             | jq '.result.block.header.era_id'    
     else
@@ -418,13 +407,14 @@ function get_chain_era() {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_chain_height() {
-    local NET_ID=${1}
-    local NODE_ID=${2}
+function get_chain_height()
+{
+    local NODE_ID=${1:-$(get_node_for_dispatch)}
+    local NODE_ADDRESS=$(get_node_address_rpc $NODE_ID)
 
-    if [ $(get_node_is_up $NET_ID $NODE_ID) = true ]; then
-        $(get_path_to_client $NET_ID) get-block \
-            --node-address $(get_node_address_rpc $NET_ID $NODE_ID) \
+    if [ $(get_node_is_up $NODE_ID) = true ]; then
+        $(get_path_to_client) get-block \
+            --node-address $NODE_ADDRESS \
             --block-identifier "" \
             | jq '.result.block.header.height'    
     else
@@ -437,24 +427,21 @@ function get_chain_height() {
 # Arguments:
 #   Network ordinal identifier.
 #######################################
-function get_chain_name() {
-    local NET_ID=${1}
+function get_chain_name()
+{
+    local NET_ID=${NET_ID:-1}
 
     echo casper-net-$NET_ID
 }
 
 #######################################
 # Returns latest block finalized at a node.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
 #######################################
-function get_chain_latest_block_hash() {
-    local NET_ID=${1}
-    local NODE_ID=${2:-1}
-    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
+function get_chain_latest_block_hash()
+{
+    local NODE_ADDRESS=$(get_node_address_rpc)
 
-    $(get_path_to_client $NET_ID) get-block \
+    $(get_path_to_client) get-block \
         --node-address $NODE_ADDRESS \
         | jq '.result.block.hash' \
         | sed -e 's/^"//' -e 's/"$//'
@@ -462,52 +449,35 @@ function get_chain_latest_block_hash() {
 
 #######################################
 # Returns count of a network's bootstrap nodes.
-# Arguments:
-#   Network ordinal identifier.
 #######################################
-function get_count_of_bootstrap_nodes() {
-    local NET_ID=${1}    
-    source $(get_path_to_net_vars $NET_ID)
-
-    echo $NCTL_NET_BOOTSTRAP_COUNT
+function get_count_of_bootstrap_nodes()
+{
+    # Hard-coded.
+    echo 3
 }
 
 #######################################
 # Returns count of a network's bootstrap nodes.
-# Arguments:
-#   Network ordinal identifier.
 #######################################
-function get_count_of_genesis_nodes() {
-    local NET_ID=${1}    
-    source $(get_path_to_net_vars $NET_ID)
-
-    echo $NCTL_NET_NODE_COUNT
+function get_count_of_genesis_nodes()
+{
+    echo $(($(get_count_of_nodes) / 2))
 }
 
 #######################################
-# Returns count of a network configured nodes.
-# Arguments:
-#   Network ordinal identifier.
+# Returns count of all network nodes.
 #######################################
-function get_count_of_all_nodes() {    
-    local NET_ID=${1}
-
-    source $(get_path_to_net_vars $NET_ID)
-
-    echo $(($NCTL_NET_NODE_COUNT * 2))
+function get_count_of_nodes()
+{    
+    echo $(ls -l $(get_path_to_net)/nodes | grep -c ^d)
 }
 
 #######################################
 # Returns count of test users.
-# Arguments:
-#   Network ordinal identifier.
 #######################################
-function get_count_of_users() {    
-    local NET_ID=${1}
-
-    source $(get_path_to_net_vars $NET_ID)
-
-    echo $NCTL_NET_USER_COUNT
+function get_count_of_users()
+{    
+    echo $(ls -l $(get_path_to_net)/users | grep -c ^d)
 }
 
 #######################################
@@ -531,22 +501,18 @@ function get_genesis_timestamp()
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
 #   Account key.
 #   State root hash.
 #######################################
-function get_main_purse_uref() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}  
-    local ACCOUNT_KEY=${3}
-    local STATE_ROOT_HASH=${4}
-
-    STATE_ROOT_HASH=${STATE_ROOT_HASH:-$(get_state_root_hash $NET_ID $NODE_ID)}
+function get_main_purse_uref()
+{
+    local ACCOUNT_KEY=${1}
+    local STATE_ROOT_HASH=${2:-$(get_state_root_hash)}
 
     echo $(
         source $NCTL/sh/views/view_chain_account.sh \
-            net=$NET_ID node=$NODE_ID account-key=$ACCOUNT_KEY root-hash=$STATE_ROOT_HASH \
+            account-key=$ACCOUNT_KEY \
+            root-hash=$STATE_ROOT_HASH \
             | jq '.stored_value.Account.main_purse' \
             | sed -e 's/^"//' -e 's/"$//'
     )
@@ -555,37 +521,29 @@ function get_main_purse_uref() {
 #######################################
 # Returns network bind address.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
-#   Network bootstrap count.
 #######################################
-function get_network_bind_address() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}   
-    local NET_BOOTSTRAP_COUNT=${3}     
+function get_network_bind_address()
+{
+    local NODE_ID=${1}
 
-    echo "0.0.0.0:$(get_node_port $NCTL_BASE_PORT_NETWORK $NET_ID $NODE_ID)"   
+    echo "0.0.0.0:$(get_node_port $NCTL_BASE_PORT_NETWORK $NODE_ID)"   
 }
 
 #######################################
 # Returns network known addresses.
-# Arguments:
-#   Network ordinal identifier.
-#   Network bootstrap count.
 #######################################
-function get_network_known_addresses() {
-    local NET_ID=${1}    
-    local NET_BOOTSTRAP_COUNT=${2}    
-
+function get_network_known_addresses()
+{
     local RESULT=""
     local ADDRESS=""
-    for IDX in $(seq 1 $NET_BOOTSTRAP_COUNT)
+    for NODE_ID in $(seq 1 $(get_count_of_bootstrap_nodes))
     do
-        ADDRESS=$(get_bootstrap_known_address $NET_ID $IDX)
+        ADDRESS=$(get_bootstrap_known_address $NODE_ID)
         RESULT=$RESULT$ADDRESS
-        if [ $IDX -lt $NET_BOOTSTRAP_COUNT ]; then
+        if [ $NODE_ID -lt $(get_count_of_bootstrap_nodes) ]; then
             RESULT=$RESULT","
-        fi        
+        fi
     done
 
     echo $RESULT
@@ -594,55 +552,51 @@ function get_network_known_addresses() {
 #######################################
 # Returns node event address.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_address_event() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}    
+function get_node_address_event()
+{
+    local NODE_ID=${1}    
 
-    echo http://localhost:"$(get_node_port $NCTL_BASE_PORT_SSE $NET_ID $NODE_ID)"
+    echo http://localhost:"$(get_node_port $NCTL_BASE_PORT_SSE $NODE_ID)"
 }
 
 #######################################
 # Returns node JSON address.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_address_rest() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}   
+function get_node_address_rest()
+{
+    local NODE_ID=${1}   
 
-    echo http://localhost:"$(get_node_port $NCTL_BASE_PORT_REST $NET_ID $NODE_ID)"
+    echo http://localhost:"$(get_node_port $NCTL_BASE_PORT_REST $NODE_ID)"
 }
 
 #######################################
 # Returns node RPC address.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_address_rpc() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}      
+function get_node_address_rpc()
+{
+    local NODE_ID=${1}      
 
-    echo http://localhost:"$(get_node_port $NCTL_BASE_PORT_RPC $NET_ID $NODE_ID)"
+    echo http://localhost:"$(get_node_port $NCTL_BASE_PORT_RPC $NODE_ID)"
 }
 
 #######################################
 # Returns node RPC address, intended for use with cURL.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_address_rpc_for_curl() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}   
+function get_node_address_rpc_for_curl()
+{
+    local NODE_ID=${1}   
 
     # For cURL, need to append '/rpc' to the RPC endpoint URL.
     # This suffix is not needed for use with the client via '--node-address'.
-    echo "$(get_node_address_rpc $NET_ID $NODE_ID)/rpc"
+    echo "$(get_node_address_rpc $NODE_ID)/rpc"
 }
 
 #######################################
@@ -650,12 +604,14 @@ function get_node_address_rpc_for_curl() {
 # Arguments:
 #   Network ordinal identifier.
 #######################################
-function get_node_for_dispatch() {
-    local NET_ID=${1}    
+function get_node_for_dispatch()
+{
+    local NET_ID=${NET_ID:-1}
+    local NODESET=$(seq 1 $(get_count_of_nodes) | shuf)
 
-    for NODE_ID in $(seq 1 $(get_count_of_all_nodes $NET_ID))
+    for NODE_ID in $NODESET
     do
-        if [ $(get_node_is_up $NET_ID $NODE_ID) = true ]; then
+        if [ $(get_node_is_up $NODE_ID) = true ]; then
             echo $NODE_ID
             break
         fi
@@ -666,13 +622,13 @@ function get_node_for_dispatch() {
 # Calculate port for a given base port, network id, and node id.
 # Arguments:
 #   Base starting port.
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_port() {
+function get_node_port()
+{
     local BASE_PORT=${1}    
-    local NET_ID=${2}    
-    local NODE_ID=${3}    
+    local NODE_ID=${2:-$(get_node_for_dispatch)}    
+    local NET_ID=${NET_ID:-1}    
 
     # TODO: Need to handle case of more than 99 nodes.
     echo $(($BASE_PORT + ($NET_ID * 100) + $NODE_ID))
@@ -681,57 +637,48 @@ function get_node_port() {
 #######################################
 # Calculates REST port.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_port_rest() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}    
+function get_node_port_rest()
+{
+    local NODE_ID=${1}    
 
-    echo $(get_node_port $NCTL_BASE_PORT_REST $NET_ID $NODE_ID)
+    echo $(get_node_port $NCTL_BASE_PORT_REST $NODE_ID)
 }
 
 #######################################
 # Calculates RPC port.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_port_rpc() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}    
+function get_node_port_rpc()
+{
+    local NODE_ID=${1}    
 
-    echo $(get_node_port $NCTL_BASE_PORT_RPC $NET_ID $NODE_ID)
+    echo $(get_node_port $NCTL_BASE_PORT_RPC $NODE_ID)
 }
 
 #######################################
 # Calculates SSE port.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_port_sse() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}    
+function get_node_port_sse()
+{
+    local NODE_ID=${1}    
 
-    echo $(get_node_port $NCTL_BASE_PORT_SSE $NET_ID $NODE_ID)
-}
-
-function xxx() {
-    nmap -p 59105 127.0.0.1 | grep "open"
+    echo $(get_node_port $NCTL_BASE_PORT_SSE $NODE_ID)
 }
 
 #######################################
 # Returns flag indicating whether a node is currently up.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_node_is_up() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}    
-
-    local NODE_PORT=$(get_node_port_rest $NET_ID $NODE_ID)
+function get_node_is_up()
+{
+    local NODE_ID=${1}    
+    local NODE_PORT=$(get_node_port_rpc $NODE_ID)
 
     if grep -q "open" <<< "$(nmap -p $NODE_PORT 127.0.0.1)"; then
         echo true
@@ -743,26 +690,22 @@ function get_node_is_up() {
 #######################################
 # Returns set of nodes within a process group.
 # Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
+#   Process group identifier.
 #######################################
-function get_process_group_members() {
-    local NET_ID=${1}    
-    local PROCESS_GROUP=${2}
-
-    # Import net vars.
-    source $(get_path_to_net_vars $NET_ID)
+function get_process_group_members()
+{
+    local PROCESS_GROUP=${1}
 
     # Set range.
     if [ $PROCESS_GROUP == $NCTL_PROCESS_GROUP_1 ]; then
         local SEQ_START=1
-        local SEQ_END=$NCTL_NET_BOOTSTRAP_COUNT
+        local SEQ_END=$(get_count_of_bootstrap_nodes)
     elif [ $PROCESS_GROUP == $NCTL_PROCESS_GROUP_2 ]; then
-        local SEQ_START=$(($NCTL_NET_BOOTSTRAP_COUNT + 1))
-        local SEQ_END=$NCTL_NET_NODE_COUNT
+        local SEQ_START=$(($(get_count_of_bootstrap_nodes) + 1))
+        local SEQ_END=$(get_count_of_genesis_nodes)
     elif [ $PROCESS_GROUP == $NCTL_PROCESS_GROUP_3 ]; then
-        local SEQ_START=$(($NCTL_NET_NODE_COUNT + 1))
-        local SEQ_END=$(($NCTL_NET_NODE_COUNT * 2))
+        local SEQ_START=$(($(get_count_of_genesis_nodes) + 1))
+        local SEQ_END=$(get_count_of_nodes)
     fi
 
     # Set members of process group.
@@ -772,7 +715,7 @@ function get_process_group_members() {
         if [ $NODE_ID -gt $SEQ_START ]; then
             result=$result", "
         fi
-        result=$result$(get_process_name_of_node $NET_ID $NODE_ID)
+        result=$result$(get_process_name_of_node $NODE_ID)
     done
 
     echo $result
@@ -784,9 +727,10 @@ function get_process_group_members() {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_process_name_of_node() {
-    local NET_ID=${1}    
-    local NODE_ID=${2} 
+function get_process_name_of_node()
+{
+    local NODE_ID=${1} 
+    local NET_ID=${NET_ID:-1}    
     
     echo "casper-net-$NET_ID-node-$NODE_ID"
 }
@@ -794,14 +738,14 @@ function get_process_name_of_node() {
 #######################################
 # Returns name of a daemonized node process within a group.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_process_name_of_node_in_group() {
-    local NET_ID=${1}    
-    local NODE_ID=${2} 
-    local NODE_PROCESS_NAME=$(get_process_name_of_node $NET_ID $NODE_ID)
-    local PROCESS_GROUP_NAME=$(get_process_name_of_node_group $NET_ID $NODE_ID)
+function get_process_name_of_node_in_group()
+{
+    local NODE_ID=${1} 
+
+    local NODE_PROCESS_NAME=$(get_process_name_of_node $NODE_ID)
+    local PROCESS_GROUP_NAME=$(get_process_name_of_node_group $NODE_ID)
     
     echo "$PROCESS_GROUP_NAME:$NODE_PROCESS_NAME"
 }
@@ -812,19 +756,14 @@ function get_process_name_of_node_in_group() {
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_process_name_of_node_group() {
-    local NET_ID=${1}    
-    local NODE_ID=${2}
+function get_process_name_of_node_group()
+{
+    local NODE_ID=${1} 
     
-    source $(get_path_to_net_vars $NET_ID)
-
-    # Boostraps.
-    if [ $NODE_ID -le $NCTL_NET_BOOTSTRAP_COUNT ]; then
+    if [ $NODE_ID -le $(get_count_of_bootstrap_nodes) ]; then
         echo $NCTL_PROCESS_GROUP_1
-    # Genesis validators.
-    elif [ $NODE_ID -le $NCTL_NET_NODE_COUNT ]; then
+    elif [ $NODE_ID -le $(get_count_of_genesis_nodes) ]; then
         echo $NCTL_PROCESS_GROUP_2
-    # Other.
     else
         echo $NCTL_PROCESS_GROUP_3
     fi
@@ -833,25 +772,21 @@ function get_process_name_of_node_group() {
 #######################################
 # Returns path to a binary file.
 # Arguments:
-#   Network ordinal identifier.
 #   Binary file name.
 #######################################
-function get_path_to_binary() {
-    local NET_ID=${1}   
-    local FILENAME=${2}    
+function get_path_to_binary()
+{
+    local FILENAME=${1}    
 
-    echo $(get_path_to_net $NET_ID)/bin/$FILENAME
+    echo $(get_path_to_net)/bin/$FILENAME
 }
 
 #######################################
 # Returns path to client binary.
-# Arguments:
-#   Network ordinal identifier.
 #######################################
-function get_path_to_client() {
-    local NET_ID=${1} 
-
-    echo $(get_path_to_binary $NET_ID "casper-client")
+function get_path_to_client()
+{
+    echo $(get_path_to_binary "casper-client")
 }
 
 #######################################
@@ -859,36 +794,31 @@ function get_path_to_client() {
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifier.
 #   Contract wasm file name.
 #######################################
-function get_path_to_contract() {
-    local NET_ID=${1} 
-    local FILENAME=${2}
+function get_path_to_contract()
+{
+    local FILENAME=${1}
 
-    echo $(get_path_to_binary $NET_ID $FILENAME)
+    echo $(get_path_to_binary $FILENAME)
 }
 
 #######################################
 # Returns path to a network faucet.
-# Arguments:
-#   Network ordinal identifier.
 #######################################
-function get_path_to_faucet() {
-    local NET_ID=${1}   
-
-    echo $(get_path_to_net $NET_ID)/faucet
+function get_path_to_faucet()
+{
+    echo $(get_path_to_net)/faucet
 }
 
 #######################################
 # Returns path to a network's assets.
 # Globals:
 #   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
 #######################################
-function get_path_to_net() {
-    local NET_ID=${1}
+function get_path_to_net()
+{
+    local NET_ID=${NET_ID:-1}
 
     echo $NCTL/assets/net-$NET_ID
 }
@@ -900,58 +830,39 @@ function get_path_to_net() {
 # Arguments:
 #   Network ordinal identifier.
 #######################################
-function get_path_to_net_dump() {
-    local NET_ID=${1}
+function get_path_to_net_dump()
+{
+    local NET_ID=${NET_ID:-1}
 
     echo $NCTL/dumps/net-$NET_ID
 }
 
 #######################################
 # Returns path to a network's supervisord config file.
-# Arguments:
-#   Network ordinal identifier.
 #######################################
-function get_path_net_supervisord_cfg() {
-    local NET_ID=${1}
-    local PATH_TO_NET=$(get_path_to_net $NET_ID)
-
-    echo $PATH_TO_NET/daemon/config/supervisord.conf
+function get_path_net_supervisord_cfg()
+{
+    echo $(get_path_to_net)/daemon/config/supervisord.conf
 }
 
 #######################################
 # Returns path to a network's supervisord socket file.
-# Arguments:
-#   Network ordinal identifier.
 #######################################
-function get_path_net_supervisord_sock() {
-    local NET_ID=${1}
-    local PATH_TO_NET=$(get_path_to_net $NET_ID)
-
-    echo $PATH_TO_NET/daemon/socket/supervisord.sock
-}
-
-#######################################
-# Returns path to a network's variables.
-# Arguments:
-#   Network ordinal identifier.
-#######################################
-function get_path_to_net_vars() {
-    local NET_ID=${1}
-
-    echo $(get_path_to_net $NET_ID)/vars
+function get_path_net_supervisord_sock()
+{
+    echo $(get_path_to_net)/daemon/socket/supervisord.sock
 }
 
 #######################################
 # Returns path to a node's assets.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
-function get_path_to_node() {
-    local NET_ID=${1}
-    local NODE_ID=${2} 
+function get_path_to_node()
+{
+    local NODE_ID=${1} 
 
-    echo $(get_path_to_net $NET_ID)/nodes/node-$NODE_ID
+    echo $(get_path_to_net)/nodes/node-$NODE_ID
 }
 
 #######################################
@@ -961,35 +872,149 @@ function get_path_to_node() {
 #   NCTL_ACCOUNT_TYPE_NODE - node account type.
 #   NCTL_ACCOUNT_TYPE_USER - user account type.
 # Arguments:
-#   Network ordinal identifier.
 #   Account type (node | user | faucet).
 #   Account ordinal identifier (optional).
 #######################################
-function get_path_to_secret_key() {
-    local NET_ID=${1}
-    local ACCOUNT_TYPE=${2}
-    local ACCOUNT_IDX=${3}
+function get_path_to_secret_key()
+{
+    local ACCOUNT_TYPE=${1}
+    local ACCOUNT_IDX=${2}
 
     if [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_FAUCET ]; then
-        echo $(get_path_to_faucet $NET_ID)/secret_key.pem
+        echo $(get_path_to_faucet)/secret_key.pem
     elif [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_NODE ]; then
-        echo $(get_path_to_node $NET_ID $ACCOUNT_IDX)/keys/secret_key.pem
+        echo $(get_path_to_node $ACCOUNT_IDX)/keys/secret_key.pem
     elif [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_USER ]; then
-        echo $(get_path_to_user $NET_ID $ACCOUNT_IDX)/secret_key.pem
+        echo $(get_path_to_user $ACCOUNT_IDX)/secret_key.pem
     fi
 }
 
 #######################################
 # Returns path to a user's assets.
 # Arguments:
-#   Network ordinal identifier.
 #   User ordinal identifier.
 #######################################
-function get_path_to_user() {
-    local NET_ID=${1}
-    local USER_ID=${2}
+function get_path_to_user()
+{
+    local USER_ID=${1}
 
-    echo $(get_path_to_net $NET_ID)/users/user-$USER_ID
+    echo $(get_path_to_net)/users/user-$USER_ID
+}
+
+#######################################
+# Returns a formatted session argument.
+# Arguments:
+#   Argument name.
+#   Argument value.
+#   CL type suffix to apply to argument type.
+#   CL type prefix to apply to argument value.
+#######################################
+function get_cl_arg()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+    local CL_TYPE_SUFFIX=${3}
+    local CL_VALUE_PREFIX=${4:-""}
+
+    echo "$ARG_NAME:$CL_TYPE_SUFFIX='$CL_VALUE_PREFIX$ARG_VALUE'"
+}
+
+#######################################
+# Returns a formatted session argument (cl type=account hash).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_account_hash()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "account_hash" "account-hash-")
+}
+
+#######################################
+# Returns a formatted session argument (cl type=account key).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_account_key()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "public_key")
+}
+
+#######################################
+# Returns a formatted session argument (cl type=optional uref).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_opt_uref()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "opt_uref")
+}
+
+#######################################
+# Returns a formatted session argument (cl type=string).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_string()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "string")
+}
+
+#######################################
+# Returns a formatted session argument (cl type=u64).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_u64()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "U64")
+}
+
+#######################################
+# Returns a formatted session argument (cl type=u256).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_u256()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "U256")
+}
+
+#######################################
+# Returns a formatted session argument (cl type=u512).
+# Arguments:
+#   Argument name.
+#   Argument value.
+#######################################
+function get_cl_arg_u512()
+{
+    local ARG_NAME=${1}
+    local ARG_VALUE=${2}
+
+    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "U512")
 }
 
 #######################################
@@ -997,18 +1022,17 @@ function get_path_to_user() {
 # Globals:
 #   NCTL - path to nctl home directory.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #   Block identifier.
 #######################################
-function get_state_root_hash() {
-    local NET_ID=${1}
-    local NODE_ID=${2} 
-    local BLOCK_HASH=${3}
+function get_state_root_hash()
+{
+    local NODE_ID=${1} 
+    local BLOCK_HASH=${2}
 
-    local NODE_ADDRESS=$(get_node_address_rpc $NET_ID $NODE_ID)
+    local NODE_ADDRESS=$(get_node_address_rpc $NODE_ID)
 
-    $(get_path_to_client $NET_ID) get-state-root-hash \
+    $(get_path_to_client) get-state-root-hash \
         --node-address $NODE_ADDRESS \
         --block-identifier ${BLOCK_HASH:-""} \
         | jq '.result.state_root_hash' \
