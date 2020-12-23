@@ -28,6 +28,14 @@ nctl-view-chain-balance purse-uref=A_PURSE_UREF
 nctl-view-chain-balance purse-uref=A_PURSE_UREF root-hash=A_STATE_ROOT_HASH
 ```
 
+### nctl-view-chain-balances
+
+Displays balances of faucet, validator and user accounts (main purses).
+
+```
+nctl-view-chain-balances
+```
+
 ### nctl-view-chain-block block={X:-LATEST}
 
 Displays details of block X.  If block is undefined then it defaults to latest.
