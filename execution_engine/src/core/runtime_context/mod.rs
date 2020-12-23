@@ -331,7 +331,7 @@ where
     /// Generates new deterministic hash for uses as an address.
     pub fn new_hash_address(&mut self) -> Result<[u8; KEY_HASH_LENGTH], Error> {
         let pre_hash_bytes = self.hash_address_generator.borrow_mut().create_address();
-
+        // NOTE: Unwrap below is assumed safe as output size of `KEY_HASH_LENGTH` is a valid value.
         let mut hasher = VarBlake2b::new(KEY_HASH_LENGTH).unwrap();
         hasher.update(&pre_hash_bytes);
         let mut hash_bytes = [0; KEY_HASH_LENGTH];

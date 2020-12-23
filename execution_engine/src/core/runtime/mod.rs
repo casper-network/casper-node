@@ -27,8 +27,7 @@ use casper_types::{
     },
     mint::{self, Mint},
     proof_of_stake::{self, ProofOfStake},
-    runtime_args, standard_payment,
-    standard_payment::StandardPayment,
+    standard_payment::{self, StandardPayment},
     system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
     ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, SystemContractType, Transfer, TransferResult,
@@ -2721,8 +2720,10 @@ where
     /// Calls the `mint` method on the mint contract at the given mint
     /// contract key
     fn mint_mint(&mut self, mint_contract_hash: ContractHash, amount: U512) -> Result<URef, Error> {
-        let runtime_args = runtime_args! {
-            mint::ARG_AMOUNT => amount,
+        let runtime_args = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(mint::ARG_AMOUNT, amount)?;
+            runtime_args
         };
         let result = self.call_contract(mint_contract_hash, mint::METHOD_MINT, runtime_args)?;
         let result: Result<URef, system_contract_errors::mint::Error> = result.into_t()?;
@@ -2736,8 +2737,10 @@ where
         mint_contract_hash: ContractHash,
         amount: U512,
     ) -> Result<(), Error> {
-        let runtime_args = runtime_args! {
-            mint::ARG_AMOUNT => amount,
+        let runtime_args = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(mint::ARG_AMOUNT, amount)?;
+            runtime_args
         };
         let result = self.call_contract(
             mint_contract_hash,
@@ -2772,12 +2775,14 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), ApiError>, Error> {
-        let args_values: RuntimeArgs = runtime_args! {
-            mint::ARG_TO => to,
-            mint::ARG_SOURCE => source,
-            mint::ARG_TARGET => target,
-            mint::ARG_AMOUNT => amount,
-            mint::ARG_ID => id,
+        let args_values = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(mint::ARG_TO, to)?;
+            runtime_args.insert(mint::ARG_SOURCE, source)?;
+            runtime_args.insert(mint::ARG_TARGET, target)?;
+            runtime_args.insert(mint::ARG_AMOUNT, amount)?;
+            runtime_args.insert(mint::ARG_ID, id)?;
+            runtime_args
         };
 
         let call_result =

@@ -194,7 +194,7 @@ where
         // Spec #4: Create a runtime.
         let tracking_copy = match self.tracking_copy(initial_root_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-            // NOTE: As genesis is ran once per instane condition below is considered programming
+            // NOTE: As genesis is ran once per instance condition below is considered programming
             // error
             Ok(None) => panic!("state has not been initialized properly"),
             Err(error) => return Err(error),
@@ -393,6 +393,8 @@ where
                 .iter()
                 .filter_map(|genesis_account| {
                     if genesis_account.is_genesis_validator() {
+                        // NOTE: Safe as genesis validators are expected to have public key
+                        // specified.
                         Some((
                             genesis_account
                                 .public_key()
@@ -1277,7 +1279,7 @@ where
                         .exec_system_contract(
                             DirectSystemContractCall::CreatePurse,
                             mint_module.clone(),
-                            runtime_args! {}, // mint create takes no arguments
+                            RuntimeArgs::new(), // mint create takes no arguments
                             &mut mint_named_keys,
                             Default::default(),
                             mint_base_key,
@@ -1610,10 +1612,21 @@ where
                 // Gas spent during payment code execution
                 let finalize_cost_motes: Motes =
                     Motes::from_gas(payment_result.cost(), CONV_RATE).expect("motes overflow");
-                runtime_args! {
-                    proof_of_stake::ARG_AMOUNT => finalize_cost_motes.value(),
-                    proof_of_stake::ARG_ACCOUNT => deploy_item.address,
-                    proof_of_stake::ARG_TARGET => proposer_purse,
+
+                let account = deploy_item.address;
+                let maybe_runtime_args = RuntimeArgs::try_new(|args| {
+                    args.insert(proof_of_stake::ARG_AMOUNT, finalize_cost_motes.value())?;
+                    args.insert(proof_of_stake::ARG_ACCOUNT, account)?;
+                    args.insert(proof_of_stake::ARG_TARGET, proposer_purse)?;
+                    Ok(())
+                });
+
+                match maybe_runtime_args {
+                    Ok(runtime_args) => runtime_args,
+                    Err(error) => {
+                        let exec_error = ExecError::from(error);
+                        return Ok(ExecutionResult::precondition_failure(exec_error.into()));
+                    }
                 }
             };
 
@@ -2281,10 +2294,19 @@ where
                 let finalize_cost_motes: Motes =
                     Motes::from_gas(execution_result_builder.total_cost(), CONV_RATE)
                         .expect("motes overflow");
-                runtime_args! {
-                    proof_of_stake::ARG_AMOUNT => finalize_cost_motes.value(),
-                    proof_of_stake::ARG_ACCOUNT => account_hash,
-                    proof_of_stake::ARG_TARGET => proposer_purse
+
+                let maybe_runtime_args = RuntimeArgs::try_new(|args| {
+                    args.insert(proof_of_stake::ARG_AMOUNT, finalize_cost_motes.value())?;
+                    args.insert(proof_of_stake::ARG_ACCOUNT, account_hash)?;
+                    args.insert(proof_of_stake::ARG_TARGET, proposer_purse)?;
+                    Ok(())
+                });
+                match maybe_runtime_args {
+                    Ok(runtime_args) => runtime_args,
+                    Err(error) => {
+                        let exec_error = ExecError::from(error);
+                        return Ok(ExecutionResult::precondition_failure(exec_error.into()));
+                    }
                 }
             };
 
@@ -2423,7 +2445,7 @@ where
             .exec_system_contract(
                 DirectSystemContractCall::GetEraValidators,
                 auction_module,
-                runtime_args! {},
+                RuntimeArgs::new(),
                 &mut named_keys,
                 Default::default(),
                 base_key,
@@ -2538,7 +2560,13 @@ where
             }
         };
 
-        let slash_args = runtime_args! {ARG_VALIDATOR_PUBLIC_KEYS => slashed_validators};
+        let slash_args = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args
+                .insert(ARG_VALIDATOR_PUBLIC_KEYS, slashed_validators)
+                .map_err(|e| Error::Exec(e.into()))?;
+            runtime_args
+        };
 
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
             DirectSystemContractCall::Slash,
@@ -2575,7 +2603,17 @@ where
             }
         };
 
-        let reward_args = runtime_args! {ARG_REWARD_FACTORS => reward_factors};
+        let reward_args = {
+            let maybe_runtime_args = RuntimeArgs::try_new(|args| {
+                args.insert(ARG_REWARD_FACTORS, reward_factors)?;
+                Ok(())
+            });
+
+            match maybe_runtime_args {
+                Ok(runtime_args) => runtime_args,
+                Err(error) => return Ok(StepResult::CLValueError(error)),
+            }
+        };
 
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
             DirectSystemContractCall::DistributeRewards,
@@ -2602,7 +2640,7 @@ where
         }
 
         if step_request.run_auction {
-            let run_auction_args = runtime_args! {};
+            let run_auction_args = RuntimeArgs::new();
 
             let (_, execution_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
