@@ -8,7 +8,7 @@
 ########################################
 
 # Import utils.
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
 pushd $NCTL_CASPER_HOME
 # make setup-rs

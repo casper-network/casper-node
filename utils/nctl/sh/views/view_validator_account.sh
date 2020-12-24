@@ -1,5 +1,36 @@
 #!/usr/bin/env bash
 
+source $NCTL/sh/utils/main.sh
+source $NCTL/sh/views/utils.sh
+
+#######################################
+# Renders node on-chain account details.
+# Globals:
+#   NCTL_ACCOUNT_TYPE_NODE - node account type literal.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function main()
+{
+    local NODE_ID=${1}
+
+    if [ $NODE_ID = "all" ]; then
+        for NODE_ID in $(seq 1 $(get_count_of_nodes))
+        do
+            echo "------------------------------------------------------------------------------------------------------------------------------------"
+            log "node #$NODE_ID :: on-chain account details:"
+            render_account $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
+        done
+    else
+        log "node #$NODE_ID :: on-chain account details:"
+        render_account $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
+    fi
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
 unset NODE_ID
 
 for ARGUMENT in "$@"
@@ -12,24 +43,4 @@ do
     esac
 done
 
-NODE_ID=${NODE_ID:-"all"}
-
-# ----------------------------------------------------------------
-# MAIN
-# ----------------------------------------------------------------
-
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
-if [ $NODE_ID = "all" ]; then
-    for NODE_ID in $(seq 1 $(get_count_of_nodes))
-    do
-        echo "------------------------------------------------------------------------------------------------------------------------------------"
-        log "node #$NODE_ID :: on-chain account details:"
-        render_account $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
-    done
-else
-    echo "------------------------------------------------------------------------------------------------------------------------------------"
-    log "node #$NODE_ID :: on-chain account details:"
-    render_account $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
-fi
+main ${NODE_ID:-"all"}

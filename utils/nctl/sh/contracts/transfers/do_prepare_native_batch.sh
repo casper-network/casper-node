@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
 #######################################
 # Prepares native transfers for dispatch to a test net.

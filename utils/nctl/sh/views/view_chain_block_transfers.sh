@@ -1,5 +1,33 @@
 #!/usr/bin/env bash
 
+source $NCTL/sh/utils/main.sh
+
+#######################################
+# Renders on-chain block transfer information.
+# Arguments:
+#   Block hash.
+#######################################
+function main()
+{
+    local BLOCK_HASH=${1}
+    local NODE_ADDRESS=$(get_node_address_rpc)
+
+    if [ "$BLOCK_HASH" ]; then
+        $(get_path_to_client) get-block \
+            --node-address $NODE_ADDRESS \
+            --block-identifier $BLOCK_HASH \
+            | jq '.result.block'
+    else
+        $(get_path_to_client) get-block \
+            --node-address $NODE_ADDRESS \
+            | jq '.result.block'
+    fi
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
 unset BLOCK_HASH
 
 for ARGUMENT in "$@"
@@ -12,11 +40,4 @@ do
     esac
 done
 
-# ----------------------------------------------------------------
-# MAIN
-# ----------------------------------------------------------------
-
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
-render_chain_block_transfers ${BLOCK_HASH:-""}
+main ${BLOCK_HASH:-""}

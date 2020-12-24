@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source $NCTL/sh/utils/main.sh
+
 unset NODE_ID
 
 for ARGUMENT in "$@"
@@ -11,11 +13,5 @@ do
         *)
     esac
 done
-
-# ----------------------------------------------------------------
-# MAIN
-# ----------------------------------------------------------------
-
-source $NCTL/sh/utils.sh
 
 less $(get_path_to_node ${NODE_ID:-1})/logs/stderr.log

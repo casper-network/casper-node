@@ -18,7 +18,7 @@ done
 # MAIN
 # ----------------------------------------------------------------
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
 NODE_ADDRESS=$(get_node_address_rpc)
 STATE_ROOT_HASH=${STATE_ROOT_HASH:-$(get_state_root_hash)}

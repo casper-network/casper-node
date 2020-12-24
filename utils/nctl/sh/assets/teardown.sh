@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
 #######################################
 # Destructure input args.
@@ -34,5 +34,6 @@ fi
 
 log "... deleting files"
 rm -rf $(get_path_to_net)
+rm -rf $NCTL/dumps
 
 log "net-$NET_ID: asset tear-down complete"

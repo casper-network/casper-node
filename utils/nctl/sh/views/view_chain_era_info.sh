@@ -1,5 +1,27 @@
 #!/usr/bin/env bash
 
+source $NCTL/sh/utils/main.sh
+
+#######################################
+# Renders on-chain era information.
+# Arguments:
+#   Node ordinal identifier (optional).
+#######################################
+function main()
+{
+    local NODE_ID=${1}
+    local NODE_ADDRESS=$(get_node_address_rpc $NODE_ID)
+
+    $(get_path_to_client) get-era-info-by-switch-block \
+        --node-address $NODE_ADDRESS \
+        --block-identifier "" \
+        | jq '.result'
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
 unset NODE_ID
 
 for ARGUMENT in "$@"
@@ -12,11 +34,4 @@ do
     esac
 done
 
-# ----------------------------------------------------------------
-# MAIN
-# ----------------------------------------------------------------
-
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
-render_chain_era_info $NODE_ID
+main $NODE_ID

@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
 
-unset OFFSET
+unset FUTURE_HEIGHT
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in        
-        offset) OFFSET=${VALUE} ;;
+        height) FUTURE_HEIGHT=${VALUE} ;;
         *)
     esac
 done
 
-OFFSET=${OFFSET:-1}
+FUTURE_HEIGHT=${FUTURE_HEIGHT:-1}
 
 # ----------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
-await_n_blocks $OFFSET true
+while [ $(get_chain_height) -lt $FUTURE_HEIGHT ];
+do
+    sleep 1.0
+done

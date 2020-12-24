@@ -5,7 +5,7 @@
 #   NCTL - path to nctl home directory.
 
 # Import utils.
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
 #######################################
 # Spins up a node using systemd.

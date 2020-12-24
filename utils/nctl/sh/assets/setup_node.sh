@@ -2,7 +2,7 @@
 # Imports
 #######################################
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
 #######################################
 # Sets entry in chainspec's accounts.csv.

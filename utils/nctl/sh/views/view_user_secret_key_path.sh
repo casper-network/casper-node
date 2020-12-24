@@ -1,5 +1,33 @@
 #!/usr/bin/env bash
 
+source $NCTL/sh/utils/main.sh
+source $NCTL/sh/views/utils.sh
+
+#######################################
+# Renders user account key.
+# Globals:
+#   NCTL_ACCOUNT_TYPE_USER - user account type literal.
+# Arguments:
+#   User ordinal identifier.
+#######################################
+function main()
+{
+    local USER_ID=${1}
+
+    if [ $USER_ID = "all" ]; then
+        for USER_ID in $(seq 1 $(get_count_of_users))
+        do
+            render_account_secret_key $NCTL_ACCOUNT_TYPE_USER $USER_ID
+        done
+    else
+        render_account_secret_key $NCTL_ACCOUNT_TYPE_USER $USER_ID
+    fi
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
 unset USER_ID
 
 for ARGUMENT in "$@"
@@ -12,20 +40,4 @@ do
     esac
 done
 
-USER_ID=${USER_ID:-"all"}
-
-# ----------------------------------------------------------------
-# MAIN
-# ----------------------------------------------------------------
-
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
-if [ $USER_ID = "all" ]; then
-    for USER_ID in $(seq 1 $(get_count_of_users))
-    do
-        render_account_secret_key $NCTL_ACCOUNT_TYPE_USER $USER_ID
-    done
-else
-    render_account_secret_key $NCTL_ACCOUNT_TYPE_USER $USER_ID
-fi
+main ${USER_ID:-"all"}

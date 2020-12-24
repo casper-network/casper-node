@@ -12,7 +12,7 @@
 # Imports
 #######################################
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 source $NCTL/sh/assets/setup_node.sh
 
 #######################################

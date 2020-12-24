@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
 
-unset OFFSET
+unset FUTURE_ERA_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in        
-        offset) OFFSET=${VALUE} ;;
+        era) FUTURE_ERA_ID=${VALUE} ;;
         *)
     esac
 done
 
-OFFSET=${OFFSET:-1}
+FUTURE_ERA_ID=${FUTURE_ERA_ID:-1}
 
 # ----------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
-await_n_eras $OFFSET true
+while [ $(get_chain_era) -lt $FUTURE_ERA_ID ];
+do
+    sleep 5.0
+done

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
 log "dumping transient assets ... please wait"
 

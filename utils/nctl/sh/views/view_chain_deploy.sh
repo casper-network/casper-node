@@ -1,5 +1,27 @@
 #!/usr/bin/env bash
 
+source $NCTL/sh/utils/main.sh
+
+#######################################
+# Renders on-chain deploy information.
+# Arguments:
+#   Deploy hash.
+#######################################
+function main()
+{
+    local DEPLOY_HASH=${1}
+    local NODE_ADDRESS=$(get_node_address_rpc)
+
+    $(get_path_to_client) get-deploy \
+        --node-address $NODE_ADDRESS \
+        $DEPLOY_HASH \
+        | jq '.result'
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
@@ -10,11 +32,4 @@ do
     esac
 done
 
-# ----------------------------------------------------------------
-# MAIN
-# ----------------------------------------------------------------
-
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
-render_chain_deploy $DEPLOY_HASH
+main $DEPLOY_HASH

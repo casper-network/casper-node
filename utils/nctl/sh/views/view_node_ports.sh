@@ -1,5 +1,51 @@
 #!/usr/bin/env bash
 
+source $NCTL/sh/utils/main.sh
+
+#######################################
+# Renders ports at specified node(s).
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function main()
+{
+    local NODE_ID=${1}
+
+    if [ $NODE_ID = "all" ]; then
+        for NODE_ID in $(seq 1 $(get_count_of_nodes))
+        do
+            echo "------------------------------------------------------------------------------------------------------------------------------------"
+            do_render $NODE_ID
+        done
+        echo "------------------------------------------------------------------------------------------------------------------------------------"
+    else
+        do_render $NODE_ID
+    fi
+}
+
+#######################################
+# Displays to stdout current node ports.
+# Globals:
+#   NCTL_BASE_PORT_NETWORK - base port type.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function do_render()
+{
+    local NODE_ID=${1}
+
+    local PORT_VNET=$(get_node_port $NCTL_BASE_PORT_NETWORK $NODE_ID)
+    local PORT_REST=$(get_node_port_rest $NODE_ID)
+    local PORT_RPC=$(get_node_port_rpc $NODE_ID)
+    local PORT_SSE=$(get_node_port_sse $NODE_ID)
+
+    log "node-$NODE_ID :: VNET @ $PORT_VNET :: RPC @ $PORT_RPC :: REST @ $PORT_REST :: SSE @ $PORT_SSE"
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
 unset NODE_ID
 
 for ARGUMENT in "$@"
@@ -12,20 +58,4 @@ do
     esac
 done
 
-NODE_ID=${NODE_ID:-"all"}
-
-# ----------------------------------------------------------------
-# MAIN
-# ----------------------------------------------------------------
-
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
-if [ $NODE_ID = "all" ]; then
-    for IDX in $(seq 1 $(get_count_of_nodes))
-    do
-        render_node_ports $IDX
-    done
-else
-    render_node_ports $NODE_ID
-fi
+main ${NODE_ID:-"all"}

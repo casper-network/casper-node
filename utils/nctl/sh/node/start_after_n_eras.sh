@@ -23,7 +23,7 @@ NODE_ID=${NODE_ID:-6}
 # MAIN
 # ----------------------------------------------------------------
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
 await_n_eras \
     $OFFSET \

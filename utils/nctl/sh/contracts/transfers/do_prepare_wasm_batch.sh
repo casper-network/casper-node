@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 
 #######################################
 # Prepares wasm transfers for dispatch to a test net.

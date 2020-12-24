@@ -23,7 +23,7 @@ NODE_ID=${NODE_ID:-"all"}
 # MAIN
 # ----------------------------------------------------------------
 
-source $NCTL/sh/utils.sh
+source $NCTL/sh/utils/main.sh
 source $NCTL/sh/node/funcs_$NCTL_DAEMON_TYPE.sh
 
 

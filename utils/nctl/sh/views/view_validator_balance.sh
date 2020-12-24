@@ -4,23 +4,23 @@ source $NCTL/sh/utils/main.sh
 source $NCTL/sh/views/utils.sh
 
 #######################################
-# Renders user account key.
+# Renders node account balance.
 # Globals:
-#   NCTL_ACCOUNT_TYPE_USER - user account type literal.
+#   NCTL_ACCOUNT_TYPE_NODE - node account type literal.
 # Arguments:
-#   User ordinal identifier.
+#   Node ordinal identifier.
 #######################################
 function main()
 {
-    local USER_ID=${1}
+    local NODE_ID=${1}
 
-    if [ $USER_ID = "all" ]; then
-        for USER_ID in $(seq 1 $(get_count_of_users))
+    if [ $NODE_ID = "all" ]; then
+        for NODE_ID in $(seq 1 $(get_count_of_nodes))
         do
-            render_account_main_purse_uref $NCTL_ACCOUNT_TYPE_USER $USER_ID
+            render_account_balance $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
         done
     else
-        render_account_main_purse_uref $NCTL_ACCOUNT_TYPE_USER $USER_ID
+        render_account_balance $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
     fi
 }
 
@@ -28,16 +28,16 @@ function main()
 # ENTRY POINT
 # ----------------------------------------------------------------
 
-unset USER_ID
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
     KEY=$(echo $ARGUMENT | cut -f1 -d=)
     VALUE=$(echo $ARGUMENT | cut -f2 -d=)
     case "$KEY" in
-        user) USER_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-main ${USER_ID:-"all"}
+main ${NODE_ID:-"all"}
