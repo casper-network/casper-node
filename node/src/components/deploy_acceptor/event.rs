@@ -23,7 +23,7 @@ pub enum Event {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         chainspec_version: Version,
-        maybe_deploy_config: Box<Option<DeployAcceptorChainspec>>,
+        maybe_chainspec: Box<Option<DeployAcceptorChainspec>>,
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
     PutToStorageResult {
@@ -59,10 +59,10 @@ impl Display for Event {
             }
             Event::GetChainspecResult {
                 chainspec_version,
-                maybe_deploy_config,
+                maybe_chainspec,
                 ..
             } => {
-                if maybe_deploy_config.is_some() {
+                if maybe_chainspec.is_some() {
                     write!(formatter, "got chainspec at {}", chainspec_version)
                 } else {
                     write!(

@@ -95,7 +95,7 @@ impl DeployAcceptor {
                         deploy,
                         source,
                         chainspec_version,
-                        maybe_deploy_config: Box::new(Some(genesis_config)),
+                        maybe_chainspec: Box::new(Some(genesis_config)),
                     })
             }
             None => effect_builder
@@ -104,7 +104,7 @@ impl DeployAcceptor {
                     deploy,
                     source,
                     chainspec_version,
-                    maybe_deploy_config: Box::new(maybe_chainspec.map(|c| (*c).clone().into())),
+                    maybe_chainspec: Box::new(maybe_chainspec.map(|c| (*c).clone().into())),
                 }),
         }
     }
@@ -140,10 +140,11 @@ impl DeployAcceptor {
         effect_builder: EffectBuilder<REv>,
         deploy: Box<Deploy>,
         source: Source<NodeId>,
-        config: DeployAcceptorChainspec,
+        chainspec: DeployAcceptorChainspec,
     ) -> Effects<Event> {
         let mut cloned_deploy = deploy.clone();
-        let is_acceptable = cloned_deploy.is_acceptable(config.chain_name, config.deploy_config);
+        let is_acceptable =
+            cloned_deploy.is_acceptable(chainspec.chain_name, chainspec.deploy_config);
         if !is_acceptable {
             return effect_builder
                 .announce_invalid_deploy(deploy, source)
@@ -216,13 +217,13 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 deploy,
                 source,
                 chainspec_version,
-                maybe_deploy_config,
-            } => match *maybe_deploy_config {
-                Some(deploy_config) => {
+                maybe_chainspec,
+            } => match *maybe_chainspec {
+                Some(chainspec) => {
                     // Update chainspec cache.
                     self.cached_deploy_configs
-                        .insert(chainspec_version, deploy_config.clone());
-                    self.validate(effect_builder, deploy, source, deploy_config)
+                        .insert(chainspec_version, chainspec.clone());
+                    self.validate(effect_builder, deploy, source, chainspec)
                 }
                 None => self.failed_to_get_chainspec(deploy, source, chainspec_version),
             },
