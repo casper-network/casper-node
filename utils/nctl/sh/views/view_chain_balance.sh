@@ -6,8 +6,8 @@ unset PREFIX
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         purse-uref) PURSE_UREF=${VALUE} ;;
         root-hash) STATE_ROOT_HASH=${VALUE} ;;
@@ -22,18 +22,18 @@ PREFIX=${PREFIX:-"account"}
 # MAIN
 # ----------------------------------------------------------------
 
-source $NCTL/sh/utils.sh
+source "$NCTL"/sh/utils/main.sh
 
 NODE_ADDRESS=$(get_node_address_rpc)
 STATE_ROOT_HASH=${STATE_ROOT_HASH:-$(get_state_root_hash)}
 
 ACCOUNT_BALANCE=$(
     $(get_path_to_client) get-balance \
-        --node-address $NODE_ADDRESS \
-        --state-root-hash $STATE_ROOT_HASH \
-        --purse-uref $PURSE_UREF \
+        --node-address "$NODE_ADDRESS" \
+        --state-root-hash "$STATE_ROOT_HASH" \
+        --purse-uref "$PURSE_UREF" \
         | jq '.result.balance_value' \
         | sed -e 's/^"//' -e 's/"$//'
     )
 
-log $PREFIX" balance = "$ACCOUNT_BALANCE
+log "$PREFIX balance = $ACCOUNT_BALANCE"
