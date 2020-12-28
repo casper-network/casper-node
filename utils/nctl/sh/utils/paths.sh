@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 #######################################
 # Returns path to a binary file.
 # Arguments:
@@ -7,7 +9,7 @@ function get_path_to_binary()
 {
     local FILENAME=${1}    
 
-    echo $(get_path_to_net)/bin/$FILENAME
+    echo "$(get_path_to_net)"/bin/"$FILENAME"
 }
 
 #######################################
@@ -15,7 +17,7 @@ function get_path_to_binary()
 #######################################
 function get_path_to_client()
 {
-    echo $(get_path_to_binary "casper-client")
+    get_path_to_binary "casper-client"
 }
 
 #######################################
@@ -29,7 +31,7 @@ function get_path_to_contract()
 {
     local FILENAME=${1}
 
-    echo $(get_path_to_binary $FILENAME)
+    get_path_to_binary "$FILENAME"
 }
 
 #######################################
@@ -37,7 +39,7 @@ function get_path_to_contract()
 #######################################
 function get_path_to_faucet()
 {
-    echo $(get_path_to_net)/faucet
+    echo "$(get_path_to_net)"/faucet
 }
 
 #######################################
@@ -49,7 +51,7 @@ function get_path_to_net()
 {
     local NET_ID=${NET_ID:-1}
 
-    echo $NCTL/assets/net-$NET_ID
+    echo "$NCTL"/assets/net-"$NET_ID"
 }
 
 #######################################
@@ -63,7 +65,7 @@ function get_path_to_net_dump()
 {
     local NET_ID=${NET_ID:-1}
 
-    echo $NCTL/dumps/net-$NET_ID
+    echo "$NCTL"/dumps/net-"$NET_ID"
 }
 
 #######################################
@@ -71,7 +73,7 @@ function get_path_to_net_dump()
 #######################################
 function get_path_net_supervisord_cfg()
 {
-    echo $(get_path_to_net)/daemon/config/supervisord.conf
+    echo "$(get_path_to_net)"/daemon/config/supervisord.conf
 }
 
 #######################################
@@ -79,7 +81,7 @@ function get_path_net_supervisord_cfg()
 #######################################
 function get_path_net_supervisord_sock()
 {
-    echo $(get_path_to_net)/daemon/socket/supervisord.sock
+    echo "$(get_path_to_net)"/daemon/socket/supervisord.sock
 }
 
 #######################################
@@ -91,7 +93,7 @@ function get_path_to_node()
 {
     local NODE_ID=${1} 
 
-    echo $(get_path_to_net)/nodes/node-$NODE_ID
+    echo "$(get_path_to_net)"/nodes/node-"$NODE_ID"
 }
 
 #######################################
@@ -109,12 +111,12 @@ function get_path_to_secret_key()
     local ACCOUNT_TYPE=${1}
     local ACCOUNT_IDX=${2}
 
-    if [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_FAUCET ]; then
-        echo $(get_path_to_faucet)/secret_key.pem
-    elif [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_NODE ]; then
-        echo $(get_path_to_node $ACCOUNT_IDX)/keys/secret_key.pem
-    elif [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_USER ]; then
-        echo $(get_path_to_user $ACCOUNT_IDX)/secret_key.pem
+    if [ "$ACCOUNT_TYPE" = "$NCTL_ACCOUNT_TYPE_FAUCET" ]; then
+        echo "$(get_path_to_faucet)"/secret_key.pem
+    elif [ "$ACCOUNT_TYPE" = "$NCTL_ACCOUNT_TYPE_NODE" ]; then
+        echo "$(get_path_to_node "$ACCOUNT_IDX")"/keys/secret_key.pem
+    elif [ "$ACCOUNT_TYPE" = "$NCTL_ACCOUNT_TYPE_USER" ]; then
+        echo "$(get_path_to_user "$ACCOUNT_IDX")"/secret_key.pem
     fi
 }
 
@@ -127,5 +129,5 @@ function get_path_to_user()
 {
     local USER_ID=${1}
 
-    echo $(get_path_to_net)/users/user-$USER_ID
+    echo "$(get_path_to_net)"/users/user-"$USER_ID"
 }

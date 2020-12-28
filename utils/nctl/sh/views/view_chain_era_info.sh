@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
+source "$NCTL"/sh/utils/main.sh
 
 #######################################
 # Renders on-chain era information.
@@ -10,10 +10,9 @@ source $NCTL/sh/utils/main.sh
 function main()
 {
     local NODE_ID=${1}
-    local NODE_ADDRESS=$(get_node_address_rpc $NODE_ID)
 
     $(get_path_to_client) get-era-info-by-switch-block \
-        --node-address $NODE_ADDRESS \
+        --node-address "$(get_node_address_rpc "$NODE_ID")" \
         --block-identifier "" \
         | jq '.result'
 }
@@ -26,12 +25,12 @@ unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-main $NODE_ID
+main "$NODE_ID"

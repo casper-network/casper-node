@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # OS types.
 declare _OS_LINUX="linux"
 declare _OS_LINUX_REDHAT="$_OS_LINUX-redhat"
@@ -37,7 +39,9 @@ function get_os()
 function log ()
 {
     local MSG=${1}
-    local NOW=`date +%Y-%m-%dT%H:%M:%S.%6N`
+	local NOW
+
+    NOW=$(date +%Y-%m-%dT%H:%M:%S.%6N)
 
     echo -e "$NOW [INFO] [$$] NCTL :: $MSG"
 }
@@ -48,7 +52,9 @@ function log ()
 function log_error ()
 {
     local MSG=${1}
-    local NOW=`date +%Y-%m-%dT%H:%M:%S.%6N`
+    local NOW
+	
+    NOW=$(date +%Y-%m-%dT%H:%M:%S.%6N)
 
     echo -e "$NOW [ERROR] [$$] NCTL :: $MSG"
 }
@@ -78,8 +84,8 @@ function resetd ()
 {
     local DPATH=${1}
 
-    if [ -d $DPATH ]; then
-        rm -rf $DPATH
+    if [ -d "$DPATH" ]; then
+        rm -rf "$DPATH"
     fi
-    mkdir -p $DPATH
+    mkdir -p "$DPATH"
 }

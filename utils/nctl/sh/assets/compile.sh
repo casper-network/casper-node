@@ -6,5 +6,5 @@
 #   NCTL - path to nctl home directory.
 ########################################
 
-source $NCTL/sh/assets/compile_node.sh
-source $NCTL/sh/assets/compile_client.sh
+source "$NCTL"/sh/assets/compile_node.sh
+source "$NCTL"/sh/assets/compile_client.sh

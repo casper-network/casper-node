@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
+source "$NCTL"/sh/utils/main.sh
 
 #######################################
 # Renders chain height at specified node(s).
@@ -13,13 +13,13 @@ function main()
     local NODE_ID=${1}
     local METRIC=${2}
 
-    if [ $NODE_ID = "all" ]; then
-        for NODE_ID in $(seq 1 $(get_count_of_nodes))
+    if [ "$NODE_ID" = "all" ]; then
+        for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
         do
-            do_render $NODE_ID $METRIC
+            do_render "$NODE_ID" "$METRIC"
         done
     else
-        do_render $NODE_ID $METRIC
+        do_render "$NODE_ID" "$METRIC"
     fi
 }
 
@@ -34,13 +34,14 @@ function do_render()
 {
     local NODE_ID=${1}
     local METRICS=${2}
+    local ENDPOINT
 
-    local ENDPOINT=$(get_node_address_rest $NODE_ID)/metrics
+    ENDPOINT="$(get_node_address_rest "$NODE_ID")"/metrics
 
-    if [ $METRICS = "all" ]; then
-        curl -s --location --request GET $ENDPOINT  
+    if [ "$METRICS" = "all" ]; then
+        curl -s --location --request GET "$ENDPOINT"  
     else
-        echo "node #$NODE_ID :: "$(curl -s --location --request GET $ENDPOINT | grep $METRICS | tail -n 1)
+        echo "node #$NODE_ID :: $(curl -s --location --request GET "$ENDPOINT" | grep "$METRICS" | tail -n 1)"
     fi
 }
 
@@ -53,8 +54,8 @@ unset METRIC
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         metric) METRIC=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
@@ -62,9 +63,4 @@ do
     esac
 done
 
-METRIC=${METRIC:-"all"}
-NODE_ID=${NODE_ID:-"all"}
-
-main \
-    ${NODE_ID:-"all"} \
-    ${METRIC:-"all"}
+main "${NODE_ID:-"all"}" "${METRIC:-"all"}"

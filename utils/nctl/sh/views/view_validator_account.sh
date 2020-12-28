@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
-source $NCTL/sh/views/utils.sh
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/views/utils.sh
 
 #######################################
 # Renders node on-chain account details.
@@ -14,16 +14,16 @@ function main()
 {
     local NODE_ID=${1}
 
-    if [ $NODE_ID = "all" ]; then
-        for NODE_ID in $(seq 1 $(get_count_of_nodes))
+    if [ "$NODE_ID" = "all" ]; then
+        for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
         do
             echo "------------------------------------------------------------------------------------------------------------------------------------"
             log "node #$NODE_ID :: on-chain account details:"
-            render_account $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
+            render_account "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
         done
     else
         log "node #$NODE_ID :: on-chain account details:"
-        render_account $NCTL_ACCOUNT_TYPE_NODE $NODE_ID
+        render_account "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
     fi
 }
 
@@ -35,12 +35,12 @@ unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-main ${NODE_ID:-"all"}
+main "${NODE_ID:-"all"}"

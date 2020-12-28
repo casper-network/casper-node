@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
-source $NCTL/sh/views/utils.sh
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/views/utils.sh
 
 #######################################
 # Renders user account key.
@@ -14,13 +14,13 @@ function main()
 {
     local USER_ID=${1}
 
-    if [ $USER_ID = "all" ]; then
-        for USER_ID in $(seq 1 $(get_count_of_users))
+    if [ "$USER_ID" = "all" ]; then
+        for USER_ID in $(seq 1 "$(get_count_of_users)")
         do
-            render_account_secret_key $NCTL_ACCOUNT_TYPE_USER $USER_ID
+            render_account_secret_key "$NCTL_ACCOUNT_TYPE_USER" "$USER_ID"
         done
     else
-        render_account_secret_key $NCTL_ACCOUNT_TYPE_USER $USER_ID
+        render_account_secret_key "$NCTL_ACCOUNT_TYPE_USER" "$USER_ID"
     fi
 }
 
@@ -32,12 +32,12 @@ unset USER_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         user) USER_ID=${VALUE} ;;
         *)
     esac
 done
 
-main ${USER_ID:-"all"}
+main "${USER_ID:-"all"}"

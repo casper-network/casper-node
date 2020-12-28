@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 #######################################
 # Returns a formatted session argument.
 # Arguments:
@@ -27,7 +29,7 @@ function get_cl_arg_account_hash()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "account_hash" "account-hash-")
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "account_hash" "account-hash-"
 }
 
 #######################################
@@ -41,7 +43,7 @@ function get_cl_arg_account_key()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "public_key")
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "public_key"
 }
 
 #######################################
@@ -55,7 +57,7 @@ function get_cl_arg_opt_uref()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "opt_uref")
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "opt_uref"
 }
 
 #######################################
@@ -69,7 +71,7 @@ function get_cl_arg_string()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "string")
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "string"
 }
 
 #######################################
@@ -83,7 +85,7 @@ function get_cl_arg_u64()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "U64")
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "U64"
 }
 
 #######################################
@@ -97,7 +99,7 @@ function get_cl_arg_u256()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "U256")
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "U256"
 }
 
 #######################################
@@ -111,5 +113,5 @@ function get_cl_arg_u512()
     local ARG_NAME=${1}
     local ARG_VALUE=${2}
 
-    echo $(get_cl_arg $ARG_NAME $ARG_VALUE "U512")
+    get_cl_arg "$ARG_NAME" "$ARG_VALUE" "U512"
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
+source "$NCTL"/sh/utils/main.sh
 
-less $(get_path_to_net)/chainspec/accounts.csv
+less "$(get_path_to_net)"/chainspec/accounts.csv

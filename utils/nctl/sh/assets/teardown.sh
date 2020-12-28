@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
+source "$NCTL"/sh/utils/main.sh
 
 #######################################
 # Destructure input args.
@@ -8,8 +8,8 @@ source $NCTL/sh/utils/main.sh
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         net) NET_ID=${VALUE} ;;
         *)
@@ -25,15 +25,15 @@ export NET_ID=${NET_ID:-1}
 log "net-$NET_ID: asset tear-down begins ... please wait"
 
 log "... stopping nodes"
-source $NCTL/sh/node/stop.sh node=all
+source "$NCTL"/sh/node/stop.sh node=all
 
-if [ $NCTL_DAEMON_TYPE = "supervisord" ]; then
+if [ "$NCTL_DAEMON_TYPE" = "supervisord" ]; then
     log "... stopping supervisord"
     do_supervisord_kill
 fi
 
 log "... deleting files"
-rm -rf $(get_path_to_net)
-rm -rf $NCTL/dumps
+rm -rf "$(get_path_to_net)"
+rm -rf "$NCTL"/dumps
 
 log "net-$NET_ID: asset tear-down complete"

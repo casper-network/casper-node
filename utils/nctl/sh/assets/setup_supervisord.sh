@@ -9,12 +9,12 @@
 PATH_TO_NET=$(get_path_to_net)
 
 # Set supervisord.conf file.
-touch  $PATH_TO_NET/daemon/config/supervisord.conf
+touch  "$PATH_TO_NET"/daemon/config/supervisord.conf
 
 # ------------------------------------------------------------------------
 # Set supervisord.conf header.
 # ------------------------------------------------------------------------
-cat >> $PATH_TO_NET/daemon/config/supervisord.conf <<- EOM
+cat >> "$PATH_TO_NET"/daemon/config/supervisord.conf <<- EOM
 [unix_http_server]
 file=$PATH_TO_NET/daemon/socket/supervisord.sock ;
 
@@ -35,7 +35,7 @@ EOM
 # ------------------------------------------------------------------------
 # Set supervisord.conf app sections.
 # ------------------------------------------------------------------------
-for NODE_ID in $(seq 1 $(get_count_of_nodes))
+for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
 do
     # Set paths.
     PATH_CHAINSPEC=$(get_path_to_net)/chainspec/chainspec.toml
@@ -45,16 +45,16 @@ do
     PATH_NODE_SECRET_KEY=$PATH_NODE/keys/secret_key.pem
 
     # Set ports.
-    NODE_API_PORT_REST=$(get_node_port_rest $NODE_ID)
-    NODE_API_PORT_RPC=$(get_node_port_rpc $NODE_ID)
-    NODE_API_PORT_SSE=$(get_node_port_sse $NODE_ID)
+    NODE_API_PORT_REST=$(get_node_port_rest "$NODE_ID")
+    NODE_API_PORT_RPC=$(get_node_port_rpc "$NODE_ID")
+    NODE_API_PORT_SSE=$(get_node_port_sse "$NODE_ID")
 
     # Set validator network addresses.
-    NETWORK_BIND_ADDRESS=$(get_network_bind_address $NODE_ID)
+    NETWORK_BIND_ADDRESS=$(get_network_bind_address "$NODE_ID")
     NETWORK_KNOWN_ADDRESSES=$(get_network_known_addresses)
 
     # Add supervisord application section.
-    cat >> $PATH_TO_NET/daemon/config/supervisord.conf <<- EOM
+    cat >> "$PATH_TO_NET"/daemon/config/supervisord.conf <<- EOM
 
 [program:casper-net-$NET_ID-node-$NODE_ID]
 autostart=false
@@ -83,15 +83,15 @@ done
 # ------------------------------------------------------------------------
 # Set supervisord.conf group sections.
 # ------------------------------------------------------------------------
-cat >> $PATH_TO_NET/daemon/config/supervisord.conf <<- EOM
+cat >> "$PATH_TO_NET"/daemon/config/supervisord.conf <<- EOM
 
 [group:$NCTL_PROCESS_GROUP_1]
-programs=$(get_process_group_members $NCTL_PROCESS_GROUP_1)
+programs=$(get_process_group_members "$NCTL_PROCESS_GROUP_1")
 
 [group:$NCTL_PROCESS_GROUP_2]
-programs=$(get_process_group_members $NCTL_PROCESS_GROUP_2)
+programs=$(get_process_group_members "$NCTL_PROCESS_GROUP_2")
 
 [group:$NCTL_PROCESS_GROUP_3]
-programs=$(get_process_group_members $NCTL_PROCESS_GROUP_3)
+programs=$(get_process_group_members "$NCTL_PROCESS_GROUP_3")
 
 EOM

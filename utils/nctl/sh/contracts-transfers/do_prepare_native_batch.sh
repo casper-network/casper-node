@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
+source "$NCTL"/sh/utils/main.sh
 
 #######################################
 # Prepares native transfers for dispatch to a test net.
@@ -24,8 +24,8 @@ unset BATCH_SIZE
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         amount) AMOUNT=${VALUE} ;;
         count) BATCH_COUNT=${VALUE} ;;
@@ -34,7 +34,6 @@ do
     esac
 done
 
-main \
-    ${AMOUNT:-$NCTL_DEFAULT_TRANSFER_AMOUNT} \
-    ${BATCH_COUNT:-5} \
-    ${BATCH_SIZE:-200} 
+main "${AMOUNT:-$NCTL_DEFAULT_TRANSFER_AMOUNT}" \
+     "${BATCH_COUNT:-5}" \
+     "${BATCH_SIZE:-200}" 

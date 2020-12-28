@@ -9,21 +9,24 @@
 function do_node_start()
 {
     local NODE_ID=${1}
-    local NODE_PROCESS_NAME=$(get_process_name_of_node_in_group $NODE_ID)
-    local PATH_TO_NODE_CONFIG=$(get_path_to_net)/nodes/node-$NODE_ID/config/node-config.toml
+    local NODE_PROCESS_NAME
+    local PATH_TO_NODE_CONFIG
+    local TRUSTED_HASH
 
     # Ensure daemon is up.
     do_supervisord_start
 
     # If non-genesis node then inject a trusted hash.
-    if [ $NODE_ID -gt $(get_count_of_genesis_nodes) ]; then
-        local TRUSTED_HASH=$(get_chain_latest_block_hash)
-        sed -i "s/#trusted_hash/trusted_hash/g" $PATH_TO_NODE_CONFIG > /dev/null 2>&1
-        sed -i "s/^\(trusted_hash\) = .*/\1 = \'${TRUSTED_HASH}\'/" $PATH_TO_NODE_CONFIG > /dev/null 2>&1
+    if [ "$NODE_ID" -gt "$(get_count_of_genesis_nodes)" ]; then
+        PATH_TO_NODE_CONFIG=$(get_path_to_net)/nodes/node-"$NODE_ID"/config/node-config.toml
+        TRUSTED_HASH=$(get_chain_latest_block_hash)
+        sed -i "s/#trusted_hash/trusted_hash/g" "$PATH_TO_NODE_CONFIG" > /dev/null 2>&1
+        sed -i "s/^\(trusted_hash\) = .*/\1 = \'${TRUSTED_HASH}\'/" "$PATH_TO_NODE_CONFIG" > /dev/null 2>&1
         log "... trusted hash=$TRUSTED_HASH"
     fi
 
     # Signal to supervisorctl.
+    NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
     supervisorctl -c "$(get_path_net_supervisord_cfg)" start "$NODE_PROCESS_NAME"  > /dev/null 2>&1
 }
 
@@ -38,12 +41,12 @@ function do_node_start_all()
 {
     # Step 1: start bootstraps.
     log "... starting genesis bootstraps"
-    do_node_start_group $NCTL_PROCESS_GROUP_1
+    do_node_start_group "$NCTL_PROCESS_GROUP_1"
     sleep 1.0
 
     # Step 2: start non-bootstraps.
     log "... starting genesis non-bootstraps"
-    do_node_start_group $NCTL_PROCESS_GROUP_2
+    do_node_start_group "$NCTL_PROCESS_GROUP_2"
 }
 
 #######################################
@@ -71,7 +74,9 @@ function do_node_start_group()
 function do_node_status()
 {
     local NODE_ID=${1}
-    local NODE_PROCESS_NAME=$(get_process_name_of_node_in_group $NODE_ID)
+    local NODE_PROCESS_NAME
+    
+    NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
 
     # Ensure daemon is up.
     do_supervisord_start
@@ -103,12 +108,13 @@ function do_node_status_all()
 function do_node_stop()
 {
     local NODE_ID=${1}
-    local NODE_PROCESS_NAME=$(get_process_name_of_node_in_group $NODE_ID)
-
+    local NODE_PROCESS_NAME
+    
     # Ensure daemon is up.
     do_supervisord_start
     
     # Signal to supervisorctl.
+    NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
     supervisorctl -c "$(get_path_net_supervisord_cfg)" stop "$NODE_PROCESS_NAME"  > /dev/null 2>&1
 }
 

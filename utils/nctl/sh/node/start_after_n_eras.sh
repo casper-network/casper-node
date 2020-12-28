@@ -6,8 +6,8 @@ unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in        
         offset) OFFSET=${VALUE} ;;
         loglevel) LOG_LEVEL=${VALUE} ;;
@@ -23,12 +23,10 @@ NODE_ID=${NODE_ID:-6}
 # MAIN
 # ----------------------------------------------------------------
 
-source $NCTL/sh/utils/main.sh
+source "$NCTL"/sh/utils/main.sh
 
-await_n_eras \
-    $OFFSET \
-    true
+await_n_eras "$OFFSET" true
 
-source $NCTL/sh/node/start.sh \
-    node=$NODE_ID \
-    loglevel=$LOG_LEVEL
+source "$NCTL"/sh/node/start.sh \
+    node="$NODE_ID" \
+    loglevel="$LOG_LEVEL"

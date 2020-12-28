@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
-source $NCTL/sh/views/utils.sh
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/views/utils.sh
 
 # ----------------------------------------------------------------
 # MAIN
@@ -37,13 +37,13 @@ function log_step()
     local COMMENT=${1}
     log "------------------------------------------------------------"
     log "STEP $STEP: $COMMENT"
-    STEP=$(($STEP + 1))
+    STEP=$((STEP + 1))
 }
 
 function do_await_genesis_era_to_complete()
 {
     log_step "awaiting genesis era to complete"
-    while [ $(get_chain_era) -lt 1 ];
+    while [ "$(get_chain_era)" -lt 1 ];
     do
         sleep 1.0
     done
@@ -64,18 +64,18 @@ function do_await_unbonding_eras_to_complete()
 function do_display_root_state_hashes()
 {
     log_step "state root hash at nodes:"
-    for NODE_ID in $(seq 1 $(get_count_of_nodes))
+    for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
     do
-        render_chain_state_root_hash $NODE_ID
+        render_chain_state_root_hash "$NODE_ID"
     done
 }
 
 function do_start_newly_bonded_nodes()
 {
     log_step "starting non-genesis nodes:"
-    for NODE_ID in $(seq $(($(get_count_of_genesis_nodes) + 1)) $(get_count_of_nodes))
+    for NODE_ID in $(seq $(($(get_count_of_genesis_nodes) + 1)) "$(get_count_of_nodes)")
     do
-        source $NCTL/sh/node/start.sh node=$NODE_ID
+        source "$NCTL"/sh/node/start.sh node="$NODE_ID"
         log "node-$NODE_ID started"
     done
 
@@ -86,9 +86,9 @@ function do_start_newly_bonded_nodes()
 function do_stop_genesis_nodes()
 {
     log_step "stopping genesis nodes"
-    for NODE_ID in $(seq 1 $(get_count_of_genesis_nodes))
+    for NODE_ID in $(seq 1 "$(get_count_of_genesis_nodes)")
     do
-        source $NCTL/sh/node/stop.sh node=$NODE_ID
+        source "$NCTL"/sh/node/stop.sh node="$NODE_ID"
         sleep 1.0
         log "node-$NODE_ID stopped"
     done  
@@ -97,16 +97,16 @@ function do_stop_genesis_nodes()
 function do_submit_auction_bids()
 {
     log_step "submitting POS auction bids:"
-    for NODE_ID in $(seq $(($(get_count_of_genesis_nodes) + 1)) $(get_count_of_nodes))
+    for NODE_ID in $(seq $(($(get_count_of_genesis_nodes) + 1)) "$(get_count_of_nodes)")
     do
         log "----- ----- ----- ----- ----- -----"
-        BID_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
+        BID_AMOUNT=$((NCTL_VALIDATOR_BASE_WEIGHT * NODE_ID))
         BID_DELEGATION_RATE=125
 
-        source $NCTL/sh/contracts/auction/do_bid.sh \
-            node=$NODE_ID \
-            amount=$BID_AMOUNT \
-            rate=$BID_DELEGATION_RATE \
+        source "$NCTL"/sh/contracts-auction/do_bid.sh \
+            node="$NODE_ID" \
+            amount="$BID_AMOUNT" \
+            rate="$BID_DELEGATION_RATE" \
             quiet="TRUE"
 
         log "node-$NODE_ID auction bid submitted -> $BID_AMOUNT CSPR"
@@ -118,14 +118,16 @@ function do_submit_auction_bids()
 
 function do_submit_auction_withdrawals()
 {
-    log_step "submitting auction withdrawals:"
-    for NODE_ID in $(seq 1 $(get_count_of_genesis_nodes))
-    do
-        WITHDRAWAL_AMOUNT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
+    local WITHDRAWAL_AMOUNT
 
-        source $NCTL/sh/contracts/auction/do_bid_withdraw.sh \
-            node=$NODE_ID \
-            amount=$WITHDRAWAL_AMOUNT \
+    log_step "submitting auction withdrawals:"
+    for NODE_ID in $(seq 1 "$(get_count_of_genesis_nodes)")
+    do
+        WITHDRAWAL_AMOUNT=$((NCTL_VALIDATOR_BASE_WEIGHT * NODE_ID))
+
+        source "$NCTL"/sh/contracts-auction/do_bid_withdraw.sh \
+            node="$NODE_ID" \
+            amount="$WITHDRAWAL_AMOUNT" \
             quiet="TRUE"
 
         log "node-$NODE_ID auction bid withdrawn -> $WITHDRAWAL_AMOUNT CSPR"

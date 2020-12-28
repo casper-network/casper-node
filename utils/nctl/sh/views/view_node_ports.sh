@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
+source "$NCTL"/sh/utils/main.sh
 
 #######################################
 # Renders ports at specified node(s).
@@ -11,15 +11,15 @@ function main()
 {
     local NODE_ID=${1}
 
-    if [ $NODE_ID = "all" ]; then
-        for NODE_ID in $(seq 1 $(get_count_of_nodes))
+    if [ "$NODE_ID" = "all" ]; then
+        for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
         do
             echo "------------------------------------------------------------------------------------------------------------------------------------"
-            do_render $NODE_ID
+            do_render "$NODE_ID"
         done
         echo "------------------------------------------------------------------------------------------------------------------------------------"
     else
-        do_render $NODE_ID
+        do_render "$NODE_ID"
     fi
 }
 
@@ -33,11 +33,15 @@ function main()
 function do_render()
 {
     local NODE_ID=${1}
+    local PORT_VNET
+    local PORT_REST
+    local PORT_RPC
+    local PORT_SSE
 
-    local PORT_VNET=$(get_node_port $NCTL_BASE_PORT_NETWORK $NODE_ID)
-    local PORT_REST=$(get_node_port_rest $NODE_ID)
-    local PORT_RPC=$(get_node_port_rpc $NODE_ID)
-    local PORT_SSE=$(get_node_port_sse $NODE_ID)
+    PORT_VNET=$(get_node_port "$NCTL_BASE_PORT_NETWORK" "$NODE_ID")
+    PORT_REST=$(get_node_port_rest "$NODE_ID")
+    PORT_RPC=$(get_node_port_rpc "$NODE_ID")
+    PORT_SSE=$(get_node_port_sse "$NODE_ID")
 
     log "node-$NODE_ID :: VNET @ $PORT_VNET :: RPC @ $PORT_RPC :: REST @ $PORT_REST :: SSE @ $PORT_SSE"
 }
@@ -50,12 +54,12 @@ unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-main ${NODE_ID:-"all"}
+main "${NODE_ID:-"all"}"

@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 #######################################
 # Returns a chain era.
 # Arguments:
@@ -7,11 +9,10 @@
 function get_chain_era()
 {
     local NODE_ID=${1:-$(get_node_for_dispatch)}
-    local NODE_ADDRESS=$(get_node_address_rpc $NODE_ID)
 
-    if [ $(get_node_is_up $NODE_ID) = true ]; then
+    if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
         $(get_path_to_client) get-block \
-            --node-address $NODE_ADDRESS \
+            --node-address "$(get_node_address_rpc "$NODE_ID")" \
             --block-identifier "" \
             | jq '.result.block.header.era_id'    
     else
@@ -28,11 +29,10 @@ function get_chain_era()
 function get_chain_height()
 {
     local NODE_ID=${1:-$(get_node_for_dispatch)}
-    local NODE_ADDRESS=$(get_node_address_rpc $NODE_ID)
 
-    if [ $(get_node_is_up $NODE_ID) = true ]; then
+    if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
         $(get_path_to_client) get-block \
-            --node-address $NODE_ADDRESS \
+            --node-address "$(get_node_address_rpc "$NODE_ID")" \
             --block-identifier "" \
             | jq '.result.block.header.height'    
     else
@@ -49,7 +49,7 @@ function get_chain_name()
 {
     local NET_ID=${NET_ID:-1}
 
-    echo casper-net-$NET_ID
+    echo casper-net-"$NET_ID"
 }
 
 #######################################
@@ -57,10 +57,8 @@ function get_chain_name()
 #######################################
 function get_chain_latest_block_hash()
 {
-    local NODE_ADDRESS=$(get_node_address_rpc)
-
     $(get_path_to_client) get-block \
-        --node-address $NODE_ADDRESS \
+        --node-address "$(get_node_address_rpc)" \
         | jq '.result.block.hash' \
         | sed -e 's/^"//' -e 's/"$//'
 }
@@ -94,11 +92,9 @@ function get_state_root_hash()
     local NODE_ID=${1} 
     local BLOCK_HASH=${2}
 
-    local NODE_ADDRESS=$(get_node_address_rpc $NODE_ID)
-
     $(get_path_to_client) get-state-root-hash \
-        --node-address $NODE_ADDRESS \
-        --block-identifier ${BLOCK_HASH:-""} \
+        --node-address "$(get_node_address_rpc "$NODE_ID")" \
+        --block-identifier "${BLOCK_HASH:-""}" \
         | jq '.result.state_root_hash' \
         | sed -e 's/^"//' -e 's/"$//'
 }

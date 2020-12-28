@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 #######################################
 # Returns an on-chain account hash.
 # Arguments:
@@ -34,12 +36,12 @@ function get_account_key()
     local ACCOUNT_TYPE=${1}
     local ACCOUNT_IDX=${2}
 
-    if [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_FAUCET ]; then
-        echo `cat $(get_path_to_faucet)/public_key_hex`
-    elif [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_NODE ]; then
-        echo `cat $(get_path_to_node $ACCOUNT_IDX)/keys/public_key_hex`
-    elif [ $ACCOUNT_TYPE = $NCTL_ACCOUNT_TYPE_USER ]; then
-        echo `cat $(get_path_to_user $ACCOUNT_IDX)/public_key_hex`
+    if [ "$ACCOUNT_TYPE" = "$NCTL_ACCOUNT_TYPE_FAUCET" ]; then
+        cat "$(get_path_to_faucet)"/public_key_hex
+    elif [ "$ACCOUNT_TYPE" = "$NCTL_ACCOUNT_TYPE_NODE" ]; then
+        cat "$(get_path_to_node "$ACCOUNT_IDX")"/keys/public_key_hex
+    elif [ "$ACCOUNT_TYPE" = "$NCTL_ACCOUNT_TYPE_USER" ]; then
+        cat "$(get_path_to_user "$ACCOUNT_IDX")"/public_key_hex
     fi
 }
 
@@ -57,12 +59,12 @@ function get_account_prefix()
     local ACCOUNT_IDX=${2:-}
     local NET_ID=${NET_ID:-1}
 
-    local prefix="net-$NET_ID.$ACCOUNT_TYPE"
-    if [ $ACCOUNT_TYPE != $NCTL_ACCOUNT_TYPE_FAUCET ]; then
-        prefix=$prefix"-"$ACCOUNT_IDX
+    local PREFIX="net-$NET_ID.$ACCOUNT_TYPE"
+    if [ "$ACCOUNT_TYPE" != "$NCTL_ACCOUNT_TYPE_FAUCET" ]; then
+        PREFIX=$PREFIX"-"$ACCOUNT_IDX
     fi 
 
-    echo $prefix
+    echo "$PREFIX"
 }
 
 #######################################
@@ -78,11 +80,9 @@ function get_main_purse_uref()
     local ACCOUNT_KEY=${1}
     local STATE_ROOT_HASH=${2:-$(get_state_root_hash)}
 
-    echo $(
-        source $NCTL/sh/views/view_chain_account.sh \
-            account-key=$ACCOUNT_KEY \
-            root-hash=$STATE_ROOT_HASH \
-            | jq '.stored_value.Account.main_purse' \
-            | sed -e 's/^"//' -e 's/"$//'
-    )
+    source "$NCTL"/sh/views/view_chain_account.sh \
+        account-key="$ACCOUNT_KEY" \
+        root-hash="$STATE_ROOT_HASH" \
+        | jq '.stored_value.Account.main_purse' \
+        | sed -e 's/^"//' -e 's/"$//'
 }

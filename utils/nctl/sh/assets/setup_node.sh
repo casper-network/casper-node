@@ -1,8 +1,4 @@
-#######################################
-# Imports
-#######################################
-
-source $NCTL/sh/utils/main.sh
+#!/usr/bin/env bash
 
 #######################################
 # Sets entry in chainspec's accounts.csv.
@@ -19,8 +15,8 @@ function setup_chainspec_account()
     local INITIAL_BALANCE=${3}
     local INITIAL_WEIGHT=${4}
 
-    account_key=`cat $PATH_TO_ACCOUNT_KEY`
-	cat >> $PATH_TO_NET/chainspec/accounts.csv <<- EOM
+    account_key=$(cat "$PATH_TO_ACCOUNT_KEY")
+	cat >> "$PATH_TO_NET"/chainspec/accounts.csv <<- EOM
 	${account_key},$INITIAL_BALANCE,$INITIAL_WEIGHT
 	EOM
 }
@@ -40,33 +36,35 @@ function setup_node()
 {
     local NODE_ID=${1}
     local COUNT_GENESIS_NODES=${2}
+    local PATH_TO_NET
+    local PATH_TO_NODE
 
-    local PATH_TO_NET=$(get_path_to_net)
-    local PATH_TO_NODE=$(get_path_to_node $NODE_ID)
+    PATH_TO_NET=$(get_path_to_net)
+    PATH_TO_NODE=$(get_path_to_node "$NODE_ID")
 
     # Set directory.
-    mkdir $PATH_TO_NODE
-    mkdir $PATH_TO_NODE/config
-    mkdir $PATH_TO_NODE/keys
-    mkdir $PATH_TO_NODE/logs
-    mkdir $PATH_TO_NODE/storage
+    mkdir "$PATH_TO_NODE"
+    mkdir "$PATH_TO_NODE"/config
+    mkdir "$PATH_TO_NODE"/keys
+    mkdir "$PATH_TO_NODE"/logs
+    mkdir "$PATH_TO_NODE"/storage
 
     # Set config.
-    cp $NCTL_CASPER_HOME/resources/local/config.toml $PATH_TO_NODE/config/node-config.toml
+    cp "$NCTL_CASPER_HOME"/resources/local/config.toml "$PATH_TO_NODE"/config/node-config.toml
 
     # Set keys.
-    $(get_path_to_client) keygen -f $PATH_TO_NODE/keys > /dev/null 2>&1
+    $(get_path_to_client) keygen -f "$PATH_TO_NODE"/keys > /dev/null 2>&1
 
     # Set staking weight.
     local POS_WEIGHT
-    if [ $NODE_ID -le $COUNT_GENESIS_NODES ]; then
-        POS_WEIGHT=$(($NCTL_VALIDATOR_BASE_WEIGHT * $NODE_ID))
+    if [ "$NODE_ID" -le "$COUNT_GENESIS_NODES" ]; then
+        POS_WEIGHT=$((NCTL_VALIDATOR_BASE_WEIGHT * NODE_ID))
     else
         POS_WEIGHT=0
     fi 
 
     # Set chainspec account.
-	cat >> $PATH_TO_NET/chainspec/accounts.csv <<- EOM
-	$(get_account_key $NCTL_ACCOUNT_TYPE_NODE $NODE_ID),$NCTL_INITIAL_BALANCE_VALIDATOR,$POS_WEIGHT
+	cat >> "$PATH_TO_NET"/chainspec/accounts.csv <<- EOM
+	$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"),$NCTL_INITIAL_BALANCE_VALIDATOR,$POS_WEIGHT
 	EOM
 }

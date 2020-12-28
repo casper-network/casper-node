@@ -8,9 +8,9 @@
 ########################################
 
 # Import utils.
-source $NCTL/sh/utils/main.sh
+source "$NCTL"/sh/utils/main.sh
 
-pushd $NCTL_CASPER_HOME
+pushd "$NCTL_CASPER_HOME" || exit
 
 # Build client utility.
 cargo build --release --package casper-client
@@ -23,4 +23,4 @@ make build-contract-rs/transfer-to-account-u512-stored
 make build-contract-rs/undelegate
 make build-contract-rs/withdraw-bid
 
-popd -1
+popd || exit

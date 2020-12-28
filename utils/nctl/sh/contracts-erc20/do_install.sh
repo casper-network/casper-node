@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
-source $NCTL/sh/contracts/erc20/utils.sh
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/contracts-erc20/utils.sh
 
 #######################################
 # Installs ERC-20 token contract under network faucet account.
@@ -15,23 +15,30 @@ function main()
     local TOKEN_NAME=${1}
     local TOKEN_SYMBOL=${2}
     local TOKEN_SUPPLY=${3}
+    local CHAIN_NAME
+    local GAS_PRICE
+    local GAS_PAYMENT
+    local NODE_ADDRESS
+    local PATH_TO_CLIENT
+    local PATH_TO_CONTRACT
+    local CONTRACT_OWNER_SECRET_KEY
 
     # Set standard deploy parameters.
-    local CHAIN_NAME=$(get_chain_name)
-    local GAS_PRICE=${GAS_PRICE:-$NCTL_DEFAULT_GAS_PRICE}
-    local GAS_PAYMENT=70000000000
-    local NODE_ADDRESS=$(get_node_address_rpc)
-    local PATH_TO_CLIENT=$(get_path_to_client)
+    CHAIN_NAME=$(get_chain_name)
+    GAS_PRICE=${GAS_PRICE:-$NCTL_DEFAULT_GAS_PRICE}
+    GAS_PAYMENT=70000000000
+    NODE_ADDRESS=$(get_node_address_rpc)
+    PATH_TO_CLIENT=$(get_path_to_client)
 
     # Set contract path.
-    local PATH_TO_CONTRACT=$(get_path_to_contract "erc20.wasm")
-    if [ ! -f $PATH_TO_CONTRACT ]; then
-        echo "ERROR: The erc20.wasm binary file cannot be found.  Please compile it and move it to the following directory: "$(get_path_to_net)
+    PATH_TO_CONTRACT=$(get_path_to_contract "erc20.wasm")
+    if [ ! -f "$PATH_TO_CONTRACT" ]; then
+        echo "ERROR: The erc20.wasm binary file cannot be found.  Please compile it and move it to the following directory: $(get_path_to_net)"
         return
     fi
 
     # Set contract owner secret key.
-    local CONTRACT_OWNER_SECRET_KEY=$(get_path_to_secret_key $NCTL_ACCOUNT_TYPE_FAUCET)
+    CONTRACT_OWNER_SECRET_KEY=$(get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_FAUCET")
 
     log "installing contract -> ERC-20"
     log "... chain = $CHAIN_NAME"
@@ -47,17 +54,17 @@ function main()
 
     # Dispatch deploy (hits node api).
     DEPLOY_HASH=$(
-        $(get_path_to_client) put-deploy \
-            --chain-name $CHAIN_NAME \
-            --gas-price $GAS_PRICE \
-            --node-address $NODE_ADDRESS \
-            --payment-amount $GAS_PAYMENT \
+        $PATH_TO_CLIENT put-deploy \
+            --chain-name "$CHAIN_NAME" \
+            --gas-price "$GAS_PRICE" \
+            --node-address "$NODE_ADDRESS" \
+            --payment-amount "$GAS_PAYMENT" \
             --ttl "1day" \
-            --secret-key $CONTRACT_OWNER_SECRET_KEY \
-            --session-path $PATH_TO_CONTRACT \
-            --session-arg "$(get_cl_arg_string 'tokenName' $TOKEN_NAME)" \
-            --session-arg "$(get_cl_arg_string 'tokenSymbol' $TOKEN_SYMBOL)" \
-            --session-arg "$(get_cl_arg_u256 'tokenTotalSupply' $TOKEN_SUPPLY)" \
+            --secret-key "$CONTRACT_OWNER_SECRET_KEY" \
+            --session-path "$PATH_TO_CONTRACT" \
+            --session-arg "$(get_cl_arg_string 'tokenName' "$TOKEN_NAME")" \
+            --session-arg "$(get_cl_arg_string 'tokenSymbol' "$TOKEN_SYMBOL")" \
+            --session-arg "$(get_cl_arg_u256 'tokenTotalSupply' "$TOKEN_SUPPLY")" \
             | jq '.result.deploy_hash' \
             | sed -e 's/^"//' -e 's/"$//'
         )
@@ -75,8 +82,8 @@ unset TOKEN_SYMBOL
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         name) TOKEN_NAME=${VALUE} ;;
         supply) TOKEN_SUPPLY=${VALUE} ;;
@@ -85,7 +92,6 @@ do
     esac
 done
 
-main \
-    ${TOKEN_NAME:-"Acme Token"} \
-    ${TOKEN_SYMBOL:-"ACME"} \
-    ${TOKEN_SUPPLY:-1000000000000000000000000000000000} 
+main "${TOKEN_NAME:-"Acme Token"}" \
+     "${TOKEN_SYMBOL:-"ACME"}" \
+     "${TOKEN_SUPPLY:-1000000000000000000000000000000000}"

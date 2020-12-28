@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils/main.sh
-source $NCTL/sh/contracts/erc20/utils.sh
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/contracts-erc20/utils.sh
 
 #######################################
 # Renders ERC-20 token contract details.
@@ -11,23 +11,30 @@ source $NCTL/sh/contracts/erc20/utils.sh
 #######################################
 function main()
 {
+    local CONTRACT_OWNER_ACCOUNT_KEY
+    local CONTRACT_HASH
+    local TOKEN_NAME
+    local TOKEN_SYMBOL
+    local TOKEN_SUPPLY
+    local TOKEN_DECIMALS
+
     # Set contract owner account key - i.e. faucet account.
-    local CONTRACT_OWNER_ACCOUNT_KEY=$(get_account_key $NCTL_ACCOUNT_TYPE_FAUCET)
+    CONTRACT_OWNER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_FAUCET")
 
     # Set contract hash (hits node api).
-    local CONTRACT_HASH=$(get_erc20_contract_hash $CONTRACT_OWNER_ACCOUNT_KEY)
+    CONTRACT_HASH=$(get_erc20_contract_hash "$CONTRACT_OWNER_ACCOUNT_KEY")
 
     # Set token name (hits node api).
-    local TOKEN_NAME=$(get_erc20_contract_key_value $CONTRACT_HASH "_name")
+    TOKEN_NAME=$(get_erc20_contract_key_value "$CONTRACT_HASH" "_name")
 
     # Set token symbol (hits node api).
-    local TOKEN_SYMBOL=$(get_erc20_contract_key_value $CONTRACT_HASH "_symbol")
+    TOKEN_SYMBOL=$(get_erc20_contract_key_value "$CONTRACT_HASH" "_symbol")
 
     # Set token supply (hits node api).
-    local TOKEN_SUPPLY=$(get_erc20_contract_key_value $CONTRACT_HASH "_totalSupply")
+    TOKEN_SUPPLY=$(get_erc20_contract_key_value "$CONTRACT_HASH" "_totalSupply")
 
     # Set token decimals (hits node api).
-    local TOKEN_DECIMALS=$(get_erc20_contract_key_value $CONTRACT_HASH "_decimals")
+    TOKEN_DECIMALS=$(get_erc20_contract_key_value "$CONTRACT_HASH" "_decimals")
 
     log "Contract Details -> ERC-20"
     log "... on-chain name = ERC20"
