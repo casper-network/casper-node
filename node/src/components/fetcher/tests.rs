@@ -42,6 +42,7 @@ impl Drop for Reactor {
 pub struct FetcherTestConfig {
     fetcher_config: Config,
     storage_config: storage::Config,
+    deploy_acceptor_config: deploy_acceptor::Config,
     temp_dir: TempDir,
 }
 
@@ -51,6 +52,7 @@ impl Default for FetcherTestConfig {
         FetcherTestConfig {
             fetcher_config: Default::default(),
             storage_config,
+            deploy_acceptor_config: deploy_acceptor::Config::new(false),
             temp_dir,
         }
     }
@@ -66,7 +68,7 @@ reactor!(Reactor {
         );
         network = infallible InMemoryNetwork::<Message>(event_queue, rng);
         storage = Storage(&WithDir::new(cfg.temp_dir.path(), cfg.storage_config));
-        deploy_acceptor = infallible DeployAcceptor();
+        deploy_acceptor = infallible DeployAcceptor(cfg.deploy_acceptor_config);
         deploy_fetcher = infallible Fetcher::<Deploy>(cfg.fetcher_config);
     }
 
