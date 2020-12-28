@@ -548,7 +548,7 @@ impl Deploy {
         if header.chain_name() != chain_name {
             warn!(
                 deploy_hash = %self.id(),
-                deploy_header = %self.header(),
+                deploy_header = %header,
                 chain_name = %header.chain_name(),
                 "invalid chain identifier"
             );
