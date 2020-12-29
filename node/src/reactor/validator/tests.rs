@@ -13,7 +13,7 @@ use log::info;
 use num_rational::Ratio;
 
 use crate::{
-    components::{consensus::EraId, small_network, storage},
+    components::{consensus::EraId, gossiper, small_network, storage},
     crypto::asymmetric_key::{PublicKey, SecretKey},
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
@@ -91,6 +91,7 @@ impl TestChain {
             } else {
                 small_network::Config::default_local_net(first_node_port)
             },
+            gossip: gossiper::Config::new_with_small_timeouts(),
             ..Default::default()
         };
 
