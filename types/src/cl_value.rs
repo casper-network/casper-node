@@ -14,6 +14,7 @@ use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     CLType, CLTyped, Key, PublicKey, URef, U128, U256, U512,
 };
+use serde::ser::Error;
 
 /// Error while converting a [`CLValue`] into a given type.
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -273,9 +274,10 @@ struct CLValueJson {
 impl Serialize for CLValue {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
+            let bytes = self.to_bytes().map_err(S::Error::custom)?;
             CLValueJson {
                 cl_type: self.cl_type.clone(),
-                serialized_bytes: base16::encode_lower(&self.bytes),
+                serialized_bytes: base16::encode_lower(&bytes),
                 parsed_to_json: self.to_json(),
             }
             .serialize(serializer)
