@@ -34,7 +34,7 @@ use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::block_proposer::DeployType,
+    components::{block_proposer::DeployType, chainspec_loader::DeployConfig},
     crypto::{
         asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
@@ -534,6 +534,50 @@ impl Deploy {
             }
             Some(validity) => validity,
         }
+    }
+
+    /// Returns true if and only if:
+    ///   * the chain_name is correct,
+    ///   * the configured parameters are complied with,
+    ///   * the deploy is valid
+    ///
+    /// Note: if everything else checks out, calls the computationally expensive `is_valid`
+    /// method.
+    pub fn is_acceptable(&mut self, chain_name: String, config: DeployConfig) -> bool {
+        let header = self.header();
+        if header.chain_name() != chain_name {
+            warn!(
+                deploy_hash = %self.id(),
+                deploy_header = %header,
+                chain_name = %header.chain_name(),
+                "invalid chain identifier"
+            );
+            return false;
+        }
+
+        if header.dependencies().len() > config.max_dependencies as usize {
+            warn!(
+                deploy_hash = %self.id(),
+                deploy_header = %header,
+                max_dependencies = %config.max_dependencies,
+                "deploy dependency ceiling exceeded"
+            );
+            return false;
+        }
+
+        if header.ttl() > config.max_ttl {
+            warn!(
+                deploy_hash = %self.id(),
+                deploy_header = %header,
+                max_ttl = %config.max_ttl,
+                "deploy ttl excessive"
+            );
+            return false;
+        }
+
+        // TODO - check if there is more that can be validated here.
+
+        self.is_valid()
     }
 
     /// Generates a random instance using a `TestRng`.

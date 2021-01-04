@@ -198,6 +198,13 @@ get_remainder_timeout_secs = 5
 # not received within this specified duration.
 get_from_peer_timeout = 3
 
+# ===================================================
+# Configuration options for deploy acceptor component
+# ===================================================
+[deploy_acceptor]
+
+# If true, the deploy acceptor will verify the account associated with a received deploy prior to accepting it.
+verify_accounts = true
 
 # ========================================================
 # Configuration options for the contract runtime component
