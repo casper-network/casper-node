@@ -317,8 +317,7 @@ where
                 era_id,
                 pk,
                 responder,
-            )) => handling_es
-                .is_bonded_validator(era_id, pk, responder)
+            )) => handling_es.is_bonded_validator(era_id, pk, responder),
         }
     }
 }
