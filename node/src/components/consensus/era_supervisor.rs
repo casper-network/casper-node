@@ -832,8 +832,7 @@ where
         self.era_supervisor
             .active_eras
             .get(&era_id)
-            .map(|cp| cp.is_bonded_validator(&vid))
-            .unwrap_or(false)
+            .map_or(false, |cp| cp.is_bonded_validator(&vid))
     }
 }
 

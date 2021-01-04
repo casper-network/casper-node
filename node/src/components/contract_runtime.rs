@@ -305,7 +305,7 @@ where
                 public_key: validator_key,
                 responder,
             }) => {
-                trace!("is validator bonded request");
+                trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 let request =

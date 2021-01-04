@@ -45,7 +45,6 @@ use crate::{
     types::{Deploy, DeployHash, NodeRng},
     utils::DisplayIter,
 };
-use std::rc::Rc;
 
 static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
     let secret_key_1 = SecretKey::new_ed25519([0; 32]);
@@ -1210,7 +1209,7 @@ impl FinalitySignature {
     pub fn new(
         block_hash: BlockHash,
         era_id: EraId,
-        secret_key: &Rc<SecretKey>,
+        secret_key: &SecretKey,
         public_key: PublicKey,
         rng: &mut NodeRng,
     ) -> Self {
@@ -1344,7 +1343,7 @@ mod tests {
 
     #[test]
     fn finality_signature() {
-        let mut rng = TestRng::from_seed([2u8; 16]);
+        let mut rng = TestRng::new();
         let block = Block::random(&mut rng);
         // Signature should be over both block hash and era id.
         let (secret_key, public_key) = asymmetric_key::generate_ed25519_keypair();
@@ -1353,7 +1352,7 @@ mod tests {
         let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key, &mut rng);
         assert!(fs.verify().is_ok());
         let signature = fs.signature;
-        // Verify that signatures includes era id.
+        // Verify that signature includes era id.
         let fs_manufactured = FinalitySignature {
             block_hash: *block.hash(),
             era_id: EraId(2),

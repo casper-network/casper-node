@@ -195,13 +195,13 @@ impl<I> LinearChain<I> {
     }
 
     /// Adds finality signature to the collection of pending finality signatures.
-    fn add_finality_signature(&mut self, fs: FinalitySignature) {
+    fn add_pending_finality_signature(&mut self, fs: FinalitySignature) {
         let FinalitySignature {
             block_hash,
             public_key,
             ..
         } = fs;
-        debug!(%block_hash, %public_key, "received new finality signature");
+        debug!(%block_hash, %public_key, "received new finality signature for unknown block");
         let sigs = self
             .pending_finality_signatures
             .entry(public_key)
@@ -352,9 +352,14 @@ where
                         block.hash(),
                         &fs.block_hash,
                         "block loaded from storage should have a matching block hash."
+                    );
+                    assert_eq!(
+                        block.header().era_id(),
+                        fs.era_id,
+                        "block loaded from storage should have a matching era_id."
                     )
                 }
-                // Check if validator is bonded in the era in which the block was created in.
+                // Check if validator is bonded in the era in which the block was created.
                 effect_builder
                     .is_bonded_validator(fs.era_id, fs.public_key)
                     .map(|is_bonded| {
@@ -372,98 +377,64 @@ where
                 |(maybe_block, fs)| Event::IsBondedFutureEra(maybe_block, fs),
             ),
             Event::IsBondedFutureEra(maybe_block, fs) => {
-                // This should be safe to do. `self.latest_block` will be None only if ew haven't
-                // finalized *any* block yet. which will be just after the Genesis
+                // This should be safe to do. `self.latest_block` will be None only if we haven't
+                // finalized *any* block yet, which will be just after the Genesis
                 // era start. Even if we receive a finality signature before finalizing anything,
                 // that will be for the *current* era and we won't be looking up whether validator
                 // is bonded in the Contract Runtime.
-                let state_root_hash = self
-                    .latest_block
-                    .as_ref()
-                    .map(|lb| *lb.header().state_root_hash())
-                    .unwrap();
-                let next_era_id = self
-                    .latest_block
-                    .as_ref()
-                    .map(|lb| lb.header().era_id().successor())
-                    .unwrap();
+                let latest_header = self.latest_block.as_ref().unwrap().header();
+                let state_root_hash = latest_header.state_root_hash();
+                let next_era_id = latest_header.era_id().successor();
                 // TODO: Use protocol version that is valid for the block's height.
                 let protocol_version = ProtocolVersion::new(SemVer::V1_0_0);
                 effect_builder
                     .is_bonded_in_future_era(
-                        state_root_hash,
+                        *state_root_hash,
                         next_era_id,
                         protocol_version,
                         fs.public_key,
                     )
-                    .map(|is_bonded_res| match is_bonded_res {
-                        Ok(is_bonded) => (maybe_block, fs, is_bonded),
-                        Err(error) => {
+                    .result(
+                        |is_bonded| Event::IsBonded(maybe_block, fs, is_bonded),
+                        |error| {
                             error!(%error, "is_bonded_in_future_era returned an error.");
                             panic!("couldn't check if validator is bonded")
-                        }
-                    })
+                        },
+                    )
             }
-            .event(|(maybe_block, fs, is_bonded)| Event::IsBonded(maybe_block, fs, is_bonded)),
-            Event::IsBonded(maybe_block, fs, is_bonded) => {
-                match maybe_block {
-                    Some(block) if is_bonded => {
-                        // Known block and signature from a bonded validator.
-                        self.add_finality_signature(*fs);
-                        let old_count = block.proofs().len();
-                        let (block, mut effects) =
-                            self.add_pending_finality_signatures(*block, effect_builder);
-                        if block.proofs().len() > old_count {
-                            let block = Box::new(block);
-                            effects.extend(effect_builder.put_block_to_storage(block).ignore());
-                        }
-                        effects
-                    }
-                    Some(_block) if !is_bonded => {
-                        // Known block but not a bonded validator (neither in current nor in future
-                        // era). Validator cannot be from the future era b/c
-                        // we wouldn't have the block.
-                        let FinalitySignature {
-                            public_key,
-                            block_hash,
-                            ..
-                        } = *fs;
-                        warn!(
-                            validator = %public_key,
-                            %block_hash,
-                            "Received a signature from a validator that is not bonded."
-                        );
-                        // TODO: Disconnect from the sender.
-                        Effects::new()
-                    }
-                    None if is_bonded => {
-                        // Unknown block but validator is bonded.
-                        // We should finalize the same block eventually. Either in this or in the
-                        // next era.
-                        self.add_finality_signature(*fs);
-                        Effects::new()
-                    }
-                    None if !is_bonded => {
-                        // Unknown block from unknown validator.
-                        // We don't have the block in storage and validator is not bonded in this
-                        // era or in the next one.
-                        let FinalitySignature {
-                            public_key,
-                            block_hash,
-                            ..
-                        } = *fs;
-                        warn!(
-                            validator = %public_key,
-                            %block_hash,
-                            "Received a signature from a validator that is not bonded."
-                        );
-                        // TODO: Disconnect from the sender.
-                        Effects::new()
-                    }
-                    other => {
-                        unreachable!("{:?} state should not be reachable", other)
-                    }
+            Event::IsBonded(Some(block), fs, true) => {
+                // Known block and signature from a bonded validator.
+                self.add_pending_finality_signature(*fs);
+                let old_count = block.proofs().len();
+                let (block, mut effects) =
+                    self.add_pending_finality_signatures(*block, effect_builder);
+                if block.proofs().len() > old_count {
+                    let block = Box::new(block);
+                    effects.extend(effect_builder.put_block_to_storage(block).ignore());
                 }
+                effects
+            }
+            Event::IsBonded(None, fs, true) => {
+                // Unknown block but validator is bonded.
+                // We should finalize the same block eventually. Either in this or in the
+                // next era.
+                self.add_pending_finality_signature(*fs);
+                Effects::new()
+            }
+            Event::IsBonded(Some(_), fs, false) | Event::IsBonded(None, fs, false) => {
+                // Unknown validator.
+                let FinalitySignature {
+                    public_key,
+                    block_hash,
+                    ..
+                } = *fs;
+                warn!(
+                    validator = %public_key,
+                    %block_hash,
+                    "Received a signature from a validator that is not bonded."
+                );
+                // TODO: Disconnect from the sender.
+                Effects::new()
             }
         }
     }
