@@ -5,9 +5,6 @@ source "$NCTL"/sh/contracts-erc20/utils.sh
 
 #######################################
 # Renders ERC-20 token contract details.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
 #######################################
 function main()
 {

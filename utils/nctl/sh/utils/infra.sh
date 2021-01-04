@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
 #######################################
-# Returns a network known addresses - i.e. those of bootstrap nodes.
+# Returns a bootstrap known address - i.e. those of bootstrap nodes.
 # Globals:
 #   NCTL_BASE_PORT_NETWORK - base network port number.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
 #######################################
 function get_bootstrap_known_address()
@@ -14,7 +13,7 @@ function get_bootstrap_known_address()
     local NET_ID=${NET_ID:-1}    
     local NODE_PORT=$((NCTL_BASE_PORT_NETWORK + (NET_ID * 100) + NODE_ID))
 
-    echo "127.0.0.1:$NODE_PORT"
+    echo "'127.0.0.1:$NODE_PORT'"
 }
 
 #######################################
@@ -67,16 +66,24 @@ function get_network_bind_address()
 #######################################
 function get_network_known_addresses()
 {
-    local RESULT=""
-    local ADDRESS=""
-    for NODE_ID in $(seq 1 "$(get_count_of_bootstrap_nodes)")
-    do
-        ADDRESS=$(get_bootstrap_known_address "$NODE_ID")
-        RESULT=$RESULT$ADDRESS
-        if [ "$NODE_ID" -lt "$(get_count_of_bootstrap_nodes)" ]; then
-            RESULT=$RESULT","
-        fi
-    done
+    local NODE_ID=${1}
+    local RESULT
+
+    # If a bootstrap node then return set of bootstraps.
+    RESULT=$(get_bootstrap_known_address 1)
+    if [ "$NODE_ID" -lt "$(get_count_of_bootstrap_nodes)" ]; then
+        for IDX in $(seq 2 "$(get_count_of_bootstrap_nodes)")
+        do
+            RESULT=$RESULT","$(get_bootstrap_known_address "$IDX")
+        done
+    # If a non-bootstrap node then return full set of nodes.
+    # Note: could be modified to return full set of spinning nodes.
+    else
+        for IDX in $(seq 2 "$NODE_ID")
+        do
+            RESULT=$RESULT","$(get_bootstrap_known_address "$IDX")
+        done
+    fi
 
     echo "$RESULT"
 }
@@ -90,7 +97,7 @@ function get_node_address_event()
 {
     local NODE_ID=${1}    
 
-    echo http://localhost:"$(get_node_port "$NCTL_BASE_PORT_SSE" "$NODE_ID")"
+    echo "http://localhost:$(get_node_port "$NCTL_BASE_PORT_SSE" "$NODE_ID")"
 }
 
 #######################################
@@ -102,7 +109,7 @@ function get_node_address_rest()
 {
     local NODE_ID=${1}   
 
-    echo http://localhost:"$(get_node_port "$NCTL_BASE_PORT_REST" "$NODE_ID")"
+    echo "http://localhost:$(get_node_port "$NCTL_BASE_PORT_REST" "$NODE_ID")"
 }
 
 #######################################
@@ -114,7 +121,7 @@ function get_node_address_rpc()
 {
     local NODE_ID=${1}      
 
-    echo http://localhost:"$(get_node_port "$NCTL_BASE_PORT_RPC" "$NODE_ID")"
+    echo "http://localhost:$(get_node_port "$NCTL_BASE_PORT_RPC" "$NODE_ID")"
 }
 
 #######################################
@@ -143,6 +150,25 @@ function get_node_for_dispatch()
             break
         fi
     done
+}
+
+#######################################
+# Returns flag indicating whether a node is currently up.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_node_is_up()
+{
+    local NODE_ID=${1}  
+    local NODE_PORT  
+    
+    NODE_PORT=$(get_node_port_rpc "$NODE_ID")
+
+    if grep -q "$NODE_PORT (LISTEN)" <<< "$(lsof -i -P -n)"; then
+        echo true
+    else
+        echo false
+    fi
 }
 
 #######################################
@@ -198,22 +224,15 @@ function get_node_port_sse()
 }
 
 #######################################
-# Returns flag indicating whether a node is currently up.
+# Calculates a node's default staking weight.
 # Arguments:
 #   Node ordinal identifier.
 #######################################
-function get_node_is_up()
+function get_node_staking_weight()
 {
-    local NODE_ID=${1}  
-    local NODE_PORT  
-    
-    NODE_PORT=$(get_node_port_rpc "$NODE_ID")
+    local NODE_ID=${1}    
 
-    if grep -q "open" <<< "$(nmap -p "$NODE_PORT" 127.0.0.1)"; then
-        echo true
-    else
-        echo false
-    fi
+    echo $((NCTL_VALIDATOR_BASE_WEIGHT + NODE_ID))
 }
 
 #######################################
