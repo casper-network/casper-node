@@ -118,6 +118,11 @@ impl Params {
         self.end_timestamp
     }
 
+    /// Returns the name of the file storing the hash of our last known unit.
+    pub(crate) fn unit_hash_file(&self) -> &PathBuf {
+        &self.unit_hash_file
+    }
+
     /// Returns the maximum number of additional units included in evidence for conflicting
     /// endorsements. If you endorse two conflicting forks at sequence numbers that differ by more
     /// than this, you get away with it and are not marked faulty.

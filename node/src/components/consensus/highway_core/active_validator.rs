@@ -1,6 +1,11 @@
-use std::fmt::{self, Debug};
+use std::{
+    fmt::{self, Debug},
+    fs::File,
+    io::{Read, Write},
+    path::Path,
+};
 
-use tracing::{error, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use super::{
     endorsement::{Endorsement, SignedEndorsement},
@@ -64,6 +69,8 @@ pub(crate) struct ActiveValidator<C: Context> {
     next_timer: Timestamp,
     /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
     next_proposal: Option<(Timestamp, Panorama<C>)>,
+    /// The hash of the last known unit created by us.
+    own_last_unit: Option<C::Hash>,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -84,15 +91,36 @@ impl<C: Context> ActiveValidator<C> {
         start_time: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
+        let own_last_unit = Self::read_last_unit(state.params().unit_hash_file());
         let mut av = ActiveValidator {
             vidx,
             secret,
             next_round_exp: state.params().init_round_exp(),
             next_timer: state.params().start_timestamp(),
             next_proposal: None,
+            own_last_unit,
         };
         let effects = av.schedule_timer(start_time, state);
         (av, effects)
+    }
+
+    fn read_last_unit<P: AsRef<Path>>(path: P) -> Option<C::Hash> {
+        let mut file = File::open(path).ok()?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+
+    fn write_last_unit<P: AsRef<Path>>(&mut self, path: P, hash: C::Hash) -> Option<()> {
+        self.own_last_unit = Some(hash);
+        let mut file = File::create(path).ok()?;
+        let bytes = serde_json::to_vec(&hash).ok()?;
+        file.write_all(&bytes).ok()
+    }
+
+    fn can_vote(&self, state: &State<C>) -> bool {
+        self.own_last_unit
+            .map_or(true, |ref hash| state.has_unit(hash))
     }
 
     /// Sets the next round exponent to the new value.
@@ -316,6 +344,10 @@ impl<C: Context> ActiveValidator<C> {
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
     ) -> Option<SignedWireUnit<C>> {
+        if !self.can_vote(state) {
+            info!(?self.own_last_unit, "not voting - last own unit unknown");
+            return None;
+        }
         if let Some((prop_time, _)) = self.next_proposal.take() {
             warn!(
                 ?timestamp,
@@ -350,6 +382,8 @@ impl<C: Context> ActiveValidator<C> {
             round_exp: self.round_exp(state, timestamp),
             endorsed,
         };
+        self.write_last_unit(state.params().unit_hash_file(), wunit.hash())
+            .expect("should successfully write unit's hash");
         Some(SignedWireUnit::new(wunit, &self.secret, rng))
     }
 
