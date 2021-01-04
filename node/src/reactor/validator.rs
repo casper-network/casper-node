@@ -385,7 +385,7 @@ impl reactor::Reactor for Reactor {
         let rpc_server = RpcServer::new(config.rpc_server.clone(), effect_builder);
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
 
-        let deploy_acceptor = DeployAcceptor::new();
+        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
         let deploy_fetcher = Fetcher::new(config.fetcher);
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",

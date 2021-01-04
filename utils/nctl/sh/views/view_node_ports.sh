@@ -1,30 +1,65 @@
 #!/usr/bin/env bash
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
+source "$NCTL"/sh/utils/main.sh
 
-unset NET_ID
+#######################################
+# Renders ports at specified node(s).
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function main()
+{
+    local NODE_ID=${1}
+
+    if [ "$NODE_ID" = "all" ]; then
+        for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+        do
+            echo "------------------------------------------------------------------------------------------------------------------------------------"
+            do_render "$NODE_ID"
+        done
+        echo "------------------------------------------------------------------------------------------------------------------------------------"
+    else
+        do_render "$NODE_ID"
+    fi
+}
+
+#######################################
+# Displays to stdout current node ports.
+# Globals:
+#   NCTL_BASE_PORT_NETWORK - base port type.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function do_render()
+{
+    local NODE_ID=${1}
+    local PORT_VNET
+    local PORT_REST
+    local PORT_RPC
+    local PORT_SSE
+
+    PORT_VNET=$(get_node_port "$NCTL_BASE_PORT_NETWORK" "$NODE_ID")
+    PORT_REST=$(get_node_port_rest "$NODE_ID")
+    PORT_RPC=$(get_node_port_rpc "$NODE_ID")
+    PORT_SSE=$(get_node_port_sse "$NODE_ID")
+
+    log "node-$NODE_ID :: VNET @ $PORT_VNET :: RPC @ $PORT_RPC :: REST @ $PORT_REST :: SSE @ $PORT_SSE"
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
 unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        net) NET_ID=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-NET_ID=${NET_ID:-1}
-NODE_ID=${NODE_ID:-"all"}
-
-if [ $NODE_ID = "all" ]; then
-    for IDX in $(seq 1 $(get_count_of_all_nodes $NET_ID))
-    do
-        render_node_ports $NET_ID $IDX
-    done
-else
-    render_node_ports $NET_ID $NODE_ID
-fi
+main "${NODE_ID:-"all"}"

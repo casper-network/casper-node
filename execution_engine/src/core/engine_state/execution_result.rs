@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use casper_types::{bytesrepr::FromBytes, CLTyped, CLValue, Key, TransferAddr};
+use casper_types::{bytesrepr::FromBytes, CLTyped, CLValue, CLValueError, Key, TransferAddr};
 
 use super::{error, execution_effect::ExecutionEffect, op::Op, CONV_RATE};
 use crate::{
@@ -16,13 +16,13 @@ fn make_payment_error_effects(
     account_main_purse_balance: Motes,
     account_main_purse_balance_key: Key,
     proposer_main_purse_balance_key: Key,
-) -> ExecutionEffect {
+) -> Result<ExecutionEffect, CLValueError> {
     let mut ops = AdditiveMap::new();
     let mut transforms = AdditiveMap::new();
 
     let new_balance = account_main_purse_balance - max_payment_cost;
     // from_t for U512 is assumed to never panic
-    let new_balance_clvalue = CLValue::from_t(new_balance.value()).unwrap();
+    let new_balance_clvalue = CLValue::from_t(new_balance.value())?;
     let new_balance_value = StoredValue::CLValue(new_balance_clvalue);
 
     let account_main_purse_balance_normalize = account_main_purse_balance_key.normalize();
@@ -40,7 +40,7 @@ fn make_payment_error_effects(
         Transform::AddUInt512(max_payment_cost.value()),
     );
 
-    ExecutionEffect::new(ops, transforms)
+    Ok(ExecutionEffect::new(ops, transforms))
 }
 
 #[derive(Clone, Debug)]
@@ -255,21 +255,21 @@ impl ExecutionResult {
         account_main_purse_balance: Motes,
         account_main_purse_balance_key: Key,
         proposer_main_purse_balance_key: Key,
-    ) -> ExecutionResult {
+    ) -> Result<ExecutionResult, CLValueError> {
         let effect = make_payment_error_effects(
             max_payment_cost,
             account_main_purse_balance,
             account_main_purse_balance_key,
             proposer_main_purse_balance_key,
-        );
-        let cost = Gas::from_motes(max_payment_cost, CONV_RATE).unwrap_or_default();
+        )?;
+        let cost = Gas::from_motes(max_payment_cost, CONV_RATE).expect("gas overflow");
         let transfers = Vec::default();
-        ExecutionResult::Failure {
+        Ok(ExecutionResult::Failure {
             error,
             effect,
             transfers,
             cost,
-        }
+        })
     }
 
     pub fn take_with_ret<T: FromBytes + CLTyped>(self, ret: T) -> (Option<T>, Self) {

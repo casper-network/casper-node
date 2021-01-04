@@ -7,7 +7,7 @@ name = 'casper-delta'
 # see finality_threshold_percent below) of validator nodes must be up and running to start the blockchain.  This
 # timestamp is also used in seeding the pseudo-random number generator used in contract-runtime for computing genesis
 # post-state hash.
-timestamp = '2020-12-10T17:00:00Z'
+timestamp = '2020-12-29T20:00:00Z'
 # Protocol version at genesis.
 protocol_version = '1.0.0'
 # Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the mint
@@ -25,7 +25,7 @@ auction_installer_path = '/etc/casper/wasm/auction_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the CSV file containing initial account balances and bonds.
 accounts_path = '/etc/casper/accounts.csv'
 # Number of slots available in validator auction.
-validator_slots = 100
+validator_slots = 200
 # Amount of auction delay
 auction_delay = 3
 # The delay for the payout of funds, in eras. If a withdraw request is included in a block in era N

@@ -212,7 +212,11 @@ impl Package {
                             "Updated version ({}) is lower than current version ({})",
                             new_version, self.current_version
                         );
-                        continue;
+                        if crate::allow_earlier_version() {
+                            println!("Allowing earlier version due to flag.")
+                        } else {
+                            continue;
+                        }
                     }
 
                     return if new_version == self.current_version {

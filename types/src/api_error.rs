@@ -811,10 +811,16 @@ impl fmt::Display for ApiError {
 
 // This function is not intended to be used by third party crates.
 #[doc(hidden)]
-pub fn i32_from(result: Result<(), ApiError>) -> i32 {
+pub fn i32_from<T>(result: Result<(), T>) -> i32
+where
+    ApiError: From<T>,
+{
     match result {
         Ok(()) => 0,
-        Err(error) => u32::from(error) as i32,
+        Err(error) => {
+            let api_error = ApiError::from(error);
+            u32::from(api_error) as i32
+        }
     }
 }
 

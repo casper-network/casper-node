@@ -253,10 +253,7 @@ impl FromBytes for Account {
 pub mod gens {
     use proptest::prelude::*;
 
-    use casper_types::{
-        account::MAX_ASSOCIATED_KEYS,
-        gens::{account_hash_arb, named_keys_arb, uref_arb},
-    };
+    use casper_types::gens::{account_hash_arb, named_keys_arb, uref_arb};
 
     use super::*;
     use crate::shared::account::{
@@ -269,7 +266,7 @@ pub mod gens {
             urefs in named_keys_arb(3),
             purse in uref_arb(),
             thresholds in action_thresholds_arb(),
-            mut associated_keys in associated_keys_arb(MAX_ASSOCIATED_KEYS - 1),
+            mut associated_keys in associated_keys_arb(),
         ) -> Account {
                 associated_keys.add_key(account_hash, Weight::new(1)).unwrap();
                 Account::new(

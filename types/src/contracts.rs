@@ -759,7 +759,7 @@ impl ToBytes for EntryPoint {
         let mut result = bytesrepr::allocate_buffer(self)?;
         result.append(&mut self.name.to_bytes()?);
         result.append(&mut self.args.to_bytes()?);
-        self.ret.append_bytes(&mut result);
+        self.ret.append_bytes(&mut result)?;
         result.append(&mut self.access.to_bytes()?);
         result.append(&mut self.entry_point_type.to_bytes()?);
 
@@ -890,7 +890,7 @@ impl From<Parameter> for (String, CLType) {
 impl ToBytes for Parameter {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = ToBytes::to_bytes(&self.name)?;
-        self.cl_type.append_bytes(&mut result);
+        self.cl_type.append_bytes(&mut result)?;
 
         Ok(result)
     }

@@ -12,28 +12,17 @@ use crate::types::{Item, Tag};
 #[derive(
     Copy, Clone, DataSize, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, Debug,
 )]
-pub struct GossipedAddress {
-    /// Our public listening address.
-    address: SocketAddr,
-    /// The index of the gossip iteration.  This is used to avoid the gossip table from filtering
-    /// out the message - i.e. to make each fresh gossip iteration have a unique identifier for the
-    /// gossiped item.
-    index: u32,
-}
+pub struct GossipedAddress(SocketAddr);
 
 impl GossipedAddress {
-    pub(super) fn new(address: SocketAddr, index: u32) -> Self {
-        GossipedAddress { address, index }
+    pub(super) fn new(address: SocketAddr) -> Self {
+        GossipedAddress(address)
     }
 }
 
 impl Display for GossipedAddress {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(
-            formatter,
-            "gossiped-address {} iter {}",
-            self.address, self.index
-        )
+        write!(formatter, "gossiped-address {}", self.0)
     }
 }
 
@@ -49,6 +38,6 @@ impl Item for GossipedAddress {
 
 impl From<GossipedAddress> for SocketAddr {
     fn from(gossiped_address: GossipedAddress) -> Self {
-        gossiped_address.address
+        gossiped_address.0
     }
 }
