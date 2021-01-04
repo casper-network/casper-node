@@ -37,7 +37,7 @@ pub(crate) struct ProtocolConfig {
 impl From<&Chainspec> for ProtocolConfig {
     fn from(c: &Chainspec) -> Self {
         ProtocolConfig {
-            highway_config: c.genesis.highway_config,
+            highway_config: c.genesis.highway_config.clone(),
             auction_delay: c.genesis.auction_delay,
             unbonding_delay: c.genesis.unbonding_delay,
             name: c.genesis.name.clone(),

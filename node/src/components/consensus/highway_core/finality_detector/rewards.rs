@@ -196,6 +196,7 @@ mod tests {
             Timestamp::zero(),
             Timestamp::from(u64::MAX),
             TEST_ENDORSEMENT_EVIDENCE_LIMIT,
+            "./test-unit.dat".into(),
         );
         let weights = &[Weight(ALICE_W), Weight(BOB_W), Weight(CAROL_W)];
         let mut state = State::new(weights, params, vec![]);

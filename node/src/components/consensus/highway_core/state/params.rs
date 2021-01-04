@@ -1,7 +1,9 @@
+use std::path::PathBuf;
+
 use super::Timestamp;
 
 /// Protocol parameters for Highway.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct Params {
     seed: u64,
     block_reward: u64,
@@ -13,6 +15,7 @@ pub(crate) struct Params {
     start_timestamp: Timestamp,
     end_timestamp: Timestamp,
     endorsement_evidence_limit: u64,
+    unit_hash_file: PathBuf,
 }
 
 impl Params {
@@ -46,6 +49,7 @@ impl Params {
         start_timestamp: Timestamp,
         end_timestamp: Timestamp,
         endorsement_evidence_limit: u64,
+        unit_hash_file: PathBuf,
     ) -> Params {
         assert!(
             reduced_block_reward <= block_reward,
@@ -62,6 +66,7 @@ impl Params {
             start_timestamp,
             end_timestamp,
             endorsement_evidence_limit,
+            unit_hash_file,
         }
     }
 

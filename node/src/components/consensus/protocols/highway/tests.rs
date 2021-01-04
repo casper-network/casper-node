@@ -46,6 +46,7 @@ where
         0.into(),
         Timestamp::from(u64::MAX),
         highway_testing::TEST_ENDORSEMENT_EVIDENCE_LIMIT,
+        "./test-unit.dat".into(),
     );
     let weights = weights.into_iter().map(|w| w.into()).collect::<Vec<_>>();
     state::State::new(weights, params, vec![])

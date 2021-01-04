@@ -869,6 +869,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     Timestamp::zero(),
                     Timestamp::zero(), // Length depends only on block number.
                     TEST_ENDORSEMENT_EVIDENCE_LIMIT,
+                    "./test-unit.dat".into(),
                 );
                 let mut highway = Highway::new(instance_id, validators.clone(), params);
                 let effects = highway.activate_validator(vid, v_sec, start_time);

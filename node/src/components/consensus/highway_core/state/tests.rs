@@ -134,6 +134,7 @@ fn test_params(seed: u64) -> Params {
         Timestamp::from(0),
         Timestamp::from(0),
         TEST_ENDORSEMENT_EVIDENCE_LIMIT,
+        "./test-unit.dat".into(),
     )
 }
 
@@ -256,6 +257,7 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
         Timestamp::zero(),
         Timestamp::from(u64::MAX),
         TEST_ENDORSEMENT_EVIDENCE_LIMIT,
+        "./test-unit.dat".into(),
     );
     // Everyone already knows Alice is faulty, so she is banned.
     let mut state = State::new(WEIGHTS, params, vec![ALICE]);
