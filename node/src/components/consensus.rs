@@ -43,7 +43,6 @@ use crate::{
     NodeRng,
 };
 
-use crate::effect::EffectExt;
 pub use config::Config;
 pub(crate) use consensus_protocol::{BlockContext, EraEnd};
 pub(crate) use era_supervisor::{EraId, EraSupervisor};
@@ -318,9 +317,8 @@ where
                 era_id,
                 pk,
                 responder,
-            )) => responder
-                .respond(handling_es.is_bonded_validator(era_id, pk))
-                .ignore(),
+            )) => handling_es
+                .is_bonded_validator(era_id, pk, responder)
         }
     }
 }

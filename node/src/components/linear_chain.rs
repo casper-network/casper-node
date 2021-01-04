@@ -161,7 +161,7 @@ impl<I> LinearChain<I> {
 
     /// Adds pending finality signatures to the block; returns events to announce and broadcast
     /// them, and the updated block.
-    fn add_pending_finality_signatures<REv>(
+    fn collect_pending_finality_signatures<REv>(
         &mut self,
         mut block: Block,
         effect_builder: EffectBuilder<REv>,
@@ -184,8 +184,14 @@ impl<I> LinearChain<I> {
             .collect_vec();
         self.pending_finality_signatures
             .retain(|_, sigs| !sigs.is_empty());
+        let block_era = block.header().era_id();
         // Add new signatures and send the updated block to storage.
         for fs in pending_sigs {
+            if fs.era_id != block_era {
+                // finality signature was created with era id that doesn't match block's era.
+                // TODO: disconnect from the sender.
+                break;
+            }
             block.append_proof(fs.public_key, fs.signature);
             let message = Message::FinalitySignature(fs.clone());
             effects.extend(effect_builder.broadcast_message(message).ignore());
@@ -293,7 +299,7 @@ where
                 execution_results,
             } => {
                 let (block, mut effects) =
-                    self.add_pending_finality_signatures(*block, effect_builder);
+                    self.collect_pending_finality_signatures(*block, effect_builder);
                 let block = Box::new(block);
                 effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
                     move |_| Event::PutBlockResult {
@@ -353,11 +359,11 @@ where
                         &fs.block_hash,
                         "block loaded from storage should have a matching block hash."
                     );
-                    assert_eq!(
-                        block.header().era_id(),
-                        fs.era_id,
-                        "block loaded from storage should have a matching era_id."
-                    )
+                    if block.header().era_id() != fs.era_id {
+                        warn!(public_key=%fs.public_key, "Finality signature with invalid era id.");
+                        // TODO: Disconnect from the sender.
+                        return Effects::new();
+                    }
                 }
                 // Check if validator is bonded in the era in which the block was created.
                 effect_builder
@@ -384,13 +390,12 @@ where
                 // is bonded in the Contract Runtime.
                 let latest_header = self.latest_block.as_ref().unwrap().header();
                 let state_root_hash = latest_header.state_root_hash();
-                let next_era_id = latest_header.era_id().successor();
                 // TODO: Use protocol version that is valid for the block's height.
                 let protocol_version = ProtocolVersion::new(SemVer::V1_0_0);
                 effect_builder
                     .is_bonded_in_future_era(
                         *state_root_hash,
-                        next_era_id,
+                        fs.era_id,
                         protocol_version,
                         fs.public_key,
                     )
@@ -407,7 +412,7 @@ where
                 self.add_pending_finality_signature(*fs);
                 let old_count = block.proofs().len();
                 let (block, mut effects) =
-                    self.add_pending_finality_signatures(*block, effect_builder);
+                    self.collect_pending_finality_signatures(*block, effect_builder);
                 if block.proofs().len() > old_count {
                     let block = Box::new(block);
                     effects.extend(effect_builder.put_block_to_storage(block).ignore());
