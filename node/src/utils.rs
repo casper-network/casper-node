@@ -196,6 +196,12 @@ pub enum Source<I> {
     Client,
 }
 
+impl<I> Source<I> {
+    pub(crate) fn from_client(&self) -> bool {
+        matches!(self, Source::Client)
+    }
+}
+
 impl<I: Clone> Source<I> {
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
     pub(crate) fn node_id(&self) -> Option<I> {
