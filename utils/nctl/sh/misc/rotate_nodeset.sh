@@ -100,7 +100,7 @@ function do_submit_auction_bids()
     for NODE_ID in $(seq $(($(get_count_of_genesis_nodes) + 1)) "$(get_count_of_nodes)")
     do
         log "----- ----- ----- ----- ----- -----"
-        BID_AMOUNT=$((NCTL_VALIDATOR_BASE_WEIGHT * NODE_ID))
+        BID_AMOUNT=$(get_node_staking_weight "$NODE_ID")
         BID_DELEGATION_RATE=125
 
         source "$NCTL"/sh/contracts-auction/do_bid.sh \
@@ -123,7 +123,7 @@ function do_submit_auction_withdrawals()
     log_step "submitting auction withdrawals:"
     for NODE_ID in $(seq 1 "$(get_count_of_genesis_nodes)")
     do
-        WITHDRAWAL_AMOUNT=$((NCTL_VALIDATOR_BASE_WEIGHT * NODE_ID))
+        WITHDRAWAL_AMOUNT=$(get_node_staking_weight "$NODE_ID")
 
         source "$NCTL"/sh/contracts-auction/do_bid_withdraw.sh \
             node="$NODE_ID" \

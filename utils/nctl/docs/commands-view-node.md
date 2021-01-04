@@ -94,16 +94,24 @@ nctl-view-node-ports node=all  (same as above)
 nctl-view-node-ports node=3
 ```
 
-### nctl-view-node-rpc-schema node={X:-1}
+### nctl-view-node-rpc-endpoint endpoint={X:-all}
 
-Renders RPC schema at node X to stdout.
+Renders information related to RPC schema endpoint X to stdout, if X=all then a list of all endpoints is displayed.
+
+```
+nctl-view-node-rpc-endpoint
+
+nctl-view-node-rpc-endpoint endpoint=all  (same as above)
+
+nctl-view-node-rpc-endpoint endpoint=state_get_item
+```
+
+### nctl-view-node-rpc-schema 
+
+Renders RPC schema exposed to stdout.
 
 ```
 nctl-view-node-rpc-schema
-
-nctl-view-node-rpc-schema node=1  (same as above)
-
-nctl-view-node-rpc-schema node=3
 ```
 
 ### nctl-view-node-status node={X:-all}
@@ -129,3 +137,4 @@ nctl-view-node-storage node=all  (same as above)
 
 nctl-view-node-storage node=3
 ```
+

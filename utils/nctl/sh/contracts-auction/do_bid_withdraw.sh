@@ -88,4 +88,4 @@ do
 done
 
 main "${NODE_ID:-1}" \
-     "${AMOUNT:-$((NCTL_DEFAULT_AUCTION_BID_AMOUNT * ${NODE_ID:-1}))}"
+     "${AMOUNT:-$(get_node_staking_weight "${NODE_ID:-1}")}"

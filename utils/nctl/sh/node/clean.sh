@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 
 source "$NCTL"/sh/utils/main.sh
-source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
-
-# ----------------------------------------------------------------
-# ARGS
-# ----------------------------------------------------------------
 
 unset NODE_ID
 
@@ -25,14 +20,8 @@ NODE_ID=${NODE_ID:-"all"}
 # MAIN
 # ----------------------------------------------------------------
 
-# Stop node(s).
-if [ "$NODE_ID" == "all" ]; then
-    do_node_stop_all
-else
-    log "node-$NODE_ID: stopping node ... "
-    do_node_stop "$NODE_ID"
-fi
+# Stop node.
+source "$NCTL"/sh/node/stop.sh node="$NODE_ID"
 
-# Display status.
-sleep 1.0
-source "$NCTL"/sh/node/status.sh node="$NODE_ID"
+# Remove state.
+rm "$(get_path_to_node_storage "$NODE_ID")/*"

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source "$NCTL"/sh/utils/main.sh
+
 unset OFFSET
 unset LOG_LEVEL
 unset NODE_ID
@@ -23,10 +25,10 @@ NODE_ID=${NODE_ID:-6}
 # MAIN
 # ----------------------------------------------------------------
 
-source "$NCTL"/sh/utils/main.sh
-
+# Await until N blocks have been added to linear block chain.
 await_n_blocks "$OFFSET" true
 
+# Start node.
 source "$NCTL"/sh/node/start.sh \
     node="$NODE_ID" \
     loglevel="$LOG_LEVEL"
