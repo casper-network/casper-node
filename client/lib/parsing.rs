@@ -220,7 +220,7 @@ fn standard_payment(value: &str) -> Result<RuntimeArgs> {
     let arg = U512::from_dec_str(value)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
     let mut runtime_args = RuntimeArgs::new();
-    runtime_args.insert(STANDARD_PAYMENT_ARG_NAME, arg);
+    runtime_args.insert(STANDARD_PAYMENT_ARG_NAME, arg)?;
     Ok(runtime_args)
 }
 

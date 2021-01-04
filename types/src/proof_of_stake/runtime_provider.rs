@@ -1,4 +1,4 @@
-use crate::{account::AccountHash, BlockTime, Key, Phase};
+use crate::{account::AccountHash, system_contract_errors::pos::Error, BlockTime, Key, Phase};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
@@ -6,10 +6,10 @@ pub trait RuntimeProvider {
     fn get_key(&self, name: &str) -> Option<Key>;
 
     /// Put key under a `name`.
-    fn put_key(&mut self, name: &str, key: Key);
+    fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error>;
 
     /// Remove a named key by `name`.
-    fn remove_key(&mut self, name: &str);
+    fn remove_key(&mut self, name: &str) -> Result<(), Error>;
 
     /// Get current execution phase.
     fn get_phase(&self) -> Phase;

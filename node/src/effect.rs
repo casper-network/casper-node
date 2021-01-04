@@ -87,9 +87,9 @@ use casper_execution_engine::{
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
-        BalanceRequest, BalanceResult, QueryRequest, QueryResult,
+        BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
     },
-    shared::{additive_map::AdditiveMap, transform::Transform},
+    shared::{additive_map::AdditiveMap, stored_value::StoredValue, transform::Transform},
     storage::{global_state::CommitResult, protocol_data::ProtocolData},
 };
 use casper_types::{
@@ -1175,6 +1175,31 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Regular,
         )
         .await
+    }
+
+    pub(crate) async fn is_verified_account(self, account_key: Key) -> bool
+    where
+        REv: From<ContractRuntimeRequest>,
+        REv: From<StorageRequest>,
+    {
+        if let Some(block) = self.get_highest_block().await {
+            let state_hash = (*block.state_root_hash()).into();
+            let query_request = QueryRequest::new(state_hash, account_key, vec![]);
+            if let Ok(QueryResult::Success { value, .. }) =
+                self.query_global_state(query_request).await
+            {
+                if let StoredValue::Account(account) = *value {
+                    let purse_uref = account.main_purse();
+                    let balance_request = BalanceRequest::new(state_hash, purse_uref);
+                    if let Ok(balance_result) = self.get_balance(balance_request).await {
+                        if let Some(motes) = balance_result.motes() {
+                            return motes >= &*MAX_PAYMENT;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Requests a query be executed on the Contract Runtime component.

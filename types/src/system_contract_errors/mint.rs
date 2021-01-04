@@ -50,7 +50,40 @@ pub enum Error {
     /// Invalid attempt to reduce total supply.
     #[fail(display = "Invalid attempt to reduce total supply")]
     InvalidTotalSupplyReductionAttempt = 11,
+    /// Failed to create new uref.
+    #[fail(display = "Failed to create new uref")]
+    NewURef = 12,
+    /// Failed to put key.
+    #[fail(display = "Failed to put key")]
+    PutKey = 13,
+    /// Failed to write local key.
+    #[fail(display = "Failed to write local key")]
+    WriteLocal = 14,
+    /// Failed to create a [`crate::CLValue`].
+    #[fail(display = "Failed to create a CLValue")]
+    CLValue = 15,
+    /// Failed to serialize data.
+    #[fail(display = "Failed to serialize data")]
+    Serialize = 16,
+    /// Source and target purse [`crate::URef`]s are equal.
+    #[fail(display = "Invalid target purse")]
+    EqualSourceAndTarget = 17,
+
+    // NOTE: These variants below will be removed once support for WASM system contracts will be
+    // dropped.
+    #[doc(hidden)]
+    #[fail(display = "GasLimit")]
+    GasLimit = 18,
+
+    #[cfg(test)]
+    #[doc(hidden)]
+    #[fail(display = "Sentinel error")]
+    Sentinel,
 }
+
+/// Used for testing; this should be guaranteed to be the maximum valid value of [`Error`] enum.
+#[cfg(test)]
+const MAX_ERROR_VALUE: u8 = Error::Sentinel as u8;
 
 impl From<PurseError> for Error {
     fn from(purse_error: PurseError) -> Error {
@@ -91,6 +124,21 @@ impl TryFrom<u8> for Error {
             d if d == Error::InvalidNonEmptyPurseCreation as u8 => {
                 Ok(Error::InvalidNonEmptyPurseCreation)
             }
+            d if d == Error::Storage as u8 => Ok(Error::Storage),
+            d if d == Error::PurseNotFound as u8 => Ok(Error::PurseNotFound),
+            d if d == Error::MissingKey as u8 => Ok(Error::MissingKey),
+            d if d == Error::TotalSupplyNotFound as u8 => Ok(Error::TotalSupplyNotFound),
+            d if d == Error::RecordTransferFailure as u8 => Ok(Error::RecordTransferFailure),
+            d if d == Error::InvalidTotalSupplyReductionAttempt as u8 => {
+                Ok(Error::InvalidTotalSupplyReductionAttempt)
+            }
+            d if d == Error::NewURef as u8 => Ok(Error::NewURef),
+            d if d == Error::PutKey as u8 => Ok(Error::PutKey),
+            d if d == Error::WriteLocal as u8 => Ok(Error::WriteLocal),
+            d if d == Error::CLValue as u8 => Ok(Error::CLValue),
+            d if d == Error::Serialize as u8 => Ok(Error::Serialize),
+            d if d == Error::EqualSourceAndTarget as u8 => Ok(Error::EqualSourceAndTarget),
+            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -137,6 +185,30 @@ impl fmt::Display for PurseError {
             PurseError::InvalidURef => write!(f, "invalid uref"),
             PurseError::InvalidAccessRights(maybe_access_rights) => {
                 write!(f, "invalid access rights: {:?}", maybe_access_rights)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::TryFrom;
+
+    use super::{Error, TryFromU8ForError, MAX_ERROR_VALUE};
+
+    #[test]
+    fn error_round_trips() {
+        for i in 0..=u8::max_value() {
+            match Error::try_from(i) {
+                Ok(error) if i < MAX_ERROR_VALUE => assert_eq!(error as u8, i),
+                Ok(error) => panic!(
+                    "value of variant {} ({}) exceeds MAX_ERROR_VALUE ({})",
+                    error, i, MAX_ERROR_VALUE
+                ),
+                Err(TryFromU8ForError(())) if i >= MAX_ERROR_VALUE => (),
+                Err(TryFromU8ForError(())) => {
+                    panic!("missing conversion from u8 to error value: {}", i)
+                }
             }
         }
     }

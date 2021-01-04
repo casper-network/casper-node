@@ -62,7 +62,7 @@ pub trait Auction:
             detail::get_seigniorage_recipients_snapshot(self)?;
         let seigniorage_recipients = seigniorage_recipients_snapshot
             .remove(&era_index)
-            .unwrap_or_else(|| panic!("No seigniorage_recipients for era {}", era_index));
+            .ok_or(Error::MissingSeigniorageRecipients)?;
         Ok(seigniorage_recipients)
     }
 
@@ -95,7 +95,7 @@ pub trait Auction:
                     .increase_stake(amount)?
             }
             None => {
-                let bonding_purse = self.create_purse();
+                let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToBidPurse)?;
                 let bid = Bid::unlocked(bonding_purse, amount, delegation_rate);
@@ -144,6 +144,7 @@ pub trait Auction:
         let new_amount = bid.decrease_stake(amount)?;
 
         if new_amount.is_zero() {
+            // NOTE: Assumed safe as we're checking for existence above
             bids.remove(&public_key).unwrap();
         }
 
@@ -191,7 +192,7 @@ pub trait Auction:
                 *delegator.staked_amount()
             }
             None => {
-                let bonding_purse = self.create_purse();
+                let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToDelegatorPurse)?;
                 let delegator = Delegator::new(amount, bonding_purse, validator_public_key);
