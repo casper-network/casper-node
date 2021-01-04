@@ -86,6 +86,7 @@ alias nctl-view-node-storage='source $NCTL/sh/views/view_node_storage.sh'
 alias nctl-view-node-metrics='source $NCTL/sh/views/view_node_metrics.sh'
 alias nctl-view-node-pending-deploy-count='source $NCTL/sh/views/view_node_metrics.sh metric=pending_deploy'
 alias nctl-view-node-finalised-block-count='source $NCTL/sh/views/view_node_metrics.sh metric=amount_of_blocks'
+alias nctl-view-node-finalisation-time='source $NCTL/sh/views/view_node_metrics.sh metric=finalization_time'
 
 # Views #4: faucet.
 alias nctl-view-faucet-account='source $NCTL/sh/views/view_faucet_account.sh'
