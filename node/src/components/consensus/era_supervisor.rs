@@ -22,7 +22,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
-use tracing::{error, info, trace, warn};
+use tracing::{info, trace, warn};
 
 use casper_types::{ProtocolVersion, U512};
 
@@ -572,12 +572,20 @@ where
     pub(super) fn resolve_validity(
         &mut self,
         era_id: EraId,
-        _sender: I, // TODO: Disconnect from sender if invalid.
+        sender: I,
         proto_block: ProtoBlock,
         valid: bool,
     ) -> Effects<Event<I>> {
         self.era_supervisor.metrics.proposed_block();
         let mut effects = Effects::new();
+        if !valid {
+            warn!(
+                %sender,
+                era = %era_id.0,
+                "invalid consensus value; disconnecting from the sender"
+            );
+            effects.extend(self.disconnect(sender));
+        }
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
             era.resolve_validity(&proto_block, valid)
         } else {
@@ -626,23 +634,19 @@ where
     ) -> Effects<Event<I>> {
         match consensus_result {
             ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => {
-                error!(
+                warn!(
                     %sender,
                     %error,
                     "invalid incoming message to consensus instance; disconnecting from the sender"
                 );
-                self.effect_builder
-                    .announce_disconnect_from_peer(sender)
-                    .ignore()
+                self.disconnect(sender)
             }
             ProtocolOutcome::Disconnect(sender) => {
-                error!(
+                warn!(
                     %sender,
                     "disconnecting from the sender of invalid data"
                 );
-                self.effect_builder
-                    .announce_disconnect_from_peer(sender)
-                    .ignore()
+                self.disconnect(sender)
             }
             ProtocolOutcome::CreatedGossipMessage(out_msg) => {
                 // TODO: we'll want to gossip instead of broadcast here
@@ -820,6 +824,12 @@ where
     pub(crate) fn finished_joining(&mut self, now: Timestamp) -> Effects<Event<I>> {
         let results = self.era_supervisor.finished_joining(now);
         self.handle_consensus_results(self.era_supervisor.current_era, results)
+    }
+
+    fn disconnect(&self, sender: I) -> Effects<Event<I>> {
+        self.effect_builder
+            .announce_disconnect_from_peer(sender)
+            .ignore()
     }
 }
 
