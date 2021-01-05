@@ -91,7 +91,10 @@ impl<C: Context> ActiveValidator<C> {
         start_time: Timestamp,
         state: &State<C>,
     ) -> (Self, Vec<Effect<C>>) {
-        let own_last_unit = Self::read_last_unit(state.params().unit_hash_file());
+        let own_last_unit = state
+            .params()
+            .unit_hash_file()
+            .and_then(Self::read_last_unit);
         let mut av = ActiveValidator {
             vidx,
             secret,
@@ -382,8 +385,10 @@ impl<C: Context> ActiveValidator<C> {
             round_exp: self.round_exp(state, timestamp),
             endorsed,
         };
-        self.write_last_unit(state.params().unit_hash_file(), wunit.hash())
-            .expect("should successfully write unit's hash");
+        if let Some(file) = state.params().unit_hash_file() {
+            self.write_last_unit(file, wunit.hash())
+                .expect("should successfully write unit's hash");
+        }
         Some(SignedWireUnit::new(wunit, &self.secret, rng))
     }
 
@@ -497,19 +502,32 @@ impl<C: Context> ActiveValidator<C> {
         self.vidx == wunit.creator
     }
 
-    /// Returns whether a list of endorsements includes an endorsement created by a doppelganger.
-    /// An endorsement created by a doppelganger cannot be found in the local protocol state
-    /// (since we haven't created it ourselves).
-    pub(crate) fn includes_doppelgangers_endorsement(
-        &self,
-        endorsements: &Endorsements<C>,
-        state: &State<C>,
-    ) -> bool {
-        endorsements
-            .endorsers
-            .iter()
-            .any(|(vidx, _)| vidx == &self.vidx)
-            && !state.has_endorsement(endorsements.unit(), self.vidx)
+    /// Returns whether the incoming vertex was signed by our key even though we don't have it yet.
+    /// This can only happen if another node is running with the same signing key.
+    pub(crate) fn is_doppelganger_vertex(&self, vertex: &Vertex<C>, state: &State<C>) -> bool {
+        if !self.can_vote(state) {
+            // We don't have our own latest unit yet, so
+            return false;
+        }
+        match vertex {
+            Vertex::Unit(swunit) => {
+                // If we already have the unit in our local state,
+                // we must have had created it ourselves earlier and it is now gossiped back to us.
+                !state.has_unit(&swunit.wire_unit.hash()) && self.is_our_unit(&swunit.wire_unit)
+            }
+            Vertex::Endorsements(endorsements) => {
+                if state::TODO_ENDORSEMENT_EVIDENCE_DISABLED {
+                    return false;
+                }
+                // Check whether the list of endorsements includes one created by a doppelganger.
+                // An endorsement created by a doppelganger cannot be found in the local protocol
+                // state (since we haven't created it ourselves).
+                let is_ours = |(vidx, _): &(ValidatorIndex, _)| vidx == &self.vidx;
+                endorsements.endorsers.iter().any(is_ours)
+                    && !state.has_endorsement(endorsements.unit(), self.vidx)
+            }
+            Vertex::Evidence(_) => false,
+        }
     }
 }
 

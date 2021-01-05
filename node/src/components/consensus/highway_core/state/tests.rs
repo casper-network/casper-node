@@ -134,7 +134,7 @@ fn test_params(seed: u64) -> Params {
         Timestamp::from(0),
         Timestamp::from(0),
         TEST_ENDORSEMENT_EVIDENCE_LIMIT,
-        "./test-unit.dat".into(),
+        None, // No unit hash file.
     )
 }
 
@@ -257,7 +257,7 @@ fn ban_and_mark_faulty() -> Result<(), AddUnitError<TestContext>> {
         Timestamp::zero(),
         Timestamp::from(u64::MAX),
         TEST_ENDORSEMENT_EVIDENCE_LIMIT,
-        "./test-unit.dat".into(),
+        None, // No unit hash file.
     );
     // Everyone already knows Alice is faulty, so she is banned.
     let mut state = State::new(WEIGHTS, params, vec![ALICE]);
@@ -762,6 +762,9 @@ fn is_terminal_block() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
+    if TODO_ENDORSEMENT_EVIDENCE_DISABLED {
+        return Ok(()); // Endorsement evidence is disabled, so don't test it.
+    }
     let validators = vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
         .into_iter()
         .map(|(sk, vid)| {

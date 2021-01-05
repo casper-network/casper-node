@@ -584,24 +584,9 @@ impl<C: Context> Highway<C> {
 
     /// Checks whether the unit was created by a doppelganger.
     pub(crate) fn is_doppelganger_vertex(&self, vertex: &Vertex<C>) -> bool {
-        match vertex {
-            Vertex::Unit(swunit) => {
-                // If we already have the unit in our local state,
-                // we must have had created it ourselves earlier and it is now gossiped back to us.
-                !self.state.has_unit(&swunit.wire_unit.hash())
-                    && self
-                        .active_validator
-                        .as_ref()
-                        .map(|av| av.is_our_unit(&swunit.wire_unit))
-                        .unwrap_or(false)
-            }
-            Vertex::Endorsements(endorsements) => self
-                .active_validator
-                .as_ref()
-                .map(|av| av.includes_doppelgangers_endorsement(endorsements, &self.state))
-                .unwrap_or(false),
-            Vertex::Evidence(_) => false,
-        }
+        self.active_validator
+            .as_ref()
+            .map_or(false, |av| av.is_doppelganger_vertex(vertex, &self.state))
     }
 
     /// Returns whether this instance of protocol is an active validator.
