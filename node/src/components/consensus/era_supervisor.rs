@@ -283,8 +283,9 @@ where
                     .highway_config
                     .unit_hashes_folder
                     .join(format!(
-                        "unit_hash_{}_{}.dat",
-                        instance_id, self.public_signing_key
+                        "unit_hash_{:?}_{}.dat",
+                        instance_id,
+                        self.public_signing_key.to_hex()
                     ));
             consensus.activate_validator(our_id, secret, timestamp, Some(unit_hash_file))
         } else {
@@ -346,8 +347,11 @@ where
             .map(|era| {
                 if era.validators().contains_key(&public_key) {
                     let instance_id = *era.consensus.instance_id();
-                    let unit_hash_file = unit_hashes_folder
-                        .join(format!("unit_hash_{}_{}.dat", instance_id, public_key));
+                    let unit_hash_file = unit_hashes_folder.join(format!(
+                        "unit_hash_{:?}_{}.dat",
+                        instance_id,
+                        public_key.to_hex()
+                    ));
                     era.consensus
                         .activate_validator(public_key, secret, now, Some(unit_hash_file))
                 } else {

@@ -391,8 +391,10 @@ impl<C: Context> ActiveValidator<C> {
             round_exp: self.round_exp(state, timestamp),
             endorsed,
         };
-        self.write_last_unit(wunit.hash())
-            .expect("should successfully write unit's hash");
+        self.write_last_unit(wunit.hash()).expect(&format!(
+            "should successfully write unit's hash to {:?}",
+            self.unit_hash_file
+        ));
         Some(SignedWireUnit::new(wunit, &self.secret, rng))
     }
 
