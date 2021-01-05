@@ -14,6 +14,7 @@ use std::{
 
 use enum_iterator::IntoEnumIterator;
 use serde::{ser::SerializeMap, Serialize, Serializer};
+use std::io::Write;
 use tokio::sync::{Mutex, Semaphore};
 
 /// Weighted round-robin scheduler.
@@ -139,6 +140,42 @@ where
         }
         map.end()?;
 
+        Ok(())
+    }
+}
+
+impl<I, K> WeightedRoundRobin<I, K>
+where
+    I: Debug,
+    K: Copy + Clone + Eq + Hash + IntoEnumIterator + Debug,
+{
+    /// Dump the contents of the queues (`Debug` representation) to a given file.
+    pub async fn debug_dump(&self, file: &mut std::fs::File) -> Result<(), std::io::Error> {
+        let mut locks = Vec::new();
+        for kind in K::into_enum_iter() {
+            let queue_guard = self
+                .queues
+                .get(&kind)
+                .expect("missing queue while dumping")
+                .queue
+                .lock()
+                .await;
+
+            locks.push((kind, queue_guard));
+        }
+
+        for (kind, guard) in locks {
+            let queue = &*guard;
+            file.write_all(format!("Queue: {:?} ({}) [\n", kind, queue.len()).as_bytes())?;
+            for (i, event) in queue.iter().enumerate() {
+                file.write_all(format!("\t{:?}\n", event).as_bytes())?;
+                if i % 1024 == 0 {
+                    file.flush()?;
+                }
+            }
+            file.write_all(b"]\n")?;
+            file.flush()?;
+        }
         Ok(())
     }
 }

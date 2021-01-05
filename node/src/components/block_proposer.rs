@@ -406,11 +406,7 @@ impl BlockProposerReady {
                 .iter()
                 .all(|dep| past_deploys.contains(dep) || self.contains_finalized(dep))
         };
-        let ttl_valid = header.ttl() <= deploy_config.max_ttl;
-        let timestamp_valid = header.timestamp() <= block_timestamp;
-        let deploy_valid = header.timestamp() + header.ttl() >= block_timestamp;
-        let num_deps_valid = header.dependencies().len() <= deploy_config.max_dependencies as usize;
-        ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
+        header.is_valid(deploy_config, block_timestamp) && all_deps_resolved()
     }
 
     /// Returns a list of candidates for inclusion into a block.
