@@ -526,7 +526,6 @@ impl<C: Context> ActiveValidator<C> {
     /// This can only happen if another node is running with the same signing key.
     pub(crate) fn is_doppelganger_vertex(&self, vertex: &Vertex<C>, state: &State<C>) -> bool {
         if !self.can_vote(state) {
-            // We don't have our own latest unit yet, so
             return false;
         }
         match vertex {
