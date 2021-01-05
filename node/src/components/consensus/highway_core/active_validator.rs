@@ -98,11 +98,12 @@ impl<C: Context> ActiveValidator<C> {
             .as_ref()
             .map(Self::read_last_unit)
             .transpose()
-            .map_err(|err| {
-                warn!(
+            .map_err(|err| match err.kind() {
+                io::ErrorKind::NotFound => (),
+                _ => panic!(
                     "got an error reading unit hash file {:?}: {:?}",
                     unit_hash_file, err
-                )
+                ),
             })
             .ok()
             .flatten();
