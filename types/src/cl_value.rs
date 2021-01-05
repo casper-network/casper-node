@@ -7,14 +7,15 @@ use core::fmt;
 use failure::Fail;
 #[cfg(feature = "std")]
 use schemars::JsonSchema;
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{
+    de::Error as SerdeError, ser::Error, Deserialize, Deserializer, Serialize, Serializer,
+};
 use serde_json::{json, Value};
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     CLType, CLTyped, Key, PublicKey, URef, U128, U256, U512,
 };
-use serde::ser::Error;
 
 /// Error while converting a [`CLValue`] into a given type.
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -289,19 +290,18 @@ impl Serialize for CLValue {
 
 impl<'de> Deserialize<'de> for CLValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let (cl_type, bytes) = if deserializer.is_human_readable() {
+        if deserializer.is_human_readable() {
             let json = CLValueJson::deserialize(deserializer)?;
-            (
-                json.cl_type.clone(),
-                base16::decode(&json.serialized_bytes).map_err(D::Error::custom)?,
-            )
+            let serialized_self =
+                base16::decode(&json.serialized_bytes).map_err(D::Error::custom)?;
+            bytesrepr::deserialize(serialized_self).map_err(D::Error::custom)
         } else {
-            <(CLType, Vec<u8>)>::deserialize(deserializer)?
-        };
-        Ok(CLValue {
-            cl_type,
-            bytes: bytes.into(),
-        })
+            let (cl_type, bytes) = <(CLType, Vec<u8>)>::deserialize(deserializer)?;
+            Ok(CLValue {
+                cl_type,
+                bytes: bytes.into(),
+            })
+        }
     }
 }
 

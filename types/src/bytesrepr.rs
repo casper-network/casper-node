@@ -311,7 +311,7 @@ fn ensure_efficient_serialization<T>() {
     debug_assert_ne!(
         any::type_name::<T>(),
         any::type_name::<u8>(),
-        "You should use Bytes newtype wrapper for efficiency"
+        "You should use `bytesrepr::Bytes` newtype wrapper for efficiency"
     );
 }
 
