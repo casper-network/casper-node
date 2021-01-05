@@ -11,6 +11,9 @@ use crate::storage::{
     MAX_DBS,
 };
 
+/// Filename for the LMDB database created by the EE.
+const EE_DB_FILENAME: &str = "data.lmdb";
+
 impl<'a> Transaction for RoTransaction<'a> {
     type Error = lmdb::Error;
 
@@ -78,7 +81,7 @@ impl LmdbEnvironment {
             .set_max_dbs(MAX_DBS)
             .set_map_size(map_size)
             .set_max_readers(max_readers)
-            .open(&path.as_ref().join("data.lmdb"))?;
+            .open(&path.as_ref().join(EE_DB_FILENAME))?;
         Ok(LmdbEnvironment { env })
     }
 
