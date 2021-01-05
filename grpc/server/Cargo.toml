@@ -1,6 +1,6 @@
 [package]
 name = "casper-engine-grpc-server"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Mateusz Górski <gorski.mateusz@protonmail.ch>"]
 edition = "2018"
 description = "Wasm execution engine for Casper smart contracts."
@@ -19,8 +19,8 @@ include = [
 ]
 
 [dependencies]
-casper-execution-engine = { version = "0.4.0", path = "../../execution_engine", features = ["gens"] }
-casper-types = { version = "0.4.0", path = "../../types", features = ["std", "gens"] }
+casper-execution-engine = { version = "0.5.0", path = "../../execution_engine", features = ["gens"] }
+casper-types = { version = "0.5.0", path = "../../types", features = ["std", "gens"] }
 clap = "2"
 ctrlc = "3"
 dirs = "3"
