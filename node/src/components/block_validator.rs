@@ -78,17 +78,17 @@ pub(crate) struct BlockValidatorReady<T, I> {
 }
 
 impl<T, I> BlockValidatorReady<T, I>
-    where
-        T: BlockLike + Send + Clone + 'static,
-        I: Clone + Send + 'static,
+where
+    T: BlockLike + Send + Clone + 'static,
+    I: Clone + Send + 'static,
 {
     fn handle_event<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         event: Event<T, I>,
     ) -> Effects<Event<T, I>>
-        where
-            REv: From<Event<T, I>>
+    where
+        REv: From<Event<T, I>>
             + From<BlockValidationRequest<T, I>>
             + From<StorageRequest>
             + From<FetcherRequest<I, Deploy>>
@@ -97,11 +97,11 @@ impl<T, I> BlockValidatorReady<T, I>
         let mut effects = Effects::new();
         match event {
             Event::Request(BlockValidationRequest {
-                               block,
-                               sender,
-                               responder,
-                               block_timestamp,
-                           }) => {
+                block,
+                sender,
+                responder,
+                block_timestamp,
+            }) => {
                 let block_deploys = block
                     .deploys()
                     .iter()
@@ -152,10 +152,10 @@ impl<T, I> BlockValidatorReady<T, I>
                                         move |result: FetchResult<Deploy>| match result {
                                             FetchResult::FromStorage(deploy)
                                             | FetchResult::FromPeer(deploy, _) => {
-                                                if deploy
-                                                    .header()
-                                                    .is_valid(&chainspec.genesis.deploy_config, block_timestamp)
-                                                {
+                                                if deploy.header().is_valid(
+                                                    &chainspec.genesis.deploy_config,
+                                                    block_timestamp,
+                                                ) {
                                                     Event::DeployMissing(dh_found)
                                                 } else {
                                                     Event::DeployFound(dh_found)
@@ -240,14 +240,14 @@ pub(crate) struct BlockValidator<T, I> {
 }
 
 impl<T, I> BlockValidator<T, I>
-    where
-        T: BlockLike + Send + Clone + 'static,
-        I: Clone + Send + 'static + Send,
+where
+    T: BlockLike + Send + Clone + 'static,
+    I: Clone + Send + 'static + Send,
 {
     /// Creates a new block validator instance.
     pub(crate) fn new<REv>(effect_builder: EffectBuilder<REv>) -> (Self, Effects<Event<T, I>>)
-        where
-            REv: From<Event<T, I>> + From<StorageRequest> + Send + 'static,
+    where
+        REv: From<Event<T, I>> + From<StorageRequest> + Send + 'static,
     {
         let effects = async move {
             effect_builder
@@ -255,7 +255,7 @@ impl<T, I> BlockValidator<T, I>
                 .await
                 .expect("chainspec should be infallible")
         }
-            .event(move |chainspec| Event::Loaded { chainspec });
+        .event(move |chainspec| Event::Loaded { chainspec });
         (
             BlockValidator {
                 state: BlockValidatorState::Loading(Vec::new()),
@@ -267,10 +267,10 @@ impl<T, I> BlockValidator<T, I>
 }
 
 impl<T, I, REv> Component<REv> for BlockValidator<T, I>
-    where
-        T: BlockLike + Send + Clone + 'static,
-        I: Clone + Send + 'static,
-        REv: From<Event<T, I>>
+where
+    T: BlockLike + Send + Clone + 'static,
+    I: Clone + Send + 'static,
+    REv: From<Event<T, I>>
         + From<BlockValidationRequest<T, I>>
         + From<FetcherRequest<I, Deploy>>
         + From<StorageRequest>
