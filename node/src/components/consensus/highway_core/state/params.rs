@@ -15,7 +15,7 @@ pub(crate) struct Params {
     start_timestamp: Timestamp,
     end_timestamp: Timestamp,
     endorsement_evidence_limit: u64,
-    unit_hash_file: PathBuf,
+    unit_hash_file: Option<PathBuf>,
 }
 
 impl Params {
@@ -38,7 +38,7 @@ impl Params {
     ///   specified height _and_ is no earlier than the specified timestamp. No children of this
     ///   block can be proposed.
     #[allow(clippy::too_many_arguments)] // FIXME
-    pub(crate) fn new(
+    pub(crate) fn new<P: Into<Option<PathBuf>>>(
         seed: u64,
         block_reward: u64,
         reduced_block_reward: u64,
@@ -49,7 +49,7 @@ impl Params {
         start_timestamp: Timestamp,
         end_timestamp: Timestamp,
         endorsement_evidence_limit: u64,
-        unit_hash_file: PathBuf,
+        unit_hash_file: P,
     ) -> Params {
         assert!(
             reduced_block_reward <= block_reward,
@@ -66,7 +66,7 @@ impl Params {
             start_timestamp,
             end_timestamp,
             endorsement_evidence_limit,
-            unit_hash_file,
+            unit_hash_file: unit_hash_file.into(),
         }
     }
 
@@ -119,8 +119,8 @@ impl Params {
     }
 
     /// Returns the name of the file storing the hash of our last known unit.
-    pub(crate) fn unit_hash_file(&self) -> &PathBuf {
-        &self.unit_hash_file
+    pub(crate) fn unit_hash_file(&self) -> Option<&PathBuf> {
+        self.unit_hash_file.as_ref()
     }
 
     /// Returns the maximum number of additional units included in evidence for conflicting
