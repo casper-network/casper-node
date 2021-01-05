@@ -9,6 +9,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
+    path::PathBuf,
     rc::Rc,
     time::Duration,
 };
@@ -100,6 +101,8 @@ pub struct EraSupervisor<I> {
     metrics: ConsensusMetrics,
     // TODO: discuss this quick fix
     finished_joining: bool,
+    /// The path to the folder where unit hash files will be stored.
+    unit_hashes_folder: PathBuf,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -126,6 +129,7 @@ where
         new_consensus: Box<ConsensusConstructor<I>>,
         mut rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
+        let unit_hashes_folder = config.with_dir(config.value().unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
@@ -146,6 +150,7 @@ where
             next_block_height: 0,
             metrics,
             finished_joining: false,
+            unit_hashes_folder,
         };
 
         let results = era_supervisor.new_era(
@@ -278,15 +283,11 @@ where
 
         let results = if should_activate {
             let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
-            let unit_hash_file =
-                self.protocol_config
-                    .highway_config
-                    .unit_hashes_folder
-                    .join(format!(
-                        "unit_hash_{:?}_{}.dat",
-                        instance_id,
-                        self.public_signing_key.to_hex()
-                    ));
+            let unit_hash_file = self.unit_hashes_folder.join(format!(
+                "unit_hash_{:?}_{}.dat",
+                instance_id,
+                self.public_signing_key.to_hex()
+            ));
             consensus.activate_validator(our_id, secret, timestamp, Some(unit_hash_file))
         } else {
             Vec::new()
@@ -337,11 +338,7 @@ where
         self.finished_joining = true;
         let secret = Keypair::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
         let public_key = self.public_signing_key;
-        let unit_hashes_folder = self
-            .protocol_config
-            .highway_config
-            .unit_hashes_folder
-            .clone();
+        let unit_hashes_folder = self.unit_hashes_folder.clone();
         self.active_eras
             .get_mut(&self.current_era)
             .map(|era| {

@@ -1,7 +1,7 @@
 use std::{
     convert::TryInto,
     fmt::{self, Debug, Formatter},
-    path::{Path, PathBuf},
+    path::Path,
     str::FromStr,
 };
 
@@ -102,7 +102,6 @@ pub(crate) struct HighwayConfig {
     /// quorum, i.e. no finality.
     #[data_size(skip)]
     pub(crate) reduced_reward_multiplier: Ratio<u64>,
-    pub(crate) unit_hashes_folder: PathBuf,
 }
 
 impl Default for HighwayConfig {
@@ -114,7 +113,6 @@ impl Default for HighwayConfig {
             minimum_round_exponent: 14, // 2**14 ms = ~16 seconds
             maximum_round_exponent: 19, // 2**19 ms = ~8.7 minutes
             reduced_reward_multiplier: Ratio::new(1, 5),
-            unit_hashes_folder: ".".into(),
         }
     }
 }
@@ -170,7 +168,6 @@ impl HighwayConfig {
             minimum_round_exponent: rng.gen_range(0, 16),
             maximum_round_exponent: rng.gen_range(16, 22),
             reduced_reward_multiplier: Ratio::new(rng.gen_range(0, 10), 10),
-            unit_hashes_folder: ".".into(),
         }
     }
 }

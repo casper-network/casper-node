@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +18,8 @@ use crate::{
 pub struct Config {
     /// Path to secret key file.
     pub secret_key_path: External<SecretKey>,
+    /// Path to the folder where unit hash files will be stored.
+    pub unit_hashes_folder: PathBuf,
 }
 
 /// Consensus protocol configuration.
