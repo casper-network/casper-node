@@ -251,13 +251,7 @@ where
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
         let our_id = self.public_signing_key;
-        let should_activate = if self.node_start_time >= start_time {
-            info!(
-                era = era_id.0,
-                %self.node_start_time, "not voting; node was not started before the era began",
-            );
-            false
-        } else if !validators.contains_key(&our_id) {
+        let should_activate = if !validators.contains_key(&our_id) {
             info!(era = era_id.0, %our_id, "not voting; not a validator");
             false
         } else if !self.finished_joining {
@@ -337,7 +331,7 @@ where
         self.active_eras
             .get_mut(&self.current_era)
             .map(|era| {
-                if era.start_time > now && era.validators().contains_key(&public_key) {
+                if era.validators().contains_key(&public_key) {
                     era.consensus.activate_validator(public_key, secret, now)
                 } else {
                     Vec::new()
