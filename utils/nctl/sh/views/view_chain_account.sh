@@ -1,52 +1,30 @@
 #!/usr/bin/env bash
-#
-# Renders account information to stdout.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   Chain root state hash.
-#   Account key.
 
-#######################################
-# Destructure input args.
-#######################################
-
-# Unset to avoid parameter collisions.
-unset account_key
-unset net
-unset node
-unset state_root_hash
+unset ACCOUNT_KEY
+unset STATE_ROOT_HASH
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        account-key) account_key=${VALUE} ;;
-        root-hash) state_root_hash=${VALUE} ;;
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        account-key) ACCOUNT_KEY=${VALUE} ;;
+        root-hash) STATE_ROOT_HASH=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-net=${net:-1}
-node=${node:-1}
-state_root_hash=${state_root_hash:-$(get_state_root_hash $net $node)}
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
 
-#######################################
-# Main
-#######################################
+source "$NCTL"/sh/utils/main.sh
 
-# Import utils.
-source $NCTL/sh/utils.sh
+NODE_ADDRESS=$(get_node_address_rpc)
+STATE_ROOT_HASH=${STATE_ROOT_HASH:-$(get_state_root_hash)}
 
-# Render node API result.
-$(get_path_to_client $net) query-state \
-    --node-address $(get_node_address_rpc $net $node) \
-    --state-root-hash $state_root_hash \
-    --key $account_key \
+$(get_path_to_client) query-state \
+    --node-address "$NODE_ADDRESS" \
+    --state-root-hash "$STATE_ROOT_HASH" \
+    --key "$ACCOUNT_KEY" \
     | jq '.result'

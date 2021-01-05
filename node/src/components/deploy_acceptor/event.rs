@@ -3,12 +3,13 @@ use std::fmt::{self, Display, Formatter};
 use semver::Version;
 use serde::Serialize;
 
-use super::{DeployAcceptorConfig, Source};
+use super::{DeployAcceptorChainspec, Source};
 use crate::{
     components::deploy_acceptor::Error,
     effect::{announcements::RpcServerAnnouncement, Responder},
     types::{Deploy, NodeId},
 };
+use casper_types::Key;
 
 /// `DeployAcceptor` events.
 #[derive(Debug, Serialize)]
@@ -24,7 +25,7 @@ pub enum Event {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         chainspec_version: Version,
-        maybe_deploy_config: Box<Option<DeployAcceptorConfig>>,
+        maybe_chainspec: Box<Option<DeployAcceptorChainspec>>,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
@@ -32,6 +33,14 @@ pub enum Event {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         is_new: bool,
+    },
+    /// The result of verifying `Account` exists and has meets minimum balance requirements.
+    AccountVerificationResult {
+        deploy: Box<Deploy>,
+        source: Source<NodeId>,
+        account_key: Key,
+        verified: bool,
+        maybe_responder: Option<Responder<Result<(), Error>>>,
     },
 }
 
@@ -55,10 +64,10 @@ impl Display for Event {
             }
             Event::GetChainspecResult {
                 chainspec_version,
-                maybe_deploy_config,
+                maybe_chainspec,
                 ..
             } => {
-                if maybe_deploy_config.is_some() {
+                if maybe_chainspec.is_some() {
                     write!(formatter, "got chainspec at {}", chainspec_version)
                 } else {
                     write!(
@@ -74,6 +83,21 @@ impl Display for Event {
                 } else {
                     write!(formatter, "had already stored {}", deploy.id())
                 }
+            }
+            Event::AccountVerificationResult {
+                deploy,
+                account_key,
+                verified,
+                ..
+            } => {
+                let prefix = if *verified { "" } else { "in" };
+                write!(
+                    formatter,
+                    "{}valid deploy {} from account {}",
+                    prefix,
+                    deploy.id(),
+                    account_key
+                )
             }
         }
     }

@@ -352,13 +352,13 @@ pub fn get_balance(
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, era information from the latest block will be returned if
 ///   available.
-pub fn get_era_info(
+pub fn get_era_info_by_switch_block(
     maybe_rpc_id: &str,
     node_address: &str,
     verbose: bool,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_era_info(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_era_info_by_switch_block(maybe_block_id)
 }
 
 /// Retrieves the bids and validators as of the most recently added `Block`.

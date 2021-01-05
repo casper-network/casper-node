@@ -25,6 +25,7 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
         let locked_funds_period = pb_exec_config.get_locked_funds_period();
         let round_seigniorage_rate = pb_exec_config.take_round_seigniorage_rate().into();
         let unbonding_delay = pb_exec_config.get_unbonding_delay();
+        let wasmless_transfer_cost = pb_exec_config.get_wasmless_transfer_cost();
         Ok(ExecConfig::new(
             mint_initializer_bytes,
             proof_of_stake_initializer_bytes,
@@ -37,6 +38,7 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
+            wasmless_transfer_cost,
         ))
     }
 }
@@ -65,6 +67,7 @@ impl From<ExecConfig> for ipc::ChainSpec_GenesisConfig_ExecConfig {
         pb_exec_config.set_locked_funds_period(exec_config.locked_funds_period());
         pb_exec_config.set_round_seigniorage_rate(exec_config.round_seigniorage_rate().into());
         pb_exec_config.set_unbonding_delay(exec_config.unbonding_delay());
+        pb_exec_config.set_wasmless_transfer_cost(exec_config.wasmless_transfer_cost());
         pb_exec_config
     }
 }

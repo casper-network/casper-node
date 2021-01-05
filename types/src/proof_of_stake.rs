@@ -49,37 +49,22 @@ mod internal {
     use crate::{
         account::AccountHash,
         proof_of_stake::{MintProvider, RuntimeProvider},
-        system_contract_errors::pos::{Error, PurseLookupError, Result},
+        system_contract_errors::pos::{Error, Result},
         Key, Phase, URef, U512,
     };
+
+    use super::{PAYMENT_PURSE_KEY, REFUND_PURSE_KEY};
 
     /// Account used to run system functions (in particular `finalize_payment`).
     const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0u8; 32]);
 
-    /// The uref name where the PoS accepts payment for computation on behalf of validators.
-    const PAYMENT_PURSE_KEY: &str = "pos_payment_purse";
-
-    /// The uref name where the PoS will refund unused payment back to the user. The uref this name
-    /// corresponds to is set by the user.
-    const REFUND_PURSE_KEY: &str = "pos_refund_purse";
-
-    /// Attempts to look up a purse from the named_keys
-    fn get_purse<R: RuntimeProvider>(
-        runtime_provider: &R,
-        name: &str,
-    ) -> core::result::Result<URef, PurseLookupError> {
-        runtime_provider
-            .get_key(name)
-            .ok_or(PurseLookupError::KeyNotFound)
-            .and_then(|key| match key {
-                Key::URef(uref) => Ok(uref),
-                _ => Err(PurseLookupError::KeyUnexpectedType),
-            })
-    }
-
     /// Returns the purse for accepting payment for transactions.
     pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef> {
-        get_purse::<R>(runtime_provider, PAYMENT_PURSE_KEY).map_err(PurseLookupError::payment)
+        match runtime_provider.get_key(PAYMENT_PURSE_KEY) {
+            Some(Key::URef(uref)) => Ok(uref),
+            Some(_) => Err(Error::PaymentPurseKeyUnexpectedType),
+            None => Err(Error::PaymentPurseNotFound),
+        }
     }
 
     /// Sets the purse where refunds (excess funds not spent to pay for computation) will be sent.
@@ -87,7 +72,7 @@ mod internal {
     /// deployer's account.
     pub fn set_refund<R: RuntimeProvider>(runtime_provider: &mut R, purse: URef) -> Result<()> {
         if let Phase::Payment = runtime_provider.get_phase() {
-            runtime_provider.put_key(REFUND_PURSE_KEY, Key::URef(purse));
+            runtime_provider.put_key(REFUND_PURSE_KEY, Key::URef(purse))?;
             return Ok(());
         }
         Err(Error::SetRefundPurseCalledOutsidePayment)
@@ -95,10 +80,10 @@ mod internal {
 
     /// Returns the currently set refund purse.
     pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Option<URef>> {
-        match get_purse::<R>(runtime_provider, REFUND_PURSE_KEY) {
-            Ok(uref) => Ok(Some(uref)),
-            Err(PurseLookupError::KeyNotFound) => Ok(None),
-            Err(PurseLookupError::KeyUnexpectedType) => Err(Error::RefundPurseKeyUnexpectedType),
+        match runtime_provider.get_key(REFUND_PURSE_KEY) {
+            Some(Key::URef(uref)) => Ok(Some(uref)),
+            Some(_) => Err(Error::RefundPurseKeyUnexpectedType),
+            None => Ok(None),
         }
     }
 
@@ -118,7 +103,7 @@ mod internal {
         }
 
         let payment_purse = get_payment_purse(provider)?;
-        let total = match provider.balance(payment_purse) {
+        let total = match provider.balance(payment_purse)? {
             Some(balance) => balance,
             None => return Err(Error::PaymentPurseBalanceNotFound),
         };
@@ -129,7 +114,7 @@ mod internal {
         let refund_amount = total - amount_spent;
 
         let refund_purse = get_refund_purse(provider)?;
-        provider.remove_key(REFUND_PURSE_KEY); //unset refund purse after reading it
+        provider.remove_key(REFUND_PURSE_KEY)?; //unset refund purse after reading it
 
         // pay target validator
         provider

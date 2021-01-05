@@ -1,60 +1,73 @@
+mod config;
 mod event;
-// mod tests;
 
 use std::{collections::HashMap, convert::Infallible, fmt::Debug};
 
 use semver::Version;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info};
 
+use super::chainspec_loader::DeployConfig;
 use crate::{
     components::{chainspec_loader::Chainspec, Component},
     effect::{
-        announcements::DeployAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
-        EffectExt, Effects,
+        announcements::DeployAcceptorAnnouncement,
+        requests::{ContractRuntimeRequest, StorageRequest},
+        EffectBuilder, EffectExt, Effects,
     },
     types::{Deploy, NodeId},
     utils::Source,
     NodeRng,
 };
+use casper_types::Key;
 
+use crate::effect::Responder;
+pub use config::Config;
 pub use event::Event;
 
-use super::chainspec_loader::DeployConfig;
-use crate::effect::Responder;
+#[derive(Debug, Error)]
+pub enum Error {
+    /// An invalid deploy was received from the client.
+    #[error("invalid deploy")]
+    InvalidDeploy,
+    /// An invalid account sent a deploy
+    #[error("invalid account")]
+    InvalidAccount,
+}
 
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
 pub trait ReactorEventT:
-    From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest> + Send
+    From<Event>
+    + From<DeployAcceptorAnnouncement<NodeId>>
+    + From<StorageRequest>
+    + From<ContractRuntimeRequest>
+    + Send
 {
 }
 
 impl<REv> ReactorEventT for REv where
-    REv: From<Event> + From<DeployAcceptorAnnouncement<NodeId>> + From<StorageRequest> + Send
+    REv: From<Event>
+        + From<DeployAcceptorAnnouncement<NodeId>>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + Send
 {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct DeployAcceptorConfig {
+pub struct DeployAcceptorChainspec {
     chain_name: String,
     deploy_config: DeployConfig,
 }
 
-impl From<Chainspec> for DeployAcceptorConfig {
+impl From<Chainspec> for DeployAcceptorChainspec {
     fn from(c: Chainspec) -> Self {
-        DeployAcceptorConfig {
+        DeployAcceptorChainspec {
             chain_name: c.genesis.name,
             deploy_config: c.genesis.deploy_config,
         }
     }
-}
-
-#[derive(Debug, Error)]
-pub enum Error {
-    /// A invalid deploy was received from the client.
-    #[error("invalid deploy from client")]
-    InvalidDeploy,
 }
 
 /// The `DeployAcceptor` is the component which handles all new `Deploy`s immediately after they're
@@ -64,20 +77,19 @@ pub enum Error {
 /// accepted `Deploy`.
 #[derive(Debug)]
 pub struct DeployAcceptor {
-    cached_deploy_configs: HashMap<Version, DeployAcceptorConfig>,
+    cached_deploy_configs: HashMap<Version, DeployAcceptorChainspec>,
+    verify_accounts: bool,
 }
 
 impl DeployAcceptor {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(config: Config) -> Self {
         DeployAcceptor {
             cached_deploy_configs: HashMap::new(),
+            verify_accounts: config.verify_accounts(),
         }
     }
 
     /// Handles receiving a new `Deploy` from a peer or client.
-    /// In the case of a peer, there should be no responder and the variant should be `None`
-    /// In the case of a client, there should be a responder to communicate the validity of the
-    /// deploy and the variant will be `Some`
     fn accept<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -96,7 +108,7 @@ impl DeployAcceptor {
                         deploy,
                         source,
                         chainspec_version,
-                        maybe_deploy_config: Box::new(Some(genesis_config)),
+                        maybe_chainspec: Box::new(Some(genesis_config)),
                         maybe_responder: responder,
                     })
             }
@@ -106,10 +118,52 @@ impl DeployAcceptor {
                     deploy,
                     source,
                     chainspec_version,
-                    maybe_deploy_config: Box::new(maybe_chainspec.map(|c| (*c).clone().into())),
+                    maybe_chainspec: Box::new(maybe_chainspec.map(|c| (*c).clone().into())),
                     maybe_responder: responder,
                 }),
         }
+    }
+
+    fn account_verification<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        deploy: Box<Deploy>,
+        source: Source<NodeId>,
+        account_key: Key,
+        verified: bool,
+        maybe_responder: Option<Responder<Result<(), Error>>>,
+    ) -> Effects<Event> {
+        let mut effects = Effects::new();
+        if !verified {
+            info! {
+                "Received deploy from invalid account using {}", account_key
+            };
+            if let Some(responder) = maybe_responder {
+                effects.extend(responder.respond(Err(Error::InvalidAccount)).ignore());
+            }
+            effects.extend(
+                effect_builder
+                    .announce_invalid_deploy(deploy, source)
+                    .ignore(),
+            );
+            return effects;
+        }
+
+        if let Some(responder) = maybe_responder {
+            effects.extend(responder.respond(Ok(())).ignore());
+        }
+
+        effects.extend(
+            effect_builder
+                .put_deploy_to_storage(deploy.clone())
+                .event(move |is_new| Event::PutToStorageResult {
+                    deploy,
+                    source,
+                    is_new,
+                }),
+        );
+
+        effects
     }
 
     fn validate<REv: ReactorEventT>(
@@ -117,27 +171,14 @@ impl DeployAcceptor {
         effect_builder: EffectBuilder<REv>,
         deploy: Box<Deploy>,
         source: Source<NodeId>,
-        deploy_config: DeployAcceptorConfig,
+        chainspec: DeployAcceptorChainspec,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
         let mut cloned_deploy = deploy.clone();
         let mut effects = Effects::new();
-        if is_valid(&mut cloned_deploy, deploy_config) {
-            // The client submitted a valid deploy. Return an Ok status to the RPC component via the
-            // responder.
-            if let Some(responder) = maybe_responder {
-                effects.extend(responder.respond(Ok(())).ignore());
-            }
-            effects.extend(effect_builder.put_deploy_to_storage(cloned_deploy).event(
-                move |is_new| Event::PutToStorageResult {
-                    deploy,
-                    source,
-                    is_new,
-                },
-            ));
-        } else {
-            // The client has submitted an invalid deploy. Return an error message to the RPC
-            // component via the responder.
+        let is_acceptable =
+            cloned_deploy.is_acceptable(chainspec.chain_name, chainspec.deploy_config);
+        if !is_acceptable {
             if let Some(responder) = maybe_responder {
                 effects.extend(responder.respond(Err(Error::InvalidDeploy)).ignore());
             }
@@ -146,8 +187,34 @@ impl DeployAcceptor {
                     .announce_invalid_deploy(deploy, source)
                     .ignore(),
             );
+            return effects;
         }
-        effects
+
+        let account_key = deploy.header().account().to_account_hash().into();
+
+        // skip account verification if deploy not received from client or node is configured to
+        // not verify accounts
+        if !source.from_client() || !self.verify_accounts {
+            return effect_builder
+                .immediately()
+                .event(move |_| Event::AccountVerificationResult {
+                    deploy,
+                    source,
+                    account_key,
+                    verified: true,
+                    maybe_responder,
+                });
+        }
+
+        effect_builder
+            .is_verified_account(account_key)
+            .event(move |verified| Event::AccountVerificationResult {
+                deploy,
+                source,
+                account_key,
+                verified,
+                maybe_responder,
+            })
     }
 
     fn failed_to_get_chainspec(
@@ -197,20 +264,14 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 deploy,
                 source,
                 chainspec_version,
-                maybe_deploy_config,
+                maybe_chainspec,
                 maybe_responder,
-            } => match *maybe_deploy_config {
-                Some(deploy_config) => {
+            } => match *maybe_chainspec {
+                Some(chainspec) => {
                     // Update chainspec cache.
                     self.cached_deploy_configs
-                        .insert(chainspec_version, deploy_config.clone());
-                    self.validate(
-                        effect_builder,
-                        deploy,
-                        source,
-                        deploy_config,
-                        maybe_responder,
-                    )
+                        .insert(chainspec_version, chainspec.clone());
+                    self.validate(effect_builder, deploy, source, chainspec, maybe_responder)
                 }
                 None => self.failed_to_get_chainspec(deploy, source, chainspec_version),
             },
@@ -219,42 +280,20 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 source,
                 is_new,
             } => self.handle_put_to_storage(effect_builder, deploy, source, is_new),
+            Event::AccountVerificationResult {
+                deploy,
+                source,
+                account_key,
+                verified,
+                maybe_responder,
+            } => self.account_verification(
+                effect_builder,
+                deploy,
+                source,
+                account_key,
+                verified,
+                maybe_responder,
+            ),
         }
     }
-}
-
-fn is_valid(deploy: &mut Deploy, config: DeployAcceptorConfig) -> bool {
-    if deploy.header().chain_name() != config.chain_name {
-        warn!(
-            deploy_hash = %deploy.id(),
-            deploy_header = %deploy.header(),
-            chain_name = %config.chain_name,
-            "invalid chain identifier"
-        );
-        return false;
-    }
-
-    if deploy.header().dependencies().len() > config.deploy_config.max_dependencies as usize {
-        warn!(
-            deploy_hash = %deploy.id(),
-            deploy_header = %deploy.header(),
-            max_dependencies = %config.deploy_config.max_dependencies,
-            "deploy dependency ceiling exceeded"
-        );
-        return false;
-    }
-
-    if deploy.header().ttl() > config.deploy_config.max_ttl {
-        warn!(
-            deploy_hash = %deploy.id(),
-            deploy_header = %deploy.header(),
-            max_ttl = %config.deploy_config.max_ttl,
-            "deploy ttl excessive"
-        );
-        return false;
-    }
-
-    // TODO - check if there is more that can be validated here.
-
-    deploy.is_valid()
 }

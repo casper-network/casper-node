@@ -184,7 +184,7 @@ pub enum Event {
 
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement<NodeId>),
 
     /// Address Gossiper announcement.
     #[from]
@@ -424,7 +424,7 @@ impl reactor::Reactor for Reactor {
 
         let block_by_height_fetcher = Fetcher::new(config.fetcher);
 
-        let deploy_acceptor = DeployAcceptor::new();
+        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
 
         let genesis_state_root_hash = chainspec_loader
             .genesis_state_root_hash()
@@ -450,7 +450,7 @@ impl reactor::Reactor for Reactor {
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
-            chainspec_loader.chainspec(),
+            chainspec_loader.chainspec().into(),
             chainspec_loader
                 .genesis_state_root_hash()
                 .expect("should have genesis post state hash"),
@@ -747,6 +747,11 @@ impl reactor::Reactor for Reactor {
                         },
                     ),
                 ),
+                ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
+                    // TODO: handle the announcement and acutally disconnect
+                    warn!("Disconnecting from a given peer not yet implemented.");
+                    Effects::new()
+                }
             },
             Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining

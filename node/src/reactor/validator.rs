@@ -170,7 +170,7 @@ pub enum Event {
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement<NodeId>),
     /// BlockExecutor announcement.
     #[from]
     BlockExecutorAnnouncement(#[serde(skip_serializing)] BlockExecutorAnnouncement),
@@ -385,7 +385,7 @@ impl reactor::Reactor for Reactor {
         let rpc_server = RpcServer::new(config.rpc_server.clone(), effect_builder);
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
 
-        let deploy_acceptor = DeployAcceptor::new();
+        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
         let deploy_fetcher = Fetcher::new(config.fetcher);
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -393,8 +393,14 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
-        let (block_proposer, block_proposer_effects) =
-            BlockProposer::new(registry.clone(), effect_builder)?;
+        let (block_proposer, block_proposer_effects) = BlockProposer::new(
+            registry.clone(),
+            effect_builder,
+            latest_block
+                .as_ref()
+                .map(|block| block.height() + 1)
+                .unwrap_or(0),
+        )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         // Post state hash is expected to be present.
         let genesis_state_root_hash = chainspec_loader
@@ -425,6 +431,13 @@ impl reactor::Reactor for Reactor {
             effect_builder
                 .set_timeout(timer_duration.into())
                 .event(|_| consensus::Event::Shutdown),
+        ));
+
+        effects.extend(reactor::wrap_effects(
+            Event::Consensus,
+            effect_builder
+                .immediately()
+                .event(move |_| consensus::Event::FinishedJoining(now)),
         ));
 
         Ok((
@@ -802,6 +815,11 @@ impl reactor::Reactor for Reactor {
                                 timestamp,
                             });
                         self.dispatch_event(effect_builder, rng, reactor_event)
+                    }
+                    ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
+                        // TODO: handle the announcement and acutally disconnect
+                        warn!("Disconnecting from a given peer not yet implemented.");
+                        Effects::new()
                     }
                 }
             }

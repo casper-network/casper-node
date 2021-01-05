@@ -774,7 +774,12 @@ impl Block {
             parent_hash,
             state_root_hash,
             body_hash,
-            deploy_hashes: finalized_block.proto_block.wasm_deploys,
+            deploy_hashes: finalized_block
+                .proto_block
+                .wasm_deploys
+                .into_iter()
+                .chain(finalized_block.proto_block.transfers.into_iter())
+                .collect(),
             random_bit: finalized_block.proto_block.random_bit,
             accumulated_seed: accumulated_seed.into(),
             era_end: finalized_block.era_end,
@@ -1191,6 +1196,8 @@ pub(crate) mod json_compatibility {
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.
     pub block_hash: BlockHash,
+    /// Era in which the block was created in.
+    pub era_id: EraId,
     /// Signature over the block hash.
     pub signature: Signature,
     /// Public key of the signing validator.
@@ -1199,9 +1206,19 @@ pub struct FinalitySignature {
 
 impl FinalitySignature {
     /// Create an instance of `FinalitySignature`.
-    pub fn new(block_hash: BlockHash, signature: Signature, public_key: PublicKey) -> Self {
+    pub fn new(
+        block_hash: BlockHash,
+        era_id: EraId,
+        secret_key: &SecretKey,
+        public_key: PublicKey,
+        rng: &mut NodeRng,
+    ) -> Self {
+        let mut bytes = block_hash.inner().to_vec();
+        bytes.extend_from_slice(&era_id.0.to_le_bytes());
+        let signature = asymmetric_key::sign(bytes, &secret_key, &public_key, rng);
         FinalitySignature {
             block_hash,
+            era_id,
             signature,
             public_key,
         }
@@ -1209,7 +1226,10 @@ impl FinalitySignature {
 
     /// Verifies whether the signature is correct.
     pub fn verify(&self) -> crypto::asymmetric_key::Result<()> {
-        crypto::asymmetric_key::verify(self.block_hash.inner(), &self.signature, &self.public_key)
+        // NOTE: This needs to be in sync with the `new` constructor.
+        let mut bytes = self.block_hash.inner().to_vec();
+        bytes.extend_from_slice(&self.era_id.0.to_le_bytes());
+        crypto::asymmetric_key::verify(bytes, &self.signature, &self.public_key)
     }
 }
 
@@ -1229,6 +1249,7 @@ mod tests {
 
     use super::*;
     use crate::testing::TestRng;
+    use std::rc::Rc;
 
     #[test]
     fn json_block_roundtrip() {
@@ -1318,5 +1339,27 @@ mod tests {
             }) if expected_by_block == bogus_block_hash && actual == actual_block_hash => {}
             unexpected => panic!("Bad check response: {:?}", unexpected),
         }
+    }
+
+    #[test]
+    fn finality_signature() {
+        let mut rng = TestRng::new();
+        let block = Block::random(&mut rng);
+        // Signature should be over both block hash and era id.
+        let (secret_key, public_key) = asymmetric_key::generate_ed25519_keypair();
+        let secret_rc = Rc::new(secret_key);
+        let era_id = EraId(1);
+        let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key, &mut rng);
+        assert!(fs.verify().is_ok());
+        let signature = fs.signature;
+        // Verify that signature includes era id.
+        let fs_manufactured = FinalitySignature {
+            block_hash: *block.hash(),
+            era_id: EraId(2),
+            signature,
+            public_key,
+        };
+        // Test should fails b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
+        assert!(fs_manufactured.verify().is_err());
     }
 }

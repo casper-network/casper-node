@@ -15,6 +15,7 @@ mod traits;
 use std::{
     convert::{Infallible, TryInto},
     fmt::{self, Debug, Display, Formatter},
+    time::Duration,
 };
 
 use datasize::DataSize;
@@ -79,6 +80,12 @@ pub enum Event<I> {
         proto_block: ProtoBlock,
         valid: bool,
     },
+    /// Deactivate the era with the given ID, unless the number of faulty validators increases.
+    DeactivateEra {
+        era_id: EraId,
+        faulty_num: usize,
+        delay: Duration,
+    },
     /// Event raised when a new era should be created: once we get the set of validators, the
     /// booking block hash and the seed from the key block
     CreateNewEra {
@@ -92,6 +99,8 @@ pub enum Event<I> {
     },
     /// An event instructing us to shutdown if the latest era received no votes
     Shutdown,
+    /// An event fired when the joiner reactor transitions into validator.
+    FinishedJoining(Timestamp),
 }
 
 impl Debug for ConsensusMessage {
@@ -160,6 +169,13 @@ impl<I: Debug> Display for Event<I> {
                 if *valid { "valid" } else { "invalid" },
                 proto_block
             ),
+            Event::DeactivateEra {
+                era_id, faulty_num, ..
+            } => write!(
+                f,
+                "Deactivate old era {} unless additional faults are observed; faults so far: {}",
+                era_id.0, faulty_num
+            ),
             Event::CreateNewEra {
                 booking_block_hash,
                 key_block_seed,
@@ -172,6 +188,9 @@ impl<I: Debug> Display for Event<I> {
                 booking_block_hash, key_block_seed, get_validators_result
             ),
             Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
+            Event::FinishedJoining(timestamp) => {
+                write!(f, "The node finished joining the network at {}", timestamp)
+            }
         }
     }
 }
@@ -183,7 +202,7 @@ pub trait ReactorEventT<I>:
     + Send
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
-    + From<ConsensusAnnouncement>
+    + From<ConsensusAnnouncement<I>>
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest>
@@ -196,7 +215,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + Send
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
-        + From<ConsensusAnnouncement>
+        + From<ConsensusAnnouncement<I>>
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest>
@@ -237,6 +256,11 @@ where
                 proto_block,
                 valid,
             } => handling_es.resolve_validity(era_id, sender, proto_block, valid),
+            Event::DeactivateEra {
+                era_id,
+                faulty_num,
+                delay,
+            } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
             Event::CreateNewEra {
                 block_header,
                 booking_block_hash,
@@ -288,6 +312,12 @@ where
                 )
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
+            Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
+            Event::ConsensusRequest(requests::ConsensusRequest::IsBondedValidator(
+                era_id,
+                pk,
+                responder,
+            )) => handling_es.is_bonded_validator(era_id, pk, responder),
         }
     }
 }

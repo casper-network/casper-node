@@ -4,7 +4,7 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
-    CLTyped, CLValue,
+    CLTyped, CLValue, CLValueError,
 };
 
 /// Named arguments to a contract
@@ -63,6 +63,22 @@ impl RuntimeArgs {
         RuntimeArgs::default()
     }
 
+    /// A wrapper that lets you easily and safely create runtime arguments.   
+    ///
+    /// This method is useful when you have to construct a [`RuntimeArgs`] with multiple entries,
+    /// but error handling at given call site would require to have a match statement for each
+    /// [`RuntimeArgs::insert`] call. With this method you can use ? operator inside the closure and
+    /// then handle single result. When `try_block` will be stabilized this method could be
+    /// deprecated in favor of using those blocks.
+    pub fn try_new<F>(func: F) -> Result<RuntimeArgs, CLValueError>
+    where
+        F: FnOnce(&mut RuntimeArgs) -> Result<(), CLValueError>,
+    {
+        let mut runtime_args = RuntimeArgs::new();
+        func(&mut runtime_args)?;
+        Ok(runtime_args)
+    }
+
     /// Gets an argument by its name.
     pub fn get(&self, name: &str) -> Option<&CLValue> {
         self.0.iter().find_map(|NamedArg(named_name, named_value)| {
@@ -85,13 +101,14 @@ impl RuntimeArgs {
     }
 
     /// Insert new named argument into the collection.
-    pub fn insert<K, V>(&mut self, key: K, value: V)
+    pub fn insert<K, V>(&mut self, key: K, value: V) -> Result<(), CLValueError>
     where
         K: Into<String>,
         V: CLTyped + ToBytes,
     {
-        let cl_value = CLValue::from_t(value).expect("should create CLValue");
+        let cl_value = CLValue::from_t(value)?;
         self.0.push(NamedArg(key.into(), cl_value));
+        Ok(())
     }
 
     /// Insert new named argument into the collection.
@@ -149,6 +166,9 @@ impl FromBytes for RuntimeArgs {
 
 /// Macro that makes it easier to construct named arguments.
 ///
+/// NOTE: This macro does not propagate possible errors that could occur while creating a
+/// [`crate::CLValue`]. For such cases creating [`RuntimeArgs`] manually is recommended.
+///
 /// # Example usage
 /// ```
 /// use casper_types::{RuntimeArgs, runtime_args};
@@ -165,7 +185,7 @@ macro_rules! runtime_args {
         {
             let mut named_args = RuntimeArgs::new();
             $(
-                named_args.insert($key, $value);
+                named_args.insert($key, $value).unwrap();
             )*
             named_args
         }
@@ -233,5 +253,20 @@ mod tests {
             "foo" => 1i32,
         };
         bytesrepr::test_serialization_roundtrip(&args);
+    }
+
+    #[test]
+    fn should_create_args_with() {
+        let res = RuntimeArgs::try_new(|runtime_args| {
+            runtime_args.insert(String::from("foo"), 123)?;
+            runtime_args.insert(String::from("bar"), 456)?;
+            Ok(())
+        });
+
+        let expected = runtime_args! {
+            "foo" => 123,
+            "bar" => 456,
+        };
+        assert!(matches!(res, Ok(args) if expected == args));
     }
 }

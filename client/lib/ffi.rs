@@ -567,9 +567,9 @@ pub extern "C" fn casper_get_balance(
 
 /// Retrieves era information from the network.
 ///
-/// See [super::get_era_info](super::get_era_info) for more details.
+/// See [super::get_era_info_by_switch_block](super::get_era_info_by_switch_block) for more details.
 #[no_mangle]
-pub extern "C" fn casper_get_era_info(
+pub extern "C" fn casper_get_era_info_by_switch_block(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
     verbose: bool,
@@ -583,7 +583,12 @@ pub extern "C" fn casper_get_era_info(
     let node_address = try_unsafe_arg!(node_address);
     let maybe_block_id = try_unsafe_arg!(maybe_block_id);
     runtime.block_on(async move {
-        let result = super::get_era_info(maybe_rpc_id, node_address, verbose, maybe_block_id);
+        let result = super::get_era_info_by_switch_block(
+            maybe_rpc_id,
+            node_address,
+            verbose,
+            maybe_block_id,
+        );
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS

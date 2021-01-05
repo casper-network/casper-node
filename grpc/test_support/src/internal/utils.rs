@@ -17,6 +17,7 @@ use casper_execution_engine::{
         account::Account, additive_map::AdditiveMap, gas::Gas, stored_value::StoredValue,
         transform::Transform,
     },
+    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::Key;
 
@@ -144,6 +145,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+    let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
     ExecConfig::new(
         mint_installer_bytes,
         proof_of_stake_installer_bytes,
@@ -156,6 +158,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
         locked_funds_period,
         round_seigniorage_rate,
         unbonding_delay,
+        wasmless_transfer_cost,
     )
 }
 

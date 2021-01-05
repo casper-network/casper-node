@@ -11,9 +11,15 @@ use super::Error;
 const DEFAULT_INFECTION_TARGET: u8 = 3;
 const DEFAULT_SATURATION_LIMIT_PERCENT: u8 = 80;
 pub(super) const MAX_SATURATION_LIMIT_PERCENT: u8 = 99;
-pub(super) const DEFAULT_FINISHED_ENTRY_DURATION_SECS: u64 = 3_600;
+pub(super) const DEFAULT_FINISHED_ENTRY_DURATION_SECS: u64 = 60;
 const DEFAULT_GOSSIP_REQUEST_TIMEOUT_SECS: u64 = 10;
 const DEFAULT_GET_REMAINDER_TIMEOUT_SECS: u64 = 60;
+#[cfg(test)]
+const SMALL_TIMEOUTS_FINISHED_ENTRY_DURATION_SECS: u64 = 2;
+#[cfg(test)]
+const SMALL_TIMEOUTS_GOSSIP_REQUEST_TIMEOUT_SECS: u64 = 1;
+#[cfg(test)]
+const SMALL_TIMEOUTS_GET_REMAINDER_TIMEOUT_SECS: u64 = 1;
 
 /// Configuration options for gossiping.
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -61,6 +67,16 @@ impl Config {
             gossip_request_timeout_secs,
             get_remainder_timeout_secs,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_small_timeouts() -> Self {
+        Config {
+            finished_entry_duration_secs: SMALL_TIMEOUTS_FINISHED_ENTRY_DURATION_SECS,
+            gossip_request_timeout_secs: SMALL_TIMEOUTS_GOSSIP_REQUEST_TIMEOUT_SECS,
+            get_remainder_timeout_secs: SMALL_TIMEOUTS_GET_REMAINDER_TIMEOUT_SECS,
+            ..Default::default()
+        }
     }
 
     pub(crate) fn infection_target(&self) -> u8 {

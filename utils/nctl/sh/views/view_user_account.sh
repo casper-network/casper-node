@@ -1,57 +1,46 @@
 #!/usr/bin/env bash
-#
-# Renders a network faucet account key.
+
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/views/utils.sh
+
+#######################################
+# Renders user on-chain account details.
 # Globals:
-#   NCTL - path to nctl home directory.
+#   NCTL_ACCOUNT_TYPE_USER - user account type literal.
 # Arguments:
-#   Network ordinal identifier.
-
+#   User ordinal identifier.
 #######################################
-# Destructure input args.
-#######################################
+function main()
+{
+    local USER_ID=${1}
 
-# Unset to avoid parameter collisions.
-unset net
-unset node
-unset user
+    if [ "$USER_ID" = "all" ]; then
+        for USER_ID in $(seq 1 "$(get_count_of_users)")
+        do
+            echo "------------------------------------------------------------------------------------------------------------------------------------"
+            log "user #$USER_ID :: on-chain account details:"
+            render_account "$NCTL_ACCOUNT_TYPE_USER" "$USER_ID"
+        done
+    else
+        log "user #$USER_ID :: on-chain account details:"
+        render_account "$NCTL_ACCOUNT_TYPE_USER" "$USER_ID"
+    fi
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
+unset USER_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
-        user) user=${VALUE} ;;
+        user) USER_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-net=${net:-1}
-node=${node:-1}
-user=${user:-"all"}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
-source $(get_path_to_net_vars $net)
-
-# Render account(s).
-if [ $user = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_USER_COUNT)
-    do
-        echo "------------------------------------------------------------------------------------------------------------------------------------"
-        log "net-$net :: user #$IDX :: on-chain account details:"
-        render_account $net $node $NCTL_ACCOUNT_TYPE_USER $IDX
-    done
-    echo "------------------------------------------------------------------------------------------------------------------------------------"
-else
-    log "net-$net :: user #$user :: on-chain account details:"
-    render_account $net $node $NCTL_ACCOUNT_TYPE_USER $user
-fi
+main "${USER_ID:-"all"}"

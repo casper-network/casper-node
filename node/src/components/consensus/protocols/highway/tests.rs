@@ -71,7 +71,7 @@ where
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
         &init_slashed.into_iter().collect(),
-        &chainspec,
+        &(&chainspec).into(),
         None,
         0.into(),
         0,

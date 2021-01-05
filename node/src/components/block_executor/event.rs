@@ -17,14 +17,16 @@ use casper_types::ExecutionResult;
 use crate::{
     crypto::hash::Digest,
     effect::requests::BlockExecutorRequest,
-    types::{BlockHash, Deploy, DeployHash, DeployHeader, FinalizedBlock},
+    types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalizedBlock},
 };
 
 /// Block executor component event.
 #[derive(Debug, From)]
 pub enum Event {
-    /// Indicates whether block has already been finalized and executed in the past.
-    BlockAlreadyExists(bool, FinalizedBlock),
+    /// Indicates that block has already been finalized and executed in the past.
+    BlockAlreadyExists(Box<Block>),
+    /// Indicates that a block is not known yet, and needs to be executed.
+    BlockIsNew(FinalizedBlock),
     /// A request made of the Block executor component.
     #[from]
     Request(BlockExecutorRequest),
@@ -150,14 +152,10 @@ impl Display for Event {
                 state.state_root_hash,
                 result
             ),
-            Event::BlockAlreadyExists(flag, fb) => {
-                write!(
-                    f,
-                    "Block at height: {} was executed before: {}",
-                    fb.height(),
-                    flag
-                )
+            Event::BlockAlreadyExists(block) => {
+                write!(f, "Block at height {} was executed before", block.height())
             }
+            Event::BlockIsNew(fb) => write!(f, "Block at height {} is new", fb.height(),),
         }
     }
 }

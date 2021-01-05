@@ -516,8 +516,12 @@ impl<C: Context> State<C> {
             known_vidx_endorsements
                 .chain(known_vidx_incomplete_endorsements)
                 .find(|(uhash2, _)| {
-                    // TODO: Limit the difference of sequence numbers?
-                    self.unit(uhash2).creator == unit.creator && !self.is_compatible(&uhash, uhash2)
+                    let unit2 = self.unit(uhash2);
+                    let ee_limit = self.params().endorsement_evidence_limit();
+                    self.unit(uhash2).creator == unit.creator
+                        && !self.is_compatible(&uhash, uhash2)
+                        && unit.seq_number.saturating_add(ee_limit) >= unit2.seq_number
+                        && unit2.seq_number.saturating_add(ee_limit) >= unit.seq_number
                 })
                 .map(|(uhash2, sig2)| {
                     if unit.seq_number <= self.unit(uhash2).seq_number {
@@ -530,26 +534,21 @@ impl<C: Context> State<C> {
 
         // Create an Evidence instance for each conflict we found.
         conflicting_endorsements
-            .filter_map(|(vidx, uhash1, sig1, uhash2, sig2)| {
+            .map(|(vidx, uhash1, sig1, uhash2, sig2)| {
                 let unit1 = self.unit(uhash1);
-                let unit2 = self.unit(uhash2);
-                let ee_limit = self.params().endorsement_evidence_limit();
-                if unit1.seq_number.saturating_add(ee_limit) < unit2.seq_number {
-                    return None;
-                }
                 let swimlane2 = self
                     .swimlane(uhash2)
                     .skip(1)
                     .take_while(|(_, pred2)| pred2.seq_number >= unit1.seq_number)
                     .map(|(pred2_hash, _)| self.wire_unit(pred2_hash, *instance_id).unwrap())
                     .collect();
-                Some(Evidence::Endorsements {
+                Evidence::Endorsements {
                     endorsement1: SignedEndorsement::new(Endorsement::new(*uhash1, vidx), *sig1),
                     unit1: self.wire_unit(uhash1, *instance_id).unwrap(),
                     endorsement2: SignedEndorsement::new(Endorsement::new(*uhash2, vidx), *sig2),
                     unit2: self.wire_unit(uhash2, *instance_id).unwrap(),
                     swimlane2,
-                })
+                }
             })
             .collect()
     }

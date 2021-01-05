@@ -19,6 +19,8 @@ use super::*;
 use crate::{
     components::{
         chainspec_loader::Chainspec,
+        contract_runtime,
+        contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         storage::{self, Storage},
@@ -28,6 +30,7 @@ use crate::{
             DeployAcceptorAnnouncement, GossiperAnnouncement, NetworkAnnouncement,
             RpcServerAnnouncement,
         },
+        requests::ContractRuntimeRequest,
         Responder,
     },
     protocol::Message as NodeMessage,
@@ -63,11 +66,19 @@ enum Event {
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     #[from]
     DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
+    #[from]
+    ContractRuntime(#[serde(skip_serializing)] contract_runtime::Event),
 }
 
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {
         Event::Storage(storage::Event::from(request))
+    }
+}
+
+impl From<ContractRuntimeRequest> for Event {
+    fn from(request: ContractRuntimeRequest) -> Self {
+        Event::ContractRuntime(contract_runtime::Event::Request(request))
     }
 }
 
@@ -95,6 +106,9 @@ impl Display for Event {
             Event::DeployGossiperAnnouncement(ann) => {
                 write!(formatter, "deploy-gossiper announcement: {}", ann)
             }
+            Event::ContractRuntime(event) => {
+                write!(formatter, "contract-runtime event: {}", event)
+            }
         }
     }
 }
@@ -111,6 +125,7 @@ struct Reactor {
     storage: Storage,
     deploy_acceptor: DeployAcceptor,
     deploy_gossiper: Gossiper<Deploy, Event>,
+    contract_runtime: ContractRuntime,
     _storage_tempdir: TempDir,
 }
 
@@ -134,9 +149,14 @@ impl reactor::Reactor for Reactor {
         let network = NetworkController::create_node(event_queue, rng);
 
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
-        let storage = Storage::new(&WithDir::new(storage_tempdir.path(), storage_config)).unwrap();
+        let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
+        let storage = Storage::new(&storage_withdir).unwrap();
 
-        let deploy_acceptor = DeployAcceptor::new();
+        let contract_runtime_config = contract_runtime::Config::default();
+        let contract_runtime =
+            ContractRuntime::new(storage_withdir, &contract_runtime_config, &registry).unwrap();
+
+        let deploy_acceptor = DeployAcceptor::new(deploy_acceptor::Config::new(false));
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
             config,
@@ -149,6 +169,7 @@ impl reactor::Reactor for Reactor {
             storage,
             deploy_acceptor,
             deploy_gossiper,
+            contract_runtime,
             _storage_tempdir: storage_tempdir,
         };
 
@@ -300,6 +321,11 @@ impl reactor::Reactor for Reactor {
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
+            ),
+            Event::ContractRuntime(event) => reactor::wrap_effects(
+                Event::ContractRuntime,
+                self.contract_runtime
+                    .handle_event(effect_builder, rng, event),
             ),
         }
     }

@@ -44,6 +44,15 @@ impl Default for BlockProposerDeploySets {
     }
 }
 
+impl BlockProposerDeploySets {
+    pub(super) fn with_next_finalized(self, next_finalized: BlockHeight) -> Self {
+        BlockProposerDeploySets {
+            next_finalized,
+            ..self
+        }
+    }
+}
+
 impl Display for BlockProposerDeploySets {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(

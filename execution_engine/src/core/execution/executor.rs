@@ -9,9 +9,9 @@ use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
-    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, AccessRights,
-    BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint, EntryPointType, Key,
-    Phase, ProtocolVersion, RuntimeArgs,
+    account::AccountHash, auction, bytesrepr::FromBytes, contracts::NamedKeys, proof_of_stake,
+    AccessRights, BlockTime, CLTyped, CLValue, ContractPackage, DeployHash, EntryPoint,
+    EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
 };
 
 use crate::{
@@ -310,7 +310,8 @@ impl Executor {
                     );
                 }
             }
-            DirectSystemContractCall::FinalizePayment => {
+            DirectSystemContractCall::FinalizePayment
+            | DirectSystemContractCall::GetPaymentPurse => {
                 if protocol_data.proof_of_stake() != base_key.into_seed() {
                     panic!(
                         "{} should only be called with the proof of stake contract",
@@ -356,39 +357,39 @@ impl Executor {
 
         let transfers = Vec::default();
 
-        let (instance, mut runtime) = self
-            .create_runtime(
-                module,
-                EntryPointType::Contract,
-                runtime_args.clone(),
-                named_keys,
-                extra_keys,
-                base_key,
-                account,
-                authorization_keys,
-                blocktime,
-                deploy_hash,
-                gas_limit,
-                hash_address_generator,
-                uref_address_generator,
-                transfer_address_generator,
-                protocol_version,
-                correlation_id,
-                tracking_copy,
-                phase,
-                protocol_data,
-                system_contract_cache,
-            )
-            .map_err(|e| {
-                ExecutionResult::Failure {
-                    effect: effect_snapshot.clone(),
+        let (instance, mut runtime) = match self.create_runtime(
+            module,
+            EntryPointType::Contract,
+            runtime_args.clone(),
+            named_keys,
+            extra_keys,
+            base_key,
+            account,
+            authorization_keys,
+            blocktime,
+            deploy_hash,
+            gas_limit,
+            hash_address_generator,
+            uref_address_generator,
+            transfer_address_generator,
+            protocol_version,
+            correlation_id,
+            tracking_copy,
+            phase,
+            protocol_data,
+            system_contract_cache,
+        ) {
+            Ok((instance, runtime)) => (instance, runtime),
+            Err(error) => {
+                return ExecutionResult::Failure {
+                    effect: effect_snapshot,
                     transfers,
                     cost: gas_counter,
-                    error: e.into(),
+                    error: error.into(),
                 }
-                .take_without_ret::<T>();
-            })
-            .unwrap();
+                .take_without_ret()
+            }
+        };
 
         if !self.config.use_system_contracts() {
             let mut inner_named_keys = runtime.context().named_keys().clone();
@@ -411,8 +412,9 @@ impl Executor {
                 &mut runtime,
             ) {
                 Err(error) => match error.as_host_error() {
-                    Some(host_error) => match host_error.downcast_ref::<Error>().unwrap() {
-                        Error::Ret(ref ret_urefs) => match runtime.take_host_buffer() {
+                    // NOTE: Downcasting below is assumed safe as the [`Error`] is type erased
+                    Some(host_error) => match host_error.downcast_ref::<Error>() {
+                        Some(Error::Ret(ref ret_urefs)) => match runtime.take_host_buffer() {
                             Some(result) => match result.into_t() {
                                 Ok(ret) => {
                                     let ret_urefs_map: HashMap<Address, HashSet<AccessRights>> =
@@ -425,8 +427,11 @@ impl Executor {
                             },
                             None => (None, Some(Error::ExpectedReturnValue), false),
                         },
-                        Error::Revert(api_error) => (None, Some(Error::Revert(*api_error)), true),
-                        error => (None, Some(error.clone()), true),
+                        Some(Error::Revert(api_error)) => {
+                            (None, Some(Error::Revert(*api_error)), true)
+                        }
+                        Some(error) => (None, Some(error.clone()), true),
+                        None => (None, Some(Error::Interpreter(host_error.to_string())), true),
                     },
                     None => (None, Some(Error::Interpreter(error.into())), false),
                 },
@@ -645,6 +650,7 @@ pub enum DirectSystemContractCall {
     CreatePurse,
     Transfer,
     GetEraValidators,
+    GetPaymentPurse,
 }
 
 impl DirectSystemContractCall {
@@ -657,6 +663,7 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::CreatePurse => "create",
             DirectSystemContractCall::Transfer => "transfer",
             DirectSystemContractCall::GetEraValidators => auction::METHOD_GET_ERA_VALIDATORS,
+            DirectSystemContractCall::GetPaymentPurse => proof_of_stake::METHOD_GET_PAYMENT_PURSE,
         }
     }
 
@@ -701,6 +708,14 @@ impl DirectSystemContractCall {
                     extra_keys,
                 ),
             DirectSystemContractCall::GetEraValidators => runtime.call_host_auction(
+                protocol_version,
+                entry_point_name,
+                named_keys,
+                runtime_args,
+                extra_keys,
+            ),
+
+            DirectSystemContractCall::GetPaymentPurse => runtime.call_host_proof_of_stake(
                 protocol_version,
                 entry_point_name,
                 named_keys,

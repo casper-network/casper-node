@@ -5,7 +5,9 @@ use jsonrpc_lite::JsonRpc;
 use thiserror::Error;
 
 use casper_node::crypto::Error as CryptoError;
-use casper_types::{bytesrepr::Error as ToBytesError, UIntParseError, URefFromStrError};
+use casper_types::{
+    bytesrepr::Error as ToBytesError, CLValueError, UIntParseError, URefFromStrError,
+};
 
 use crate::validation::ValidateResponseError;
 
@@ -131,5 +133,14 @@ pub enum Error {
 impl From<ToBytesError> for Error {
     fn from(error: ToBytesError) -> Self {
         Error::ToBytesError(error)
+    }
+}
+
+impl From<CLValueError> for Error {
+    fn from(error: CLValueError) -> Self {
+        match error {
+            CLValueError::Serialization(bytesrepr_error) => bytesrepr_error.into(),
+            CLValueError::Type(type_mismatch) => Error::InvalidCLValue(type_mismatch.to_string()),
+        }
     }
 }

@@ -89,6 +89,8 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     WeAreFaulty,
     /// We've received a unit from a doppelganger.
     DoppelgangerDetected,
+    /// We want to disconnect from a sender of invalid data.
+    Disconnect(I),
 }
 
 /// An API for a single instance of the consensus.

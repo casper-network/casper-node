@@ -87,9 +87,9 @@ use casper_execution_engine::{
         execution_result::ExecutionResults,
         genesis::GenesisResult,
         step::{StepRequest, StepResult},
-        BalanceRequest, BalanceResult, QueryRequest, QueryResult,
+        BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
     },
-    shared::{additive_map::AdditiveMap, transform::Transform},
+    shared::{additive_map::AdditiveMap, stored_value::StoredValue, transform::Transform},
     storage::{global_state::CommitResult, protocol_data::ProtocolData},
 };
 use casper_types::{
@@ -923,9 +923,9 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that a proto block has been finalized.
-    pub(crate) async fn announce_finalized_block(self, finalized_block: FinalizedBlock)
+    pub(crate) async fn announce_finalized_block<I>(self, finalized_block: FinalizedBlock)
     where
-        REv: From<ConsensusAnnouncement>,
+        REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
@@ -935,9 +935,9 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    pub(crate) async fn announce_block_handled(self, block_header: BlockHeader)
+    pub(crate) async fn announce_block_handled<I>(self, block_header: BlockHeader)
     where
-        REv: From<ConsensusAnnouncement>,
+        REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
@@ -948,13 +948,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// An equivocation has been detected.
-    pub(crate) async fn announce_fault_event(
+    pub(crate) async fn announce_fault_event<I>(
         self,
         era_id: EraId,
         public_key: PublicKey,
         timestamp: Timestamp,
     ) where
-        REv: From<ConsensusAnnouncement>,
+        REv: From<ConsensusAnnouncement<I>>,
     {
         self.0
             .schedule(
@@ -963,6 +963,19 @@ impl<REv> EffectBuilder<REv> {
                     public_key: Box::new(public_key),
                     timestamp,
                 },
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announce the intent to disconnect from a specific peer, which consensus thinks is faulty.
+    pub(crate) async fn announce_disconnect_from_peer<I>(self, peer: I)
+    where
+        REv: From<ConsensusAnnouncement<I>>,
+    {
+        self.0
+            .schedule(
+                ConsensusAnnouncement::DisconnectFromPeer(peer),
                 QueueKind::Regular,
             )
             .await
@@ -1168,6 +1181,31 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn is_verified_account(self, account_key: Key) -> bool
+    where
+        REv: From<ContractRuntimeRequest>,
+        REv: From<StorageRequest>,
+    {
+        if let Some(block) = self.get_highest_block().await {
+            let state_hash = (*block.state_root_hash()).into();
+            let query_request = QueryRequest::new(state_hash, account_key, vec![]);
+            if let Ok(QueryResult::Success { value, .. }) =
+                self.query_global_state(query_request).await
+            {
+                if let StoredValue::Account(account) = *value {
+                    let purse_uref = account.main_purse();
+                    let balance_request = BalanceRequest::new(state_hash, purse_uref);
+                    if let Ok(balance_result) = self.get_balance(balance_request).await {
+                        if let Some(motes) = balance_result.motes() {
+                            return motes >= &*MAX_PAYMENT;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Requests a query be executed on the Contract Runtime component.
     pub(crate) async fn get_balance(
         self,
@@ -1288,6 +1326,44 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ConsensusRequest::HandleLinearBlock(Box::new(block_header), responder),
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Check if validator is bonded in the era.
+    pub(crate) async fn is_bonded_validator(self, era_id: EraId, public_key: PublicKey) -> bool
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(
+            |responder| ConsensusRequest::IsBondedValidator(era_id, public_key, responder),
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Check if validator is bonded in the future era (`era_id`).
+    /// This information is known only by the Contract Runtime since consensus component
+    /// knows only about currently active eras.
+    pub(crate) async fn is_bonded_in_future_era(
+        self,
+        state_root_hash: Digest,
+        era_id: EraId,
+        protocol_version: ProtocolVersion,
+        public_key: PublicKey,
+    ) -> Result<bool, GetEraValidatorsError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::IsBonded {
+                state_root_hash,
+                era_id,
+                protocol_version,
+                public_key,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

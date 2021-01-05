@@ -113,6 +113,8 @@ address = '0.0.0.0:9999'
 # The number of event stream events to buffer.
 event_stream_buffer_length = 100
 
+# The capacity of the broadcast channel size.
+broadcast_channel_size = 100
 
 # ===============================================
 # Configuration options for the storage component
@@ -196,6 +198,14 @@ get_remainder_timeout_secs = 5
 # sent from this node to another node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
 get_from_peer_timeout = 3
+
+# ===================================================
+# Configuration options for deploy acceptor component
+# ===================================================
+[deploy_acceptor]
+
+# If true, the deploy acceptor will verify the account associated with a received deploy prior to accepting it.
+verify_accounts = true
 
 
 # ========================================================

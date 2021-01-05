@@ -1,45 +1,42 @@
 #!/usr/bin/env bash
-#
-# Renders on-chain block data to stdout.
-# Globals:
-#   NCTL - path to nctl home directory.
+
+source "$NCTL"/sh/utils/main.sh
+
+#######################################
+# Renders on-chain block information.
 # Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   Block hash (optional).
-
+#   Block hash.
 #######################################
-# Destructure input args.
-#######################################
+function main()
+{
+    local BLOCK_HASH=${1}
 
-# Unset to avoid parameter collisions.
+    if [ "$BLOCK_HASH" ]; then
+        $(get_path_to_client) get-block \
+            --node-address "$(get_node_address_rpc)" \
+            --block-identifier "$BLOCK_HASH" \
+            | jq '.result.block'
+    else
+        $(get_path_to_client) get-block \
+            --node-address "$(get_node_address_rpc)" \
+            | jq '.result.block'
+    fi
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
 unset BLOCK_HASH
-unset NET_ID
-unset NODE_ID
 
-# Destructure named args.
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         block) BLOCK_HASH=${VALUE} ;;
-        net) NET_ID=${VALUE} ;;
-        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-NET_ID=${NET_ID:-1}
-NODE_ID=${NODE_ID:-1}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Render on-chain block information.
-render_chain_block $NET_ID $NODE_ID $BLOCK_HASH
+main "$BLOCK_HASH"

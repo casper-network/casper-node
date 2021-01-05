@@ -3,6 +3,8 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+mod era_summary;
+
 use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
@@ -15,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
-use casper_types::{auction::EraInfo, Key, Transfer};
+use casper_types::{Key, Transfer};
 
 use super::{
     docs::DocExample, Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams,
@@ -26,9 +28,11 @@ use crate::{
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
-    rpcs::common::{self, MERKLE_PROOF},
-    types::{json_compatibility::StoredValue, Block, BlockHash, Item, JsonBlock},
+    rpcs::common::{self},
+    types::{Block, BlockHash, Item, JsonBlock},
 };
+pub use era_summary::EraSummary;
+use era_summary::ERA_SUMMARY;
 
 static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
     block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
@@ -61,11 +65,7 @@ static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoPara
 });
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
     api_version: CLIENT_API_VERSION.clone(),
-    block_hash: Some(Block::doc_example().id()),
-    era_id: Some(42),
-    stored_value: Some(StoredValue::EraInfo(EraInfo::new())),
-    state_root_hash: Some(*Block::doc_example().header().state_root_hash()),
-    merkle_proof: Some(MERKLE_PROOF.clone()),
+    era_summary: Some(ERA_SUMMARY.clone()),
 });
 
 /// Identifier for possible ways to retrieve a block.
@@ -326,16 +326,8 @@ pub struct GetEraInfoResult {
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: Version,
-    /// The block hash, if found.
-    pub block_hash: Option<BlockHash>,
-    /// The era id, if found.
-    pub era_id: Option<u64>,
-    /// The StoredValue containing era information , if found.
-    pub stored_value: Option<StoredValue>,
-    /// Hex-encoded hash of the state root, if found.
-    pub state_root_hash: Option<Digest>,
-    /// The merkle proof, if found.
-    pub merkle_proof: Option<String>,
+    /// The era summary.
+    pub era_summary: Option<EraSummary>,
 }
 
 impl DocExample for GetEraInfoResult {
@@ -344,16 +336,16 @@ impl DocExample for GetEraInfoResult {
     }
 }
 
-/// "chain_get_era_info" RPC
-pub struct GetEraInfo {}
+/// "chain_get_era_info_by_switch_block" RPC
+pub struct GetEraInfoBySwitchBlock {}
 
-impl RpcWithOptionalParams for GetEraInfo {
-    const METHOD: &'static str = "chain_get_era_info";
+impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
+    const METHOD: &'static str = "chain_get_era_info_by_switch_block";
     type OptionalRequestParams = GetEraInfoParams;
     type ResponseResult = GetEraInfoResult;
 }
 
-impl RpcWithOptionalParamsExt for GetEraInfo {
+impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
     fn handle_request<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         response_builder: Builder,
@@ -372,11 +364,7 @@ impl RpcWithOptionalParamsExt for GetEraInfo {
                 None => {
                     return Ok(response_builder.success(Self::ResponseResult {
                         api_version: CLIENT_API_VERSION.clone(),
-                        block_hash: None,
-                        era_id: None,
-                        stored_value: None,
-                        state_root_hash: None,
-                        merkle_proof: None,
+                        era_summary: None,
                     })?)
                 }
             };
@@ -386,11 +374,7 @@ impl RpcWithOptionalParamsExt for GetEraInfo {
                 None => {
                     return Ok(response_builder.success(Self::ResponseResult {
                         api_version: CLIENT_API_VERSION.clone(),
-                        block_hash: None,
-                        era_id: None,
-                        stored_value: None,
-                        state_root_hash: None,
-                        merkle_proof: None,
+                        era_summary: None,
                     })?)
                 }
             };
@@ -423,11 +407,13 @@ impl RpcWithOptionalParamsExt for GetEraInfo {
 
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                block_hash: Some(block_hash),
-                era_id: Some(era_id),
-                stored_value: Some(stored_value),
-                state_root_hash: Some(state_root_hash),
-                merkle_proof: Some(hex::encode(proof_bytes)),
+                era_summary: Some(EraSummary {
+                    block_hash,
+                    era_id,
+                    stored_value,
+                    state_root_hash,
+                    merkle_proof: hex::encode(proof_bytes),
+                }),
             };
 
             Ok(response_builder.success(result)?)

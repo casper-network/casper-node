@@ -200,12 +200,11 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         rng: &mut NodeRng,
     ) -> Option<Effect<C>> {
-        if let Some((prop_time, _)) = self.next_proposal {
+        if let Some((prop_time, _)) = self.next_proposal.take() {
             warn!(
                 ?timestamp,
-                "skipping proposal, still waiting for value for {}", prop_time
+                "no proposal received for {}; requesting new one", prop_time
             );
-            return None;
         }
         let panorama = self.panorama_at(state, timestamp);
         let maybe_parent_hash = state.fork_choice(&panorama);
@@ -234,14 +233,6 @@ impl<C: Context> ActiveValidator<C> {
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
-        if self.earliest_unit_time(state) > timestamp {
-            warn!(?block_context, "skipping outdated proposal");
-            return vec![];
-        }
-        if self.is_faulty(state) {
-            warn!("Creator knows it's faulty. Won't create a message.");
-            return vec![];
-        }
         let panorama = if let Some((prop_time, panorama)) = self.next_proposal.take() {
             if prop_time != timestamp {
                 warn!(
@@ -255,6 +246,14 @@ impl<C: Context> ActiveValidator<C> {
             warn!("unexpected proposal value");
             return vec![];
         };
+        if self.earliest_unit_time(state) > timestamp {
+            warn!(?block_context, "skipping outdated proposal");
+            return vec![];
+        }
+        if self.is_faulty(state) {
+            warn!("Creator knows it's faulty. Won't create a message.");
+            return vec![];
+        }
         self.new_unit(panorama, timestamp, Some(value), state, instance_id, rng)
             .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))))
             .into_iter()
