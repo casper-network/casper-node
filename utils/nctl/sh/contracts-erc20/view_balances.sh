@@ -5,9 +5,6 @@ source "$NCTL"/sh/contracts-erc20/utils.sh
 
 #######################################
 # Renders ERC-20 token contract balances.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
 #######################################
 function main()
 {
@@ -34,6 +31,8 @@ function main()
 
     # Set contract hash (hits node api).
     CONTRACT_HASH=$(get_erc20_contract_hash "$CONTRACT_OWNER_ACCOUNT_KEY")
+    log "ERC-20 $TOKEN_SYMBOL contract:"
+    log "... contract hash = $CONTRACT_HASH"
 
     # Set contract owner account balance (hits node api).
     CONTRACT_OWNER_ACCOUNT_BALANCE=$(get_erc20_contract_key_value "$CONTRACT_HASH" "$CONTRACT_OWNER_ACCOUNT_BALANCE_KEY")
@@ -41,8 +40,8 @@ function main()
     # Set token symbol (hits node api).
     TOKEN_SYMBOL=$(get_erc20_contract_key_value "$CONTRACT_HASH" "_symbol")
 
-    log "ERC-20 $TOKEN_SYMBOL Account Balances:"
-    log "... contract owner = $CONTRACT_OWNER_ACCOUNT_BALANCE"
+    log "... account balances:"
+    log "... ... contract owner = $CONTRACT_OWNER_ACCOUNT_BALANCE"
 
     # Render user account balances.
     for USER_ID in $(seq 1 "$(get_count_of_users)")
@@ -57,9 +56,9 @@ function main()
         USER_ACCOUNT_BALANCE_KEY="_balances_$USER_ACCOUNT_HASH"
 
         # Set user account balance (hits node api).
-        USER_ACCOUNT_BALANCE=$(get_erc20_contract_key_value "$CONTRACT_HASH" "$USER_ACCOUNT_BALANCE_KEY")
+        USER_ACCOUNT_BALANCE=$(get_erc20_contract_key_value "$CONTRACT_HASH" $USER_ACCOUNT_BALANCE_KEY)
 
-        log "... user $USER_ID = $USER_ACCOUNT_BALANCE"
+        log "... ... user $USER_ID = $USER_ACCOUNT_BALANCE"
     done
 }
 

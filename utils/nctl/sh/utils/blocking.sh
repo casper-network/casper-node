@@ -20,9 +20,9 @@ function await_n_eras()
     while [ "$CURRENT" -lt "$FUTURE" ];
     do
         if [ "$EMIT_LOG" = true ]; then
-            log "current era = $CURRENT :: future era = $FUTURE ... sleeping 10 seconds"
+            log "current era = $CURRENT :: future era = $FUTURE ... sleeping 20 seconds"
         fi
-        sleep 10.0
+        sleep 20.0
         CURRENT=$(get_chain_era)
     done
 

@@ -73,7 +73,7 @@ function main()
 # ----------------------------------------------------------------
 
 unset AMOUNT
-unset BIDDER_ID
+unset NODE_ID
 unset DELEGATION_RATE
 
 for ARGUMENT in "$@"
@@ -82,12 +82,12 @@ do
     VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         amount) AMOUNT=${VALUE} ;;
-        bidder) BIDDER_ID=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         rate) DELEGATION_RATE=${VALUE} ;;
         *)
     esac
 done
 
-main "${BIDDER_ID:-6}" \
-     "${AMOUNT:-$((NCTL_DEFAULT_AUCTION_BID_AMOUNT * ${BIDDER_ID:-6}))}" \
+main "${NODE_ID:-6}" \
+     "${AMOUNT:-$(get_node_staking_weight "${NODE_ID:-6}")}" \
      "${DELEGATION_RATE:-125}"

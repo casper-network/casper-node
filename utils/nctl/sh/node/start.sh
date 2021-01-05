@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
+
 unset LOG_LEVEL
 unset NODE_ID
 
@@ -23,19 +26,16 @@ NODE_ID=${NODE_ID:-"all"}
 # MAIN
 # ----------------------------------------------------------------
 
-source "$NCTL"/sh/utils/main.sh
-source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
-
-
+# Start node(s).
 if [ "$NODE_ID" == "all" ]; then
-    log "net-$NET_ID: starting node(s) begins ... please wait"
+    log "starting node(s) begins ... please wait"
     do_node_start_all
-    log "net-$NET_ID: starting node(s) complete"
+    log "starting node(s) complete"
 else
-    log "starting node :: node-$NODE_ID"
+    log "node-$NODE_ID: starting ..."
     do_node_start "$NODE_ID"
 fi
 
+# Display status.
 sleep 1.0
 source "$NCTL"/sh/node/status.sh node="$NODE_ID"
-

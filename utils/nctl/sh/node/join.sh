@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
 
 unset NODE_ID
 unset BID_AMOUNT
@@ -19,18 +20,40 @@ do
 done
 
 NODE_ID=${NODE_ID:-6}
-BID_AMOUNT=${BID_AMOUNT:-$((NCTL_VALIDATOR_BASE_WEIGHT * NODE_ID))}
+BID_AMOUNT=${BID_AMOUNT:-$(get_node_staking_weight "$NODE_ID")}
 BID_DELEGATION_RATE=${BID_DELEGATION_RATE:-125}
 
 # ----------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------
 
+# Await genesis era to complete.
+if [ "$(get_chain_era)" -eq 0 ]; then
+    log "awaiting genesis era to complete"
+    while [ "$(get_chain_era)" -lt 1 ];
+    do
+        sleep 1.0
+    done
+fi
+
+# Submit auction bid.
+log "dispatching auction bid deploy"
 source "$NCTL"/sh/contracts-auction/do_bid.sh \
     node="$NODE_ID" \
     amount="$BID_AMOUNT" \
     rate="$BID_DELEGATION_RATE"
 
-await_n_eras 0 true
+# Await until time to start node.
+log "awaiting 3 eras"
+await_n_eras 3 true
+log "awaiting 2 blocks"
+await_n_blocks 2
 
-source "$NCTL"/sh/node/start.sh node="$NODE_ID" 
+# Start/Restart node (with trusted hash).
+if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
+    log "restarting node :: node-$NODE_ID"
+    do_node_restart "$NODE_ID"
+else
+    log "starting node :: node-$NODE_ID"
+    do_node_start "$NODE_ID"
+fi

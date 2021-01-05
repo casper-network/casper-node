@@ -1,27 +1,27 @@
 # NCTL Deploy Commands - Proof Of Stake Auction
 
-### nctl-auction-bid amount={X:-1000000} bidder={Y:-6} rate={Z:-125} 
+### nctl-auction-bid node={X:-6} amount={Y:-1000000} rate={Z:-125} 
 
-Dispatches on behalf of validator Y, a Proof-Of-Stake auction bid **submission** deploy for amount X (motes) with a delegation rate of Z.  Displays relevant deploy hash for subsequent querying.
+Dispatches on behalf of validator X, a Proof-Of-Stake auction bid **submission** deploy for amount Y (motes) with a delegation rate of Z.  Displays relevant deploy hash for subsequent querying.
 
 ```
 nctl-auction-bid
 
-nctl-auction-bid bidder=6 amount=6000000000000000 rate=125   (same as above)
+nctl-auction-bid node=6 amount=6000000000000000 rate=125   (same as above)
 
-nctl-auction-bid bidder=7 amount=7000000000000000 rate=250
+nctl-auction-bid node=7 amount=7000000000000000 rate=250
 ```
 
-### nctl-auction-withdraw amount={X:-1000000} bidder={Y:-6} 
+### nctl-auction-withdraw node={X:-6} amount={Y:-1000000} 
 
-Dispatches on behalf of validator Y, a Proof-Of-Stake auction bid **withdrawal** deploy for amount X (motes).  Displays relevant deploy hash for subsequent querying.
+Dispatches on behalf of validator X, a Proof-Of-Stake auction bid **withdrawal** deploy for amount Y (motes).  Displays relevant deploy hash for subsequent querying.
 
 ```
 nctl-auction-withdraw
 
-nctl-auction-withdraw bidder=6 amount=6000000000000000 (same as above)
+nctl-auction-withdraw node=6 amount=6000000000000000 (same as above)
 
-nctl-auction-withdraw bidder=7 amount=7000000000000000 
+nctl-auction-withdraw node=7 amount=7000000000000000 
 ```
 
 ### nctl-auction-delegate amount={X:-1000000} delegator={Y:-1} validator={Z:-1} 

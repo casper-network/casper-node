@@ -7,10 +7,6 @@ source "$NCTL"/sh/contracts-erc20/utils.sh
 # Transfers ERC-20 tokens from contract owner to test user accounts.
 # Arguments:
 #   Amount of ERC-20 token to transfer.
-#   Network ordinal identifier.
-#   Node ordinal identifier.
-#   Gas payment.
-#   Gas price.
 #######################################
 function main()
 {
@@ -44,7 +40,7 @@ function main()
     for USER_ID in $(seq 1 "$(get_count_of_users)")
     do
         # Set user account key. 
-        USER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_USER $USER_ID")
+        USER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_USER" "$USER_ID")
 
         # Set user account hash. 
         USER_ACCOUNT_HASH=$(get_account_hash "$USER_ACCOUNT_KEY")

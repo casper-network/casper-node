@@ -13,7 +13,7 @@ function main()
             "id": 1,
             "jsonrpc": "2.0",
             "method": "rpc.discover"
-        }' | jq '.result'
+        }' | jq '.result.schema'
 }
 
 # ----------------------------------------------------------------

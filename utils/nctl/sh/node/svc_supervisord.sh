@@ -1,29 +1,47 @@
 #!/usr/bin/env bash
 
 #######################################
+# Sets entry in node's config.toml.
+# Arguments:
+#   Node ordinal identifier.
+#   Path node's config file.
+#######################################
+function _update_node_config_on_start()
+{
+    local FILEPATH=${1}
+    local SCRIPT
+    local TRUSTED_ROOT_HASH
+    
+    TRUSTED_ROOT_HASH=$(get_chain_latest_block_hash)
+    log "trusted root hash = $TRUSTED_ROOT_HASH"
+
+    SCRIPT=(
+        "import toml;"
+        "cfg=toml.load('$FILEPATH');"
+        "cfg['node']['trusted_hash']='$TRUSTED_ROOT_HASH';"
+        "toml.dump(cfg, open('$FILEPATH', 'w'));"
+    )
+    python3 -c "${SCRIPT[*]}"
+}
+
+#######################################
 # Spins up a node using supervisord.
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
+#   A trusted hash to streamline joining.
 #######################################
 function do_node_start()
 {
     local NODE_ID=${1}
     local NODE_PROCESS_NAME
     local PATH_TO_NODE_CONFIG
-    local TRUSTED_HASH
 
     # Ensure daemon is up.
     do_supervisord_start
 
-    # If non-genesis node then inject a trusted hash.
-    if [ "$NODE_ID" -gt "$(get_count_of_genesis_nodes)" ]; then
-        PATH_TO_NODE_CONFIG=$(get_path_to_net)/nodes/node-"$NODE_ID"/config/node-config.toml
-        TRUSTED_HASH=$(get_chain_latest_block_hash)
-        sed -i "s/#trusted_hash/trusted_hash/g" "$PATH_TO_NODE_CONFIG" > /dev/null 2>&1
-        sed -i "s/^\(trusted_hash\) = .*/\1 = \'${TRUSTED_HASH}\'/" "$PATH_TO_NODE_CONFIG" > /dev/null 2>&1
-        log "... trusted hash=$TRUSTED_HASH"
-    fi
+    # Inject trusted hash.
+    PATH_TO_NODE_CONFIG=$(get_path_to_net)/nodes/node-"$NODE_ID"/config/node-config.toml
+    _update_node_config_on_start "$PATH_TO_NODE_CONFIG"
 
     # Signal to supervisorctl.
     NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")

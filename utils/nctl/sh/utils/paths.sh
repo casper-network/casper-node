@@ -97,6 +97,43 @@ function get_path_to_node()
 }
 
 #######################################
+# Returns path to a node's config file.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_path_to_node_config()
+{
+    local NODE_ID=${1} 
+
+    echo "$(get_path_to_net)"/nodes/node-"$NODE_ID"/config/node-config.toml
+}
+
+#######################################
+# Returns path to a node's storage directory.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_path_to_node_storage()
+{
+    local NODE_ID=${1} 
+
+    echo "$(get_path_to_net)"/nodes/node-"$NODE_ID"/storage
+}
+
+#######################################
+# Returns path to a node's secret key.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_path_to_node_secret_key()
+{
+
+    local NODE_ID=${1} 
+
+    get_path_to_secret_key "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
+}
+
+#######################################
 # Returns path to a secret key.
 # Globals:
 #   NCTL_ACCOUNT_TYPE_FAUCET - faucet account type.

@@ -44,7 +44,7 @@ function do_node_start()
 
     # Set validator network addresses.
     NETWORK_BIND_ADDRESS=$(get_network_bind_address "$NODE_ID")
-    NETWORK_KNOWN_ADDRESSES=[$(get_network_known_addresses)]
+    NETWORK_KNOWN_ADDRESSES=[$(get_network_known_addresses "$NODE_ID")]
 
     # Set daemon process unit.
     NODE_PROCESS_UNIT=$(get_process_name_of_node "$NODE_ID")
