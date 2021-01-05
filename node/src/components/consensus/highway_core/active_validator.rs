@@ -1,7 +1,7 @@
 use std::{
     fmt::{self, Debug},
     fs::File,
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -94,7 +94,18 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         unit_hash_file: Option<PathBuf>,
     ) -> (Self, Vec<Effect<C>>) {
-        let own_last_unit = unit_hash_file.as_ref().and_then(Self::read_last_unit);
+        let own_last_unit = unit_hash_file
+            .as_ref()
+            .map(Self::read_last_unit)
+            .transpose()
+            .map_err(|err| {
+                warn!(
+                    "got an error reading unit hash file {:?}: {:?}",
+                    unit_hash_file, err
+                )
+            })
+            .ok()
+            .flatten();
         let mut av = ActiveValidator {
             vidx,
             secret,
@@ -108,23 +119,23 @@ impl<C: Context> ActiveValidator<C> {
         (av, effects)
     }
 
-    fn read_last_unit<P: AsRef<Path>>(path: P) -> Option<C::Hash> {
-        let mut file = File::open(path).ok()?;
+    fn read_last_unit<P: AsRef<Path>>(path: P) -> io::Result<C::Hash> {
+        let mut file = File::open(path)?;
         let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes).ok()?;
-        serde_json::from_slice(&bytes).ok()
+        file.read_to_end(&mut bytes)?;
+        Ok(serde_json::from_slice(&bytes)?)
     }
 
-    fn write_last_unit(&mut self, hash: C::Hash) -> Option<()> {
+    fn write_last_unit(&mut self, hash: C::Hash) -> io::Result<()> {
         let unit_hash_file = if let Some(file) = self.unit_hash_file.as_ref() {
             file
         } else {
-            return Some(());
+            return Ok(());
         };
         self.own_last_unit = Some(hash);
-        let mut file = File::create(unit_hash_file).ok()?;
-        let bytes = serde_json::to_vec(&hash).ok()?;
-        file.write_all(&bytes).ok()
+        let mut file = File::create(unit_hash_file)?;
+        let bytes = serde_json::to_vec(&hash)?;
+        file.write_all(&bytes)
     }
 
     fn can_vote(&self, state: &State<C>) -> bool {
@@ -391,10 +402,12 @@ impl<C: Context> ActiveValidator<C> {
             round_exp: self.round_exp(state, timestamp),
             endorsed,
         };
-        self.write_last_unit(wunit.hash()).expect(&format!(
-            "should successfully write unit's hash to {:?}",
-            self.unit_hash_file
-        ));
+        self.write_last_unit(wunit.hash()).unwrap_or_else(|err| {
+            panic!(
+                "should successfully write unit's hash to {:?}, got {:?}",
+                self.unit_hash_file, err
+            )
+        });
         Some(SignedWireUnit::new(wunit, &self.secret, rng))
     }
 
