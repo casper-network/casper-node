@@ -869,10 +869,9 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     Timestamp::zero(),
                     Timestamp::zero(), // Length depends only on block number.
                     TEST_ENDORSEMENT_EVIDENCE_LIMIT,
-                    None, // No unit hash file.
                 );
                 let mut highway = Highway::new(instance_id, validators.clone(), params);
-                let effects = highway.activate_validator(vid, v_sec, start_time);
+                let effects = highway.activate_validator(vid, v_sec, start_time, None);
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));
 

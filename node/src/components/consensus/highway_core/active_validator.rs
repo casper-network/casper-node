@@ -2,7 +2,7 @@ use std::{
     fmt::{self, Debug},
     fs::File,
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use tracing::{error, info, trace, warn};
@@ -69,6 +69,8 @@ pub(crate) struct ActiveValidator<C: Context> {
     next_timer: Timestamp,
     /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
     next_proposal: Option<(Timestamp, Panorama<C>)>,
+    /// The path to the file storing the hash of our latest known unit (if any).
+    unit_hash_file: Option<PathBuf>,
     /// The hash of the last known unit created by us.
     own_last_unit: Option<C::Hash>,
 }
@@ -90,17 +92,16 @@ impl<C: Context> ActiveValidator<C> {
         secret: C::ValidatorSecret,
         start_time: Timestamp,
         state: &State<C>,
+        unit_hash_file: Option<PathBuf>,
     ) -> (Self, Vec<Effect<C>>) {
-        let own_last_unit = state
-            .params()
-            .unit_hash_file()
-            .and_then(Self::read_last_unit);
+        let own_last_unit = unit_hash_file.as_ref().and_then(Self::read_last_unit);
         let mut av = ActiveValidator {
             vidx,
             secret,
             next_round_exp: state.params().init_round_exp(),
             next_timer: state.params().start_timestamp(),
             next_proposal: None,
+            unit_hash_file,
             own_last_unit,
         };
         let effects = av.schedule_timer(start_time, state);
@@ -114,9 +115,10 @@ impl<C: Context> ActiveValidator<C> {
         serde_json::from_slice(&bytes).ok()
     }
 
-    fn write_last_unit<P: AsRef<Path>>(&mut self, path: P, hash: C::Hash) -> Option<()> {
+    fn write_last_unit(&mut self, hash: C::Hash) -> Option<()> {
+        let unit_hash_file = self.unit_hash_file.as_ref()?;
         self.own_last_unit = Some(hash);
-        let mut file = File::create(path).ok()?;
+        let mut file = File::create(unit_hash_file).ok()?;
         let bytes = serde_json::to_vec(&hash).ok()?;
         file.write_all(&bytes).ok()
     }
@@ -385,10 +387,8 @@ impl<C: Context> ActiveValidator<C> {
             round_exp: self.round_exp(state, timestamp),
             endorsed,
         };
-        if let Some(file) = state.params().unit_hash_file() {
-            self.write_last_unit(file, wunit.hash())
-                .expect("should successfully write unit's hash");
-        }
+        self.write_last_unit(wunit.hash())
+            .expect("should successfully write unit's hash");
         Some(SignedWireUnit::new(wunit, &self.secret, rng))
     }
 
@@ -594,7 +594,8 @@ mod tests {
                 .into_iter()
                 .map(|vidx| {
                     let secret = TestSecret(vidx.0);
-                    let (av, effects) = ActiveValidator::new(vidx, secret, start_time, &state);
+                    let (av, effects) =
+                        ActiveValidator::new(vidx, secret, start_time, &state, None);
                     let timestamp = unwrap_single(&effects).unwrap_timer();
                     if state.leader(earliest_round_start) == vidx {
                         assert_eq!(

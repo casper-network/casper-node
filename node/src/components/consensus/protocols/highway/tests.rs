@@ -46,7 +46,6 @@ where
         0.into(),
         Timestamp::from(u64::MAX),
         highway_testing::TEST_ENDORSEMENT_EVIDENCE_LIMIT,
-        None, // No unit hash file.
     );
     let weights = weights.into_iter().map(|w| w.into()).collect::<Vec<_>>();
     state::State::new(weights, params, vec![])
@@ -226,8 +225,12 @@ fn detect_doppelganger() {
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
-    let _ =
-        highway_protocol.activate_validator(*ALICE_PUBLIC_KEY, alice_keypair, Timestamp::zero());
+    let _ = highway_protocol.activate_validator(
+        *ALICE_PUBLIC_KEY,
+        alice_keypair,
+        Timestamp::zero(),
+        None,
+    );
     assert_eq!(highway_protocol.is_active(), true);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();

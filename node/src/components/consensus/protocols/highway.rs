@@ -7,6 +7,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
     iter,
+    path::PathBuf,
 };
 
 use datasize::DataSize;
@@ -116,10 +117,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let endorsement_evidence_limit =
             (2 * min_rounds_per_era).min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
-        let unit_hash_file = highway_config
-            .unit_hashes_folder
-            .join(format!("unit_last_known_hash_{}.dat", instance_id));
-
         let params = Params::new(
             seed,
             BLOCK_REWARD,
@@ -131,7 +128,6 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             start_time,
             start_time + highway_config.era_duration,
             endorsement_evidence_limit,
-            unit_hash_file,
         );
 
         let min_round_exp = params.min_round_exp();
@@ -644,8 +640,11 @@ where
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
+        unit_hash_file: Option<PathBuf>,
     ) -> Vec<ProtocolOutcome<I, C>> {
-        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
+        let av_effects = self
+            .highway
+            .activate_validator(our_id, secret, timestamp, unit_hash_file);
         self.process_av_effects(av_effects)
     }
 
@@ -697,5 +696,9 @@ where
 
     fn is_active(&self) -> bool {
         self.highway.is_active()
+    }
+
+    fn instance_id(&self) -> &C::InstanceId {
+        self.highway.instance_id()
     }
 }

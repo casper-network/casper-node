@@ -278,7 +278,15 @@ where
 
         let results = if should_activate {
             let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
-            consensus.activate_validator(our_id, secret, timestamp)
+            let unit_hash_file =
+                self.protocol_config
+                    .highway_config
+                    .unit_hashes_folder
+                    .join(format!(
+                        "unit_hash_{}_{}.dat",
+                        instance_id, self.public_signing_key
+                    ));
+            consensus.activate_validator(our_id, secret, timestamp, Some(unit_hash_file))
         } else {
             Vec::new()
         };
@@ -328,11 +336,20 @@ where
         self.finished_joining = true;
         let secret = Keypair::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
         let public_key = self.public_signing_key;
+        let unit_hashes_folder = self
+            .protocol_config
+            .highway_config
+            .unit_hashes_folder
+            .clone();
         self.active_eras
             .get_mut(&self.current_era)
             .map(|era| {
                 if era.validators().contains_key(&public_key) {
-                    era.consensus.activate_validator(public_key, secret, now)
+                    let instance_id = *era.consensus.instance_id();
+                    let unit_hash_file = unit_hashes_folder
+                        .join(format!("unit_hash_{}_{}.dat", instance_id, public_key));
+                    era.consensus
+                        .activate_validator(public_key, secret, now, Some(unit_hash_file))
                 } else {
                     Vec::new()
                 }
