@@ -156,9 +156,9 @@ where
                                                     &chainspec.genesis.deploy_config,
                                                     block_timestamp,
                                                 ) {
-                                                    Event::DeployMissing(dh_found)
-                                                } else {
                                                     Event::DeployFound(dh_found)
+                                                } else {
+                                                    Event::DeployMissing(dh_found)
                                                 }
                                             }
                                         },
