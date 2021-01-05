@@ -45,6 +45,12 @@ use crate::{
 use block::Block;
 use tallies::Tallies;
 
+// TODO: The restart mechanism only persists and loads our own latest unit, so that we don't
+// equivocate after a restart. It doesn't yet persist our latest endorsed units, so we could
+// accidentally endorse conflicting votes. Fix this and enable slashing for conflicting
+// endorsements again.
+pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
+
 #[derive(Debug, Error, PartialEq, Clone)]
 pub(crate) enum UnitError {
     #[error("The unit is a ballot but doesn't cite any block.")]
@@ -411,6 +417,9 @@ impl<C: Context> State<C> {
     /// evidence (see `Evidence::validate`). Returns `false` if the evidence was not added because
     /// the perpetrator is banned or we already have evidence against them.
     pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) -> bool {
+        if TODO_ENDORSEMENT_EVIDENCE_DISABLED && matches!(evidence, Evidence::Endorsements { .. }) {
+            return false;
+        }
         let idx = evidence.perpetrator();
         match self.faults.get(&idx) {
             Some(&Fault::Banned) | Some(&Fault::Direct(_)) => return false,
@@ -480,6 +489,9 @@ impl<C: Context> State<C> {
         endorsements: &Endorsements<C>,
         instance_id: &C::InstanceId,
     ) -> Vec<Evidence<C>> {
+        if TODO_ENDORSEMENT_EVIDENCE_DISABLED {
+            return Vec::new();
+        }
         let uhash = endorsements.unit();
         let unit = self.unit(&uhash);
         if !self.has_evidence(unit.creator) {

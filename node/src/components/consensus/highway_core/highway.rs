@@ -3,6 +3,8 @@ mod vertex;
 pub(crate) use crate::components::consensus::highway_core::state::Params;
 pub(crate) use vertex::{Dependency, Endorsements, SignedWireUnit, Vertex, WireUnit};
 
+use std::path::PathBuf;
+
 use thiserror::Error;
 use tracing::{debug, error, info};
 
@@ -166,6 +168,7 @@ impl<C: Context> Highway<C> {
         id: C::ValidatorId,
         secret: C::ValidatorSecret,
         current_time: Timestamp,
+        unit_hash_file: Option<PathBuf>,
     ) -> Vec<Effect<C>> {
         assert!(
             self.active_validator.is_none(),
@@ -176,7 +179,8 @@ impl<C: Context> Highway<C> {
             .get_index(&id)
             .expect("missing own validator ID");
         let start_time = current_time.max(self.state.params().start_timestamp());
-        let (av, effects) = ActiveValidator::new(idx, secret, start_time, &self.state);
+        let (av, effects) =
+            ActiveValidator::new(idx, secret, start_time, &self.state, unit_hash_file);
         self.active_validator = Some(av);
         effects
     }
@@ -584,29 +588,19 @@ impl<C: Context> Highway<C> {
 
     /// Checks whether the unit was created by a doppelganger.
     pub(crate) fn is_doppelganger_vertex(&self, vertex: &Vertex<C>) -> bool {
-        match vertex {
-            Vertex::Unit(swunit) => {
-                // If we already have the unit in our local state,
-                // we must have had created it ourselves earlier and it is now gossiped back to us.
-                !self.state.has_unit(&swunit.wire_unit.hash())
-                    && self
-                        .active_validator
-                        .as_ref()
-                        .map(|av| av.is_our_unit(&swunit.wire_unit))
-                        .unwrap_or(false)
-            }
-            Vertex::Endorsements(endorsements) => self
-                .active_validator
-                .as_ref()
-                .map(|av| av.includes_doppelgangers_endorsement(endorsements, &self.state))
-                .unwrap_or(false),
-            Vertex::Evidence(_) => false,
-        }
+        self.active_validator
+            .as_ref()
+            .map_or(false, |av| av.is_doppelganger_vertex(vertex, &self.state))
     }
 
     /// Returns whether this instance of protocol is an active validator.
     pub(crate) fn is_active(&self) -> bool {
         self.active_validator.is_some()
+    }
+
+    /// Returns the instance ID of this Highway instance.
+    pub(crate) fn instance_id(&self) -> &C::InstanceId {
+        &self.instance_id
     }
 }
 

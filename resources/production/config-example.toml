@@ -33,6 +33,9 @@ abbreviate_modules = false
 # consensus messages.
 secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
+# The folder in which the files with per-era latest unit hashes will be stored.
+unit_hashes_folder = "/var/lib/casper/casper-node"
+
 
 # ====================================
 # Configuration options for networking

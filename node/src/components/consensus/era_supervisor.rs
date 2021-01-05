@@ -9,6 +9,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
+    path::PathBuf,
     rc::Rc,
     time::Duration,
 };
@@ -100,6 +101,8 @@ pub struct EraSupervisor<I> {
     metrics: ConsensusMetrics,
     // TODO: discuss this quick fix
     finished_joining: bool,
+    /// The path to the folder where unit hash files will be stored.
+    unit_hashes_folder: PathBuf,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -126,6 +129,7 @@ where
         new_consensus: Box<ConsensusConstructor<I>>,
         mut rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
+        let unit_hashes_folder = config.with_dir(config.value().unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
@@ -146,6 +150,7 @@ where
             next_block_height: 0,
             metrics,
             finished_joining: false,
+            unit_hashes_folder,
         };
 
         let results = era_supervisor.new_era(
@@ -251,13 +256,7 @@ where
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
         let our_id = self.public_signing_key;
-        let should_activate = if self.node_start_time >= start_time {
-            info!(
-                era = era_id.0,
-                %self.node_start_time, "not voting; node was not started before the era began",
-            );
-            false
-        } else if !validators.contains_key(&our_id) {
+        let should_activate = if !validators.contains_key(&our_id) {
             info!(era = era_id.0, %our_id, "not voting; not a validator");
             false
         } else if !self.finished_joining {
@@ -284,7 +283,12 @@ where
 
         let results = if should_activate {
             let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
-            consensus.activate_validator(our_id, secret, timestamp)
+            let unit_hash_file = self.unit_hashes_folder.join(format!(
+                "unit_hash_{:?}_{}.dat",
+                instance_id,
+                self.public_signing_key.to_hex()
+            ));
+            consensus.activate_validator(our_id, secret, timestamp, Some(unit_hash_file))
         } else {
             Vec::new()
         };
@@ -334,11 +338,19 @@ where
         self.finished_joining = true;
         let secret = Keypair::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
         let public_key = self.public_signing_key;
+        let unit_hashes_folder = self.unit_hashes_folder.clone();
         self.active_eras
             .get_mut(&self.current_era)
             .map(|era| {
-                if era.start_time > now && era.validators().contains_key(&public_key) {
-                    era.consensus.activate_validator(public_key, secret, now)
+                if era.validators().contains_key(&public_key) {
+                    let instance_id = *era.consensus.instance_id();
+                    let unit_hash_file = unit_hashes_folder.join(format!(
+                        "unit_hash_{:?}_{}.dat",
+                        instance_id,
+                        public_key.to_hex()
+                    ));
+                    era.consensus
+                        .activate_validator(public_key, secret, now, Some(unit_hash_file))
                 } else {
                     Vec::new()
                 }
