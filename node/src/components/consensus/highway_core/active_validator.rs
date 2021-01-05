@@ -116,7 +116,11 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     fn write_last_unit(&mut self, hash: C::Hash) -> Option<()> {
-        let unit_hash_file = self.unit_hash_file.as_ref()?;
+        let unit_hash_file = if let Some(file) = self.unit_hash_file.as_ref() {
+            file
+        } else {
+            return Some(());
+        };
         self.own_last_unit = Some(hash);
         let mut file = File::create(unit_hash_file).ok()?;
         let bytes = serde_json::to_vec(&hash).ok()?;
