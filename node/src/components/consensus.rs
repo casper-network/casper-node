@@ -313,6 +313,11 @@ where
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
+            Event::ConsensusRequest(requests::ConsensusRequest::IsBondedValidator(
+                era_id,
+                pk,
+                responder,
+            )) => handling_es.is_bonded_validator(era_id, pk, responder),
         }
     }
 }

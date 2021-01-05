@@ -1326,6 +1326,44 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
+
+    /// Check if validator is bonded in the era.
+    pub(crate) async fn is_bonded_validator(self, era_id: EraId, public_key: PublicKey) -> bool
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(
+            |responder| ConsensusRequest::IsBondedValidator(era_id, public_key, responder),
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Check if validator is bonded in the future era (`era_id`).
+    /// This information is known only by the Contract Runtime since consensus component
+    /// knows only about currently active eras.
+    pub(crate) async fn is_bonded_in_future_era(
+        self,
+        state_root_hash: Digest,
+        era_id: EraId,
+        protocol_version: ProtocolVersion,
+        public_key: PublicKey,
+    ) -> Result<bool, GetEraValidatorsError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::IsBonded {
+                state_root_hash,
+                era_id,
+                protocol_version,
+                public_key,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
 }
 
 /// Construct a fatal error effect.
