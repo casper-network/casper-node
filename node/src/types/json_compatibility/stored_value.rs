@@ -18,7 +18,6 @@ use casper_types::{
 
 use super::{Account, Contract, ContractPackage};
 
-
 /// Representation of a value stored in global state.
 ///
 /// All variants other than `Account` are formed by serializing the variant using `ToBytes` and hex-
