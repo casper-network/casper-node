@@ -2371,10 +2371,9 @@ where
     where
         Error: From<S::Error>,
     {
-        match self.state.commit(correlation_id, pre_state_hash, effects)? {
-            CommitResult::Success { state_root, .. } => Ok(CommitResult::Success { state_root }),
-            commit_result => Ok(commit_result),
-        }
+        self.state
+            .commit(correlation_id, pre_state_hash, effects)
+            .map_err(Error::from)
     }
 
     /// Obtains validator weights for given era.
