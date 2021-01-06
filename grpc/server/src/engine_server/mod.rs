@@ -402,9 +402,7 @@ where
         match self.get_era_validators(correlation_id, request) {
             Ok(era_validators) => {
                 if let Some(validator_weights) = era_validators.get(&era_id) {
-                    match ipc::GetEraValidatorsResponse_ValidatorWeights::try_from(
-                        validator_weights.clone(),
-                    ) {
+                    match ipc::ValidatorWeights::try_from(validator_weights.clone()) {
                         Ok(pb_validator_weights) => response.set_success(pb_validator_weights),
                         Err(mapping_error) => {
                             response.mut_error().set_message(mapping_error.to_string())
@@ -450,23 +448,39 @@ where
             }
         };
 
-        let response = match self.commit_step(correlation_id, request) {
-            // TODO: Update protobufs for StepResult to use GetEraValidatorsError and have the
-            // validator weights
+        // Commit the step and end the era.
+        // Get the state root hash for the new switch-block and the validators for the next era.
+        let (post_state_hash, next_era_validators) = match self.commit_step(correlation_id, request)
+        {
             Ok(StepResult::Success {
-                post_state_hash, ..
+                post_state_hash,
+                next_era_validators,
             }) => {
                 info!("step successful: {}", post_state_hash);
-                let mut ret = ipc::StepResponse::new();
-                let success = ret.mut_step_result().mut_success();
-                success.set_poststate_hash(post_state_hash.to_vec());
-                ret
+                (post_state_hash, next_era_validators)
             }
             Ok(result) => {
                 let err_msg = result.to_string();
                 warn!("{}", err_msg);
                 let mut ret = ipc::StepResponse::new();
                 ret.mut_step_result().mut_error().set_message(err_msg);
+                return SingleResponse::completed(ret);
+            }
+            Err(err) => {
+                let err_msg = err.to_string();
+                warn!("{}", err_msg);
+                let mut ret = ipc::StepResponse::new();
+                ret.mut_step_result().mut_error().set_message(err_msg);
+                return SingleResponse::completed(ret);
+            }
+        };
+
+        let response = match ipc::ValidatorWeights::try_from(next_era_validators) {
+            Ok(pb_validator_weights) => {
+                let mut ret = ipc::StepResponse::new();
+                let success = ret.mut_step_result().mut_success();
+                success.set_poststate_hash(post_state_hash.to_vec());
+                success.set_next_era_validators(pb_validator_weights);
                 ret
             }
             Err(err) => {

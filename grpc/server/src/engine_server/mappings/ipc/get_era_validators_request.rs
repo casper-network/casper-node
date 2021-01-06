@@ -25,15 +25,14 @@ impl TryFrom<ipc::GetEraValidatorsRequest> for GetEraValidatorsRequest {
     }
 }
 
-impl TryFrom<ValidatorWeights> for ipc::GetEraValidatorsResponse_ValidatorWeights {
+impl TryFrom<ValidatorWeights> for ipc::ValidatorWeights {
     type Error = MappingError;
 
     fn try_from(validator_weights: ValidatorWeights) -> Result<Self, Self::Error> {
-        let mut pb_validator_weights = ipc::GetEraValidatorsResponse_ValidatorWeights::new();
+        let mut pb_validator_weights = ipc::ValidatorWeights::new();
 
         for (public_key, weight) in validator_weights {
-            let mut pb_validator_weight =
-                ipc::GetEraValidatorsResponse_ValidatorWeights_ValidatorWeight::new();
+            let mut pb_validator_weight = ipc::ValidatorWeights_ValidatorWeight::new();
             pb_validator_weight.set_public_key_bytes(public_key.to_bytes()?);
             pb_validator_weight.set_weight(weight.into());
 
