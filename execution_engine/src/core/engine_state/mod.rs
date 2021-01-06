@@ -2701,12 +2701,11 @@ where
             BTreeMap<casper_types::PublicKey, U512>,
         > = self.get_era_validators(
             correlation_id,
-            GetEraValidatorsRequest::new(post_state_hash.clone(), step_request.protocol_version),
+            GetEraValidatorsRequest::new(post_state_hash, step_request.protocol_version),
         )?;
         let next_era_validators = era_validators_b_tree_map
             .remove(&step_request.next_era_id)
-            .ok_or_else(|| GetEraValidatorsError::EraValidatorsMissing)?
-            .clone();
+            .ok_or(GetEraValidatorsError::EraValidatorsMissing)?;
         Ok(StepResult::Success {
             post_state_hash,
             next_era_validators,

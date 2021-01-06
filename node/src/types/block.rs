@@ -94,7 +94,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
 
     let next_era_validator_weights = {
         let mut next_era_validator_weights: BTreeMap<PublicKey, U512> = BTreeMap::new();
-        next_era_validator_weights.insert(public_key.clone(), U512::from(123));
+        next_era_validator_weights.insert(public_key, U512::from(123));
         next_era_validator_weights.insert(
             PublicKey::from(&SecretKey::new_ed25519([5u8; SecretKey::ED25519_LENGTH])),
             U512::from(456),
