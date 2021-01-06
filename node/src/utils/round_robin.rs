@@ -7,14 +7,16 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
+    fs::File,
     hash::Hash,
+    io::{self, Write},
     num::NonZeroUsize,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 use enum_iterator::IntoEnumIterator;
 use serde::{ser::SerializeMap, Serialize, Serializer};
-use std::io::Write;
+use std::io::BufWriter;
 use tokio::sync::{Mutex, Semaphore};
 
 /// Weighted round-robin scheduler.
@@ -150,7 +152,7 @@ where
     K: Copy + Clone + Eq + Hash + IntoEnumIterator + Debug,
 {
     /// Dump the contents of the queues (`Debug` representation) to a given file.
-    pub async fn debug_dump(&self, file: &mut std::fs::File) -> Result<(), std::io::Error> {
+    pub async fn debug_dump(&self, file: &mut File) -> Result<(), io::Error> {
         let mut locks = Vec::new();
         for kind in K::into_enum_iter() {
             let queue_guard = self
@@ -164,17 +166,14 @@ where
             locks.push((kind, queue_guard));
         }
 
+        let mut writer = BufWriter::new(file);
         for (kind, guard) in locks {
             let queue = &*guard;
-            file.write_all(format!("Queue: {:?} ({}) [\n", kind, queue.len()).as_bytes())?;
-            for (i, event) in queue.iter().enumerate() {
-                file.write_all(format!("\t{:?}\n", event).as_bytes())?;
-                if i % 1024 == 0 {
-                    file.flush()?;
-                }
+            writer.write_all(format!("Queue: {:?} ({}) [\n", kind, queue.len()).as_bytes())?;
+            for event in queue.iter() {
+                writer.write_all(format!("\t{:?}\n", event).as_bytes())?;
             }
-            file.write_all(b"]\n")?;
-            file.flush()?;
+            writer.write_all(b"]\n")?;
         }
         Ok(())
     }

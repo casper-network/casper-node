@@ -13,16 +13,20 @@ use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     convert::Infallible,
     fmt::Debug,
+    marker::PhantomData,
+    sync::Arc,
 };
 
 use datasize::DataSize;
 use derive_more::{Display, From};
+use semver::Version;
 use smallvec::{smallvec, SmallVec};
+use tracing::error;
 
 use crate::{
     components::Component,
     effect::{
-        requests::{BlockValidationRequest, FetcherRequest},
+        requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
     types::{BlockLike, Deploy, DeployHash},
@@ -31,9 +35,6 @@ use crate::{
 use keyed_counter::KeyedCounter;
 
 use super::fetcher::FetchResult;
-use crate::effect::requests::StorageRequest;
-use semver::Version;
-use std::sync::Arc;
 
 /// Block validator component event.
 #[derive(Debug, From, Display)]
@@ -50,6 +51,8 @@ pub enum Event<T, I> {
     #[display(fmt = "deploy {} missing", _0)]
     DeployMissing(DeployHash),
 
+    /// An event changing the current state to BlockValidatorReady, once the chainspec has been
+    /// loaded.
     #[display(fmt = "block validator loaded")]
     Loaded { chainspec: Arc<Chainspec> },
 }
@@ -74,7 +77,7 @@ pub(crate) struct BlockValidatorReady<T, I> {
     /// Number of requests for a specific deploy hash still in flight.
     in_flight: KeyedCounter<DeployHash>,
 
-    _marker: std::marker::PhantomData<I>,
+    _marker: PhantomData<I>,
 }
 
 impl<T, I> BlockValidatorReady<T, I>
@@ -109,9 +112,7 @@ where
                     .collect::<HashSet<_>>();
                 if block_deploys.is_empty() {
                     // If there are no deploys, return early.
-                    let mut effects = Effects::new();
-                    effects.extend(responder.respond((true, block)).ignore());
-                    return effects;
+                    return responder.respond((true, block)).ignore();
                 }
 
                 // TODO: Clean this up to use `or_insert_with_key` once
@@ -135,35 +136,35 @@ where
                             entry.key().deploys().iter().map(|hash| **hash).collect();
 
                         let in_flight = &mut self.in_flight;
-                        let chainspec = self.chainspec.clone();
+                        let chainspec = Arc::clone(&self.chainspec);
                         let fetch_effects: Effects<Event<T, I>> = block_deploys
                             .iter()
                             .flat_map(|deploy_hash| {
-                                let chainspec = chainspec.clone();
+                                let chainspec = Arc::clone(&chainspec);
                                 // For every request, increase the number of in-flight...
                                 in_flight.inc(deploy_hash);
 
                                 // ...then request it.
-                                let dh_found = *deploy_hash;
-                                let dh_not_found = *deploy_hash;
-                                effect_builder
-                                    .fetch_deploy(*deploy_hash, sender.clone())
-                                    .map_or_else(
-                                        move |result: FetchResult<Deploy>| match result {
-                                            FetchResult::FromStorage(deploy)
-                                            | FetchResult::FromPeer(deploy, _) => {
-                                                if deploy.header().is_valid(
-                                                    &chainspec.genesis.deploy_config,
-                                                    block_timestamp,
-                                                ) {
-                                                    Event::DeployFound(dh_found)
-                                                } else {
-                                                    Event::DeployMissing(dh_found)
-                                                }
+                                let deploy_hash = *deploy_hash;
+                                let validate_deploy =
+                                    move |result: FetchResult<Deploy>| match result {
+                                        FetchResult::FromStorage(deploy)
+                                        | FetchResult::FromPeer(deploy, _) => {
+                                            if deploy.header().is_valid(
+                                                &chainspec.genesis.deploy_config,
+                                                block_timestamp,
+                                            ) {
+                                                Event::DeployFound(deploy_hash)
+                                            } else {
+                                                Event::DeployMissing(deploy_hash)
                                             }
-                                        },
-                                        move || Event::DeployMissing(dh_not_found),
-                                    )
+                                        }
+                                    };
+                                effect_builder
+                                    .fetch_deploy(deploy_hash, sender.clone())
+                                    .map_or_else(validate_deploy, move || {
+                                        Event::DeployMissing(deploy_hash)
+                                    })
                             })
                             .collect();
                         effects.extend(fetch_effects);
@@ -224,7 +225,7 @@ where
     }
 }
 
-/// Block validator.
+/// Block validator states.
 #[derive(Debug)]
 pub(crate) enum BlockValidatorState<T, I> {
     Loading(Vec<Event<T, I>>),
@@ -236,7 +237,6 @@ pub(crate) enum BlockValidatorState<T, I> {
 pub(crate) struct BlockValidator<T, I> {
     #[data_size(skip)]
     state: BlockValidatorState<T, I>,
-    _marker: std::marker::PhantomData<I>,
 }
 
 impl<T, I> BlockValidator<T, I>
@@ -259,7 +259,6 @@ where
         (
             BlockValidator {
                 state: BlockValidatorState::Loading(Vec::new()),
-                _marker: std::marker::PhantomData,
             },
             effects,
         )
@@ -292,22 +291,26 @@ where
                     chainspec,
                     validation_states: Default::default(),
                     in_flight: Default::default(),
-                    _marker: std::marker::PhantomData,
+                    _marker: PhantomData,
                 };
-                let requests = requests;
                 // Replay postponed events onto new state.
                 for ev in requests.drain(..) {
                     effects.extend(new_ready_state.handle_event(effect_builder, ev));
                 }
                 self.state = BlockValidatorState::Ready(new_ready_state);
             }
-            (BlockValidatorState::Loading(requests), request @ Event::Request(_)) => {
+            (
+                BlockValidatorState::Loading(requests),
+                request @ Event::Request(BlockValidationRequest { .. }),
+            ) => {
                 requests.push(request);
+            }
+            (BlockValidatorState::Loading(_), _deploy_found_or_missing) => {
+                error!("Block validator reached unexpected state: should never receive a deploy from itself before it's ready.")
             }
             (BlockValidatorState::Ready(ref mut ready_state), event) => {
                 effects.extend(ready_state.handle_event(effect_builder, event));
             }
-            _ => {}
         }
         effects
     }
