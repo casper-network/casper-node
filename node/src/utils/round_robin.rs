@@ -9,14 +9,13 @@ use std::{
     fmt::Debug,
     fs::File,
     hash::Hash,
-    io::{self, Write},
+    io::{self, BufWriter, Write},
     num::NonZeroUsize,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 use enum_iterator::IntoEnumIterator;
 use serde::{ser::SerializeMap, Serialize, Serializer};
-use std::io::BufWriter;
 use tokio::sync::{Mutex, Semaphore};
 
 /// Weighted round-robin scheduler.
@@ -175,6 +174,7 @@ where
             }
             writer.write_all(b"]\n")?;
         }
+        writer.flush()?;
         Ok(())
     }
 }
