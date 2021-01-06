@@ -502,6 +502,12 @@ where
             Ok(HighwayMessage::NewVertex(v))
                 if self.highway.has_vertex(&v) || (evidence_only && !v.is_evidence()) =>
             {
+                trace!(
+                    has_vertex = self.highway.has_vertex(&v),
+                    is_evidence = v.is_evidence(),
+                    %evidence_only,
+                    "received an irrelevant vertex"
+                );
                 vec![]
             }
             Ok(HighwayMessage::NewVertex(v)) => {
@@ -510,6 +516,7 @@ where
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
+                        trace!("received an invalid vertex");
                         // drop the vertices that might have depended on this one
                         let faulty_senders = self.drop_dependent_vertices(vec![v_id]);
                         return iter::once(ProtocolOutcome::InvalidIncomingMessage(
@@ -533,8 +540,10 @@ where
                     Some(timestamp) if timestamp > Timestamp::now() => {
                         // If it's not from an equivocator and from the future, add to queue
                         if !is_faulty {
+                            trace!("received a vertex from the future; storing for later");
                             self.store_vertex_for_addition_later(timestamp, sender, pvv)
                         } else {
+                            trace!("received a vertex from the future from a faulty validator; dropping");
                             vec![]
                         }
                     }
@@ -542,30 +551,37 @@ where
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
                         if !is_faulty || self.vertex_deps.contains_key(&pvv.inner().id()) {
+                            trace!("received a valid vertex");
                             self.add_vertices(vec![(sender, pvv)], rng)
                         } else {
+                            trace!("received a vertex from a faulty validator that is not a dependency; dropping");
                             vec![]
                         }
                     }
                 }
             }
-            Ok(HighwayMessage::RequestDependency(dep)) => match self.highway.get_dependency(&dep) {
-                GetDepOutcome::None => {
-                    info!(?dep, ?sender, "requested dependency doesn't exist");
-                    vec![]
+            Ok(HighwayMessage::RequestDependency(dep)) => {
+                trace!("received a request for a dependency");
+                match self.highway.get_dependency(&dep) {
+                    GetDepOutcome::None => {
+                        info!(?dep, ?sender, "requested dependency doesn't exist");
+                        vec![]
+                    }
+                    GetDepOutcome::Evidence(vid) => {
+                        vec![ProtocolOutcome::SendEvidence(sender, vid)]
+                    }
+                    GetDepOutcome::Vertex(vv) => {
+                        let msg = HighwayMessage::NewVertex(vv.into());
+                        let serialized_msg =
+                            bincode::serialize(&msg).expect("should serialize message");
+                        // TODO: Should this be done via a gossip service?
+                        vec![ProtocolOutcome::CreatedTargetedMessage(
+                            serialized_msg,
+                            sender,
+                        )]
+                    }
                 }
-                GetDepOutcome::Evidence(vid) => vec![ProtocolOutcome::SendEvidence(sender, vid)],
-                GetDepOutcome::Vertex(vv) => {
-                    let msg = HighwayMessage::NewVertex(vv.into());
-                    let serialized_msg =
-                        bincode::serialize(&msg).expect("should serialize message");
-                    // TODO: Should this be done via a gossip service?
-                    vec![ProtocolOutcome::CreatedTargetedMessage(
-                        serialized_msg,
-                        sender,
-                    )]
-                }
-            },
+            }
         }
     }
 

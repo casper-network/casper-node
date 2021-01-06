@@ -415,6 +415,7 @@ where
                 // If the era is already unbonded, only accept new evidence, because still-bonded
                 // eras could depend on that.
                 let evidence_only = !self.era_supervisor.is_bonded(era_id);
+                trace!(era = era_id.0, "received a consensus message");
                 self.delegate_to_era(era_id, move |consensus, rng| {
                     consensus.handle_message(sender, payload, evidence_only, rng)
                 })
@@ -831,7 +832,8 @@ where
         if should_emit_error {
             fatal!(
                 self.effect_builder,
-                "Consensus shutting down due to inability to participate in the network"
+                "Consensus shutting down due to inability to participate in the network; inactive era = {}",
+                self.era_supervisor.current_era
             )
         } else {
             Default::default()
