@@ -174,8 +174,7 @@ where
             }
             writer.write_all(b"]\n")?;
         }
-        writer.flush()?;
-        Ok(())
+        writer.flush()
     }
 }
 
