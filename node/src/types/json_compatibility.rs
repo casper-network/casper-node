@@ -2,8 +2,10 @@
 
 mod account;
 mod auction_state;
+mod contracts;
 mod stored_value;
 
 pub use account::Account;
 pub use auction_state::AuctionState;
+pub use contracts::{Contract, ContractPackage};
 pub use stored_value::StoredValue;

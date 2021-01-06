@@ -1,4 +1,17 @@
 //! Data types for supporting contract headers feature.
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+    vec::Vec,
+};
+use core::fmt;
+
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     alloc::string::ToString,
@@ -7,12 +20,6 @@ use crate::{
     CLType, ContractHash, ContractPackageHash, ContractWasmHash, Key, ProtocolVersion,
     KEY_HASH_LENGTH,
 };
-use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    string::String,
-    vec::Vec,
-};
-use core::fmt;
 
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;
@@ -51,7 +58,8 @@ pub enum Error {
 
 /// A (labelled) "user group". Each method of a versioned contract may be
 /// assoicated with one or more user groups which are allowed to call it.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct Group(String);
 
 impl Group {
@@ -625,7 +633,8 @@ impl Default for Contract {
 
 /// Context of method execution
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub enum EntryPointType {
     /// Runs as session code
     Session = 0,
@@ -668,7 +677,8 @@ pub type Parameters = Vec<Parameter>;
 
 /// Type signature of a method. Order of arguments matter since can be
 /// referenced by index as well as name.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct EntryPoint {
     name: String,
     args: Parameters,
@@ -798,7 +808,8 @@ impl FromBytes for EntryPoint {
 
 /// Enum describing the possible access control options for a contract entry
 /// point (method).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub enum EntryPointAccess {
     /// Anyone can call this method (no access controls).
     Public,
@@ -860,7 +871,8 @@ impl FromBytes for EntryPointAccess {
 }
 
 /// Parameter to a method
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct Parameter {
     name: String,
     cl_type: CLType,

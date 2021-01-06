@@ -16,7 +16,8 @@ use casper_types::{
     CLValue, DeployInfo, Transfer,
 };
 
-use super::Account;
+use super::{Account, Contract, ContractPackage};
+
 
 /// Representation of a value stored in global state.
 ///
@@ -34,9 +35,9 @@ pub enum StoredValue {
     /// A contract's Wasm
     ContractWasm(String),
     /// Methods and type signatures supported by a contract.
-    Contract(String),
+    Contract(Contract),
     /// A contract definition, metadata, and security container.
-    ContractPackage(String),
+    ContractPackage(ContractPackage),
     /// A record of a transfer
     Transfer(Transfer),
     /// A record of a deploy
@@ -56,10 +57,10 @@ impl TryFrom<&ExecutionEngineStoredValue> for StoredValue {
                 StoredValue::ContractWasm(hex::encode(&contract_wasm.to_bytes()?))
             }
             ExecutionEngineStoredValue::Contract(contract) => {
-                StoredValue::Contract(hex::encode(&contract.to_bytes()?))
+                StoredValue::Contract(contract.into())
             }
             ExecutionEngineStoredValue::ContractPackage(contract_package) => {
-                StoredValue::ContractPackage(hex::encode(&contract_package.to_bytes()?))
+                StoredValue::ContractPackage(contract_package.into())
             }
             ExecutionEngineStoredValue::Transfer(transfer) => StoredValue::Transfer(*transfer),
             ExecutionEngineStoredValue::DeployInfo(deploy_info) => {
