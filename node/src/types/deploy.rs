@@ -262,6 +262,15 @@ impl DeployHeader {
     pub fn chain_name(&self) -> &str {
         &self.chain_name
     }
+
+    /// Determine if this deploy header has valid values based on a `DeployConfig` and timestamp.
+    pub fn is_valid(&self, deploy_config: &DeployConfig, current_timestamp: Timestamp) -> bool {
+        let ttl_valid = self.ttl() <= deploy_config.max_ttl;
+        let timestamp_valid = self.timestamp() <= current_timestamp;
+        let not_expired = !self.expired(current_timestamp);
+        let num_deps_valid = self.dependencies().len() <= deploy_config.max_dependencies as usize;
+        ttl_valid && timestamp_valid && not_expired && num_deps_valid
+    }
 }
 
 impl DeployHeader {
