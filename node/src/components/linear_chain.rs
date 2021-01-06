@@ -383,29 +383,32 @@ where
                 |(maybe_block, fs)| Event::IsBondedFutureEra(maybe_block, fs),
             ),
             Event::IsBondedFutureEra(maybe_block, fs) => {
-                // This should be safe to do. `self.latest_block` will be None only if we haven't
-                // finalized *any* block yet, which will be just after the Genesis
-                // era start. Even if we receive a finality signature before finalizing anything,
-                // that will be for the *current* era and we won't be looking up whether validator
-                // is bonded in the Contract Runtime.
-                let latest_header = self.latest_block.as_ref().unwrap().header();
-                let state_root_hash = latest_header.state_root_hash();
-                // TODO: Use protocol version that is valid for the block's height.
-                let protocol_version = ProtocolVersion::new(SemVer::V1_0_0);
-                effect_builder
-                    .is_bonded_in_future_era(
-                        *state_root_hash,
-                        fs.era_id,
-                        protocol_version,
-                        fs.public_key,
-                    )
-                    .result(
-                        |is_bonded| Event::IsBonded(maybe_block, fs, is_bonded),
-                        |error| {
-                            error!(%error, "is_bonded_in_future_era returned an error.");
-                            panic!("couldn't check if validator is bonded")
-                        },
-                    )
+                match self.latest_block.as_ref() {
+                    // If we don't have any block yet, we cannot determine who is bonded or not.
+                    None => effect_builder
+                        .immediately()
+                        .event(move |_| Event::IsBonded(maybe_block, fs, false)),
+                    Some(block) => {
+                        let latest_header = block.header();
+                        let state_root_hash = latest_header.state_root_hash();
+                        // TODO: Use protocol version that is valid for the block's height.
+                        let protocol_version = ProtocolVersion::new(SemVer::V1_0_0);
+                        effect_builder
+                            .is_bonded_in_future_era(
+                                *state_root_hash,
+                                fs.era_id,
+                                protocol_version,
+                                fs.public_key,
+                            )
+                            .result(
+                                |is_bonded| Event::IsBonded(maybe_block, fs, is_bonded),
+                                |error| {
+                                    error!(%error, "is_bonded_in_future_era returned an error.");
+                                    panic!("couldn't check if validator is bonded")
+                                },
+                            )
+                    }
+                }
             }
             Event::IsBonded(Some(block), fs, true) => {
                 // Known block and signature from a bonded validator.
