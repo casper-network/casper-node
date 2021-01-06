@@ -38,9 +38,9 @@ function do_render()
     local PATH_TO_NODE_STORAGE
     
     OS_TYPE="$(get_os)"
-    PATH_TO_NODE_STORAGE="$(get_path_to_node "$NODE_ID")/storage"
+    PATH_TO_NODE_STORAGE="$(get_path_to_node "$NODE_ID")/storage-consensus"
 
-    log "node #$NODE_ID :: storage @ $PATH_TO_NODE_STORAGE"
+    log "node #$NODE_ID :: consensus storage @ $PATH_TO_NODE_STORAGE"
 
     if [[ $OS_TYPE == "$_OS_LINUX*" ]]; then
         ll "$PATH_TO_NODE_STORAGE"
