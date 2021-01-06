@@ -871,7 +871,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     TEST_ENDORSEMENT_EVIDENCE_LIMIT,
                 );
                 let mut highway = Highway::new(instance_id, validators.clone(), params);
-                let effects = highway.activate_validator(vid, v_sec, start_time);
+                let effects = highway.activate_validator(vid, v_sec, start_time, None);
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));
 

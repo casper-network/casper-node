@@ -86,7 +86,7 @@ impl DeployConfig {
     }
 }
 
-#[derive(Copy, Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub(crate) struct HighwayConfig {

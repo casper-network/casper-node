@@ -7,10 +7,14 @@ use crate::{
 /// Provides functionality of a contract storage.
 pub trait StorageProvider {
     /// Create new [`URef`].
-    fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> URef;
+    fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> Result<URef, Error>;
 
     /// Write data to a local key.
-    fn write_local<K: ToBytes, V: CLTyped + ToBytes>(&mut self, key: K, value: V);
+    fn write_local<K: ToBytes, V: CLTyped + ToBytes>(
+        &mut self,
+        key: K,
+        value: V,
+    ) -> Result<(), Error>;
 
     /// Read data from a local key.
     fn read_local<K: ToBytes, V: CLTyped + FromBytes>(

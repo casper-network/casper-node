@@ -28,8 +28,10 @@ Upon successful setup, NCTL commands are made available via aliases for executio
 
 ## Notes
 
-- NOTE 1: all network, node & user ordinal identifiers are 1 based.
+- NOTE 1: all ordinal identifiers are 1 based.
 
 - NOTE 2: all command parameters have default values to simplify the general case of testing a single local network.
 
 - NOTE 3: when executing either the `nctl-interactive` or `nctl-start` commands, the node logging level output can be assigned by passing in the `loglevel` parameter.  If you do not pass in this variable then NCTL defaults either to the current value of RUST_LOG or `debug`.
+
+- NOTE 4: many command will accept a `node` parameter to determine to which node a query or deploy will be dispatched.  If node=random then a dispatch node is determined JIT.  If node=0 then a single node is chosen for dispatch.

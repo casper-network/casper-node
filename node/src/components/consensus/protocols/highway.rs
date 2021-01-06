@@ -7,6 +7,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
     iter,
+    path::PathBuf,
 };
 
 use datasize::DataSize;
@@ -639,8 +640,11 @@ where
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
+        unit_hash_file: Option<PathBuf>,
     ) -> Vec<ProtocolOutcome<I, C>> {
-        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
+        let av_effects = self
+            .highway
+            .activate_validator(our_id, secret, timestamp, unit_hash_file);
         self.process_av_effects(av_effects)
     }
 
@@ -692,5 +696,9 @@ where
 
     fn is_active(&self) -> bool {
         self.highway.is_active()
+    }
+
+    fn instance_id(&self) -> &C::InstanceId {
+        self.highway.instance_id()
     }
 }

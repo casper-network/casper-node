@@ -760,6 +760,9 @@ fn is_terminal_block() -> Result<(), AddUnitError<TestContext>> {
 
 #[test]
 fn conflicting_endorsements() -> Result<(), AddUnitError<TestContext>> {
+    if TODO_ENDORSEMENT_EVIDENCE_DISABLED {
+        return Ok(()); // Endorsement evidence is disabled, so don't test it.
+    }
     let validators = vec![(ALICE_SEC, ALICE), (BOB_SEC, BOB), (CAROL_SEC, CAROL)]
         .into_iter()
         .map(|(sk, vid)| {

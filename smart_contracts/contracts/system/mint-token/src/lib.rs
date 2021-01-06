@@ -30,21 +30,28 @@ impl RuntimeProvider for MintContract {
         runtime::get_caller()
     }
 
-    fn put_key(&mut self, name: &str, key: Key) {
-        runtime::put_key(name, key)
+    fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
+        runtime::put_key(name, key);
+        Ok(())
     }
+
     fn get_key(&self, name: &str) -> Option<Key> {
         runtime::get_key(name)
     }
 }
 
 impl StorageProvider for MintContract {
-    fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> URef {
-        storage::new_uref(init)
+    fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> Result<URef, Error> {
+        Ok(storage::new_uref(init))
     }
 
-    fn write_local<K: ToBytes, V: CLTyped + ToBytes>(&mut self, key: K, value: V) {
-        storage::write_local(key, value)
+    fn write_local<K: ToBytes, V: CLTyped + ToBytes>(
+        &mut self,
+        key: K,
+        value: V,
+    ) -> Result<(), Error> {
+        storage::write_local(key, value);
+        Ok(())
     }
 
     fn read_local<K: ToBytes, V: CLTyped + FromBytes>(

@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt::Display, vec::Vec};
 use core::fmt;
 use uint::static_assertions::_core::fmt::Formatter;
 
-use casper_types::{bytesrepr, bytesrepr::ToBytes, Key, ProtocolVersion, PublicKey};
+use casper_types::{bytesrepr, bytesrepr::ToBytes, CLValueError, Key, ProtocolVersion, PublicKey};
 
 use crate::{
     core::engine_state::Error,
@@ -93,6 +93,7 @@ pub enum StepResult {
     KeyNotFound(Key),
     TypeMismatch(TypeMismatch),
     Serialization(bytesrepr::Error),
+    CLValueError(CLValueError),
     Success { post_state_hash: Blake2bHash },
 }
 

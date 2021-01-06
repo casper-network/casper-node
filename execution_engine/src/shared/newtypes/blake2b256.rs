@@ -19,7 +19,7 @@ impl Blake2bHash {
     /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data
     pub fn new(data: &[u8]) -> Self {
         let mut ret = [0u8; Blake2bHash::LENGTH];
-        // Safe to unwrap here because our digest length is constant and valid
+        // NOTE: Safe to unwrap here because our digest length is constant and valid
         let mut hasher = VarBlake2b::new(Blake2bHash::LENGTH).unwrap();
         hasher.update(data);
         hasher.finalize_variable(|hash| ret.clone_from_slice(hash));

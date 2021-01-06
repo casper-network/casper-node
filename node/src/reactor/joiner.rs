@@ -424,7 +424,7 @@ impl reactor::Reactor for Reactor {
 
         let block_by_height_fetcher = Fetcher::new(config.fetcher);
 
-        let deploy_acceptor = DeployAcceptor::new();
+        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
 
         let genesis_state_root_hash = chainspec_loader
             .genesis_state_root_hash()

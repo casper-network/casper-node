@@ -242,6 +242,11 @@ impl<I> Era<I> {
         &self.validators
     }
 
+    /// Returns whether validator identified with `public_key` is bonded in that era.
+    pub(crate) fn is_bonded_validator(&self, public_key: &PublicKey) -> bool {
+        self.validators.contains_key(public_key)
+    }
+
     /// Removes and returns all candidate blocks with no missing dependencies.
     fn remove_complete_candidates(&mut self) -> Vec<CandidateBlock> {
         let (complete, candidates): (Vec<_>, Vec<_>) = self

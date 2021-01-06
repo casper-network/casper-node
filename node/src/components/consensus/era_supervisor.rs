@@ -9,6 +9,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Formatter},
+    path::PathBuf,
     rc::Rc,
     time::Duration,
 };
@@ -22,7 +23,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
-use tracing::{error, info, trace, warn};
+use tracing::{info, trace, warn};
 
 use casper_types::{ProtocolVersion, U512};
 
@@ -39,7 +40,7 @@ use crate::{
         Config, ConsensusMessage, Event, ReactorEventT,
     },
     crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey},
+        asymmetric_key::{PublicKey, SecretKey},
         hash::Digest,
     },
     effect::{EffectBuilder, EffectExt, Effects, Responder},
@@ -100,6 +101,8 @@ pub struct EraSupervisor<I> {
     metrics: ConsensusMetrics,
     // TODO: discuss this quick fix
     finished_joining: bool,
+    /// The path to the folder where unit hash files will be stored.
+    unit_hashes_folder: PathBuf,
 }
 
 impl<I> Debug for EraSupervisor<I> {
@@ -126,6 +129,7 @@ where
         new_consensus: Box<ConsensusConstructor<I>>,
         mut rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Event<I>>), Error> {
+        let unit_hashes_folder = config.with_dir(config.value().unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
@@ -146,6 +150,7 @@ where
             next_block_height: 0,
             metrics,
             finished_joining: false,
+            unit_hashes_folder,
         };
 
         let results = era_supervisor.new_era(
@@ -251,13 +256,7 @@ where
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
         let our_id = self.public_signing_key;
-        let should_activate = if self.node_start_time >= start_time {
-            info!(
-                era = era_id.0,
-                %self.node_start_time, "not voting; node was not started before the era began",
-            );
-            false
-        } else if !validators.contains_key(&our_id) {
+        let should_activate = if !validators.contains_key(&our_id) {
             info!(era = era_id.0, %our_id, "not voting; not a validator");
             false
         } else if !self.finished_joining {
@@ -284,7 +283,12 @@ where
 
         let results = if should_activate {
             let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
-            consensus.activate_validator(our_id, secret, timestamp)
+            let unit_hash_file = self.unit_hashes_folder.join(format!(
+                "unit_hash_{:?}_{}.dat",
+                instance_id,
+                self.public_signing_key.to_hex()
+            ));
+            consensus.activate_validator(our_id, secret, timestamp, Some(unit_hash_file))
         } else {
             Vec::new()
         };
@@ -334,11 +338,19 @@ where
         self.finished_joining = true;
         let secret = Keypair::new(Rc::clone(&self.secret_signing_key), self.public_signing_key);
         let public_key = self.public_signing_key;
+        let unit_hashes_folder = self.unit_hashes_folder.clone();
         self.active_eras
             .get_mut(&self.current_era)
             .map(|era| {
-                if era.start_time > now && era.validators().contains_key(&public_key) {
-                    era.consensus.activate_validator(public_key, secret, now)
+                if era.validators().contains_key(&public_key) {
+                    let instance_id = *era.consensus.instance_id();
+                    let unit_hash_file = unit_hashes_folder.join(format!(
+                        "unit_hash_{:?}_{}.dat",
+                        instance_id,
+                        public_key.to_hex()
+                    ));
+                    era.consensus
+                        .activate_validator(public_key, secret, now, Some(unit_hash_file))
                 } else {
                     Vec::new()
                 }
@@ -457,8 +469,13 @@ where
         let era_id = block_header.era_id();
         let maybe_fin_sig = if self.era_supervisor.is_validator_in(&our_pk, era_id) {
             let block_hash = block_header.hash();
-            let signature = asymmetric_key::sign(block_hash.inner(), &our_sk, &our_pk, self.rng);
-            Some(FinalitySignature::new(block_hash, signature, our_pk))
+            Some(FinalitySignature::new(
+                block_hash,
+                era_id,
+                &our_sk,
+                our_pk,
+                &mut self.rng,
+            ))
         } else {
             None
         };
@@ -572,12 +589,20 @@ where
     pub(super) fn resolve_validity(
         &mut self,
         era_id: EraId,
-        _sender: I, // TODO: Disconnect from sender if invalid.
+        sender: I,
         proto_block: ProtoBlock,
         valid: bool,
     ) -> Effects<Event<I>> {
         self.era_supervisor.metrics.proposed_block();
         let mut effects = Effects::new();
+        if !valid {
+            warn!(
+                %sender,
+                era = %era_id.0,
+                "invalid consensus value; disconnecting from the sender"
+            );
+            effects.extend(self.disconnect(sender));
+        }
         let candidate_blocks = if let Some(era) = self.era_supervisor.active_eras.get_mut(&era_id) {
             era.resolve_validity(&proto_block, valid)
         } else {
@@ -626,23 +651,19 @@ where
     ) -> Effects<Event<I>> {
         match consensus_result {
             ProtocolOutcome::InvalidIncomingMessage(_, sender, error) => {
-                error!(
+                warn!(
                     %sender,
                     %error,
                     "invalid incoming message to consensus instance; disconnecting from the sender"
                 );
-                self.effect_builder
-                    .announce_disconnect_from_peer(sender)
-                    .ignore()
+                self.disconnect(sender)
             }
             ProtocolOutcome::Disconnect(sender) => {
-                error!(
+                warn!(
                     %sender,
                     "disconnecting from the sender of invalid data"
                 );
-                self.effect_builder
-                    .announce_disconnect_from_peer(sender)
-                    .ignore()
+                self.disconnect(sender)
             }
             ProtocolOutcome::CreatedGossipMessage(out_msg) => {
                 // TODO: we'll want to gossip instead of broadcast here
@@ -820,6 +841,27 @@ where
     pub(crate) fn finished_joining(&mut self, now: Timestamp) -> Effects<Event<I>> {
         let results = self.era_supervisor.finished_joining(now);
         self.handle_consensus_results(self.era_supervisor.current_era, results)
+    }
+
+    /// Returns whether validator is bonded in an era.
+    pub(super) fn is_bonded_validator(
+        &self,
+        era_id: EraId,
+        vid: PublicKey,
+        responder: Responder<bool>,
+    ) -> Effects<Event<I>> {
+        let is_bonded = self
+            .era_supervisor
+            .active_eras
+            .get(&era_id)
+            .map_or(false, |cp| cp.is_bonded_validator(&vid));
+        responder.respond(is_bonded).ignore()
+    }
+
+    fn disconnect(&self, sender: I) -> Effects<Event<I>> {
+        self.effect_builder
+            .announce_disconnect_from_peer(sender)
+            .ignore()
     }
 }
 

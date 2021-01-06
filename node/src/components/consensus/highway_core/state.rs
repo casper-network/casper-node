@@ -45,6 +45,12 @@ use crate::{
 use block::Block;
 use tallies::Tallies;
 
+// TODO: The restart mechanism only persists and loads our own latest unit, so that we don't
+// equivocate after a restart. It doesn't yet persist our latest endorsed units, so we could
+// accidentally endorse conflicting votes. Fix this and enable slashing for conflicting
+// endorsements again.
+pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
+
 #[derive(Debug, Error, PartialEq, Clone)]
 pub(crate) enum UnitError {
     #[error("The unit is a ballot but doesn't cite any block.")]
@@ -411,6 +417,9 @@ impl<C: Context> State<C> {
     /// evidence (see `Evidence::validate`). Returns `false` if the evidence was not added because
     /// the perpetrator is banned or we already have evidence against them.
     pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) -> bool {
+        if TODO_ENDORSEMENT_EVIDENCE_DISABLED && matches!(evidence, Evidence::Endorsements { .. }) {
+            return false;
+        }
         let idx = evidence.perpetrator();
         match self.faults.get(&idx) {
             Some(&Fault::Banned) | Some(&Fault::Direct(_)) => return false,
@@ -480,6 +489,9 @@ impl<C: Context> State<C> {
         endorsements: &Endorsements<C>,
         instance_id: &C::InstanceId,
     ) -> Vec<Evidence<C>> {
+        if TODO_ENDORSEMENT_EVIDENCE_DISABLED {
+            return Vec::new();
+        }
         let uhash = endorsements.unit();
         let unit = self.unit(&uhash);
         if !self.has_evidence(unit.creator) {
@@ -516,8 +528,12 @@ impl<C: Context> State<C> {
             known_vidx_endorsements
                 .chain(known_vidx_incomplete_endorsements)
                 .find(|(uhash2, _)| {
-                    // TODO: Limit the difference of sequence numbers?
-                    self.unit(uhash2).creator == unit.creator && !self.is_compatible(&uhash, uhash2)
+                    let unit2 = self.unit(uhash2);
+                    let ee_limit = self.params().endorsement_evidence_limit();
+                    self.unit(uhash2).creator == unit.creator
+                        && !self.is_compatible(&uhash, uhash2)
+                        && unit.seq_number.saturating_add(ee_limit) >= unit2.seq_number
+                        && unit2.seq_number.saturating_add(ee_limit) >= unit.seq_number
                 })
                 .map(|(uhash2, sig2)| {
                     if unit.seq_number <= self.unit(uhash2).seq_number {
@@ -530,26 +546,21 @@ impl<C: Context> State<C> {
 
         // Create an Evidence instance for each conflict we found.
         conflicting_endorsements
-            .filter_map(|(vidx, uhash1, sig1, uhash2, sig2)| {
+            .map(|(vidx, uhash1, sig1, uhash2, sig2)| {
                 let unit1 = self.unit(uhash1);
-                let unit2 = self.unit(uhash2);
-                let ee_limit = self.params().endorsement_evidence_limit();
-                if unit1.seq_number.saturating_add(ee_limit) < unit2.seq_number {
-                    return None;
-                }
                 let swimlane2 = self
                     .swimlane(uhash2)
                     .skip(1)
                     .take_while(|(_, pred2)| pred2.seq_number >= unit1.seq_number)
                     .map(|(pred2_hash, _)| self.wire_unit(pred2_hash, *instance_id).unwrap())
                     .collect();
-                Some(Evidence::Endorsements {
+                Evidence::Endorsements {
                     endorsement1: SignedEndorsement::new(Endorsement::new(*uhash1, vidx), *sig1),
                     unit1: self.wire_unit(uhash1, *instance_id).unwrap(),
                     endorsement2: SignedEndorsement::new(Endorsement::new(*uhash2, vidx), *sig2),
                     unit2: self.wire_unit(uhash2, *instance_id).unwrap(),
                     swimlane2,
-                })
+                }
             })
             .collect()
     }

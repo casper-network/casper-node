@@ -41,7 +41,7 @@ impl From<(EngineStateError, ExecutionEffect, Gas)> for DeployResult {
             | error @ EngineStateError::WasmPreprocessing(_)
             | error @ EngineStateError::WasmSerialization(_)
             | error @ EngineStateError::Exec(ExecutionError::DeploymentAuthorizationFailure)
-            | error @ EngineStateError::InvalidKeyVariant(_)
+            | error @ EngineStateError::InvalidKeyVariant
             | error @ EngineStateError::Authorization
             | error @ EngineStateError::InvalidDeployItemVariant(_)
             | error @ EngineStateError::InvalidUpgradeResult => {

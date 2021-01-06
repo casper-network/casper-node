@@ -1,26 +1,19 @@
 #!/usr/bin/env bash
 
-unset NET_ID
-unset NODE_ID
+source "$NCTL"/sh/utils/main.sh
 
-for ARGUMENT in "$@"
-do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
-    case "$KEY" in
-        net) NET_ID=${VALUE} ;;
-        node) NODE_ID=${VALUE} ;;
-        *)
-    esac
-done
+#######################################
+# Renders on-chain auction information.
+#######################################
+function main()
+{
+    $(get_path_to_client) get-auction-info \
+        --node-address "$(get_node_address_rpc)" \
+        | jq '.result'
+}
 
 # ----------------------------------------------------------------
-# MAIN
+# ENTRY POINT
 # ----------------------------------------------------------------
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
-render_chain_auction_info \
-    ${NET_ID:-1} \
-    ${NODE_ID:-1}
+main

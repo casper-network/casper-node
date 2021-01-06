@@ -244,7 +244,7 @@ impl ToBytes for CLValue {
 
     fn into_bytes(self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = self.bytes.into_bytes()?;
-        self.cl_type.append_bytes(&mut result);
+        self.cl_type.append_bytes(&mut result)?;
         Ok(result)
     }
 

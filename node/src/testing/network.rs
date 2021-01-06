@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use fake_instant::FakeClock as Instant;
 use futures::future::{BoxFuture, FutureExt};
 use serde::Serialize;
 use tokio::time;
@@ -164,6 +165,7 @@ where
     async fn crank_and_check_indefinitely(&mut self, node_id: &R::NodeId, rng: &mut TestRng) {
         loop {
             if self.crank(node_id, rng).await == 0 {
+                Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
                 time::delay_for(POLL_INTERVAL).await;
                 continue;
             }
@@ -223,6 +225,7 @@ where
                     break;
                 } else {
                     no_events = true;
+                    Instant::advance_time(quiet_for.as_millis() as u64);
                     time::delay_for(quiet_for).await;
                 }
             } else {
@@ -262,6 +265,7 @@ where
 
             if self.crank_all(rng).await == 0 {
                 // No events processed, wait for a bit to avoid 100% cpu usage.
+                Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
                 time::delay_for(POLL_INTERVAL).await;
             }
         }
