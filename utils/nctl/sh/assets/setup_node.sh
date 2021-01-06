@@ -70,6 +70,7 @@ function setup_node_config()
         "cfg['network']['known_addresses']=[$(get_network_known_addresses "$NODE_ID")];"
         "cfg['node']['chainspec_config_path']='../../../chainspec/chainspec.toml';"
         "cfg['storage']['path']='../storage';"
+        "cfg['consensus']['unit_hashes_folder']='../storage';"
         "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$NODE_ID")';"
         "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
         "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$NODE_ID")';"

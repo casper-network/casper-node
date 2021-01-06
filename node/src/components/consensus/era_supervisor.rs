@@ -826,7 +826,7 @@ where
             .era_supervisor
             .active_eras
             .get(&self.era_supervisor.current_era)
-            .map(|era| era.consensus.has_received_messages())
+            .map(|era| !era.consensus.has_received_messages())
             .unwrap_or(true);
         if should_emit_error {
             fatal!(

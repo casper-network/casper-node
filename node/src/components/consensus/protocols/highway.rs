@@ -687,7 +687,7 @@ where
     }
 
     fn has_received_messages(&self) -> bool {
-        self.highway.state().is_empty()
+        !self.highway.state().is_empty()
     }
 
     fn as_any(&self) -> &dyn Any {
