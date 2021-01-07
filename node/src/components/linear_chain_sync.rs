@@ -56,7 +56,7 @@ pub(crate) struct LinearChainSync<I> {
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     /// Start the syncing process of the linear chain until the trusted hash.
     pub fn sync_trusted_hash(init_hash: Option<BlockHash>) -> Self {
-        let state = init_hash.map_or(State::None, State::sync_trusted_hash);
+        let state = init_hash.map_or(State::Done, State::sync_trusted_hash);
         LinearChainSync {
             peers: Vec::new(),
             peers_to_try: Vec::new(),
@@ -110,7 +110,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     /// Returns `true` if we have finished syncing linear chain.
     pub fn is_synced(&self) -> bool {
-        matches!(self.state, State::None | State::Done)
+        matches!(self.state, State::Done)
     }
 
     fn block_downloaded<REv>(
