@@ -29,7 +29,7 @@ use crate::{
             highway::{
                 Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex, Vertex,
             },
-            state::Panorama,
+            state::{Observation, Panorama},
             validators::Validators,
         },
         traits::{ConsensusValueT, Context, NodeIdT},
@@ -585,15 +585,46 @@ where
                 }
             }
             Ok(HighwayMessage::RequestLatestState(panorama)) => {
+                trace!("received a request for the latest state");
                 let state = self.highway.state();
 
-                let merged_panorama = state.panorama().merge(state, &panorama);
+                let create_message =
+                    |observations: (&Observation<C>, &Observation<C>)| match observations {
+                        (Observation::None, Observation::None)
+                        | (Observation::Faulty, _)
+                        | (_, Observation::Faulty) => None,
 
-                merged_panorama
-                    .iter_correct_hashes()
-                    .filter_map(|hash| state.wire_unit(hash, *self.highway.instance_id()))
-                    .map(|swu| {
-                        let msg = HighwayMessage::NewVertex(Vertex::Unit(swu));
+                        (Observation::None, Observation::Correct(hash)) => {
+                            Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
+                        }
+
+                        (Observation::Correct(hash), Observation::None) => state
+                            .wire_unit(hash, *self.highway.instance_id())
+                            .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
+
+                        (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
+                            if state.has_unit(their_hash)
+                                && state.panorama().sees_correct(state, their_hash)
+                            {
+                                state
+                                    .wire_unit(our_hash, *self.highway.instance_id())
+                                    .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
+                            } else if !state.has_unit(their_hash) {
+                                Some(HighwayMessage::RequestDependency(Dependency::Unit(
+                                    *their_hash,
+                                )))
+                            } else {
+                                None
+                            }
+                        }
+                    };
+
+                state
+                    .panorama()
+                    .iter()
+                    .zip(&panorama)
+                    .filter_map(create_message)
+                    .map(|msg| {
                         let serialized_msg =
                             bincode::serialize(&msg).expect("should serialize message");
                         ProtocolOutcome::CreatedTargetedMessage(serialized_msg, sender.clone())
