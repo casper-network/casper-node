@@ -95,6 +95,11 @@ impl CLValue {
         }
     }
 
+    /// A convenience method to create CLValue for a unit.
+    pub fn unit() -> Self {
+        CLValue::from_components(CLType::Unit, Vec::new())
+    }
+
     // This is only required in order to implement `TryFrom<state::CLValue> for CLValue` (i.e. the
     // conversion from the Protobuf `CLValue`) in a separate module to this one.
     #[doc(hidden)]

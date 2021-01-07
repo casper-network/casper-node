@@ -476,8 +476,7 @@ impl ContractRuntime {
         )?);
 
         let global_state = LmdbGlobalState::empty(environment, trie_store, protocol_data_store)?;
-        let engine_config = EngineConfig::new()
-            .with_use_system_contracts(contract_runtime_config.use_system_contracts());
+        let engine_config = EngineConfig::new();
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 

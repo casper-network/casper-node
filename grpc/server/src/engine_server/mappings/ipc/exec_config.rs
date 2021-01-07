@@ -16,10 +16,6 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
             .map(TryInto::try_into)
             .collect::<Result<Vec<GenesisAccount>, Self::Error>>()?;
         let wasm_config = pb_exec_config.take_wasm_config().try_into()?;
-        let mint_initializer_bytes = pb_exec_config.take_mint_installer();
-        let proof_of_stake_initializer_bytes = pb_exec_config.take_pos_installer();
-        let standard_payment_installer_bytes = pb_exec_config.take_standard_payment_installer();
-        let auction_installer_bytes = pb_exec_config.take_auction_installer();
         let validator_slots = pb_exec_config.get_validator_slots();
         let auction_delay = pb_exec_config.get_auction_delay();
         let locked_funds_period = pb_exec_config.get_locked_funds_period();
@@ -27,10 +23,6 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
         let unbonding_delay = pb_exec_config.get_unbonding_delay();
         let wasmless_transfer_cost = pb_exec_config.get_wasmless_transfer_cost();
         Ok(ExecConfig::new(
-            mint_initializer_bytes,
-            proof_of_stake_initializer_bytes,
-            standard_payment_installer_bytes,
-            auction_installer_bytes,
             accounts,
             wasm_config,
             validator_slots,
@@ -46,12 +38,6 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
 impl From<ExecConfig> for ipc::ChainSpec_GenesisConfig_ExecConfig {
     fn from(exec_config: ExecConfig) -> ipc::ChainSpec_GenesisConfig_ExecConfig {
         let mut pb_exec_config = ipc::ChainSpec_GenesisConfig_ExecConfig::new();
-        pb_exec_config.set_mint_installer(exec_config.mint_installer_bytes().to_vec());
-        pb_exec_config.set_pos_installer(exec_config.proof_of_stake_installer_bytes().to_vec());
-        pb_exec_config.set_standard_payment_installer(
-            exec_config.standard_payment_installer_bytes().to_vec(),
-        );
-        pb_exec_config.set_auction_installer(exec_config.auction_installer_bytes().to_vec());
         {
             let accounts = exec_config
                 .accounts()

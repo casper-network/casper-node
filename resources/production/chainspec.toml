@@ -10,18 +10,6 @@ name = 'casper-delta'
 timestamp = '2020-12-29T20:00:00Z'
 # Protocol version at genesis.
 protocol_version = '1.0.0'
-# Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the mint
-# system contract.
-mint_installer_path = '/etc/casper/wasm/mint_install.wasm'
-# Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Proof of
-# Stake system contract.
-pos_installer_path = '/etc/casper/wasm/pos_install.wasm'
-# Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Standard
-# Payment system contract.
-standard_payment_installer_path = '/etc/casper/wasm/standard_payment_install.wasm'
-# Path (absolute, or relative to this chainspec.toml) to the file containing wasm bytecode for installing the Auction
-# system contract.
-auction_installer_path = '/etc/casper/wasm/auction_install.wasm'
 # Path (absolute, or relative to this chainspec.toml) to the CSV file containing initial account balances and bonds.
 accounts_path = '/etc/casper/accounts.csv'
 # Number of slots available in validator auction.

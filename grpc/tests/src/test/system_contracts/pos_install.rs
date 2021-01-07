@@ -26,8 +26,7 @@ const ARG_MINT_PACKAGE_HASH: &str = "mint_contract_package_hash";
 #[test]
 fn should_run_pos_install_contract() {
     let mut builder = WasmTestBuilder::default();
-    let engine_config =
-        EngineConfig::new().with_use_system_contracts(cfg!(feature = "use-system-contracts"));
+    let engine_config = EngineConfig::new();
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

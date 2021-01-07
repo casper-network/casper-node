@@ -22,8 +22,7 @@ const DEPLOY_HASH_1: DeployHash = DeployHash::new([1u8; 32]);
 #[test]
 fn should_run_mint_install_contract() {
     let mut builder = WasmTestBuilder::default();
-    let engine_config =
-        EngineConfig::new().with_use_system_contracts(cfg!(feature = "use-system-contracts"));
+    let engine_config = EngineConfig::new();
 
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 

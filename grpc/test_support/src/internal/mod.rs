@@ -96,21 +96,7 @@ pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| Protoc
 pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
 pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
-    let mint_installer_bytes;
-    let pos_installer_bytes;
-    let standard_payment_installer_bytes;
-    let auction_installer_bytes;
-    mint_installer_bytes = utils::read_wasm_file_bytes(MINT_INSTALL_CONTRACT);
-    pos_installer_bytes = utils::read_wasm_file_bytes(POS_INSTALL_CONTRACT);
-    standard_payment_installer_bytes =
-        utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
-    auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
-
     ExecConfig::new(
-        mint_installer_bytes,
-        pos_installer_bytes,
-        standard_payment_installer_bytes,
-        auction_installer_bytes,
         DEFAULT_ACCOUNTS.clone(),
         *DEFAULT_WASM_CONFIG,
         DEFAULT_VALIDATOR_SLOTS,

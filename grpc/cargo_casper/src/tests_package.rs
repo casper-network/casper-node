@@ -145,16 +145,8 @@ pub fn run_cargo_new() {
     common::run_cargo_new(PACKAGE_NAME);
 }
 
-pub fn update_cargo_toml(use_system_contracts: bool) {
-    let cargo_toml_additional_contents = format!(
-        "{}{}\n",
-        &*CARGO_TOML_ADDITIONAL_CONTENTS,
-        if use_system_contracts {
-            ", \"casper-engine-test-support/use-system-contracts\"]"
-        } else {
-            "]"
-        }
-    );
+pub fn update_cargo_toml() {
+    let cargo_toml_additional_contents = format!("{}{}\n", &*CARGO_TOML_ADDITIONAL_CONTENTS, "]");
     common::append_to_file(&*CARGO_TOML, cargo_toml_additional_contents);
 }
 
