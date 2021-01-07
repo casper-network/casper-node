@@ -58,7 +58,7 @@ impl RpcCall {
     /// `"http://127.0.0.1:7777"`.
     ///
     /// When `verbose` is `true`, the request will be printed to `stdout`.
-    pub(crate) fn new(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<Self> {
+    pub(crate) fn new(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Self {
         let rpc_id = if maybe_rpc_id.is_empty() {
             Id::from(rand::thread_rng().gen::<i64>())
         } else if let Ok(i64_id) = maybe_rpc_id.parse::<i64>() {
@@ -67,11 +67,11 @@ impl RpcCall {
             Id::from(maybe_rpc_id.to_string())
         };
 
-        Ok(Self {
+        Self {
             rpc_id,
             node_address: node_address.trim_end_matches('/').to_string(),
             verbose,
-        })
+        }
     }
 
     pub(crate) fn get_deploy(self, deploy_hash: &str) -> Result<JsonRpc> {

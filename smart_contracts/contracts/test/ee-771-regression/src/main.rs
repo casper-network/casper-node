@@ -5,13 +5,10 @@ extern crate alloc;
 
 use alloc::string::ToString;
 
-use casper_contract::{
-    contract_api::{runtime, storage},
-    unwrap_or_revert::UnwrapOrRevert,
-};
+use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     contracts::{NamedKeys, Parameters},
-    ApiError, CLType, ContractHash, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
+    CLType, ContractHash, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, RuntimeArgs,
 };
 
@@ -71,7 +68,7 @@ fn store(named_keys: NamedKeys) -> (ContractHash, ContractVersion) {
     storage::new_contract(entry_points, Some(named_keys), None, None)
 }
 
-fn install() -> Result<ContractHash, ApiError> {
+fn install() -> ContractHash {
     let (contract_hash, _contract_version) = store(NamedKeys::new());
 
     let mut keys = NamedKeys::new();
@@ -84,7 +81,7 @@ fn install() -> Result<ContractHash, ApiError> {
 
     runtime::put_key(CONTRACT_KEY, contract_hash.into());
 
-    Ok(contract_hash)
+    contract_hash
 }
 
 fn dispatch(contract_hash: ContractHash) {
@@ -93,6 +90,6 @@ fn dispatch(contract_hash: ContractHash) {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let contract_key = install().unwrap_or_revert();
+    let contract_key = install();
     dispatch(contract_key)
 }

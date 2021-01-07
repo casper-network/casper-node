@@ -164,7 +164,7 @@ impl ExecutableDeployItem {
     }
 
     pub fn is_transfer(&self) -> bool {
-        matches!(self, ExecutableDeployItem::Transfer{ .. })
+        matches!(self, ExecutableDeployItem::Transfer { .. })
     }
 }
 
