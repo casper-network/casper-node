@@ -16,8 +16,9 @@ use casper_execution_engine::{
         genesis::{ExecConfig, GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
     },
-    shared::{motes::Motes, newtypes::Blake2bHash, wasm_config::WasmConfig},
-    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
+    shared::{
+        motes::Motes, newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig,
+    },
 };
 use casper_types::{account::AccountHash, auction::EraId, ProtocolVersion, PublicKey, U512};
 
@@ -92,6 +93,7 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V1_0_0);
 pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
+pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
 pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
     let mint_installer_bytes;
     let pos_installer_bytes;
@@ -110,12 +112,12 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         auction_installer_bytes,
         DEFAULT_ACCOUNTS.clone(),
         *DEFAULT_WASM_CONFIG,
+        *DEFAULT_SYSTEM_CONFIG,
         DEFAULT_VALIDATOR_SLOTS,
         DEFAULT_AUCTION_DELAY,
         DEFAULT_LOCKED_FUNDS_PERIOD,
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
-        DEFAULT_WASMLESS_TRANSFER_COST,
     )
 });
 pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {

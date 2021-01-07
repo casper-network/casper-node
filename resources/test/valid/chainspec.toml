@@ -13,8 +13,6 @@ locked_funds_period = 0
 # (1+0.02)^((2^14)/31536000000)-1 is expressed as a fractional number below.
 round_seigniorage_rate = [6_414, 623_437_335_209]
 unbonding_delay = 14
-# Wasmless transfer cost expressed in gas.
-wasmless_transfer_cost = 10_000
 
 [highway]
 era_duration = '3minutes'
@@ -121,6 +119,10 @@ update_associated_key = { cost = 139, arguments = [0, 1, 2] }
 write = { cost = 140,  arguments = [0, 1, 0, 2] }
 write_local = { cost = 141, arguments = [0, 1, 2, 3] }
 
+[system_config]
+# Wasmless transfer cost expressed in gas.
+wasmless_transfer_cost = 10_000
+
 [[upgrade]]
 protocol_version = '0.2.0'
 upgrade_installer_path = 'upgrade.wasm'
@@ -223,6 +225,10 @@ max_block_size = 37
 block_max_deploy_count = 375
 block_max_transfer_count = 376
 block_gas_limit = 38
+
+[upgrade.new_system_config]
+# Wasmless transfer cost expressed in gas.
+wasmless_transfer_cost = 10_000
 
 [[upgrade]]
 protocol_version = '0.3.0'

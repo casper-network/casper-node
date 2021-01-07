@@ -180,7 +180,7 @@ where
 
         let initial_root_hash = self.state.empty_root();
         let wasm_config = ee_config.wasm_config();
-        let wasmless_transfer_cost = ee_config.wasmless_transfer_cost();
+        let system_config = ee_config.system_config();
 
         let preprocessor = Preprocessor::new(*wasm_config);
 
@@ -463,11 +463,11 @@ where
         // Spec #2: Associate given CostTable with given ProtocolVersion.
         let protocol_data = ProtocolData::new(
             *wasm_config,
+            *system_config,
             mint_hash,
             proof_of_stake_hash,
             standard_payment_hash,
             auction_hash,
-            wasmless_transfer_cost,
         );
 
         self.state
@@ -649,19 +649,19 @@ where
             None => current_protocol_data.wasm_config(),
         };
 
-        let new_wasmless_transfer_cost = match upgrade_config.new_wasmless_transfer_cost() {
-            Some(new_wasmless_transfer_cost) => new_wasmless_transfer_cost,
-            None => current_protocol_data.wasmless_transfer_cost(),
+        let new_system_config = match upgrade_config.system_config() {
+            Some(new_system_config) => new_system_config,
+            None => current_protocol_data.system_config(),
         };
 
         // 3.1.2.2 persist wasm CostTable
         let mut new_protocol_data = ProtocolData::new(
             *new_wasm_config,
+            *new_system_config,
             current_protocol_data.mint(),
             current_protocol_data.proof_of_stake(),
             current_protocol_data.standard_payment(),
             current_protocol_data.auction(),
-            new_wasmless_transfer_cost,
         );
 
         self.state
@@ -1373,8 +1373,9 @@ where
                 }
             };
 
-            let wasmless_transfer_gas_cost =
-                Gas::new(U512::from(protocol_data.wasmless_transfer_cost()));
+            let wasmless_transfer_gas_cost = Gas::new(U512::from(
+                protocol_data.system_config().wasmless_transfer_cost(),
+            ));
 
             let wasmless_transfer_cost =
                 Motes::from_gas(wasmless_transfer_gas_cost, CONV_RATE).expect("gas overflow");

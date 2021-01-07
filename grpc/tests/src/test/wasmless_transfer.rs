@@ -10,6 +10,7 @@ use casper_execution_engine::{
         engine_state::{upgrade::ActivationPoint, Error as CoreError},
         execution::Error as ExecError,
     },
+    shared::system_config::SystemConfig,
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
@@ -870,6 +871,8 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
 
     let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST * 2;
+    let new_system_config = SystemConfig::new(new_wasmless_transfer_cost);
+
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let new_protocol_version = ProtocolVersion::from_parts(
         old_protocol_version.value().major,
@@ -889,7 +892,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_wasmless_transfer_cost(new_wasmless_transfer_cost)
+            .with_new_system_config(new_system_config)
             .build()
     };
 

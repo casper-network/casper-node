@@ -16,6 +16,7 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
             .map(TryInto::try_into)
             .collect::<Result<Vec<GenesisAccount>, Self::Error>>()?;
         let wasm_config = pb_exec_config.take_wasm_config().try_into()?;
+        let system_config = pb_exec_config.take_system_config().try_into()?;
         let mint_initializer_bytes = pb_exec_config.take_mint_installer();
         let proof_of_stake_initializer_bytes = pb_exec_config.take_pos_installer();
         let standard_payment_installer_bytes = pb_exec_config.take_standard_payment_installer();
@@ -25,7 +26,6 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
         let locked_funds_period = pb_exec_config.get_locked_funds_period();
         let round_seigniorage_rate = pb_exec_config.take_round_seigniorage_rate().into();
         let unbonding_delay = pb_exec_config.get_unbonding_delay();
-        let wasmless_transfer_cost = pb_exec_config.get_wasmless_transfer_cost();
         Ok(ExecConfig::new(
             mint_initializer_bytes,
             proof_of_stake_initializer_bytes,
@@ -33,12 +33,12 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
             auction_installer_bytes,
             accounts,
             wasm_config,
+            system_config,
             validator_slots,
             auction_delay,
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
-            wasmless_transfer_cost,
         ))
     }
 }
@@ -62,12 +62,12 @@ impl From<ExecConfig> for ipc::ChainSpec_GenesisConfig_ExecConfig {
             pb_exec_config.set_accounts(accounts.into());
         }
         pb_exec_config.set_wasm_config(exec_config.wasm_config().clone().into());
+        pb_exec_config.set_system_config(exec_config.system_config().clone().into());
         pb_exec_config.set_validator_slots(exec_config.validator_slots());
         pb_exec_config.set_auction_delay(exec_config.auction_delay());
         pb_exec_config.set_locked_funds_period(exec_config.locked_funds_period());
         pb_exec_config.set_round_seigniorage_rate(exec_config.round_seigniorage_rate().into());
         pb_exec_config.set_unbonding_delay(exec_config.unbonding_delay());
-        pb_exec_config.set_wasmless_transfer_cost(exec_config.wasmless_transfer_cost());
         pb_exec_config
     }
 }

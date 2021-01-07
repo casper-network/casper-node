@@ -19,7 +19,10 @@ use casper_types::{
 use super::SYSTEM_ACCOUNT_ADDR;
 use crate::{
     core::engine_state::execution_effect::ExecutionEffect,
-    shared::{motes::Motes, newtypes::Blake2bHash, wasm_config::WasmConfig, TypeMismatch},
+    shared::{
+        motes::Motes, newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig,
+        TypeMismatch,
+    },
     storage::global_state::CommitResult,
 };
 
@@ -263,12 +266,12 @@ pub struct ExecConfig {
     auction_installer_bytes: Vec<u8>,
     accounts: Vec<GenesisAccount>,
     wasm_config: WasmConfig,
+    system_config: SystemConfig,
     validator_slots: u32,
     auction_delay: u64,
     locked_funds_period: EraId,
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
-    wasmless_transfer_cost: u64,
 }
 
 impl ExecConfig {
@@ -280,12 +283,12 @@ impl ExecConfig {
         auction_installer_bytes: Vec<u8>,
         accounts: Vec<GenesisAccount>,
         wasm_config: WasmConfig,
+        system_config: SystemConfig,
         validator_slots: u32,
         auction_delay: u64,
         locked_funds_period: EraId,
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: EraId,
-        wasmless_transfer_cost: u64,
     ) -> ExecConfig {
         ExecConfig {
             mint_installer_bytes,
@@ -294,12 +297,12 @@ impl ExecConfig {
             auction_installer_bytes,
             accounts,
             wasm_config,
+            system_config,
             validator_slots,
             auction_delay,
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
-            wasmless_transfer_cost,
         }
     }
 
@@ -321,6 +324,10 @@ impl ExecConfig {
 
     pub fn wasm_config(&self) -> &WasmConfig {
         &self.wasm_config
+    }
+
+    pub fn system_config(&self) -> &SystemConfig {
+        &self.system_config
     }
 
     pub fn get_bonded_validators(&self) -> impl Iterator<Item = &GenesisAccount> {
@@ -356,10 +363,6 @@ impl ExecConfig {
     pub fn unbonding_delay(&self) -> EraId {
         self.unbonding_delay
     }
-
-    pub fn wasmless_transfer_cost(&self) -> u64 {
-        self.wasmless_transfer_cost
-    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -382,6 +385,8 @@ impl Distribution<ExecConfig> for Standard {
 
         let wasm_config = rng.gen();
 
+        let system_config = rng.gen();
+
         let validator_slots = rng.gen();
 
         let auction_delay = rng.gen();
@@ -394,7 +399,6 @@ impl Distribution<ExecConfig> for Standard {
             rng.gen_range(1, 1_000_000_000),
             rng.gen_range(1, 1_000_000_000),
         );
-        let wasmless_transfer_cost = rng.gen();
 
         ExecConfig {
             mint_installer_bytes,
@@ -403,12 +407,12 @@ impl Distribution<ExecConfig> for Standard {
             auction_installer_bytes,
             accounts,
             wasm_config,
+            system_config,
             validator_slots,
             auction_delay,
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
-            wasmless_transfer_cost,
         }
     }
 }

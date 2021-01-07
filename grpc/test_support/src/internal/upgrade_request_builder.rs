@@ -3,13 +3,12 @@ use num_rational::Ratio;
 use casper_engine_grpc_server::engine_server::{
     ipc::{
         ChainSpec_ActivationPoint, ChainSpec_NewAuctionDelay, ChainSpec_NewLockedFundsPeriod,
-        ChainSpec_NewUnbondingDelay, ChainSpec_NewValidatorSlots,
-        ChainSpec_NewWasmlessTransferCost, ChainSpec_UpgradePoint, ChainSpec_WasmConfig,
-        DeployCode, UpgradeRequest,
+        ChainSpec_NewUnbondingDelay, ChainSpec_NewValidatorSlots, ChainSpec_SystemConfig,
+        ChainSpec_UpgradePoint, ChainSpec_WasmConfig, DeployCode, UpgradeRequest,
     },
     state,
 };
-use casper_execution_engine::shared::wasm_config::WasmConfig;
+use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 use casper_types::{auction::EraId, ProtocolVersion};
 
 #[derive(Default)]
@@ -19,13 +18,13 @@ pub struct UpgradeRequestBuilder {
     new_protocol_version: state::ProtocolVersion,
     upgrade_installer: DeployCode,
     new_wasm_config: Option<ChainSpec_WasmConfig>,
+    new_system_config: Option<ChainSpec_SystemConfig>,
     activation_point: ChainSpec_ActivationPoint,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_locked_funds_period: Option<EraId>,
     new_round_seigniorage_rate: Option<Ratio<u64>>,
     new_unbonding_delay: Option<EraId>,
-    new_wasmless_transfer_cost: Option<EraId>,
 }
 
 impl UpgradeRequestBuilder {
@@ -82,8 +81,8 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    pub fn with_new_wasmless_transfer_cost(mut self, wasmless_transfer_cost: u64) -> Self {
-        self.new_wasmless_transfer_cost = Some(wasmless_transfer_cost);
+    pub fn with_new_system_config(mut self, new_system_config: SystemConfig) -> Self {
+        self.new_system_config = Some(new_system_config.into());
         self
     }
 
@@ -102,6 +101,10 @@ impl UpgradeRequestBuilder {
         if let Some(new_wasm_config) = self.new_wasm_config {
             upgrade_point.set_new_wasm_config(new_wasm_config)
         }
+        if let Some(new_system_config) = self.new_system_config {
+            upgrade_point.set_new_system_config(new_system_config)
+        }
+
         match self.new_validator_slots {
             None => {}
             Some(new_validator_slots) => {
@@ -131,13 +134,6 @@ impl UpgradeRequestBuilder {
             let mut chainspec_new_unbonding_delay = ChainSpec_NewUnbondingDelay::new();
             chainspec_new_unbonding_delay.set_new_unbonding_delay(new_unbonding_delay);
             upgrade_point.set_new_unbonding_delay(chainspec_new_unbonding_delay);
-        }
-
-        if let Some(new_wasmless_transfer_cost) = self.new_wasmless_transfer_cost {
-            let mut chainspec_new_wasmless_transfer_cost = ChainSpec_NewWasmlessTransferCost::new();
-            chainspec_new_wasmless_transfer_cost
-                .set_new_wasmless_transfer_cost(new_wasmless_transfer_cost);
-            upgrade_point.set_new_wasmless_transfer_cost(chainspec_new_wasmless_transfer_cost);
         }
 
         upgrade_point.set_protocol_version(self.new_protocol_version);

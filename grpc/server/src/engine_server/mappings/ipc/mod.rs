@@ -17,5 +17,6 @@ mod ratio;
 mod run_genesis_request;
 mod step;
 mod storage_costs;
+mod system_config;
 mod upgrade_request;
 mod wasm_config;
