@@ -2683,7 +2683,7 @@ where
                 step_request.pre_state_hash,
                 effects.transforms,
             )
-            .map_err(|err| Error::Exec(Into::into(err)))?;
+            .map_err(|err| Error::Exec(err.into()))?;
 
         let post_state_hash = match commit_result {
             CommitResult::Success { state_root } => state_root,
