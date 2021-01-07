@@ -66,8 +66,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
     /// Start the syncing process of the linear chain. Starting from the descendants of the last
     /// trusted block.
-    pub fn sync_descendants(trusted_hash: BlockHash, last_block: BlockHeader) -> Self {
-        let state = State::sync_descendants(trusted_hash, last_block);
+    pub fn sync_descendants(latest_block: BlockHeader) -> Self {
+        let state = State::sync_descendants(latest_block);
         LinearChainSync {
             peers: Vec::new(),
             peers_to_try: Vec::new(),
@@ -175,7 +175,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::None | State::Done => panic!("Block handled when in {:?} state.", &curr_state),
             State::SyncingTrustedHash {
                 highest_block_seen,
-                trusted_hash,
                 ref latest_block,
                 ..
             } => {
@@ -190,7 +189,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                     let peer = self.random_peer_unsafe();
                     // Kick off syncing trusted hash descendants.
-                    self.state = State::sync_descendants(trusted_hash, block_header);
+                    self.state = State::sync_descendants(block_header);
                     fetch_block_at_height(effect_builder, peer, block_height + 1)
                 } else {
                     self.state = curr_state;

@@ -23,7 +23,6 @@ pub(crate) enum State {
     },
     /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
-        trusted_hash: BlockHash,
         /// The most recent block we started to execute. This is updated whenever we start
         /// downloading deploys for the next block to be executed.
         latest_block: Box<BlockHeader>,
@@ -64,9 +63,8 @@ impl State {
         }
     }
 
-    pub(crate) fn sync_descendants(trusted_hash: BlockHash, latest_block: BlockHeader) -> Self {
+    pub(crate) fn sync_descendants(latest_block: BlockHeader) -> Self {
         State::SyncingDescendants {
-            trusted_hash,
             latest_block: Box::new(latest_block),
             highest_block_seen: 0,
         }
