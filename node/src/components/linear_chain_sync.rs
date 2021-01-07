@@ -302,15 +302,26 @@ where
         match event {
             Event::Start(init_peer) => {
                 match self.state {
-                    State::None | State::Done | State::SyncingDescendants { .. } => {
+                    State::None | State::Done => {
                         // No syncing configured.
                         trace!("Received `Start` event when in {} state.", self.state);
                         Effects::new()
                     }
                     State::SyncingTrustedHash { trusted_hash, .. } => {
-                        trace!(?trusted_hash, "Start synchronization");
+                        trace!(?trusted_hash, "Start synchronization until trusted hash.");
                         // Start synchronization.
                         fetch_block_by_hash(effect_builder, init_peer, trusted_hash)
+                    }
+                    State::SyncingDescendants {
+                        ref latest_block, ..
+                    } => {
+                        let trusted_hash = latest_block.hash();
+                        trace!(
+                            ?trusted_hash,
+                            "Start synchronization descendants of the trusted block."
+                        );
+                        let block_height = latest_block.height();
+                        fetch_block_at_height(effect_builder, init_peer, block_height + 1)
                     }
                 }
             }
