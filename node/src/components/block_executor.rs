@@ -4,7 +4,7 @@ mod metrics;
 
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
-    convert::{Infallible, TryFrom},
+    convert::{Infallible, TryInto},
     fmt::Debug,
 };
 
@@ -549,9 +549,12 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         state.state_root_hash = post_state_hash.into();
                         let next_era_validators: BTreeMap<PublicKey, U512> = next_era_validators
                             .into_iter()
-                            .map(|(casper_types_public_key, weight)| {
-                                let public_key = PublicKey::try_from(casper_types_public_key).expect("Could not convert casper_types public key into node public key");
-                                (public_key, weight)
+                            .filter_map(|(key, stake)| match key.try_into() {
+                                Ok(key) => Some((key, stake)),
+                                Err(error) => {
+                                    error!(%error, "error converting the bonded key");
+                                    None
+                                }
                             })
                             .collect();
                         self.finalize_block_execution(
