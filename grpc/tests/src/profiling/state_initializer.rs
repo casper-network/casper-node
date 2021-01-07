@@ -7,12 +7,11 @@ use std::{env, path::PathBuf};
 use clap::{crate_version, App};
 
 use casper_engine_test_support::internal::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
-    AUCTION_INSTALL_CONTRACT, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
-    STANDARD_PAYMENT_INSTALL_CONTRACT,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS,
+    DEFAULT_WASM_CONFIG,
 };
 use casper_engine_tests::profiling;
 use casper_execution_engine::{
@@ -68,19 +67,10 @@ fn main() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let engine_config = EngineConfig::new().with_use_system_contracts(true);
+    let engine_config = EngineConfig::new();
     let mut builder = LmdbWasmTestBuilder::new_with_config(&data_dir, engine_config);
 
-    let mint_installer_bytes = utils::read_wasm_file_bytes(MINT_INSTALL_CONTRACT);
-    let pos_installer_bytes = utils::read_wasm_file_bytes(POS_INSTALL_CONTRACT);
-    let standard_payment_installer_bytes =
-        utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
-    let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
     let exec_config = ExecConfig::new(
-        mint_installer_bytes,
-        pos_installer_bytes,
-        standard_payment_installer_bytes,
-        auction_installer_bytes,
         DEFAULT_ACCOUNTS.clone(),
         *DEFAULT_WASM_CONFIG,
         DEFAULT_VALIDATOR_SLOTS,

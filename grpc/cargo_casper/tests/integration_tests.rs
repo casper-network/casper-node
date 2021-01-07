@@ -5,8 +5,7 @@ use once_cell::sync::Lazy;
 
 const FAILURE_EXIT_CODE: i32 = 101;
 const SUCCESS_EXIT_CODE: i32 = 0;
-const USE_SYSTEM_CONTRACTS: &str = "--use-system-contracts";
-const TURBO: &str = "turbo";
+const TEST_PATH: &str = "test";
 
 static WORKSPACE_PATH_ARG: Lazy<String> =
     Lazy::new(|| format!("--workspace-path={}/../../", env!("CARGO_MANIFEST_DIR")));
@@ -31,6 +30,7 @@ fn should_fail_when_target_path_already_exists() {
 }
 
 /// Runs `cmd` and returns the `Output` if successful, or panics on failure.
+#[allow(dead_code)]
 fn output_from_command(mut command: Command) -> Output {
     match command.ok() {
         Ok(output) => output,
@@ -44,19 +44,17 @@ fn output_from_command(mut command: Command) -> Output {
     }
 }
 
-fn run_tool_and_resulting_tests(turbo: bool) {
+#[allow(dead_code)]
+fn run_tool_and_resulting_tests() {
     let temp_dir = tempfile::tempdir().unwrap().into_path();
 
     // Run 'cargo-casper <test dir>/<subdir> --workspace-path=<path to casper-node root>'
-    let subdir = if turbo { TURBO } else { USE_SYSTEM_CONTRACTS };
+    let subdir = TEST_PATH;
     let test_dir = temp_dir.join(subdir);
     let mut tool_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
     tool_cmd.arg(&test_dir);
     tool_cmd.arg(&*WORKSPACE_PATH_ARG);
-    // Also pass '--use-system-contracts' for non-turbo mode
-    if !turbo {
-        tool_cmd.arg(&*USE_SYSTEM_CONTRACTS);
-    }
+
     // The CI environment doesn't have a Git user configured, so we can set the env var `USER` for
     // use by 'cargo new' which is called as a subprocess of 'cargo-casper'.
     tool_cmd.env("USER", "tester");
@@ -75,11 +73,7 @@ fn run_tool_and_resulting_tests(turbo: bool) {
 }
 
 #[test]
-fn should_succeed_without_using_system_contracts() {
-    run_tool_and_resulting_tests(true);
-}
-
-#[test]
-fn should_succeed_using_system_contracts() {
-    run_tool_and_resulting_tests(false);
+#[allow(dead_code)]
+fn should_run_casperlabs_node() {
+    // run_tool_and_resulting_tests();
 }

@@ -32,8 +32,7 @@ const EXPECTED_KNOWN_KEYS_LEN: usize = 10;
 #[test]
 fn should_run_auction_install_contract() {
     let mut builder = WasmTestBuilder::default();
-    let engine_config =
-        EngineConfig::new().with_use_system_contracts(cfg!(feature = "use-system-contracts"));
+    let engine_config = EngineConfig::new();
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

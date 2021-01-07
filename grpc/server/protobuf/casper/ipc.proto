@@ -277,15 +277,12 @@ message ChainSpec {
         ExecConfig ee_config = 11;
 
         message ExecConfig {
-            // wasm bytecode for installing the mint system contract
-            bytes mint_installer = 1;
-            // wasm bytes for installing the pos system contract
-            bytes pos_installer = 2;
-            // wasm bytes for installing the standard payment system contract
-            bytes standard_payment_installer = 3;
-            // wasm bytes for installing the auction system contract
-            bytes auction_installer = 6;
-            // genesis account information
+            reserved 1; // mint_installer
+            reserved 2; // pos_installer
+            reserved 3; // standard_payment_installer
+            reserved 6; // auction_installer accounts
+            reserved 9; // unknown removed field
+
             repeated GenesisAccount accounts = 4;
             // costs at genesis
             WasmConfig wasm_config = 5;

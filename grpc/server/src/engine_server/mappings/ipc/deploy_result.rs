@@ -44,9 +44,8 @@ impl From<(EngineStateError, ExecutionEffect, Gas)> for DeployResult {
             | error @ EngineStateError::InvalidKeyVariant
             | error @ EngineStateError::Authorization
             | error @ EngineStateError::InvalidDeployItemVariant(_)
-            | error @ EngineStateError::InvalidUpgradeResult => {
-                detail::precondition_error(error.to_string())
-            }
+            | error @ EngineStateError::InvalidUpgradeResult
+            | error @ EngineStateError::Genesis(_) => detail::precondition_error(error.to_string()),
             EngineStateError::Storage(storage_error) => {
                 detail::execution_error(storage_error, effect, cost)
             }

@@ -2,10 +2,9 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
-        utils, InMemoryWasmTestBuilder, AUCTION_INSTALL_CONTRACT, DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_UNBONDING_DELAY,
-        DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
-        STANDARD_PAYMENT_INSTALL_CONTRACT,
+        InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_LOCKED_FUNDS_PERIOD,
+        DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS,
+        DEFAULT_WASM_CONFIG,
     },
     AccountHash,
 };
@@ -19,9 +18,6 @@ use casper_execution_engine::{
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{mint::TOTAL_SUPPLY_KEY, ProtocolVersion, PublicKey, U512};
-
-#[cfg(feature = "use-system-contracts")]
-const BAD_INSTALL: &str = "standard_payment.wasm";
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
 const ACCOUNT_1_BONDED_AMOUNT: u64 = 1_000_000;
@@ -60,11 +56,6 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 #[ignore]
 #[test]
 fn should_run_genesis() {
-    let mint_installer_bytes = utils::read_wasm_file_bytes(MINT_INSTALL_CONTRACT);
-    let pos_installer_bytes = utils::read_wasm_file_bytes(POS_INSTALL_CONTRACT);
-    let standard_payment_installer_bytes =
-        utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
-    let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
     let protocol_version = ProtocolVersion::V1_0_0;
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
@@ -75,10 +66,6 @@ fn should_run_genesis() {
     let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
 
     let exec_config = ExecConfig::new(
-        mint_installer_bytes,
-        pos_installer_bytes,
-        standard_payment_installer_bytes,
-        auction_installer_bytes,
         GENESIS_CUSTOM_ACCOUNTS.clone(),
         wasm_config,
         validator_slots,
@@ -135,11 +122,6 @@ fn should_run_genesis() {
 #[ignore]
 #[test]
 fn should_track_total_token_supply_in_mint() {
-    let mint_installer_bytes = utils::read_wasm_file_bytes(MINT_INSTALL_CONTRACT);
-    let proof_of_stake_installer_bytes = utils::read_wasm_file_bytes(POS_INSTALL_CONTRACT);
-    let standard_payment_installer_bytes =
-        utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
-    let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
     let accounts = GENESIS_CUSTOM_ACCOUNTS.clone();
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let protocol_version = ProtocolVersion::V1_0_0;
@@ -150,10 +132,6 @@ fn should_track_total_token_supply_in_mint() {
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
     let ee_config = ExecConfig::new(
-        mint_installer_bytes,
-        proof_of_stake_installer_bytes,
-        standard_payment_installer_bytes,
-        auction_installer_bytes,
         accounts.clone(),
         wasm_config,
         validator_slots,
@@ -199,11 +177,6 @@ fn should_track_total_token_supply_in_mint() {
 #[test]
 fn should_fail_if_bad_mint_install_contract_is_provided() {
     let run_genesis_request = {
-        let mint_installer_bytes = utils::read_wasm_file_bytes(BAD_INSTALL);
-        let pos_installer_bytes = utils::read_wasm_file_bytes(POS_INSTALL_CONTRACT);
-        let standard_payment_installer_bytes =
-            utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
-        let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
         let protocol_version = ProtocolVersion::V1_0_0;
         let wasm_config = *DEFAULT_WASM_CONFIG;
         let validator_slots = DEFAULT_VALIDATOR_SLOTS;
@@ -214,10 +187,6 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
         let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
 
         let exec_config = ExecConfig::new(
-            mint_installer_bytes,
-            pos_installer_bytes,
-            standard_payment_installer_bytes,
-            auction_installer_bytes,
             GENESIS_CUSTOM_ACCOUNTS.clone(),
             wasm_config,
             validator_slots,
@@ -241,11 +210,6 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
 #[test]
 fn should_fail_if_bad_pos_install_contract_is_provided() {
     let run_genesis_request = {
-        let mint_installer_bytes = utils::read_wasm_file_bytes(MINT_INSTALL_CONTRACT);
-        let pos_installer_bytes = utils::read_wasm_file_bytes(BAD_INSTALL);
-        let standard_payment_installer_bytes =
-            utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
-        let auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
         let protocol_version = ProtocolVersion::V1_0_0;
         let wasm_config = *DEFAULT_WASM_CONFIG;
         let validator_slots = DEFAULT_VALIDATOR_SLOTS;
@@ -256,10 +220,6 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
         let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
 
         let exec_config = ExecConfig::new(
-            mint_installer_bytes,
-            pos_installer_bytes,
-            standard_payment_installer_bytes,
-            auction_installer_bytes,
             GENESIS_CUSTOM_ACCOUNTS.clone(),
             wasm_config,
             validator_slots,

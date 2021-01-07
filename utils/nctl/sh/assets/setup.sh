@@ -78,10 +78,6 @@ function _set_chainspec()
 
     # Override config settings as all paths need to point relative to nctl's assets dir:
     #    genesis.accounts_path
-    #    genesis.mint_installer_path
-    #    genesis.pos_installer_path
-    #    genesis.standard_payment_installer_path
-    #    genesis.auction_installer_path    
     sed -i "s?\${BASEDIR}/target/wasm32-unknown-unknown/release/?../bin/?g" "$PATH_TO_CHAINSPEC" > /dev/null 2>&1
     sed -i "s?\${BASEDIR}/resources/local/?./?g" "$PATH_TO_CHAINSPEC" > /dev/null 2>&1
 

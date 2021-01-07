@@ -227,10 +227,6 @@ pub struct GenesisConfig {
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
-    pub(crate) mint_installer_bytes: Vec<u8>,
-    pub(crate) pos_installer_bytes: Vec<u8>,
-    pub(crate) standard_payment_installer_bytes: Vec<u8>,
-    pub(crate) auction_installer_bytes: Vec<u8>,
     pub(crate) accounts: Vec<GenesisAccount>,
     pub(crate) wasm_config: WasmConfig,
     pub(crate) deploy_config: DeployConfig,
@@ -276,18 +272,6 @@ impl Debug for GenesisConfig {
                 "protocol_version",
                 &format_args!("{}", self.protocol_version),
             )
-            .field(
-                "mint_installer_bytes",
-                &format_args!("[{} bytes]", self.mint_installer_bytes.len()),
-            )
-            .field(
-                "pos_installer_bytes",
-                &format_args!("[{} bytes]", self.pos_installer_bytes.len()),
-            )
-            .field(
-                "standard_payment_installer_bytes",
-                &format_args!("[{} bytes]", self.standard_payment_installer_bytes.len()),
-            )
             .field("accounts", &self.accounts)
             .field("costs", &self.wasm_config)
             .field("deploy_config", &self.deploy_config)
@@ -314,10 +298,6 @@ impl GenesisConfig {
             rng.gen::<u8>() as u64,
             rng.gen::<u8>() as u64,
         );
-        let mint_installer_bytes = vec![rng.gen()];
-        let pos_installer_bytes = vec![rng.gen()];
-        let standard_payment_installer_bytes = vec![rng.gen()];
-        let auction_installer_bytes = vec![rng.gen()];
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
         let costs = rng.gen();
         let deploy_config = DeployConfig::random(rng);
@@ -335,10 +315,6 @@ impl GenesisConfig {
             unbonding_delay,
             wasmless_transfer_cost,
             protocol_version,
-            mint_installer_bytes,
-            pos_installer_bytes,
-            standard_payment_installer_bytes,
-            auction_installer_bytes,
             accounts,
             wasm_config: costs,
             deploy_config,
@@ -454,10 +430,6 @@ impl Chainspec {
 impl Into<ExecConfig> for Chainspec {
     fn into(self) -> ExecConfig {
         ExecConfig::new(
-            self.genesis.mint_installer_bytes,
-            self.genesis.pos_installer_bytes,
-            self.genesis.standard_payment_installer_bytes,
-            self.genesis.auction_installer_bytes,
             self.genesis.accounts,
             self.genesis.wasm_config,
             self.genesis.validator_slots,
@@ -584,15 +556,6 @@ mod tests {
         assert_eq!(spec.genesis.name, "test-chain");
         assert_eq!(spec.genesis.timestamp.millis(), 1600454700000);
         assert_eq!(spec.genesis.protocol_version, Version::from((0, 1, 0)));
-        assert_eq!(spec.genesis.mint_installer_bytes, b"Mint installer bytes");
-        assert_eq!(
-            spec.genesis.pos_installer_bytes,
-            b"Proof of Stake installer bytes"
-        );
-        assert_eq!(
-            spec.genesis.standard_payment_installer_bytes,
-            b"Standard Payment installer bytes"
-        );
 
         assert_eq!(spec.genesis.accounts.len(), 4);
         for index in 0..4 {

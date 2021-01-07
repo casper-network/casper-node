@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 
-#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
+#[cfg(not(any(feature = "use-as-wasm")))]
 use casper_engine_test_support::internal::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     internal::{
@@ -19,7 +19,7 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
-#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
+#[cfg(not(any(feature = "use-as-wasm")))]
 use casper_types::{
     auction::{self, DelegationRate},
     runtime_args,

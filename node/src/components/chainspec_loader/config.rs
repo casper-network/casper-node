@@ -18,10 +18,6 @@ use crate::{
 };
 
 const DEFAULT_CHAIN_NAME: &str = "casper-devnet";
-const DEFAULT_MINT_INSTALLER_PATH: &str = "mint_install.wasm";
-const DEFAULT_POS_INSTALLER_PATH: &str = "pos_install.wasm";
-const DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH: &str = "standard_payment_install.wasm";
-const DEFAULT_AUCTION_INSTALLER_PATH: &str = "auction_install.wasm";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
 const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
@@ -49,10 +45,6 @@ struct Genesis {
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
     wasmless_transfer_cost: u64,
-    mint_installer_path: External<Vec<u8>>,
-    pos_installer_path: External<Vec<u8>>,
-    standard_payment_installer_path: External<Vec<u8>>,
-    auction_installer_path: External<Vec<u8>>,
     accounts_path: External<Vec<GenesisAccount>>,
 }
 
@@ -68,12 +60,6 @@ impl Default for Genesis {
             round_seigniorage_rate: DEFAULT_ROUND_SEIGNIORAGE_RATE,
             unbonding_delay: DEFAULT_UNBONDING_DELAY,
             wasmless_transfer_cost: DEFAULT_WASMLESS_TRANSFER_COST,
-            mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
-            pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
-            standard_payment_installer_path: External::path(
-                DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH,
-            ),
-            auction_installer_path: External::path(DEFAULT_AUCTION_INSTALLER_PATH),
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
         }
     }
@@ -154,12 +140,6 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
             unbonding_delay: chainspec.genesis.unbonding_delay,
             wasmless_transfer_cost: chainspec.genesis.wasmless_transfer_cost,
-            mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
-            pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
-            standard_payment_installer_path: External::path(
-                DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH,
-            ),
-            auction_installer_path: External::path(DEFAULT_AUCTION_INSTALLER_PATH),
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
         };
 
@@ -197,30 +177,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         .parent()
         .unwrap_or_else(|| Path::new(""));
 
-    let mint_installer_bytes = chainspec
-        .genesis
-        .mint_installer_path
-        .load(root)
-        .map_err(Error::LoadMintInstaller)?;
-
-    let pos_installer_bytes = chainspec
-        .genesis
-        .pos_installer_path
-        .load(root)
-        .map_err(Error::LoadPosInstaller)?;
-
-    let standard_payment_installer_bytes = chainspec
-        .genesis
-        .standard_payment_installer_path
-        .load(root)
-        .map_err(Error::LoadStandardPaymentInstaller)?;
-
-    let auction_installer_bytes = chainspec
-        .genesis
-        .auction_installer_path
-        .load(root)
-        .map_err(Error::LoadAuctionInstaller)?;
-
     let accounts: Vec<GenesisAccount> = chainspec
         .genesis
         .accounts_path
@@ -237,10 +193,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         unbonding_delay: chainspec.genesis.unbonding_delay,
         wasmless_transfer_cost: chainspec.genesis.wasmless_transfer_cost,
         protocol_version: chainspec.genesis.protocol_version,
-        mint_installer_bytes,
-        pos_installer_bytes,
-        standard_payment_installer_bytes,
-        auction_installer_bytes,
         accounts,
         wasm_config: chainspec.wasm_config,
         deploy_config: chainspec.deploys,

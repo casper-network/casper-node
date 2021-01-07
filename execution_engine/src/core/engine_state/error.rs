@@ -4,7 +4,7 @@ use thiserror::Error;
 use casper_types::{bytesrepr, system_contract_errors::mint, ProtocolVersion};
 
 use crate::{
-    core::execution,
+    core::{engine_state::genesis::GenesisError, execution},
     shared::{newtypes::Blake2bHash, wasm_prep},
     storage,
 };
@@ -17,6 +17,8 @@ pub enum Error {
     InvalidAccountHashLength { expected: usize, actual: usize },
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),
+    #[error("Genesis error.")]
+    Genesis(GenesisError),
     #[error("Invalid upgrade config")]
     InvalidUpgradeConfig,
     #[error("Wasm preprocessing error: {0}")]

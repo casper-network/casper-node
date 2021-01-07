@@ -210,10 +210,6 @@ verify_accounts = true
 # Configuration options for the contract runtime component
 # ========================================================
 [contract_runtime]
-
-# Optional setting to use system contracts or not.  If unset, defaults to false.
-#use_system_contracts = false
-
 # Optional setting to enable bonding or not.  If unset, defaults to false.
 #enable_bonding = false
 

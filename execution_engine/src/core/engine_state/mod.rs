@@ -25,7 +25,6 @@ use std::{
 };
 
 use num_rational::Ratio;
-use num_traits::Zero;
 use once_cell::sync::Lazy;
 use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
@@ -33,19 +32,17 @@ use tracing::{debug, error, warn};
 use casper_types::{
     account::AccountHash,
     auction::{
-        EraValidators, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
-        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_UNBONDING_DELAY,
-        ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
-        UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        EraValidators, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
+        LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, ToBytes},
-    contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
-    mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY},
-    proof_of_stake, runtime_args,
-    system_contract_errors::{self, mint::Error as MintError},
+    contracts::{NamedKeys, UPGRADE_ENTRY_POINT_NAME},
+    mint::ROUND_SEIGNIORAGE_RATE_KEY,
+    proof_of_stake,
+    system_contract_errors::{self},
     AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType,
-    Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
+    ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType, Key, Phase,
+    ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -68,11 +65,10 @@ use crate::{
     core::{
         engine_state::{
             execution_result::ExecutionResultBuilder,
+            genesis::GenesisInstaller,
             step::{StepRequest, StepResult},
         },
-        execution::{
-            self, AddressGenerator, AddressGeneratorBuilder, DirectSystemContractCall, Executor,
-        },
+        execution::{self, AddressGenerator, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
@@ -100,8 +96,6 @@ pub const CONV_RATE: u64 = 1;
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000 * CONV_RATE));
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
-
-const GENESIS_INITIAL_BLOCKTIME: u64 = 0;
 
 #[derive(Debug)]
 pub struct EngineState<S> {
@@ -173,25 +167,8 @@ where
         ee_config: &ExecConfig,
     ) -> Result<GenesisResult, Error> {
         // Preliminaries
-        let executor = Executor::new(self.config);
-        let blocktime = BlockTime::new(GENESIS_INITIAL_BLOCKTIME);
-        let gas_limit = Gas::new(std::u64::MAX.into());
-        let phase = Phase::System;
-
         let initial_root_hash = self.state.empty_root();
-        let wasm_config = ee_config.wasm_config();
-        let wasmless_transfer_cost = ee_config.wasmless_transfer_cost();
 
-        let preprocessor = Preprocessor::new(*wasm_config);
-
-        // Spec #3: Create "virtual system account" object.
-        let mut virtual_system_account = {
-            let named_keys = NamedKeys::new();
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
-        };
-
-        // Spec #4: Create a runtime.
         let tracking_copy = match self.tracking_copy(initial_root_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             // NOTE: As genesis is ran once per instance condition below is considered programming
@@ -200,406 +177,73 @@ where
             Err(error) => return Err(error),
         };
 
-        // Persist the "virtual system account".  It will get overwritten with the actual system
-        // account below.
-        let key = Key::Account(SYSTEM_ACCOUNT_ADDR);
-        let value = {
-            let virtual_system_account = virtual_system_account.clone();
-            StoredValue::Account(virtual_system_account)
-        };
-
-        tracking_copy.borrow_mut().write(key, value);
-
-        // Spec #4A: random number generator is seeded from the hash of GenesisConfig.name
-        // Updated: random number generator is seeded from genesis_config_hash from the RunGenesis
-        // RPC call
-
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let transfer_address_generator = {
-            let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-
-        // Spec #6: Compute initially bonded validators as the contents of accounts_path
-        // filtered to non-zero staked amounts.
-        let bonded_validators: BTreeMap<AccountHash, U512> = ee_config
-            .get_bonded_validators()
-            .map(|genesis_account| {
-                (
-                    genesis_account.account_hash(),
-                    genesis_account.bonded_amount().value(),
-                )
-            })
-            .collect();
-
-        // Spec #5: Execute the wasm code from the mint installer bytes
-        let (mint_package_hash, mint_hash): (ContractPackageHash, ContractHash) = {
-            let mint_installer_bytes = ee_config.mint_installer_bytes();
-            let mint_installer_module = preprocessor.preprocess(mint_installer_bytes)?;
-
-            let arg_round_seigniorage_rate: Ratio<U512> = {
-                let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
-                    ee_config.round_seigniorage_rate().into();
-                Ratio::new(
-                    round_seigniorage_rate_numer.into(),
-                    round_seigniorage_rate_denom.into(),
-                )
-            };
-
-            let args = runtime_args! {
-                ARG_ROUND_SEIGNIORAGE_RATE => arg_round_seigniorage_rate,
-            };
-            let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
-            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
-            let hash_address_generator = Rc::clone(&hash_address_generator);
-            let uref_address_generator = Rc::clone(&uref_address_generator);
-            let transfer_address_generator = Rc::clone(&transfer_address_generator);
-            let tracking_copy = Rc::clone(&tracking_copy);
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
-            let protocol_data = ProtocolData::default();
-
-            executor.exec_wasm_direct(
-                mint_installer_module,
-                ENTRY_POINT_NAME_INSTALL,
-                args,
-                &mut virtual_system_account,
-                authorization_keys,
-                blocktime,
-                install_deploy_hash,
-                gas_limit,
-                hash_address_generator,
-                uref_address_generator,
-                transfer_address_generator,
-                protocol_version,
-                correlation_id,
-                tracking_copy,
-                phase,
-                protocol_data,
-                system_contract_cache,
-            )?
-        };
-
-        // Spec #7: Execute pos installer wasm code, passing the initially bonded validators as an
-        // argument
-        let (_proof_of_stake_package_hash, proof_of_stake_hash): (
-            ContractPackageHash,
-            ContractHash,
-        ) = {
-            let tracking_copy = Rc::clone(&tracking_copy);
-            let hash_address_generator = Rc::clone(&hash_address_generator);
-            let uref_address_generator = Rc::clone(&uref_address_generator);
-            let transfer_address_generator = Rc::clone(&transfer_address_generator);
-            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
-
-            // Constructs a partial protocol data with already known uref to pass the validation
-            // step
-            let partial_protocol_data = ProtocolData::partial_with_mint(mint_hash);
-
-            let proof_of_stake_installer_bytes = ee_config.proof_of_stake_installer_bytes();
-            let proof_of_stake_installer_module =
-                preprocessor.preprocess(proof_of_stake_installer_bytes)?;
-            let args = runtime_args! {
-                "mint_contract_package_hash" => mint_package_hash,
-                "genesis_validators" => bonded_validators,
-            };
-            let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
-
-            executor.exec_wasm_direct(
-                proof_of_stake_installer_module,
-                ENTRY_POINT_NAME_INSTALL,
-                args,
-                &mut virtual_system_account,
-                authorization_keys,
-                blocktime,
-                install_deploy_hash,
-                gas_limit,
-                hash_address_generator,
-                uref_address_generator,
-                transfer_address_generator,
-                protocol_version,
-                correlation_id,
-                tracking_copy,
-                phase,
-                partial_protocol_data,
-                system_contract_cache,
-            )?
-        };
-
-        // Execute standard payment installer wasm code
-        //
-        // Note: this deviates from the implementation strategy described in the original
-        // specification.
-        let protocol_data = ProtocolData::partial_without_standard_payment(
-            *wasm_config,
-            mint_hash,
-            proof_of_stake_hash,
+        let genesis_installer: GenesisInstaller<S> = GenesisInstaller::new(
+            genesis_config_hash,
+            protocol_version,
+            ee_config.clone(),
+            tracking_copy,
         );
 
-        let standard_payment_hash: ContractHash = {
-            let standard_payment_installer_bytes = {
-                // NOTE: Before integration node wasn't updated to pass the bytes, so we were
-                // bundling it. This debug_assert can be removed once integration with genesis
-                // works.
-                debug_assert!(
-                    !ee_config.standard_payment_installer_bytes().is_empty(),
-                    "Caller is required to pass the standard_payment_installer bytes"
-                );
-                &ee_config.standard_payment_installer_bytes()
-            };
+        // Create "virtual system account" object.
+        genesis_installer
+            .create_virtual_system_account()
+            .map_err(Error::Genesis)?;
 
-            let standard_payment_installer_module =
-                preprocessor.preprocess(standard_payment_installer_bytes)?;
-            let args = RuntimeArgs::new();
-            let authorization_keys = BTreeSet::new();
-            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
-            let hash_address_generator = Rc::clone(&hash_address_generator);
-            let uref_address_generator = Rc::clone(&uref_address_generator);
-            let transfer_address_generator = Rc::clone(&transfer_address_generator);
-            let tracking_copy = Rc::clone(&tracking_copy);
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
-
-            executor.exec_wasm_direct(
-                standard_payment_installer_module,
-                ENTRY_POINT_NAME_INSTALL,
-                args,
-                &mut virtual_system_account,
-                authorization_keys,
-                blocktime,
-                install_deploy_hash,
-                gas_limit,
-                hash_address_generator,
-                uref_address_generator,
-                transfer_address_generator,
-                protocol_version,
-                correlation_id,
-                tracking_copy,
-                phase,
-                protocol_data,
-                system_contract_cache,
-            )?
-        };
-
-        let auction_hash: ContractHash = {
-            let bonded_validators: BTreeMap<casper_types::PublicKey, U512> = ee_config
-                .accounts()
-                .iter()
-                .filter_map(|genesis_account| {
-                    if genesis_account.is_genesis_validator() {
-                        // NOTE: Safe as genesis validators are expected to have public key
-                        // specified.
-                        Some((
-                            genesis_account
-                                .public_key()
-                                .expect("should have public key"),
-                            genesis_account.bonded_amount().value(),
-                        ))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            let auction_installer_bytes = {
-                // NOTE: Before integration node wasn't updated to pass the bytes, so we were
-                // bundling it. This debug_assert can be removed once integration with genesis
-                // works.
-                debug_assert!(
-                    !ee_config.auction_installer_bytes().is_empty(),
-                    "Caller is required to pass the auction_installer bytes"
-                );
-                &ee_config.auction_installer_bytes()
-            };
-
-            let validator_slots = ee_config.validator_slots();
-            let auction_delay = ee_config.auction_delay();
-            let locked_funds_period = ee_config.locked_funds_period();
-            let unbonding_delay = ee_config.unbonding_delay();
-            let auction_installer_module = preprocessor.preprocess(auction_installer_bytes)?;
-            let args = runtime_args! {
-                ARG_MINT_CONTRACT_PACKAGE_HASH => mint_package_hash,
-                ARG_GENESIS_VALIDATORS => bonded_validators,
-                ARG_VALIDATOR_SLOTS => validator_slots,
-                ARG_AUCTION_DELAY => auction_delay,
-                ARG_LOCKED_FUNDS_PERIOD => locked_funds_period,
-                ARG_UNBONDING_DELAY => unbonding_delay,
-            };
-            let authorization_keys = BTreeSet::new();
-            let install_deploy_hash = DeployHash::new(genesis_config_hash.value());
-            let hash_address_generator = Rc::clone(&hash_address_generator);
-            let uref_address_generator = Rc::clone(&uref_address_generator);
-            let transfer_address_generator = Rc::clone(&uref_address_generator);
-            let tracking_copy = Rc::clone(&tracking_copy);
-            let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
-
-            executor.exec_wasm_direct(
-                auction_installer_module,
-                ENTRY_POINT_NAME_INSTALL,
-                args,
-                &mut virtual_system_account,
-                authorization_keys,
-                blocktime,
-                install_deploy_hash,
-                gas_limit,
-                hash_address_generator,
-                uref_address_generator,
-                transfer_address_generator,
-                protocol_version,
-                correlation_id,
-                tracking_copy,
-                phase,
-                protocol_data,
-                system_contract_cache,
-            )?
-        };
-
-        // Spec #2: Associate given CostTable with given ProtocolVersion.
-        let protocol_data = ProtocolData::new(
-            *wasm_config,
-            mint_hash,
-            proof_of_stake_hash,
-            standard_payment_hash,
-            auction_hash,
-            wasmless_transfer_cost,
-        );
-
-        self.state
-            .put_protocol_data(protocol_version, &protocol_data)
-            .map_err(Into::into)?;
-
-        //
-        // NOTE: The following stanzas deviate from the implementation strategy described in the
-        // original specification.
-        //
-        // It has the following benefits over that approach:
-        // * It does not make an intermediate commit
-        // * The system account never holds funds
-        // * Similarly, the system account does not need to be handled differently than a normal
-        //   account (with the exception of its known keys)
-        //
-        // Create known keys for chainspec accounts
-        let account_named_keys = NamedKeys::new();
+        // Create mint
+        let (mint_hash, purses) = genesis_installer.create_mint().map_err(Error::Genesis)?;
 
         // Create accounts
+        genesis_installer
+            .create_accounts(&purses)
+            .map_err(Error::Genesis)?;
+
+        // Create proof of stake
+        let proof_of_stake_hash = genesis_installer
+            .create_proof_of_stake(&purses)
+            .map_err(Error::Genesis)?;
+
+        // Create auction
+        let auction_hash = genesis_installer
+            .create_auction(&purses)
+            .map_err(Error::Genesis)?;
+
+        // Create standard payment
+        let standard_payment_hash = genesis_installer
+            .create_standard_payment()
+            .map_err(Error::Genesis)?;
+
+        // Associate given CostTable with given ProtocolVersion.
         {
-            // Collect chainspec accounts and their known keys with the genesis account and its
-            // known keys
-            let accounts = {
-                let mut ret: Vec<(GenesisAccount, NamedKeys)> = ee_config
-                    .accounts()
-                    .to_vec()
-                    .into_iter()
-                    .map(|account| (account, account_named_keys.clone()))
-                    .collect();
-                let system_account = GenesisAccount::system(Motes::zero(), Motes::zero());
-                ret.push((system_account, virtual_system_account.named_keys().clone()));
-                ret
-            };
+            let wasm_config = ee_config.wasm_config();
+            let wasmless_transfer_cost = ee_config.wasmless_transfer_cost();
+            let protocol_data = ProtocolData::new(
+                *wasm_config,
+                mint_hash,
+                proof_of_stake_hash,
+                standard_payment_hash,
+                auction_hash,
+                wasmless_transfer_cost,
+            );
 
-            // Get the mint module
-            let module = {
-                let contract = tracking_copy
-                    .borrow_mut()
-                    .get_contract(correlation_id, mint_hash)?;
-
-                let contract_wasm = tracking_copy
-                    .borrow_mut()
-                    .get_contract_wasm(correlation_id, contract.contract_wasm_hash())?;
-                let bytes = contract_wasm.bytes();
-                wasm_prep::deserialize(&bytes)?
-            };
-            // For each account...
-            for (account, named_keys) in accounts.into_iter() {
-                let module = module.clone();
-                let args = runtime_args! {
-                    mint::ARG_AMOUNT => account.balance().value(),
-                };
-                let tracking_copy_exec = Rc::clone(&tracking_copy);
-                let tracking_copy_write = Rc::clone(&tracking_copy);
-                let mut named_keys_exec = NamedKeys::new();
-                let base_key = mint_hash;
-                let authorization_keys: BTreeSet<AccountHash> = BTreeSet::new();
-                let account_hash = account.account_hash();
-                let purse_creation_deploy_hash = DeployHash::new(account_hash.value());
-                let hash_address_generator = Rc::clone(&hash_address_generator);
-                let uref_address_generator = {
-                    let generator = AddressGeneratorBuilder::new()
-                        .seed_with(genesis_config_hash.as_ref())
-                        .seed_with(&account_hash.to_bytes()?)
-                        .seed_with(&[phase as u8])
-                        .build();
-                    Rc::new(RefCell::new(generator))
-                };
-                let transfer_address_generator = Rc::clone(&transfer_address_generator);
-                let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
-
-                let mint_result: Result<URef, MintError> = {
-                    // ...call the Mint's "mint" endpoint to create purse with tokens...
-                    let (_instance, mut runtime) = executor.create_runtime(
-                        module,
-                        EntryPointType::Contract,
-                        args.clone(),
-                        &mut named_keys_exec,
-                        Default::default(),
-                        base_key.into(),
-                        &virtual_system_account,
-                        authorization_keys,
-                        blocktime,
-                        purse_creation_deploy_hash,
-                        gas_limit,
-                        hash_address_generator,
-                        uref_address_generator,
-                        transfer_address_generator,
-                        protocol_version,
-                        correlation_id,
-                        tracking_copy_exec,
-                        phase,
-                        protocol_data,
-                        system_contract_cache,
-                    )?;
-
-                    runtime
-                        .call_versioned_contract(
-                            mint_package_hash,
-                            Some(1),
-                            "mint".to_string(),
-                            args,
-                        )?
-                        .into_t::<Result<URef, MintError>>()
-                        .expect("should convert")
-                };
-
-                // ...and write that account to global state...
-                let key = Key::Account(account_hash);
-                let value = {
-                    let main_purse = mint_result?;
-                    StoredValue::Account(Account::create(account_hash, named_keys, main_purse))
-                };
-
-                tracking_copy_write.borrow_mut().write(key, value);
-            }
+            self.state
+                .put_protocol_data(protocol_version, &protocol_data)
+                .map_err(Into::into)?;
         }
-        // Spec #15: Commit the transforms.
-        let effects = tracking_copy.borrow().effect();
+
+        // Commit the transforms.
+        let execution_effect = genesis_installer.into_execution_effect();
 
         let commit_result = self
             .state
             .commit(
                 correlation_id,
                 initial_root_hash,
-                effects.transforms.to_owned(),
+                execution_effect.transforms.to_owned(),
             )
             .map_err(Into::into)?;
 
         // Return the result
-        let genesis_result = GenesisResult::from_commit_result(commit_result, effects);
+        let genesis_result = GenesisResult::from_commit_result(commit_result, execution_effect);
 
         Ok(genesis_result)
     }
@@ -1061,36 +705,6 @@ where
         }
     }
 
-    fn get_module_from_contract_hash(
-        &self,
-        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-        contract_hash: ContractHash,
-        correlation_id: CorrelationId,
-        protocol_version: &ProtocolVersion,
-    ) -> Result<Module, Error> {
-        let contract = tracking_copy
-            .borrow_mut()
-            .get_contract(correlation_id, contract_hash)?;
-
-        // A contract may only call a stored contract that has the same protocol major version
-        // number.
-        if !contract.is_compatible_protocol_version(*protocol_version) {
-            let exec_error = execution::Error::IncompatibleProtocolMajorVersion {
-                expected: protocol_version.value().major,
-                actual: contract.protocol_version().value().major,
-            };
-            return Err(error::Error::Exec(exec_error));
-        }
-
-        let contract_wasm = tracking_copy
-            .borrow_mut()
-            .get_contract_wasm(correlation_id, contract.contract_wasm_hash())?;
-
-        let module = wasm_prep::deserialize(contract_wasm.bytes())?;
-
-        Ok(module)
-    }
-
     fn get_authorized_account(
         &self,
         correlation_id: CorrelationId,
@@ -1169,15 +783,24 @@ where
             }
         };
 
+        let tracking_copy = match self.tracking_copy(prestate_hash) {
+            Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            Ok(None) => return Err(RootNotFound::new(prestate_hash)),
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+        };
+
         let preprocessor = {
             let wasm_config = protocol_data.wasm_config();
             Preprocessor::new(*wasm_config)
         };
 
-        let tracking_copy = match self.tracking_copy(prestate_hash) {
-            Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            Ok(None) => return Err(RootNotFound::new(prestate_hash)),
-            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+        let system_module = {
+            match tracking_copy.borrow_mut().get_system_module(&preprocessor) {
+                Ok(module) => module,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
         };
 
         let base_key = Key::Account(deploy_item.address);
@@ -1213,22 +836,6 @@ where
             }
         };
 
-        let mint_module = {
-            let contract_wasm_hash = mint_contract.contract_wasm_hash();
-            let use_system_contracts = self.config.use_system_contracts();
-            match tracking_copy.borrow_mut().get_system_module(
-                correlation_id,
-                contract_wasm_hash,
-                use_system_contracts,
-                &preprocessor,
-            ) {
-                Ok(module) => module,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
-        };
-
         let mut mint_named_keys = mint_contract.named_keys().to_owned();
         let mut mint_extra_keys: Vec<Key> = vec![];
         let mint_base_key = Key::from(protocol_data.mint());
@@ -1240,22 +847,6 @@ where
             Ok(contract) => contract,
             Err(error) => {
                 return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
-
-        let pos_module = {
-            let contract_wasm_hash = pos_contract.contract_wasm_hash();
-            let use_system_contracts = self.config.use_system_contracts();
-            match tracking_copy.borrow_mut().get_system_module(
-                correlation_id,
-                contract_wasm_hash,
-                use_system_contracts,
-                &preprocessor,
-            ) {
-                Ok(module) => module,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
             }
         };
 
@@ -1278,7 +869,7 @@ where
                     let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
                         .exec_system_contract(
                             DirectSystemContractCall::CreatePurse,
-                            mint_module.clone(),
+                            system_module.clone(),
                             RuntimeArgs::new(), // mint create takes no arguments
                             &mut mint_named_keys,
                             Default::default(),
@@ -1393,7 +984,7 @@ where
             let (payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
                 executor.exec_system_contract(
                     DirectSystemContractCall::GetPaymentPurse,
-                    pos_module.clone(),
+                    system_module.clone(),
                     RuntimeArgs::default(),
                     &mut pos_named_keys,
                     pos_extra_keys.as_slice(),
@@ -1457,7 +1048,7 @@ where
             let (actual_result, payment_result): (Option<Result<(), u8>>, ExecutionResult) =
                 executor.exec_system_contract(
                     DirectSystemContractCall::Transfer,
-                    mint_module.clone(),
+                    system_module.clone(),
                     runtime_args,
                     &mut mint_named_keys,
                     mint_extra_keys.as_slice(),
@@ -1576,7 +1167,7 @@ where
         let (_, mut session_result): (Option<Result<(), u8>>, ExecutionResult) = executor
             .exec_system_contract(
                 DirectSystemContractCall::Transfer,
-                mint_module,
+                system_module.clone(),
                 runtime_args,
                 &mut mint_named_keys,
                 mint_extra_keys.as_slice(),
@@ -1644,7 +1235,7 @@ where
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::FinalizePayment,
-                    pos_module,
+                    system_module,
                     proof_of_stake_args,
                     &mut pos_named_keys,
                     Default::default(),
@@ -1740,6 +1331,15 @@ where
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
+        let system_module = {
+            match tracking_copy.borrow_mut().get_system_module(&preprocessor) {
+                Ok(module) => module,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
         let base_key = Key::Account(deploy_item.address);
 
         // Get addr bytes from `address` (which is actually a Key)
@@ -1792,31 +1392,10 @@ where
         // payment_code_spec_6: system contract validity
         let mint_hash = protocol_data.mint();
 
-        let mint_contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(correlation_id, mint_hash)
-        {
-            Ok(contract) => contract,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
-
         // cache mint module
         if !self.system_contract_cache.has(mint_hash) {
-            let mint_module = match tracking_copy.borrow_mut().get_system_module(
-                correlation_id,
-                mint_contract.contract_wasm_hash(),
-                self.config.use_system_contracts(),
-                &preprocessor,
-            ) {
-                Ok(contract) => contract,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            };
-
-            self.system_contract_cache.insert(mint_hash, mint_module);
+            self.system_contract_cache
+                .insert(mint_hash, system_module.clone());
         }
 
         // Get proof of stake system contract URef from account (an account on a
@@ -1824,34 +1403,10 @@ where
         // payment_code_spec_6: system contract validity
         let proof_of_stake_hash = protocol_data.proof_of_stake();
 
-        // Get proof of stake system contract details
-        // payment_code_spec_6: system contract validity
-        let proof_of_stake_contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(correlation_id, proof_of_stake_hash)
-        {
-            Ok(contract) => contract,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
-
-        let proof_of_stake_module = match tracking_copy.borrow_mut().get_system_module(
-            correlation_id,
-            proof_of_stake_contract.contract_wasm_hash(),
-            self.config.use_system_contracts(),
-            &preprocessor,
-        ) {
-            Ok(module) => module,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
-
         // cache proof_of_stake module
         if !self.system_contract_cache.has(proof_of_stake_hash) {
             self.system_contract_cache
-                .insert(proof_of_stake_hash, proof_of_stake_module.clone());
+                .insert(proof_of_stake_hash, system_module.clone());
         }
 
         // Get account main purse balance key
@@ -1918,26 +1473,8 @@ where
             // Create payment code module from bytes
             // validation_spec_1: valid wasm bytes
             let maybe_payment_module = if module_bytes_is_empty {
-                let standard_payment_hash: ContractHash =
-                    match self.state.get_protocol_data(protocol_version) {
-                        Ok(Some(protocol_data)) => protocol_data.standard_payment(),
-                        Ok(None) => {
-                            return Ok(ExecutionResult::precondition_failure(
-                                Error::InvalidProtocolVersion(protocol_version),
-                            ));
-                        }
-                        Err(_) => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
-                    };
-
-                // if "use-system-contracts" is false, "do_nothing" wasm is returned
-                self.get_module_from_contract_hash(
-                    Rc::clone(&tracking_copy),
-                    standard_payment_hash,
-                    correlation_id,
-                    &protocol_version,
-                )
-                .map(|module| GetModuleResult::Session {
-                    module,
+                Ok(GetModuleResult::Session {
+                    module: system_module.clone(),
                     contract_package: ContractPackage::default(),
                     entry_point: EntryPoint::default(),
                 })
@@ -2005,7 +1542,7 @@ where
 
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
-            if self.config.use_system_contracts() || !module_bytes_is_empty {
+            if !module_bytes_is_empty {
                 executor.exec(
                     payment_module,
                     payment_entry_point,
@@ -2092,6 +1629,18 @@ where
         // payment_code_spec_3: fork based upon payment purse balance and cost of
         // payment code execution
         let payment_purse_balance: Motes = {
+            // Get proof of stake system contract details
+            // payment_code_spec_6: system contract validity
+            let proof_of_stake_contract = match tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, proof_of_stake_hash)
+            {
+                Ok(contract) => contract,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            };
+
             // Get payment purse Key from proof of stake contract
             // payment_code_spec_6: system contract validity
             let payment_purse_key: Key =
@@ -2328,7 +1877,7 @@ where
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::FinalizePayment,
-                    proof_of_stake_module,
+                    system_module,
                     proof_of_stake_args,
                     &mut proof_of_stake_keys,
                     Default::default(),
@@ -2404,17 +1953,10 @@ where
             .get_contract(correlation_id, protocol_data.auction())
             .map_err(Error::from)?;
 
-        let auction_module = {
-            let contract_wasm_hash = auction_contract.contract_wasm_hash();
-            let use_system_contracts = self.config.use_system_contracts();
+        let system_module = {
             tracking_copy
                 .borrow_mut()
-                .get_system_module(
-                    correlation_id,
-                    contract_wasm_hash,
-                    use_system_contracts,
-                    &preprocessor,
-                )
+                .get_system_module(&preprocessor)
                 .map_err(Error::from)?
         };
 
@@ -2444,7 +1986,7 @@ where
         let (era_validators, execution_result): (Option<EraValidators>, ExecutionResult) = executor
             .exec_system_contract(
                 DirectSystemContractCall::GetEraValidators,
-                auction_module,
+                system_module,
                 RuntimeArgs::new(),
                 &mut named_keys,
                 Default::default(),
@@ -2512,12 +2054,7 @@ where
             }
         };
 
-        let auction_module = match tracking_copy.borrow_mut().get_system_module(
-            correlation_id,
-            auction_contract.contract_wasm_hash(),
-            self.config.use_system_contracts(),
-            &preprocessor,
-        ) {
+        let system_module = match tracking_copy.borrow_mut().get_system_module(&preprocessor) {
             Ok(module) => module,
             Err(_) => {
                 return Ok(StepResult::PreconditionError);
@@ -2526,7 +2063,7 @@ where
 
         if !self.system_contract_cache.has(auction_hash) {
             self.system_contract_cache
-                .insert(auction_hash, auction_module.clone());
+                .insert(auction_hash, system_module.clone());
         }
 
         let virtual_system_account = {
@@ -2570,7 +2107,7 @@ where
 
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
             DirectSystemContractCall::Slash,
-            auction_module.clone(),
+            system_module.clone(),
             slash_args,
             &mut named_keys,
             Default::default(),
@@ -2617,7 +2154,7 @@ where
 
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.exec_system_contract(
             DirectSystemContractCall::DistributeRewards,
-            auction_module.clone(),
+            system_module.clone(),
             reward_args,
             &mut named_keys,
             Default::default(),
@@ -2645,7 +2182,7 @@ where
             let (_, execution_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::RunAuction,
-                    auction_module,
+                    system_module,
                     run_auction_args,
                     &mut named_keys,
                     Default::default(),

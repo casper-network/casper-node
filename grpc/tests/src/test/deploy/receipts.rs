@@ -87,10 +87,7 @@ fn should_record_wasmless_transfer() {
     assert_eq!(deploy_info.from, *DEFAULT_ACCOUNT_ADDR);
     assert_eq!(deploy_info.source, default_account.main_purse());
 
-    // TODO: this is borked
-    if !cfg!(feature = "use-system-contracts") {
-        assert_eq!(deploy_info.gas, U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
-    }
+    assert_eq!(deploy_info.gas, U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
 
     let transfers = deploy_info.transfers;
     assert_eq!(transfers.len(), 1);
