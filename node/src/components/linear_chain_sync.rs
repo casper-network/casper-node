@@ -55,12 +55,11 @@ pub(crate) struct LinearChainSync<I> {
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     /// Start the syncing process of the linear chain until the trusted hash.
-    pub fn sync_trusted_hash(init_hash: Option<BlockHash>) -> Self {
-        let state = init_hash.map_or(State::Done, State::sync_trusted_hash);
+    pub fn sync_trusted_hash(init_hash: BlockHash) -> Self {
         LinearChainSync {
             peers: Vec::new(),
             peers_to_try: Vec::new(),
-            state,
+            state: State::sync_trusted_hash(init_hash),
         }
     }
 
@@ -72,6 +71,15 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             peers: Vec::new(),
             peers_to_try: Vec::new(),
             state,
+        }
+    }
+
+    /// No synchronization configured.
+    pub fn none() -> Self {
+        LinearChainSync {
+            peers: Vec::new(),
+            peers_to_try: Vec::new(),
+            state: State::Done,
         }
     }
 

@@ -395,7 +395,7 @@ impl reactor::Reactor for Reactor {
 
         let init_hash = config.node.trusted_hash;
 
-        match init_hash {
+        let linear_chain_sync = match init_hash {
             None => {
                 let genesis = &chainspec_loader.chainspec().genesis;
                 let era_duration = genesis.highway_config.era_duration;
@@ -406,12 +406,14 @@ impl reactor::Reactor for Reactor {
                     );
                     panic!("should have trusted hash after genesis era")
                 }
-                info!("No synchronization of the linear chain will be done.")
+                info!("No synchronization of the linear chain will be performed.");
+                LinearChainSync::none()
             }
-            Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
-        }
-
-        let linear_chain_sync = LinearChainSync::sync_trusted_hash(init_hash);
+            Some(hash) => {
+                info!("Synchronizing linear chain from: {:?}", hash);
+                LinearChainSync::sync_trusted_hash(hash)
+            }
+        };
 
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
 
