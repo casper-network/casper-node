@@ -411,7 +411,7 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let linear_chain_sync = LinearChainSync::new(init_hash);
+        let linear_chain_sync = LinearChainSync::sync_trusted_hash(init_hash);
 
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
 

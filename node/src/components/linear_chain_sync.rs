@@ -24,6 +24,7 @@
 //! we might miss more eras.
 
 mod event;
+mod state;
 
 use std::{convert::Infallible, fmt::Display, mem};
 
@@ -33,122 +34,14 @@ use tracing::{error, info, trace, warn};
 
 use super::{fetcher::FetchResult, Component};
 use crate::{
-    effect::{
-        requests::{BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest},
-        EffectBuilder, EffectExt, EffectOptionExt, Effects,
-    },
-    types::{Block, BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
+    components::linear_chain_sync::event::ReactorEventT,
+    effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
+    types::{BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
     NodeRng,
 };
 use event::BlockByHeightResult;
 pub use event::Event;
-
-pub trait ReactorEventT<I>:
-    From<StorageRequest>
-    + From<FetcherRequest<I, Block>>
-    + From<FetcherRequest<I, BlockByHeight>>
-    + From<BlockValidationRequest<BlockHeader, I>>
-    + From<BlockExecutorRequest>
-    + Send
-{
-}
-
-impl<I, REv> ReactorEventT<I> for REv where
-    REv: From<StorageRequest>
-        + From<FetcherRequest<I, Block>>
-        + From<FetcherRequest<I, BlockByHeight>>
-        + From<BlockValidationRequest<BlockHeader, I>>
-        + From<BlockExecutorRequest>
-        + Send
-{
-}
-
-#[derive(DataSize, Debug)]
-enum State {
-    /// No syncing of the linear chain configured.
-    None,
-    /// Synchronizing the linear chain up until trusted hash.
-    SyncingTrustedHash {
-        /// Linear chain block to start sync from.
-        trusted_hash: BlockHash,
-        /// During synchronization we might see new eras being created.
-        /// Track the highest height and wait until it's handled by consensus.
-        highest_block_seen: u64,
-        /// Chain of downloaded blocks from the linear chain.
-        /// We will `pop()` when executing blocks.
-        linear_chain: Vec<BlockHeader>,
-        /// The most recent block we started to execute. This is updated whenever we start
-        /// downloading deploys for the next block to be executed.
-        latest_block: Box<Option<BlockHeader>>,
-    },
-    /// Synchronizing the descendants of the trusted hash.
-    SyncingDescendants {
-        trusted_hash: BlockHash,
-        /// The most recent block we started to execute. This is updated whenever we start
-        /// downloading deploys for the next block to be executed.
-        latest_block: Box<BlockHeader>,
-        /// During synchronization we might see new eras being created.
-        /// Track the highest height and wait until it's handled by consensus.
-        highest_block_seen: u64,
-    },
-    /// Synchronizing done.
-    Done,
-}
-
-impl Display for State {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            State::None => write!(f, "None"),
-            State::SyncingTrustedHash { trusted_hash, .. } => {
-                write!(f, "SyncingTrustedHash(trusted_hash: {:?})", trusted_hash)
-            }
-            State::SyncingDescendants {
-                highest_block_seen, ..
-            } => write!(
-                f,
-                "SyncingDescendants(highest_block_seen: {})",
-                highest_block_seen
-            ),
-            State::Done => write!(f, "Done"),
-        }
-    }
-}
-
-impl State {
-    fn sync_trusted_hash(trusted_hash: BlockHash) -> Self {
-        State::SyncingTrustedHash {
-            trusted_hash,
-            highest_block_seen: 0,
-            linear_chain: Vec::new(),
-            latest_block: Box::new(None),
-        }
-    }
-
-    fn sync_descendants(trusted_hash: BlockHash, latest_block: BlockHeader) -> Self {
-        State::SyncingDescendants {
-            trusted_hash,
-            latest_block: Box::new(latest_block),
-            highest_block_seen: 0,
-        }
-    }
-
-    fn block_downloaded(&mut self, block: &BlockHeader) {
-        match self {
-            State::None | State::Done => {}
-            State::SyncingTrustedHash {
-                highest_block_seen, ..
-            }
-            | State::SyncingDescendants {
-                highest_block_seen, ..
-            } => {
-                let curr_height = block.height();
-                if curr_height > *highest_block_seen {
-                    *highest_block_seen = curr_height;
-                }
-            }
-        };
-    }
-}
+use state::State;
 
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChainSync<I> {
@@ -161,8 +54,20 @@ pub(crate) struct LinearChainSync<I> {
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
-    pub fn new(init_hash: Option<BlockHash>) -> Self {
+    /// Start the syncing process of the linear chain until the trusted hash.
+    pub fn sync_trusted_hash(init_hash: Option<BlockHash>) -> Self {
         let state = init_hash.map_or(State::None, State::sync_trusted_hash);
+        LinearChainSync {
+            peers: Vec::new(),
+            peers_to_try: Vec::new(),
+            state,
+        }
+    }
+
+    /// Start the syncing process of the linear chain. Starting from the descendants of the last
+    /// trusted block.
+    pub fn sync_descendants(trusted_hash: BlockHash, last_block: BlockHeader) -> Self {
+        let state = State::sync_descendants(trusted_hash, last_block);
         LinearChainSync {
             peers: Vec::new(),
             peers_to_try: Vec::new(),
