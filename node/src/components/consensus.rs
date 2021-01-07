@@ -56,8 +56,6 @@ pub enum ConsensusMessage {
     /// A request for evidence against the specified validator, from any era that is still bonded
     /// in `era_id`.
     EvidenceRequest { era_id: EraId, pub_key: PublicKey },
-    /// A request for the latest state in the given era.
-    LatestStateRequest { era_id: EraId },
 }
 
 /// Consensus component event.
@@ -118,10 +116,6 @@ impl Debug for ConsensusMessage {
                 .field("era_id.0", &era_id.0)
                 .field("pub_key", pub_key)
                 .finish(),
-            ConsensusMessage::LatestStateRequest { era_id } => f
-                .debug_struct("LatestStateRequest")
-                .field("era_id.0", &era_id.0)
-                .finish(),
         }
     }
 }
@@ -137,9 +131,6 @@ impl Display for ConsensusMessage {
                 "request for evidence of fault by {} in {} or earlier",
                 pub_key, era_id,
             ),
-            ConsensusMessage::LatestStateRequest { era_id } => {
-                write!(f, "request for the latest state in era {}", era_id)
-            }
         }
     }
 }
