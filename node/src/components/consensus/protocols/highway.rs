@@ -585,6 +585,21 @@ where
         }
     }
 
+    fn handle_latest_state_request(&mut self, sender: I) -> Vec<ProtocolOutcome<I, C>> {
+        let state = self.highway.state();
+
+        state
+            .panorama()
+            .iter_correct_hashes()
+            .filter_map(|hash| state.wire_unit(hash, *self.highway.instance_id()))
+            .map(|swu| {
+                let msg = HighwayMessage::NewVertex(Vertex::Unit(swu));
+                let serialized_msg = bincode::serialize(&msg).expect("should serialize message");
+                ProtocolOutcome::CreatedTargetedMessage(serialized_msg, sender.clone())
+            })
+            .collect()
+    }
+
     fn handle_timer(
         &mut self,
         timestamp: Timestamp,

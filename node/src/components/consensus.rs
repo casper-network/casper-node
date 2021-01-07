@@ -56,6 +56,8 @@ pub enum ConsensusMessage {
     /// A request for evidence against the specified validator, from any era that is still bonded
     /// in `era_id`.
     EvidenceRequest { era_id: EraId, pub_key: PublicKey },
+    /// A request for the latest state in the given era.
+    LatestStateRequest { era_id: EraId },
 }
 
 /// Consensus component event.
@@ -63,6 +65,8 @@ pub enum ConsensusMessage {
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
+    /// We connected to a peer.
+    NewPeer(I),
     /// A scheduled event to be handled by a specified era
     Timer { era_id: EraId, timestamp: Timestamp },
     /// We are receiving the data we require to propose a new block
@@ -114,6 +118,10 @@ impl Debug for ConsensusMessage {
                 .field("era_id.0", &era_id.0)
                 .field("pub_key", pub_key)
                 .finish(),
+            ConsensusMessage::LatestStateRequest { era_id } => f
+                .debug_struct("LatestStateRequest")
+                .field("era_id.0", &era_id.0)
+                .finish(),
         }
     }
 }
@@ -129,6 +137,9 @@ impl Display for ConsensusMessage {
                 "request for evidence of fault by {} in {} or earlier",
                 pub_key, era_id,
             ),
+            ConsensusMessage::LatestStateRequest { era_id } => {
+                write!(f, "request for the latest state in era {}", era_id)
+            }
         }
     }
 }
@@ -137,6 +148,7 @@ impl<I: Debug> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
+            Event::NewPeer(peer_id) => write!(f, "new peer connected: {:?}", peer_id),
             Event::Timer { era_id, timestamp } => write!(
                 f,
                 "timer for era {:?} scheduled for timestamp {}",
@@ -241,6 +253,7 @@ where
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
+            Event::NewPeer(peer_id) => handling_es.handle_new_peer(peer_id),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,

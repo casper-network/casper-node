@@ -434,7 +434,20 @@ where
                     })
                     .collect()
             }
+            ConsensusMessage::LatestStateRequest { era_id } => self
+                .delegate_to_era(era_id, move |consensus, _rng| {
+                    consensus.handle_latest_state_request(sender)
+                }),
         }
+    }
+
+    pub(super) fn handle_new_peer(&mut self, peer_id: I) -> Effects<Event<I>> {
+        let message = ConsensusMessage::LatestStateRequest {
+            era_id: self.era_supervisor.current_era,
+        };
+        self.effect_builder
+            .send_message(peer_id, message.into())
+            .ignore()
     }
 
     pub(super) fn handle_new_proto_block(

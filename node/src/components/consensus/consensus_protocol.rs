@@ -109,6 +109,9 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
         rng: &mut NodeRng,
     ) -> Vec<ProtocolOutcome<I, C>>;
 
+    /// Handles the request for the latest protocol state.
+    fn handle_latest_state_request(&mut self, sender: I) -> Vec<ProtocolOutcome<I, C>>;
+
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
