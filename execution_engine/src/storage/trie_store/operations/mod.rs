@@ -215,6 +215,58 @@ where
     }
 }
 
+pub fn missing_descendant_trie_keys<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
+    txn: &T,
+    store: &S,
+    trie_key: Blake2bHash,
+) -> Result<Vec<Blake2bHash>, E>
+where
+    K: ToBytes + FromBytes + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    let mut missing_descendants = Vec::new();
+    let mut trie_keys_to_visit_queue = vec![trie_key];
+    while let Some(trie_key) = trie_keys_to_visit_queue.pop() {
+        let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
+        match maybe_retrieved_trie {
+            // If we can't find the trie_key; it is missing and we'll return it
+            None => {
+                missing_descendants.push(trie_key);
+            }
+            // If we could retrieve the node and it is a leaf, the search can move on
+            Some(Trie::Leaf { .. }) => (),
+            // If we hit a pointer block, queue up all of the nodes it points to
+            Some(Trie::Node { pointer_block }) => {
+                for (_, pointer) in pointer_block.to_indexed_pointers() {
+                    match pointer {
+                        Pointer::LeafPointer(descendant_leaf_trie_key) => {
+                            trie_keys_to_visit_queue.push(descendant_leaf_trie_key)
+                        }
+                        Pointer::NodePointer(descendant_node_trie_key) => {
+                            trie_keys_to_visit_queue.push(descendant_node_trie_key)
+                        }
+                    }
+                }
+            }
+            // If we hit an extension block, add its pointer to the queue
+            Some(Trie::Extension {
+                pointer: Pointer::LeafPointer(descendant_leaf_trie_key),
+                ..
+            }) => trie_keys_to_visit_queue.push(descendant_leaf_trie_key),
+            Some(Trie::Extension {
+                pointer: Pointer::NodePointer(descendant_node_trie_key),
+                ..
+            }) => trie_keys_to_visit_queue.push(descendant_node_trie_key),
+        }
+    }
+    Ok(missing_descendants)
+}
+
 struct TrieScan<K, V> {
     tip: Trie<K, V>,
     parents: Parents<K, V>,
@@ -326,8 +378,8 @@ where
 {
     let mut ret: Vec<(Blake2bHash, Trie<K, V>)> = Vec::new();
     let mut tip_hash = {
-        let trie_bytes = tip.to_bytes()?;
-        Blake2bHash::new(&trie_bytes)
+        let node_bytes = tip.to_bytes()?;
+        Blake2bHash::new(&node_bytes)
     };
     ret.push((tip_hash, tip.to_owned()));
 
@@ -650,6 +702,28 @@ where
             Ok(WriteResult::Written(root_hash))
         }
     }
+}
+
+pub fn put_trie<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
+    txn: &mut T,
+    store: &S,
+    trie: &Trie<K, V>,
+) -> Result<(), E>
+where
+    K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes + Clone + Eq,
+    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    let trie_hash = {
+        let node_bytes = trie.to_bytes()?;
+        Blake2bHash::new(&node_bytes)
+    };
+    store.put(txn, &trie_hash, trie)?;
+    Ok(())
 }
 
 enum KeysIteratorState<K, V, S: TrieStore<K, V>> {

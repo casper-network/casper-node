@@ -18,7 +18,7 @@ use crate::storage::{
     trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
     trie_store::{
         lmdb::LmdbTrieStore,
-        operations::{read, read_with_proof, ReadResult},
+        operations::{missing_descendant_trie_keys, put_trie, read, read_with_proof, ReadResult},
     },
 };
 
@@ -125,6 +125,18 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         txn.commit()?;
         Ok(ret)
     }
+
+    /// Reads a `Trie<K,V>` from the state if it is present
+    fn read_trie(
+        &self,
+        _correlation_id: CorrelationId,
+        trie_key: &Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let ret: Option<Trie<Key, StoredValue>> = self.store.get(&txn, trie_key)?;
+        txn.commit()?;
+        Ok(ret)
+    }
 }
 
 impl StateProvider for LmdbGlobalState {
@@ -184,6 +196,41 @@ impl StateProvider for LmdbGlobalState {
     fn empty_root(&self) -> Blake2bHash {
         self.empty_root_hash
     }
+
+    fn put_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie: &Trie<Key, StoredValue>,
+    ) -> Result<(), Self::Error> {
+        let mut txn = self.environment.create_read_write_txn()?;
+        put_trie::<Key, StoredValue, lmdb::RwTransaction, LmdbTrieStore, Self::Error>(
+            correlation_id,
+            &mut txn,
+            &self.trie_store,
+            trie,
+        )?;
+        txn.commit()?;
+        Ok(())
+    }
+
+    /// Finds all of the keys of missing descendant `Trie<K,V>` values
+    fn missing_descendant_trie_keys(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: Blake2bHash,
+    ) -> Result<Vec<Blake2bHash>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let missing_descendants =
+            missing_descendant_trie_keys::<
+                Key,
+                StoredValue,
+                lmdb::RoTransaction,
+                LmdbTrieStore,
+                Self::Error,
+            >(correlation_id, &txn, self.trie_store.deref(), trie_key)?;
+        txn.commit()?;
+        Ok(missing_descendants)
+    }
 }
 
 #[cfg(test)]
@@ -196,7 +243,10 @@ mod tests {
 
     use super::*;
     use crate::storage::{
-        trie_store::operations::{write, WriteResult},
+        trie_store::{
+            operations,
+            operations::{write, WriteResult},
+        },
         DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     };
 
@@ -236,12 +286,11 @@ mod tests {
         ]
     }
 
-    fn create_test_state() -> (LmdbGlobalState, Blake2bHash) {
-        let correlation_id = CorrelationId::new();
-        let _temp_dir = tempdir().unwrap();
+    fn new_empty_lmdb_global_state() -> LmdbGlobalState {
+        let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
-                &_temp_dir.path().to_path_buf(),
+                &temp_dir.path().to_path_buf(),
                 DEFAULT_TEST_MAX_DB_SIZE,
                 DEFAULT_TEST_MAX_READERS,
             )
@@ -252,7 +301,12 @@ mod tests {
         let protocol_data_store = Arc::new(
             LmdbProtocolDataStore::new(&environment, None, DatabaseFlags::empty()).unwrap(),
         );
-        let ret = LmdbGlobalState::empty(environment, trie_store, protocol_data_store).unwrap();
+        LmdbGlobalState::empty(environment, trie_store, protocol_data_store).unwrap()
+    }
+
+    fn create_test_state() -> (LmdbGlobalState, Blake2bHash) {
+        let correlation_id = CorrelationId::new();
+        let ret = new_empty_lmdb_global_state();
         let mut current_root = ret.empty_root_hash;
         {
             let mut txn = ret.environment.create_read_write_txn().unwrap();
@@ -370,5 +424,66 @@ mod tests {
                 .read(correlation_id, &test_pairs_updated[2].key)
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn copy_one_state_to_another() {
+        let correlation_id = CorrelationId::new();
+        let source_reader = {
+            let (source_state, root_hash) = create_test_state();
+            source_state.checkout(root_hash).unwrap().unwrap()
+        };
+        let destination_state = new_empty_lmdb_global_state();
+
+        // Copy source to destination
+        let mut queue = vec![source_reader.root_hash.clone()];
+        while !queue.is_empty() {
+            for trie_key in &queue {
+                let trie_to_insert = source_reader
+                    .read_trie(correlation_id, trie_key)
+                    .unwrap()
+                    .unwrap();
+                destination_state
+                    .put_trie(correlation_id, &trie_to_insert)
+                    .unwrap();
+            }
+            queue = destination_state
+                .missing_descendant_trie_keys(correlation_id, source_reader.root_hash.clone())
+                .unwrap();
+        }
+
+        // Make sure all of the destination keys under the root hash are in the source
+        {
+            let destination_keys = operations::keys::<Key, StoredValue, _, _>(
+                correlation_id,
+                &destination_state.environment.create_read_txn().unwrap(),
+                destination_state.trie_store.deref(),
+                &source_reader.root_hash,
+            )
+            .filter_map(Result::ok)
+            .collect::<Vec<Key>>();
+            for key in destination_keys {
+                source_reader.read(correlation_id, &key).unwrap();
+            }
+        }
+
+        // Make sure all of the source keys under the root hash are in the destination
+        {
+            let source_keys = operations::keys::<Key, StoredValue, _, _>(
+                correlation_id,
+                &source_reader.environment.create_read_txn().unwrap(),
+                source_reader.store.deref(),
+                &source_reader.root_hash,
+            )
+            .filter_map(Result::ok)
+            .collect::<Vec<Key>>();
+            let destination_reader = destination_state
+                .checkout(source_reader.root_hash.clone())
+                .unwrap()
+                .unwrap();
+            for key in source_keys {
+                destination_reader.read(correlation_id, &key).unwrap();
+            }
+        }
     }
 }

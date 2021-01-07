@@ -15,13 +15,16 @@ use crate::storage::{
     protocol_data_store::in_memory::InMemoryProtocolDataStore,
     store::Store,
     transaction_source::{
-        in_memory::{InMemoryEnvironment, InMemoryReadTransaction},
+        in_memory::{InMemoryEnvironment, InMemoryReadTransaction, InMemoryReadWriteTransaction},
         Transaction, TransactionSource,
     },
     trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie},
     trie_store::{
         in_memory::InMemoryTrieStore,
-        operations::{self, read, read_with_proof, ReadResult, WriteResult},
+        operations::{
+            self, missing_descendant_trie_keys, put_trie, read, read_with_proof, ReadResult,
+            WriteResult,
+        },
     },
 };
 
@@ -164,6 +167,18 @@ impl StateReader<Key, StoredValue> for InMemoryGlobalStateView {
         txn.commit()?;
         Ok(ret)
     }
+
+    /// Reads a `Trie<K,V>` from the state if it is present
+    fn read_trie(
+        &self,
+        _correlation_id: CorrelationId,
+        trie_key: &Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let ret: Option<Trie<Key, StoredValue>> = self.store.get(&txn, trie_key)?;
+        txn.commit()?;
+        Ok(ret)
+    }
 }
 
 impl StateProvider for InMemoryGlobalState {
@@ -223,6 +238,41 @@ impl StateProvider for InMemoryGlobalState {
 
     fn empty_root(&self) -> Blake2bHash {
         self.empty_root_hash
+    }
+
+    fn put_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie: &Trie<Key, StoredValue>,
+    ) -> Result<(), Self::Error> {
+        let mut txn = self.environment.create_read_write_txn()?;
+        put_trie::<Key, StoredValue, InMemoryReadWriteTransaction, InMemoryTrieStore, Self::Error>(
+            correlation_id,
+            &mut txn,
+            &self.trie_store,
+            trie,
+        )?;
+        txn.commit()?;
+        Ok(())
+    }
+
+    /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values
+    fn missing_descendant_trie_keys(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: Blake2bHash,
+    ) -> Result<Vec<Blake2bHash>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let missing_descendants =
+            missing_descendant_trie_keys::<
+                Key,
+                StoredValue,
+                InMemoryReadTransaction,
+                InMemoryTrieStore,
+                Self::Error,
+            >(correlation_id, &txn, self.trie_store.deref(), trie_key)?;
+        txn.commit()?;
+        Ok(missing_descendants)
     }
 }
 
