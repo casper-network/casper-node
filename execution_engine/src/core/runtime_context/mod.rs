@@ -6,11 +6,6 @@ use std::{
     rc::Rc,
 };
 
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
-
 use casper_types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
@@ -330,30 +325,22 @@ where
 
     /// Generates new deterministic hash for uses as an address.
     pub fn new_hash_address(&mut self) -> Result<[u8; KEY_HASH_LENGTH], Error> {
-        let pre_hash_bytes = self.hash_address_generator.borrow_mut().create_address();
-        // NOTE: Unwrap below is assumed safe as output size of `KEY_HASH_LENGTH` is a valid value.
-        let mut hasher = VarBlake2b::new(KEY_HASH_LENGTH).unwrap();
-        hasher.update(&pre_hash_bytes);
-        let mut hash_bytes = [0; KEY_HASH_LENGTH];
-        hasher.finalize_variable(|hash| hash_bytes.clone_from_slice(hash));
-        Ok(hash_bytes)
+        Ok(self.hash_address_generator.borrow_mut().new_hash_address())
     }
 
     pub fn new_uref(&mut self, value: StoredValue) -> Result<URef, Error> {
-        let uref = {
-            let addr = self.uref_address_generator.borrow_mut().create_address();
-            URef::new(addr, AccessRights::READ_ADD_WRITE)
-        };
-        let key = Key::URef(uref);
+        let uref = self
+            .uref_address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
         self.insert_uref(uref);
-        self.metered_write_gs(key, value)?;
+        self.metered_write_gs(Key::URef(uref), value)?;
         Ok(uref)
     }
 
     /// Creates a new URef where the value it stores is CLType::Unit.
     pub(crate) fn new_unit_uref(&mut self) -> Result<URef, Error> {
-        let cl_unit = CLValue::from_components(CLType::Unit, Vec::new());
-        self.new_uref(StoredValue::CLValue(cl_unit))
+        self.new_uref(StoredValue::CLValue(CLValue::unit()))
     }
 
     pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, Error> {

@@ -567,6 +567,11 @@ impl Contract {
         self.named_keys.remove(key)
     }
 
+    /// Set protocol_version.
+    pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
+        self.protocol_version = protocol_version;
+    }
+
     /// Determines if `Contract` is compatibile with a given `ProtocolVersion`.
     pub fn is_compatible_protocol_version(&self, protocol_version: ProtocolVersion) -> bool {
         self.protocol_version.value().major == protocol_version.value().major

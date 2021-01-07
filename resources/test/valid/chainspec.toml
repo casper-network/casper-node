@@ -2,10 +2,6 @@
 name = 'test-chain'
 timestamp = '2020-09-18T18:45:00Z'
 protocol_version = '0.1.0'
-mint_installer_path = 'mint.wasm'
-pos_installer_path = 'pos.wasm'
-standard_payment_installer_path = 'standard_payment.wasm'
-auction_installer_path = 'auction_install.wasm'
 accounts_path = 'accounts.csv'
 validator_slots = 5
 auction_delay = 3
@@ -156,7 +152,6 @@ pay = 10_000
 
 [[upgrade]]
 protocol_version = '0.2.0'
-upgrade_installer_path = 'upgrade.wasm'
 
 [upgrade.activation_point]
 height = 23
