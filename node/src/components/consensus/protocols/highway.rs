@@ -480,7 +480,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
     RequestDependency(Dependency<C>),
-    RequestLatestState(Panorama<C>),
+    LatestStateRequest(Panorama<C>),
 }
 
 impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
@@ -584,7 +584,7 @@ where
                     }
                 }
             }
-            Ok(HighwayMessage::RequestLatestState(panorama)) => {
+            Ok(HighwayMessage::LatestStateRequest(panorama)) => {
                 trace!("received a request for the latest state");
                 let state = self.highway.state();
 
@@ -648,7 +648,7 @@ where
 
     fn handle_new_peer(&mut self, peer_id: I) -> Vec<ProtocolOutcome<I, C>> {
         trace!(?peer_id, "connected to a new peer");
-        let msg = HighwayMessage::RequestLatestState(self.highway.state().panorama().clone());
+        let msg = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
         let serialized_msg = bincode::serialize(&msg).expect("should serialize message");
         vec![ProtocolOutcome::CreatedTargetedMessage(
             serialized_msg,
