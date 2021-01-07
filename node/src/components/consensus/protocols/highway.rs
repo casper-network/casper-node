@@ -29,7 +29,8 @@ use crate::{
             highway::{
                 Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex, Vertex,
             },
-            validators::Validators,
+            state::{Observation, Panorama},
+            validators::{ValidatorIndex, Validators},
         },
         traits::{ConsensusValueT, Context, NodeIdT},
     },
@@ -479,6 +480,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
     RequestDependency(Dependency<C>),
+    LatestStateRequest(Panorama<C>),
 }
 
 impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
@@ -582,7 +584,76 @@ where
                     }
                 }
             }
+            Ok(HighwayMessage::LatestStateRequest(panorama)) => {
+                trace!("received a request for the latest state");
+                let state = self.highway.state();
+
+                let create_message =
+                    |observations: ((ValidatorIndex, &Observation<C>), &Observation<C>)| {
+                        let vid = observations.0 .0;
+                        let observations = (observations.0 .1, observations.1);
+                        match observations {
+                            (obs0, obs1) if obs0 == obs1 => None,
+
+                            (Observation::None, Observation::None) => None,
+
+                            (Observation::Faulty, _) => state.maybe_evidence(vid).map(|evidence| {
+                                HighwayMessage::NewVertex(Vertex::Evidence(evidence.clone()))
+                            }),
+
+                            (_, Observation::Faulty) => {
+                                Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
+                            }
+
+                            (Observation::None, Observation::Correct(hash)) => {
+                                Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
+                            }
+
+                            (Observation::Correct(hash), Observation::None) => state
+                                .wire_unit(hash, *self.highway.instance_id())
+                                .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
+
+                            (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
+                                if state.has_unit(their_hash)
+                                    && state.panorama().sees_correct(state, their_hash)
+                                {
+                                    state
+                                        .wire_unit(our_hash, *self.highway.instance_id())
+                                        .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
+                                } else if !state.has_unit(their_hash) {
+                                    Some(HighwayMessage::RequestDependency(Dependency::Unit(
+                                        *their_hash,
+                                    )))
+                                } else {
+                                    None
+                                }
+                            }
+                        }
+                    };
+
+                state
+                    .panorama()
+                    .enumerate()
+                    .zip(&panorama)
+                    .filter_map(create_message)
+                    .map(|msg| {
+                        let serialized_msg =
+                            bincode::serialize(&msg).expect("should serialize message");
+                        ProtocolOutcome::CreatedTargetedMessage(serialized_msg, sender.clone())
+                    })
+                    .collect()
+            }
         }
+    }
+
+    fn handle_new_peer(&mut self, peer_id: I) -> Vec<ProtocolOutcome<I, C>> {
+        trace!(?peer_id, "connected to a new peer");
+        let msg = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
+        let serialized_msg = bincode::serialize(&msg).expect("should serialize message");
+        vec![ProtocolOutcome::CreatedTargetedMessage(
+            serialized_msg,
+            peer_id,
+        )]
     }
 
     fn handle_timer(

@@ -63,6 +63,8 @@ pub enum ConsensusMessage {
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
+    /// We connected to a peer.
+    NewPeer(I),
     /// A scheduled event to be handled by a specified era
     Timer { era_id: EraId, timestamp: Timestamp },
     /// We are receiving the data we require to propose a new block
@@ -137,6 +139,7 @@ impl<I: Debug> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
+            Event::NewPeer(peer_id) => write!(f, "new peer connected: {:?}", peer_id),
             Event::Timer { era_id, timestamp } => write!(
                 f,
                 "timer for era {:?} scheduled for timestamp {}",
@@ -241,6 +244,7 @@ where
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
+            Event::NewPeer(peer_id) => handling_es.handle_new_peer(peer_id),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
