@@ -68,12 +68,12 @@ impl DeployType {
 
     /// Asks if the variant is a Transfer.
     pub fn is_transfer(&self) -> bool {
-        matches!(self, DeployType::Transfer{..})
+        matches!(self, DeployType::Transfer { .. })
     }
 
     /// Asks if the variant is Wasm.
     pub fn is_wasm(&self) -> bool {
-        matches!(self, DeployType::Other{..})
+        matches!(self, DeployType::Other { .. })
     }
 }
 

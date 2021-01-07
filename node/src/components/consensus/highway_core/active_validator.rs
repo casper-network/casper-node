@@ -785,7 +785,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::unreadable_literal)] // 0xC0FFEE is more readable than 0x00C0_FFEE.
-    fn active_validator() -> Result<(), AddUnitError<TestContext>> {
+    fn active_validator() {
         let mut test = TestState::new(
             State::new_test(&[Weight(3), Weight(4)], 0),
             crate::new_rng(),
@@ -843,6 +843,5 @@ mod tests {
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
         assert_eq!(Some(&new_unit.hash()), test.next_finalized());
-        Ok(())
     }
 }
