@@ -30,7 +30,7 @@ use crate::{
                 Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex, Vertex,
             },
             state::{Observation, Panorama},
-            validators::Validators,
+            validators::{ValidatorIndex, Validators},
         },
         traits::{ConsensusValueT, Context, NodeIdT},
     },
@@ -589,39 +589,51 @@ where
                 let state = self.highway.state();
 
                 let create_message =
-                    |observations: (&Observation<C>, &Observation<C>)| match observations {
-                        (Observation::None, Observation::None)
-                        | (Observation::Faulty, _)
-                        | (_, Observation::Faulty) => None,
+                    |observations: ((ValidatorIndex, &Observation<C>), &Observation<C>)| {
+                        let vid = observations.0 .0;
+                        let observations = (observations.0 .1, observations.1);
+                        match observations {
+                            (obs0, obs1) if obs0 == obs1 => None,
 
-                        (Observation::None, Observation::Correct(hash)) => {
-                            Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
-                        }
+                            (Observation::None, Observation::None) => None,
 
-                        (Observation::Correct(hash), Observation::None) => state
-                            .wire_unit(hash, *self.highway.instance_id())
-                            .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
+                            (Observation::Faulty, _) => state.maybe_evidence(vid).map(|evidence| {
+                                HighwayMessage::NewVertex(Vertex::Evidence(evidence.clone()))
+                            }),
 
-                        (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
-                            if state.has_unit(their_hash)
-                                && state.panorama().sees_correct(state, their_hash)
-                            {
-                                state
-                                    .wire_unit(our_hash, *self.highway.instance_id())
-                                    .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
-                            } else if !state.has_unit(their_hash) {
-                                Some(HighwayMessage::RequestDependency(Dependency::Unit(
-                                    *their_hash,
-                                )))
-                            } else {
-                                None
+                            (_, Observation::Faulty) => {
+                                Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
+                            }
+
+                            (Observation::None, Observation::Correct(hash)) => {
+                                Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
+                            }
+
+                            (Observation::Correct(hash), Observation::None) => state
+                                .wire_unit(hash, *self.highway.instance_id())
+                                .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
+
+                            (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
+                                if state.has_unit(their_hash)
+                                    && state.panorama().sees_correct(state, their_hash)
+                                {
+                                    state
+                                        .wire_unit(our_hash, *self.highway.instance_id())
+                                        .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
+                                } else if !state.has_unit(their_hash) {
+                                    Some(HighwayMessage::RequestDependency(Dependency::Unit(
+                                        *their_hash,
+                                    )))
+                                } else {
+                                    None
+                                }
                             }
                         }
                     };
 
                 state
                     .panorama()
-                    .iter()
+                    .enumerate()
                     .zip(&panorama)
                     .filter_map(create_message)
                     .map(|msg| {
