@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
+use casper_types::SecretKey;
+
 use crate::{
     components::chainspec_loader::{HighwayConfig, UpgradePoint},
-    crypto::asymmetric_key::SecretKey,
     types::Timestamp,
     utils::External,
     Chainspec,

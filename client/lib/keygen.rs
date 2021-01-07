@@ -2,7 +2,8 @@
 
 use std::{fs, path::Path};
 
-use casper_node::crypto::asymmetric_key::{PublicKey, SecretKey};
+use casper_node::crypto::AsymmetricKeyExt;
+use casper_types::{AsymmetricType, PublicKey, SecretKey};
 
 use crate::error::{Error, Result};
 
@@ -58,9 +59,9 @@ pub fn generate_files(output_dir: &str, algorithm: &str, force: bool) -> Result<
     }
 
     let secret_key = if algorithm.eq_ignore_ascii_case(ED25519) {
-        SecretKey::generate_ed25519()
+        SecretKey::generate_ed25519().unwrap()
     } else if algorithm.eq_ignore_ascii_case(SECP256K1) {
-        SecretKey::generate_secp256k1()
+        SecretKey::generate_secp256k1().unwrap()
     } else {
         return Err(Error::UnsupportedAlgorithm(algorithm.to_string()));
     };

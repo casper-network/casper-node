@@ -6,6 +6,7 @@ use pem::PemError;
 use thiserror::Error;
 
 use crate::utils::{ReadFileError, WriteFileError};
+use casper_types::crypto;
 
 /// A specialized `std::result::Result` type for cryptographic errors.
 pub type Result<T> = result::Result<T, Error>;
@@ -53,5 +54,15 @@ pub enum Error {
 impl From<PemError> for Error {
     fn from(error: PemError) -> Self {
         Error::FromPem(error.to_string())
+    }
+}
+
+impl From<crypto::Error> for Error {
+    fn from(error: crypto::Error) -> Self {
+        match error {
+            crypto::Error::AsymmetricKey(string) => Error::AsymmetricKey(string),
+            crypto::Error::FromHex(error) => Error::FromHex(error),
+            crypto::Error::FromBase64(error) => Error::FromBase64(error),
+        }
     }
 }

@@ -221,12 +221,12 @@ impl BlockExecutor {
                 let reward_items = era_end
                     .rewards
                     .iter()
-                    .map(|(&vid, &value)| RewardItem::new(vid.into(), value))
+                    .map(|(&vid, &value)| RewardItem::new(vid, value))
                     .collect();
                 let slash_items = era_end
                     .equivocators
                     .iter()
-                    .map(|&vid| SlashItem::new(vid.into()))
+                    .map(|&vid| SlashItem::new(vid))
                     .collect();
                 let request = StepRequest {
                     pre_state_hash: state.state_root_hash.into(),
@@ -249,7 +249,7 @@ impl BlockExecutor {
             state.finalized_block.timestamp().millis(),
             vec![Ok(deploy_item)],
             ProtocolVersion::V1_0_0,
-            state.finalized_block.proposer().into(),
+            state.finalized_block.proposer(),
         );
 
         // TODO: this is currently working coincidentally because we are passing only one

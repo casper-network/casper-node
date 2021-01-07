@@ -10,11 +10,10 @@ use derive_more::From;
 use itertools::Itertools;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{ExecutionResult, ProtocolVersion, SemVer};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer};
 
 use super::Component;
 use crate::{
-    crypto::asymmetric_key::PublicKey,
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{

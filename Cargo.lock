@@ -950,14 +950,18 @@ name = "casper-types"
 version = "0.5.0"
 dependencies = [
  "base16",
+ "base64 0.13.0",
  "bincode",
  "bitflags 1.2.1",
  "blake2",
  "criterion",
  "datasize",
+ "ed25519-dalek",
  "failure",
  "getrandom 0.2.0",
+ "hex",
  "hex_fmt",
+ "k256",
  "num-derive",
  "num-integer",
  "num-rational 0.3.2",

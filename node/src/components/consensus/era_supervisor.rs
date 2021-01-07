@@ -25,7 +25,7 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{info, trace, warn};
 
-use casper_types::{ProtocolVersion, U512};
+use casper_types::{AsymmetricType, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use crate::{
     components::consensus::{
@@ -39,10 +39,7 @@ use crate::{
         traits::NodeIdT,
         Config, ConsensusMessage, Event, ReactorEventT,
     },
-    crypto::{
-        asymmetric_key::{PublicKey, SecretKey},
-        hash::Digest,
-    },
+    crypto::hash::Digest,
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{

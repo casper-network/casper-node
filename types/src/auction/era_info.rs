@@ -234,8 +234,9 @@ impl CLTyped for EraInfo {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod gens {
+/// Generators for [`SeignirageAllocation`] and [`EraInfo`]
+#[cfg(any(feature = "gens", test))]
+pub mod gens {
     use proptest::{
         collection::{self, SizeRange},
         prelude::Strategy,
@@ -244,8 +245,8 @@ pub(crate) mod gens {
 
     use crate::{
         auction::{EraInfo, SeigniorageAllocation},
+        crypto::gens::public_key_arb,
         gens::u512_arb,
-        public_key::gens::public_key_arb,
     };
 
     fn seigniorage_allocation_validator_arb() -> impl Strategy<Value = SeigniorageAllocation> {
@@ -262,6 +263,7 @@ pub(crate) mod gens {
         )
     }
 
+    /// Creates an arbitrary [`SeignorageAllocation`]
     pub fn seigniorage_allocation_arb() -> impl Strategy<Value = SeigniorageAllocation> {
         prop_oneof![
             seigniorage_allocation_validator_arb(),
@@ -269,6 +271,7 @@ pub(crate) mod gens {
         ]
     }
 
+    /// Creates an arbitrary [`EraInfo`]
     pub fn era_info_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = EraInfo> {
         collection::vec(seigniorage_allocation_arb(), size).prop_map(|allocations| {
             let mut era_info = EraInfo::new();

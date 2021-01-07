@@ -1598,7 +1598,7 @@ where
             let proposer_purse = {
                 let proposer_account: Account = match tracking_copy
                     .borrow_mut()
-                    .get_account(correlation_id, proposer.into())
+                    .get_account(correlation_id, AccountHash::from(&proposer))
                 {
                     Ok(account) => account,
                     Err(error) => {
@@ -2125,7 +2125,7 @@ where
         let proposer_purse = {
             let proposer_account: Account = match tracking_copy
                 .borrow_mut()
-                .get_account(correlation_id, proposer.into())
+                .get_account(correlation_id, AccountHash::from(&proposer))
             {
                 Ok(account) => account,
                 Err(error) => {

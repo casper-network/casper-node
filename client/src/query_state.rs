@@ -2,7 +2,8 @@ use std::{fs, str};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 
-use casper_node::{crypto::asymmetric_key::PublicKey, rpcs::state::GetItem};
+use casper_node::rpcs::state::GetItem;
+use casper_types::PublicKey;
 
 use crate::{command::ClientCommand, common};
 
@@ -18,6 +19,9 @@ enum DisplayOrder {
 
 /// Handles providing the arg for and retrieval of the key.
 mod key {
+    use casper_node::crypto::AsymmetricKeyExt;
+    use casper_types::AsymmetricType;
+
     use super::*;
 
     const ARG_NAME: &str = "key";
@@ -54,7 +58,7 @@ mod key {
 
         // Try to read as a hex-encoded PublicKey file next.
         if let Ok(hex_public_key) = fs::read_to_string(value).map(|contents| {
-            PublicKey::from_hex(contents.as_bytes()).unwrap_or_else(|error| {
+            PublicKey::from_hex(&contents).unwrap_or_else(|error| {
                 panic!(
                     "failed to parse '{}' as a hex-encoded public key file: {}",
                     value, error
