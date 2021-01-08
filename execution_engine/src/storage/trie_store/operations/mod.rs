@@ -217,6 +217,11 @@ where
     }
 }
 
+/// Given a root hash, find any try keys that are descendant from it that are referenced but not
+/// present in the database.
+///
+/// If the `validate` flag is set then verify for all descendant keys that *are* present in the
+/// database that they are the hash of their values.
 pub fn missing_descendant_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
