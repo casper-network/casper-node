@@ -436,7 +436,7 @@ mod tests {
         let destination_state = new_empty_lmdb_global_state();
 
         // Copy source to destination
-        let mut queue = vec![source_reader.root_hash.clone()];
+        let mut queue = vec![source_reader.root_hash];
         while !queue.is_empty() {
             for trie_key in &queue {
                 let trie_to_insert = source_reader
@@ -448,7 +448,7 @@ mod tests {
                     .unwrap();
             }
             queue = destination_state
-                .missing_descendant_trie_keys(correlation_id, source_reader.root_hash.clone())
+                .missing_descendant_trie_keys(correlation_id, source_reader.root_hash)
                 .unwrap();
         }
 
@@ -478,7 +478,7 @@ mod tests {
             .filter_map(Result::ok)
             .collect::<Vec<Key>>();
             let destination_reader = destination_state
-                .checkout(source_reader.root_hash.clone())
+                .checkout(source_reader.root_hash)
                 .unwrap()
                 .unwrap();
             for key in source_keys {
