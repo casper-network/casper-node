@@ -247,7 +247,8 @@ where
                         trie_key,
                         trie_value: format!("{:?}", trie_value),
                         hash_of_trie_value,
-                    })?;
+                    }
+                    .into());
                 }
             }
         }
