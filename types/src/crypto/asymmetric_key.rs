@@ -73,11 +73,11 @@ pub trait AsymmetricType: Sized + AsRef<[u8]> + Tagged<u8> {
         match tag[0] {
             ED25519_TAG => {
                 let bytes = hex::decode(key_bytes)?;
-                AsymmetricType::ed25519_from_bytes(&bytes)
+                Self::ed25519_from_bytes(&bytes)
             }
             SECP256K1_TAG => {
                 let bytes = hex::decode(key_bytes)?;
-                AsymmetricType::secp256k1_from_bytes(&bytes)
+                Self::secp256k1_from_bytes(&bytes)
             }
             _ => Err(Error::AsymmetricKey(format!(
                 "invalid tag.  Expected {} or {}, got {}",
