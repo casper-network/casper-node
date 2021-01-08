@@ -3,18 +3,18 @@ use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_GET_ERA_VALIDATORS_COST: u32 = 10_000;
-const DEFAULT_READ_SEIGNIORAGE_RECIPIENTS_COST: u32 = 10_000;
+pub const DEFAULT_GET_ERA_VALIDATORS_COST: u32 = 10_000;
+pub const DEFAULT_READ_SEIGNIORAGE_RECIPIENTS_COST: u32 = 10_000;
 pub const DEFAULT_ADD_BID_COST: u32 = 10_000;
 pub const DEFAULT_WITHDRAW_BID_COST: u32 = 10_000;
-const DEFAULT_DELEGATE_COST: u32 = 10_000;
-const DEFAULT_UNDELEGATE_COST: u32 = 10_000;
-const DEFAULT_RUN_AUCTION_COST: u32 = 10_000;
-const DEFAULT_SLASH_COST: u32 = 10_000;
-const DEFAULT_DISTRIBUTE_COST: u32 = 10_000;
-const DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST: u32 = 10_000;
-const DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST: u32 = 10_000;
-const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
+pub const DEFAULT_DELEGATE_COST: u32 = 10_000;
+pub const DEFAULT_UNDELEGATE_COST: u32 = 10_000;
+pub const DEFAULT_RUN_AUCTION_COST: u32 = 10_000;
+pub const DEFAULT_SLASH_COST: u32 = 10_000;
+pub const DEFAULT_DISTRIBUTE_COST: u32 = 10_000;
+pub const DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST: u32 = 10_000;
+pub const DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST: u32 = 10_000;
+pub const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
 
 /// Description of costs of calling auction entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]

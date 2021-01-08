@@ -1,21 +1,35 @@
+use once_cell::sync::Lazy;
+
 use casper_engine_test_support::{
     internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_PUBLIC_KEY,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+        DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_RUN_GENESIS_REQUEST,
     },
-    DEFAULT_ACCOUNT_ADDR,
+    AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casper_execution_engine::shared::system_config::auction_costs::{
-    DEFAULT_ADD_BID_COST, DEFAULT_WITHDRAW_BID_COST,
+use casper_execution_engine::{
+    core::engine_state::GenesisAccount,
+    shared::{
+        motes::Motes,
+        system_config::auction_costs::{
+            DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, DEFAULT_DISTRIBUTE_COST,
+            DEFAULT_RUN_AUCTION_COST, DEFAULT_SLASH_COST, DEFAULT_UNDELEGATE_COST,
+            DEFAULT_WITHDRAW_BID_COST, DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST,
+            DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST,
+        },
+    },
 };
 use casper_types::{
     auction::{self, DelegationRate},
     runtime_args,
     system_contract_type::AUCTION,
-    RuntimeArgs, U512,
+    PublicKey, RuntimeArgs, U512,
 };
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
+const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
+static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_1.into());
+const VALIDATOR_1_STAKE: u64 = 250_000;
 
 #[cfg(not(feature = "use-system-contracts"))]
 #[ignore]
@@ -28,19 +42,22 @@ fn should_verify_calling_auction_add_and_withdraw_bid_costs() {
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    let exec_request = ExecuteRequestBuilder::standard(
+    let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         SYSTEM_CONTRACT_HASHES_NAME,
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec(system_contract_hashes_request)
+        .expect_success()
+        .commit();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+    let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         account
             .named_keys()
@@ -59,7 +76,7 @@ fn should_verify_calling_auction_add_and_withdraw_bid_costs() {
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
-    builder.exec(exec_request).expect_success().commit();
+    builder.exec(add_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
     let call_cost = U512::from(DEFAULT_ADD_BID_COST);
@@ -69,10 +86,7 @@ fn should_verify_calling_auction_add_and_withdraw_bid_costs() {
     );
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 
-    //
     // Withdraw bid
-    //
-
     let withdraw_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         account
@@ -95,6 +109,104 @@ fn should_verify_calling_auction_add_and_withdraw_bid_costs() {
     let balance_after = builder.get_purse_balance(account.main_purse());
 
     let call_cost = U512::from(DEFAULT_WITHDRAW_BID_COST);
+    assert_eq!(balance_after, balance_before - call_cost);
+    assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
+}
+
+#[cfg(not(feature = "use-system-contracts"))]
+#[ignore]
+#[test]
+fn should_verify_calling_auction_delegate_and_undelegate_costs() {
+    const BID_AMOUNT: u64 = 42;
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    let accounts = {
+        let validator_1 = GenesisAccount::new(
+            VALIDATOR_1,
+            *VALIDATOR_1_ADDR,
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(VALIDATOR_1_STAKE.into()),
+        );
+
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        tmp.push(validator_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    builder.run_genesis(&run_genesis_request);
+
+    let system_contract_hashes_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        SYSTEM_CONTRACT_HASHES_NAME,
+        RuntimeArgs::default(),
+    )
+    .build();
+    builder
+        .exec(system_contract_hashes_request)
+        .expect_success()
+        .commit();
+
+    let account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let source_purse = account.main_purse();
+
+    let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        account
+            .named_keys()
+            .get(AUCTION)
+            .unwrap()
+            .into_hash()
+            .unwrap(),
+        auction::METHOD_DELEGATE,
+        runtime_args! {
+            auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
+            auction::ARG_VALIDATOR => VALIDATOR_1,
+            auction::ARG_SOURCE_PURSE => source_purse,
+            auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
+        },
+    )
+    .build();
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+    builder.exec(delegate_request).expect_success().commit();
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    let call_cost = U512::from(DEFAULT_DELEGATE_COST);
+    assert_eq!(
+        balance_after,
+        balance_before - U512::from(BID_AMOUNT) - call_cost
+    );
+    assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
+
+    // Withdraw bid
+    let undelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        account
+            .named_keys()
+            .get(AUCTION)
+            .unwrap()
+            .into_hash()
+            .unwrap(),
+        auction::METHOD_UNDELEGATE,
+        runtime_args! {
+            auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
+            auction::ARG_VALIDATOR => VALIDATOR_1,
+            auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
+            auction::ARG_UNBOND_PURSE => source_purse,
+        },
+    )
+    .build();
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+    builder.exec(undelegate_request).expect_success().commit();
+    let balance_after = builder.get_purse_balance(account.main_purse());
+
+    let call_cost = U512::from(DEFAULT_UNDELEGATE_COST);
     assert_eq!(balance_after, balance_before - call_cost);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
@@ -126,16 +238,44 @@ fn should_charge_for_errorneous_system_contract_calls() {
         .into_hash()
         .unwrap();
 
+    // Entrypoints that could fail early due to missing arguments
     let entrypoint_calls = vec![
-        (
-            auction_hash,
-            auction::METHOD_ADD_BID,
-            DEFAULT_ADD_BID_COST,
-        ),
+        (auction_hash, auction::METHOD_ADD_BID, DEFAULT_ADD_BID_COST),
         (
             auction_hash,
             auction::METHOD_WITHDRAW_BID,
             DEFAULT_WITHDRAW_BID_COST,
+        ),
+        (
+            auction_hash,
+            auction::METHOD_DELEGATE,
+            DEFAULT_DELEGATE_COST,
+        ),
+        (
+            auction_hash,
+            auction::METHOD_UNDELEGATE,
+            DEFAULT_UNDELEGATE_COST,
+        ),
+        (
+            auction_hash,
+            auction::METHOD_RUN_AUCTION,
+            DEFAULT_RUN_AUCTION_COST,
+        ),
+        (auction_hash, auction::METHOD_SLASH, DEFAULT_SLASH_COST),
+        (
+            auction_hash,
+            auction::METHOD_DISTRIBUTE,
+            DEFAULT_DISTRIBUTE_COST,
+        ),
+        (
+            auction_hash,
+            auction::METHOD_WITHDRAW_DELEGATOR_REWARD,
+            DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST,
+        ),
+        (
+            auction_hash,
+            auction::METHOD_WITHDRAW_VALIDATOR_REWARD,
+            DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST,
         ),
     ];
 
@@ -159,7 +299,7 @@ fn should_charge_for_errorneous_system_contract_calls() {
             .get(0)
             .expect("should have first result")
             .as_error()
-            .expect("should have error");
+            .unwrap_or_else(|| panic!("should have error while executing {}", entrypoint));
 
         let balance_after = builder.get_purse_balance(account.main_purse());
 
