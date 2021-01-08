@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests;
 
+pub mod error;
+
 use std::{cmp, collections::VecDeque, convert::TryInto, mem};
 
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
@@ -220,19 +222,35 @@ pub fn missing_descendant_trie_keys<K, V, T, S, E>(
     txn: &T,
     store: &S,
     trie_key: Blake2bHash,
+    validate: bool,
 ) -> Result<Vec<Blake2bHash>, E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
-    V: ToBytes + FromBytes,
+    V: ToBytes + FromBytes + std::fmt::Debug,
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
+    E: From<S::Error> + From<bytesrepr::Error> + From<error::CorruptDatabaseError>,
 {
     let mut missing_descendants = Vec::new();
     let mut trie_keys_to_visit_queue = vec![trie_key];
     while let Some(trie_key) = trie_keys_to_visit_queue.pop() {
         let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
+        if validate {
+            if let Some(trie_value) = &maybe_retrieved_trie {
+                let hash_of_trie_value = {
+                    let node_bytes = trie_value.to_bytes()?;
+                    Blake2bHash::new(&node_bytes)
+                };
+                if trie_key != hash_of_trie_value {
+                    return Err(error::CorruptDatabaseError::KeyIsNotHashOfValue {
+                        trie_key,
+                        trie_value: format!("{:?}", trie_value),
+                        hash_of_trie_value,
+                    })?;
+                }
+            }
+        }
         match maybe_retrieved_trie {
             // If we can't find the trie_key; it is missing and we'll return it
             None => {

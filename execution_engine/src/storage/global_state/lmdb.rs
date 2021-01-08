@@ -218,16 +218,22 @@ impl StateProvider for LmdbGlobalState {
         &self,
         correlation_id: CorrelationId,
         trie_key: Blake2bHash,
+        validate: bool,
     ) -> Result<Vec<Blake2bHash>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_descendant_trie_keys::<
-                Key,
-                StoredValue,
-                lmdb::RoTransaction,
-                LmdbTrieStore,
-                Self::Error,
-            >(correlation_id, &txn, self.trie_store.deref(), trie_key)?;
+        let missing_descendants = missing_descendant_trie_keys::<
+            Key,
+            StoredValue,
+            lmdb::RoTransaction,
+            LmdbTrieStore,
+            Self::Error,
+        >(
+            correlation_id,
+            &txn,
+            self.trie_store.deref(),
+            trie_key,
+            validate,
+        )?;
         txn.commit()?;
         Ok(missing_descendants)
     }
@@ -434,7 +440,7 @@ mod tests {
             {
                 // Make sure no missing nodes in source
                 let missing_from_source = source_state
-                    .missing_descendant_trie_keys(correlation_id, root_hash)
+                    .missing_descendant_trie_keys(correlation_id, root_hash, true)
                     .unwrap();
                 assert_eq!(missing_from_source, Vec::new());
             }
@@ -457,7 +463,7 @@ mod tests {
                     .unwrap();
                 // Now that we've added in `trie_to_insert`, queue up its children
                 let mut new_keys_to_enqueue = destination_state
-                    .missing_descendant_trie_keys(correlation_id, *trie_key)
+                    .missing_descendant_trie_keys(correlation_id, *trie_key, false)
                     .unwrap();
                 new_queue.append(&mut new_keys_to_enqueue);
             }
@@ -467,7 +473,7 @@ mod tests {
         // After the copying process above there should be no missing entries in the destination
         {
             let missing_from_destination = destination_state
-                .missing_descendant_trie_keys(correlation_id, source_reader.root_hash)
+                .missing_descendant_trie_keys(correlation_id, source_reader.root_hash, true)
                 .unwrap();
 
             assert_eq!(missing_from_destination, Vec::new());

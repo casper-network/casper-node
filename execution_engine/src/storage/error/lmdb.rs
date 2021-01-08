@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use casper_types::bytesrepr;
 
-use crate::storage::error::in_memory;
+use crate::storage::{error::in_memory, trie_store::operations::error::CorruptDatabaseError};
 
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum Error {
@@ -17,6 +17,9 @@ pub enum Error {
 
     #[error("Another thread panicked while holding a lock")]
     Poison,
+
+    #[error(transparent)]
+    CorruptDatabaseError(#[from] CorruptDatabaseError),
 }
 
 impl wasmi::HostError for Error {}

@@ -122,6 +122,7 @@ pub trait StateProvider {
         &self,
         correlation_id: CorrelationId,
         trie_key: Blake2bHash,
+        validate: bool,
     ) -> Result<Vec<Blake2bHash>, Self::Error>;
 }
 
