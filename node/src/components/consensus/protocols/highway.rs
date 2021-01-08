@@ -534,7 +534,7 @@ where
                     Some(signed_wire_unit) => self
                         .highway
                         .state()
-                        .is_faulty(signed_wire_unit.wire_unit.creator),
+                        .is_faulty(signed_wire_unit.wire_unit().creator),
                     None => false,
                 };
 

@@ -58,11 +58,13 @@ impl<C: Context> Unit<C> {
         state: &State<C>,
     ) -> (Unit<C>, Option<C::ConsensusValue>) {
         let SignedWireUnit {
-            wire_unit: wunit,
+            hashed_wire_unit,
             signature,
         } = swunit;
+        let hash = hashed_wire_unit.hash();
+        let wunit = hashed_wire_unit.into_inner();
         let block = if wunit.value.is_some() {
-            wunit.hash() // A unit with a new block votes for itself.
+            hash // A unit with a new block votes for itself.
         } else {
             // If the unit didn't introduce a new block, it votes for the fork choice itself.
             // `Highway::add_unit` checks that the panorama is not empty.
