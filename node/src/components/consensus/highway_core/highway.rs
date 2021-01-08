@@ -1,7 +1,9 @@
 mod vertex;
 
 pub(crate) use crate::components::consensus::highway_core::state::Params;
-pub(crate) use vertex::{Dependency, Endorsements, SignedWireUnit, Vertex, WireUnit};
+pub(crate) use vertex::{
+    Dependency, Endorsements, HashedWireUnit, SignedWireUnit, Vertex, WireUnit,
+};
 
 use std::path::PathBuf;
 
@@ -223,7 +225,7 @@ impl<C: Context> Highway<C> {
                 }
             }
             Vertex::Unit(unit) => unit
-                .wire_unit
+                .wire_unit()
                 .panorama
                 .missing_dependency(&self.state)
                 .or_else(|| {
@@ -487,9 +489,9 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Unit(unit) => {
-                let creator = unit.wire_unit.creator;
+                let creator = unit.wire_unit().creator;
                 let v_id = self.validators.id(creator).ok_or(UnitError::Creator)?;
-                if unit.wire_unit.instance_id != self.instance_id {
+                if unit.wire_unit().instance_id != self.instance_id {
                     return Err(UnitError::InstanceId.into());
                 }
                 if !C::verify_signature(&unit.hash(), v_id, &unit.signature) {
@@ -553,7 +555,7 @@ impl<C: Context> Highway<C> {
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let unit_hash = swunit.hash();
-        let creator = swunit.wire_unit.creator;
+        let creator = swunit.wire_unit().creator;
         let was_honest = !self.state.is_faulty(creator);
         self.state.add_valid_unit(swunit);
         let mut evidence_effects = self
@@ -664,7 +666,7 @@ pub(crate) mod tests {
         };
         let invalid_signature = 1u64;
         let invalid_signature_unit = SignedWireUnit {
-            wire_unit: wunit.clone(),
+            hashed_wire_unit: wunit.clone().into_hashed(),
             signature: invalid_signature,
         };
         let invalid_vertex = Vertex::Unit(invalid_signature_unit);
@@ -674,9 +676,10 @@ pub(crate) mod tests {
 
         // TODO: Also test the `missing_dependency` and `validate_vertex` steps.
 
-        let valid_signature = CAROL_SEC.sign(&wunit.hash(), &mut rng);
+        let hwunit = wunit.into_hashed();
+        let valid_signature = CAROL_SEC.sign(&hwunit.hash(), &mut rng);
         let correct_signature_unit = SignedWireUnit {
-            wire_unit: wunit,
+            hashed_wire_unit: hwunit,
             signature: valid_signature,
         };
         let valid_vertex = Vertex::Unit(correct_signature_unit);
@@ -702,8 +705,10 @@ pub(crate) mod tests {
                             signer0: &TestSecret,
                             wunit1: &WireUnit<TestContext>,
                             signer1: &TestSecret| {
-            let swunit0 = SignedWireUnit::new(wunit0.clone(), signer0, &mut rng);
-            let swunit1 = SignedWireUnit::new(wunit1.clone(), signer1, &mut rng);
+            let hwunit0 = wunit0.clone().into_hashed();
+            let swunit0 = SignedWireUnit::new(hwunit0, signer0, &mut rng);
+            let hwunit1 = wunit1.clone().into_hashed();
+            let swunit1 = SignedWireUnit::new(hwunit1, signer1, &mut rng);
             let evidence = Evidence::Equivocation(swunit0, swunit1);
             let vertex = Vertex::Evidence(evidence);
             highway

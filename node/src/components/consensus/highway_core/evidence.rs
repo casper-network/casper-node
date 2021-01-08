@@ -68,7 +68,7 @@ impl<C: Context> Evidence<C> {
     /// Returns the ID of the faulty validator.
     pub(crate) fn perpetrator(&self) -> ValidatorIndex {
         match self {
-            Evidence::Equivocation(unit1, _) => unit1.wire_unit.creator,
+            Evidence::Equivocation(unit1, _) => unit1.wire_unit().creator,
             Evidence::Endorsements { endorsement1, .. } => endorsement1.validator_idx(),
         }
     }
@@ -108,7 +108,7 @@ impl<C: Context> Evidence<C> {
                     return Err(EvidenceError::EndorsementDifferentCreators);
                 }
                 for (unit, pred) in iter::once(unit2).chain(swimlane2).tuple_windows() {
-                    if unit.wire_unit.previous() != Some(&pred.hash()) {
+                    if unit.wire_unit().previous() != Some(&pred.hash()) {
                         return Err(EvidenceError::EndorsementInvalidSwimlane);
                     }
                 }
@@ -134,18 +134,18 @@ impl<C: Context> Evidence<C> {
         instance_id: &C::InstanceId,
         validators: &Validators<C::ValidatorId>,
     ) -> Result<(), EvidenceError> {
+        let wunit1 = unit1.wire_unit();
+        let wunit2 = unit2.wire_unit();
         let v_id = validators
-            .id(unit1.wire_unit.creator)
+            .id(wunit1.creator)
             .ok_or(EvidenceError::UnknownPerpetrator)?;
-        if unit1.wire_unit.creator != unit2.wire_unit.creator {
+        if wunit1.creator != wunit2.creator {
             return Err(EvidenceError::EquivocationDifferentCreators);
         }
-        if unit1.wire_unit.seq_number != unit2.wire_unit.seq_number {
+        if wunit1.seq_number != wunit2.seq_number {
             return Err(EvidenceError::EquivocationDifferentSeqNumbers);
         }
-        if unit1.wire_unit.instance_id != *instance_id
-            || unit2.wire_unit.instance_id != *instance_id
-        {
+        if wunit1.instance_id != *instance_id || wunit2.instance_id != *instance_id {
             return Err(EvidenceError::EquivocationInstanceId);
         }
         if unit1 == unit2 {

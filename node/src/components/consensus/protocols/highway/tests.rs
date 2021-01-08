@@ -129,7 +129,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     };
     let alice_keypair: Keypair = Keypair::from(Rc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
-        SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
+        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair, &mut rng),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
@@ -184,7 +184,7 @@ fn send_a_valid_wire_unit() {
     };
     let alice_keypair: Keypair = Keypair::from(Rc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
-        SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
+        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair, &mut rng),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
@@ -221,7 +221,7 @@ fn detect_doppelganger() {
     };
     let alice_keypair: Keypair = Keypair::from(Rc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
-        SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
+        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair, &mut rng),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
