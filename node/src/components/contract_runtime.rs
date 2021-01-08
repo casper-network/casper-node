@@ -14,7 +14,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
-use prometheus::{self, Counter, Histogram, HistogramOpts, Registry};
+use prometheus::{self, Histogram, HistogramOpts, Registry};
 use serde::Serialize;
 use thiserror::Error;
 use tokio::task;
@@ -78,10 +78,8 @@ pub struct ContractRuntimeMetrics {
     run_query: Histogram,
     get_balance: Histogram,
     get_validator_weights: Histogram,
-    get_era_validators_timing: Histogram,
-    get_era_validator_weights_by_era_id_timing: Histogram,
-    get_era_validators: Counter,
-    get_era_validator_weights_by_era_id: Counter,
+    get_era_validators: Histogram,
+    get_era_validator_weights_by_era_id: Histogram,
 }
 
 /// Value of upper bound of histogram.
@@ -103,11 +101,11 @@ const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
 const GET_BALANCE_HELP: &str = "tracking run of engine_state.get_balance.";
 const GET_VALIDATOR_WEIGHTS_NAME: &str = "contract_runtime_get_validator_weights";
 const GET_VALIDATOR_WEIGHTS_HELP: &str = "tracking run of engine_state.get_validator_weights.";
-const GET_ERA_VALIDATORS_TIMING_NAME: &str = "contract_runtime_get_era_validators";
-const GET_ERA_VALIDATORS_TIMING_HELP: &str = "tracking run of engine_state.get_era_validators";
-const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_TIMING_NAME: &str =
+const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
+const GET_ERA_VALIDATORS_HELP: &str = "tracking run of engine_state.get_era_validators";
+const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME: &str =
     "contract_runtime_get_era_validator_weights_by_era_id";
-const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_TIMING_HELP: &str =
+const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP: &str =
     "tracking run of engine_state.get_era_validator_weights_by_era_id";
 
 /// Create prometheus Histogram and register.
@@ -130,13 +128,6 @@ fn register_histogram_metric(
 impl ContractRuntimeMetrics {
     /// Constructor of metrics which creates and registers metrics objects for use.
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let get_era_validators = Counter::new(
-            "get_era_validators",
-            "counter to track number of ContractRuntimeRequest::GetEraValidators requests made",
-        )?;
-        registry.register(Box::new(get_era_validators.clone()))?;
-        let get_era_validator_weights_by_era_id = Counter::new("get_era_validators_by_weight", "counter to track number of ContractRuntimeRequest::GetValidatorWeightsByEraId requests made")?;
-        registry.register(Box::new(get_era_validator_weights_by_era_id.clone()))?;
         Ok(ContractRuntimeMetrics {
             run_execute: register_histogram_metric(registry, RUN_EXECUTE_NAME, RUN_EXECUTE_HELP)?,
             apply_effect: register_histogram_metric(
@@ -156,18 +147,16 @@ impl ContractRuntimeMetrics {
                 GET_VALIDATOR_WEIGHTS_NAME,
                 GET_VALIDATOR_WEIGHTS_HELP,
             )?,
-            get_era_validators_timing: register_histogram_metric(
+            get_era_validators: register_histogram_metric(
                 registry,
-                GET_ERA_VALIDATORS_TIMING_NAME,
-                GET_ERA_VALIDATORS_TIMING_HELP,
+                GET_ERA_VALIDATORS_NAME,
+                GET_ERA_VALIDATORS_HELP,
             )?,
-            get_era_validator_weights_by_era_id_timing: register_histogram_metric(
+            get_era_validator_weights_by_era_id: register_histogram_metric(
                 registry,
-                GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_TIMING_NAME,
-                GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_TIMING_HELP,
+                GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME,
+                GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP,
             )?,
-            get_era_validators,
-            get_era_validator_weights_by_era_id,
         })
     }
 }
@@ -332,7 +321,6 @@ where
                 let metrics = Arc::clone(&self.metrics);
                 // Increment the counter to track the amount of times GetEraValidators was
                 // requested.
-                metrics.get_era_validators.inc();
                 async move {
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
@@ -340,7 +328,7 @@ where
                         let era_validators =
                             engine_state.get_era_validators(correlation_id, request.into());
                         metrics
-                            .get_era_validators_timing
+                            .get_era_validators
                             .observe(start.elapsed().as_secs_f64());
                         era_validators
                     })
@@ -360,7 +348,6 @@ where
                 let metrics = Arc::clone(&self.metrics);
                 // Increment the counter to track the amount of times GetEraValidatorsByEraId was
                 // requested.
-                metrics.get_era_validator_weights_by_era_id.inc();
                 async move {
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
@@ -378,7 +365,7 @@ where
                                 Err(error) => Err(error),
                             };
                         metrics
-                            .get_era_validator_weights_by_era_id_timing
+                            .get_era_validator_weights_by_era_id
                             .observe(start.elapsed().as_secs_f64());
                         ret
                     })
