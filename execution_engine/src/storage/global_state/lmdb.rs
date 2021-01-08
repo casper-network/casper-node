@@ -431,13 +431,22 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let source_reader = {
             let (source_state, root_hash) = create_test_state();
+            {
+                // Make sure no missing nodes in source
+                let missing_from_source = source_state
+                    .missing_descendant_trie_keys(correlation_id, root_hash)
+                    .unwrap();
+                assert_eq!(missing_from_source, Vec::new());
+            }
             source_state.checkout(root_hash).unwrap().unwrap()
         };
+
         let destination_state = new_empty_lmdb_global_state();
 
         // Copy source to destination
         let mut queue = vec![source_reader.root_hash];
         while !queue.is_empty() {
+            let mut new_queue: Vec<Blake2bHash> = Vec::new();
             for trie_key in &queue {
                 let trie_to_insert = source_reader
                     .read_trie(correlation_id, trie_key)
@@ -446,10 +455,22 @@ mod tests {
                 destination_state
                     .put_trie(correlation_id, &trie_to_insert)
                     .unwrap();
+                // Now that we've added in `trie_to_insert`, queue up its children
+                let mut new_keys_to_enqueue = destination_state
+                    .missing_descendant_trie_keys(correlation_id, *trie_key)
+                    .unwrap();
+                new_queue.append(&mut new_keys_to_enqueue);
             }
-            queue = destination_state
+            queue = new_queue;
+        }
+
+        // After the copying process above there should be no missing entries in the destination
+        {
+            let missing_from_destination = destination_state
                 .missing_descendant_trie_keys(correlation_id, source_reader.root_hash)
                 .unwrap();
+
+            assert_eq!(missing_from_destination, Vec::new());
         }
 
         // Make sure all of the destination keys under the root hash are in the source
