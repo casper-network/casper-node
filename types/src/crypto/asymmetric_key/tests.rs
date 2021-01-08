@@ -7,7 +7,6 @@ fn can_construct_ed25519_keypair_from_zeroes() {
     let _public_key: PublicKey = secret_key.into();
 }
 
-// is this correct?
 #[test]
 #[should_panic]
 fn cannot_construct_secp256k1_keypair_from_zeroes() {
