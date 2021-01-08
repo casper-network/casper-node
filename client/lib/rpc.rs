@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::hash::Digest,
     rpcs::{
         account::{PutDeploy, PutDeployParams},
         chain::{
@@ -23,7 +23,7 @@ use casper_node::{
     },
     types::{BlockHash, Deploy, DeployHash},
 };
-use casper_types::{bytesrepr::ToBytes, Key, RuntimeArgs, URef, U512};
+use casper_types::{bytesrepr::ToBytes, AsymmetricType, Key, PublicKey, RuntimeArgs, URef, U512};
 
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},

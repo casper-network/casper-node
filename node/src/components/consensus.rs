@@ -13,7 +13,7 @@ mod tests;
 mod traits;
 
 use std::{
-    convert::{Infallible, TryInto},
+    convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     time::Duration,
 };
@@ -25,11 +25,11 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
-use casper_types::auction::ValidatorWeights;
+use casper_types::{auction::ValidatorWeights, PublicKey};
 
 use crate::{
     components::Component,
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -288,16 +288,7 @@ where
                     panic!("couldn't get the seed from the key block");
                 });
                 let validators = match get_validators_result {
-                    Ok(Some(validator_weights)) => validator_weights
-                        .into_iter()
-                        .filter_map(|(key, stake)| match key.try_into() {
-                            Ok(key) => Some((key, stake)),
-                            Err(error) => {
-                                error!(%error, "error converting the bonded key");
-                                None
-                            }
-                        })
-                        .collect(),
+                    Ok(Some(validator_weights)) => validator_weights,
                     result => {
                         error!(
                             ?result,

@@ -18,11 +18,10 @@ use openssl::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use casper_types::SecretKey;
+
 use super::{read_file, ReadFileError};
-use crate::{
-    crypto::{self, asymmetric_key::SecretKey},
-    tls,
-};
+use crate::{crypto, crypto::AsymmetricKeyExt, tls};
 
 /// Path to bundled resources.
 #[cfg(test)]
@@ -172,7 +171,7 @@ impl Loadable for SecretKey {
     type Error = crypto::Error;
 
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
-        SecretKey::from_file(path)
+        AsymmetricKeyExt::from_file(path)
     }
 }
 

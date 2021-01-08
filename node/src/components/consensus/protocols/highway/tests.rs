@@ -1,8 +1,9 @@
 use std::{collections::BTreeSet, rc::Rc};
 
-use casper_types::U512;
 use datasize::DataSize;
 use derive_more::Display;
+
+use casper_types::{PublicKey, U512};
 
 use crate::{
     components::consensus::{
@@ -21,7 +22,6 @@ use crate::{
         traits::Context,
         HighwayProtocol,
     },
-    crypto::asymmetric_key::PublicKey,
     testing::TestRng,
     types::{ProtoBlock, Timestamp},
 };

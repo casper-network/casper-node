@@ -94,7 +94,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, Transfer,
+    ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
 };
 
 use crate::{
@@ -105,7 +105,7 @@ use crate::{
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::hash::Digest,
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
@@ -1129,6 +1129,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ContractRuntimeRequest>,
     {
+        let execute_request = Box::new(execute_request);
         self.make_request(
             |responder| ContractRuntimeRequest::Execute {
                 execute_request,

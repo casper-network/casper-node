@@ -1,6 +1,6 @@
 use std::mem;
 
-use casper_types::{ProtocolVersion, PublicKey, ED25519_PUBLIC_KEY_LENGTH};
+use casper_types::{ProtocolVersion, PublicKey, SecretKey};
 
 use super::{deploy_item::DeployItem, execution_result::ExecutionResult};
 use crate::shared::newtypes::Blake2bHash;
@@ -42,12 +42,13 @@ impl ExecuteRequest {
 
 impl Default for ExecuteRequest {
     fn default() -> Self {
+        let proposer = SecretKey::ed25519([0; SecretKey::ED25519_LENGTH]).into();
         Self {
             parent_state_hash: Blake2bHash::new(&[]),
             block_time: 0,
             deploys: vec![],
             protocol_version: Default::default(),
-            proposer: PublicKey::Ed25519([0; ED25519_PUBLIC_KEY_LENGTH]),
+            proposer,
         }
     }
 }

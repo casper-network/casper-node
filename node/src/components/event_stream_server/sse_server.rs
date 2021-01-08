@@ -13,11 +13,10 @@ use warp::{
     Filter, Reply,
 };
 
-use casper_types::ExecutionResult;
+use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
     components::{consensus::EraId, CLIENT_API_VERSION},
-    crypto::asymmetric_key::PublicKey,
     types::{
         BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },

@@ -206,7 +206,7 @@ where
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
                         let execution_result =
-                            engine_state.run_execute(correlation_id, execute_request);
+                            engine_state.run_execute(correlation_id, *execute_request);
                         metrics.run_execute.observe(start.elapsed().as_secs_f64());
                         execution_result
                     })
@@ -345,9 +345,7 @@ where
                     let is_bonded =
                         result.and_then(|validator_map| match validator_map.get(&era_id.0) {
                             None => Err(GetEraValidatorsError::EraValidatorsMissing),
-                            Some(era_validators) => {
-                                Ok(era_validators.contains_key(&validator_key.into()))
-                            }
+                            Some(era_validators) => Ok(era_validators.contains_key(&validator_key)),
                         });
                     responder.respond(is_bonded).await
                 }

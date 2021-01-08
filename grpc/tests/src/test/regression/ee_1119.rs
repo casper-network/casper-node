@@ -16,7 +16,7 @@ use casper_types::{
         UNBONDING_PURSES_KEY,
     },
     mint::TOTAL_SUPPLY_KEY,
-    runtime_args, PublicKey, RuntimeArgs, URef, U512,
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -33,8 +33,9 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
-const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
-static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_1.into());
+static VALIDATOR_1: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
+static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
 
 #[ignore]
@@ -42,7 +43,7 @@ const VALIDATOR_1_STAKE: u64 = 250_000;
 fn should_run_ee_1119_dont_slash_delegated_validators() {
     let accounts = {
         let validator_1 = GenesisAccount::new(
-            VALIDATOR_1,
+            *VALIDATOR_1,
             *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
@@ -83,7 +84,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         CONTRACT_DELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => VALIDATOR_1,
+            ARG_VALIDATOR => *VALIDATOR_1,
             ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
         },
     )
@@ -132,7 +133,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         CONTRACT_UNDELEGATE,
         runtime_args! {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => VALIDATOR_1,
+            ARG_VALIDATOR => *VALIDATOR_1,
             ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             ARG_UNBOND_PURSE => Option::<URef>::None,
         },
@@ -152,7 +153,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         CONTRACT_WITHDRAW_BID,
         runtime_args! {
             ARG_AMOUNT => unbond_amount,
-            ARG_PUBLIC_KEY => VALIDATOR_1,
+            ARG_PUBLIC_KEY => *VALIDATOR_1,
             ARG_UNBOND_PURSE => Option::<URef>::None,
         },
     )
@@ -171,7 +172,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     // undelegate entry
 
-    assert_eq!(unbond_list[0].validator_public_key(), &VALIDATOR_1,);
+    assert_eq!(unbond_list[0].validator_public_key(), &*VALIDATOR_1,);
     assert_eq!(
         unbond_list[0].unbonder_public_key(),
         &*DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -182,8 +183,8 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     // withdraw_bid entry
     //
 
-    assert_eq!(unbond_list[1].validator_public_key(), &VALIDATOR_1,);
-    assert_eq!(unbond_list[1].unbonder_public_key(), &VALIDATOR_1,);
+    assert_eq!(unbond_list[1].validator_public_key(), &*VALIDATOR_1,);
+    assert_eq!(unbond_list[1].unbonder_public_key(), &*VALIDATOR_1,);
     assert!(unbond_list[1].is_validator());
     assert_eq!(unbond_list[1].amount(), &unbond_amount);
 
@@ -197,9 +198,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         auction,
         METHOD_SLASH,
         runtime_args! {
-            ARG_VALIDATOR_PUBLIC_KEYS => vec![
-               *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            ]
+            ARG_VALIDATOR_PUBLIC_KEYS => vec![*DEFAULT_ACCOUNT_PUBLIC_KEY]
         },
     )
     .build();
@@ -227,9 +226,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         auction,
         METHOD_SLASH,
         runtime_args! {
-            ARG_VALIDATOR_PUBLIC_KEYS => vec![
-               VALIDATOR_1
-            ]
+            ARG_VALIDATOR_PUBLIC_KEYS => vec![*VALIDATOR_1]
         },
     )
     .build();
