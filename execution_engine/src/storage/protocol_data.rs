@@ -113,7 +113,7 @@ impl ProtocolData {
 
     /// Retrieves all valid system contracts stored in protocol version
     pub fn system_contracts(&self) -> Vec<ContractHash> {
-        let mut vec = Vec::with_capacity(3);
+        let mut vec = Vec::with_capacity(4);
         if self.mint != DEFAULT_ADDRESS {
             vec.push(self.mint)
         }

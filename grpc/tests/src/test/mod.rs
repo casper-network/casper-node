@@ -13,5 +13,6 @@ mod regression;
 mod step;
 mod storage_costs;
 mod system_contracts;
+mod system_costs;
 mod upgrade;
 mod wasmless_transfer;

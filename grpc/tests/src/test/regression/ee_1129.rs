@@ -32,8 +32,8 @@ const ARG_AMOUNT: &str = "amount";
 const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_1.into());
 const VALIDATOR_1_STAKE: u64 = 250_000;
-static UNDERFUNDED_PAYMENT_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(10_000));
-static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(6_000_000));
+static UNDERFUNDED_PAYMENT_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(5_000));
+static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(5_000));
 
 #[ignore]
 #[test]

@@ -72,8 +72,6 @@ pub const METHOD_UNDELEGATE: &str = "undelegate";
 pub const METHOD_RUN_AUCTION: &str = "run_auction";
 /// Named constant for method `slash`.
 pub const METHOD_SLASH: &str = "slash";
-/// Named constant for method `release_founder_stake`.
-pub const METHOD_RELEASE_FOUNDER_STAKE: &str = "release_founder_stake";
 /// Named constant for method `distribute`.
 pub const METHOD_DISTRIBUTE: &str = "distribute";
 /// Named constant for method `withdraw_delegator_reward`.

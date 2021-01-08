@@ -446,8 +446,24 @@ message ChainSpec {
     }
 
     message SystemConfig {
+        message AuctionCosts {
+            uint32 get_era_validators = 1;
+            uint32 read_seigniorage_recipients = 2;
+            uint32 add_bid = 3;
+            uint32 withdraw_bid = 4;
+            uint32 delegate = 5;
+            uint32 undelegate = 6;
+            uint32 run_auction = 7;
+            uint32 slash = 8;
+            uint32 distribute = 9;
+            uint32 withdraw_delegator_reward = 10;
+            uint32 withdraw_validator_reward = 11;
+            uint32 read_era_id = 12;
+        }
         // Wasmless transfer cost expressed in gas
         uint64 wasmless_transfer_cost = 1;
+        // Auction entrypoint costs table
+        AuctionCosts auction_costs = 2;
     }
 
     message UpgradePoint {

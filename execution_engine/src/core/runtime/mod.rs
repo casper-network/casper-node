@@ -996,6 +996,13 @@ where
         self.context.charge_gas(amount)
     }
 
+    fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
+    where
+        T: Into<Gas>,
+    {
+        self.context.charge_system_contract_call(amount)
+    }
+
     fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
         self.memory.get(ptr, size).map_err(Into::into)
     }
@@ -1566,22 +1573,31 @@ where
             runtime_context,
         );
 
-        let ret: CLValue = match entry_point_name {
-            auction::METHOD_GET_ERA_VALIDATORS => {
+        let system_config = protocol_data.system_config();
+        let auction_costs = system_config.auction_costs();
+
+        let result = match entry_point_name {
+            auction::METHOD_GET_ERA_VALIDATORS => (|| {
+                runtime.charge_system_contract_call(auction_costs.get_era_validators)?;
+
                 let result = runtime.get_era_validators().map_err(Self::reverter)?;
 
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
 
-            auction::METHOD_READ_SEIGNIORAGE_RECIPIENTS => {
+            auction::METHOD_READ_SEIGNIORAGE_RECIPIENTS => (|| {
+                runtime.charge_system_contract_call(auction_costs.read_seigniorage_recipients)?;
+
                 let result = runtime
                     .read_seigniorage_recipients()
                     .map_err(Self::reverter)?;
 
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
 
-            auction::METHOD_ADD_BID => {
+            auction::METHOD_ADD_BID => (|| {
+                runtime.charge_system_contract_call(auction_costs.add_bid)?;
+
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let source_purse =
@@ -1594,10 +1610,12 @@ where
                     .add_bid(account_hash, source_purse, delegation_rate, amount)
                     .map_err(Self::reverter)?;
 
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
 
-            auction::METHOD_WITHDRAW_BID => {
+            auction::METHOD_WITHDRAW_BID => (|| {
+                runtime.charge_system_contract_call(auction_costs.withdraw_bid)?;
+
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
@@ -1607,10 +1625,12 @@ where
                 let result = runtime
                     .withdraw_bid(account_hash, amount, unbond_purse)
                     .map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
 
-            auction::METHOD_DELEGATE => {
+            auction::METHOD_DELEGATE => (|| {
+                runtime.charge_system_contract_call(auction_costs.delegate)?;
+
                 let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let source_purse =
                     Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
@@ -1621,10 +1641,12 @@ where
                     .delegate(delegator, source_purse, validator, amount)
                     .map_err(Self::reverter)?;
 
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
 
-            auction::METHOD_UNDELEGATE => {
+            auction::METHOD_UNDELEGATE => (|| {
+                runtime.charge_system_contract_call(auction_costs.undelegate)?;
+
                 let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
@@ -1635,33 +1657,43 @@ where
                     .undelegate(delegator, validator, amount, unbond_purse)
                     .map_err(Self::reverter)?;
 
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
 
-            auction::METHOD_RUN_AUCTION => {
+            auction::METHOD_RUN_AUCTION => (|| {
+                runtime.charge_system_contract_call(auction_costs.run_auction)?;
+
                 runtime.run_auction().map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
 
             // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), Error>`
-            auction::METHOD_SLASH => {
+            auction::METHOD_SLASH => (|| {
+                runtime.charge_system_contract_call(auction_costs.slash)?;
+
                 let validator_public_keys =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEYS)?;
                 runtime
                     .slash(validator_public_keys)
                     .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+
             // Type: `fn distribute(reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error>`
-            auction::METHOD_DISTRIBUTE => {
+            auction::METHOD_DISTRIBUTE => (|| {
+                runtime.charge_system_contract_call(auction_costs.distribute)?;
+
                 let reward_factors: BTreeMap<PublicKey, u64> =
                     Self::get_named_argument(&runtime_args, auction::ARG_REWARD_FACTORS)?;
                 runtime.distribute(reward_factors).map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+
             // Type: `fn withdraw_delegator_reward(validator_public_key: PublicKey,
             // delegator_public_key: PublicKey, target_purse: URef) -> Result<(), Error>`
-            auction::METHOD_WITHDRAW_DELEGATOR_REWARD => {
+            auction::METHOD_WITHDRAW_DELEGATOR_REWARD => (|| {
+                runtime.charge_system_contract_call(auction_costs.withdraw_delegator_reward)?;
+
                 let validator_public_key: PublicKey =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
                 let delegator_public_key: PublicKey =
@@ -1675,11 +1707,14 @@ where
                         target_purse,
                     )
                     .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+
             // Type: `fn withdraw_delegator_reward(validator_public_key: PublicKey, target_purse:
             // URef) -> Result<(), Error>`
-            auction::METHOD_WITHDRAW_VALIDATOR_REWARD => {
+            auction::METHOD_WITHDRAW_VALIDATOR_REWARD => (|| {
+                runtime.charge_system_contract_call(auction_costs.withdraw_validator_reward)?;
+
                 let validator_public_key: PublicKey =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
                 let target_purse: URef =
@@ -1687,16 +1722,26 @@ where
                 runtime
                     .withdraw_validator_reward(validator_public_key, target_purse)
                     .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
-            // Type: `fn read_era_id() -> Result<EraId, Error>`
-            auction::METHOD_READ_ERA_ID => {
-                let result = runtime.read_era_id().map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
 
-            _ => CLValue::from_t(()).map_err(Self::reverter)?,
+            // Type: `fn read_era_id() -> Result<EraId, Error>`
+            auction::METHOD_READ_ERA_ID => (|| {
+                runtime.charge_system_contract_call(auction_costs.read_era_id)?;
+
+                let result = runtime.read_era_id().map_err(Self::reverter)?;
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
+
+            _ => CLValue::from_t(()).map_err(Self::reverter),
         };
+
+        // Charge for the gas spent during execution in an isolated runtime.
+        self.gas(runtime.context.gas_counter())?;
+
+        // Result still contains a result, but the entrypoints logic does not exit early on errors.
+        let ret = result?;
+
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
         self.context.access_rights_extend(access_rights);
@@ -1704,6 +1749,7 @@ where
             let transfers = self.context.transfers_mut();
             *transfers = runtime.context.transfers().to_owned();
         }
+
         Ok(ret)
     }
 
