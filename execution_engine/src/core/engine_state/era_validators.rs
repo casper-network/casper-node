@@ -21,10 +21,7 @@ pub enum GetEraValidatorsError {
 
 impl GetEraValidatorsError {
     pub fn is_era_validators_missing(&self) -> bool {
-        match self {
-            GetEraValidatorsError::EraValidatorsMissing => true,
-            _ => false,
-        }
+        matches!(self, GetEraValidatorsError::EraValidatorsMissing)
     }
 }
 
