@@ -8,7 +8,8 @@ use std::{
 
 use inflector::cases::snakecase::to_snake_case;
 use proc_macro2::TokenStream;
-use syn::{export::quote::quote, Ident, Path, Type};
+use quote::quote;
+use syn::{Ident, Path, Type};
 
 use crate::util::to_ident;
 
