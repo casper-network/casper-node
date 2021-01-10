@@ -1,19 +1,22 @@
 use std::convert::Infallible;
 
 use futures::future::{self};
-use hyper::Server;
+use hyper::server::{conn::AddrIncoming, Builder};
 use tokio::sync::oneshot;
-use tracing::{debug, info, trace, warn};
+use tracing::{info, trace};
 use warp::Filter;
 
 use super::{
     rpcs::{self, RpcWithOptionalParamsExt, RpcWithParamsExt, RpcWithoutParamsExt},
-    Config, ReactorEventT,
+    ReactorEventT,
 };
-use crate::{effect::EffectBuilder, utils};
+use crate::effect::EffectBuilder;
 
 /// Run the JSON-RPC server.
-pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: EffectBuilder<REv>) {
+pub(super) async fn run<REv: ReactorEventT>(
+    builder: Builder<AddrIncoming>,
+    effect_builder: EffectBuilder<REv>,
+) {
     // RPC filters.
     let rpc_put_deploy = rpcs::account::PutDeploy::create_filter(effect_builder);
     let rpc_get_block = rpcs::chain::GetBlock::create_filter(effect_builder);
@@ -42,33 +45,6 @@ pub(super) async fn run<REv: ReactorEventT>(config: Config, effect_builder: Effe
             .or(rpc_get_auction_info)
             .or(rpc_get_rpcs),
     );
-
-    let mut server_address = match utils::resolve_address(&config.address) {
-        Ok(address) => address,
-        Err(error) => {
-            warn!(%error, "failed to start JSON-RPC server, cannot parse address");
-            return;
-        }
-    };
-
-    // Try to bind to the user's chosen port, or if that fails, try once to bind to any port then
-    // error out if that fails too.
-    let builder = loop {
-        match Server::try_bind(&server_address) {
-            Ok(builder) => {
-                break builder;
-            }
-            Err(error) => {
-                if server_address.port() == 0 {
-                    warn!(%error, "failed to start JSON-RPC server");
-                    return;
-                } else {
-                    server_address.set_port(0);
-                    debug!(%error, "failed to start JSON-RPC server. retrying on random port");
-                }
-            }
-        }
-    };
 
     // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
     let make_svc =
