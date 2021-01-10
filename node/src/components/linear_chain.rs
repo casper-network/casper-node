@@ -399,6 +399,13 @@ where
                                 protocol_version,
                                 fs.public_key,
                             )
+                            .map(|res| {
+                                match res {
+                                    // Promote this error to a non-error case.
+                                    Err(error) if error.is_era_validators_missing() => Ok(false),
+                                    _ => res,
+                                }
+                            })
                             .result(
                                 |is_bonded| Event::IsBonded(maybe_block, fs, is_bonded),
                                 |error| {
