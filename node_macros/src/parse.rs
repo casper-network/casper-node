@@ -11,10 +11,9 @@ use std::{
 
 use indexmap::{IndexMap, IndexSet};
 use inflector::cases::pascalcase::to_pascal_case;
+use quote::quote;
 use syn::{
-    braced, bracketed,
-    export::quote::quote,
-    parenthesized,
+    braced, bracketed, parenthesized,
     parse::{Parse, ParseStream, Result},
     punctuated::Punctuated,
     Expr, Ident, ItemType, Path, Token,

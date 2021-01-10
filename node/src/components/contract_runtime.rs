@@ -91,23 +91,24 @@ const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;
 const EXPONENTIAL_BUCKET_COUNT: usize = 6;
 
 const RUN_EXECUTE_NAME: &str = "contract_runtime_run_execute";
-const RUN_EXECUTE_HELP: &str = "tracking run of engine_state.run_execute.";
+const RUN_EXECUTE_HELP: &str = "tracking run of engine_state.run_execute in seconds.";
 const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
-const APPLY_EFFECT_HELP: &str = "tracking run of engine_state.apply_effect.";
+const APPLY_EFFECT_HELP: &str = "tracking run of engine_state.apply_effect in seconds.";
 const RUN_QUERY_NAME: &str = "contract_runtime_run_query";
-const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query.";
+const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query in seconds.";
 const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
-const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade";
+const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade in seconds";
 const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
-const GET_BALANCE_HELP: &str = "tracking run of engine_state.get_balance.";
+const GET_BALANCE_HELP: &str = "tracking run of engine_state.get_balance in seconds.";
 const GET_VALIDATOR_WEIGHTS_NAME: &str = "contract_runtime_get_validator_weights";
-const GET_VALIDATOR_WEIGHTS_HELP: &str = "tracking run of engine_state.get_validator_weights.";
+const GET_VALIDATOR_WEIGHTS_HELP: &str =
+    "tracking run of engine_state.get_validator_weights in seconds.";
 const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
-const GET_ERA_VALIDATORS_HELP: &str = "tracking run of engine_state.get_era_validators";
+const GET_ERA_VALIDATORS_HELP: &str = "tracking run of engine_state.get_era_validators in seconds.";
 const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME: &str =
     "contract_runtime_get_era_validator_weights_by_era_id";
 const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP: &str =
-    "tracking run of engine_state.get_era_validator_weights_by_era_id";
+    "tracking run of engine_state.get_era_validator_weights_by_era_id in seconds.";
 
 /// Create prometheus Histogram and register.
 fn register_histogram_metric(
