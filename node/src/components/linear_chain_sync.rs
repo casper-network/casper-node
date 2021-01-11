@@ -326,7 +326,7 @@ where
                         let trusted_hash = latest_block.hash();
                         trace!(
                             ?trusted_hash,
-                            "Start synchronization descendants of the trusted block."
+                            "start synchronizing descendants of the trusted block."
                         );
                         let block_height = latest_block.height();
                         fetch_block_at_height(effect_builder, init_peer, block_height + 1)

@@ -402,28 +402,27 @@ impl reactor::Reactor for Reactor {
             }
             None => {
                 // Try the last seen finalized block.
-                let lfb: Option<Block> = storage
-                    .get_highest_block()
-                    .map_err(|err| storage::Error::from(err))?;
+                let lfb: Option<Block> =
+                    storage.get_highest_block().map_err(storage::Error::from)?;
                 match lfb {
                     None => {
                         let genesis = &chainspec_loader.chainspec().genesis;
                         let era_duration = genesis.highway_config.era_duration;
                         if Timestamp::now() > genesis.timestamp + era_duration {
                             error!(
-                                "Node started with no trusted hash after the expected end of \
-                        the genesis era! Please specify a trusted hash and restart."
+                                "node started with no trusted hash after the expected end of \
+                                the genesis era! Please specify a trusted hash and restart."
                             );
                             panic!("should have trusted hash after genesis era")
                         }
-                        info!("No synchronization of the linear chain will be performed.");
+                        info!("no synchronization of the linear chain will be performed.");
                         LinearChainSync::none()
                     }
                     Some(last_block) => {
                         let block_hash = last_block.hash();
                         let era = last_block.era();
                         let height = last_block.height();
-                        info!(%block_hash, %era, %height, "Using latest block seen. Synchronizing descendants.");
+                        info!(%block_hash, %era, %height, "using latest block seen. Synchronizing descendants.");
                         LinearChainSync::sync_descendants(last_block.take_header())
                     }
                 }
