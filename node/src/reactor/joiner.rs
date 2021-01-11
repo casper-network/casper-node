@@ -396,22 +396,37 @@ impl reactor::Reactor for Reactor {
         let init_hash = config.node.trusted_hash;
 
         let linear_chain_sync = match init_hash {
-            None => {
-                let genesis = &chainspec_loader.chainspec().genesis;
-                let era_duration = genesis.highway_config.era_duration;
-                if Timestamp::now() > genesis.timestamp + era_duration {
-                    error!(
-                        "Node started with no trusted hash after the expected end of \
-                        the genesis era! Please specify a trusted hash and restart."
-                    );
-                    panic!("should have trusted hash after genesis era")
-                }
-                info!("No synchronization of the linear chain will be performed.");
-                LinearChainSync::none()
-            }
             Some(hash) => {
                 info!("Synchronizing linear chain from: {:?}", hash);
                 LinearChainSync::sync_trusted_hash(hash)
+            }
+            None => {
+                // Try the last seen finalized block.
+                let lfb: Option<Block> = storage
+                    .get_highest_block()
+                    .map_err(|err| storage::Error::from(err))?;
+                match lfb {
+                    None => {
+                        let genesis = &chainspec_loader.chainspec().genesis;
+                        let era_duration = genesis.highway_config.era_duration;
+                        if Timestamp::now() > genesis.timestamp + era_duration {
+                            error!(
+                                "Node started with no trusted hash after the expected end of \
+                        the genesis era! Please specify a trusted hash and restart."
+                            );
+                            panic!("should have trusted hash after genesis era")
+                        }
+                        info!("No synchronization of the linear chain will be performed.");
+                        LinearChainSync::none()
+                    }
+                    Some(last_block) => {
+                        let block_hash = last_block.hash();
+                        let era = last_block.era();
+                        let height = last_block.height();
+                        info!(%block_hash, %era, %height, "Using latest block seen. Synchronizing descendants.");
+                        LinearChainSync::sync_descendants(last_block.take_header())
+                    }
+                }
             }
         };
 

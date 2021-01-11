@@ -826,6 +826,11 @@ impl Block {
         self.header.height()
     }
 
+    /// The era of a block.
+    pub fn era(&self) -> EraId {
+        self.header.era_id()
+    }
+
     /// Appends the given signature to this block's proofs.  It should have been validated prior to
     /// this via `BlockHash::verify()`.
     pub(crate) fn append_proof(
