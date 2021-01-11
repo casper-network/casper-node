@@ -222,7 +222,7 @@ where
 /// Given a root hash, find any try keys that are descendant from it that are:
 /// 1. referenced but not present in the database
 /// 2. referenced and present but whose values' hashes do not equal their keys (ie, corrupted)
-pub fn missing_descendant_trie_keys<K, V, T, S, E>(
+pub fn missing_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
     store: &S,

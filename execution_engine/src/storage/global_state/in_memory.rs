@@ -22,8 +22,7 @@ use crate::storage::{
     trie_store::{
         in_memory::InMemoryTrieStore,
         operations::{
-            self, missing_descendant_trie_keys, put_trie, read, read_with_proof, ReadResult,
-            WriteResult,
+            self, missing_trie_keys, put_trie, read, read_with_proof, ReadResult, WriteResult,
         },
     },
 };
@@ -257,14 +256,14 @@ impl StateProvider for InMemoryGlobalState {
     }
 
     /// Finds all of the keys of missing descendant `Trie<Key,StoredValue>` values
-    fn missing_descendant_trie_keys(
+    fn missing_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie_key: Blake2bHash,
     ) -> Result<Vec<Blake2bHash>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let missing_descendants =
-            missing_descendant_trie_keys::<
+            missing_trie_keys::<
                 Key,
                 StoredValue,
                 InMemoryReadTransaction,
