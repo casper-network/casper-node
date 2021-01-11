@@ -31,7 +31,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, Transfer, URef,
+    ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
 };
 use hex_fmt::HexFmt;
 
@@ -44,7 +44,7 @@ use crate::{
         deploy_acceptor::Error,
         fetcher::FetchResult,
     },
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::hash::Digest,
     rpcs::chain::BlockIdentifier,
     types::{
         Block as LinearBlock, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader,
@@ -608,7 +608,7 @@ pub enum ContractRuntimeRequest {
     Execute {
         /// Execution request containing deploys.
         #[serde(skip_serializing)]
-        execute_request: ExecuteRequest,
+        execute_request: Box<ExecuteRequest>,
         /// Responder to call with the execution result.
         responder: Responder<Result<ExecutionResults, engine_state::RootNotFound>>,
     },

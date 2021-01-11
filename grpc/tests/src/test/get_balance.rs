@@ -8,18 +8,22 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{core, core::ValidationError, shared::newtypes::Blake2bHash};
 use casper_types::{
-    account::AccountHash, runtime_args, AccessRights, Key, PublicKey, RuntimeArgs, URef, U512,
+    account::AccountHash, runtime_args, AccessRights, Key, PublicKey, RuntimeArgs, SecretKey, URef,
+    U512,
 };
 
 const TRANSFER_ARG_TARGET: &str = "target";
 const TRANSFER_ARG_AMOUNT: &str = "amount";
 const TRANSFER_ARG_ID: &str = "id";
 
-const ALICE_KEY: PublicKey = PublicKey::Ed25519([3; 32]);
-const BOB_KEY: PublicKey = PublicKey::Ed25519([5; 32]);
+static ALICE_KEY: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
+static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ALICE_KEY));
 
-static ALICE_ADDR: Lazy<AccountHash> = Lazy::new(|| ALICE_KEY.into());
-static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| BOB_KEY.into());
+static BOB_KEY: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([5; SecretKey::ED25519_LENGTH]).into());
+static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BOB_KEY));
+
 static TRANSFER_AMOUNT_1: Lazy<U512> = Lazy::new(|| U512::from(100_000_000));
 
 #[ignore]

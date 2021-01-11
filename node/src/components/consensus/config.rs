@@ -1,9 +1,12 @@
+use std::path::PathBuf;
+
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
+use casper_types::SecretKey;
+
 use crate::{
     components::chainspec_loader::{HighwayConfig, UpgradePoint},
-    crypto::asymmetric_key::SecretKey,
     types::Timestamp,
     utils::External,
     Chainspec,
@@ -16,6 +19,8 @@ use crate::{
 pub struct Config {
     /// Path to secret key file.
     pub secret_key_path: External<SecretKey>,
+    /// Path to the folder where unit hash files will be stored.
+    pub unit_hashes_folder: PathBuf,
 }
 
 /// Consensus protocol configuration.
@@ -37,7 +42,7 @@ pub(crate) struct ProtocolConfig {
 impl From<&Chainspec> for ProtocolConfig {
     fn from(c: &Chainspec) -> Self {
         ProtocolConfig {
-            highway_config: c.genesis.highway_config,
+            highway_config: c.genesis.highway_config.clone(),
             auction_delay: c.genesis.auction_delay,
             unbonding_delay: c.genesis.unbonding_delay,
             name: c.genesis.name.clone(),

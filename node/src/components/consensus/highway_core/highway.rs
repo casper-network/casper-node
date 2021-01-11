@@ -1,7 +1,11 @@
 mod vertex;
 
 pub(crate) use crate::components::consensus::highway_core::state::Params;
-pub(crate) use vertex::{Dependency, Endorsements, SignedWireUnit, Vertex, WireUnit};
+pub(crate) use vertex::{
+    Dependency, Endorsements, HashedWireUnit, SignedWireUnit, Vertex, WireUnit,
+};
+
+use std::path::PathBuf;
 
 use thiserror::Error;
 use tracing::{debug, error, info};
@@ -166,6 +170,7 @@ impl<C: Context> Highway<C> {
         id: C::ValidatorId,
         secret: C::ValidatorSecret,
         current_time: Timestamp,
+        unit_hash_file: Option<PathBuf>,
     ) -> Vec<Effect<C>> {
         assert!(
             self.active_validator.is_none(),
@@ -176,7 +181,8 @@ impl<C: Context> Highway<C> {
             .get_index(&id)
             .expect("missing own validator ID");
         let start_time = current_time.max(self.state.params().start_timestamp());
-        let (av, effects) = ActiveValidator::new(idx, secret, start_time, &self.state);
+        let (av, effects) =
+            ActiveValidator::new(idx, secret, start_time, &self.state, unit_hash_file);
         self.active_validator = Some(av);
         effects
     }
@@ -219,7 +225,7 @@ impl<C: Context> Highway<C> {
                 }
             }
             Vertex::Unit(unit) => unit
-                .wire_unit
+                .wire_unit()
                 .panorama
                 .missing_dependency(&self.state)
                 .or_else(|| {
@@ -483,9 +489,9 @@ impl<C: Context> Highway<C> {
     fn do_pre_validate_vertex(&self, vertex: &Vertex<C>) -> Result<(), VertexError> {
         match vertex {
             Vertex::Unit(unit) => {
-                let creator = unit.wire_unit.creator;
+                let creator = unit.wire_unit().creator;
                 let v_id = self.validators.id(creator).ok_or(UnitError::Creator)?;
-                if unit.wire_unit.instance_id != self.instance_id {
+                if unit.wire_unit().instance_id != self.instance_id {
                     return Err(UnitError::InstanceId.into());
                 }
                 if !C::verify_signature(&unit.hash(), v_id, &unit.signature) {
@@ -549,7 +555,7 @@ impl<C: Context> Highway<C> {
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let unit_hash = swunit.hash();
-        let creator = swunit.wire_unit.creator;
+        let creator = swunit.wire_unit().creator;
         let was_honest = !self.state.is_faulty(creator);
         self.state.add_valid_unit(swunit);
         let mut evidence_effects = self
@@ -584,29 +590,19 @@ impl<C: Context> Highway<C> {
 
     /// Checks whether the unit was created by a doppelganger.
     pub(crate) fn is_doppelganger_vertex(&self, vertex: &Vertex<C>) -> bool {
-        match vertex {
-            Vertex::Unit(swunit) => {
-                // If we already have the unit in our local state,
-                // we must have had created it ourselves earlier and it is now gossiped back to us.
-                !self.state.has_unit(&swunit.wire_unit.hash())
-                    && self
-                        .active_validator
-                        .as_ref()
-                        .map(|av| av.is_our_unit(&swunit.wire_unit))
-                        .unwrap_or(false)
-            }
-            Vertex::Endorsements(endorsements) => self
-                .active_validator
-                .as_ref()
-                .map(|av| av.includes_doppelgangers_endorsement(endorsements, &self.state))
-                .unwrap_or(false),
-            Vertex::Evidence(_) => false,
-        }
+        self.active_validator
+            .as_ref()
+            .map_or(false, |av| av.is_doppelganger_vertex(vertex, &self.state))
     }
 
     /// Returns whether this instance of protocol is an active validator.
     pub(crate) fn is_active(&self) -> bool {
         self.active_validator.is_some()
+    }
+
+    /// Returns the instance ID of this Highway instance.
+    pub(crate) fn instance_id(&self) -> &C::InstanceId {
+        &self.instance_id
     }
 }
 
@@ -670,7 +666,7 @@ pub(crate) mod tests {
         };
         let invalid_signature = 1u64;
         let invalid_signature_unit = SignedWireUnit {
-            wire_unit: wunit.clone(),
+            hashed_wire_unit: wunit.clone().into_hashed(),
             signature: invalid_signature,
         };
         let invalid_vertex = Vertex::Unit(invalid_signature_unit);
@@ -680,9 +676,10 @@ pub(crate) mod tests {
 
         // TODO: Also test the `missing_dependency` and `validate_vertex` steps.
 
-        let valid_signature = CAROL_SEC.sign(&wunit.hash(), &mut rng);
+        let hwunit = wunit.into_hashed();
+        let valid_signature = CAROL_SEC.sign(&hwunit.hash(), &mut rng);
         let correct_signature_unit = SignedWireUnit {
-            wire_unit: wunit,
+            hashed_wire_unit: hwunit,
             signature: valid_signature,
         };
         let valid_vertex = Vertex::Unit(correct_signature_unit);
@@ -708,8 +705,10 @@ pub(crate) mod tests {
                             signer0: &TestSecret,
                             wunit1: &WireUnit<TestContext>,
                             signer1: &TestSecret| {
-            let swunit0 = SignedWireUnit::new(wunit0.clone(), signer0, &mut rng);
-            let swunit1 = SignedWireUnit::new(wunit1.clone(), signer1, &mut rng);
+            let hwunit0 = wunit0.clone().into_hashed();
+            let swunit0 = SignedWireUnit::new(hwunit0, signer0, &mut rng);
+            let hwunit1 = wunit1.clone().into_hashed();
+            let swunit1 = SignedWireUnit::new(hwunit1, signer1, &mut rng);
             let evidence = Evidence::Equivocation(swunit0, swunit1);
             let vertex = Vertex::Evidence(evidence);
             highway

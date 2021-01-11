@@ -1007,16 +1007,14 @@ async fn handshake_reader<REv, P>(
     P: DeserializeOwned + Send + Display,
     REv: From<Event<P>>,
 {
-    if let Some(incoming_handshake_msg) = stream.next().await {
-        if let Ok(msg @ Message::Handshake { .. }) = incoming_handshake_msg {
-            debug!(%msg, %peer_id, "{}: handshake received", our_id);
-            return event_queue
-                .schedule(
-                    Event::IncomingMessage { peer_id, msg },
-                    QueueKind::NetworkIncoming,
-                )
-                .await;
-        }
+    if let Some(Ok(msg @ Message::Handshake { .. })) = stream.next().await {
+        debug!(%msg, %peer_id, "{}: handshake received", our_id);
+        return event_queue
+            .schedule(
+                Event::IncomingMessage { peer_id, msg },
+                QueueKind::NetworkIncoming,
+            )
+            .await;
     }
     warn!(%peer_id, "{}: receiving handshake failed, closing connection", our_id);
     event_queue

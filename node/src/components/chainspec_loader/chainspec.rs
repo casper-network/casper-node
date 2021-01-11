@@ -1,5 +1,4 @@
 use std::{
-    convert::TryInto,
     fmt::{self, Debug, Formatter},
     path::Path,
     str::FromStr,
@@ -19,16 +18,13 @@ use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
     shared::{motes::Motes, wasm_config::WasmConfig},
 };
-use casper_types::{auction::EraId, U512};
+use casper_types::{auction::EraId, PublicKey, U512};
 
 use super::{config, error::GenesisLoadError, Error};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    crypto::{
-        asymmetric_key::PublicKey,
-        hash::{self, Digest},
-    },
+    crypto::hash::{self, Digest},
     types::{TimeDiff, Timestamp},
     utils::Loadable,
 };
@@ -86,7 +82,7 @@ impl DeployConfig {
     }
 }
 
-#[derive(Copy, Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub(crate) struct HighwayConfig {
@@ -191,7 +187,7 @@ impl Loadable for Vec<GenesisAccount> {
             let bonded_amount = Motes::new(parsed.bonded_amount);
 
             let account = GenesisAccount::new(
-                casper_types::PublicKey::from(parsed.public_key),
+                parsed.public_key,
                 parsed.public_key.to_account_hash(),
                 balance,
                 bonded_amount,
@@ -248,11 +244,7 @@ impl GenesisConfig {
                         .public_key()
                         .expect("should have genesis public key");
 
-                    let crypto_public_key = public_key
-                        .try_into()
-                        .expect("should have valid genesis public key");
-
-                    Some((crypto_public_key, genesis_account.bonded_amount()))
+                    Some((public_key, genesis_account.bonded_amount()))
                 } else {
                     None
                 }

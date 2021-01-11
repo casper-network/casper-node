@@ -8,7 +8,7 @@ use casper_execution_engine::{core::engine_state::GenesisAccount, shared::motes:
 use casper_types::{
     account::AccountHash,
     auction::{ARG_DELEGATOR, ARG_VALIDATOR},
-    runtime_args, PublicKey, RuntimeArgs, U512,
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -19,21 +19,28 @@ const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
-const FAUCET: PublicKey = PublicKey::Ed25519([1; 32]);
-const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
-const VALIDATOR_2: PublicKey = PublicKey::Ed25519([5; 32]);
-const VALIDATOR_3: PublicKey = PublicKey::Ed25519([7; 32]);
-const DELEGATOR_1: PublicKey = PublicKey::Ed25519([204; 32]);
-const DELEGATOR_2: PublicKey = PublicKey::Ed25519([206; 32]);
-const DELEGATOR_3: PublicKey = PublicKey::Ed25519([208; 32]);
+static FAUCET: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]).into());
+static VALIDATOR_1: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
+static VALIDATOR_2: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([5; SecretKey::ED25519_LENGTH]).into());
+static VALIDATOR_3: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([7; SecretKey::ED25519_LENGTH]).into());
+static DELEGATOR_1: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([203; SecretKey::ED25519_LENGTH]).into());
+static DELEGATOR_2: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([205; SecretKey::ED25519_LENGTH]).into());
+static DELEGATOR_3: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([207; SecretKey::ED25519_LENGTH]).into());
 
 // These values were chosen to correspond to the values in accounts.csv
 // at the time of their introduction.
 
-static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| FAUCET.into());
-static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_1.into());
-static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_2.into());
-static VALIDATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_3.into());
+static FAUCET_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*FAUCET));
+static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
+static VALIDATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_2));
+static VALIDATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_3));
 static FAUCET_BALANCE: Lazy<U512> = Lazy::new(|| U512::from(100_000_000_000_000_000u64));
 static VALIDATOR_1_BALANCE: Lazy<U512> = Lazy::new(|| U512::from(100_000_000_000_000_000u64));
 static VALIDATOR_2_BALANCE: Lazy<U512> = Lazy::new(|| U512::from(100_000_000_000_000_000u64));
@@ -41,9 +48,9 @@ static VALIDATOR_3_BALANCE: Lazy<U512> = Lazy::new(|| U512::from(100_000_000_000
 static VALIDATOR_1_STAKE: Lazy<U512> = Lazy::new(|| U512::from(500_000_000_000_000_000u64));
 static VALIDATOR_2_STAKE: Lazy<U512> = Lazy::new(|| U512::from(400_000_000_000_000u64));
 static VALIDATOR_3_STAKE: Lazy<U512> = Lazy::new(|| U512::from(300_000_000_000_000u64));
-static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| DELEGATOR_1.into());
-static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| DELEGATOR_2.into());
-static DELEGATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| DELEGATOR_3.into());
+static DELEGATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_1));
+static DELEGATOR_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_2));
+static DELEGATOR_3_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*DELEGATOR_3));
 static DELEGATOR_1_BALANCE: Lazy<U512> = Lazy::new(|| U512::from(1_000_000_000_000_000u64));
 static DELEGATOR_2_BALANCE: Lazy<U512> = Lazy::new(|| U512::from(1_000_000_000_000_000u64));
 static DELEGATOR_3_BALANCE: Lazy<U512> = Lazy::new(|| U512::from(1_000_000_000_000_000u64));
@@ -56,25 +63,25 @@ static DELEGATOR_3_STAKE: Lazy<U512> = Lazy::new(|| U512::from(300_000_000_000_0
 fn validator_scores_should_reflect_delegates() {
     let accounts = {
         let faucet = GenesisAccount::new(
-            FAUCET,
+            *FAUCET,
             *FAUCET_ADDR,
             Motes::new(*FAUCET_BALANCE),
             Motes::new(U512::zero()),
         );
         let validator_1 = GenesisAccount::new(
-            VALIDATOR_1,
+            *VALIDATOR_1,
             *VALIDATOR_1_ADDR,
             Motes::new(*VALIDATOR_1_BALANCE),
             Motes::new(*VALIDATOR_1_STAKE),
         );
         let validator_2 = GenesisAccount::new(
-            VALIDATOR_2,
+            *VALIDATOR_2,
             *VALIDATOR_2_ADDR,
             Motes::new(*VALIDATOR_2_BALANCE),
             Motes::new(*VALIDATOR_2_STAKE),
         );
         let validator_3 = GenesisAccount::new(
-            VALIDATOR_3,
+            *VALIDATOR_3,
             *VALIDATOR_3_ADDR,
             Motes::new(*VALIDATOR_3_BALANCE),
             Motes::new(*VALIDATOR_3_STAKE),
@@ -182,8 +189,8 @@ fn validator_scores_should_reflect_delegates() {
             CONTRACT_DELEGATE,
             runtime_args! {
                 ARG_AMOUNT => *DELEGATOR_1_STAKE,
-                ARG_VALIDATOR => VALIDATOR_1,
-                ARG_DELEGATOR => DELEGATOR_1,
+                ARG_VALIDATOR => *VALIDATOR_1,
+                ARG_DELEGATOR => *DELEGATOR_1,
             },
         )
         .build();
@@ -231,8 +238,8 @@ fn validator_scores_should_reflect_delegates() {
             CONTRACT_DELEGATE,
             runtime_args! {
                 ARG_AMOUNT => *DELEGATOR_2_STAKE,
-                ARG_VALIDATOR => VALIDATOR_1,
-                ARG_DELEGATOR => DELEGATOR_2,
+                ARG_VALIDATOR => *VALIDATOR_1,
+                ARG_DELEGATOR => *DELEGATOR_2,
             },
         )
         .build();
@@ -281,8 +288,8 @@ fn validator_scores_should_reflect_delegates() {
             CONTRACT_DELEGATE,
             runtime_args! {
                 ARG_AMOUNT => *DELEGATOR_3_STAKE,
-                ARG_VALIDATOR => VALIDATOR_2,
-                ARG_DELEGATOR => DELEGATOR_3,
+                ARG_VALIDATOR => *VALIDATOR_2,
+                ARG_DELEGATOR => *DELEGATOR_3,
             },
         )
         .build();

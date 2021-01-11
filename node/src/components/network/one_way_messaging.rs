@@ -1,60 +1,93 @@
-use std::{
-    fmt::{self, Debug, Display, Formatter},
-    future::Future,
-    io,
-    pin::Pin,
-};
+//! This module is home to the infrastructure to support "one-way" messages, i.e. requests which
+//! expect no response.
+//!
+//! For now, as a side-effect of the original small_network component, all peer-to-peer messages
+//! defined outside of the network component are one-way.
+
+use std::{fmt::Debug, future::Future, io, iter, pin::Pin};
 
 use futures::{AsyncReadExt, AsyncWriteExt, FutureExt};
 use futures_io::{AsyncRead, AsyncWrite};
-use libp2p::request_response::RequestResponseCodec;
-use serde::{Deserialize, Serialize};
+use libp2p::{
+    request_response::{
+        ProtocolSupport, RequestResponse, RequestResponseCodec, RequestResponseConfig,
+    },
+    PeerId,
+};
 
-use super::ProtocolId;
-use crate::{components::network::Config, types::NodeId};
+use super::{Config, Error, PayloadT, ProtocolId};
+use crate::{components::chainspec_loader::Chainspec, types::NodeId};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Message<P>(P);
+/// The inner portion of the `ProtocolId` for the one-way message behavior.  A standard prefix and
+/// suffix will be applied to create the full protocol name.
+const PROTOCOL_NAME_INNER: &str = "validator/one-way";
 
-impl<P> Message<P> {
-    pub fn new(payload: P) -> Self {
-        Message(payload)
-    }
-
-    pub fn into_payload(self) -> P {
-        self.0
-    }
-}
-
-impl<P: Display> Display for Message<P> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "payload: {}", self.0)
-    }
-}
-
-#[derive(Debug)]
-pub(in crate::components::network) struct IncomingMessage<P> {
-    pub source: NodeId,
-    pub message: Message<P>,
+/// Constructs a new libp2p behavior suitable for use by one-way messaging.
+pub(super) fn new_behavior(config: &Config, chainspec: &Chainspec) -> RequestResponse<Codec> {
+    let codec = Codec::from(config);
+    let protocol_id = ProtocolId::new(chainspec, PROTOCOL_NAME_INNER);
+    let request_response_config = RequestResponseConfig::from(config);
+    RequestResponse::new(
+        codec,
+        iter::once((protocol_id, ProtocolSupport::Full)),
+        request_response_config,
+    )
 }
 
 #[derive(Debug)]
-pub(in crate::components::network) struct OutgoingMessage<P> {
-    pub destination: NodeId,
-    pub message: Message<P>,
+pub(super) struct Outgoing {
+    pub destination: PeerId,
+    pub message: Vec<u8>,
+}
+
+impl Outgoing {
+    pub(super) fn new<P: PayloadT>(
+        destination: NodeId,
+        payload: &P,
+        max_size: u32,
+    ) -> Result<Self, Error> {
+        let serialized_message =
+            bincode::serialize(payload).map_err(|error| Error::Serialization(*error))?;
+
+        if serialized_message.len() > max_size as usize {
+            return Err(Error::MessageTooLarge {
+                max_size,
+                actual_size: serialized_message.len() as u64,
+            });
+        }
+
+        match &destination {
+            NodeId::P2p(destination) => Ok(Outgoing {
+                destination: destination.clone(),
+                message: serialized_message,
+            }),
+            destination => {
+                unreachable!(
+                    "can't send to {} (small_network node ID) via libp2p",
+                    destination
+                )
+            }
+        }
+    }
+}
+
+impl From<Outgoing> for Vec<u8> {
+    fn from(outgoing: Outgoing) -> Self {
+        outgoing.message
+    }
 }
 
 /// Implements libp2p `RequestResponseCodec` for one-way messages, i.e. requests which expect no
 /// response.
 #[derive(Debug, Clone)]
-pub struct Codec {
+pub(super) struct Codec {
     max_message_size: u32,
 }
 
 impl From<&Config> for Codec {
     fn from(config: &Config) -> Self {
         Codec {
-            max_message_size: config.max_message_size,
+            max_message_size: config.max_one_way_message_size,
         }
     }
 }

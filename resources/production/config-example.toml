@@ -33,6 +33,9 @@ abbreviate_modules = false
 # consensus messages.
 secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
+# The folder in which the files with per-era latest unit hashes will be stored.
+unit_hashes_folder = "/var/lib/casper/casper-node"
+
 
 # ====================================
 # Configuration options for networking
@@ -60,7 +63,7 @@ bind_address = '0.0.0.0:35000'
 known_addresses = ['18.144.176.168:35000', '13.57.200.251:35000']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
-gossip_interval = 300_000
+gossip_interval = 120_000
 
 # Enable systemd support. If enabled, the node will notify systemd once it has synced and its
 # listening socket for incoming connections is open.

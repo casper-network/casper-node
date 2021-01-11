@@ -408,9 +408,13 @@ impl reactor::Reactor for Reactor {
             .expect("should have state root hash");
         let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone())
             .with_parent_map(latest_block);
-        let proto_block_validator = BlockValidator::new();
+        let (proto_block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
         let linear_chain = LinearChain::new();
 
+        effects.extend(reactor::wrap_effects(
+            Event::ProtoBlockValidator,
+            block_validator_effects,
+        ));
         effects.extend(reactor::wrap_effects(Event::Network, network_effects));
         effects.extend(reactor::wrap_effects(
             Event::SmallNetwork,
@@ -722,8 +726,8 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(peer_id)) => {
-                debug!(%peer_id, "new peer announcement event ignored (validator reactor does not care)");
-                Effects::new()
+                let event = consensus::Event::NewPeer(peer_id);
+                self.dispatch_event(effect_builder, rng, Event::Consensus(event))
             }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
                 deploy,

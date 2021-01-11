@@ -16,7 +16,7 @@ use std::{
     fmt::{self, Debug, Formatter},
     time::Duration,
 };
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::{
     components::Component,
@@ -266,7 +266,11 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             ),
             GossipAction::Noop => Effects::new(),
             GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
-                unreachable!("can't have gossiped if we don't hold the complete data")
+                warn!(
+                    "can't have gossiped if we don't hold the complete data - likely the timeout \
+                    check was very delayed due to busy reactor"
+                );
+                Effects::new()
             }
         }
     }
@@ -422,7 +426,7 @@ impl<T: Item + 'static, REv: ReactorEventT<T>> Gossiper<T, REv> {
             )),
             GossipAction::Noop => (),
             GossipAction::GetRemainder { .. } | GossipAction::AwaitingRemainder => {
-                unreachable!("can't have gossiped if we don't hold the complete item")
+                error!("can't have gossiped if we don't hold the complete item");
             }
         }
 

@@ -8,7 +8,7 @@ use thiserror::Error;
 pub enum Error {
     /// Invalid configuration: must have at least one known address.
     #[error("config must have at least one known address")]
-    InvalidConfig,
+    NoKnownAddress,
 
     /// Signing libp2p-noise static ID keypair failed.
     #[error("signing libp2p-noise static ID keypair failed: {0}")]
@@ -27,4 +27,16 @@ pub enum Error {
         address: Multiaddr,
         error: ConnectionLimit,
     },
+
+    /// Failed to serialize a message.
+    #[error("failed to serialize: {0}")]
+    Serialization(bincode::ErrorKind),
+
+    /// Failed to deserialize a message.
+    #[error("failed to deserialize: {0}")]
+    Deserialization(bincode::ErrorKind),
+
+    /// Message too large.
+    #[error("message of {actual_size} bytes exceeds limit of {max_size} bytes")]
+    MessageTooLarge { max_size: u32, actual_size: u64 },
 }

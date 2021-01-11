@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, fmt::Debug};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     components::consensus::{
@@ -58,7 +58,7 @@ impl<C: Context> Vertex<C> {
     /// obtained _and_ validated. Only after that, the vertex can be considered valid.
     pub(crate) fn value(&self) -> Option<&C::ConsensusValue> {
         match self {
-            Vertex::Unit(swunit) => swunit.wire_unit.value.as_ref(),
+            Vertex::Unit(swunit) => swunit.wire_unit().value.as_ref(),
             Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
         }
     }
@@ -82,7 +82,7 @@ impl<C: Context> Vertex<C> {
     /// Returns a `Timestamp` provided the vertex is a `Vertex::Unit`
     pub(crate) fn timestamp(&self) -> Option<Timestamp> {
         match self {
-            Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit.wire_unit.timestamp),
+            Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit.wire_unit().timestamp),
             Vertex::Evidence(_) => None,
             Vertex::Endorsements(_) => None,
         }
@@ -97,7 +97,7 @@ impl<C: Context> Vertex<C> {
 
     pub(crate) fn id(&self) -> Dependency<C> {
         match self {
-            Vertex::Unit(signed_wire_unit) => Dependency::Unit(signed_wire_unit.wire_unit.hash()),
+            Vertex::Unit(signed_wire_unit) => Dependency::Unit(signed_wire_unit.hash()),
             Vertex::Evidence(evidence) => Dependency::Evidence(evidence.perpetrator()),
             Vertex::Endorsements(endorsement) => Dependency::Endorsement(endorsement.unit),
         }
@@ -110,25 +110,73 @@ impl<C: Context> Vertex<C> {
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
 pub(crate) struct SignedWireUnit<C: Context> {
-    pub(crate) wire_unit: WireUnit<C>,
+    pub(crate) hashed_wire_unit: HashedWireUnit<C>,
     pub(crate) signature: C::Signature,
 }
 
 impl<C: Context> SignedWireUnit<C> {
     pub(crate) fn new(
-        wire_unit: WireUnit<C>,
+        hashed_wire_unit: HashedWireUnit<C>,
         secret_key: &C::ValidatorSecret,
         rng: &mut NodeRng,
     ) -> Self {
-        let signature = secret_key.sign(&wire_unit.hash(), rng);
+        let signature = secret_key.sign(&hashed_wire_unit.hash, rng);
         SignedWireUnit {
-            wire_unit,
+            hashed_wire_unit,
             signature,
         }
     }
 
+    pub(crate) fn wire_unit(&self) -> &WireUnit<C> {
+        self.hashed_wire_unit.wire_unit()
+    }
+
     pub(crate) fn hash(&self) -> C::Hash {
-        self.wire_unit.hash()
+        self.hashed_wire_unit.hash()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub(crate) struct HashedWireUnit<C: Context> {
+    hash: C::Hash,
+    wire_unit: WireUnit<C>,
+}
+
+impl<C: Context> HashedWireUnit<C> {
+    /// Computes the unit's hash and creates a new `HashedWireUnit`.
+    pub(crate) fn new(wire_unit: WireUnit<C>) -> Self {
+        let hash = wire_unit.compute_hash();
+        Self::new_with_hash(wire_unit, hash)
+    }
+
+    pub(crate) fn into_inner(self) -> WireUnit<C> {
+        self.wire_unit
+    }
+
+    pub(crate) fn wire_unit(&self) -> &WireUnit<C> {
+        &self.wire_unit
+    }
+
+    pub(crate) fn hash(&self) -> C::Hash {
+        self.hash
+    }
+
+    /// Creates a new `HashedWireUnit`. Make sure the `hash` is correct, and identical with the
+    /// result of `wire_unit.compute_hash`.
+    pub(crate) fn new_with_hash(wire_unit: WireUnit<C>, hash: C::Hash) -> Self {
+        HashedWireUnit { hash, wire_unit }
+    }
+}
+
+impl<C: Context> Serialize for HashedWireUnit<C> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.wire_unit.serialize(serializer)
+    }
+}
+
+impl<'de, C: Context> Deserialize<'de> for HashedWireUnit<C> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(HashedWireUnit::new(<_>::deserialize(deserializer)?))
     }
 }
 
@@ -161,7 +209,6 @@ impl<C: Context> Debug for WireUnit<C> {
         }
 
         f.debug_struct("WireUnit")
-            .field("hash()", &self.hash())
             .field("value", &self.value.as_ref().map(|_| Ellipsis))
             .field("creator.0", &self.creator.0)
             .field("instance_id", &self.instance_id)
@@ -176,11 +223,8 @@ impl<C: Context> Debug for WireUnit<C> {
 }
 
 impl<C: Context> WireUnit<C> {
-    /// Returns the unit's hash, which is used as a unit identifier.
-    // TODO: This involves serializing and hashing. Memoize?
-    pub(crate) fn hash(&self) -> C::Hash {
-        // TODO: Use serialize_into to avoid allocation?
-        <C as Context>::hash(&bincode::serialize(self).expect("serialize WireUnit"))
+    pub(crate) fn into_hashed(self) -> HashedWireUnit<C> {
+        HashedWireUnit::new(self)
     }
 
     /// Returns the time at which the round containing this unit began.
@@ -191,6 +235,12 @@ impl<C: Context> WireUnit<C> {
     /// Returns the creator's previous unit.
     pub(crate) fn previous(&self) -> Option<&C::Hash> {
         self.panorama[self.creator].correct()
+    }
+
+    /// Returns the unit's hash, which is used as a unit identifier.
+    fn compute_hash(&self) -> C::Hash {
+        // TODO: Use serialize_into to avoid allocation?
+        <C as Context>::hash(&bincode::serialize(self).expect("serialize WireUnit"))
     }
 }
 

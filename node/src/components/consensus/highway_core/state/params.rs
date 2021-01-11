@@ -1,7 +1,7 @@
 use super::Timestamp;
 
 /// Protocol parameters for Highway.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct Params {
     seed: u64,
     block_reward: u64,
