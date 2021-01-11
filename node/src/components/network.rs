@@ -2,7 +2,12 @@ mod behavior;
 mod config;
 mod error;
 mod event;
-mod one_way_message;
+mod gossip;
+mod one_way_messaging;
+mod peer_discovery;
+mod protocol_id;
+#[cfg(test)]
+mod tests;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -12,21 +17,20 @@ use std::{
     io,
     marker::PhantomData,
     num::NonZeroU32,
-    time::Duration,
 };
 
 use datasize::DataSize;
-use futures::{
-    future::{self, BoxFuture, Either},
-    FutureExt,
-};
+use futures::{future::BoxFuture, FutureExt};
 use libp2p::{
     core::{
         connection::{ConnectedPoint, PendingConnectionError},
         upgrade,
     },
+    gossipsub::GossipsubEvent,
+    identify::IdentifyEvent,
     identity::Keypair,
     noise::{self, NoiseConfig, X25519Spec},
+    request_response::{RequestResponseEvent, RequestResponseMessage},
     swarm::{SwarmBuilder, SwarmEvent},
     tcp::TokioTcpConfig,
     yamux::Config as YamuxConfig,
@@ -44,10 +48,9 @@ use tracing::{debug, error, info, trace, warn};
 pub(crate) use self::event::Event;
 use self::{
     behavior::{Behavior, SwarmBehaviorEvent},
-    one_way_message::{
-        Behavior as OneWayMessageBehavior, IncomingMessage as OneWayIncomingMessage,
-        Message as OneWayMessage, OutgoingMessage as OneWayOutgoingMessage,
-    },
+    gossip::GossipMessage,
+    one_way_messaging::{Codec as OneWayCodec, Outgoing as OneWayOutgoingMessage},
+    protocol_id::ProtocolId,
 };
 pub use self::{config::Config, error::Error};
 use crate::{
@@ -101,10 +104,7 @@ enum ConnectionState {
 }
 
 #[derive(DataSize)]
-pub(crate) struct Network<REv, P>
-where
-    REv: 'static,
-{
+pub(crate) struct Network<REv, P> {
     our_id: NodeId,
     #[data_size(skip)]
     peers: HashMap<NodeId, ConnectedPoint>,
@@ -115,17 +115,17 @@ where
     known_addresses: HashMap<Multiaddr, ConnectionState>,
     /// The channel through which to send outgoing one-way requests.
     #[data_size(skip)]
-    one_way_message_sender: mpsc::UnboundedSender<OneWayOutgoingMessage<P>>,
-    /// The interval between each fresh round of gossiping the node's public listening address.
-    gossip_interval: Duration,
-    /// An index for an iteration of gossiping our own public listening address.  This is
-    /// incremented by 1 on each iteration, and wraps on overflow.
-    next_gossip_address_index: u32,
+    one_way_message_sender: mpsc::UnboundedSender<OneWayOutgoingMessage>,
+    max_one_way_message_size: u32,
+    /// The channel through which to send new messages for gossiping.
+    #[data_size(skip)]
+    gossip_message_sender: mpsc::UnboundedSender<GossipMessage>,
+    max_gossip_message_size: u32,
     /// Channel signaling a shutdown of the network component.
     #[data_size(skip)]
     shutdown_sender: Option<watch::Sender<()>>,
     server_join_handle: Option<JoinHandle<()>>,
-    _phantom_data: PhantomData<(REv, P)>,
+    _phantom: PhantomData<(REv, P)>,
 }
 
 impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
@@ -141,8 +141,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         notify: bool,
     ) -> Result<(Network<REv, P>, Effects<Event<P>>), Error> {
         // Create a new Ed25519 keypair for this session.
-        let id_keys = Keypair::generate_ed25519();
-        let our_peer_id = PeerId::from(id_keys.public());
+        let our_id_keys = Keypair::generate_ed25519();
+        let our_peer_id = PeerId::from(our_id_keys.public());
         let our_id = NodeId::from(our_peer_id.clone());
 
         // Convert the known addresses to multiaddr format and prepare the shutdown signal.
@@ -158,10 +158,11 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         // Assert we have at least one known address in the config.
         if known_addresses.is_empty() {
             warn!("{}: no known addresses provided via config", our_id);
-            return Err(Error::InvalidConfig);
+            return Err(Error::NoKnownAddress);
         }
 
         let (one_way_message_sender, one_way_message_receiver) = mpsc::unbounded_channel();
+        let (gossip_message_sender, gossip_message_receiver) = mpsc::unbounded_channel();
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
 
         // If the env var "CASPER_ENABLE_LIBP2P" is not defined, exit without starting the server.
@@ -172,11 +173,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 listening_addresses: vec![],
                 known_addresses,
                 one_way_message_sender,
-                gossip_interval: config.gossip_interval.into(),
-                next_gossip_address_index: 0,
+                max_one_way_message_size: 0,
+                gossip_message_sender,
+                max_gossip_message_size: 0,
                 shutdown_sender: Some(server_shutdown_sender),
                 server_join_handle: None,
-                _phantom_data: PhantomData,
+                _phantom: PhantomData,
             };
             return Ok((network, Effects::new()));
         }
@@ -187,7 +189,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
 
         // Create a keypair for authenticated encryption of the transport.
         let noise_keys = noise::Keypair::<X25519Spec>::new()
-            .into_authentic(&id_keys)
+            .into_authentic(&our_id_keys)
             .map_err(Error::StaticKeypairSigning)?;
 
         // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `yamux`
@@ -201,12 +203,19 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             .boxed();
 
         // Create a Swarm to manage peers and events.
-        let behavior = Behavior::new(&config, chainspec, our_id.clone());
+        let behavior = Behavior::new(&config, chainspec, our_id_keys.public());
         let mut swarm = SwarmBuilder::new(transport, behavior, our_peer_id)
             .executor(Box::new(|future| {
                 tokio::spawn(future);
             }))
             .build();
+
+        // Specify listener.
+        let listening_address = address_str_to_multiaddr(config.bind_address.as_str());
+        Swarm::listen_on(&mut swarm, listening_address.clone()).map_err(|error| Error::Listen {
+            address: listening_address,
+            error,
+        })?;
 
         // Schedule connection attempts to known peers.
         for address in known_addresses.keys() {
@@ -216,19 +225,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             })?;
         }
 
-        // Specify listener.
-        let listening_address = address_str_to_multiaddr(config.bind_address.as_str());
-        Swarm::listen_on(&mut swarm, listening_address.clone()).map_err(|error| Error::Listen {
-            address: listening_address,
-            error,
-        })?;
-
         // Start the server task.
         let server_join_handle = Some(tokio::spawn(server_task(
             event_queue,
             one_way_message_receiver,
+            gossip_message_receiver,
             server_shutdown_receiver,
-            our_id.clone(),
             swarm,
         )));
 
@@ -238,17 +240,19 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             listening_addresses: vec![],
             known_addresses,
             one_way_message_sender,
-            gossip_interval: config.gossip_interval.into(),
-            next_gossip_address_index: 0,
+            max_one_way_message_size: config.max_one_way_message_size,
+            gossip_message_sender,
+            max_gossip_message_size: config.max_gossip_message_size,
             shutdown_sender: Some(server_shutdown_sender),
             server_join_handle,
-            _phantom_data: PhantomData,
+            _phantom: PhantomData,
         };
         Ok((network, Effects::new()))
     }
 
     fn handle_connection_established(
         &mut self,
+        effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
         endpoint: ConnectedPoint,
         num_established: NonZeroU32,
@@ -263,9 +267,9 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             }
         }
 
-        let _ = self.peers.insert(peer_id, endpoint);
-
-        Effects::new()
+        let _ = self.peers.insert(peer_id.clone(), endpoint);
+        // TODO - see if this can be removed.  The announcement is only used by the joiner reactor.
+        effect_builder.announce_new_peer(peer_id).ignore()
     }
 
     fn handle_unknown_peer_unreachable_address(
@@ -281,8 +285,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             }
         }
 
-        // TODO - Consider how to handle becoming isolated _after_ we've bootstrapped.  Ensure we
-        //        can't re-enter this block unless we implement re-bootstrapping for example.
         if self.is_isolated() {
             if self.is_bootstrap_node() {
                 info!(
@@ -302,23 +304,18 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         Effects::new()
     }
 
-    fn handle_incoming_one_way_message(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        source: NodeId,
-        message: OneWayMessage<P>,
-    ) -> Effects<Event<P>> {
-        trace!(%source, %message, "{}: incoming one-way message", self.our_id);
-        effect_builder
-            .announce_message_received(source, message.into_payload())
-            .ignore()
-    }
-
     /// Queues a message to be sent to a specific node.
-    fn send_message(&self, destination: NodeId, message: OneWayMessage<P>) {
-        let outgoing_message = OneWayOutgoingMessage {
+    fn send_message(&self, destination: NodeId, payload: P) {
+        let outgoing_message = match OneWayOutgoingMessage::new(
             destination,
-            message,
+            &payload,
+            self.max_one_way_message_size,
+        ) {
+            Ok(msg) => msg,
+            Err(error) => {
+                warn!(%error, %payload, "{}: failed to construct outgoing message", self.our_id);
+                return;
+            }
         };
         if let Err(error) = self.one_way_message_sender.send(outgoing_message) {
             warn!(%error, "{}: dropped outgoing message, server has shut down", self.our_id);
@@ -326,17 +323,24 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     }
 
     /// Queues a message to be sent to all nodes.
-    fn broadcast_message(&self, message: OneWayMessage<P>) {
-        for peer_id in self.peers.keys() {
-            self.send_message(peer_id.clone(), message.clone());
+    fn gossip_message(&self, payload: P) {
+        let gossip_message = match GossipMessage::new(&payload, self.max_gossip_message_size) {
+            Ok(msg) => msg,
+            Err(error) => {
+                warn!(%error, %payload, "{}: failed to construct new gossip message", self.our_id);
+                return;
+            }
+        };
+        if let Err(error) = self.gossip_message_sender.send(gossip_message) {
+            warn!(%error, "{}: dropped new gossip message, server has shut down", self.our_id);
         }
     }
 
     /// Queues a message to `count` random nodes on the network.
-    fn gossip_message(
+    fn send_message_to_n_peers(
         &self,
         rng: &mut NodeRng,
-        message: OneWayMessage<P>,
+        payload: P,
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
@@ -359,7 +363,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         }
 
         for &peer_id in &peer_ids {
-            self.send_message(peer_id.clone(), message.clone());
+            self.send_message(peer_id.clone(), payload.clone());
         }
 
         peer_ids.into_iter().cloned().collect()
@@ -389,17 +393,21 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     }
 }
 
+fn our_id(swarm: &Swarm<Behavior>) -> NodeId {
+    NodeId::P2p(Swarm::local_peer_id(swarm).clone())
+}
+
 async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     event_queue: EventQueueHandle<REv>,
     // Receives outgoing one-way messages to be sent out via libp2p.
-    mut one_way_outgoing_message_receiver: mpsc::UnboundedReceiver<OneWayOutgoingMessage<P>>,
+    mut one_way_outgoing_message_receiver: mpsc::UnboundedReceiver<OneWayOutgoingMessage>,
+    // Receives new gossip messages to be sent out via libp2p.
+    mut gossip_message_receiver: mpsc::UnboundedReceiver<GossipMessage>,
     // Receives notification to shut down the server loop.
     mut shutdown_receiver: watch::Receiver<()>,
-    our_id: NodeId,
-    mut swarm: Swarm<Behavior<P>>,
+    mut swarm: Swarm<Behavior>,
 ) {
-    let our_id_cloned = our_id.clone();
-    let main_task = async move {
+    async move {
         loop {
             // Note that `select!` will cancel all futures on branches not eventually selected by
             // dropping them.  Each future inside this macro must be cancellation-safe.
@@ -407,11 +415,11 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                 // `swarm.next_event()` is cancellation-safe - see
                 // https://github.com/libp2p/rust-libp2p/issues/1876
                 swarm_event = swarm.next_event() => {
-                    trace!("{}: {:?}", our_id_cloned, swarm_event);
-                    handle_swarm_event(event_queue, swarm_event).await;
+                    trace!("{}: {:?}", our_id(&swarm), swarm_event);
+                    handle_swarm_event(&mut swarm, event_queue, swarm_event).await;
                 }
 
-                // `UnboundedReceiver::recv()` is also cancellation safe - see
+                // `UnboundedReceiver::recv()` is cancellation safe - see
                 // https://tokio.rs/tokio/tutorial/select#cancellation
                 maybe_outgoing_message = one_way_outgoing_message_receiver.recv() => {
                     match maybe_outgoing_message {
@@ -421,50 +429,77 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                         }
                         None => {
                             // The data sender has been dropped - exit the loop.
-                            info!("{}: exiting network server task", our_id_cloned);
+                            info!("{}: exiting network server task", our_id(&swarm));
                             break;
                         }
                     }
                 }
+
+                // `UnboundedReceiver::recv()` is cancellation safe - see
+                // https://tokio.rs/tokio/tutorial/select#cancellation
+                maybe_gossip_message = gossip_message_receiver.recv() => {
+                    match maybe_gossip_message {
+                        Some(gossip_message) => {
+                            // We've received a new message to be gossiped.
+                            swarm.gossip(gossip_message);
+                        }
+                        None => {
+                            // The data sender has been dropped - exit the loop.
+                            info!("{}: exiting network server task", our_id(&swarm));
+                            break;
+                        }
+                    }
+                }
+
+                _ = shutdown_receiver.recv() => {
+                    info!("{}: shutting down libp2p", our_id(&swarm));
+                    break;
+                }
             }
         }
-    };
-
-    let shutdown_messages = async move { while shutdown_receiver.recv().await.is_some() {} };
-
-    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
-    // infinite loop to terminate, which never happens.
-    match future::select(Box::pin(shutdown_messages), Box::pin(main_task)).await {
-        Either::Left(_) => info!("{}: shutting down libp2p", our_id),
-        Either::Right(_) => unreachable!(),
     }
+    .await;
 }
 
 async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
+    swarm: &mut Swarm<Behavior>,
     event_queue: EventQueueHandle<REv>,
-    swarm_event: SwarmEvent<SwarmBehaviorEvent<P>, E>,
+    swarm_event: SwarmEvent<SwarmBehaviorEvent, E>,
 ) {
     let event = match swarm_event {
         SwarmEvent::ConnectionEstablished {
             peer_id,
             endpoint,
             num_established,
-        } => Event::ConnectionEstablished {
-            peer_id: NodeId::from(peer_id),
-            endpoint,
-            num_established,
-        },
+        } => {
+            // If we dialed the peer, add their listening address to our kademlia instance.
+            if endpoint.is_dialer() {
+                swarm.add_discovered_peer(&peer_id, vec![endpoint.get_remote_address().clone()]);
+            }
+            Event::ConnectionEstablished {
+                peer_id: NodeId::from(peer_id),
+                endpoint,
+                num_established,
+            }
+        }
         SwarmEvent::ConnectionClosed {
             peer_id,
             endpoint,
             num_established,
             cause,
-        } => Event::ConnectionClosed {
-            peer_id: NodeId::from(peer_id),
-            endpoint,
-            num_established,
-            cause: cause.map(|error| error.to_string()),
-        },
+        } => {
+            // If we lost the final connection to this peer, do a random kademlia lookup to discover
+            // any new/replacement peers.
+            if num_established == 0 {
+                swarm.discover_peers()
+            }
+            Event::ConnectionClosed {
+                peer_id: NodeId::from(peer_id),
+                endpoint,
+                num_established,
+                cause: cause.map(|error| error.to_string()),
+            }
+        }
         SwarmEvent::UnreachableAddr {
             peer_id,
             address,
@@ -481,38 +516,22 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
         }
         SwarmEvent::NewListenAddr(address) => Event::NewListenAddress(address),
         SwarmEvent::ExpiredListenAddr(address) => Event::ExpiredListenAddress(address),
-        SwarmEvent::ListenerClosed {
-            addresses,
-            reason: Ok(()),
-        } => Event::ListenerClosed {
-            addresses,
-            reason: Ok(()),
-        },
-        SwarmEvent::ListenerClosed {
-            addresses,
-            reason: Err(error),
-        } => Event::ListenerClosed {
-            addresses,
-            reason: Err(error),
-        },
-        SwarmEvent::ListenerError { error } => Event::ListenerError { error },
-        SwarmEvent::Behaviour(SwarmBehaviorEvent::OneWayMessage(one_way_incoming_message)) => {
-            // We've received a one-way request from a peer: push it to the reactor, but using the
-            // `NetworkIncoming` queue.
-            return event_queue
-                .schedule(
-                    Event::IncomingOneWayMessage {
-                        source: one_way_incoming_message.source,
-                        message: one_way_incoming_message.message,
-                    },
-                    QueueKind::NetworkIncoming,
-                )
-                .await;
+        SwarmEvent::ListenerClosed { addresses, reason } => {
+            Event::ListenerClosed { addresses, reason }
         }
-        SwarmEvent::Behaviour(SwarmBehaviorEvent::Ping(ping_event)) => {
-            trace!("{:?}", ping_event);
-            // Nothing to do here - just return.
+        SwarmEvent::ListenerError { error } => Event::ListenerError { error },
+        SwarmEvent::Behaviour(SwarmBehaviorEvent::OneWayMessaging(event)) => {
+            return handle_one_way_messaging_event(swarm, event_queue, event).await;
+        }
+        SwarmEvent::Behaviour(SwarmBehaviorEvent::Gossiper(event)) => {
+            return handle_gossip_event(swarm, event_queue, event).await;
+        }
+        SwarmEvent::Behaviour(SwarmBehaviorEvent::Kademlia(event)) => {
+            debug!(?event, "{}: new kademlia event", our_id(swarm));
             return;
+        }
+        SwarmEvent::Behaviour(SwarmBehaviorEvent::Identify(event)) => {
+            return handle_identify_event(swarm, event);
         }
         SwarmEvent::IncomingConnection { .. }
         | SwarmEvent::IncomingConnectionError { .. }
@@ -520,6 +539,155 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
         | SwarmEvent::Dialing(_) => return,
     };
     event_queue.schedule(event, QueueKind::Network).await;
+}
+
+async fn handle_one_way_messaging_event<REv: ReactorEventT<P>, P: PayloadT>(
+    swarm: &mut Swarm<Behavior>,
+    event_queue: EventQueueHandle<REv>,
+    event: RequestResponseEvent<Vec<u8>, ()>,
+) {
+    match event {
+        RequestResponseEvent::Message {
+            peer,
+            message: RequestResponseMessage::Request { request, .. },
+        } => {
+            // We've received a one-way request from a peer: announce it via the reactor on the
+            // `NetworkIncoming` queue.
+            let sender = NodeId::from(peer);
+            match bincode::deserialize::<P>(&request) {
+                Ok(payload) => {
+                    debug!(%sender, %payload, "{}: incoming one-way message received", our_id(swarm));
+                    event_queue
+                        .schedule(
+                            NetworkAnnouncement::MessageReceived { sender, payload },
+                            QueueKind::NetworkIncoming,
+                        )
+                        .await;
+                }
+                Err(error) => {
+                    warn!(
+                        %sender,
+                        %error,
+                        "{}: failed to deserialize incoming one-way message",
+                        our_id(swarm)
+                    );
+                }
+            }
+        }
+        RequestResponseEvent::Message {
+            message: RequestResponseMessage::Response { .. },
+            ..
+        } => {
+            // Note that a response will still be emitted immediately after the request has been
+            // sent, since `RequestResponseCodec::read_response` for the one-way Codec does not
+            // actually read anything from the given I/O stream.
+        }
+        RequestResponseEvent::OutboundFailure {
+            peer,
+            request_id,
+            error,
+        } => {
+            warn!(
+                ?peer,
+                ?request_id,
+                ?error,
+                "{}: outbound failure",
+                our_id(swarm)
+            )
+        }
+        RequestResponseEvent::InboundFailure {
+            peer,
+            request_id,
+            error,
+        } => {
+            warn!(
+                ?peer,
+                ?request_id,
+                ?error,
+                "{}: inbound failure",
+                our_id(swarm)
+            )
+        }
+    }
+}
+
+async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
+    swarm: &mut Swarm<Behavior>,
+    event_queue: EventQueueHandle<REv>,
+    event: GossipsubEvent,
+) {
+    match event {
+        GossipsubEvent::Message(_sender, _message_id, message) => {
+            // We've received a gossiped message: announce it via the reactor on the
+            // `NetworkIncoming` queue.
+            let sender = match message.source {
+                Some(source) => NodeId::from(source),
+                None => {
+                    warn!(%_sender, ?message, "{}: libp2p gossiped message without source", our_id(swarm));
+                    return;
+                }
+            };
+            match bincode::deserialize::<P>(&message.data) {
+                Ok(payload) => {
+                    debug!(%sender, %payload, "{}: libp2p gossiped message received", our_id(swarm));
+                    event_queue
+                        .schedule(
+                            NetworkAnnouncement::MessageReceived { sender, payload },
+                            QueueKind::NetworkIncoming,
+                        )
+                        .await;
+                }
+                Err(error) => {
+                    warn!(
+                        %sender,
+                        %error,
+                        "{}: failed to deserialize gossiped message",
+                        our_id(swarm)
+                    );
+                }
+            }
+        }
+        GossipsubEvent::Subscribed { peer_id, .. } => {
+            debug!(%peer_id, "{}: new gossip subscriber", our_id(swarm));
+        }
+        GossipsubEvent::Unsubscribed { peer_id, .. } => {
+            debug!(%peer_id, "{}: peer unsubscribed from gossip", our_id(swarm));
+        }
+    }
+}
+
+fn handle_identify_event(swarm: &mut Swarm<Behavior>, event: IdentifyEvent) {
+    match event {
+        IdentifyEvent::Received {
+            peer_id,
+            info,
+            observed_addr,
+        } => {
+            debug!(
+                %peer_id,
+                %info.protocol_version,
+                %info.agent_version,
+                ?info.listen_addrs,
+                ?info.protocols,
+                %observed_addr,
+                "{}: identifying info received",
+                our_id(swarm)
+            );
+            // We've received identifying information from a peer, so add its listening addresses to
+            // our kademlia instance.
+            swarm.add_discovered_peer(&peer_id, info.listen_addrs);
+        }
+        IdentifyEvent::Sent { peer_id } => {
+            debug!(
+                "{}: sent our identifying info to {}",
+                our_id(swarm),
+                peer_id
+            );
+        }
+        IdentifyEvent::Error { peer_id, error } => {
+            warn!(%peer_id, %error, "{}: error while attempting to identify peer", our_id(swarm));
+        }
+    }
 }
 
 /// Converts a string of the form "127.0.0.1:34553" into a Multiaddr equivalent to
@@ -539,11 +707,7 @@ fn address_str_to_multiaddr(address: &str) -> Multiaddr {
         .expect("address should parse as a multiaddr")
 }
 
-impl<REv, P> Finalize for Network<REv, P>
-where
-    REv: Send + 'static,
-    P: Send + 'static,
-{
+impl<REv: Send + 'static, P: Send + 'static> Finalize for Network<REv, P> {
     fn finalize(mut self) -> BoxFuture<'static, ()> {
         async move {
             // Close the shutdown socket, causing the server to exit.
@@ -563,7 +727,7 @@ where
     }
 }
 
-impl<REv, P: Debug> Debug for Network<REv, P> {
+impl<REv, P> Debug for Network<REv, P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Network")
             .field("our_id", &self.our_id)
@@ -590,7 +754,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 peer_id,
                 endpoint,
                 num_established,
-            } => self.handle_connection_established(peer_id, endpoint, num_established),
+            } => self.handle_connection_established(
+                effect_builder,
+                peer_id,
+                endpoint,
+                num_established,
+            ),
             Event::ConnectionClosed {
                 peer_id,
                 endpoint,
@@ -647,10 +816,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 debug!(%error, "{}: non-fatal listener error", self.our_id);
                 Effects::new()
             }
-
-            Event::IncomingOneWayMessage { source, message } => {
-                self.handle_incoming_one_way_message(effect_builder, source, message)
-            }
             Event::NetworkRequest {
                 request:
                     NetworkRequest::SendMessage {
@@ -659,13 +824,13 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                         responder,
                     },
             } => {
-                self.send_message(dest, OneWayMessage::new(payload));
+                self.send_message(dest, payload);
                 responder.respond(()).ignore()
             }
             Event::NetworkRequest {
                 request: NetworkRequest::Broadcast { payload, responder },
             } => {
-                self.broadcast_message(OneWayMessage::new(payload));
+                self.gossip_message(payload);
                 responder.respond(()).ignore()
             }
             Event::NetworkRequest {
@@ -677,7 +842,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                         responder,
                     },
             } => {
-                let sent_to = self.gossip_message(rng, OneWayMessage::new(payload), count, exclude);
+                let sent_to = self.send_message_to_n_peers(rng, payload, count, exclude);
                 responder.respond(sent_to).ignore()
             }
             Event::NetworkInfoRequest {
@@ -687,14 +852,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                     .peers
                     .iter()
                     .map(|(node_id, endpoint)| {
-                        let peer_address = match endpoint {
-                            ConnectedPoint::Dialer { address } => address.to_string(),
-                            ConnectedPoint::Listener { send_back_addr, .. } => {
-                                send_back_addr.to_string()
-                            }
-                        };
-
-                        (node_id.clone(), peer_address)
+                        (node_id.clone(), endpoint.get_remote_address().to_string())
                     })
                     .collect();
                 responder.respond(peers).ignore()

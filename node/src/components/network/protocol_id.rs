@@ -1,19 +1,22 @@
 use libp2p::core::ProtocolName;
-use semver::Version;
 
+use crate::components::chainspec_loader::Chainspec;
+
+/// The max length of protocol ID supported by libp2p.  See
+/// https://docs.rs/libp2p/0.22.0/libp2p/core/trait.ProtocolName.html#tymethod.protocol_name
 const MAX_PROTOCOL_ID_LENGTH: usize = 140;
 
-/// The protocol ID for the `OneWayCodec`.
+/// A protocol ID.
 #[derive(Clone, Debug)]
-pub struct ProtocolId {
+pub(super) struct ProtocolId {
     id: String,
 }
 
 impl ProtocolId {
-    pub(super) fn new(chain_name: &str, protocol_version: &Version) -> Self {
+    pub(super) fn new(chainspec: &Chainspec, name: &str) -> Self {
         let id = format!(
-            "/casper/{}/validator/one-way/{}",
-            chain_name, protocol_version
+            "/casper/{}/{}/{}",
+            chainspec.genesis.name, name, chainspec.genesis.protocol_version
         );
 
         assert!(
