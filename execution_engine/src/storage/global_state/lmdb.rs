@@ -256,7 +256,7 @@ mod tests {
         value: StoredValue,
     }
 
-    fn create_test_pairs() -> [TestPair; 2] {
+    fn create_test_pairs() -> [TestPair; 3] {
         [
             TestPair {
                 key: Key::Account(AccountHash::new([1_u8; 32])),
@@ -264,6 +264,15 @@ mod tests {
             },
             TestPair {
                 key: Key::Account(AccountHash::new([2_u8; 32])),
+                value: StoredValue::CLValue(CLValue::from_t(2_i32).unwrap()),
+            },
+            TestPair {
+                key: Key::Account(AccountHash::new(
+                    [2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8,
+                           1_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8,
+                        // ^^^^ Is 1_u8 not 2_u8! (makes an extension node to pointer not leaf)
+                           2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8,
+                           2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, ])),
                 value: StoredValue::CLValue(CLValue::from_t(2_i32).unwrap()),
             },
         ]
