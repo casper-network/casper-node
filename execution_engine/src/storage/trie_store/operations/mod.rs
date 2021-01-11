@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod tests;
 
-pub mod error;
-
 use std::{cmp, collections::VecDeque, convert::TryInto, mem};
 
 use tracing::warn;
@@ -234,7 +232,7 @@ where
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error> + From<error::CorruptDatabaseError>,
+    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let mut missing_descendants = Vec::new();
     let mut trie_keys_to_visit_queue = vec![trie_key];
