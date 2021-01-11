@@ -11,9 +11,8 @@ use super::*;
 use crate::{
     components::consensus::{
         highway_core::{
-            endorsement::{Endorsement, SignedEndorsement},
             evidence::EvidenceError,
-            highway::{Dependency, Endorsements},
+            highway::Dependency,
             highway_testing::{
                 TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT, TEST_INSTANCE_ID,
             },
