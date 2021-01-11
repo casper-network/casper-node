@@ -614,15 +614,12 @@ pub(crate) mod tests {
         components::consensus::{
             highway_core::{
                 evidence::{Evidence, EvidenceError},
-                highway::{Highway, SignedWireUnit, UnitError, Vertex, VertexError, WireUnit},
-                highway_testing::TEST_INSTANCE_ID,
-                state::{
-                    tests::{
-                        TestContext, TestSecret, ALICE, ALICE_SEC, BOB, BOB_SEC, CAROL, CAROL_SEC,
-                        WEIGHTS,
-                    },
-                    Panorama, State,
+                highway::{
+                    Dependency, Endorsements, Highway, SignedWireUnit, UnitError, Vertex,
+                    VertexError, WireUnit,
                 },
+                highway_testing::TEST_INSTANCE_ID,
+                state::{tests::*, Panorama, State},
                 validators::Validators,
             },
             traits::ValidatorSecret,
@@ -674,8 +671,6 @@ pub(crate) mod tests {
         let expected = (invalid_vertex.clone(), err);
         assert_eq!(Err(expected), highway.pre_validate_vertex(invalid_vertex));
 
-        // TODO: Also test the `missing_dependency` and `validate_vertex` steps.
-
         let hwunit = wunit.into_hashed();
         let valid_signature = CAROL_SEC.sign(&hwunit.hash(), &mut rng);
         let correct_signature_unit = SignedWireUnit {
@@ -687,6 +682,74 @@ pub(crate) mod tests {
         assert_eq!(None, highway.missing_dependency(&pvv));
         let vv = highway.validate_vertex(pvv).unwrap();
         assert!(highway.add_valid_vertex(vv, &mut rng, now).is_empty());
+    }
+
+    #[test]
+    fn missing_dependency() -> Result<(), AddUnitError<TestContext>> {
+        let mut state = State::new_test(WEIGHTS, 0);
+        let mut rng = crate::new_rng();
+        let now: Timestamp = 500.into();
+
+        let _ = add_unit!(state, rng, CAROL, 0xC0; N, N, N)?;
+        let _ = add_unit!(state, rng, CAROL, 0xC1; N, N, N)?;
+        let a = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
+        endorse!(state, rng, a; ALICE, BOB, CAROL);
+        // Bob's unit depends on Alice's unit, an endorsement of Alice's unit, and evidence against
+        // Carol.
+        let b = add_unit!(state, rng, BOB, 0xB; a, N, F; a)?;
+
+        let end_a = state.maybe_endorsements(&a).expect("unit a is endorsed");
+        let ev_c = state.maybe_evidence(CAROL).unwrap().clone();
+        let wunit_a = state.wire_unit(&a, TEST_INSTANCE_ID).unwrap();
+        let wunit_b = state.wire_unit(&b, TEST_INSTANCE_ID).unwrap();
+
+        let mut highway = Highway {
+            instance_id: TEST_INSTANCE_ID,
+            validators: test_validators(),
+            state: State::new_test(WEIGHTS, 0),
+            active_validator: None,
+        };
+
+        let vertex_end_a = Vertex::Endorsements(Endorsements::new(end_a));
+        let pvv_a = highway.pre_validate_vertex(Vertex::Unit(wunit_a)).unwrap();
+        let pvv_end_a = highway.pre_validate_vertex(vertex_end_a).unwrap();
+        let pvv_ev_c = highway.pre_validate_vertex(Vertex::Evidence(ev_c)).unwrap();
+        let pvv_b = highway.pre_validate_vertex(Vertex::Unit(wunit_b)).unwrap();
+
+        assert_eq!(
+            Some(Dependency::Unit(a)),
+            highway.missing_dependency(&pvv_b)
+        );
+        assert_eq!(
+            Some(Dependency::Unit(a)),
+            highway.missing_dependency(&pvv_end_a)
+        );
+        assert_eq!(None, highway.missing_dependency(&pvv_a));
+        let vv_a = highway.validate_vertex(pvv_a).unwrap();
+        highway.add_valid_vertex(vv_a, &mut rng, now);
+
+        assert_eq!(None, highway.missing_dependency(&pvv_end_a));
+        assert_eq!(
+            Some(Dependency::Evidence(CAROL)),
+            highway.missing_dependency(&pvv_b)
+        );
+        assert_eq!(None, highway.missing_dependency(&pvv_ev_c));
+        let vv_ev_c = highway.validate_vertex(pvv_ev_c).unwrap();
+        highway.add_valid_vertex(vv_ev_c, &mut rng, now);
+
+        assert_eq!(
+            Some(Dependency::Endorsement(a)),
+            highway.missing_dependency(&pvv_b)
+        );
+        assert_eq!(None, highway.missing_dependency(&pvv_end_a));
+        let vv_end_a = highway.validate_vertex(pvv_end_a).unwrap();
+        highway.add_valid_vertex(vv_end_a, &mut rng, now);
+
+        assert_eq!(None, highway.missing_dependency(&pvv_b));
+        let vv_b = highway.validate_vertex(pvv_b).unwrap();
+        highway.add_valid_vertex(vv_b, &mut rng, now);
+
+        Ok(())
     }
 
     #[test]
