@@ -238,14 +238,11 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::shared::newtypes::Blake2bHash;
-    use casper_types::{account::AccountHash, bytesrepr::ToBytes, CLValue};
+    use casper_types::{account::AccountHash, CLValue};
 
     use super::*;
     use crate::storage::{
-        trie_store::{
-            operations,
-            operations::{write, WriteResult},
-        },
+        trie_store::operations::{write, WriteResult},
         DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     };
 
@@ -255,7 +252,7 @@ mod tests {
         value: StoredValue,
     }
 
-    fn create_test_pairs() -> [TestPair; 3] {
+    fn create_test_pairs() -> [TestPair; 2] {
         [
             TestPair {
                 key: Key::Account(AccountHash::new([1_u8; 32])),
@@ -263,15 +260,6 @@ mod tests {
             },
             TestPair {
                 key: Key::Account(AccountHash::new([2_u8; 32])),
-                value: StoredValue::CLValue(CLValue::from_t(2_i32).unwrap()),
-            },
-            TestPair {
-                key: Key::Account(AccountHash::new([
-                    2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8,
-                    2_u8, 1_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8,
-                    //    ^^^^ Is 1_u8 not 2_u8! (makes an extension node to pointer not leaf)
-                    2_u8, 2_u8, 2_u8, 2_u8, 2_u8, 2_u8,
-                ])),
                 value: StoredValue::CLValue(CLValue::from_t(2_i32).unwrap()),
             },
         ]
@@ -294,7 +282,8 @@ mod tests {
         ]
     }
 
-    fn new_empty_lmdb_global_state() -> LmdbGlobalState {
+    fn create_test_state() -> (LmdbGlobalState, Blake2bHash) {
+        let correlation_id = CorrelationId::new();
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
@@ -309,12 +298,7 @@ mod tests {
         let protocol_data_store = Arc::new(
             LmdbProtocolDataStore::new(&environment, None, DatabaseFlags::empty()).unwrap(),
         );
-        LmdbGlobalState::empty(environment, trie_store, protocol_data_store).unwrap()
-    }
-
-    fn create_test_state() -> (LmdbGlobalState, Blake2bHash) {
-        let correlation_id = CorrelationId::new();
-        let ret = new_empty_lmdb_global_state();
+        let ret = LmdbGlobalState::empty(environment, trie_store, protocol_data_store).unwrap();
         let mut current_root = ret.empty_root_hash;
         {
             let mut txn = ret.environment.create_read_write_txn().unwrap();
@@ -432,188 +416,5 @@ mod tests {
                 .read(correlation_id, &test_pairs_updated[2].key)
                 .unwrap()
         );
-    }
-
-    #[test]
-    fn copy_one_state_to_another() {
-        let correlation_id = CorrelationId::new();
-        let source_reader = {
-            let (source_state, root_hash) = create_test_state();
-            {
-                // Make sure no missing nodes in source
-                let missing_from_source = source_state
-                    .missing_trie_keys(correlation_id, root_hash)
-                    .unwrap();
-                assert_eq!(missing_from_source, Vec::new());
-            }
-            source_state.checkout(root_hash).unwrap().unwrap()
-        };
-
-        let destination_state = new_empty_lmdb_global_state();
-
-        // Copy source to destination
-        {
-            let mut queue = vec![source_reader.root_hash];
-            while let Some(trie_key) = queue.pop() {
-                let trie_to_insert = source_reader
-                    .read_trie(correlation_id, &trie_key)
-                    .unwrap()
-                    .unwrap();
-                destination_state
-                    .put_trie(correlation_id, &trie_to_insert)
-                    .unwrap();
-                // Now that we've added in `trie_to_insert`, queue up its children
-                let new_keys_to_enqueue = destination_state
-                    .missing_trie_keys(correlation_id, trie_key)
-                    .unwrap();
-                queue.extend(new_keys_to_enqueue);
-            }
-        }
-
-        // After the copying process above there should be no missing entries in the destination
-        {
-            let missing_from_destination = destination_state
-                .missing_trie_keys(correlation_id, source_reader.root_hash)
-                .unwrap();
-
-            assert_eq!(missing_from_destination, Vec::new());
-        }
-
-        // Make sure all of the destination keys under the root hash are in the source
-        {
-            let destination_keys = operations::keys::<Key, StoredValue, _, _>(
-                correlation_id,
-                &destination_state.environment.create_read_txn().unwrap(),
-                destination_state.trie_store.deref(),
-                &source_reader.root_hash,
-            )
-            .filter_map(Result::ok)
-            .collect::<Vec<Key>>();
-            for key in destination_keys {
-                source_reader.read(correlation_id, &key).unwrap();
-            }
-        }
-
-        // Make sure all of the source keys under the root hash are in the destination
-        {
-            let source_keys = operations::keys::<Key, StoredValue, _, _>(
-                correlation_id,
-                &source_reader.environment.create_read_txn().unwrap(),
-                source_reader.store.deref(),
-                &source_reader.root_hash,
-            )
-            .filter_map(Result::ok)
-            .collect::<Vec<Key>>();
-            let destination_reader = destination_state
-                .checkout(source_reader.root_hash)
-                .unwrap()
-                .unwrap();
-            for key in source_keys {
-                destination_reader.read(correlation_id, &key).unwrap();
-            }
-        }
-    }
-
-    #[test]
-    fn missing_descendant_trie_keys_should_catch_a_key_with_a_corrupt_value() {
-        let correlation_id = CorrelationId::new();
-        let source_reader = {
-            let (source_state, root_hash) = create_test_state();
-            source_state.checkout(root_hash).unwrap().unwrap()
-        };
-
-        let destination_state = new_empty_lmdb_global_state();
-
-        // Copy source to destination
-        // After processing 3 entries, put a corrupt entry in
-        let mut n = 3;
-        let mut queue = vec![source_reader.root_hash];
-        while let Some(trie_key) = queue.pop() {
-            n -= 1;
-            if n == 0 {
-                let bad_trie_value: Trie<Key, StoredValue> = Trie::Node {
-                    pointer_block: Box::new(Default::default()),
-                };
-                let mut txn = destination_state
-                    .environment
-                    .create_read_write_txn()
-                    .unwrap();
-                // Put it in with the wrong key
-                destination_state
-                    .trie_store
-                    .put(&mut txn, &trie_key, &bad_trie_value)
-                    .unwrap();
-                txn.commit().unwrap();
-            } else {
-                let trie_to_insert = source_reader
-                    .read_trie(correlation_id, &trie_key)
-                    .unwrap()
-                    .unwrap();
-                destination_state
-                    .put_trie(correlation_id, &trie_to_insert)
-                    .unwrap();
-                // Now that we've added in `trie_to_insert`, queue up its children
-                let new_keys_to_enqueue = destination_state
-                    .missing_trie_keys(correlation_id, trie_key)
-                    .unwrap();
-                queue.extend(new_keys_to_enqueue);
-            }
-        }
-
-        // We've copied over all of the source to the destination, except for one `Trie<K,V>` and
-        // its descendants.  When we look for missing descendants of the state root it should have
-        // just one entry corresponding to the value that is corrupted.
-        let missing_from_destination = destination_state
-            .missing_trie_keys(correlation_id, source_reader.root_hash)
-            .unwrap();
-
-        let bad_key = match &*missing_from_destination {
-            [bad_key] => bad_key,
-            unexpected_missing_keys => {
-                panic!("unexpected_missing_keys {:?}", unexpected_missing_keys)
-            }
-        };
-
-        let hash_of_bad_trie_value = {
-            let bad_trie_value = destination_state
-                .checkout(source_reader.root_hash)
-                .unwrap()
-                .unwrap()
-                .read_trie(correlation_id, bad_key)
-                .unwrap()
-                .unwrap();
-            let node_bytes = bad_trie_value.to_bytes().unwrap();
-            Blake2bHash::new(&node_bytes)
-        };
-
-        assert_ne!(*bad_key, hash_of_bad_trie_value);
-
-        // Fix destination now
-        {
-            let mut queue = vec![*bad_key];
-            while let Some(trie_key) = queue.pop() {
-                let trie_to_insert = source_reader
-                    .read_trie(correlation_id, &trie_key)
-                    .unwrap()
-                    .unwrap();
-                destination_state
-                    .put_trie(correlation_id, &trie_to_insert)
-                    .unwrap();
-                // Now that we've added in `trie_to_insert`, queue up its children
-                let new_keys_to_enqueue = destination_state
-                    .missing_trie_keys(correlation_id, trie_key)
-                    .unwrap();
-                queue.extend(new_keys_to_enqueue);
-            }
-        }
-
-        // Should be no missing now in destination
-        {
-            let missing_from_destination = destination_state
-                .missing_trie_keys(correlation_id, source_reader.root_hash)
-                .unwrap();
-
-            assert_eq!(missing_from_destination, Vec::new());
-        }
     }
 }

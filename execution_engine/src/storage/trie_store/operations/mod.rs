@@ -26,6 +26,13 @@ pub enum ReadResult<V> {
     RootNotFound,
 }
 
+impl<V> ReadResult<V> {
+    #[cfg(test)]
+    pub fn is_found(&self) -> bool {
+        matches!(self, ReadResult::Found(_))
+    }
+}
+
 /// Returns a value from the corresponding key at a given root in a given store
 pub fn read<K, V, T, S, E>(
     _correlation_id: CorrelationId,
@@ -274,14 +281,9 @@ where
                 }
             }
             // If we hit an extension block, add its pointer to the queue
-            Some(Trie::Extension {
-                pointer: Pointer::LeafPointer(descendant_leaf_trie_key),
-                ..
-            }) => trie_keys_to_visit_queue.push(descendant_leaf_trie_key),
-            Some(Trie::Extension {
-                pointer: Pointer::NodePointer(descendant_node_trie_key),
-                ..
-            }) => trie_keys_to_visit_queue.push(descendant_node_trie_key),
+            Some(Trie::Extension { pointer, .. }) => {
+                trie_keys_to_visit_queue.push(pointer.into_hash())
+            }
         }
     }
     Ok(missing_descendants)
