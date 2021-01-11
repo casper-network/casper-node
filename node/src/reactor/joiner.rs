@@ -413,12 +413,16 @@ impl reactor::Reactor for Reactor {
 
         let linear_chain_sync = LinearChainSync::new(init_hash);
 
-        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
+        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
 
         let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), effect_builder);
+            EventStreamServer::new(config.event_stream_server.clone(), effect_builder)?;
 
-        let block_validator = BlockValidator::new();
+        let (block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
+        effects.extend(reactor::wrap_effects(
+            Event::BlockValidator,
+            block_validator_effects,
+        ));
 
         let deploy_fetcher = Fetcher::new(config.fetcher);
 

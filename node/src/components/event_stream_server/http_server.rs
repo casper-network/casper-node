@@ -4,57 +4,33 @@ use futures::{
     future::{self, select},
     FutureExt,
 };
-use hyper::Server;
+use hyper::server::{conn::AddrIncoming, Builder};
 use tokio::{
     select,
     sync::{mpsc, oneshot},
 };
-use tracing::{debug, info, trace, warn};
+use tracing::{info, trace};
 use wheelbuf::WheelBuf;
 
 use super::{
     sse_server::{self, BroadcastChannelMessage, ServerSentEvent, SSE_INITIAL_EVENT},
     Config, SseData,
 };
-use crate::utils;
 
 /// Run the HTTP server.
 ///
 /// `data_receiver` will provide the server with local events which should then be sent to all
 /// subscribed clients.
-pub(super) async fn run(config: Config, mut data_receiver: mpsc::UnboundedReceiver<SseData>) {
+pub(super) async fn run(
+    config: Config,
+    builder: Builder<AddrIncoming>,
+    mut data_receiver: mpsc::UnboundedReceiver<SseData>,
+) {
     // Event stream channels and filter.
     let (broadcaster, mut new_subscriber_info_receiver, sse_filter) =
         sse_server::create_channels_and_filter(config.broadcast_channel_size);
 
     let service = warp_json_rpc::service(sse_filter);
-
-    let mut server_address = match utils::resolve_address(&config.address) {
-        Ok(address) => address,
-        Err(error) => {
-            warn!(%error, "failed to start HTTP server, cannot parse address");
-            return;
-        }
-    };
-
-    // Try to bind to the user's chosen port, or if that fails, try once to bind to any port then
-    // error out if that fails too.
-    let builder = loop {
-        match Server::try_bind(&server_address) {
-            Ok(builder) => {
-                break builder;
-            }
-            Err(error) => {
-                if server_address.port() == 0 {
-                    warn!(%error, "failed to start HTTP server");
-                    return;
-                } else {
-                    server_address.set_port(0);
-                    debug!(%error, "failed to start HTTP server. retrying on random port");
-                }
-            }
-        }
-    };
 
     // Start the server, passing a oneshot receiver to allow the server to be shut down gracefully.
     let make_svc =

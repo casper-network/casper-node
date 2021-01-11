@@ -397,7 +397,7 @@ fn add_node_to_parents<K, V>(
     path_to_leaf: &[u8],
     new_parent_node: Trie<K, V>,
     mut parents: Parents<K, V>,
-) -> Result<Parents<K, V>, bytesrepr::Error>
+) -> Parents<K, V>
 where
     K: ToBytes,
     V: ToBytes,
@@ -428,7 +428,7 @@ where
     };
     // Add node to parents, along with index to modify
     parents.push((index, new_parent_node));
-    Ok(parents)
+    parents
 }
 
 /// Takes paths to a new leaf and an existing leaf that share a common prefix,
@@ -609,7 +609,7 @@ where
                 } if key != existing_leaf_key => {
                     let existing_leaf_path = existing_leaf_key.to_bytes()?;
                     let (new_node, parents) = reparent_leaf(&path, &existing_leaf_path, parents)?;
-                    let parents = add_node_to_parents(&path, new_node, parents)?;
+                    let parents = add_node_to_parents(&path, new_node, parents);
                     rehash(new_leaf, parents)?
                 }
                 // This case is unreachable, but the compiler can't figure
@@ -618,7 +618,7 @@ where
                 // If the "tip" is an existing node, then we can add a pointer
                 // to the new leaf to the node's pointer block.
                 node @ Trie::Node { .. } => {
-                    let parents = add_node_to_parents(&path, node, parents)?;
+                    let parents = add_node_to_parents(&path, node, parents);
                     rehash(new_leaf, parents)?
                 }
                 // If the "tip" is an extension node, then we must modify or
@@ -629,7 +629,7 @@ where
                         parents,
                         maybe_hashed_child_extension,
                     } = split_extension(&path, extension, parents)?;
-                    let parents = add_node_to_parents(&path, new_node, parents)?;
+                    let parents = add_node_to_parents(&path, new_node, parents);
                     if let Some(hashed_extension) = maybe_hashed_child_extension {
                         let mut ret = vec![hashed_extension];
                         ret.extend(rehash(new_leaf, parents)?);

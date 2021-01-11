@@ -10,11 +10,10 @@ use derive_more::From;
 use itertools::Itertools;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{ExecutionResult, ProtocolVersion, SemVer};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer};
 
 use super::Component;
 use crate::{
-    crypto::asymmetric_key::PublicKey,
     effect::{
         announcements::LinearChainAnnouncement,
         requests::{
@@ -400,6 +399,13 @@ where
                                 protocol_version,
                                 fs.public_key,
                             )
+                            .map(|res| {
+                                match res {
+                                    // Promote this error to a non-error case.
+                                    Err(error) if error.is_era_validators_missing() => Ok(false),
+                                    _ => res,
+                                }
+                            })
                             .result(
                                 |is_bonded| Event::IsBonded(maybe_block, fs, is_bonded),
                                 |error| {

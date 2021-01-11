@@ -1,6 +1,9 @@
 use thiserror::Error;
 
-use crate::components::{contract_runtime, network, small_network, storage};
+use crate::{
+    components::{contract_runtime, network, small_network, storage},
+    utils::ListeningError,
+};
 
 /// Error type returned by the validator reactor.
 #[derive(Debug, Error)]
@@ -16,6 +19,10 @@ pub enum Error {
     /// `SmallNetwork` component error.
     #[error("small network error: {0}")]
     SmallNetwork(#[from] small_network::Error),
+
+    /// An error starting one of the HTTP servers.
+    #[error("http server listening error: {0}")]
+    ListeningError(#[from] ListeningError),
 
     /// `Storage` component error.
     #[error("storage error: {0}")]

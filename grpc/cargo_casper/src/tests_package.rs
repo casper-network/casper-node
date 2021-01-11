@@ -23,7 +23,7 @@ mod tests {
     use casper_engine_test_support::{
         Code, Error, SessionBuilder, TestContextBuilder, Value,
     };
-    use casper_types::{runtime_args, RuntimeArgs, U512, account::AccountHash, PublicKey};
+    use casper_types::{runtime_args, RuntimeArgs, U512, account::AccountHash, PublicKey, SecretKey};
 
     const MY_ACCOUNT: [u8; 32] = [7u8; 32];
     const MY_ADDR: [u8; 32] = [8u8; 32];
@@ -34,7 +34,7 @@ mod tests {
 
     #[test]
     fn should_store_hello_world() {
-        let public_key = PublicKey::Ed25519(MY_ACCOUNT);
+        let public_key: PublicKey = SecretKey::ed25519(MY_ACCOUNT).into();
         let account_addr = AccountHash::new(MY_ADDR);
 
         let mut context = TestContextBuilder::new()
@@ -118,7 +118,7 @@ static INTEGRATION_TESTS_RS: Lazy<PathBuf> = Lazy::new(|| {
         .join("src/integration_tests.rs")
 });
 static ENGINE_TEST_SUPPORT: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-engine-test-support", "0.5.0", "grpc/test_support"));
+    Lazy::new(|| Dependency::new("casper-engine-test-support", "0.6.0", "grpc/test_support"));
 static CARGO_TOML_ADDITIONAL_CONTENTS: Lazy<String> = Lazy::new(|| {
     format!(
         r#"

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// Default binding address for the SSE HTTP server.
 ///
 /// Uses a fixed port per node, but binds on any interface.
-const DEFAULT_ADDRESS: &str = "0.0.0.0:9999";
+const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
 
 /// Default number of SSEs to buffer.
 const DEFAULT_EVENT_STREAM_BUFFER_LENGTH: u32 = 100;

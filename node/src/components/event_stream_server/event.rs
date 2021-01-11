@@ -1,10 +1,9 @@
 use std::fmt::{self, Display, Formatter};
 
-use casper_types::ExecutionResult;
+use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
     components::consensus::EraId,
-    crypto::asymmetric_key::PublicKey,
     types::{
         BlockHash, BlockHeader, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
         Timestamp,

@@ -11,9 +11,8 @@ use super::*;
 use crate::{
     components::consensus::{
         highway_core::{
-            endorsement::{Endorsement, SignedEndorsement},
             evidence::EvidenceError,
-            highway::{Dependency, Endorsements},
+            highway::Dependency,
             highway_testing::{
                 TEST_BLOCK_REWARD, TEST_ENDORSEMENT_EVIDENCE_LIMIT, TEST_INSTANCE_ID,
             },
@@ -155,7 +154,7 @@ impl State<TestContext> {
         {
             return Err(swunit.with_error(err));
         }
-        assert_eq!(None, swunit.wire_unit.panorama.missing_dependency(self));
+        assert_eq!(None, swunit.wire_unit().panorama.missing_dependency(self));
         assert_eq!(None, self.needs_endorsements(&swunit));
         self.add_valid_unit(swunit);
         Ok(())
@@ -191,12 +190,12 @@ fn add_unit() -> Result<(), AddUnitError<TestContext>> {
         round_exp: 4u8,
         endorsed: BTreeSet::new(),
     };
-    let unit = SignedWireUnit::new(wunit.clone(), &BOB_SEC, &mut rng);
+    let unit = SignedWireUnit::new(wunit.clone().into_hashed(), &BOB_SEC, &mut rng);
     let maybe_err = state.add_unit(unit).err().map(unit_err);
     assert_eq!(Some(UnitError::SequenceNumber), maybe_err);
     // Still not valid: This would be the third unit in the first round.
     wunit.seq_number = 2;
-    let unit = SignedWireUnit::new(wunit, &BOB_SEC, &mut rng);
+    let unit = SignedWireUnit::new(wunit.into_hashed(), &BOB_SEC, &mut rng);
     let maybe_err = state.add_unit(unit).err().map(unit_err);
     assert_eq!(Some(UnitError::ThreeUnitsInRound), maybe_err);
 

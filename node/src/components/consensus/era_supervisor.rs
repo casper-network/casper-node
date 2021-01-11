@@ -25,7 +25,7 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{info, trace, warn};
 
-use casper_types::{ProtocolVersion, U512};
+use casper_types::{AsymmetricType, ProtocolVersion, PublicKey, SecretKey, U512};
 
 use crate::{
     components::consensus::{
@@ -39,10 +39,7 @@ use crate::{
         traits::NodeIdT,
         Config, ConsensusMessage, Event, ReactorEventT,
     },
-    crypto::{
-        asymmetric_key::{PublicKey, SecretKey},
-        hash::Digest,
-    },
+    crypto::hash::Digest,
     effect::{EffectBuilder, EffectExt, Effects, Responder},
     fatal,
     types::{
@@ -415,6 +412,7 @@ where
                 // If the era is already unbonded, only accept new evidence, because still-bonded
                 // eras could depend on that.
                 let evidence_only = !self.era_supervisor.is_bonded(era_id);
+                trace!(era = era_id.0, "received a consensus message");
                 self.delegate_to_era(era_id, move |consensus, rng| {
                     consensus.handle_message(sender, payload, evidence_only, rng)
                 })
@@ -434,6 +432,12 @@ where
                     .collect()
             }
         }
+    }
+
+    pub(super) fn handle_new_peer(&mut self, peer_id: I) -> Effects<Event<I>> {
+        self.delegate_to_era(self.era_supervisor.current_era, move |consensus, _rng| {
+            consensus.handle_new_peer(peer_id)
+        })
     }
 
     pub(super) fn handle_new_proto_block(
@@ -826,12 +830,13 @@ where
             .era_supervisor
             .active_eras
             .get(&self.era_supervisor.current_era)
-            .map(|era| era.consensus.has_received_messages())
+            .map(|era| !era.consensus.has_received_messages())
             .unwrap_or(true);
         if should_emit_error {
             fatal!(
                 self.effect_builder,
-                "Consensus shutting down due to inability to participate in the network"
+                "Consensus shutting down due to inability to participate in the network; inactive era = {}",
+                self.era_supervisor.current_era
             )
         } else {
             Default::default()

@@ -15,7 +15,7 @@ use crate::{
 const NUM_ROUNDS_TO_CONSIDER: usize = 40;
 // The maximum number of failures allowed among NUM_ROUNDS_TO_CONSIDER latest rounds, with which we
 // won't increase our round length. Exceeding this threshold will mean that we should slow down.
-const MAX_FAILED_ROUNDS: usize = 10;
+const MAX_FAILED_ROUNDS: usize = 20;
 // We will try to accelerate (decrease our round exponent) every `ACCELERATION_PARAMETER` rounds if
 // we have few enough failures.
 const ACCELERATION_PARAMETER: u64 = 40;

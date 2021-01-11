@@ -2,10 +2,9 @@
 
 use std::{result::Result as StdResult, str::FromStr};
 
-use casper_node::crypto::asymmetric_key::PublicKey as NodePublicKey;
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, CLType, CLTyped, CLValue, Key, PublicKey, URef, U128,
-    U256, U512,
+    account::AccountHash, bytesrepr::ToBytes, AsymmetricType, CLType, CLTyped, CLValue, Key,
+    PublicKey, URef, U128, U256, U512,
 };
 
 use crate::error::{Error, Result};
@@ -94,8 +93,7 @@ pub(crate) fn supported_cl_types() -> Vec<(&'static str, CLType)> {
 pub mod help {
     use std::convert::TryFrom;
 
-    use casper_node::crypto::asymmetric_key::PublicKey as NodePublicKey;
-    use casper_types::{account::AccountHash, AccessRights, Key, URef};
+    use casper_types::{account::AccountHash, AccessRights, AsymmetricType, Key, PublicKey, URef};
 
     /// Returns a list of `CLType`s able to be passed as a string for use as payment code or session
     /// code args.
@@ -154,7 +152,7 @@ Prefix the type with "opt_" and use the term "null" without quotes to specify a 
             Key::URef(URef::new(array, AccessRights::NONE)).to_formatted_string(),
             AccountHash::new(array).to_formatted_string(),
             URef::new(array, AccessRights::READ_ADD_WRITE).to_formatted_string(),
-            NodePublicKey::from_hex(
+            PublicKey::from_hex(
                 "0119bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1"
             )
             .unwrap()
@@ -360,13 +358,13 @@ pub fn parts_to_cl_value(cl_type: CLType, value: &str) -> Result<CLValue> {
         }
         CLType::PublicKey => {
             let parse = || {
-                let pub_key = NodePublicKey::from_hex(trimmed_value).map_err(|error| {
+                let pub_key = PublicKey::from_hex(trimmed_value).map_err(|error| {
                     Error::InvalidCLValue(format!(
                         "can't parse {} as PublicKey: {:?}",
                         trimmed_value, error
                     ))
                 })?;
-                Ok(PublicKey::from(pub_key))
+                Ok(pub_key)
             };
             parse_to_cl_value(optional_status, parse)
         }

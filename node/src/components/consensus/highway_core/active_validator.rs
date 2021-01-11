@@ -393,7 +393,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let endorsed = state.seen_endorsed(&panorama);
-        let wunit = WireUnit {
+        let hwunit = WireUnit {
             panorama,
             creator: self.vidx,
             instance_id,
@@ -402,14 +402,15 @@ impl<C: Context> ActiveValidator<C> {
             timestamp,
             round_exp: self.round_exp(state, timestamp),
             endorsed,
-        };
-        self.write_last_unit(wunit.hash()).unwrap_or_else(|err| {
+        }
+        .into_hashed();
+        self.write_last_unit(hwunit.hash()).unwrap_or_else(|err| {
             panic!(
                 "should successfully write unit's hash to {:?}, got {:?}",
                 self.unit_hash_file, err
             )
         });
-        Some(SignedWireUnit::new(wunit, &self.secret, rng))
+        Some(SignedWireUnit::new(hwunit, &self.secret, rng))
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.
@@ -532,7 +533,7 @@ impl<C: Context> ActiveValidator<C> {
             Vertex::Unit(swunit) => {
                 // If we already have the unit in our local state,
                 // we must have had created it ourselves earlier and it is now gossiped back to us.
-                !state.has_unit(&swunit.wire_unit.hash()) && self.is_our_unit(&swunit.wire_unit)
+                !state.has_unit(&swunit.hash()) && self.is_our_unit(swunit.wire_unit())
             }
             Vertex::Endorsements(endorsements) => {
                 if state::TODO_ENDORSEMENT_EVIDENCE_DISABLED {
@@ -785,7 +786,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::unreadable_literal)] // 0xC0FFEE is more readable than 0x00C0_FFEE.
-    fn active_validator() -> Result<(), AddUnitError<TestContext>> {
+    fn active_validator() {
         let mut test = TestState::new(
             State::new_test(&[Weight(3), Weight(4)], 0),
             crate::new_rng(),
@@ -843,6 +844,5 @@ mod tests {
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
         assert_eq!(Some(&new_unit.hash()), test.next_finalized());
-        Ok(())
     }
 }

@@ -33,6 +33,7 @@ use tokio::sync::mpsc::{self, UnboundedSender};
 use super::Component;
 use crate::{
     effect::{EffectBuilder, Effects},
+    utils::{self, ListeningError},
     NodeRng,
 };
 
@@ -55,14 +56,18 @@ pub(crate) struct EventStreamServer {
 }
 
 impl EventStreamServer {
-    pub(crate) fn new<REv>(config: Config, _effect_builder: EffectBuilder<REv>) -> Self
+    pub(crate) fn new<REv>(
+        config: Config,
+        _effect_builder: EffectBuilder<REv>,
+    ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
     {
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
-        tokio::spawn(http_server::run(config, sse_data_receiver));
+        let builder = utils::start_listening(&config.address)?;
+        tokio::spawn(http_server::run(config, builder, sse_data_receiver));
 
-        EventStreamServer { sse_data_sender }
+        Ok(EventStreamServer { sse_data_sender })
     }
 
     /// Broadcasts the SSE data to all clients connected to the event stream.
