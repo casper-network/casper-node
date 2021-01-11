@@ -690,8 +690,8 @@ pub(crate) mod tests {
         let mut rng = crate::new_rng();
         let now: Timestamp = 500.into();
 
-        let _ = add_unit!(state, rng, CAROL, 0xC0; N, N, N)?;
-        let _ = add_unit!(state, rng, CAROL, 0xC1; N, N, N)?;
+        add_unit!(state, rng, CAROL, 0xC0; N, N, N)?;
+        add_unit!(state, rng, CAROL, 0xC1; N, N, N)?;
         let a = add_unit!(state, rng, ALICE, 0xA; N, N, N)?;
         endorse!(state, rng, a; ALICE, BOB, CAROL);
         // Bob's unit depends on Alice's unit, an endorsement of Alice's unit, and evidence against
