@@ -37,7 +37,7 @@ use casper_types::{
 };
 use hex_fmt::HexFmt;
 
-use super::{Multiple, Responder};
+use super::Responder;
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
@@ -255,14 +255,14 @@ pub enum StorageRequest {
     /// Retrieve deploys with given hashes.
     GetDeploys {
         /// Hashes of deploys to be retrieved.
-        deploy_hashes: Box<Multiple<DeployHash>>,
+        deploy_hashes: Vec<DeployHash>,
         /// Responder to call with the results.
         responder: Responder<Vec<Option<Deploy>>>,
     },
     /// Retrieve deploy headers with given hashes.
     GetDeployHeaders {
         /// Hashes of deploy headers to be retrieved.
-        deploy_hashes: Box<Multiple<DeployHash>>,
+        deploy_hashes: Vec<DeployHash>,
         /// Responder to call with the results.
         responder: Responder<Vec<Option<DeployHeader>>>,
     },

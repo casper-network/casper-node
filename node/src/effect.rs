@@ -743,7 +743,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetDeploys {
-                deploy_hashes: Box::new(deploy_hashes),
+                deploy_hashes: deploy_hashes.to_vec(),
                 responder,
             },
             QueueKind::Regular,

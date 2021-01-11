@@ -62,6 +62,14 @@ impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event 
     }
 }
 
+impl From<NetworkRequest<NodeId, Message>> for SmallNetworkEvent<Message> {
+    fn from(request: NetworkRequest<NodeId, Message>) -> SmallNetworkEvent<Message> {
+        SmallNetworkEvent::NetworkRequest {
+            req: Box::new(request),
+        }
+    }
+}
+
 impl From<NetworkRequest<NodeId, protocol::Message>> for Event {
     fn from(_request: NetworkRequest<NodeId, protocol::Message>) -> Self {
         unreachable!()
@@ -145,7 +153,7 @@ impl Reactor for TestReactor {
             Event::NetworkRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
-                Event::SmallNet(SmallNetworkEvent::NetworkRequest { req: Box::new(req) }),
+                Event::SmallNet(SmallNetworkEvent::from(req)),
             ),
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 sender,
