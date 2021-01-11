@@ -76,6 +76,12 @@ impl Behavior {
 
     /// Adds the given peer's details to the kademlia routing table and bootstraps kademlia if this
     /// is the first peer added.
+    ///
+    /// While bootstrapping is not strictly required, it will normally greatly speed up the process
+    /// of populating the routing table's k-buckets.
+    ///
+    /// We assume that calling bootstrap multiple times will not be problematic, although this will
+    /// not normally happen.
     pub(super) fn add_discovered_peer(
         &mut self,
         peer_id: &PeerId,

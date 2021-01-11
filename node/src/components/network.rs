@@ -20,10 +20,7 @@ use std::{
 };
 
 use datasize::DataSize;
-use futures::{
-    future::{self, BoxFuture, Either},
-    FutureExt,
-};
+use futures::{future::BoxFuture, FutureExt};
 use libp2p::{
     core::{
         connection::{ConnectedPoint, PendingConnectionError},
@@ -213,6 +210,13 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             }))
             .build();
 
+        // Specify listener.
+        let listening_address = address_str_to_multiaddr(config.bind_address.as_str());
+        Swarm::listen_on(&mut swarm, listening_address.clone()).map_err(|error| Error::Listen {
+            address: listening_address,
+            error,
+        })?;
+
         // Schedule connection attempts to known peers.
         for address in known_addresses.keys() {
             Swarm::dial_addr(&mut swarm, address.clone()).map_err(|error| Error::DialPeer {
@@ -220,13 +224,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 error,
             })?;
         }
-
-        // Specify listener.
-        let listening_address = address_str_to_multiaddr(config.bind_address.as_str());
-        Swarm::listen_on(&mut swarm, listening_address.clone()).map_err(|error| Error::Listen {
-            address: listening_address,
-            error,
-        })?;
 
         // Start the server task.
         let server_join_handle = Some(tokio::spawn(server_task(
@@ -410,8 +407,7 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
     mut shutdown_receiver: watch::Receiver<()>,
     mut swarm: Swarm<Behavior>,
 ) {
-    let our_id_cloned = our_id(&swarm);
-    let main_task = async move {
+    async move {
         loop {
             // Note that `select!` will cancel all futures on branches not eventually selected by
             // dropping them.  Each future inside this macro must be cancellation-safe.
@@ -454,18 +450,15 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                         }
                     }
                 }
+
+                _ = shutdown_receiver.recv() => {
+                    info!("{}: shutting down libp2p", our_id(&swarm));
+                    break;
+                }
             }
         }
-    };
-
-    let shutdown_messages = async move { while shutdown_receiver.recv().await.is_some() {} };
-
-    // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
-    // infinite loop to terminate, which never happens.
-    match future::select(Box::pin(shutdown_messages), Box::pin(main_task)).await {
-        Either::Left(_) => info!("{}: shutting down libp2p", our_id_cloned),
-        Either::Right(_) => unreachable!(),
     }
+    .await;
 }
 
 async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
@@ -823,7 +816,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 debug!(%error, "{}: non-fatal listener error", self.our_id);
                 Effects::new()
             }
-
             Event::NetworkRequest {
                 request:
                     NetworkRequest::SendMessage {
