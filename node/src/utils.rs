@@ -15,10 +15,12 @@ use std::{
 };
 
 use datasize::DataSize;
+use hyper::server::{conn::AddrIncoming, Builder, Server};
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use thiserror::Error;
+use tracing::warn;
 
 #[cfg(test)]
 pub use external::RESOURCES_PATH;
@@ -41,12 +43,41 @@ pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
 });
 
 /// Parses a network address from a string, with DNS resolution.
-pub(crate) fn resolve_address(addr: &str) -> io::Result<SocketAddr> {
-    addr.to_socket_addrs()?.next().ok_or_else(|| {
+pub(crate) fn resolve_address(address: &str) -> io::Result<SocketAddr> {
+    address.to_socket_addrs()?.next().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::Other,
-            format!("could not resolve `{}`", addr),
+            format!("could not resolve `{}`", address),
         )
+    })
+}
+
+/// An error starting one of the HTTP servers.
+#[derive(Debug, Error)]
+pub enum ListeningError {
+    /// Failed to resolve address.
+    #[error("failed to resolve network address: {0}")]
+    ResolveAddress(io::Error),
+
+    /// Failed to listen.
+    #[error("failed to listen on {address}: {error}")]
+    Listen {
+        /// The address attempted to listen on.
+        address: SocketAddr,
+        /// The failure reason.
+        error: hyper::Error,
+    },
+}
+
+pub(crate) fn start_listening(address: &str) -> Result<Builder<AddrIncoming>, ListeningError> {
+    let address = resolve_address(address).map_err(|error| {
+        warn!(%error, %address, "failed to start HTTP server, cannot parse address");
+        ListeningError::ResolveAddress(error)
+    })?;
+
+    Server::try_bind(&address).map_err(|error| {
+        warn!(%error, %address, "failed to start HTTP server");
+        ListeningError::Listen { address, error }
     })
 }
 

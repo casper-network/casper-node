@@ -47,6 +47,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{NodeId, StatusFeed},
+    utils::{self, ListeningError},
     NodeRng,
 };
 
@@ -87,13 +88,17 @@ impl<REv> ReactorEventT for REv where
 pub(crate) struct RpcServer {}
 
 impl RpcServer {
-    pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
+    pub(crate) fn new<REv>(
+        config: Config,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
     {
-        tokio::spawn(http_server::run(config, effect_builder));
+        let builder = utils::start_listening(&config.address)?;
+        tokio::spawn(http_server::run(builder, effect_builder));
 
-        RpcServer {}
+        Ok(RpcServer {})
     }
 }
 

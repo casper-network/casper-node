@@ -41,9 +41,15 @@ run_node() {
     if [ $1 -ne 1 ]
     then
         BIND_ADDRESS_ARG=--config-ext=network.bind_address='0.0.0.0:0'
+        RPC_SERVER_ADDRESS_ARG=--config-ext=rpc_server.address='0.0.0.0:0'
+        REST_SERVER_ADDRESS_ARG=--config-ext=rest_server.address='0.0.0.0:0'
+        EVENT_STREAM_SERVER_ADDRESS_ARG=--config-ext=event_stream_server.address='0.0.0.0:0'
         DEPS="--property=After=node-1.service --property=Requires=node-1.service"
     else
         BIND_ADDRESS_ARG=
+        RPC_SERVER_ADDRESS_ARG=
+        REST_SERVER_ADDRESS_ARG=
+        EVENT_STREAM_SERVER_ADDRESS_ARG=
         DEPS=
     fi
 
@@ -80,6 +86,9 @@ run_node() {
         --config-ext=network.gossip_interval=1000 \
         --config-ext=node.chainspec_config_path=${CHAINSPEC} \
         ${BIND_ADDRESS_ARG} \
+        ${RPC_SERVER_ADDRESS_ARG} \
+        ${REST_SERVER_ADDRESS_ARG} \
+        ${EVENT_STREAM_SERVER_ADDRESS_ARG} \
         ${TRUSTED_HASH_ARG}
 
     echo "Started node $ID, logfile: ${LOGFILE}"

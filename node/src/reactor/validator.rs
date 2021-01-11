@@ -382,8 +382,8 @@ impl reactor::Reactor for Reactor {
         let address_gossiper =
             Gossiper::new_for_complete_items("address_gossiper", config.gossip, registry)?;
 
-        let rpc_server = RpcServer::new(config.rpc_server.clone(), effect_builder);
-        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
+        let rpc_server = RpcServer::new(config.rpc_server.clone(), effect_builder)?;
+        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
 
         let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
         let deploy_fetcher = Fetcher::new(config.fetcher);
