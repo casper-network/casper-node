@@ -9,13 +9,13 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     auction::{Bid, Bids, DelegationRate, Delegator, EraId, EraValidators},
-    AccessRights, PublicKey, URef, U512,
+    AccessRights, PublicKey, SecretKey, URef, U512,
 };
 
 use crate::{crypto::hash::Digest, rpcs::docs::DocExample};
 
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
-    let public_key_1 = PublicKey::Ed25519([42; 32]);
+    let public_key_1 = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
 
     let mut validator_weights = BTreeMap::new();
     validator_weights.insert(public_key_1, U512::from(10));
@@ -30,13 +30,20 @@ static BIDS: Lazy<Bids> = Lazy::new(|| {
     let staked_amount = U512::from(10);
     let release_era: u64 = 42;
 
-    let delegator = Delegator::new(U512::from(10), bonding_purse, PublicKey::Ed25519([43; 32]));
+    let delegator = Delegator::new(
+        U512::from(10),
+        bonding_purse,
+        SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into(),
+    );
     let mut delegators = BTreeMap::new();
-    delegators.insert(PublicKey::Ed25519([44; 32]), delegator);
+    delegators.insert(
+        PublicKey::from(SecretKey::ed25519([44; SecretKey::ED25519_LENGTH])),
+        delegator,
+    );
 
     let bid = Bid::locked(bonding_purse, staked_amount, release_era);
 
-    let public_key_1 = PublicKey::Ed25519([42; 32]);
+    let public_key_1 = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
 
     let mut bids = BTreeMap::new();
     bids.insert(public_key_1, bid);

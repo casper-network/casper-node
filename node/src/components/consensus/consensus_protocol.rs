@@ -1,4 +1,4 @@
-use std::{any::Any, collections::BTreeMap, fmt::Debug};
+use std::{any::Any, collections::BTreeMap, fmt::Debug, path::PathBuf};
 
 use anyhow::Error;
 use datasize::DataSize;
@@ -109,6 +109,9 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
         rng: &mut NodeRng,
     ) -> Vec<ProtocolOutcome<I, C>>;
 
+    /// Handles new connection to a peer.
+    fn handle_new_peer(&mut self, peer_id: I) -> Vec<ProtocolOutcome<I, C>>;
+
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,
@@ -139,6 +142,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
+        unit_hash_file: Option<PathBuf>,
     ) -> Vec<ProtocolOutcome<I, C>>;
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
@@ -161,4 +165,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
 
     /// Returns whether this instance of a protocol is an active validator.
     fn is_active(&self) -> bool;
+
+    /// Returns the instance ID of this instance.
+    fn instance_id(&self) -> &C::InstanceId;
 }

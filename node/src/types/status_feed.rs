@@ -12,11 +12,13 @@ use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
+use casper_types::PublicKey;
+
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo, consensus::EraId, rpc_server::rpcs::docs::DocExample,
     },
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::hash::Digest,
     types::{Block, BlockHash, NodeId, PeersMap, Timestamp},
 };
 

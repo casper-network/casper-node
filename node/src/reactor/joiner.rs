@@ -418,13 +418,17 @@ impl reactor::Reactor for Reactor {
         let event_stream_server =
             EventStreamServer::new(config.event_stream_server.clone(), effect_builder);
 
-        let block_validator = BlockValidator::new();
+        let (block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
+        effects.extend(reactor::wrap_effects(
+            Event::BlockValidator,
+            block_validator_effects,
+        ));
 
         let deploy_fetcher = Fetcher::new(config.fetcher);
 
         let block_by_height_fetcher = Fetcher::new(config.fetcher);
 
-        let deploy_acceptor = DeployAcceptor::new();
+        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
 
         let genesis_state_root_hash = chainspec_loader
             .genesis_state_root_hash()

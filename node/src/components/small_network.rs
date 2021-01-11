@@ -149,9 +149,6 @@ where
     pending: HashSet<SocketAddr>,
     /// The interval between each fresh round of gossiping the node's public listening address.
     gossip_interval: Duration,
-    /// An index for an iteration of gossiping our own public listening address.  This is
-    /// incremented by 1 on each iteration, and wraps on overflow.
-    next_gossip_address_index: u32,
     /// The hash of the chainspec.  We only remain connected to peers with the same
     /// `genesis_config_hash` as us.
     genesis_config_hash: Digest,
@@ -214,7 +211,6 @@ where
                 pending: HashSet::new(),
                 blocklist: HashSet::new(),
                 gossip_interval: cfg.gossip_interval,
-                next_gossip_address_index: 0,
                 genesis_config_hash,
                 shutdown_sender: None,
                 shutdown_receiver: watch::channel(()).1,
@@ -276,7 +272,6 @@ where
             pending: HashSet::new(),
             blocklist: HashSet::new(),
             gossip_interval: cfg.gossip_interval,
-            next_gossip_address_index: 0,
             genesis_config_hash,
             shutdown_sender: Some(server_shutdown_sender),
             shutdown_receiver,
@@ -592,8 +587,7 @@ where
 
     /// Gossips our public listening address, and schedules the next such gossip round.
     fn gossip_our_address(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event<P>> {
-        self.next_gossip_address_index = self.next_gossip_address_index.wrapping_add(1);
-        let our_address = GossipedAddress::new(self.public_address, self.next_gossip_address_index);
+        let our_address = GossipedAddress::new(self.public_address);
         let mut effects = effect_builder
             .announce_gossip_our_address(our_address)
             .ignore();
@@ -1013,16 +1007,14 @@ async fn handshake_reader<REv, P>(
     P: DeserializeOwned + Send + Display,
     REv: From<Event<P>>,
 {
-    if let Some(incoming_handshake_msg) = stream.next().await {
-        if let Ok(msg @ Message::Handshake { .. }) = incoming_handshake_msg {
-            debug!(%msg, %peer_id, "{}: handshake received", our_id);
-            return event_queue
-                .schedule(
-                    Event::IncomingMessage { peer_id, msg },
-                    QueueKind::NetworkIncoming,
-                )
-                .await;
-        }
+    if let Some(Ok(msg @ Message::Handshake { .. })) = stream.next().await {
+        debug!(%msg, %peer_id, "{}: handshake received", our_id);
+        return event_queue
+            .schedule(
+                Event::IncomingMessage { peer_id, msg },
+                QueueKind::NetworkIncoming,
+            )
+            .await;
     }
     warn!(%peer_id, "{}: receiving handshake failed, closing connection", our_id);
     event_queue

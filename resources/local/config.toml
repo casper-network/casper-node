@@ -34,6 +34,9 @@ abbreviate_modules = false
 # consensus messages.
 secret_key_path = 'secret_key.pem'
 
+# The folder in which the files with per-era latest unit hashes will be stored.
+unit_hashes_folder = "../node-storage"
+
 
 # ====================================
 # Configuration options for networking
@@ -198,6 +201,14 @@ get_remainder_timeout_secs = 5
 # sent from this node to another node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
 get_from_peer_timeout = 3
+
+# ===================================================
+# Configuration options for deploy acceptor component
+# ===================================================
+[deploy_acceptor]
+
+# If true, the deploy acceptor will verify the account associated with a received deploy prior to accepting it.
+verify_accounts = true
 
 
 # ========================================================

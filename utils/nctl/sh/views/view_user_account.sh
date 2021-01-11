@@ -1,34 +1,46 @@
 #!/usr/bin/env bash
 
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/views/utils.sh
+
+#######################################
+# Renders user on-chain account details.
+# Globals:
+#   NCTL_ACCOUNT_TYPE_USER - user account type literal.
+# Arguments:
+#   User ordinal identifier.
+#######################################
+function main()
+{
+    local USER_ID=${1}
+
+    if [ "$USER_ID" = "all" ]; then
+        for USER_ID in $(seq 1 "$(get_count_of_users)")
+        do
+            echo "------------------------------------------------------------------------------------------------------------------------------------"
+            log "user #$USER_ID :: on-chain account details:"
+            render_account "$NCTL_ACCOUNT_TYPE_USER" "$USER_ID"
+        done
+    else
+        log "user #$USER_ID :: on-chain account details:"
+        render_account "$NCTL_ACCOUNT_TYPE_USER" "$USER_ID"
+    fi
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
 unset USER_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         user) USER_ID=${VALUE} ;;
         *)
     esac
 done
 
-USER_ID=${USER_ID:-"all"}
-
-# ----------------------------------------------------------------
-# MAIN
-# ----------------------------------------------------------------
-
-source $NCTL/sh/utils.sh
-source $NCTL/sh/views/funcs.sh
-
-if [ $USER_ID = "all" ]; then
-    for USER_ID in $(seq 1 $(get_count_of_users))
-    do
-        echo "------------------------------------------------------------------------------------------------------------------------------------"
-        log "user #$USER_ID :: on-chain account details:"
-        render_account $NCTL_ACCOUNT_TYPE_USER $USER_ID
-    done
-else
-    log "user #$USER_ID :: on-chain account details:"
-    render_account $NCTL_ACCOUNT_TYPE_USER $USER_ID
-fi
+main "${USER_ID:-"all"}"

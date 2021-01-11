@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/node/svc_"$NCTL_DAEMON_TYPE".sh
+
 unset LOG_LEVEL
 unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
         loglevel) LOG_LEVEL=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
@@ -23,19 +26,16 @@ NODE_ID=${NODE_ID:-"all"}
 # MAIN
 # ----------------------------------------------------------------
 
-source $NCTL/sh/utils.sh
-source $NCTL/sh/node/funcs_$NCTL_DAEMON_TYPE.sh
-
-
-if [ $NODE_ID == "all" ]; then
-    log "net-$NET_ID: starting node(s) begins ... please wait"
+# Start node(s).
+if [ "$NODE_ID" == "all" ]; then
+    log "starting node(s) begins ... please wait"
     do_node_start_all
-    log "net-$NET_ID: starting node(s) complete"
+    log "starting node(s) complete"
 else
-    log "starting node :: node-$NODE_ID"
-    do_node_start $NODE_ID
+    log "node-$NODE_ID: starting ..."
+    do_node_start "$NODE_ID"
 fi
 
+# Display status.
 sleep 1.0
-source $NCTL/sh/node/status.sh node=$NODE_ID
-
+source "$NCTL"/sh/node/status.sh node="$NODE_ID"

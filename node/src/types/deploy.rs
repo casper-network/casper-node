@@ -12,6 +12,7 @@ use std::{
 use datasize::DataSize;
 use hex::FromHexError;
 use itertools::Itertools;
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::{Rng, RngCore};
@@ -27,24 +28,23 @@ use casper_execution_engine::{
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     standard_payment::ARG_AMOUNT,
-    ExecutionResult, U512,
+    AsymmetricType, ExecutionResult, PublicKey, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
-    components::block_proposer::DeployType,
+    components::{block_proposer::DeployType, chainspec_loader::DeployConfig},
+    crypto,
     crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
-        Error as CryptoError,
+        AsymmetricKeyExt, Error as CryptoError,
     },
     rpcs::docs::DocExample,
     utils::DisplayIter,
     NodeRng,
 };
-use num_traits::Zero;
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let payment = ExecutableDeployItem::StoredContractByName {
@@ -262,6 +262,15 @@ impl DeployHeader {
     pub fn chain_name(&self) -> &str {
         &self.chain_name
     }
+
+    /// Determine if this deploy header has valid values based on a `DeployConfig` and timestamp.
+    pub fn is_valid(&self, deploy_config: &DeployConfig, current_timestamp: Timestamp) -> bool {
+        let ttl_valid = self.ttl() <= deploy_config.max_ttl;
+        let timestamp_valid = self.timestamp() <= current_timestamp;
+        let not_expired = !self.expired(current_timestamp);
+        let num_deps_valid = self.dependencies().len() <= deploy_config.max_dependencies as usize;
+        ttl_valid && timestamp_valid && not_expired && num_deps_valid
+    }
 }
 
 impl DeployHeader {
@@ -446,7 +455,7 @@ impl Deploy {
     /// Adds a signature of this deploy's hash to its approvals.
     pub fn sign(&mut self, secret_key: &SecretKey, rng: &mut NodeRng) {
         let signer = PublicKey::from(secret_key);
-        let signature = asymmetric_key::sign(&self.hash, secret_key, &signer, rng);
+        let signature = crypto::sign(&self.hash, secret_key, &signer, rng);
         let approval = Approval { signer, signature };
         self.approvals.push(approval);
     }
@@ -536,6 +545,50 @@ impl Deploy {
         }
     }
 
+    /// Returns true if and only if:
+    ///   * the chain_name is correct,
+    ///   * the configured parameters are complied with,
+    ///   * the deploy is valid
+    ///
+    /// Note: if everything else checks out, calls the computationally expensive `is_valid`
+    /// method.
+    pub fn is_acceptable(&mut self, chain_name: String, config: DeployConfig) -> bool {
+        let header = self.header();
+        if header.chain_name() != chain_name {
+            warn!(
+                deploy_hash = %self.id(),
+                deploy_header = %header,
+                chain_name = %header.chain_name(),
+                "invalid chain identifier"
+            );
+            return false;
+        }
+
+        if header.dependencies().len() > config.max_dependencies as usize {
+            warn!(
+                deploy_hash = %self.id(),
+                deploy_header = %header,
+                max_dependencies = %config.max_dependencies,
+                "deploy dependency ceiling exceeded"
+            );
+            return false;
+        }
+
+        if header.ttl() > config.max_ttl {
+            warn!(
+                deploy_hash = %self.id(),
+                deploy_header = %header,
+                max_ttl = %config.max_ttl,
+                "deploy ttl excessive"
+            );
+            return false;
+        }
+
+        // TODO - check if there is more that can be validated here.
+
+        self.is_valid()
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
@@ -614,9 +667,7 @@ fn validate_deploy(deploy: &Deploy) -> bool {
     // signatures are provided when executing the deploy, so all we need to do here is check that
     // any provided signatures are valid.
     for (index, approval) in deploy.approvals.iter().enumerate() {
-        if let Err(error) =
-            asymmetric_key::verify(&deploy.hash, &approval.signature, &approval.signer)
-        {
+        if let Err(error) = crypto::verify(&deploy.hash, &approval.signature, &approval.signer) {
             warn!(?deploy, "failed to verify approval {}: {}", index, error);
             return false;
         }
@@ -721,6 +772,7 @@ mod tests {
     use casper_types::bytesrepr::Bytes;
 
     use super::*;
+    use crate::crypto::AsymmetricKeyExt;
 
     #[test]
     fn json_roundtrip() {
@@ -773,7 +825,7 @@ mod tests {
                 args: Bytes::new(),
             },
             ExecutableDeployItem::Transfer { args: Bytes::new() },
-            &SecretKey::generate_ed25519(),
+            &SecretKey::generate_ed25519().unwrap(),
             &mut crate::new_rng(),
         );
         deploy.header.gas_price = 1;

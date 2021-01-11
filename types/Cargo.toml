@@ -1,6 +1,6 @@
 [package]
 name = "casper-types"
-version = "0.4.0" # when updating, also update 'html_root_url' in lib.rs
+version = "0.6.0" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "Types used to allow creation of Wasm contracts and tests for use on the Casper network."
@@ -12,12 +12,16 @@ license-file = "../LICENSE"
 
 [dependencies]
 base16 = { version = "0.2.1", default-features = false }
+base64 = { version = "0.13.0", default-features = false }
 bitflags = "1"
 blake2 = { version = "0.9.0", default-features = false }
 # TODO: Replace failure with thiserror once no_std support is landed https://github.com/dtolnay/thiserror/pull/64
 datasize = { version = "0.2.0", default-features = false }
+ed25519-dalek = { version = "1.0.0", default-features = false, features = ["rand", "u64_backend"] }
 failure = { version = "0.1.8", default-features = false, features = ["failure_derive"] }
+hex = { version = "0.4.2", default-features = false }
 hex_fmt = "0.3.0"
+k256 = { version = "0.4.2", default-features = false, features = ["ecdsa", "zeroize"] }
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }
 num-rational = { version = "0.3.0", default-features = false }
@@ -41,7 +45,17 @@ serde_test = "1.0.117"
 
 [features]
 default = ["base16/alloc", "serde/alloc", "serde_json/alloc"]
-std = ["base16/std", "serde/std", "serde_json/std", "schemars"]
+std = [
+    "base16/std",
+    "base64/std",
+    "ed25519-dalek/std",
+    "ed25519-dalek/serde",
+    "hex/std",
+    "k256/std",
+    "serde/std",
+    "serde_json/std",
+    "schemars"
+]
 gens = ["std", "proptest/std"]
 
 [[bench]]
