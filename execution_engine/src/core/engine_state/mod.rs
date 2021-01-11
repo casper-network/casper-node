@@ -26,7 +26,6 @@ use std::{
 
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
-use parity_wasm::elements::Module;
 use tracing::{debug, error, warn};
 
 use casper_types::{
@@ -40,9 +39,8 @@ use casper_types::{
     mint::ROUND_SEIGNIORAGE_RATE_KEY,
     proof_of_stake,
     system_contract_errors::{self},
-    AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, ContractPackage,
-    ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType, Key, Phase,
-    ProtocolVersion, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, DeployHash, DeployInfo,
+    Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -64,6 +62,7 @@ pub use self::{
 use crate::{
     core::{
         engine_state::{
+            executable_deploy_item::DeployMetadata,
             execution_result::ExecutionResultBuilder,
             genesis::GenesisInstaller,
             step::{StepRequest, StepResult},
@@ -79,7 +78,7 @@ use crate::{
         newtypes::{Blake2bHash, CorrelationId},
         stored_value::StoredValue,
         transform::Transform,
-        wasm_prep::{self, Preprocessor},
+        wasm_prep::Preprocessor,
     },
     storage::{
         global_state::{CommitResult, StateProvider},
@@ -102,32 +101,6 @@ pub struct EngineState<S> {
     config: EngineConfig,
     system_contract_cache: SystemContractCache,
     state: S,
-}
-
-#[derive(Clone, Debug)]
-pub enum GetModuleResult {
-    Session {
-        module: Module,
-        contract_package: ContractPackage,
-        entry_point: EntryPoint,
-    },
-    Contract {
-        // Contract hash
-        base_key: Key,
-        module: Module,
-        contract: Contract,
-        contract_package: ContractPackage,
-        entry_point: EntryPoint,
-    },
-}
-
-impl GetModuleResult {
-    pub fn take_module(self) -> Module {
-        match self {
-            GetModuleResult::Session { module, .. } => module,
-            GetModuleResult::Contract { module, .. } => module,
-        }
-    }
 }
 
 impl<S> EngineState<S>
@@ -580,129 +553,6 @@ where
         }
 
         Ok(results)
-    }
-
-    pub fn get_module(
-        &self,
-        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-        deploy_item: &ExecutableDeployItem,
-        account: &Account,
-        correlation_id: CorrelationId,
-        preprocessor: &Preprocessor,
-        protocol_version: &ProtocolVersion,
-    ) -> Result<GetModuleResult, Error> {
-        let (contract_package, contract, base_key) = match deploy_item {
-            ExecutableDeployItem::ModuleBytes { module_bytes, .. } => {
-                let module = preprocessor.preprocess(&module_bytes.as_ref())?;
-                return Ok(GetModuleResult::Session {
-                    module,
-                    contract_package: ContractPackage::default(),
-                    entry_point: EntryPoint::default(),
-                });
-            }
-            ExecutableDeployItem::StoredContractByHash { .. }
-            | ExecutableDeployItem::StoredContractByName { .. } => {
-                // NOTE: `to_contract_hash_key` ensures it returns valid value only for
-                // ByHash/ByName variants
-                let stored_contract_key = deploy_item.to_contract_hash_key(&account)?.unwrap();
-
-                let contract_hash = stored_contract_key
-                    .into_hash()
-                    .ok_or(Error::InvalidKeyVariant)?;
-                let contract = tracking_copy
-                    .borrow_mut()
-                    .get_contract(correlation_id, contract_hash)?;
-
-                if !contract.is_compatible_protocol_version(*protocol_version) {
-                    let exec_error = execution::Error::IncompatibleProtocolMajorVersion {
-                        expected: protocol_version.value().major,
-                        actual: contract.protocol_version().value().major,
-                    };
-                    return Err(error::Error::Exec(exec_error));
-                }
-
-                let contract_package = tracking_copy
-                    .borrow_mut()
-                    .get_contract_package(correlation_id, contract.contract_package_hash())?;
-
-                (contract_package, contract, stored_contract_key)
-            }
-            ExecutableDeployItem::StoredVersionedContractByName { version, .. }
-            | ExecutableDeployItem::StoredVersionedContractByHash { version, .. } => {
-                // NOTE: `to_contract_hash_key` ensures it returns valid value only for
-                // ByHash/ByName variants
-                let contract_package_key = deploy_item.to_contract_hash_key(&account)?.unwrap();
-                let contract_package_hash = contract_package_key
-                    .into_hash()
-                    .ok_or(Error::InvalidKeyVariant)?;
-
-                let contract_package = tracking_copy
-                    .borrow_mut()
-                    .get_contract_package(correlation_id, contract_package_hash)?;
-
-                let maybe_version_key =
-                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
-
-                let contract_version_key = maybe_version_key
-                    .or_else(|| contract_package.current_contract_version())
-                    .ok_or(error::Error::Exec(
-                        execution::Error::NoActiveContractVersions(contract_package_hash),
-                    ))?;
-
-                if !contract_package.is_version_enabled(contract_version_key) {
-                    return Err(error::Error::Exec(
-                        execution::Error::InvalidContractVersion(contract_version_key),
-                    ));
-                }
-
-                let contract_hash = *contract_package
-                    .lookup_contract_hash(contract_version_key)
-                    .ok_or(error::Error::Exec(
-                        execution::Error::InvalidContractVersion(contract_version_key),
-                    ))?;
-
-                let contract = tracking_copy
-                    .borrow_mut()
-                    .get_contract(correlation_id, contract_hash)?;
-
-                (contract_package, contract, contract_package_key)
-            }
-            ExecutableDeployItem::Transfer { .. } => {
-                return Err(error::Error::InvalidDeployItemVariant(String::from(
-                    "Transfer",
-                )))
-            }
-        };
-
-        let entry_point_name = deploy_item.entry_point_name();
-
-        let entry_point = contract
-            .entry_point(entry_point_name)
-            .cloned()
-            .ok_or_else(|| {
-                error::Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
-            })?;
-
-        let contract_wasm = tracking_copy
-            .borrow_mut()
-            .get_contract_wasm(correlation_id, contract.contract_wasm_hash())?;
-
-        let module = wasm_prep::deserialize(contract_wasm.bytes())?;
-
-        match entry_point.entry_point_type() {
-            EntryPointType::Session => Ok(GetModuleResult::Session {
-                module,
-                contract_package,
-                entry_point,
-            }),
-            EntryPointType::Contract => Ok(GetModuleResult::Contract {
-                module,
-                base_key,
-                contract,
-                contract_package,
-                entry_point,
-            }),
-        }
     }
 
     fn get_authorized_account(
@@ -1374,15 +1224,16 @@ where
         // Create session code `A` from provided session bytes
         // validation_spec_1: valid wasm bytes
         // we do this upfront as there is no reason to continue if session logic is invalid
-        let session_module = match self.get_module(
+        let session_metadata = match session.get_deploy_metadata(
             Rc::clone(&tracking_copy),
-            &session,
             &account,
             correlation_id,
             &preprocessor,
             &protocol_version,
+            &protocol_data,
+            Phase::Session,
         ) {
-            Ok(module) => module,
+            Ok(metadata) => metadata,
             Err(error) => {
                 return Ok(ExecutionResult::precondition_failure(error));
             }
@@ -1461,62 +1312,61 @@ where
         let payment_result = {
             // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
             // conv_rate)
-            let pay_gas_limit = Gas::from_motes(max_payment_cost, CONV_RATE).unwrap_or_default();
-
-            let module_bytes_is_empty = match payment {
-                ExecutableDeployItem::ModuleBytes {
-                    ref module_bytes, ..
-                } => module_bytes.is_empty(),
-                _ => false,
-            };
+            let payment_gas_limit =
+                Gas::from_motes(max_payment_cost, CONV_RATE).unwrap_or_default();
 
             // Create payment code module from bytes
             // validation_spec_1: valid wasm bytes
-            let maybe_payment_module = if module_bytes_is_empty {
-                Ok(GetModuleResult::Session {
-                    module: system_module.clone(),
-                    contract_package: ContractPackage::default(),
-                    entry_point: EntryPoint::default(),
-                })
-            } else {
-                self.get_module(
-                    Rc::clone(&tracking_copy),
-                    &payment,
-                    &account,
-                    correlation_id,
-                    &preprocessor,
-                    &protocol_version,
-                )
-            };
-
-            let payment_module = match maybe_payment_module {
-                Ok(module) => module,
+            let phase = Phase::Payment;
+            let payment_metadata = match payment.get_deploy_metadata(
+                Rc::clone(&tracking_copy),
+                &account,
+                correlation_id,
+                &preprocessor,
+                &protocol_version,
+                &protocol_data,
+                phase,
+            ) {
+                Ok(metadata) => metadata,
                 Err(error) => {
                     return Ok(ExecutionResult::precondition_failure(error));
                 }
             };
 
             // payment_code_spec_2: execute payment code
-            let phase = Phase::Payment;
             let (
                 payment_module,
                 payment_base_key,
                 mut payment_named_keys,
                 payment_package,
                 payment_entry_point,
-            ) = match payment_module {
-                GetModuleResult::Session {
+                is_standard_payment,
+            ) = match payment_metadata {
+                DeployMetadata::System {
+                    contract_package,
+                    entry_point,
+                    ..
+                } => (
+                    system_module.clone(),
+                    base_key,                     // this is account key
+                    account.named_keys().clone(), // standard payment uses account keys
+                    contract_package,
+                    entry_point,
+                    true,
+                ),
+                DeployMetadata::Session {
                     module,
                     contract_package,
                     entry_point,
                 } => (
                     module,
-                    base_key,
+                    base_key, // this is account key
                     account.named_keys().clone(),
                     contract_package,
                     entry_point,
+                    false,
                 ),
-                GetModuleResult::Contract {
+                DeployMetadata::Contract {
                     module,
                     base_key,
                     contract,
@@ -1524,10 +1374,11 @@ where
                     entry_point,
                 } => (
                     module,
-                    base_key,
+                    base_key, // this is contract key
                     contract.named_keys().clone(),
                     contract_package,
                     entry_point,
+                    false,
                 ),
             };
 
@@ -1542,7 +1393,25 @@ where
 
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
-            if !module_bytes_is_empty {
+            if is_standard_payment {
+                executor.exec_standard_payment(
+                    system_module.clone(),
+                    payment_args,
+                    payment_base_key,
+                    &account,
+                    &mut payment_named_keys,
+                    authorization_keys.clone(),
+                    blocktime,
+                    deploy_hash,
+                    payment_gas_limit,
+                    protocol_version,
+                    correlation_id,
+                    Rc::clone(&tracking_copy),
+                    phase,
+                    protocol_data,
+                    system_contract_cache,
+                )
+            } else {
                 executor.exec(
                     payment_module,
                     payment_entry_point,
@@ -1553,7 +1422,7 @@ where
                     authorization_keys.clone(),
                     blocktime,
                     deploy_hash,
-                    pay_gas_limit,
+                    payment_gas_limit,
                     protocol_version,
                     correlation_id,
                     Rc::clone(&tracking_copy),
@@ -1562,64 +1431,6 @@ where
                     system_contract_cache,
                     &payment_package,
                 )
-            } else {
-                // use host side standard payment
-                let hash_address_generator = {
-                    let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-                    Rc::new(RefCell::new(generator))
-                };
-                let uref_address_generator = {
-                    let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-                    Rc::new(RefCell::new(generator))
-                };
-                let transfer_address_generator = {
-                    let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-                    Rc::new(RefCell::new(generator))
-                };
-
-                let mut runtime = match executor.create_runtime(
-                    payment_module,
-                    EntryPointType::Session,
-                    payment_args,
-                    &mut payment_named_keys,
-                    Default::default(),
-                    payment_base_key,
-                    &account,
-                    authorization_keys.clone(),
-                    blocktime,
-                    deploy_hash,
-                    pay_gas_limit,
-                    hash_address_generator,
-                    uref_address_generator,
-                    transfer_address_generator,
-                    protocol_version,
-                    correlation_id,
-                    Rc::clone(&tracking_copy),
-                    phase,
-                    protocol_data,
-                    system_contract_cache,
-                ) {
-                    Ok((_instance, runtime)) => runtime,
-                    Err(error) => {
-                        return Ok(ExecutionResult::precondition_failure(Error::Exec(error)));
-                    }
-                };
-
-                let effects_snapshot = tracking_copy.borrow().effect();
-
-                match runtime.call_host_standard_payment() {
-                    Ok(()) => ExecutionResult::Success {
-                        effect: runtime.context().effect(),
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    },
-                    Err(error) => ExecutionResult::Failure {
-                        error: error.into(),
-                        effect: effects_snapshot,
-                        transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
-                    },
-                }
             }
         };
 
@@ -1723,9 +1534,9 @@ where
         };
 
         // Transfer the contents of the rewards purse to block proposer
-
         execution_result_builder.set_payment_execution_result(payment_result);
 
+        // Begin session logic handling
         let post_payment_tracking_copy = tracking_copy.borrow();
         let session_tracking_copy = Rc::new(RefCell::new(post_payment_tracking_copy.fork()));
 
@@ -1736,8 +1547,22 @@ where
             mut session_named_keys,
             session_package,
             session_entry_point,
-        ) = match session_module {
-            GetModuleResult::Session {
+        ) = match session_metadata {
+            DeployMetadata::System {
+                base_key,
+                contract,
+                contract_package,
+                entry_point,
+            } => {
+                (
+                    system_module.clone(),
+                    base_key, // this is contract key
+                    contract.named_keys().clone(),
+                    contract_package,
+                    entry_point,
+                )
+            }
+            DeployMetadata::Session {
                 module,
                 contract_package,
                 entry_point,
@@ -1748,7 +1573,7 @@ where
                 contract_package,
                 entry_point,
             ),
-            GetModuleResult::Contract {
+            DeployMetadata::Contract {
                 module,
                 base_key,
                 contract,

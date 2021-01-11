@@ -1239,6 +1239,10 @@ where
         key.into_seed() == self.protocol_data().auction()
     }
 
+    pub fn is_standard_payment(&self, key: Key) -> bool {
+        key.into_seed() == self.protocol_data().standard_payment()
+    }
+
     fn get_named_argument<T: FromBytes + CLTyped>(
         args: &RuntimeArgs,
         name: &str,

@@ -249,7 +249,6 @@ impl Executor {
                 }
             }
         }
-
         on_fail_charge!(
             instance.invoke_export(entry_point_name, &[], &mut runtime),
             runtime.context().gas_counter(),
@@ -261,6 +260,92 @@ impl Executor {
             effect: runtime.context().effect(),
             transfers: runtime.context().transfers().to_owned(),
             cost: runtime.context().gas_counter(),
+        }
+    }
+
+    pub fn exec_standard_payment<R>(
+        &self,
+        system_module: Module,
+        payment_args: RuntimeArgs,
+        payment_base_key: Key,
+        account: &Account,
+        payment_named_keys: &mut NamedKeys,
+        authorization_keys: BTreeSet<AccountHash>,
+        blocktime: BlockTime,
+        deploy_hash: DeployHash,
+        payment_gas_limit: Gas,
+        protocol_version: ProtocolVersion,
+        correlation_id: CorrelationId,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        phase: Phase,
+        protocol_data: ProtocolData,
+        system_contract_cache: SystemContractCache,
+    ) -> ExecutionResult
+    where
+        R: StateReader<Key, StoredValue>,
+        R::Error: Into<Error>,
+    {
+        // use host side standard payment
+        let hash_address_generator = {
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            Rc::new(RefCell::new(generator))
+        };
+        let uref_address_generator = {
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            Rc::new(RefCell::new(generator))
+        };
+        let transfer_address_generator = {
+            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            Rc::new(RefCell::new(generator))
+        };
+
+        let mut runtime = match self.create_runtime(
+            system_module,
+            EntryPointType::Session,
+            payment_args,
+            payment_named_keys,
+            Default::default(),
+            payment_base_key,
+            &account,
+            authorization_keys,
+            blocktime,
+            deploy_hash,
+            payment_gas_limit,
+            hash_address_generator,
+            uref_address_generator,
+            transfer_address_generator,
+            protocol_version,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+            phase,
+            protocol_data,
+            system_contract_cache,
+        ) {
+            Ok((_instance, runtime)) => runtime,
+            Err(error) => {
+                return ExecutionResult::Failure {
+                    error: error.into(),
+                    effect: Default::default(),
+                    transfers: Vec::default(),
+                    cost: Gas::default(),
+                };
+            }
+        };
+
+        let effects_snapshot = tracking_copy.borrow().effect();
+
+        match runtime.call_host_standard_payment() {
+            Ok(()) => ExecutionResult::Success {
+                effect: runtime.context().effect(),
+                transfers: runtime.context().transfers().to_owned(),
+                cost: runtime.context().gas_counter(),
+            },
+            Err(error) => ExecutionResult::Failure {
+                error: error.into(),
+                effect: effects_snapshot,
+                transfers: runtime.context().transfers().to_owned(),
+                cost: runtime.context().gas_counter(),
+            },
         }
     }
 
