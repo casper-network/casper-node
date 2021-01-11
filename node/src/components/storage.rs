@@ -366,18 +366,7 @@ impl Storage {
                 .respond(self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)?)
                 .ignore(),
             StorageRequest::GetHighestBlock { responder } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                responder
-                    .respond(
-                        self.block_height_index
-                            .keys()
-                            .last()
-                            .and_then(|&height| {
-                                self.get_block_by_height(&mut txn, height).transpose()
-                            })
-                            .transpose()?,
-                    )
-                    .ignore()
+                responder.respond(self.get_highest_block()?).ignore()
             }
             StorageRequest::GetBlockHeader {
                 block_hash,
@@ -517,6 +506,16 @@ impl Storage {
                 responder,
             } => responder.respond(self.chainspec_cache.clone()).ignore(),
         })
+    }
+
+    /// Retrieves block with the highest block height (if any exists).
+    pub fn get_highest_block(&self) -> Result<Option<Block>, LmdbExtError> {
+        let highest_block_index = match self.block_height_index.keys().last() {
+            None => return Ok(None),
+            Some(height) => *height,
+        };
+        let mut tx = self.env.begin_ro_txn()?;
+        self.get_block_by_height(&mut tx, highest_block_index)
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
