@@ -61,8 +61,6 @@ pub struct UpgradeConfig {
     pre_state_hash: Blake2bHash,
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
-    upgrade_installer_args: Option<Vec<u8>>,
-    upgrade_installer_bytes: Option<Vec<u8>>,
     wasm_config: Option<WasmConfig>,
     activation_point: Option<ActivationPoint>,
     new_validator_slots: Option<u32>,
@@ -79,8 +77,6 @@ impl UpgradeConfig {
         pre_state_hash: Blake2bHash,
         current_protocol_version: ProtocolVersion,
         new_protocol_version: ProtocolVersion,
-        upgrade_installer_args: Option<Vec<u8>>,
-        upgrade_installer_bytes: Option<Vec<u8>>,
         wasm_config: Option<WasmConfig>,
         activation_point: Option<ActivationPoint>,
         new_validator_slots: Option<u32>,
@@ -94,8 +90,6 @@ impl UpgradeConfig {
             pre_state_hash,
             current_protocol_version,
             new_protocol_version,
-            upgrade_installer_args,
-            upgrade_installer_bytes,
             wasm_config,
             activation_point,
             new_validator_slots,
@@ -117,16 +111,6 @@ impl UpgradeConfig {
 
     pub fn new_protocol_version(&self) -> ProtocolVersion {
         self.new_protocol_version
-    }
-
-    pub fn upgrade_installer_args(&self) -> Option<&[u8]> {
-        let args = self.upgrade_installer_args.as_ref()?;
-        Some(args.as_slice())
-    }
-
-    pub fn upgrade_installer_bytes(&self) -> Option<&[u8]> {
-        let bytes = self.upgrade_installer_bytes.as_ref()?;
-        Some(bytes.as_slice())
     }
 
     pub fn wasm_config(&self) -> Option<&WasmConfig> {

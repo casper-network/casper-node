@@ -333,8 +333,6 @@ pub(crate) struct UpgradePoint {
     pub(crate) activation_point: ActivationPoint,
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
-    pub(crate) upgrade_installer_bytes: Option<Vec<u8>>,
-    pub(crate) upgrade_installer_args: Option<Vec<u8>>,
     pub(crate) new_wasm_config: Option<WasmConfig>,
     pub(crate) new_deploy_config: Option<DeployConfig>,
     pub(crate) new_validator_slots: Option<u32>,
@@ -353,16 +351,6 @@ impl UpgradePoint {
             rng.gen::<u8>() as u64,
             rng.gen::<u8>() as u64,
         );
-        let upgrade_installer_bytes = if rng.gen() {
-            Some(vec![rng.gen()])
-        } else {
-            None
-        };
-        let upgrade_installer_args = if rng.gen() {
-            Some(vec![rng.gen()])
-        } else {
-            None
-        };
         let new_costs = if rng.gen() { Some(rng.gen()) } else { None };
         let new_deploy_config = if rng.gen() {
             Some(DeployConfig::random(rng))
@@ -375,8 +363,6 @@ impl UpgradePoint {
         UpgradePoint {
             activation_point,
             protocol_version,
-            upgrade_installer_bytes,
-            upgrade_installer_args,
             new_wasm_config: new_costs,
             new_deploy_config,
             new_validator_slots,
@@ -605,11 +591,6 @@ mod tests {
         let upgrade0 = &spec.upgrades[0];
         assert_eq!(upgrade0.activation_point, ActivationPoint { height: 23 });
         assert_eq!(upgrade0.protocol_version, Version::from((0, 2, 0)));
-        assert_eq!(
-            upgrade0.upgrade_installer_bytes,
-            Some(b"Upgrade installer bytes".to_vec())
-        );
-        assert!(upgrade0.upgrade_installer_args.is_none());
 
         let new_wasm_config = upgrade0
             .new_wasm_config
@@ -647,8 +628,6 @@ mod tests {
         let upgrade1 = &spec.upgrades[1];
         assert_eq!(upgrade1.activation_point, ActivationPoint { height: 39 });
         assert_eq!(upgrade1.protocol_version, Version::from((0, 3, 0)));
-        assert!(upgrade1.upgrade_installer_bytes.is_none());
-        assert!(upgrade1.upgrade_installer_args.is_none());
         assert!(upgrade1.new_wasm_config.is_none());
         assert!(upgrade1.new_deploy_config.is_none());
     }

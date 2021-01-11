@@ -443,13 +443,14 @@ message ChainSpec {
     }
 
     message UpgradePoint {
+
+        reserved 3; // defunct upgrade installer DeployCode
+
         // Hiding this behind an abstraction so we are free
         // to change how such a point is expressed in the future.
         ActivationPoint activation_point = 1;
         // The protocol version as of this upgrade
         casper.state.ProtocolVersion protocol_version = 2;
-        // bytes for a contract to run that applies the upgrades to system contracts
-        DeployCode upgrade_installer = 3;
         // Note: this is optional; only needed when costs are changing
         WasmConfig new_wasm_config = 4;
         // DeployConfig changes

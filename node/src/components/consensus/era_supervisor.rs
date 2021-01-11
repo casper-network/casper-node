@@ -872,12 +872,6 @@ fn instance_id(
         .take_while(|up| up.activation_point.height <= block_height)
     {
         hasher.update(upgrade_point.activation_point.height.to_le_bytes());
-        if let Some(bytes) = upgrade_point.upgrade_installer_bytes.as_ref() {
-            hasher.update(bytes);
-        }
-        if let Some(bytes) = upgrade_point.upgrade_installer_args.as_ref() {
-            hasher.update(bytes);
-        }
     }
 
     hasher.finalize_variable(|slice| {

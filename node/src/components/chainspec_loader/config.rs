@@ -69,7 +69,6 @@ impl Default for Genesis {
 #[serde(deny_unknown_fields)]
 struct UpgradePoint {
     protocol_version: Version,
-    upgrade_installer_path: Option<External<Vec<u8>>>,
     activation_point: chainspec::ActivationPoint,
     new_wasm_config: Option<WasmConfig>,
     new_deploy_config: Option<DeployConfig>,
@@ -81,7 +80,6 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
     fn from(upgrade_point: &chainspec::UpgradePoint) -> Self {
         UpgradePoint {
             protocol_version: upgrade_point.protocol_version.clone(),
-            upgrade_installer_path: Some(External::path(DEFAULT_UPGRADE_INSTALLER_PATH)),
             activation_point: upgrade_point.activation_point,
             new_wasm_config: upgrade_point.new_wasm_config,
             new_deploy_config: upgrade_point.new_deploy_config,
@@ -94,21 +92,11 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
 impl UpgradePoint {
     fn try_into_chainspec_upgrade_point<P: AsRef<Path>>(
         self,
-        root: P,
+        _root: P,
     ) -> Result<chainspec::UpgradePoint, Error> {
-        let upgrade_installer_bytes = self
-            .upgrade_installer_path
-            .map(|ext_vec| ext_vec.load(root.as_ref()))
-            .transpose()
-            .map_err(Error::LoadUpgradeInstaller)?;
-        // TODO - read this in?
-        let upgrade_installer_args = None;
-
         Ok(chainspec::UpgradePoint {
             activation_point: self.activation_point,
             protocol_version: self.protocol_version,
-            upgrade_installer_bytes,
-            upgrade_installer_args,
             new_wasm_config: self.new_wasm_config,
             new_deploy_config: self.new_deploy_config,
             new_validator_slots: self.new_validator_slots,

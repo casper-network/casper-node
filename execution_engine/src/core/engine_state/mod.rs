@@ -16,13 +16,7 @@ pub mod system_contract_cache;
 mod transfer;
 pub mod upgrade;
 
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
-    convert::TryFrom,
-    iter::FromIterator,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, iter::FromIterator, rc::Rc};
 
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -34,13 +28,13 @@ use casper_types::{
         EraValidators, ARG_REWARD_FACTORS, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
         LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    bytesrepr::{self, ToBytes},
-    contracts::{NamedKeys, UPGRADE_ENTRY_POINT_NAME},
+    bytesrepr::ToBytes,
+    contracts::NamedKeys,
     mint::ROUND_SEIGNIORAGE_RATE_KEY,
     proof_of_stake,
     system_contract_errors::{self},
-    AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, DeployHash, DeployInfo,
-    Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, Contract, DeployHash, DeployInfo, Key, Phase,
+    ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -67,7 +61,7 @@ use crate::{
             genesis::GenesisInstaller,
             step::{StepRequest, StepResult},
         },
-        execution::{self, AddressGenerator, DirectSystemContractCall, Executor},
+        execution::{self, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
@@ -272,7 +266,7 @@ where
         };
 
         // 3.1.2.2 persist wasm CostTable
-        let mut new_protocol_data = ProtocolData::new(
+        let new_protocol_data = ProtocolData::new(
             *new_wasm_config,
             current_protocol_data.mint(),
             current_protocol_data.proof_of_stake(),
@@ -284,111 +278,6 @@ where
         self.state
             .put_protocol_data(new_protocol_version, &new_protocol_data)
             .map_err(Into::into)?;
-
-        // 3.1.1.1.1.5 upgrade installer is optional except on major version upgrades
-        match upgrade_config.upgrade_installer_bytes() {
-            None if upgrade_check_result.is_code_required() => {
-                // 3.1.1.1.1.5 code is required for major version bump
-                return Err(Error::InvalidUpgradeConfig);
-            }
-            None => {
-                // optional for patch/minor bumps
-            }
-            Some(bytes) => {
-                // 3.1.2.3 execute upgrade installer if one is provided
-
-                // preprocess installer module
-                let upgrade_installer_module = {
-                    let preprocessor = Preprocessor::new(*new_wasm_config);
-                    preprocessor.preprocess(bytes)?
-                };
-
-                // currently there are no expected args for an upgrade installer but args are
-                // supported
-                let args = match upgrade_config.upgrade_installer_args() {
-                    Some(args) => {
-                        bytesrepr::deserialize(args.to_vec()).expect("should deserialize")
-                    }
-                    None => RuntimeArgs::new(),
-                };
-
-                // execute as system account
-                let mut system_account = {
-                    let key = Key::Account(SYSTEM_ACCOUNT_ADDR);
-                    match tracking_copy.borrow_mut().read(correlation_id, &key) {
-                        Ok(Some(StoredValue::Account(account))) => account,
-                        Ok(_) => panic!("system account must exist"),
-                        Err(error) => return Err(Error::Exec(error.into())),
-                    }
-                };
-
-                let authorization_keys = {
-                    let mut ret = BTreeSet::new();
-                    ret.insert(SYSTEM_ACCOUNT_ADDR);
-                    ret
-                };
-
-                let blocktime = BlockTime::default();
-
-                let deploy_hash = {
-                    // seeds address generator w/ protocol version
-                    let bytes: Vec<u8> = upgrade_config
-                        .new_protocol_version()
-                        .value()
-                        .into_bytes()?
-                        .to_vec();
-                    DeployHash::new(Blake2bHash::new(&bytes).value())
-                };
-
-                // upgrade has no gas limit; approximating with MAX
-                let gas_limit = Gas::new(std::u64::MAX.into());
-                let phase = Phase::System;
-                let hash_address_generator = {
-                    let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
-                    Rc::new(RefCell::new(generator))
-                };
-                let uref_address_generator = {
-                    let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
-                    Rc::new(RefCell::new(generator))
-                };
-                let transfer_address_generator = {
-                    let generator = AddressGenerator::new(pre_state_hash.as_ref(), phase);
-                    Rc::new(RefCell::new(generator))
-                };
-                let tracking_copy = Rc::clone(&tracking_copy);
-                let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
-
-                let executor = Executor::new(self.config);
-
-                let result: BTreeMap<ContractHash, ContractHash> = executor.exec_wasm_direct(
-                    upgrade_installer_module,
-                    UPGRADE_ENTRY_POINT_NAME,
-                    args,
-                    &mut system_account,
-                    authorization_keys,
-                    blocktime,
-                    deploy_hash,
-                    gas_limit,
-                    hash_address_generator,
-                    uref_address_generator,
-                    transfer_address_generator,
-                    new_protocol_version,
-                    correlation_id,
-                    Rc::clone(&tracking_copy),
-                    phase,
-                    new_protocol_data,
-                    system_contract_cache,
-                )?;
-
-                if !new_protocol_data.update_from(result) {
-                    return Err(Error::InvalidUpgradeResult);
-                } else {
-                    self.state
-                        .put_protocol_data(new_protocol_version, &new_protocol_data)
-                        .map_err(Into::into)?;
-                }
-            }
-        }
 
         // 3.1.1.1.1.7 new total validator slots is optional
         if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {

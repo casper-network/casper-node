@@ -5,7 +5,7 @@ use casper_engine_grpc_server::engine_server::{
         ChainSpec_ActivationPoint, ChainSpec_NewAuctionDelay, ChainSpec_NewLockedFundsPeriod,
         ChainSpec_NewUnbondingDelay, ChainSpec_NewValidatorSlots,
         ChainSpec_NewWasmlessTransferCost, ChainSpec_UpgradePoint, ChainSpec_WasmConfig,
-        DeployCode, UpgradeRequest,
+        UpgradeRequest,
     },
     state,
 };
@@ -17,7 +17,6 @@ pub struct UpgradeRequestBuilder {
     pre_state_hash: Vec<u8>,
     current_protocol_version: state::ProtocolVersion,
     new_protocol_version: state::ProtocolVersion,
-    upgrade_installer: DeployCode,
     new_wasm_config: Option<ChainSpec_WasmConfig>,
     activation_point: ChainSpec_ActivationPoint,
     new_validator_slots: Option<u32>,
@@ -50,11 +49,6 @@ impl UpgradeRequestBuilder {
 
     pub fn with_new_validator_slots(mut self, new_validator_slots: u32) -> Self {
         self.new_validator_slots = Some(new_validator_slots);
-        self
-    }
-
-    pub fn with_installer_code(mut self, upgrade_installer: DeployCode) -> Self {
-        self.upgrade_installer = upgrade_installer;
         self
     }
 
@@ -141,7 +135,6 @@ impl UpgradeRequestBuilder {
         }
 
         upgrade_point.set_protocol_version(self.new_protocol_version);
-        upgrade_point.set_upgrade_installer(self.upgrade_installer);
 
         let mut upgrade_request = UpgradeRequest::new();
         upgrade_request.set_protocol_version(self.current_protocol_version);

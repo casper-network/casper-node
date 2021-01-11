@@ -119,7 +119,6 @@ write_local = { cost = 141, arguments = [0, 1, 2, 3] }
 
 [[upgrade]]
 protocol_version = '0.2.0'
-upgrade_installer_path = 'upgrade.wasm'
 
 [upgrade.activation_point]
 height = 23

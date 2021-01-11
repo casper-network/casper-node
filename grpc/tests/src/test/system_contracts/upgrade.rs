@@ -1,11 +1,10 @@
-use casper_engine_grpc_server::engine_server::ipc::DeployCode;
 use casper_engine_test_support::internal::{
-    utils, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
+    InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_RUN_GENESIS_REQUEST,
     DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
 };
 
 use casper_execution_engine::{
-    core::engine_state::{upgrade::ActivationPoint, Error},
+    core::engine_state::upgrade::ActivationPoint,
     shared::{
         host_function_costs::HostFunctionCosts,
         opcode_costs::{
@@ -31,7 +30,6 @@ use num_rational::Ratio;
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
-const MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME: &str = "modified_system_upgrader.wasm";
 
 fn get_upgraded_wasm_config() -> WasmConfig {
     let opcode_cost = OpcodeCosts {
@@ -161,15 +159,11 @@ fn should_allow_only_wasm_costs_minor_version() {
     let new_wasm_config = get_upgraded_wasm_config();
 
     let mut upgrade_request = {
-        let bytes = utils::read_wasm_file_bytes(MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME);
-        let mut installer_code = DeployCode::new();
-        installer_code.set_code(bytes);
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_new_wasm_config(new_wasm_config)
-            .with_installer_code(installer_code)
             .build()
     };
 
@@ -208,14 +202,10 @@ fn should_not_downgrade() {
     let new_protocol_version = ProtocolVersion::from_parts(2, 0, 0);
 
     let mut upgrade_request = {
-        let bytes = utils::read_wasm_file_bytes(MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME);
-        let mut installer_code = DeployCode::new();
-        installer_code.set_code(bytes);
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_installer_code(installer_code)
             .build()
     };
 
@@ -316,44 +306,6 @@ fn should_not_skip_minor_versions() {
         .expect("should have response");
 
     assert!(!upgrade_response.has_success(), "expected failure");
-}
-
-#[ignore]
-#[test]
-fn should_fail_major_upgrade_without_installer() {
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
-    let sem_ver = PROTOCOL_VERSION.value();
-
-    let invalid_version =
-        ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
-
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(PROTOCOL_VERSION)
-            .with_new_protocol_version(invalid_version)
-            .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .build()
-    };
-
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(
-        upgrade_response.has_failed_deploy(),
-        "should have failed deploy"
-    );
-
-    let failed_deploy = upgrade_response.get_failed_deploy();
-    assert_eq!(
-        failed_deploy.message,
-        Error::InvalidUpgradeConfig.to_string()
-    );
 }
 
 #[ignore]
