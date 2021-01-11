@@ -7,9 +7,10 @@ use casper_engine_test_support::{
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{upgrade::ActivationPoint, GenesisAccount},
+    core::engine_state::{upgrade::ActivationPoint, GenesisAccount, SYSTEM_ACCOUNT_ADDR},
     shared::{
         motes::Motes,
         system_config::{
@@ -32,6 +33,7 @@ use casper_types::{
 };
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
+const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_1.into());
 const VALIDATOR_1_STAKE: u64 = 250_000;
@@ -47,11 +49,16 @@ const NEW_UNDELEGATE_COST: u32 = DEFAULT_UNDELEGATE_COST * 5;
 const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
 
 static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
-static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::from_parts(
-    OLD_PROTOCOL_VERSION.value().major,
-    OLD_PROTOCOL_VERSION.value().minor,
-    OLD_PROTOCOL_VERSION.value().patch + 1,
-));
+static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
+    ProtocolVersion::from_parts(
+        OLD_PROTOCOL_VERSION.value().major,
+        OLD_PROTOCOL_VERSION.value().minor,
+        OLD_PROTOCOL_VERSION.value().patch + 1,
+    )
+});
+
+const ARG_AMOUNT: &str = "amount";
+const ARG_TARGET: &str = "target";
 
 #[cfg(not(feature = "use-system-contracts"))]
 #[ignore]
@@ -551,4 +558,72 @@ fn should_charge_for_errorneous_system_contract_calls() {
         );
         assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
     }
+}
+
+#[ignore]
+#[test]
+fn should_not_charge_system_account_for_running_auction() {
+    // This verifies a corner case where system account calls `run_auction` entrypoint, but it
+    // shouldn't be charged for doing so. Otherwise if that happens the system could fail as in
+    // production code system account is most likely empty.
+    let fund_system_account_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! { ARG_TARGET => SYSTEM_ACCOUNT_ADDR, ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) },
+    )
+    .build();
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let auction_hash = builder.get_auction_contract_hash();
+
+    builder
+        .exec(fund_system_account_request)
+        .commit()
+        .expect_success();
+
+    let system_account = builder
+        .get_account(SYSTEM_ACCOUNT_ADDR)
+        .expect("should have system account");
+    let default_account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have default account");
+
+    let run_auction_as_system_request = ExecuteRequestBuilder::contract_call_by_hash(
+        SYSTEM_ACCOUNT_ADDR,
+        auction_hash,
+        auction::METHOD_RUN_AUCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    let run_auction_as_user_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        auction_hash,
+        auction::METHOD_RUN_AUCTION,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    // Verify that system account is not charged
+    let system_funds_before = builder.get_purse_balance(system_account.main_purse());
+    builder
+        .exec(run_auction_as_system_request)
+        .commit()
+        .expect_success();
+    let system_funds_after = builder.get_purse_balance(system_account.main_purse());
+
+    assert_eq!(system_funds_before, system_funds_after);
+
+    // Verify that user is called and deploy raises runtime error
+    let user_funds_before = builder.get_purse_balance(default_account.main_purse());
+    builder.exec(run_auction_as_user_request).commit();
+    let user_funds_after = builder.get_purse_balance(default_account.main_purse());
+
+    assert_eq!(
+        user_funds_after,
+        user_funds_before - U512::from(DEFAULT_RUN_AUCTION_COST)
+    );
 }
