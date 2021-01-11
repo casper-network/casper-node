@@ -9,9 +9,12 @@ in pkgs.dockerTools.buildImage {
   name = "casper-node";
   tag = tag;
   config = {
-    Cmd = [ "validator" "/config.toml" ];
+    Cmd = [ "validator" "/config/config.toml" ];
     Entrypoint = [ "${casper-node}/bin/casper-node" ];
     WorkingDir = "/storage";
-    Volumes = { "/storage" = { }; };
+    Volumes = {
+      "/storage" = { };
+      "/config" = { };
+    };
   };
 }
