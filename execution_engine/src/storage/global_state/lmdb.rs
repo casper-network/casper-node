@@ -535,7 +535,7 @@ mod tests {
             let mut new_queue: Vec<Blake2bHash> = Vec::new();
 
             for trie_key in &queue {
-                n = n - 1;
+                n -= 1;
                 if n == 0 {
                     let bad_trie_value: Trie<Key, StoredValue> = Trie::Node {
                         pointer_block: Box::new(Default::default()),
