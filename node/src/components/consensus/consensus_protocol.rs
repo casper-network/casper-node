@@ -109,6 +109,9 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
         rng: &mut NodeRng,
     ) -> Vec<ProtocolOutcome<I, C>>;
 
+    /// Handles new connection to a peer.
+    fn handle_new_peer(&mut self, peer_id: I) -> Vec<ProtocolOutcome<I, C>>;
+
     /// Triggers consensus' timer.
     fn handle_timer(
         &mut self,

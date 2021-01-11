@@ -24,4 +24,5 @@ NODE_ID=${NODE_ID:-"all"}
 source "$NCTL"/sh/node/stop.sh node="$NODE_ID"
 
 # Remove state.
-rm "$(get_path_to_node_storage "$NODE_ID")/*"
+rm "$(get_path_to_node_storage "$NODE_ID")/*.*"
+rm "$(get_path_to_node_storage "$NODE_ID")-consensus/*.*"

@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
-    crypto::asymmetric_key::SecretKey,
     rpcs::{account::PutDeploy, chain::GetBlockResult, info::GetDeploy, RpcWithParams},
     types::{Deploy, DeployHash, TimeDiff, Timestamp},
 };
+use casper_types::SecretKey;
 
 use crate::{
     error::{Error, Result},
@@ -184,10 +184,12 @@ impl DeployExt for Deploy {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    use crate::{DeployStrParams, PaymentStrParams, SessionStrParams};
     use std::convert::TryInto;
+
+    use casper_node::crypto::AsymmetricKeyExt;
+
+    use super::*;
+    use crate::{DeployStrParams, PaymentStrParams, SessionStrParams};
 
     const PKG_HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
     const ENTRYPOINT: &str = "entrypoint";
@@ -319,7 +321,8 @@ mod tests {
         );
 
         let mut result = Vec::new();
-        Deploy::sign_and_write_deploy(bytes, SecretKey::generate_ed25519(), &mut result).unwrap();
+        let secret_key = SecretKey::generate_ed25519().unwrap();
+        Deploy::sign_and_write_deploy(bytes, secret_key, &mut result).unwrap();
         let signed_deploy = Deploy::read_deploy(&result[..]).unwrap();
 
         // Can be used to update SAMPLE_DEPLOY data:

@@ -76,7 +76,7 @@ pub trait Auction:
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -122,7 +122,7 @@ pub trait Auction:
         amount: U512,
         unbonding_purse: URef,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -165,7 +165,7 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -219,7 +219,7 @@ pub trait Auction:
         amount: U512,
         unbonding_purse: URef,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -518,7 +518,7 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         target_purse: URef,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -564,7 +564,7 @@ pub trait Auction:
         validator_public_key: PublicKey,
         target_purse: URef,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(validator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }

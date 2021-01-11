@@ -643,7 +643,7 @@ fn check_keys<K, V, T, S, E>(
     store: &S,
     root: &Blake2bHash,
     leaves: &[Trie<K, V>],
-) -> Result<bool, E>
+) -> bool
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug + Clone + Ord,
     V: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy,
@@ -668,7 +668,7 @@ where
         tmp.sort();
         tmp
     };
-    Ok(expected == actual)
+    expected == actual
 }
 
 fn check_leaves<'a, K, V, R, S, E>(
@@ -719,7 +719,7 @@ where
         store,
         root,
         present,
-    )?);
+    ));
 
     txn.commit()?;
     Ok(())

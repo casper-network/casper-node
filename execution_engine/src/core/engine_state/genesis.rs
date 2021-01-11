@@ -13,7 +13,7 @@ use casper_types::{
     account::AccountHash,
     auction::EraId,
     bytesrepr::{self, FromBytes, ToBytes},
-    Key, ProtocolVersion, PublicKey, U512,
+    Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 use super::SYSTEM_ACCOUNT_ADDR;
@@ -137,7 +137,7 @@ impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
         let account_hash = AccountHash::new(rng.gen());
 
-        let public_key = PublicKey::Ed25519(rng.gen());
+        let public_key = SecretKey::ed25519(rng.gen()).into();
 
         let mut u512_array = [0u8; 64];
         rng.fill_bytes(u512_array.as_mut());

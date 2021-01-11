@@ -725,8 +725,8 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(peer_id)) => {
-                debug!(%peer_id, "new peer announcement event ignored (validator reactor does not care)");
-                Effects::new()
+                let event = consensus::Event::NewPeer(peer_id);
+                self.dispatch_event(effect_builder, rng, Event::Consensus(event))
             }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {

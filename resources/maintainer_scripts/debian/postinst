@@ -6,6 +6,7 @@ set -e
 DEFAULT_USERNAME="casper"
 DEFAULT_CONFIG_DIRECTORY="/etc/${DEFAULT_USERNAME}"
 DEFAULT_DATA_DIRECTORY="/var/lib/${DEFAULT_USERNAME}"
+DEFAULT_LOG_DIRECOTRY="/var/log/${DEFAULT_USERNAME}"
 
 # User Creation
 # ---
@@ -15,10 +16,6 @@ if id -u ${DEFAULT_USERNAME} >/dev/null 2>&1; then
 else
     adduser --no-create-home --group --system ${DEFAULT_USERNAME}
 fi
-
-# Take ownership of directories and files installed
-chown -R ${DEFAULT_USERNAME}:${DEFAULT_USERNAME} ${DEFAULT_DATA_DIRECTORY}
-chown -R ${DEFAULT_USERNAME}:${DEFAULT_USERNAME} ${DEFAULT_CONFIG_DIRECTORY}
 
 CONFIG_SCRIPT="${DEFAULT_CONFIG_DIRECTORY}/config_from_example.sh"
 # create config.toml from config-example.toml
@@ -42,6 +39,7 @@ fi
 # Take ownership of directories and files installed
 chown -R ${DEFAULT_USERNAME}:${DEFAULT_USERNAME} ${DEFAULT_DATA_DIRECTORY}
 chown -R ${DEFAULT_USERNAME}:${DEFAULT_USERNAME} ${DEFAULT_CONFIG_DIRECTORY}
+chown -R ${DEFAULT_USERNAME}:${DEFAULT_USERNAME} ${DEFAULT_LOG_DIRECOTRY}
 
 # This is required for replacement to insert scripts for systemd by cargo-deb
 #DEBHELPER#

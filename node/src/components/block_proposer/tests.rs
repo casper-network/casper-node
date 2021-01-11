@@ -1,11 +1,11 @@
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    runtime_args, RuntimeArgs,
+    runtime_args, RuntimeArgs, SecretKey,
 };
 
 use crate::{
-    crypto::asymmetric_key::SecretKey,
+    crypto::AsymmetricKeyExt,
     testing::TestRng,
     types::{BlockLike, Deploy, DeployHash, TimeDiff},
 };

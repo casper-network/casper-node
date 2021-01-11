@@ -70,8 +70,9 @@ macro_rules! add_unit {
             round_exp,
             endorsed: vec![$($ends),*].into_iter().collect(),
         };
-        let hash = wunit.hash();
-        let swunit = SignedWireUnit::new(wunit, &TestSecret(($creator).0), &mut $rng);
+        let hwunit = wunit.into_hashed();
+        let hash = hwunit.hash();
+        let swunit = SignedWireUnit::new(hwunit, &TestSecret(($creator).0), &mut $rng);
         $state.add_unit(swunit).map(|()| hash)
     }};
     ($state: ident, $rng: ident, $creator: expr, $time: expr, $round_exp: expr, $val: expr; $($obs:expr),*) => {{
@@ -97,8 +98,9 @@ macro_rules! add_unit {
             round_exp: $round_exp,
             endorsed: $($ends.into()),*
         };
-        let hash = wunit.hash();
-        let swunit = SignedWireUnit::new(wunit, &TestSecret(($creator).0), &mut $rng);
+        let hwunit = wunit.into_hashed();
+        let hash = hwunit.hash();
+        let swunit = SignedWireUnit::new(hwunit, &TestSecret(($creator).0), &mut $rng);
         $state.add_unit(swunit).map(|()| hash)
     }};
 }

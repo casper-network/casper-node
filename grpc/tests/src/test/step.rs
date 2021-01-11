@@ -1,5 +1,7 @@
 use std::convert::TryFrom;
 
+use once_cell::sync::Lazy;
+
 use casper_engine_test_support::internal::{
     utils, InMemoryWasmTestBuilder, RewardItem, SlashItem, StepRequestBuilder, WasmTestBuilder,
     DEFAULT_ACCOUNTS,
@@ -15,16 +17,18 @@ use casper_types::{
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_PURSE_KEY,
     },
     mint::TOTAL_SUPPLY_KEY,
-    CLValue, ContractHash, Key, ProtocolVersion, PublicKey, U512,
+    CLValue, ContractHash, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
-const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([200; 32]);
-const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([200; 32]);
+static ACCOUNT_1_PK: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([200; SecretKey::ED25519_LENGTH]).into());
+static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PK));
 const ACCOUNT_1_BALANCE: u64 = 100_000_000;
 const ACCOUNT_1_BOND: u64 = 100_000_000;
 
-const ACCOUNT_2_PK: PublicKey = PublicKey::Ed25519([202; 32]);
-const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([202; 32]);
+static ACCOUNT_2_PK: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([202; SecretKey::ED25519_LENGTH]).into());
+static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PK));
 const ACCOUNT_2_BALANCE: u64 = 200_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000_000;
 
@@ -47,14 +51,14 @@ fn initialize_builder() -> WasmTestBuilder<InMemoryGlobalState> {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::new(
-            ACCOUNT_1_PK,
-            ACCOUNT_1_ADDR,
+            *ACCOUNT_1_PK,
+            *ACCOUNT_1_ADDR,
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Motes::new(ACCOUNT_1_BOND.into()),
         );
         let account_2 = GenesisAccount::new(
-            ACCOUNT_2_PK,
-            ACCOUNT_2_ADDR,
+            *ACCOUNT_2_PK,
+            *ACCOUNT_2_ADDR,
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Motes::new(ACCOUNT_2_BOND.into()),
         );
@@ -76,9 +80,9 @@ fn should_step() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_slash_item(SlashItem::new(ACCOUNT_1_PK))
-        .with_reward_item(RewardItem::new(ACCOUNT_1_PK, BLOCK_REWARD / 2))
-        .with_reward_item(RewardItem::new(ACCOUNT_2_PK, BLOCK_REWARD / 2))
+        .with_slash_item(SlashItem::new(*ACCOUNT_1_PK))
+        .with_reward_item(RewardItem::new(*ACCOUNT_1_PK, BLOCK_REWARD / 2))
+        .with_reward_item(RewardItem::new(*ACCOUNT_2_PK, BLOCK_REWARD / 2))
         .build();
 
     let auction_hash = builder.get_auction_contract_hash();
@@ -165,10 +169,10 @@ fn should_adjust_total_supply() {
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_slash_item(SlashItem::new(ACCOUNT_1_PK))
-        .with_slash_item(SlashItem::new(ACCOUNT_2_PK))
-        .with_reward_item(RewardItem::new(ACCOUNT_1_PK, 0))
-        .with_reward_item(RewardItem::new(ACCOUNT_2_PK, BLOCK_REWARD / 2))
+        .with_slash_item(SlashItem::new(*ACCOUNT_1_PK))
+        .with_slash_item(SlashItem::new(*ACCOUNT_2_PK))
+        .with_reward_item(RewardItem::new(*ACCOUNT_1_PK, 0))
+        .with_reward_item(RewardItem::new(*ACCOUNT_2_PK, BLOCK_REWARD / 2))
         .build();
 
     builder.step(step_request);

@@ -104,27 +104,32 @@ mod tests {
 
     use crate::{
         auction::{DelegationRate, Delegator, SeigniorageRecipient},
-        bytesrepr, AccessRights, PublicKey, URef, U512,
+        bytesrepr, AccessRights, SecretKey, URef, U512,
     };
 
     #[test]
     fn serialization_roundtrip() {
         let uref = URef::new([0; 32], AccessRights::READ_ADD_WRITE);
+        let validator_key = SecretKey::ed25519([1; SecretKey::ED25519_LENGTH]).into();
+        let delegator_1_key = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
+        let delegator_2_key = SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into();
+        let delegator_3_key = SecretKey::ed25519([44; SecretKey::ED25519_LENGTH]).into();
+
         let seigniorage_recipient = SeigniorageRecipient {
             stake: U512::max_value(),
             delegation_rate: DelegationRate::max_value(),
             delegators: BTreeMap::from_iter(vec![
                 (
-                    PublicKey::Ed25519([1; 32]),
-                    Delegator::new(U512::max_value(), uref, PublicKey::Ed25519([42; 32])),
+                    validator_key,
+                    Delegator::new(U512::max_value(), uref, delegator_1_key),
                 ),
                 (
-                    PublicKey::Ed25519([1; 32]),
-                    Delegator::new(U512::max_value(), uref, PublicKey::Ed25519([43; 32])),
+                    validator_key,
+                    Delegator::new(U512::max_value(), uref, delegator_2_key),
                 ),
                 (
-                    PublicKey::Ed25519([1; 32]),
-                    Delegator::new(U512::zero(), uref, PublicKey::Ed25519([44; 32])),
+                    validator_key,
+                    Delegator::new(U512::zero(), uref, delegator_3_key),
                 ),
             ]),
         };

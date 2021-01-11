@@ -5,19 +5,21 @@ use futures::{Stream, StreamExt};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, mpsc};
-use tracing::{error, trace};
+use tokio::sync::{
+    broadcast::{self, RecvError},
+    mpsc,
+};
+use tracing::{error, info, trace};
 use warp::{
     filters::BoxedFilter,
     sse::{self, ServerSentEvent as WarpServerSentEvent},
     Filter, Reply,
 };
 
-use casper_types::ExecutionResult;
+use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
     components::{consensus::EraId, CLIENT_API_VERSION},
-    crypto::asymmetric_key::PublicKey,
     types::{
         BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },
@@ -169,25 +171,36 @@ pub(super) fn create_channels_and_filter(
 fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
-) -> impl Stream<Item = Result<impl WarpServerSentEvent, broadcast::RecvError>> + 'static {
+) -> impl Stream<Item = Result<impl WarpServerSentEvent, RecvError>> + 'static {
     initial_events
         .map(|event| Ok(BroadcastChannelMessage::ServerSentEvent(event)))
         .chain(ongoing_events)
         .map(|result| {
             trace!(?result);
-            match result? {
-                BroadcastChannelMessage::ServerSentEvent(event) => match (event.id, &event.data) {
-                    (None, &SseData::ApiVersion { .. }) => Ok(sse::json(event.data).boxed()),
-                    (Some(id), &SseData::BlockFinalized { .. })
-                    | (Some(id), &SseData::BlockAdded { .. })
-                    | (Some(id), &SseData::DeployProcessed { .. })
-                    | (Some(id), &SseData::FinalitySignature(_))
-                    | (Some(id), &SseData::Fault { .. }) => {
-                        Ok((sse::id(id), sse::json(event.data)).boxed())
+            match result {
+                Ok(BroadcastChannelMessage::ServerSentEvent(event)) => {
+                    match (event.id, &event.data) {
+                        (None, &SseData::ApiVersion { .. }) => Ok(sse::json(event.data).boxed()),
+                        (Some(id), &SseData::BlockFinalized { .. })
+                        | (Some(id), &SseData::BlockAdded { .. })
+                        | (Some(id), &SseData::DeployProcessed { .. })
+                        | (Some(id), &SseData::FinalitySignature(_))
+                        | (Some(id), &SseData::Fault { .. }) => {
+                            Ok((sse::id(id), sse::json(event.data)).boxed())
+                        }
+                        _ => unreachable!("only ApiVersion may have no event ID"),
                     }
-                    _ => unreachable!("only ApiVersion may have no event ID"),
-                },
-                BroadcastChannelMessage::Shutdown => Err(broadcast::RecvError::Closed),
+                }
+                Ok(BroadcastChannelMessage::Shutdown) | Err(RecvError::Closed) => {
+                    Err(RecvError::Closed)
+                }
+                Err(RecvError::Lagged(amount)) => {
+                    info!(
+                        "client lagged by {} events - dropping event stream connection to client",
+                        amount
+                    );
+                    Err(RecvError::Lagged(amount))
+                }
             }
         })
 }

@@ -8,12 +8,12 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use casper_types::ExecutionResult;
 use serde::Serialize;
+
+use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
     components::{consensus::EraId, small_network::GossipedAddress},
-    crypto::asymmetric_key::PublicKey,
     types::{
         Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
         FinalizedBlock, Item, Timestamp,
