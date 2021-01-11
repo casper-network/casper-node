@@ -261,22 +261,16 @@ impl StateProvider for InMemoryGlobalState {
         &self,
         correlation_id: CorrelationId,
         trie_key: Blake2bHash,
-        validate: bool,
     ) -> Result<Vec<Blake2bHash>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let missing_descendants = missing_descendant_trie_keys::<
-            Key,
-            StoredValue,
-            InMemoryReadTransaction,
-            InMemoryTrieStore,
-            Self::Error,
-        >(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            trie_key,
-            validate,
-        )?;
+        let missing_descendants =
+            missing_descendant_trie_keys::<
+                Key,
+                StoredValue,
+                InMemoryReadTransaction,
+                InMemoryTrieStore,
+                Self::Error,
+            >(correlation_id, &txn, self.trie_store.deref(), trie_key)?;
         txn.commit()?;
         Ok(missing_descendants)
     }

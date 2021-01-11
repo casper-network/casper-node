@@ -117,12 +117,11 @@ pub trait StateProvider {
         trie: &Trie<Key, StoredValue>,
     ) -> Result<(), Self::Error>;
 
-    /// Finds all of the keys of missing descendant `Trie<K,V>` values
+    /// Finds all of the missing or corrupt keys of which are descendants of `trie_key`
     fn missing_descendant_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie_key: Blake2bHash,
-        validate: bool,
     ) -> Result<Vec<Blake2bHash>, Self::Error>;
 }
 

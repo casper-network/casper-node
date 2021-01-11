@@ -5,6 +5,8 @@ pub mod error;
 
 use std::{cmp, collections::VecDeque, convert::TryInto, mem};
 
+use tracing::warn;
+
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::{
@@ -217,17 +219,14 @@ where
     }
 }
 
-/// Given a root hash, find any try keys that are descendant from it that are referenced but not
-/// present in the database.
-///
-/// If the `validate` flag is set then verify for all descendant keys that *are* present in the
-/// database that they are the hash of their values.
+/// Given a root hash, find any try keys that are descendant from it that are:
+/// 1. referenced but not present in the database
+/// 2. referenced and present but whose values' hashes do not equal their keys (ie, corrupted)
 pub fn missing_descendant_trie_keys<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
     trie_key: Blake2bHash,
-    validate: bool,
 ) -> Result<Vec<Blake2bHash>, E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
@@ -241,20 +240,19 @@ where
     let mut trie_keys_to_visit_queue = vec![trie_key];
     while let Some(trie_key) = trie_keys_to_visit_queue.pop() {
         let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
-        if validate {
-            if let Some(trie_value) = &maybe_retrieved_trie {
-                let hash_of_trie_value = {
-                    let node_bytes = trie_value.to_bytes()?;
-                    Blake2bHash::new(&node_bytes)
-                };
-                if trie_key != hash_of_trie_value {
-                    return Err(error::CorruptDatabaseError::KeyIsNotHashOfValue {
-                        trie_key,
-                        trie_value: format!("{:?}", trie_value),
-                        hash_of_trie_value,
-                    }
-                    .into());
-                }
+        if let Some(trie_value) = &maybe_retrieved_trie {
+            let hash_of_trie_value = {
+                let node_bytes = trie_value.to_bytes()?;
+                Blake2bHash::new(&node_bytes)
+            };
+            if trie_key != hash_of_trie_value {
+                warn!(
+                    "Trie key {:?} has corrupted value {:?} (hash of value is {:?}); \
+                     adding to list of missing nodes",
+                    trie_key, trie_value, hash_of_trie_value
+                );
+                missing_descendants.push(trie_key);
+                continue;
             }
         }
         match maybe_retrieved_trie {
