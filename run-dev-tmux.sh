@@ -82,6 +82,9 @@ run_node() {
 
     if [[ ${ID} != 1 ]]; then
         CMD+=("-C network.bind_address='0.0.0.0:0'")
+        CMD+=("-C rpc_server.address='0.0.0.0:0'")
+        CMD+=("-C rest_server.address='0.0.0.0:0'")
+        CMD+=("-C event_stream_server.address='0.0.0.0:0'")
     fi
 
     CMD+=("1> >(tee ${DATA_DIR}/node-${ID}.log) 2> >(tee ${DATA_DIR}/node-${ID}.log.stderr)")
