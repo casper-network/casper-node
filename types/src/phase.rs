@@ -30,6 +30,7 @@ pub enum Phase {
 
 impl ToBytes for Phase {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        // NOTE: Assumed safe as [`Phase`] is represented as u8.
         let id = self.to_u8().expect("Phase is represented as a u8");
 
         Ok(vec![id])

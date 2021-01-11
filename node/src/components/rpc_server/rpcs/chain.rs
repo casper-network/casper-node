@@ -3,6 +3,8 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+mod era_summary;
+
 use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
@@ -15,6 +17,8 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use warp_json_rpc::Builder;
 
+use casper_types::{Key, Transfer};
+
 use super::{
     docs::DocExample, Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams,
     RpcWithOptionalParamsExt,
@@ -24,9 +28,11 @@ use crate::{
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
+    rpcs::common::{self},
     types::{Block, BlockHash, Item, JsonBlock},
 };
-use casper_types::Transfer;
+pub use era_summary::EraSummary;
+use era_summary::ERA_SUMMARY;
 
 static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
     block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
@@ -54,6 +60,13 @@ static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
         api_version: CLIENT_API_VERSION.clone(),
         state_root_hash: Some(*Block::doc_example().header().state_root_hash()),
     });
+static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoParams {
+    block_identifier: BlockIdentifier::Hash(Block::doc_example().id()),
+});
+static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
+    api_version: CLIENT_API_VERSION.clone(),
+    era_summary: Some(ERA_SUMMARY.clone()),
+});
 
 /// Identifier for possible ways to retrieve a block.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, JsonSchema)]
@@ -286,6 +299,123 @@ impl RpcWithOptionalParamsExt for GetStateRootHash {
                 api_version: CLIENT_API_VERSION.clone(),
                 state_root_hash: maybe_block.map(|block| *block.state_root_hash()),
             };
+            Ok(response_builder.success(result)?)
+        }
+        .boxed()
+    }
+}
+
+/// Params for "chain_get_era_info" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetEraInfoParams {
+    /// The block identifier.
+    pub block_identifier: BlockIdentifier,
+}
+
+impl DocExample for GetEraInfoParams {
+    fn doc_example() -> &'static Self {
+        &*GET_ERA_INFO_PARAMS
+    }
+}
+
+/// Result for "chain_get_era_info" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetEraInfoResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: Version,
+    /// The era summary.
+    pub era_summary: Option<EraSummary>,
+}
+
+impl DocExample for GetEraInfoResult {
+    fn doc_example() -> &'static Self {
+        &*GET_ERA_INFO_RESULT
+    }
+}
+
+/// "chain_get_era_info_by_switch_block" RPC
+pub struct GetEraInfoBySwitchBlock {}
+
+impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
+    const METHOD: &'static str = "chain_get_era_info_by_switch_block";
+    type OptionalRequestParams = GetEraInfoParams;
+    type ResponseResult = GetEraInfoResult;
+}
+
+impl RpcWithOptionalParamsExt for GetEraInfoBySwitchBlock {
+    fn handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        response_builder: Builder,
+        maybe_params: Option<Self::OptionalRequestParams>,
+    ) -> BoxFuture<'static, Result<Response<Body>, Error>> {
+        async move {
+            // TODO: decide if/how to handle era id
+            let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+            let maybe_block = match get_block(maybe_block_id, effect_builder).await {
+                Ok(maybe_block) => maybe_block,
+                Err(error) => return Ok(response_builder.error(error)?),
+            };
+
+            let block = match maybe_block {
+                Some(block) => block,
+                None => {
+                    return Ok(response_builder.success(Self::ResponseResult {
+                        api_version: CLIENT_API_VERSION.clone(),
+                        era_summary: None,
+                    })?)
+                }
+            };
+
+            let era_id = match block.header().era_end() {
+                Some(_) => block.header().era_id().0,
+                None => {
+                    return Ok(response_builder.success(Self::ResponseResult {
+                        api_version: CLIENT_API_VERSION.clone(),
+                        era_summary: None,
+                    })?)
+                }
+            };
+
+            let state_root_hash = block.state_root_hash().to_owned();
+            let base_key = Key::EraInfo(era_id);
+            let path = Vec::new();
+            let query_result = effect_builder
+                .make_request(
+                    |responder| RpcRequest::QueryGlobalState {
+                        state_root_hash,
+                        base_key,
+                        path,
+                        responder,
+                    },
+                    QueueKind::Api,
+                )
+                .await;
+
+            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
+                Ok(tuple) => tuple,
+                Err((error_code, error_msg)) => {
+                    info!("{}", error_msg);
+                    return Ok(response_builder
+                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
+                }
+            };
+
+            let block_hash = block.hash().to_owned();
+
+            let result = Self::ResponseResult {
+                api_version: CLIENT_API_VERSION.clone(),
+                era_summary: Some(EraSummary {
+                    block_hash,
+                    era_id,
+                    stored_value,
+                    state_root_hash,
+                    merkle_proof: hex::encode(proof_bytes),
+                }),
+            };
+
             Ok(response_builder.success(result)?)
         }
         .boxed()

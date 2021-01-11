@@ -83,6 +83,18 @@ pub enum Event<P> {
     PeerAddressReceived(GossipedAddress),
 }
 
+impl From<NetworkRequest<NodeId, ProtocolMessage>> for Event<ProtocolMessage> {
+    fn from(req: NetworkRequest<NodeId, ProtocolMessage>) -> Self {
+        Self::NetworkRequest { req: Box::new(req) }
+    }
+}
+
+impl From<NetworkInfoRequest<NodeId>> for Event<ProtocolMessage> {
+    fn from(req: NetworkInfoRequest<NodeId>) -> Self {
+        Self::NetworkInfoRequest { req: Box::new(req) }
+    }
+}
+
 impl<P: Display> Display for Event<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

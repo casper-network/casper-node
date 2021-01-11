@@ -39,6 +39,8 @@ pub enum Error {
     FunctionNotFound(String),
     #[error("{}", _0)]
     ParityWasm(elements::Error),
+    #[error("WASM optimizer error")]
+    WasmOptimizer,
     #[error("Out of gas error")]
     GasLimit,
     #[error("Return")]
@@ -88,11 +90,19 @@ pub enum Error {
     InvalidKeyLength { expected: usize, actual: usize },
     #[error("Key is not a URef: {}", _0)]
     KeyIsNotAURef(Key),
+    #[error("Unexpected variant of a stored value")]
+    UnexpectedStoredValueVariant,
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {
     fn from(error: wasm_prep::PreprocessingError) -> Self {
         Error::WasmPreprocessing(error)
+    }
+}
+
+impl From<pwasm_utils::OptimizerError> for Error {
+    fn from(_optimizer_error: pwasm_utils::OptimizerError) -> Self {
+        Error::WasmOptimizer
     }
 }
 

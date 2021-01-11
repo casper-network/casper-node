@@ -151,6 +151,21 @@ impl ExecutableDeployItem {
             | ExecutableDeployItem::StoredContractByName { entry_point, .. } => &entry_point,
         }
     }
+
+    pub fn args(&self) -> &Bytes {
+        match self {
+            ExecutableDeployItem::ModuleBytes { args, .. }
+            | ExecutableDeployItem::StoredContractByHash { args, .. }
+            | ExecutableDeployItem::StoredContractByName { args, .. }
+            | ExecutableDeployItem::StoredVersionedContractByHash { args, .. }
+            | ExecutableDeployItem::StoredVersionedContractByName { args, .. }
+            | ExecutableDeployItem::Transfer { args } => args,
+        }
+    }
+
+    pub fn is_transfer(&self) -> bool {
+        matches!(self, ExecutableDeployItem::Transfer { .. })
+    }
 }
 
 impl ToBytes for ExecutableDeployItem {

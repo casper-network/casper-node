@@ -3,15 +3,16 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
 };
 
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    U512,
-};
 use datasize::DataSize;
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
+
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    PublicKey, U512,
+};
 
 use crate::{
     components::consensus::{
@@ -19,8 +20,7 @@ use crate::{
         consensus_protocol::ConsensusProtocol, protocols::highway::HighwayProtocol,
         ConsensusMessage,
     },
-    crypto::asymmetric_key::PublicKey,
-    types::ProtoBlock,
+    types::{ProtoBlock, Timestamp},
 };
 
 #[derive(
@@ -126,6 +126,8 @@ impl PendingCandidate {
 pub struct Era<I> {
     /// The consensus protocol instance.
     pub(crate) consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
+    /// The scheduled starting time of this era.
+    pub(crate) start_time: Timestamp,
     /// The height of this era's first block.
     pub(crate) start_height: u64,
     /// Pending candidate blocks, waiting for validation. The boolean is `true` if the proto block
@@ -146,6 +148,7 @@ pub struct Era<I> {
 impl<I> Era<I> {
     pub(crate) fn new(
         consensus: Box<dyn ConsensusProtocol<I, ClContext>>,
+        start_time: Timestamp,
         start_height: u64,
         newly_slashed: Vec<PublicKey>,
         slashed: HashSet<PublicKey>,
@@ -153,6 +156,7 @@ impl<I> Era<I> {
     ) -> Self {
         Era {
             consensus,
+            start_time,
             start_height,
             candidates: Vec::new(),
             newly_slashed,
@@ -238,6 +242,11 @@ impl<I> Era<I> {
         &self.validators
     }
 
+    /// Returns whether validator identified with `public_key` is bonded in that era.
+    pub(crate) fn is_bonded_validator(&self, public_key: &PublicKey) -> bool {
+        self.validators.contains_key(public_key)
+    }
+
     /// Removes and returns all candidate blocks with no missing dependencies.
     fn remove_complete_candidates(&mut self) -> Vec<CandidateBlock> {
         let (complete, candidates): (Vec<_>, Vec<_>) = self
@@ -262,6 +271,7 @@ where
         // Destructure self, so we can't miss any fields.
         let Era {
             consensus,
+            start_time,
             start_height,
             candidates,
             newly_slashed,
@@ -288,6 +298,7 @@ where
         };
 
         consensus_heap_size
+            + start_time.estimate_heap_size()
             + start_height.estimate_heap_size()
             + candidates.estimate_heap_size()
             + newly_slashed.estimate_heap_size()

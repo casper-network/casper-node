@@ -1,4 +1,4 @@
-use std::{any::Any, collections::BTreeMap, fmt::Debug};
+use std::{any::Any, collections::BTreeMap, fmt::Debug, path::PathBuf};
 
 use anyhow::Error;
 use datasize::DataSize;
@@ -87,6 +87,10 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     SendEvidence(I, C::ValidatorId),
     /// We've detected an equivocation our own node has made.
     WeAreFaulty,
+    /// We've received a unit from a doppelganger.
+    DoppelgangerDetected,
+    /// We want to disconnect from a sender of invalid data.
+    Disconnect(I),
 }
 
 /// An API for a single instance of the consensus.
@@ -104,6 +108,9 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
         evidence_only: bool,
         rng: &mut NodeRng,
     ) -> Vec<ProtocolOutcome<I, C>>;
+
+    /// Handles new connection to a peer.
+    fn handle_new_peer(&mut self, peer_id: I) -> Vec<ProtocolOutcome<I, C>>;
 
     /// Triggers consensus' timer.
     fn handle_timer(
@@ -135,6 +142,7 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
+        unit_hash_file: Option<PathBuf>,
     ) -> Vec<ProtocolOutcome<I, C>>;
 
     /// Turns this instance into a passive observer, that does not create any new vertices.
@@ -154,4 +162,10 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
 
     /// Returns true if the protocol has received some messages since initialization.
     fn has_received_messages(&self) -> bool;
+
+    /// Returns whether this instance of a protocol is an active validator.
+    fn is_active(&self) -> bool;
+
+    /// Returns the instance ID of this instance.
+    fn instance_id(&self) -> &C::InstanceId;
 }

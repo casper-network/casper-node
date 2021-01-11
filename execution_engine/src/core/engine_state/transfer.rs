@@ -1,7 +1,8 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_types::{
-    account::AccountHash, mint, AccessRights, ApiError, CLType, Key, RuntimeArgs, URef, U512,
+    account::AccountHash, mint, AccessRights, ApiError, CLType, CLValueError, Key, RuntimeArgs,
+    URef, U512,
 };
 
 use crate::{
@@ -21,9 +22,66 @@ pub enum TransferTargetMode {
     CreateAccount(AccountHash),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TransferArgs {
+    to: Option<AccountHash>,
+    source: URef,
+    target: URef,
+    amount: U512,
+    arg_id: Option<u64>,
+}
+
+impl TransferArgs {
+    pub fn new(
+        to: Option<AccountHash>,
+        source: URef,
+        target: URef,
+        amount: U512,
+        arg_id: Option<u64>,
+    ) -> Self {
+        Self {
+            to,
+            source,
+            target,
+            amount,
+            arg_id,
+        }
+    }
+
+    pub fn to(&self) -> Option<AccountHash> {
+        self.to
+    }
+
+    pub fn source(&self) -> URef {
+        self.source
+    }
+
+    pub fn arg_id(&self) -> Option<u64> {
+        self.arg_id
+    }
+}
+
+impl TryFrom<TransferArgs> for RuntimeArgs {
+    type Error = CLValueError;
+
+    fn try_from(transfer_args: TransferArgs) -> Result<Self, Self::Error> {
+        let mut runtime_args = RuntimeArgs::new();
+
+        runtime_args.insert(mint::ARG_TO, transfer_args.to)?;
+        runtime_args.insert(mint::ARG_SOURCE, transfer_args.source)?;
+        runtime_args.insert(mint::ARG_TARGET, transfer_args.target)?;
+        runtime_args.insert(mint::ARG_AMOUNT, transfer_args.amount)?;
+        runtime_args.insert(mint::ARG_ID, transfer_args.arg_id)?;
+
+        Ok(runtime_args)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TransferRuntimeArgsBuilder {
     inner: RuntimeArgs,
     transfer_target_mode: TransferTargetMode,
+    to: Option<AccountHash>,
 }
 
 impl TransferRuntimeArgsBuilder {
@@ -31,6 +89,7 @@ impl TransferRuntimeArgsBuilder {
         TransferRuntimeArgsBuilder {
             inner: imputed_runtime_args,
             transfer_target_mode: TransferTargetMode::Unknown,
+            to: None,
         }
     }
 
@@ -111,7 +170,7 @@ impl TransferRuntimeArgsBuilder {
     }
 
     fn resolve_transfer_target_mode<R>(
-        &self,
+        &mut self,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferTargetMode, Error>
@@ -138,12 +197,13 @@ impl TransferRuntimeArgsBuilder {
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::ByteArray(32) => {
                 let account_key: Key = {
-                    let hash = match cl_value.clone().into_t() {
+                    let hash: AccountHash = match cl_value.clone().into_t() {
                         Ok(hash) => hash,
                         Err(error) => {
                             return Err(Error::Exec(ExecError::Revert(error.into())));
                         }
                     };
+                    self.to = Some(hash.to_owned());
                     Key::Account(hash)
                 };
                 match account_key.into_account() {
@@ -169,15 +229,16 @@ impl TransferRuntimeArgsBuilder {
                     }
                 };
                 match account_key.into_account() {
-                    Some(public_key) => {
+                    Some(account_hash) => {
+                        self.to = Some(account_hash.to_owned());
                         match tracking_copy
                             .borrow_mut()
-                            .read_account(correlation_id, public_key)
+                            .read_account(correlation_id, account_hash)
                         {
                             Ok(account) => Ok(TransferTargetMode::PurseExists(
                                 account.main_purse().with_access_rights(AccessRights::ADD),
                             )),
-                            Err(_) => Ok(TransferTargetMode::CreateAccount(public_key)),
+                            Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
                         }
                     }
                     None => Err(Error::Exec(ExecError::Revert(ApiError::Transfer))),
@@ -240,15 +301,17 @@ impl TransferRuntimeArgsBuilder {
     }
 
     pub fn build<R>(
-        self,
-        account: &Account,
+        mut self,
+        from: &Account,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<RuntimeArgs, Error>
+    ) -> Result<TransferArgs, Error>
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
     {
+        let to = self.to;
+
         let target_uref =
             match self.resolve_transfer_target_mode(correlation_id, Rc::clone(&tracking_copy))? {
                 TransferTargetMode::PurseExists(uref) => uref,
@@ -258,7 +321,7 @@ impl TransferRuntimeArgsBuilder {
             };
 
         let source_uref =
-            self.resolve_source_uref(account, correlation_id, Rc::clone(&tracking_copy))?;
+            self.resolve_source_uref(from, correlation_id, Rc::clone(&tracking_copy))?;
 
         if source_uref.addr() == target_uref.addr() {
             return Err(ExecError::Revert(ApiError::InvalidPurse).into());
@@ -277,17 +340,12 @@ impl TransferRuntimeArgsBuilder {
             }
         };
 
-        let runtime_args = {
-            let mut runtime_args = RuntimeArgs::new();
-
-            runtime_args.insert(mint::ARG_SOURCE, source_uref);
-            runtime_args.insert(mint::ARG_TARGET, target_uref);
-            runtime_args.insert(mint::ARG_AMOUNT, amount);
-            runtime_args.insert(mint::ARG_ID, id);
-
-            runtime_args
-        };
-
-        Ok(runtime_args)
+        Ok(TransferArgs {
+            to,
+            source: source_uref,
+            target: target_uref,
+            amount,
+            arg_id: id,
+        })
     }
 }

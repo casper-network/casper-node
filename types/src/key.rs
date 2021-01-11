@@ -25,11 +25,11 @@ const HASH_ID: u8 = 1;
 const UREF_ID: u8 = 2;
 const TRANSFER_ID: u8 = 3;
 const DEPLOY_INFO_ID: u8 = 4;
-const AUCTION_INFO_ID: u8 = 5;
+const ERA_INFO_ID: u8 = 5;
 
 const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
-const AUCTION_INFO_PREFIX: &str = "auction-";
+const ERA_INFO_PREFIX: &str = "era-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -46,7 +46,7 @@ const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LE
 const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIALIZED_LENGTH;
 const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRANSFER_LENGTH;
 const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
-const KEY_AUCTION_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
+const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -80,8 +80,8 @@ pub enum Key {
     Transfer(TransferAddr),
     /// A `Key` under which we store a deploy info.
     DeployInfo(DeployHash),
-    /// A `Key` under which we store an auction info.
-    AuctionInfo(EraId),
+    /// A `Key` under which we store an era info.
+    EraInfo(EraId),
 }
 
 #[derive(Debug)]
@@ -149,7 +149,7 @@ impl Key {
             Key::URef(_) => String::from("Key::URef"),
             Key::Transfer(_) => String::from("Key::Transfer"),
             Key::DeployInfo(_) => String::from("Key::DeployInfo"),
-            Key::AuctionInfo(_) => String::from("Key::AuctionInfo"),
+            Key::EraInfo(_) => String::from("Key::EraInfo"),
         }
     }
 
@@ -182,8 +182,8 @@ impl Key {
                     base16::encode_lower(addr.as_bytes())
                 )
             }
-            Key::AuctionInfo(era_id) => {
-                format!("{}{}", AUCTION_INFO_PREFIX, era_id.to_string())
+            Key::EraInfo(era_id) => {
+                format!("{}{}", ERA_INFO_PREFIX, era_id.to_string())
             }
         }
     }
@@ -251,7 +251,7 @@ impl Key {
             Key::URef(uref) => uref.addr(),
             Key::Transfer(transfer_addr) => transfer_addr.value(),
             Key::DeployInfo(addr) => addr.value(),
-            Key::AuctionInfo(era_id) => {
+            Key::EraInfo(era_id) => {
                 // stop-gap measure until this method is removed
                 let mut ret = [0u8; BLAKE2B_DIGEST_LENGTH];
                 let era_id_bytes = era_id.to_le_bytes();
@@ -279,7 +279,7 @@ impl Display for Key {
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
             Key::Transfer(transfer_addr) => write!(f, "Key::Transfer({})", transfer_addr),
             Key::DeployInfo(addr) => write!(f, "Key::DeployInfo({})", HexFmt(addr.as_bytes())),
-            Key::AuctionInfo(era_id) => write!(f, "Key::AuctionInfo({})", era_id),
+            Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
         }
     }
 }
@@ -332,8 +332,8 @@ impl ToBytes for Key {
                 result.push(DEPLOY_INFO_ID);
                 result.append(&mut addr.to_bytes()?);
             }
-            Key::AuctionInfo(era_id) => {
-                result.push(AUCTION_INFO_ID);
+            Key::EraInfo(era_id) => {
+                result.push(ERA_INFO_ID);
                 result.append(&mut era_id.to_bytes()?);
             }
         }
@@ -349,7 +349,7 @@ impl ToBytes for Key {
             Key::URef(_) => KEY_UREF_SERIALIZED_LENGTH,
             Key::Transfer(_) => KEY_TRANSFER_SERIALIZED_LENGTH,
             Key::DeployInfo(_) => KEY_DEPLOY_INFO_SERIALIZED_LENGTH,
-            Key::AuctionInfo(_) => KEY_AUCTION_INFO_SERIALIZED_LENGTH,
+            Key::EraInfo(_) => KEY_ERA_INFO_SERIALIZED_LENGTH,
         }
     }
 }
@@ -378,9 +378,9 @@ impl FromBytes for Key {
                 let (deploy_hash, rem) = FromBytes::from_bytes(remainder)?;
                 Ok((Key::DeployInfo(deploy_hash), rem))
             }
-            AUCTION_INFO_ID => {
+            ERA_INFO_ID => {
                 let (era_id, rem) = FromBytes::from_bytes(remainder)?;
-                Ok((Key::AuctionInfo(era_id), rem))
+                Ok((Key::EraInfo(era_id), rem))
             }
             _ => Err(Error::Formatting),
         }
@@ -397,7 +397,7 @@ mod serde_helpers {
         URef(String),
         Transfer(String),
         DeployInfo(String),
-        AuctionInfo(String),
+        EraInfo(String),
     }
 
     impl From<&Key> for HumanReadable {
@@ -409,7 +409,7 @@ mod serde_helpers {
                 Key::URef(_) => HumanReadable::URef(formatted_string),
                 Key::Transfer(_) => HumanReadable::Transfer(formatted_string),
                 Key::DeployInfo(_) => HumanReadable::DeployInfo(formatted_string),
-                Key::AuctionInfo(_) => HumanReadable::AuctionInfo(formatted_string),
+                Key::EraInfo(_) => HumanReadable::EraInfo(formatted_string),
             }
         }
     }
@@ -424,7 +424,7 @@ mod serde_helpers {
                 | HumanReadable::URef(formatted_string)
                 | HumanReadable::Transfer(formatted_string)
                 | HumanReadable::DeployInfo(formatted_string)
-                | HumanReadable::AuctionInfo(formatted_string) => {
+                | HumanReadable::EraInfo(formatted_string) => {
                     Key::from_formatted_str(&formatted_string)
                 }
             }
@@ -438,7 +438,7 @@ mod serde_helpers {
         URef(&'a URef),
         Transfer(&'a TransferAddr),
         DeployInfo(&'a DeployHash),
-        AuctionInfo(&'a u64),
+        EraInfo(&'a u64),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -449,7 +449,7 @@ mod serde_helpers {
                 Key::URef(uref) => BinarySerHelper::URef(uref),
                 Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
                 Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
-                Key::AuctionInfo(era_id) => BinarySerHelper::AuctionInfo(era_id),
+                Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
             }
         }
     }
@@ -461,6 +461,7 @@ mod serde_helpers {
         URef(URef),
         Transfer(TransferAddr),
         DeployInfo(DeployHash),
+        EraInfo(EraId),
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -471,6 +472,7 @@ mod serde_helpers {
                 BinaryDeserHelper::URef(uref) => Key::URef(uref),
                 BinaryDeserHelper::Transfer(transfer_addr) => Key::Transfer(transfer_addr),
                 BinaryDeserHelper::DeployInfo(deploy_hash) => Key::DeployInfo(deploy_hash),
+                BinaryDeserHelper::EraInfo(era_id) => Key::EraInfo(era_id),
             }
         }
     }

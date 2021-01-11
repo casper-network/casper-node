@@ -13,7 +13,7 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        Auction, AuctionInfo, DelegationRate, EraId, MintProvider, RuntimeProvider,
+        Auction, DelegationRate, EraId, EraInfo, MintProvider, RuntimeProvider,
         SeigniorageRecipients, StorageProvider, SystemProvider, ValidatorWeights, ARG_AMOUNT,
         ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY,
         ARG_REWARD_FACTORS, ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_UNBOND_PURSE, ARG_VALIDATOR,
@@ -26,8 +26,8 @@ use casper_types::{
     mint::{METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD, METHOD_REDUCE_TOTAL_SUPPLY},
     system_contract_errors,
     system_contract_errors::auction::Error,
-    ApiError, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Key, Parameter, PublicKey, RuntimeArgs, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    Parameter, PublicKey, RuntimeArgs, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 struct AuctionContract;
@@ -44,8 +44,8 @@ impl StorageProvider for AuctionContract {
 }
 
 impl SystemProvider for AuctionContract {
-    fn create_purse(&mut self) -> URef {
-        system::create_purse()
+    fn create_purse(&mut self) -> Result<URef, Error> {
+        Ok(system::create_purse())
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
@@ -57,16 +57,13 @@ impl SystemProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> StdResult<(), ApiError> {
+    ) -> StdResult<(), Error> {
         system::transfer_from_purse_to_purse(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
-    fn record_auction_info(
-        &mut self,
-        era_id: EraId,
-        auction_info: AuctionInfo,
-    ) -> Result<(), Error> {
-        system::record_auction_info(era_id, auction_info).map_err(|_| Error::RecordAuctionInfo)
+    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
+        system::record_era_info(era_id, era_info).map_err(|_| Error::RecordEraInfo)
     }
 }
 
@@ -77,10 +74,6 @@ impl RuntimeProvider for AuctionContract {
 
     fn get_key(&self, name: &str) -> Option<Key> {
         runtime::get_key(name)
-    }
-
-    fn put_key(&mut self, name: &str, key: Key) {
-        runtime::put_key(name, key)
     }
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
@@ -94,8 +87,9 @@ impl MintProvider for AuctionContract {
         source: URef,
         target: AccountHash,
         amount: U512,
-    ) -> TransferResult {
+    ) -> Result<TransferredTo, Error> {
         system::transfer_from_purse_to_account(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
     fn transfer_purse_to_purse(
@@ -103,12 +97,13 @@ impl MintProvider for AuctionContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ApiError> {
+    ) -> Result<(), Error> {
         system::transfer_from_purse_to_purse(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
-    fn balance(&mut self, purse: URef) -> Option<U512> {
-        system::get_balance(purse)
+    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Ok(system::get_balance(purse))
     }
 
     fn read_base_round_reward(&mut self) -> Result<U512, Error> {
@@ -123,7 +118,7 @@ impl MintProvider for AuctionContract {
         let mint_contract = system::get_mint();
         let runtime_args = {
             let mut tmp = RuntimeArgs::new();
-            tmp.insert(ARG_AMOUNT, amount);
+            tmp.insert(ARG_AMOUNT, amount).map_err(|_| Error::CLValue)?;
             tmp
         };
         let result: Result<URef, system_contract_errors::mint::Error> =
@@ -135,7 +130,7 @@ impl MintProvider for AuctionContract {
         let mint_contract = system::get_mint();
         let runtime_args = {
             let mut tmp = RuntimeArgs::new();
-            tmp.insert(ARG_AMOUNT, amount);
+            tmp.insert(ARG_AMOUNT, amount).map_err(|_| Error::CLValue)?;
             tmp
         };
         let result: Result<(), system_contract_errors::mint::Error> =

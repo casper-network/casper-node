@@ -3,7 +3,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::{convert::TryFrom, str};
+use std::str;
 
 use futures::{future::BoxFuture, FutureExt};
 use http::Response;
@@ -29,27 +29,16 @@ use crate::{
     crypto::hash::Digest,
     effect::EffectBuilder,
     reactor::QueueKind,
-    rpcs::{RpcWithoutParams, RpcWithoutParamsExt},
+    rpcs::{
+        common::{self, MERKLE_PROOF},
+        RpcWithoutParams, RpcWithoutParamsExt,
+    },
     types::{
         json_compatibility::{AuctionState, StoredValue},
         Block,
     },
 };
 
-static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
-    String::from(
-        "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e\
-        55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3\
-        f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a\
-        7253614761462501010102000000006e06000000000074769d28aac597a36a03a932d4b43e4f10bf0403ee5c41d\
-        d035102553f5773631200b9e173e8f05361b681513c14e25e3138639eb03232581db7557c9e8dbbc83ce9450022\
-        6a9a7fe4f2b7b88d5103a4fc7400f02bf89c860c9ccdd56951a2afe9be0e0267006d820fb5676eb2960e15722f7\
-        725f3f8f41030078f8b2e44bf0dc03f71b176d6e800dc5ae9805068c5be6da1a90b2528ee85db0609cc0fb4bd60\
-        bbd559f497a98b67f500e1e3e846592f4918234647fca39830b7e1e6ad6f5b7a99b39af823d82ba1873d0000030\
-        00000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467\
-        a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c\
-        1bcbcee522649d2b135fe510fe3")
-});
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
     state_root_hash: *Block::doc_example().header().state_root_hash(),
     key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
@@ -156,47 +145,18 @@ impl RpcWithParamsExt for GetItem {
                 )
                 .await;
 
-            // Extract the EE `(StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>)` from the
-            // result.
-            let (value, proof) = match query_result {
-                Ok(QueryResult::Success { value, proofs }) => (value, proofs),
-                Ok(query_result) => {
-                    let error_msg = format!("state query failed: {:?}", query_result);
+            let (stored_value, proof_bytes) = match common::extract_query_result(query_result) {
+                Ok(tuple) => tuple,
+                Err((error_code, error_msg)) => {
                     info!("{}", error_msg);
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::QueryFailed as i64,
-                        error_msg,
-                    ))?);
-                }
-                Err(error) => {
-                    let error_msg = format!("state query failed to execute: {:?}", error);
-                    info!("{}", error_msg);
-                    return Ok(response_builder.error(warp_json_rpc::Error::custom(
-                        ErrorCode::QueryFailedToExecute as i64,
-                        error_msg,
-                    ))?);
-                }
-            };
-
-            let value_compat = match StoredValue::try_from(&*value) {
-                Ok(value_compat) => value_compat,
-                Err(error) => {
-                    info!("failed to encode stored value: {}", error);
-                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
-                }
-            };
-
-            let proof_bytes = match proof.to_bytes() {
-                Ok(proof_bytes) => proof_bytes,
-                Err(error) => {
-                    info!("failed to encode stored value: {}", error);
-                    return Ok(response_builder.error(warp_json_rpc::Error::INTERNAL_ERROR)?);
+                    return Ok(response_builder
+                        .error(warp_json_rpc::Error::custom(error_code as i64, error_msg))?);
                 }
             };
 
             let result = Self::ResponseResult {
                 api_version: CLIENT_API_VERSION.clone(),
-                stored_value: value_compat,
+                stored_value,
                 merkle_proof: hex::encode(proof_bytes),
             };
 

@@ -4,17 +4,17 @@ use std::{
 };
 
 use anyhow::bail;
+use log::info;
+use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
 
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
-use casper_types::U512;
-use log::info;
-use num_rational::Ratio;
+use casper_types::{PublicKey, SecretKey, U512};
 
 use crate::{
-    components::{consensus::EraId, small_network, storage},
-    crypto::asymmetric_key::{PublicKey, SecretKey},
+    components::{consensus::EraId, gossiper, small_network, storage},
+    crypto::AsymmetricKeyExt,
     reactor::{initializer, joiner, validator, Runner},
     testing::{self, network::Network, ConditionCheckReactor, TestRng},
     types::Timestamp,
@@ -60,7 +60,7 @@ impl TestChain {
             .iter()
             .map(|(public_key, bounded_amounts_u64)| {
                 GenesisAccount::new(
-                    (*public_key).into(),
+                    *public_key,
                     public_key.to_account_hash(),
                     Motes::new(U512::from(rng.gen_range(10000, 99999999))),
                     Motes::new(U512::from(*bounded_amounts_u64)),
@@ -91,6 +91,7 @@ impl TestChain {
             } else {
                 small_network::Config::default_local_net(first_node_port)
             },
+            gossip: gossiper::Config::new_with_small_timeouts(),
             ..Default::default()
         };
 
@@ -102,6 +103,7 @@ impl TestChain {
 
         // Additionally set up storage in a temporary directory.
         let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
+        cfg.consensus.unit_hashes_folder = temp_dir.path().to_path_buf();
         self.storages.push(temp_dir);
         cfg.storage = storage_cfg;
 

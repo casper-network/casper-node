@@ -2,136 +2,140 @@
 
 ## Overview
 
-The aim of NCTL is to enable a user to spin up a test network within 15-20 seconds.  Once a network is up & running the user should be able to control each of the node's within the network as well as add new nodes to the network.  Hereby are listed the set of NCTL commands to control a tst network
+The aim of NCTL is to enable a user to spin up a test network within 15-20 seconds.  Once a network is up & running the user can control each node as well adding new nodes to the network.  Hereby are listed the set of NCTL commands to control a test network.
 
-## Compiling network binaries
+### nctl-clean node={X:-1}
 
-The NCTL library can be used to compile the node's binary set, i.e. node, client & smart contract binaries.  The NCTL library does not immediately copy the compiled binary set into a test directory, that is down when setting up test assets (see `nctl-assets-setup` below). 
-
-### nctl-compile
-
-Compiles casper node, client + client contracts using `make` + `cargo`.  
-
-
-### nctl-compile-node
-
-Compiles casper node using `make` + `cargo`.  
-
-
-### nctl-compile-client
-
-Compiles casper client + client contracts using `make` + `cargo`.  
-
-
-## Managing network assets
-
-### nctl-assets-ls
-
-List previously created network assets.
-
-
-### nctl-assets-setup net={W:-1} nodes={X:-5} users={Y:-5} bootstraps={Z:-1}
-
-Sets up assets required to run a local N-node network - this includes binaries, chainspec, config, faucet, keys ... etc.
+Stops node X (if running) and deletes accumulated storage state.
 
 ```
-nctl-assets-setup
+nctl-clean
 
-nctl-assets-setup net=1 nodes=5 users=5 bootstraps=1  (same as above)
+nctl-clean node=1  (same as above)
 
-nctl-assets-setup net=2 nodes=10 users=10 bootstraps=4
+nctl-clean node=3
 ```
 
-### nctl-assets-teardown net={X:-1}
+### nctl-interactive node={X:-1} loglevel={Y:-($RUST_LOG | debug)}
 
-Stops network & destroys all related assets.
-
-```
-nctl-assets-teardown
-
-nctl-assets-teardown net=1  (same as above)
-
-nctl-assets-teardown net=2
-```
-
-### nctl-assets-dump net={X:-1}
-
-Dumps transient network assets such as logs + configuration.
-
-```
-nctl-assets-dump
-
-nctl-assets-dump net=1  (same as above)
-```
-
-## Controlling network nodes
-
-### nctl-interactive net={X:-1} node={Y:-1} loglevel={Z:-($RUST_LOG | debug)}
-
-Starts (in interactive mode) node Y in network X.  See note 3 above in repsec of logging level.
+Starts (in interactive mode) node X with logging level set to Y.
 
 ```
 nctl-interactive
 
-nctl-interactive net=1 node=1  (same as above)
+nctl-interactive node=1  (same as above)
 
-nctl-interactive net=1 node=3
+nctl-interactive node=3
 ```
 
-### nctl-log-reset net={X:-1} node={Y:-all}
+### nctl-join node={X:-6} amount={Y:-1000000} rate={Z:-125}
 
-Resets logs of node Y in network X.  If Y=all then the logs of all nodes are reset.
+Attempts to join node X to test network by submitting an auction bid of Y with a delegation rate of Z.  This command will await 3 eras after the auction bid has been submitted before starting node with a trusted hash. 
+
+```
+nctl-join
+
+nctl-join node=6 amount=1000000 rate=125 (same as above)
+
+nctl-join node=8 amount=500000 rate=250
+```
+
+### nctl-leave node={X:-6} amount={Y:-1000000}
+
+Attempts to detach node X from test network by submitting an auction withdrawal Y.  This command awaits 1 era before stopping the node. 
+
+```
+nctl-leave
+
+nctl-leave node=6 amount=1000000 (same as above)
+
+nctl-leave node=8 amount=500000
+```
+
+### nctl-log-reset node={X:-all}
+
+Resets logs of node Y.  If Y=all then the logs of all nodes are reset.
 
 ```
 nctl-log-reset
 
-nctl-log-reset net=1 node=all  (same as above)
+nctl-log-reset node=all  (same as above)
 
-nctl-log-reset net=1 node=3
+nctl-log-reset node=3
 ```
 
-### nctl-restart net={X:-1} node={Y:-all}
+### nctl-restart node={X:-all} clean={Y:-true}
 
-Restarts node Y in network X.  If Y=all then all nodes in the network are restarted.
+Restarts node Y, if Y=all then all nodes are restarted.  Node storage state is cleared by default.
 
 ```
 nctl-restart
 
-nctl-restart net=1 node=all  (same as above)
+nctl-restart node=all clean=true (same as above)
 
-nctl-restart net=1 node=3
+nctl-restart node=3 clean=false
 ```
 
-### nctl-start net={X:-1} node={Y:-all} loglevel={Z:-($RUST_LOG | debug)}
+### nctl-rotate
 
-Starts node Y in network X.  If Y=all then all nodes in the network are restarted.  See note 3 above in repsec of logging level.
+Attempts to rotate a network's validator set - used to verify joining/leaving scenarios.
+
+```
+nctl-rotate
+```
+
+### nctl-start node={X:-all} loglevel={Y:-($RUST_LOG | debug)}
+
+Starts node Y, if Y=all then all nodes are started.  
 
 ```
 nctl-start
 
-nctl-start net=1 node=all  (same as above)
+nctl-start node=all loglevel=debug (same as above)
 
-nctl-start net=1 node=3
+nctl-start node=3 loglevel=info
 ```
 
-### nctl-status net={X:-1}
+### nctl-start-after-n-blocks node={X:-all} offset={Y:-1} loglevel={Z:-($RUST_LOG | debug)}
 
-Displays status of all nodes in network X.
+Starts node X after chain has advanced by Y blocks.  If X=all then all nodes are started.  
+
+```
+nctl-start-after-n-blocks
+
+nctl-start-after-n-blocks node=all  (same as above)
+
+nctl-start-after-n-blocks node=6 offset=4
+```
+
+### nctl-start-after-n-eras node={X:-all} offset={Y:-1} loglevel={Z:-($RUST_LOG | debug)}
+
+Starts node X after chain has advanced by Y eras.  If X=all then all nodes are started.  
+
+```
+nctl-start-after-n-eras
+
+nctl-start-after-n-eras node=all offset=1  (same as above)
+
+nctl-start-after-n-eras node=8 offset=4
+```
+
+### nctl-status
+
+Displays process status of all nodes.
 
 ```
 nctl-status
-
-nctl-status net=1  (same as above)
 ```
 
-### nctl-stop net={X:-1} node={Y:-all}
+### nctl-stop node={Y:-all}
 
-Stops node Y in network X.  If Y=all then all nodes in the network are stopped.
+Stops node Y, if Y=all then all nodes are stopped.
 
 ```
 nctl-stop
 
-nctl-stop net=1 node=all  (same as above)
+nctl-stop node=all  (same as above)
 
-nctl-stop net=1 node=3
+nctl-stop node=3
 ```

@@ -244,7 +244,7 @@ impl ToBytes for CLValue {
 
     fn into_bytes(self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = self.bytes.into_bytes()?;
-        self.cl_type.append_bytes(&mut result);
+        self.cl_type.append_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -353,6 +353,7 @@ mod tests {
 
     mod simple_types {
         use super::*;
+        use crate::crypto::SecretKey;
 
         #[test]
         fn bool_cl_value_should_encode_to_json() {
@@ -496,18 +497,19 @@ mod tests {
         #[test]
         fn public_key_cl_value_should_encode_to_json() {
             check_to_json(
-                PublicKey::Ed25519([7; 32]),
-                r#"{"cl_type":"PublicKey","parsed_to_json":"010707070707070707070707070707070707070707070707070707070707070707"}"#,
+                PublicKey::from(SecretKey::ed25519([7; SecretKey::ED25519_LENGTH])),
+                r#"{"cl_type":"PublicKey","parsed_to_json":"01ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"}"#,
             );
             check_to_json(
-                PublicKey::Secp256k1([8; 33].into()),
-                r#"{"cl_type":"PublicKey","parsed_to_json":"02080808080808080808080808080808080808080808080808080808080808080808"}"#,
+                PublicKey::from(SecretKey::secp256k1([8; SecretKey::SECP256K1_LENGTH])),
+                r#"{"cl_type":"PublicKey","parsed_to_json":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}"#,
             );
         }
     }
 
     mod option {
         use super::*;
+        use crate::crypto::SecretKey;
 
         #[test]
         fn bool_cl_value_should_encode_to_json() {
@@ -743,12 +745,16 @@ mod tests {
         #[test]
         fn public_key_cl_value_should_encode_to_json() {
             check_to_json(
-                Some(PublicKey::Ed25519([7; 32])),
-                r#"{"cl_type":{"Option":"PublicKey"},"parsed_to_json":"010707070707070707070707070707070707070707070707070707070707070707"}"#,
+                Some(PublicKey::from(SecretKey::ed25519(
+                    [7; SecretKey::ED25519_LENGTH],
+                ))),
+                r#"{"cl_type":{"Option":"PublicKey"},"parsed_to_json":"01ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"}"#,
             );
             check_to_json(
-                Some(PublicKey::Secp256k1([8; 33].into())),
-                r#"{"cl_type":{"Option":"PublicKey"},"parsed_to_json":"02080808080808080808080808080808080808080808080808080808080808080808"}"#,
+                Some(PublicKey::from(SecretKey::secp256k1(
+                    [8; SecretKey::SECP256K1_LENGTH],
+                ))),
+                r#"{"cl_type":{"Option":"PublicKey"},"parsed_to_json":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}"#,
             );
             check_to_json(
                 Option::<PublicKey>::None,
@@ -759,6 +765,7 @@ mod tests {
 
     mod result {
         use super::*;
+        use crate::crypto::SecretKey;
 
         #[test]
         fn bool_cl_value_should_encode_to_json() {
@@ -1232,22 +1239,22 @@ mod tests {
 
         #[test]
         fn public_key_cl_value_should_encode_to_json() {
-            let public_key = PublicKey::Secp256k1([8; 33].into());
+            let public_key = SecretKey::secp256k1([8; SecretKey::SECP256K1_LENGTH]).into();
             check_to_json(
                 Result::<PublicKey, i32>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed_to_json":{"Ok":"02080808080808080808080808080808080808080808080808080808080808080808"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed_to_json":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, u32>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed_to_json":{"Ok":"02080808080808080808080808080808080808080808080808080808080808080808"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed_to_json":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, ()>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed_to_json":{"Ok":"02080808080808080808080808080808080808080808080808080808080808080808"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed_to_json":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, String>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed_to_json":{"Ok":"02080808080808080808080808080808080808080808080808080808080808080808"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed_to_json":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, i32>::Err(-1),

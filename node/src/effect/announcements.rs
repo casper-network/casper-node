@@ -8,14 +8,15 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use casper_types::ExecutionResult;
 use serde::Serialize;
 
+use casper_types::{ExecutionResult, PublicKey};
+
 use crate::{
-    components::small_network::GossipedAddress,
+    components::{consensus::EraId, small_network::GossipedAddress},
     types::{
         Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
-        FinalizedBlock, Item,
+        FinalizedBlock, Item, Timestamp,
     },
     utils::Source,
 };
@@ -118,14 +119,28 @@ impl<I: Display> Display for DeployAcceptorAnnouncement<I> {
 
 /// A consensus announcement.
 #[derive(Debug)]
-pub enum ConsensusAnnouncement {
+pub enum ConsensusAnnouncement<I> {
     /// A block was finalized.
     Finalized(Box<FinalizedBlock>),
     /// A linear chain block has been handled.
     Handled(Box<BlockHeader>),
+    /// An equivocation has been detected.
+    Fault {
+        /// The Id of the era in which the equivocation was detected
+        era_id: EraId,
+        /// The public key of the equivocator.
+        public_key: Box<PublicKey>,
+        /// The timestamp when the evidence of the equivocation was detected.
+        timestamp: Timestamp,
+    },
+    /// We want to disconnect from a peer due to its transgressions.
+    DisconnectFromPeer(I),
 }
 
-impl Display for ConsensusAnnouncement {
+impl<I> Display for ConsensusAnnouncement<I>
+where
+    I: Display,
+{
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ConsensusAnnouncement::Finalized(block) => {
@@ -137,6 +152,18 @@ impl Display for ConsensusAnnouncement {
                 block_header.height(),
                 block_header.hash()
             ),
+            ConsensusAnnouncement::Fault {
+                era_id,
+                public_key,
+                timestamp,
+            } => write!(
+                formatter,
+                "Validator fault with public key: {} has been identified at time: {} in era: {}",
+                public_key, timestamp, era_id,
+            ),
+            ConsensusAnnouncement::DisconnectFromPeer(peer) => {
+                write!(formatter, "Consensus wanting to disconnect from {}", peer)
+            }
         }
     }
 }

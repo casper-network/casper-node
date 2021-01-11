@@ -1,9 +1,9 @@
 //! Contains implementation of a Auction contract functionality.
-mod auction_info;
 mod bid;
 mod constants;
 mod delegator;
 mod detail;
+mod era_info;
 mod providers;
 mod seigniorage_recipient;
 mod types;
@@ -19,10 +19,10 @@ use crate::{
     PublicKey, URef, U512,
 };
 
-pub use auction_info::*;
 pub use bid::Bid;
 pub use constants::*;
 pub use delegator::Delegator;
+pub use era_info::*;
 pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider};
 pub use seigniorage_recipient::SeigniorageRecipient;
 pub use types::*;
@@ -62,7 +62,7 @@ pub trait Auction:
             detail::get_seigniorage_recipients_snapshot(self)?;
         let seigniorage_recipients = seigniorage_recipients_snapshot
             .remove(&era_index)
-            .unwrap_or_else(|| panic!("No seigniorage_recipients for era {}", era_index));
+            .ok_or(Error::MissingSeigniorageRecipients)?;
         Ok(seigniorage_recipients)
     }
 
@@ -76,7 +76,7 @@ pub trait Auction:
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -95,7 +95,7 @@ pub trait Auction:
                     .increase_stake(amount)?
             }
             None => {
-                let bonding_purse = self.create_purse();
+                let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToBidPurse)?;
                 let bid = Bid::unlocked(bonding_purse, amount, delegation_rate);
@@ -122,7 +122,7 @@ pub trait Auction:
         amount: U512,
         unbonding_purse: URef,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -144,6 +144,7 @@ pub trait Auction:
         let new_amount = bid.decrease_stake(amount)?;
 
         if new_amount.is_zero() {
+            // NOTE: Assumed safe as we're checking for existence above
             bids.remove(&public_key).unwrap();
         }
 
@@ -164,7 +165,7 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -191,7 +192,7 @@ pub trait Auction:
                 *delegator.staked_amount()
             }
             None => {
-                let bonding_purse = self.create_purse();
+                let bonding_purse = self.create_purse()?;
                 self.transfer_purse_to_purse(source, bonding_purse, amount)
                     .map_err(|_| Error::TransferToDelegatorPurse)?;
                 let delegator = Delegator::new(amount, bonding_purse, validator_public_key);
@@ -218,7 +219,7 @@ pub trait Auction:
         amount: U512,
         unbonding_purse: URef,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -265,36 +266,27 @@ pub trait Auction:
             return Err(Error::InvalidCaller);
         }
 
-        let mut burned_amount = detail::quash_bid(self, &validator_public_keys)?;
+        let mut burned_amount: U512 = U512::zero();
+
+        let mut bids = detail::get_bids(self)?;
+        let mut bids_modified = false;
 
         let mut unbonding_purses: UnbondingPurses = detail::get_unbonding_purses(self)?;
-
         let mut unbonding_purses_modified = false;
         for validator_public_key in validator_public_keys {
-            if let Some(unbonding_list) = unbonding_purses.get_mut(&validator_public_key) {
-                let initial_length = unbonding_list.len();
+            // Remove bid for given validator, saving its delegators
+            if let Some(bid) = bids.remove(&validator_public_key) {
+                burned_amount += *bid.staked_amount();
+                bids_modified = true;
+            };
 
-                unbonding_list.retain(|unbonding_purse| {
-                    // Only entries created by non-validators are retained
-                    let should_retain = !unbonding_purse.is_validator();
-
-                    if !should_retain {
-                        // Amounts inside removed entries are burned only.
-                        burned_amount += *unbonding_purse.amount()
-                    }
-
-                    should_retain
-                });
-
-                if unbonding_list.len() != initial_length {
-                    unbonding_purses_modified = true;
-                }
-
-                if unbonding_list.is_empty() {
-                    // Cleans up empty map entries to preserve global state.
-                    unbonding_purses.remove(&validator_public_key).unwrap();
-                    unbonding_purses_modified = true;
-                }
+            // Update unbonding entries for given validator
+            if let Some(unbonding_list) = unbonding_purses.remove(&validator_public_key) {
+                burned_amount += unbonding_list
+                    .into_iter()
+                    .map(|unbonding_purse| *unbonding_purse.amount())
+                    .sum();
+                unbonding_purses_modified = true;
             }
         }
 
@@ -302,7 +294,10 @@ pub trait Auction:
             detail::set_unbonding_purses(self, unbonding_purses)?;
         }
 
-        // call reduce total supply
+        if bids_modified {
+            detail::set_bids(self, bids)?;
+        }
+
         self.reduce_total_supply(burned_amount)?;
 
         Ok(())
@@ -420,8 +415,8 @@ pub trait Auction:
             return Err(Error::MismatchedEraValidators);
         }
 
-        let mut auction_info = AuctionInfo::new();
-        let mut seigniorage_allocations = auction_info.seigniorage_allocations_mut();
+        let mut era_info = EraInfo::new();
+        let mut seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
         for (public_key, reward_factor) in reward_factors {
             let recipient = seigniorage_recipients
@@ -510,7 +505,7 @@ pub trait Auction:
             .map_err(|_| Error::DelegatorRewardTransfer)?;
         }
 
-        self.record_auction_info(era_id, auction_info)?;
+        self.record_era_info(era_id, era_info)?;
 
         Ok(())
     }
@@ -523,7 +518,7 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         target_purse: URef,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(delegator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
@@ -569,7 +564,7 @@ pub trait Auction:
         validator_public_key: PublicKey,
         target_purse: URef,
     ) -> Result<U512> {
-        let account_hash = AccountHash::from_public_key(validator_public_key, |x| self.blake2b(x));
+        let account_hash = AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }

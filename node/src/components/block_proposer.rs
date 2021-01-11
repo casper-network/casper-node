@@ -19,7 +19,7 @@ use std::{
 use datasize::DataSize;
 use prometheus::{self, Registry};
 use semver::Version;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     components::{chainspec_loader::DeployConfig, Component},
@@ -30,9 +30,11 @@ use crate::{
     types::{DeployHash, DeployHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
+use casper_execution_engine::{core::engine_state::CONV_RATE, shared::gas::Gas};
 pub(crate) use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
+use num_traits::Zero;
 
 /// Block proposer component.
 #[derive(DataSize, Debug)]
@@ -47,6 +49,10 @@ pub(crate) struct BlockProposer {
 /// Interval after which a pruning of the internal sets is triggered.
 // TODO: Make configurable.
 const PRUNE_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Experimentally, deploys are in the range of 270-280 bytes, we use this to determine if we are
+/// within a threshold to break iteration of `pending` early.
+const DEPLOY_APPROX_MIN_SIZE: usize = 300;
 
 /// The type of values expressing the block height in the chain.
 type BlockHeight = u64;
@@ -76,6 +82,7 @@ impl BlockProposer {
     pub(crate) fn new<REv>(
         registry: Registry,
         effect_builder: EffectBuilder<REv>,
+        next_finalized_block: BlockHeight,
     ) -> Result<(Self, Effects<Event>), prometheus::Error>
     where
         REv: From<Event> + From<StorageRequest> + From<StateStoreRequest> + Send + 'static,
@@ -100,7 +107,11 @@ impl BlockProposer {
 
             (chainspec, sets)
         }
-        .event(|(chainspec, sets)| Event::Loaded { chainspec, sets });
+        .event(move |(chainspec, sets)| Event::Loaded {
+            chainspec,
+            sets,
+            next_finalized_block,
+        });
 
         let block_proposer = BlockProposer {
             state: BlockProposerState::Initializing {
@@ -134,17 +145,24 @@ where
         match (&mut self.state, event) {
             (
                 BlockProposerState::Initializing { ref mut pending },
-                Event::Loaded { chainspec, sets },
+                Event::Loaded {
+                    chainspec,
+                    sets,
+                    next_finalized_block,
+                },
             ) => {
                 let mut new_ready_state = BlockProposerReady {
-                    sets: sets.unwrap_or_default(),
+                    sets: sets
+                        .unwrap_or_default()
+                        .with_next_finalized(next_finalized_block),
                     deploy_config: chainspec.genesis.deploy_config,
                     state_key: deploy_sets::create_storage_key(&chainspec),
                     request_queue: Default::default(),
+                    unhandled_finalized: Default::default(),
                 };
 
                 // Replay postponed events onto new state.
-                for ev in pending.drain(0..pending.len()) {
+                for ev in pending.drain(..) {
                     effects.extend(new_ready_state.handle_event(effect_builder, ev));
                 }
 
@@ -181,6 +199,10 @@ where
 struct BlockProposerReady {
     /// Set of deploys currently stored in the block proposer.
     sets: BlockProposerDeploySets,
+    /// `unhandled_finalized` is a set of hashes for deploys that the `BlockProposer` has not yet
+    /// seen but were reported as reported to `finalized_deploys()`. They are used to
+    /// filter deploys for proposal, similar to `self.sets.finalized_deploys`.
+    unhandled_finalized: HashSet<DeployHash>,
     // We don't need the whole Chainspec here, just the deploy config.
     deploy_config: DeployConfig,
     /// Key for storing the block proposer state.
@@ -201,6 +223,11 @@ impl BlockProposerReady {
         match event {
             Event::Request(BlockProposerRequest::RequestProtoBlock(request)) => {
                 if request.next_finalized > self.sets.next_finalized {
+                    warn!(
+                        request_next_finalized = %request.next_finalized,
+                        self_next_finalized = %self.sets.next_finalized,
+                        "received request before finalization announcement"
+                    );
                     self.request_queue
                         .entry(request.next_finalized)
                         .or_default()
@@ -242,7 +269,7 @@ impl BlockProposerReady {
             }
             Event::Loaded { sets, .. } => {
                 // This should never happen, but we can just ignore the event and carry on.
-                warn!(
+                error!(
                     ?sets,
                     "got loaded event for block proposer state during ready state"
                 );
@@ -253,6 +280,11 @@ impl BlockProposerReady {
                 deploys.extend(transfers);
 
                 if height > self.sets.next_finalized {
+                    warn!(
+                        %height,
+                        next_finalized = %self.sets.next_finalized,
+                        "received finalized blocks out of order; queueing"
+                    );
                     // safe to subtract 1 - height will never be 0 in this branch, because
                     // next_finalized is at least 0, and height has to be greater
                     self.sets.finalization_queue.insert(height - 1, deploys);
@@ -260,6 +292,7 @@ impl BlockProposerReady {
                 } else {
                     let mut effects = self.handle_finalized_block(effect_builder, height, deploys);
                     while let Some(deploys) = self.sets.finalization_queue.remove(&height) {
+                        info!(%height, "removed finalization queue entry");
                         height += 1;
                         effects.extend(self.handle_finalized_block(
                             effect_builder,
@@ -286,12 +319,22 @@ impl BlockProposerReady {
             trace!("expired deploy {} rejected from the buffer", hash);
             return;
         }
+        if self.unhandled_finalized.remove(&hash) {
+            info!(
+                "deploy {} was previously marked as finalized, storing header",
+                hash
+            );
+            self.sets
+                .finalized_deploys
+                .insert(hash, deploy_or_transfer.take_header());
+            return;
+        }
         // only add the deploy if it isn't contained in a finalized block
-        if !self.sets.finalized_deploys.contains_key(&hash) {
+        if self.sets.finalized_deploys.contains_key(&hash) {
+            info!("deploy {} rejected from the buffer", hash);
+        } else {
             self.sets.pending.insert(hash, deploy_or_transfer);
             info!("added deploy {} to the buffer", hash);
-        } else {
-            info!("deploy {} rejected from the buffer", hash);
         }
     }
 
@@ -300,21 +343,19 @@ impl BlockProposerReady {
     where
         I: IntoIterator<Item = DeployHash>,
     {
-        // TODO: This will ignore deploys that weren't in `pending`. They might be added
-        // later, and then would be proposed as duplicates.
-        let deploys: HashMap<_, _> = deploys
-            .into_iter()
-            .filter_map(|deploy_hash| {
-                self.sets
-                    .pending
-                    .get(&deploy_hash)
-                    .map(|deploy_type| (deploy_hash, deploy_type.header().clone()))
-            })
-            .collect();
-        self.sets
-            .pending
-            .retain(|deploy_hash, _| !deploys.contains_key(deploy_hash));
-        self.sets.finalized_deploys.extend(deploys);
+        for deploy_hash in deploys.into_iter() {
+            match self.sets.pending.remove(&deploy_hash) {
+                Some(deploy_type) => {
+                    self.sets
+                        .finalized_deploys
+                        .insert(deploy_hash, deploy_type.take_header());
+                }
+                // If we haven't seen this deploy before, we still need to take note of it.
+                _ => {
+                    self.unhandled_finalized.insert(deploy_hash);
+                }
+            }
+        }
     }
 
     /// Handles finalization of a block.
@@ -331,6 +372,7 @@ impl BlockProposerReady {
         self.sets.next_finalized = height + 1;
 
         if let Some(requests) = self.request_queue.remove(&self.sets.next_finalized) {
+            info!(height = %(height + 1), "handling queued requests");
             requests
                 .into_iter()
                 .flat_map(|request| {
@@ -353,21 +395,18 @@ impl BlockProposerReady {
     /// Checks if a deploy is valid (for inclusion into the next block).
     fn is_deploy_valid(
         &self,
-        deploy: &DeployHeader,
+        header: &DeployHeader,
         block_timestamp: Timestamp,
         deploy_config: &DeployConfig,
         past_deploys: &HashSet<DeployHash>,
     ) -> bool {
         let all_deps_resolved = || {
-            deploy.dependencies().iter().all(|dep| {
-                past_deploys.contains(dep) || self.sets.finalized_deploys.contains_key(dep)
-            })
+            header
+                .dependencies()
+                .iter()
+                .all(|dep| past_deploys.contains(dep) || self.contains_finalized(dep))
         };
-        let ttl_valid = deploy.ttl() <= deploy_config.max_ttl;
-        let timestamp_valid = deploy.timestamp() <= block_timestamp;
-        let deploy_valid = deploy.timestamp() + deploy.ttl() >= block_timestamp;
-        let num_deps_valid = deploy.dependencies().len() <= deploy_config.max_dependencies as usize;
-        ttl_valid && timestamp_valid && deploy_valid && num_deps_valid && all_deps_resolved()
+        header.is_valid(deploy_config, block_timestamp) && all_deps_resolved()
     }
 
     /// Returns a list of candidates for inclusion into a block.
@@ -380,33 +419,68 @@ impl BlockProposerReady {
     ) -> ProtoBlock {
         let max_transfers = deploy_config.block_max_transfer_count as usize;
         let max_deploys = deploy_config.block_max_deploy_count as usize;
+        let max_block_size_bytes = deploy_config.max_block_size as usize;
+        let block_gas_limit = Gas::from(deploy_config.block_gas_limit);
 
         let mut transfers = Vec::new();
         let mut wasm_deploys = Vec::new();
+        let mut block_gas_running_total = Gas::zero();
+        let mut block_size_running_total = 0usize;
 
         for (hash, deploy_type) in self.sets.pending.iter() {
-            let under_max_transfers = transfers.len() < max_transfers;
-            let under_max_deploys = wasm_deploys.len() < max_deploys;
-            if !under_max_deploys && !under_max_transfers {
+            let at_max_transfers = transfers.len() == max_transfers;
+            let at_max_deploys = wasm_deploys.len() == max_deploys;
+
+            // Early exit if block limits are met.
+            // TODO: break early if gas total is met, but only once we have a constant for the cost
+            // of wasm-less transfers. if block_gas_running_total >= block_gas_limit
+            if block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes
+                || (at_max_deploys && at_max_transfers)
+            {
                 break;
             }
 
-            if self.is_deploy_valid(
-                deploy_type.header(),
+            if !self.is_deploy_valid(
+                &deploy_type.header(),
                 block_timestamp,
                 &deploy_config,
                 &past_deploys,
-            ) && !past_deploys.contains(hash)
-                && !self.sets.finalized_deploys.contains_key(hash)
+            ) || past_deploys.contains(hash)
+                || self.sets.finalized_deploys.contains_key(hash)
+                || block_size_running_total + deploy_type.size() > max_block_size_bytes
             {
-                // all deploys in pending that aren't in finalized blocks or
-                // proposed blocks from the set `past_blocks`
-                if under_max_transfers && matches!(deploy_type, DeployType::Transfer(_)) {
-                    transfers.push(*hash)
-                } else if under_max_deploys && matches!(deploy_type, DeployType::Wasm(_)) {
-                    wasm_deploys.push(*hash)
-                }
+                continue;
             }
+
+            let payment_amount_gas = match Gas::from_motes(deploy_type.payment_amount(), CONV_RATE)
+            {
+                Some(value) => value,
+                None => {
+                    tracing::error!("payment_amount couldn't be converted from motes to gas");
+                    continue;
+                }
+            };
+
+            let gas_running_total = if let Some(gas_running_total) =
+                block_gas_running_total.checked_add(payment_amount_gas)
+            {
+                gas_running_total
+            } else {
+                tracing::warn!("block gas would overflow");
+                continue;
+            };
+
+            if gas_running_total > block_gas_limit {
+                continue;
+            }
+            if deploy_type.is_transfer() && !at_max_transfers {
+                transfers.push(*hash);
+            } else if !at_max_deploys {
+                wasm_deploys.push(*hash);
+            }
+            block_gas_running_total = gas_running_total;
+
+            block_size_running_total += deploy_type.size();
         }
 
         ProtoBlock::new(wasm_deploys, transfers, random_bit)
@@ -415,5 +489,9 @@ impl BlockProposerReady {
     /// Prunes expired deploy information from the BlockProposer, returns the total deploys pruned.
     fn prune(&mut self, current_instant: Timestamp) -> usize {
         self.sets.prune(current_instant)
+    }
+
+    fn contains_finalized(&self, dep: &DeployHash) -> bool {
+        self.sets.finalized_deploys.contains_key(dep) || self.unhandled_finalized.contains(dep)
     }
 }

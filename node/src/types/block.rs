@@ -22,35 +22,39 @@ use hex_fmt::{HexFmt, HexList};
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
+use rand::SeedableRng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[cfg(test)]
 use casper_types::auction::BLOCK_REWARD;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    PublicKey, SecretKey, Signature,
+};
 
 use super::{Item, Tag, Timestamp};
+#[cfg(test)]
+use crate::testing::TestRng;
 use crate::{
     components::consensus::{self, EraId},
     crypto::{
         self,
-        asymmetric_key::{PublicKey, SecretKey, Signature},
         hash::{self, Digest},
+        AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
-    types::{Deploy, DeployHash},
+    types::{Deploy, DeployHash, NodeRng},
     utils::DisplayIter,
 };
-#[cfg(test)]
-use crate::{crypto::asymmetric_key, testing::TestRng};
 
 static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
-    let secret_key_1 = SecretKey::new_ed25519([0; 32]);
+    let secret_key_1 = SecretKey::ed25519([0; 32]);
     let public_key_1 = PublicKey::from(&secret_key_1);
     let equivocators = vec![public_key_1];
 
-    let secret_key_2 = SecretKey::new_ed25519([1; 32]);
+    let secret_key_2 = SecretKey::ed25519([1; 32]);
     let public_key_2 = PublicKey::from(&secret_key_2);
     let mut rewards = BTreeMap::new();
     rewards.insert(public_key_2, 1000);
@@ -86,13 +90,11 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
     let parent_seed = Digest::from([9u8; Digest::LENGTH]);
 
     let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
-    let signature = Signature::from_hex(
-        "01bd9a3d1fe100345702c4631ce1e22b7dd7c2cd5b3808744efd36fdfc900bff30b19d4fdc369c104924a9\
-            f62ccfa91f3a9fc013b9066224a7ebdfe39579892200"
-            .as_bytes(),
-    )
-    .unwrap();
-    block.append_proof(signature);
+    let secret_key = SecretKey::doc_example();
+    let public_key = PublicKey::from(secret_key);
+    let mut rng = NodeRng::seed_from_u64(0);
+    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
+    block.append_proof(public_key, signature);
     block
 });
 
@@ -377,13 +379,11 @@ impl FinalizedBlock {
             let equivocators_count = rng.gen_range(0, 5);
             let rewards_count = rng.gen_range(0, 5);
             Some(EraEnd {
-                equivocators: iter::repeat_with(|| {
-                    PublicKey::from(&SecretKey::new_ed25519(rng.gen()))
-                })
-                .take(equivocators_count)
-                .collect(),
+                equivocators: iter::repeat_with(|| PublicKey::from(&SecretKey::ed25519(rng.gen())))
+                    .take(equivocators_count)
+                    .collect(),
                 rewards: iter::repeat_with(|| {
-                    let pub_key = PublicKey::from(&SecretKey::new_ed25519(rng.gen()));
+                    let pub_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
                     let reward = rng.gen_range(1, BLOCK_REWARD + 1);
                     (pub_key, reward)
                 })
@@ -394,7 +394,7 @@ impl FinalizedBlock {
             None
         };
         let era = rng.gen_range(0, 5);
-        let secret_key: SecretKey = SecretKey::new_ed25519(rng.gen());
+        let secret_key: SecretKey = SecretKey::ed25519(rng.gen());
         let public_key = PublicKey::from(&secret_key);
 
         FinalizedBlock::new(
@@ -744,7 +744,7 @@ pub struct Block {
     hash: BlockHash,
     header: BlockHeader,
     body: (), // TODO: implement body of block
-    proofs: Vec<Signature>,
+    proofs: BTreeMap<PublicKey, Signature>,
 }
 
 impl Block {
@@ -775,7 +775,12 @@ impl Block {
             parent_hash,
             state_root_hash,
             body_hash,
-            deploy_hashes: finalized_block.proto_block.wasm_deploys,
+            deploy_hashes: finalized_block
+                .proto_block
+                .wasm_deploys
+                .into_iter()
+                .chain(finalized_block.proto_block.transfers.into_iter())
+                .collect(),
             random_bit: finalized_block.proto_block.random_bit,
             accumulated_seed: accumulated_seed.into(),
             era_end: finalized_block.era_end,
@@ -791,7 +796,7 @@ impl Block {
             hash,
             header,
             body,
-            proofs: vec![],
+            proofs: BTreeMap::new(),
         }
     }
 
@@ -824,12 +829,16 @@ impl Block {
 
     /// Appends the given signature to this block's proofs.  It should have been validated prior to
     /// this via `BlockHash::verify()`.
-    pub(crate) fn append_proof(&mut self, proof: Signature) {
-        self.proofs.push(proof)
+    pub(crate) fn append_proof(
+        &mut self,
+        pub_key: PublicKey,
+        proof: Signature,
+    ) -> Option<Signature> {
+        self.proofs.insert(pub_key, proof)
     }
 
     /// Provide proofs for an OpenRPC compatible representation.
-    pub fn proofs(&self) -> &Vec<Signature> {
+    pub fn proofs(&self) -> &BTreeMap<PublicKey, Signature> {
         &self.proofs
     }
 
@@ -878,8 +887,8 @@ impl Block {
         for _ in 0..signatures_count {
             let secret_key = SecretKey::random(rng);
             let public_key = PublicKey::from(&secret_key);
-            let signature = asymmetric_key::sign(block.hash.inner(), &secret_key, &public_key, rng);
-            block.append_proof(signature);
+            let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, rng);
+            block.append_proof(public_key, signature);
         }
 
         block
@@ -936,7 +945,7 @@ impl FromBytes for Block {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
         let (header, remainder) = BlockHeader::from_bytes(remainder)?;
-        let (proofs, remainder) = Vec::<Signature>::from_bytes(remainder)?;
+        let (proofs, remainder) = BTreeMap::<PublicKey, Signature>::from_bytes(remainder)?;
         let block = Block {
             hash,
             header,
@@ -1051,6 +1060,21 @@ pub(crate) mod json_compatibility {
         }
     }
 
+    impl From<JsonEraEnd> for EraEnd {
+        fn from(era_end: JsonEraEnd) -> Self {
+            let equivocators = era_end.equivocators;
+            let rewards = era_end
+                .rewards
+                .into_iter()
+                .map(|reward| (reward.validator, reward.amount))
+                .collect();
+            EraEnd {
+                equivocators,
+                rewards,
+            }
+        }
+    }
+
     #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     #[serde(deny_unknown_fields)]
     struct JsonBlockHeader {
@@ -1085,6 +1109,24 @@ pub(crate) mod json_compatibility {
         }
     }
 
+    impl From<JsonBlockHeader> for BlockHeader {
+        fn from(block_header: JsonBlockHeader) -> Self {
+            BlockHeader {
+                parent_hash: block_header.parent_hash,
+                state_root_hash: block_header.state_root_hash,
+                body_hash: block_header.body_hash,
+                deploy_hashes: block_header.deploy_hashes,
+                random_bit: block_header.random_bit,
+                accumulated_seed: block_header.accumulated_seed,
+                era_end: block_header.era_end.map(EraEnd::from),
+                timestamp: block_header.timestamp,
+                era_id: block_header.era_id,
+                height: block_header.height,
+                proposer: block_header.proposer,
+            }
+        }
+    }
+
     /// A JSON-friendly representation of `Block`.
     #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     #[serde(deny_unknown_fields)]
@@ -1092,7 +1134,7 @@ pub(crate) mod json_compatibility {
         hash: BlockHash,
         header: JsonBlockHeader,
         body: (),
-        proofs: Vec<Signature>,
+        proofs: Vec<JsonProof>,
     }
 
     impl JsonBlock {
@@ -1108,8 +1150,42 @@ pub(crate) mod json_compatibility {
                 hash: block.hash,
                 header: JsonBlockHeader::from(block.header),
                 body: block.body,
-                proofs: block.proofs,
+                proofs: block.proofs.into_iter().map(JsonProof::from).collect(),
             }
+        }
+    }
+
+    impl From<JsonBlock> for Block {
+        fn from(block: JsonBlock) -> Self {
+            Block {
+                hash: block.hash,
+                header: BlockHeader::from(block.header),
+                body: block.body,
+                proofs: block.proofs.into_iter().map(JsonProof::into).collect(),
+            }
+        }
+    }
+
+    /// A JSON-friendly representation of a proof, i.e. a block's finality signature.
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    pub struct JsonProof {
+        public_key: PublicKey,
+        signature: Signature,
+    }
+
+    impl From<(PublicKey, Signature)> for JsonProof {
+        fn from((public_key, signature): (PublicKey, Signature)) -> JsonProof {
+            JsonProof {
+                public_key,
+                signature,
+            }
+        }
+    }
+
+    impl From<JsonProof> for (PublicKey, Signature) {
+        fn from(proof: JsonProof) -> (PublicKey, Signature) {
+            (proof.public_key, proof.signature)
         }
     }
 }
@@ -1121,6 +1197,8 @@ pub(crate) mod json_compatibility {
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.
     pub block_hash: BlockHash,
+    /// Era in which the block was created in.
+    pub era_id: EraId,
     /// Signature over the block hash.
     pub signature: Signature,
     /// Public key of the signing validator.
@@ -1129,17 +1207,30 @@ pub struct FinalitySignature {
 
 impl FinalitySignature {
     /// Create an instance of `FinalitySignature`.
-    pub fn new(block_hash: BlockHash, signature: Signature, public_key: PublicKey) -> Self {
+    pub fn new(
+        block_hash: BlockHash,
+        era_id: EraId,
+        secret_key: &SecretKey,
+        public_key: PublicKey,
+        rng: &mut NodeRng,
+    ) -> Self {
+        let mut bytes = block_hash.inner().to_vec();
+        bytes.extend_from_slice(&era_id.0.to_le_bytes());
+        let signature = crypto::sign(bytes, &secret_key, &public_key, rng);
         FinalitySignature {
             block_hash,
+            era_id,
             signature,
             public_key,
         }
     }
 
     /// Verifies whether the signature is correct.
-    pub fn verify(&self) -> crypto::asymmetric_key::Result<()> {
-        crypto::asymmetric_key::verify(self.block_hash.inner(), &self.signature, &self.public_key)
+    pub fn verify(&self) -> crypto::Result<()> {
+        // NOTE: This needs to be in sync with the `new` constructor.
+        let mut bytes = self.block_hash.inner().to_vec();
+        bytes.extend_from_slice(&self.era_id.0.to_le_bytes());
+        crypto::verify(bytes, &self.signature, &self.public_key)
     }
 }
 
@@ -1159,6 +1250,7 @@ mod tests {
 
     use super::*;
     use crate::testing::TestRng;
+    use std::rc::Rc;
 
     #[test]
     fn json_block_roundtrip() {
@@ -1248,5 +1340,27 @@ mod tests {
             }) if expected_by_block == bogus_block_hash && actual == actual_block_hash => {}
             unexpected => panic!("Bad check response: {:?}", unexpected),
         }
+    }
+
+    #[test]
+    fn finality_signature() {
+        let mut rng = TestRng::new();
+        let block = Block::random(&mut rng);
+        // Signature should be over both block hash and era id.
+        let (secret_key, public_key) = crypto::generate_ed25519_keypair();
+        let secret_rc = Rc::new(secret_key);
+        let era_id = EraId(1);
+        let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key, &mut rng);
+        assert!(fs.verify().is_ok());
+        let signature = fs.signature;
+        // Verify that signature includes era id.
+        let fs_manufactured = FinalitySignature {
+            block_hash: *block.hash(),
+            era_id: EraId(2),
+            signature,
+            public_key,
+        };
+        // Test should fails b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
+        assert!(fs_manufactured.verify().is_err());
     }
 }

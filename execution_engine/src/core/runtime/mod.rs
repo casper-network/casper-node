@@ -19,7 +19,7 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef, Trap, TrapKind
 
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
-    auction::{self, Auction, AuctionInfo, EraId},
+    auction::{self, Auction, EraId, EraInfo},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
         self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
@@ -27,8 +27,7 @@ use casper_types::{
     },
     mint::{self, Mint},
     proof_of_stake::{self, ProofOfStake},
-    runtime_args, standard_payment,
-    standard_payment::StandardPayment,
+    standard_payment::{self, StandardPayment},
     system_contract_errors, AccessRights, ApiError, CLType, CLTyped, CLValue, ContractHash,
     ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Key, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, SystemContractType, Transfer, TransferResult,
@@ -38,8 +37,9 @@ use casper_types::{
 use crate::{
     core::{
         engine_state::{system_contract_cache::SystemContractCache, EngineConfig},
-        execution::Error,
+        execution::{self, Error},
         resolvers::{create_module_resolver, memory_resolver::MemoryResolver},
+        runtime::scoped_instrumenter::ScopedInstrumenter,
         runtime_context::{self, RuntimeContext},
         Address,
     },
@@ -52,7 +52,6 @@ use crate::{
     },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
-use scoped_instrumenter::ScopedInstrumenter;
 
 pub struct Runtime<'a, R> {
     system_contract_cache: SystemContractCache,
@@ -61,22 +60,6 @@ pub struct Runtime<'a, R> {
     module: Module,
     host_buffer: Option<CLValue>,
     context: RuntimeContext<'a, R>,
-}
-
-/// Rename function called `name` in the `module` to `call`.
-/// wasmi's entrypoint for a contracts is a function called `call`,
-/// so we have to rename function before storing it in the GlobalState.
-pub fn rename_export_to_call(module: &mut Module, name: String) {
-    let main_export = module
-        .export_section_mut()
-        .unwrap()
-        .entries_mut()
-        .iter_mut()
-        .find(|e| e.field() == name)
-        .unwrap()
-        .field_mut();
-    main_export.clear();
-    main_export.push_str("call");
 }
 
 pub fn instance_and_memory(
@@ -108,7 +91,7 @@ pub fn key_to_tuple(key: Key) -> Option<([u8; 32], AccessRights)> {
         Key::Hash(_) => None,
         Key::Transfer(_) => None,
         Key::DeployInfo(_) => None,
-        Key::AuctionInfo(_) => None,
+        Key::EraInfo(_) => None,
     }
 }
 
@@ -1069,7 +1052,7 @@ where
             Err(Error::FunctionNotFound(missing_name))
         } else {
             let mut module = self.module.clone();
-            pwasm_utils::optimize(&mut module, entry_point_names).unwrap();
+            pwasm_utils::optimize(&mut module, entry_point_names)?;
             parity_wasm::serialize(module).map_err(Error::ParityWasm)
         }
     }
@@ -1270,7 +1253,27 @@ where
 
     fn reverter<T: Into<ApiError>>(error: T) -> Error {
         let api_error: ApiError = error.into();
-        Error::Revert(api_error)
+        // NOTE: This is special casing needed to keep the native system contracts propagate
+        // GasLimit properly to the user. Once support for wasm system contract will be dropped this
+        // won't be necessary anymore.
+        match api_error {
+            ApiError::Mint(mint_error)
+                if mint_error == system_contract_errors::mint::Error::GasLimit as u8 =>
+            {
+                Error::GasLimit
+            }
+            ApiError::AuctionError(auction_error)
+                if auction_error == system_contract_errors::auction::Error::GasLimit as u8 =>
+            {
+                Error::GasLimit
+            }
+            ApiError::ProofOfStake(pos_error)
+                if pos_error == system_contract_errors::pos::Error::GasLimit as u8 =>
+            {
+                Error::GasLimit
+            }
+            api_error => Error::Revert(api_error),
+        }
     }
 
     pub fn call_host_mint(
@@ -1340,6 +1343,9 @@ where
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
                 let result: Result<URef, system_contract_errors::mint::Error> =
                     mint_runtime.mint(amount);
+                if let Err(system_contract_errors::mint::Error::GasLimit) = result {
+                    return Err(execution::Error::GasLimit);
+                }
                 CLValue::from_t(result)?
             }
             mint::METHOD_REDUCE_TOTAL_SUPPLY => {
@@ -1360,15 +1366,17 @@ where
                     mint_runtime.balance(uref).map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)?
             }
-            // Type: `fn transfer(source: URef, target: URef, amount: U512, id: Option<u64>) ->
-            // Result<(), Error>`
+            // Type: `fn transfer(maybe_to: Option<AccountHash>, source: URef, target: URef, amount:
+            // U512, id: Option<u64>) -> Result<(), Error>`
             mint::METHOD_TRANSFER => {
+                let maybe_to: Option<AccountHash> =
+                    Self::get_named_argument(&runtime_args, mint::ARG_TO)?;
                 let source: URef = Self::get_named_argument(&runtime_args, mint::ARG_SOURCE)?;
                 let target: URef = Self::get_named_argument(&runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
                 let id: Option<u64> = Self::get_named_argument(&runtime_args, mint::ARG_ID)?;
                 let result: Result<(), system_contract_errors::mint::Error> =
-                    mint_runtime.transfer(source, target, amount, id);
+                    mint_runtime.transfer(maybe_to, source, target, amount, id);
                 CLValue::from_t(result).map_err(Self::reverter)?
             }
             // Type: `fn read_base_round_reward() -> Result<U512, Error>`
@@ -2027,9 +2035,9 @@ where
             // If the "error" was in fact a trap caused by calling `ret` then
             // this is normal operation and we should return the value captured
             // in the Runtime result field.
-            let downcasted_error = host_error.downcast_ref::<Error>().unwrap();
+            let downcasted_error = host_error.downcast_ref::<Error>();
             match downcasted_error {
-                Error::Ret(ref ret_urefs) => {
+                Some(Error::Ret(ref ret_urefs)) => {
                     // insert extra urefs returned from call
                     let ret_urefs_map: HashMap<Address, HashSet<AccessRights>> =
                         extract_access_rights_from_urefs(ret_urefs.clone());
@@ -2044,7 +2052,8 @@ where
                     }
                     return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
                 }
-                error => return Err(error.clone()),
+                Some(error) => return Err(error.clone()),
+                None => return Err(Error::Interpreter(host_error.to_string())),
             }
         }
 
@@ -2425,6 +2434,7 @@ where
     /// Records a transfer.
     fn record_transfer(
         &mut self,
+        maybe_to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
@@ -2443,7 +2453,7 @@ where
             let deploy_hash: DeployHash = self.context.get_deploy_hash();
             let from: AccountHash = self.context.account().account_hash();
             let fee: U512 = U512::zero(); // TODO
-            Transfer::new(deploy_hash, from, source, target, amount, fee, id)
+            Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
         };
         {
             let transfers = self.context.transfers_mut();
@@ -2455,11 +2465,7 @@ where
     }
 
     /// Records given auction info at a given era id
-    fn record_auction_info(
-        &mut self,
-        era_id: EraId,
-        auction_info: AuctionInfo,
-    ) -> Result<(), Error> {
+    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
         if self.context.base_key() != Key::from(self.protocol_data().auction()) {
             return Err(Error::InvalidContext);
         }
@@ -2468,8 +2474,7 @@ where
             return Ok(());
         }
 
-        self.context
-            .write_auction_info(Key::AuctionInfo(era_id), auction_info);
+        self.context.write_era_info(Key::EraInfo(era_id), era_info);
 
         Ok(())
     }
@@ -2702,8 +2707,10 @@ where
     /// Calls the `mint` method on the mint contract at the given mint
     /// contract key
     fn mint_mint(&mut self, mint_contract_hash: ContractHash, amount: U512) -> Result<URef, Error> {
-        let runtime_args = runtime_args! {
-            mint::ARG_AMOUNT => amount,
+        let runtime_args = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(mint::ARG_AMOUNT, amount)?;
+            runtime_args
         };
         let result = self.call_contract(mint_contract_hash, mint::METHOD_MINT, runtime_args)?;
         let result: Result<URef, system_contract_errors::mint::Error> = result.into_t()?;
@@ -2717,8 +2724,10 @@ where
         mint_contract_hash: ContractHash,
         amount: U512,
     ) -> Result<(), Error> {
-        let runtime_args = runtime_args! {
-            mint::ARG_AMOUNT => amount,
+        let runtime_args = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(mint::ARG_AMOUNT, amount)?;
+            runtime_args
         };
         let result = self.call_contract(
             mint_contract_hash,
@@ -2747,24 +2756,26 @@ where
     fn mint_transfer(
         &mut self,
         mint_contract_hash: ContractHash,
+        to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<Result<(), ApiError>, Error> {
-        let args_values: RuntimeArgs = runtime_args! {
-            mint::ARG_SOURCE => source,
-            mint::ARG_TARGET => target,
-            mint::ARG_AMOUNT => amount,
-            mint::ARG_ID => id,
+    ) -> Result<Result<(), system_contract_errors::mint::Error>, Error> {
+        let args_values = {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(mint::ARG_TO, to)?;
+            runtime_args.insert(mint::ARG_SOURCE, source)?;
+            runtime_args.insert(mint::ARG_TARGET, target)?;
+            runtime_args.insert(mint::ARG_AMOUNT, amount)?;
+            runtime_args.insert(mint::ARG_ID, id)?;
+            runtime_args
         };
 
         let call_result =
             self.call_contract(mint_contract_hash, mint::METHOD_TRANSFER, args_values)?;
 
-        let mint_result: Result<(), system_contract_errors::mint::Error> = call_result.into_t()?;
-
-        Ok(mint_result.map_err(ApiError::from))
+        Ok(call_result.into_t()?)
     }
 
     /// Creates a new account at a given public key, transferring a given amount
@@ -2791,11 +2802,14 @@ where
         let target_purse = self.mint_create(mint_contract_hash)?;
 
         if source == target_purse {
-            return Ok(Err(ApiError::Transfer));
+            return Ok(Err(
+                system_contract_errors::mint::Error::EqualSourceAndTarget.into(),
+            ));
         }
 
         match self.mint_transfer(
             mint_contract_hash,
+            Some(target),
             source,
             target_purse.with_access_rights(AccessRights::ADD),
             amount,
@@ -2806,7 +2820,7 @@ where
                 self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
-            Err(api_error) => Ok(Err(api_error)),
+            Err(mint_error) => Ok(Err(mint_error.into())),
         }
     }
 
@@ -2815,6 +2829,7 @@ where
     /// been created by the mint contract (or are the genesis account's).
     fn transfer_to_existing_account(
         &mut self,
+        to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
@@ -2825,9 +2840,9 @@ where
         // This appears to be a load-bearing use of `RuntimeContext::insert_uref`.
         self.context.insert_uref(target);
 
-        match self.mint_transfer(mint_contract_key, source, target, amount, id)? {
+        match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
             Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
-            Err(error) => Ok(Err(error)),
+            Err(error) => Ok(Err(error.into())),
         }
     }
 
@@ -2861,12 +2876,12 @@ where
                 self.transfer_to_new_account(source, target, amount, id)
             }
             Some(StoredValue::Account(account)) => {
-                let target = account.main_purse_add_only();
-                if source == target {
+                let target_uref = account.main_purse_add_only();
+                if source == target_uref {
                     return Ok(Ok(TransferredTo::ExistingAccount));
                 }
                 // If an account exists, transfer the amount to its purse
-                self.transfer_to_existing_account(source, target, amount, id)
+                self.transfer_to_existing_account(Some(target), source, target_uref, amount, id)
             }
             Some(_) => {
                 // If some other value exists, return an error
@@ -2887,7 +2902,7 @@ where
         amount_size: u32,
         id_ptr: u32,
         id_size: u32,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), system_contract_errors::mint::Error>, Error> {
         let source: URef = {
             let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
             bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
@@ -2910,9 +2925,9 @@ where
 
         let mint_contract_key = self.get_mint_contract();
 
-        match self.mint_transfer(mint_contract_key, source, target, amount, id)? {
+        match self.mint_transfer(mint_contract_key, None, source, target, amount, id)? {
             Ok(()) => Ok(Ok(())),
-            Err(api_error) => Ok(Err(api_error)),
+            Err(mint_error) => Ok(Err(mint_error)),
         }
     }
 
@@ -2921,10 +2936,9 @@ where
 
         let uref_key = match self.context.read_ls(&key)? {
             Some(cl_value) => {
-                let key: Key = cl_value.into_t().expect("expected Key type");
-                match key {
-                    Key::URef(_) => (),
-                    _ => panic!("expected Key::Uref(_)"),
+                let key: Key = cl_value.into_t()?;
+                if key.as_uref().is_none() {
+                    return Err(Error::KeyIsNotAURef(key));
                 }
                 key
             }
@@ -2933,14 +2947,10 @@ where
 
         let ret = match self.context.read_gs_direct(&uref_key)? {
             Some(StoredValue::CLValue(cl_value)) => {
-                if *cl_value.cl_type() == CLType::U512 {
-                    let balance: U512 = cl_value.into_t()?;
-                    Some(balance)
-                } else {
-                    panic!("expected U512")
-                }
+                let balance: U512 = cl_value.into_t()?;
+                Some(balance)
             }
-            Some(_) => panic!("expected U512"),
+            Some(_) => return Err(Error::UnexpectedStoredValueVariant),
             None => None,
         };
 
@@ -3310,6 +3320,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use proptest::{
         array::uniform32,
         collection::{btree_map, vec},
@@ -3318,10 +3330,9 @@ mod tests {
         result,
     };
 
-    use casper_types::{gens::*, AccessRights, CLType, CLValue, Key, URef};
+    use casper_types::{gens::*, AccessRights, CLType, CLValue, Key, PublicKey, SecretKey, URef};
 
     use super::extract_urefs;
-    use std::collections::BTreeMap;
 
     fn cl_value_with_urefs_arb() -> impl Strategy<Value = (CLValue, Vec<URef>)> {
         // If compiler brings you here it most probably means you've added a variant to `CLType`
@@ -3461,7 +3472,10 @@ mod tests {
     fn extract_from_public_keys_to_urefs_map() {
         let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
         let mut map = BTreeMap::new();
-        map.insert(casper_types::PublicKey::Ed25519([42; 32]), uref);
+        map.insert(
+            PublicKey::from(SecretKey::ed25519([42; SecretKey::ED25519_LENGTH])),
+            uref,
+        );
         let cl_value = CLValue::from_t(map).unwrap();
         assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
     }
@@ -3471,7 +3485,10 @@ mod tests {
         let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
         let key = Key::from(uref);
         let mut map = BTreeMap::new();
-        map.insert(casper_types::PublicKey::Ed25519([42; 32]), key);
+        map.insert(
+            PublicKey::from(SecretKey::ed25519([42; SecretKey::ED25519_LENGTH])),
+            key,
+        );
         let cl_value = CLValue::from_t(map).unwrap();
         assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
     }

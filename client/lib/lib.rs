@@ -68,7 +68,7 @@ pub fn put_deploy(
         payment.try_into()?,
         session.try_into()?,
     );
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.put_deploy(deploy)
+    RpcCall::new(maybe_rpc_id, node_address, verbose).put_deploy(deploy)
 }
 
 /// Creates a `Deploy` and outputs it to a file or stdout.
@@ -152,7 +152,7 @@ pub fn send_deploy_file(
     verbose: bool,
     input_path: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.send_deploy_file(input_path)
+    RpcCall::new(maybe_rpc_id, node_address, verbose).send_deploy_file(input_path)
 }
 
 /// Transfers funds between purses.
@@ -201,7 +201,7 @@ pub fn transfer(
 
     let maybe_id = parsing::transfer_id(maybe_id)?;
 
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.transfer(
+    RpcCall::new(maybe_rpc_id, node_address, verbose).transfer(
         amount,
         source_purse,
         target,
@@ -226,7 +226,7 @@ pub fn get_deploy(
     verbose: bool,
     deploy_hash: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_deploy(deploy_hash)
+    RpcCall::new(maybe_rpc_id, node_address, verbose).get_deploy(deploy_hash)
 }
 
 /// Retrieves a `Block` from the network.
@@ -245,7 +245,7 @@ pub fn get_block(
     verbose: bool,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_block(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbose).get_block(maybe_block_id)
 }
 
 /// Retrieves all `Transfer` items for a `Block` from the network.
@@ -264,7 +264,7 @@ pub fn get_block_transfers(
     verbose: bool,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_block_transfers(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbose).get_block_transfers(maybe_block_id)
 }
 
 /// Retrieves a state root hash at a given `Block`.
@@ -283,7 +283,7 @@ pub fn get_state_root_hash(
     verbose: bool,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_state_root_hash(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbose).get_state_root_hash(maybe_block_id)
 }
 
 /// Retrieves a stored value from the network.
@@ -315,7 +315,7 @@ pub fn get_item(
     key: &str,
     path: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_item(state_root_hash, key, path)
+    RpcCall::new(maybe_rpc_id, node_address, verbose).get_item(state_root_hash, key, path)
 }
 
 /// Retrieves a purse's balance from the network.
@@ -338,7 +338,27 @@ pub fn get_balance(
     state_root_hash: &str,
     purse: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_balance(state_root_hash, purse)
+    RpcCall::new(maybe_rpc_id, node_address, verbose).get_balance(state_root_hash, purse)
+}
+
+/// Retrieves era information from the network.
+///
+/// * `maybe_rpc_id` is the JSON-RPC identifier, applied to the request and returned in the
+///   response. If it can be parsed as an `i64` it will be used as a JSON integer. If empty, a
+///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
+/// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
+///   running, e.g. `"http://127.0.0.1:7777"`.
+/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
+///   `Block` height or empty. If empty, era information from the latest block will be returned if
+///   available.
+pub fn get_era_info_by_switch_block(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbose: bool,
+    maybe_block_id: &str,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbose).get_era_info_by_switch_block(maybe_block_id)
 }
 
 /// Retrieves the bids and validators as of the most recently added `Block`.
@@ -350,7 +370,7 @@ pub fn get_balance(
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
 pub fn get_auction_info(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.get_auction_info()
+    RpcCall::new(maybe_rpc_id, node_address, verbose).get_auction_info()
 }
 
 /// Retrieves information and examples for all currently supported RPCs.
@@ -362,7 +382,7 @@ pub fn get_auction_info(maybe_rpc_id: &str, node_address: &str, verbose: bool) -
 ///   running, e.g. `"http://127.0.0.1:7777"`.
 /// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
 pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose)?.list_rpcs()
+    RpcCall::new(maybe_rpc_id, node_address, verbose).list_rpcs()
 }
 
 /// Container for `Deploy` construction options.
@@ -890,7 +910,7 @@ mod param_tests {
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
                     assert_eq!(actual, expected);
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
 
@@ -907,7 +927,7 @@ mod param_tests {
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
                     assert_eq!(actual, expected);
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
 
@@ -930,7 +950,7 @@ mod param_tests {
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
                     assert_eq!(actual, expected);
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
 
@@ -953,7 +973,7 @@ mod param_tests {
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
                     assert_eq!(actual, expected);
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
 
@@ -970,7 +990,7 @@ mod param_tests {
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
                     assert_eq!(actual, expected);
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
     }
@@ -993,7 +1013,7 @@ mod param_tests {
                     let amount = CLValue::from_t(U512::from(100)).unwrap();
                     assert_eq!(args.get("amount"), Some(&amount));
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
 
@@ -1010,7 +1030,7 @@ mod param_tests {
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
                     assert_eq!(actual, expected);
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
 
@@ -1027,7 +1047,7 @@ mod param_tests {
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
                     assert_eq!(actual, expected);
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
 
@@ -1050,7 +1070,7 @@ mod param_tests {
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
                     assert_eq!(actual, expected);
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
 
@@ -1073,7 +1093,7 @@ mod param_tests {
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
                     assert_eq!(actual, expected);
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
 
@@ -1090,7 +1110,7 @@ mod param_tests {
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
                     assert_eq!(actual, expected);
                 }
-                other => assert!(false, "incorrect type parsed {:?}", other),
+                other => panic!("incorrect type parsed {:?}", other),
             }
         }
     }

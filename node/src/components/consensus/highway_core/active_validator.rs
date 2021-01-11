@@ -1,6 +1,11 @@
-use std::fmt::{self, Debug};
+use std::{
+    fmt::{self, Debug},
+    fs::File,
+    io::{self, Read, Write},
+    path::{Path, PathBuf},
+};
 
-use tracing::{error, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use super::{
     endorsement::{Endorsement, SignedEndorsement},
@@ -55,7 +60,7 @@ pub(crate) enum Effect<C: Context> {
 /// units citing all those confirmations, to create a summit and finalize the proposal.
 pub(crate) struct ActiveValidator<C: Context> {
     /// Our own validator index.
-    vidx: ValidatorIndex,
+    pub(crate) vidx: ValidatorIndex,
     /// The validator's secret signing key.
     secret: C::ValidatorSecret,
     /// The next round exponent: Our next round will be `1 << next_round_exp` milliseconds long.
@@ -64,6 +69,10 @@ pub(crate) struct ActiveValidator<C: Context> {
     next_timer: Timestamp,
     /// Panorama and timestamp for a block we are about to propose when we get a consensus value.
     next_proposal: Option<(Timestamp, Panorama<C>)>,
+    /// The path to the file storing the hash of our latest known unit (if any).
+    unit_hash_file: Option<PathBuf>,
+    /// The hash of the last known unit created by us.
+    own_last_unit: Option<C::Hash>,
 }
 
 impl<C: Context> Debug for ActiveValidator<C> {
@@ -83,16 +92,56 @@ impl<C: Context> ActiveValidator<C> {
         secret: C::ValidatorSecret,
         start_time: Timestamp,
         state: &State<C>,
+        unit_hash_file: Option<PathBuf>,
     ) -> (Self, Vec<Effect<C>>) {
+        let own_last_unit = unit_hash_file
+            .as_ref()
+            .map(Self::read_last_unit)
+            .transpose()
+            .map_err(|err| match err.kind() {
+                io::ErrorKind::NotFound => (),
+                _ => panic!(
+                    "got an error reading unit hash file {:?}: {:?}",
+                    unit_hash_file, err
+                ),
+            })
+            .ok()
+            .flatten();
         let mut av = ActiveValidator {
             vidx,
             secret,
             next_round_exp: state.params().init_round_exp(),
             next_timer: state.params().start_timestamp(),
             next_proposal: None,
+            unit_hash_file,
+            own_last_unit,
         };
         let effects = av.schedule_timer(start_time, state);
         (av, effects)
+    }
+
+    fn read_last_unit<P: AsRef<Path>>(path: P) -> io::Result<C::Hash> {
+        let mut file = File::open(path)?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)?;
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    fn write_last_unit(&mut self, hash: C::Hash) -> io::Result<()> {
+        let unit_hash_file = if let Some(file) = self.unit_hash_file.as_ref() {
+            file
+        } else {
+            return Ok(());
+        };
+        self.own_last_unit = Some(hash);
+        let mut file = File::create(unit_hash_file)?;
+        let bytes = serde_json::to_vec(&hash)?;
+        file.write_all(&bytes)
+    }
+
+    fn can_vote(&self, state: &State<C>) -> bool {
+        self.own_last_unit
+            .map_or(true, |ref hash| state.has_unit(hash))
     }
 
     /// Sets the next round exponent to the new value.
@@ -145,7 +194,7 @@ impl<C: Context> ActiveValidator<C> {
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
-        if let Some(fault) = state.opt_fault(self.vidx) {
+        if let Some(fault) = state.maybe_fault(self.vidx) {
             return vec![Effect::WeAreFaulty(fault.clone())];
         }
         let mut effects = vec![];
@@ -200,27 +249,26 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         rng: &mut NodeRng,
     ) -> Option<Effect<C>> {
-        if let Some((prop_time, _)) = self.next_proposal {
+        if let Some((prop_time, _)) = self.next_proposal.take() {
             warn!(
                 ?timestamp,
-                "skipping proposal, still waiting for value for {}", prop_time
+                "no proposal received for {}; requesting new one", prop_time
             );
-            return None;
         }
         let panorama = self.panorama_at(state, timestamp);
-        let opt_parent_hash = state.fork_choice(&panorama);
-        if opt_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
+        let maybe_parent_hash = state.fork_choice(&panorama);
+        if maybe_parent_hash.map_or(false, |hash| state.is_terminal_block(hash)) {
             return self
                 .new_unit(panorama, timestamp, None, state, instance_id, rng)
                 .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))));
         }
-        let opt_parent = opt_parent_hash.map(|bh| state.block(bh));
-        let height = opt_parent.map_or(0, |block| block.height);
+        let maybe_parent = maybe_parent_hash.map(|bh| state.block(bh));
+        let height = maybe_parent.map_or(0, |block| block.height);
         self.next_proposal = Some((timestamp, panorama));
         let block_context = BlockContext::new(timestamp, height);
         Some(Effect::RequestNewBlock {
             block_context,
-            fork_choice: opt_parent_hash.cloned(),
+            fork_choice: maybe_parent_hash.cloned(),
         })
     }
 
@@ -234,14 +282,6 @@ impl<C: Context> ActiveValidator<C> {
         rng: &mut NodeRng,
     ) -> Vec<Effect<C>> {
         let timestamp = block_context.timestamp();
-        if self.earliest_unit_time(state) > timestamp {
-            warn!(?block_context, "skipping outdated proposal");
-            return vec![];
-        }
-        if self.is_faulty(state) {
-            warn!("Creator knows it's faulty. Won't create a message.");
-            return vec![];
-        }
         let panorama = if let Some((prop_time, panorama)) = self.next_proposal.take() {
             if prop_time != timestamp {
                 warn!(
@@ -255,6 +295,14 @@ impl<C: Context> ActiveValidator<C> {
             warn!("unexpected proposal value");
             return vec![];
         };
+        if self.earliest_unit_time(state) > timestamp {
+            warn!(?block_context, "skipping outdated proposal");
+            return vec![];
+        }
+        if self.is_faulty(state) {
+            warn!("Creator knows it's faulty. Won't create a message.");
+            return vec![];
+        }
         self.new_unit(panorama, timestamp, Some(value), state, instance_id, rng)
             .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))))
             .into_iter()
@@ -268,24 +316,24 @@ impl<C: Context> ActiveValidator<C> {
         timestamp: Timestamp,
         state: &State<C>,
     ) -> bool {
-        let earliest_unit_time = self.earliest_unit_time(state);
-        if timestamp < earliest_unit_time {
-            warn!(
-                %earliest_unit_time, %timestamp,
-                "earliest_unit_time is greater than current time stamp"
+        let unit = state.unit(vhash);
+        // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
+        if unit.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(unit) {
+            return false;
+        }
+        let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
+        if unit.timestamp != r_id {
+            trace!(
+                %unit.timestamp, %r_id,
+                "not confirming proposal: wrong round",
             );
             return false;
         }
-        let unit = state.unit(vhash);
         if unit.timestamp > timestamp {
             error!(
                 %unit.timestamp, %timestamp,
                 "added a unit with a future timestamp, should never happen"
             );
-            return false;
-        }
-        // If it's not a proposal, the sender is faulty, or we are, don't send a confirmation.
-        if unit.creator == self.vidx || self.is_faulty(state) || !state.is_correct_proposal(unit) {
             return false;
         }
         if let Some(unit) = self.latest_unit(state) {
@@ -294,11 +342,11 @@ impl<C: Context> ActiveValidator<C> {
                 return false; // We already sent a confirmation.
             }
         }
-        let r_id = state::round_id(timestamp, self.round_exp(state, timestamp));
-        if unit.timestamp != r_id {
-            trace!(
-                %unit.timestamp, %r_id,
-                "not confirming proposal: wrong round",
+        let earliest_unit_time = self.earliest_unit_time(state);
+        if timestamp < earliest_unit_time {
+            warn!(
+                %earliest_unit_time, %timestamp,
+                "earliest_unit_time is greater than current time stamp"
             );
             return false;
         }
@@ -317,6 +365,10 @@ impl<C: Context> ActiveValidator<C> {
         instance_id: C::InstanceId,
         rng: &mut NodeRng,
     ) -> Option<SignedWireUnit<C>> {
+        if !self.can_vote(state) {
+            info!(?self.own_last_unit, "not voting - last own unit unknown");
+            return None;
+        }
         if let Some((prop_time, _)) = self.next_proposal.take() {
             warn!(
                 ?timestamp,
@@ -341,7 +393,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let endorsed = state.seen_endorsed(&panorama);
-        let wunit = WireUnit {
+        let hwunit = WireUnit {
             panorama,
             creator: self.vidx,
             instance_id,
@@ -350,8 +402,15 @@ impl<C: Context> ActiveValidator<C> {
             timestamp,
             round_exp: self.round_exp(state, timestamp),
             endorsed,
-        };
-        Some(SignedWireUnit::new(wunit, &self.secret, rng))
+        }
+        .into_hashed();
+        self.write_last_unit(hwunit.hash()).unwrap_or_else(|err| {
+            panic!(
+                "should successfully write unit's hash to {:?}, got {:?}",
+                self.unit_hash_file, err
+            )
+        });
+        Some(SignedWireUnit::new(hwunit, &self.secret, rng))
     }
 
     /// Returns a `ScheduleTimer` effect for the next time we need to be called.
@@ -458,6 +517,38 @@ impl<C: Context> ActiveValidator<C> {
         let past_panorama = state.panorama().cutoff(state, timestamp);
         state.valid_panorama(self.vidx, past_panorama)
     }
+
+    /// Returns whether the unit was created by us.
+    pub(crate) fn is_our_unit(&self, wunit: &WireUnit<C>) -> bool {
+        self.vidx == wunit.creator
+    }
+
+    /// Returns whether the incoming vertex was signed by our key even though we don't have it yet.
+    /// This can only happen if another node is running with the same signing key.
+    pub(crate) fn is_doppelganger_vertex(&self, vertex: &Vertex<C>, state: &State<C>) -> bool {
+        if !self.can_vote(state) {
+            return false;
+        }
+        match vertex {
+            Vertex::Unit(swunit) => {
+                // If we already have the unit in our local state,
+                // we must have had created it ourselves earlier and it is now gossiped back to us.
+                !state.has_unit(&swunit.hash()) && self.is_our_unit(swunit.wire_unit())
+            }
+            Vertex::Endorsements(endorsements) => {
+                if state::TODO_ENDORSEMENT_EVIDENCE_DISABLED {
+                    return false;
+                }
+                // Check whether the list of endorsements includes one created by a doppelganger.
+                // An endorsement created by a doppelganger cannot be found in the local protocol
+                // state (since we haven't created it ourselves).
+                let is_ours = |(vidx, _): &(ValidatorIndex, _)| vidx == &self.vidx;
+                endorsements.endorsers.iter().any(is_ours)
+                    && !state.has_endorsement(endorsements.unit(), self.vidx)
+            }
+            Vertex::Evidence(_) => false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -523,7 +614,8 @@ mod tests {
                 .into_iter()
                 .map(|vidx| {
                     let secret = TestSecret(vidx.0);
-                    let (av, effects) = ActiveValidator::new(vidx, secret, start_time, &state);
+                    let (av, effects) =
+                        ActiveValidator::new(vidx, secret, start_time, &state, None);
                     let timestamp = unwrap_single(&effects).unwrap_timer();
                     if state.leader(earliest_round_start) == vidx {
                         assert_eq!(
@@ -694,7 +786,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::unreadable_literal)] // 0xC0FFEE is more readable than 0x00C0_FFEE.
-    fn active_validator() -> Result<(), AddUnitError<TestContext>> {
+    fn active_validator() {
         let mut test = TestState::new(
             State::new_test(&[Weight(3), Weight(4)], 0),
             crate::new_rng(),
@@ -752,6 +844,5 @@ mod tests {
 
         // Payment finalized! "One Pumpkin Spice Mochaccino for Corbyn!"
         assert_eq!(Some(&new_unit.hash()), test.next_finalized());
-        Ok(())
     }
 }

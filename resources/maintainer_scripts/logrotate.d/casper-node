@@ -7,5 +7,4 @@
   missingok
   notifempty
   copytruncate
-  maxsize 50M
 }

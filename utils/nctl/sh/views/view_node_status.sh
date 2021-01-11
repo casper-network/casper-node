@@ -1,53 +1,73 @@
 #!/usr/bin/env bash
-#
-# Renders node status to stdout.
-# Globals:
-#   NCTL - path to nctl home directory.
+
+source "$NCTL"/sh/utils/main.sh
+
+#######################################
+# Renders status at specified node(s).
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function main()
+{
+    local NODE_ID=${1}
+
+    if [ "$NODE_ID" = "all" ]; then
+        for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+        do
+            echo "------------------------------------------------------------------------------------------------------------------------------------"
+            do_render "$NODE_ID"
+        done
+        echo "------------------------------------------------------------------------------------------------------------------------------------"
+    else
+        do_render "$NODE_ID"
+    fi
+}
+
+#######################################
+# Displays to stdout current node status.
 # Arguments:
 #   Network ordinal identifier.
 #   Node ordinal identifier.
-
 #######################################
-# Destructure input args.
-#######################################
+function do_render()
+{
+    local NODE_ID=${1}
+    local NODE_ADDRESS_CURL
+    local NODE_API_RESPONSE
+    
+    NODE_ADDRESS_CURL=$(get_node_address_rpc_for_curl "$NODE_ID")
+    NODE_API_RESPONSE=$(
+        curl -s --header 'Content-Type: application/json' \
+            --request POST "$NODE_ADDRESS_CURL" \
+            --data-raw '{
+                "id": 1,
+                "jsonrpc": "2.0",
+                "method": "info_get_status"
+            }' | jq '.result'
+    )
 
-# Unset to avoid parameter collisions.
-unset net
-unset node
+    if [ -z "$NODE_API_RESPONSE" ]; then
+        log "node #$NODE_ID :: status: N/A"
+    else
+        log "node #$NODE_ID :: status:"
+        echo "$NODE_API_RESPONSE" | jq
+    fi
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-net=${net:-1}
-node=${node:-"all"}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
-source $(get_path_to_net_vars $net)
-
-# Render node status.
-if [ $node = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
-    do
-        echo "------------------------------------------------------------------------------------------------------------------------------------"
-        render_node_status $net $IDX
-    done
-    echo "------------------------------------------------------------------------------------------------------------------------------------"
-else
-    render_node_status $net $node
-fi
+main "${NODE_ID:-"all"}"

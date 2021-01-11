@@ -1,7 +1,9 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::{crypto::asymmetric_key::PublicKey, types::ProtoBlock};
+use casper_types::PublicKey;
+
+use crate::{components::consensus::traits::ConsensusValueT, types::ProtoBlock};
 
 /// A proposed block. Once the consensus protocol reaches agreement on it, it will be converted to
 /// a `FinalizedBlock`.
@@ -34,5 +36,11 @@ impl CandidateBlock {
 impl From<CandidateBlock> for ProtoBlock {
     fn from(cb: CandidateBlock) -> ProtoBlock {
         cb.proto_block
+    }
+}
+
+impl ConsensusValueT for CandidateBlock {
+    fn needs_validation(&self) -> bool {
+        !self.proto_block.wasm_deploys().is_empty() || !self.proto_block.transfers().is_empty()
     }
 }

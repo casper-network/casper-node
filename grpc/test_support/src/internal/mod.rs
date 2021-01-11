@@ -17,10 +17,14 @@ use casper_execution_engine::{
         run_genesis_request::RunGenesisRequest,
     },
     shared::{motes::Motes, newtypes::Blake2bHash, wasm_config::WasmConfig},
+    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
-use casper_types::{account::AccountHash, auction::EraId, ProtocolVersion, PublicKey, U512};
+use casper_types::{
+    account::AccountHash, auction::EraId, ProtocolVersion, PublicKey, SecretKey, U512,
+};
 
 use super::DEFAULT_ACCOUNT_INITIAL_BALANCE;
+
 pub use additive_map_diff::AdditiveMapDiff;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
@@ -60,16 +64,16 @@ pub const ARG_AMOUNT: &str = "amount";
 // `*FOO` into `FOO` back and forth.
 pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Blake2bHash> = Lazy::new(|| [42; 32].into());
 pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
-    Lazy::new(|| PublicKey::Ed25519([199; 32]));
+    Lazy::new(|| SecretKey::ed25519([199; SecretKey::ED25519_LENGTH]).into());
 pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
-    Lazy::new(|| AccountHash::from(*DEFAULT_ACCOUNT_PUBLIC_KEY));
+    Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
 // Declaring DEFAULT_ACCOUNT_KEY as *DEFAULT_ACCOUNT_ADDR causes tests to stall.
 pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
-    Lazy::new(|| AccountHash::from(*DEFAULT_ACCOUNT_PUBLIC_KEY));
+    Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
 pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> =
-    Lazy::new(|| PublicKey::Ed25519([198; 32]));
+    Lazy::new(|| SecretKey::ed25519([198; SecretKey::ED25519_LENGTH]).into());
 pub static DEFAULT_PROPOSER_ADDR: Lazy<AccountHash> =
-    Lazy::new(|| AccountHash::from(*DEFAULT_PROPOSER_PUBLIC_KEY));
+    Lazy::new(|| AccountHash::from(&*DEFAULT_PROPOSER_PUBLIC_KEY));
 pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut ret = Vec::new();
     let genesis_account = GenesisAccount::new(
@@ -114,6 +118,7 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         DEFAULT_LOCKED_FUNDS_PERIOD,
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
+        DEFAULT_WASMLESS_TRANSFER_COST,
     )
 });
 pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {

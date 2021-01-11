@@ -1,38 +1,37 @@
 #!/usr/bin/env bash
-#
-# Reloads a network node.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Network ordinal identifier.
-#   Node ordinal identifier.
 
-#######################################
-# Destructure input args.
-#######################################
-
-# Unset to avoid parameter collisions.
-unset NET_ID
+unset CLEAN
 unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        net) NET_ID=${VALUE} ;;
+        clean) CLEAN=${VALUE} ;;
         node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-NET_ID=${NET_ID:-1}
+CLEAN=${CLEAN:-true}
 NODE_ID=${NODE_ID:-"all"}
 
-#######################################
-# Main
-#######################################
+# ----------------------------------------------------------------
+# MAIN
+# ----------------------------------------------------------------
 
-source $NCTL/sh/node/stop.sh net=$NET_ID node=$NODE_ID
-source $NCTL/sh/node/start.sh net=$NET_ID node=$NODE_ID
+# Stop.
+if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
+    source "$NCTL"/sh/node/stop.sh node="$NODE_ID"
+fi
+
+# Clear storage.
+if [ "$CLEAN" = true ]; then
+    log "node-$NODE_ID: clearing storage"
+    rm "$(get_path_to_node_storage "$NODE_ID")/*.*"
+    rm "$(get_path_to_node_storage "$NODE_ID")-consensus/*.*"    
+fi
+
+# Start.
+source "$NCTL"/sh/node/start.sh node="$NODE_ID"

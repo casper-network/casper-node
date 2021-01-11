@@ -170,7 +170,7 @@ pub enum Event {
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement<NodeId>),
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement<NodeId>),
     /// BlockExecutor announcement.
     #[from]
     BlockExecutorAnnouncement(#[serde(skip_serializing)] BlockExecutorAnnouncement),
@@ -291,7 +291,7 @@ pub struct ValidatorInitConfig {
     pub(super) contract_runtime: ContractRuntime,
     pub(super) consensus: EraSupervisor<NodeId>,
     pub(super) init_consensus_effects: Effects<consensus::Event<NodeId>>,
-    pub(super) linear_chain: Vec<Block>,
+    pub(super) latest_block: Option<Block>,
     pub(super) event_stream_server: EventStreamServer,
 }
 
@@ -357,7 +357,7 @@ impl reactor::Reactor for Reactor {
             contract_runtime,
             consensus,
             init_consensus_effects,
-            linear_chain,
+            latest_block,
             event_stream_server,
         } = config;
 
@@ -385,7 +385,7 @@ impl reactor::Reactor for Reactor {
         let rpc_server = RpcServer::new(config.rpc_server.clone(), effect_builder);
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
 
-        let deploy_acceptor = DeployAcceptor::new();
+        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
         let deploy_fetcher = Fetcher::new(config.fetcher);
         let deploy_gossiper = Gossiper::new_for_partial_items(
             "deploy_gossiper",
@@ -393,18 +393,28 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
-        let (block_proposer, block_proposer_effects) =
-            BlockProposer::new(registry.clone(), effect_builder)?;
+        let (block_proposer, block_proposer_effects) = BlockProposer::new(
+            registry.clone(),
+            effect_builder,
+            latest_block
+                .as_ref()
+                .map(|block| block.height() + 1)
+                .unwrap_or(0),
+        )?;
         let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
         // Post state hash is expected to be present.
         let genesis_state_root_hash = chainspec_loader
             .genesis_state_root_hash()
             .expect("should have state root hash");
         let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone())
-            .with_parent_map(linear_chain.last().cloned());
-        let proto_block_validator = BlockValidator::new();
+            .with_parent_map(latest_block);
+        let (proto_block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
         let linear_chain = LinearChain::new();
 
+        effects.extend(reactor::wrap_effects(
+            Event::ProtoBlockValidator,
+            block_validator_effects,
+        ));
         effects.extend(reactor::wrap_effects(Event::Network, network_effects));
         effects.extend(reactor::wrap_effects(
             Event::SmallNetwork,
@@ -425,6 +435,13 @@ impl reactor::Reactor for Reactor {
             effect_builder
                 .set_timeout(timer_duration.into())
                 .event(|_| consensus::Event::Shutdown),
+        ));
+
+        effects.extend(reactor::wrap_effects(
+            Event::Consensus,
+            effect_builder
+                .immediately()
+                .event(move |_| consensus::Event::FinishedJoining(now)),
         ));
 
         Ok((
@@ -540,23 +557,17 @@ impl reactor::Reactor for Reactor {
             // Requests:
             Event::NetworkRequest(req) => {
                 let event = if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
-                    Event::Network(network::Event::NetworkRequest {
-                        request: Box::new(req),
-                    })
+                    Event::Network(network::Event::from(req))
                 } else {
-                    Event::SmallNetwork(small_network::Event::NetworkRequest { req: Box::new(req) })
+                    Event::SmallNetwork(small_network::Event::from(req))
                 };
                 self.dispatch_event(effect_builder, rng, event)
             }
             Event::NetworkInfoRequest(req) => {
                 let event = if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
-                    Event::Network(network::Event::NetworkInfoRequest {
-                        info_request: Box::new(req),
-                    })
+                    Event::Network(network::Event::from(req))
                 } else {
-                    Event::SmallNetwork(small_network::Event::NetworkInfoRequest {
-                        req: Box::new(req),
-                    })
+                    Event::SmallNetwork(small_network::Event::from(req))
                 };
                 self.dispatch_event(effect_builder, rng, event)
             }
@@ -714,8 +725,8 @@ impl reactor::Reactor for Reactor {
                 self.dispatch_event(effect_builder, rng, Event::AddressGossiper(event))
             }
             Event::NetworkAnnouncement(NetworkAnnouncement::NewPeer(peer_id)) => {
-                debug!(%peer_id, "new peer announcement event ignored (validator reactor does not care)");
-                Effects::new()
+                let event = consensus::Event::NewPeer(peer_id);
+                self.dispatch_event(effect_builder, rng, Event::Consensus(event))
             }
             Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
                 let event = deploy_acceptor::Event::Accept {
@@ -728,9 +739,17 @@ impl reactor::Reactor for Reactor {
                 deploy,
                 source,
             }) => {
+                let deploy_type = match deploy.deploy_type() {
+                    Ok(deploy_type) => deploy_type,
+                    Err(error) => {
+                        tracing::error!("Invalid deploy: {:?}", error);
+                        return Effects::new();
+                    }
+                };
+
                 let event = block_proposer::Event::BufferDeploy {
                     hash: *deploy.id(),
-                    deploy_type: Box::new(deploy.deploy_type()),
+                    deploy_type: Box::new(deploy_type),
                 };
                 let mut effects =
                     self.dispatch_event(effect_builder, rng, Event::BlockProposer(event));
@@ -770,7 +789,7 @@ impl reactor::Reactor for Reactor {
                     ConsensusAnnouncement::Finalized(block) => {
                         let mut effects =
                             reactor_event_dispatch(block_proposer::Event::FinalizedProtoBlock {
-                                block: Box::new(block.proto_block().clone()),
+                                block: block.proto_block().clone(),
                                 height: block.height(),
                             });
                         let reactor_event = Event::EventStreamServer(
@@ -781,6 +800,24 @@ impl reactor::Reactor for Reactor {
                     }
                     ConsensusAnnouncement::Handled(_) => {
                         debug!("Ignoring `Handled` announcement in `validator` reactor.");
+                        Effects::new()
+                    }
+                    ConsensusAnnouncement::Fault {
+                        era_id,
+                        public_key,
+                        timestamp,
+                    } => {
+                        let reactor_event =
+                            Event::EventStreamServer(event_stream_server::Event::Fault {
+                                era_id,
+                                public_key: *public_key,
+                                timestamp,
+                            });
+                        self.dispatch_event(effect_builder, rng, reactor_event)
+                    }
+                    ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
+                        // TODO: handle the announcement and acutally disconnect
+                        warn!("Disconnecting from a given peer not yet implemented.");
                         Effects::new()
                     }
                 }

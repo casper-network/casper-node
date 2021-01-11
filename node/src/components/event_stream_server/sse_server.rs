@@ -5,19 +5,21 @@ use futures::{Stream, StreamExt};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, mpsc};
-use tracing::{error, trace};
+use tokio::sync::{
+    broadcast::{self, RecvError},
+    mpsc,
+};
+use tracing::{error, info, trace};
 use warp::{
     filters::BoxedFilter,
     sse::{self, ServerSentEvent as WarpServerSentEvent},
     Filter, Reply,
 };
 
-use casper_types::ExecutionResult;
+use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
-    components::CLIENT_API_VERSION,
-    crypto::asymmetric_key::PublicKey,
+    components::{consensus::EraId, CLIENT_API_VERSION},
     types::{
         BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
     },
@@ -25,10 +27,6 @@ use crate::{
 
 /// The URL path.
 pub const SSE_API_PATH: &str = "events";
-/// The number of events to buffer in the tokio broadcast channel to help slower clients to try to
-/// avoid missing events.  See <https://docs.rs/tokio/0.2.22/tokio/sync/broadcast/index.html#lagging>
-/// for further details.
-const BROADCAST_CHANNEL_SIZE: usize = 10;
 
 /// The first event sent to every subscribing client.
 pub(super) static SSE_INITIAL_EVENT: Lazy<ServerSentEvent> = Lazy::new(|| ServerSentEvent {
@@ -63,6 +61,12 @@ pub enum SseData {
         block_hash: BlockHash,
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
+    },
+    /// Generic representation of validator's fault in an era.
+    Fault {
+        era_id: EraId,
+        public_key: PublicKey,
+        timestamp: Timestamp,
     },
     /// New finality signature received.
     FinalitySignature(Box<FinalitySignature>),
@@ -106,13 +110,15 @@ struct Query {
 
 /// Creates the message-passing channels required to run the event-stream server and the warp filter
 /// for the event-stream server.
-pub(super) fn create_channels_and_filter() -> (
+pub(super) fn create_channels_and_filter(
+    broadcast_channel_size: usize,
+) -> (
     broadcast::Sender<BroadcastChannelMessage>,
     mpsc::UnboundedReceiver<NewSubscriberInfo>,
     BoxedFilter<(impl Reply,)>,
 ) {
     // Create a channel to broadcast new events to all subscribed clients' streams.
-    let (broadcaster, _) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
+    let (broadcaster, _) = broadcast::channel(broadcast_channel_size);
     let cloned_broadcaster = broadcaster.clone();
 
     // Create a channel for `NewSubscriberInfo`s to pass the information required to handle a new
@@ -165,24 +171,36 @@ pub(super) fn create_channels_and_filter() -> (
 fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
-) -> impl Stream<Item = Result<impl WarpServerSentEvent, broadcast::RecvError>> + 'static {
+) -> impl Stream<Item = Result<impl WarpServerSentEvent, RecvError>> + 'static {
     initial_events
         .map(|event| Ok(BroadcastChannelMessage::ServerSentEvent(event)))
         .chain(ongoing_events)
         .map(|result| {
             trace!(?result);
-            match result? {
-                BroadcastChannelMessage::ServerSentEvent(event) => match (event.id, &event.data) {
-                    (None, &SseData::ApiVersion { .. }) => Ok(sse::json(event.data).boxed()),
-                    (Some(id), &SseData::BlockFinalized { .. })
-                    | (Some(id), &SseData::BlockAdded { .. })
-                    | (Some(id), &SseData::DeployProcessed { .. })
-                    | (Some(id), &SseData::FinalitySignature(_)) => {
-                        Ok((sse::id(id), sse::json(event.data)).boxed())
+            match result {
+                Ok(BroadcastChannelMessage::ServerSentEvent(event)) => {
+                    match (event.id, &event.data) {
+                        (None, &SseData::ApiVersion { .. }) => Ok(sse::json(event.data).boxed()),
+                        (Some(id), &SseData::BlockFinalized { .. })
+                        | (Some(id), &SseData::BlockAdded { .. })
+                        | (Some(id), &SseData::DeployProcessed { .. })
+                        | (Some(id), &SseData::FinalitySignature(_))
+                        | (Some(id), &SseData::Fault { .. }) => {
+                            Ok((sse::id(id), sse::json(event.data)).boxed())
+                        }
+                        _ => unreachable!("only ApiVersion may have no event ID"),
                     }
-                    _ => unreachable!("only ApiVersion may have no event ID"),
-                },
-                BroadcastChannelMessage::Shutdown => Err(broadcast::RecvError::Closed),
+                }
+                Ok(BroadcastChannelMessage::Shutdown) | Err(RecvError::Closed) => {
+                    Err(RecvError::Closed)
+                }
+                Err(RecvError::Lagged(amount)) => {
+                    info!(
+                        "client lagged by {} events - dropping event stream connection to client",
+                        amount
+                    );
+                    Err(RecvError::Lagged(amount))
+                }
             }
         })
 }

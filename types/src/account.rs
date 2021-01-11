@@ -239,7 +239,7 @@ impl AccountHash {
 
     #[doc(hidden)]
     pub fn from_public_key(
-        public_key: PublicKey,
+        public_key: &PublicKey,
         blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
     ) -> Self {
         const ED25519_LOWERCASE: &str = "ed25519";
@@ -304,6 +304,7 @@ impl<'de> Deserialize<'de> for AccountHash {
 #[doc(hidden)]
 pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
     let mut result = [0; BLAKE2B_DIGEST_LENGTH];
+    // NOTE: Assumed safe as `BLAKE2B_DIGEST_LENGTH` is a valid value for a hasher
     let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
 
     hasher.update(data);
@@ -333,8 +334,8 @@ impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
     }
 }
 
-impl From<PublicKey> for AccountHash {
-    fn from(public_key: PublicKey) -> Self {
+impl From<&PublicKey> for AccountHash {
+    fn from(public_key: &PublicKey) -> Self {
         AccountHash::from_public_key(public_key, blake2b)
     }
 }

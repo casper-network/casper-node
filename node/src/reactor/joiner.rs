@@ -184,7 +184,7 @@ pub enum Event {
 
     /// Consensus announcement.
     #[from]
-    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
+    ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement<NodeId>),
 
     /// Address Gossiper announcement.
     #[from]
@@ -213,17 +213,15 @@ impl From<StorageRequest> for Event {
 
 impl From<NetworkRequest<NodeId, Message>> for Event {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
-        Event::SmallNetwork(small_network::Event::NetworkRequest {
-            req: Box::new(request),
-        })
+        Event::SmallNetwork(small_network::Event::from(request))
     }
 }
 
 impl From<NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>> for Event {
     fn from(request: NetworkRequest<NodeId, gossiper::Message<GossipedAddress>>) -> Self {
-        Event::SmallNetwork(small_network::Event::NetworkRequest {
-            req: Box::new(request.map_payload(Message::from)),
-        })
+        Event::SmallNetwork(small_network::Event::from(
+            request.map_payload(Message::from),
+        ))
     }
 }
 
@@ -420,13 +418,17 @@ impl reactor::Reactor for Reactor {
         let event_stream_server =
             EventStreamServer::new(config.event_stream_server.clone(), effect_builder);
 
-        let block_validator = BlockValidator::new();
+        let (block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
+        effects.extend(reactor::wrap_effects(
+            Event::BlockValidator,
+            block_validator_effects,
+        ));
 
         let deploy_fetcher = Fetcher::new(config.fetcher);
 
         let block_by_height_fetcher = Fetcher::new(config.fetcher);
 
-        let deploy_acceptor = DeployAcceptor::new();
+        let deploy_acceptor = DeployAcceptor::new(config.deploy_acceptor);
 
         let genesis_state_root_hash = chainspec_loader
             .genesis_state_root_hash()
@@ -452,7 +454,7 @@ impl reactor::Reactor for Reactor {
             WithDir::new(root, config.consensus.clone()),
             effect_builder,
             validator_weights,
-            chainspec_loader.chainspec(),
+            chainspec_loader.chainspec().into(),
             chainspec_loader
                 .genesis_state_root_hash()
                 .expect("should have genesis post state hash"),
@@ -732,6 +734,27 @@ impl reactor::Reactor for Reactor {
                         event_stream_server::Event::BlockFinalized(block),
                     ),
                 ),
+                ConsensusAnnouncement::Fault {
+                    era_id,
+                    public_key,
+                    timestamp,
+                } => reactor::wrap_effects(
+                    Event::EventStreamServer,
+                    self.event_stream_server.handle_event(
+                        effect_builder,
+                        rng,
+                        event_stream_server::Event::Fault {
+                            era_id,
+                            public_key: *public_key,
+                            timestamp,
+                        },
+                    ),
+                ),
+                ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
+                    // TODO: handle the announcement and acutally disconnect
+                    warn!("Disconnecting from a given peer not yet implemented.");
+                    Effects::new()
+                }
             },
             Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining
@@ -800,13 +823,9 @@ impl reactor::Reactor for Reactor {
             }
             Event::NetworkInfoRequest(req) => {
                 let event = if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
-                    Event::Network(network::Event::NetworkInfoRequest {
-                        info_request: Box::new(req),
-                    })
+                    Event::Network(network::Event::from(req))
                 } else {
-                    Event::SmallNetwork(small_network::Event::NetworkInfoRequest {
-                        req: Box::new(req),
-                    })
+                    Event::SmallNetwork(small_network::Event::from(req))
                 };
                 self.dispatch_event(effect_builder, rng, event)
             }
@@ -839,7 +858,7 @@ impl Reactor {
                 storage: self.storage,
                 consensus: self.consensus,
                 init_consensus_effects: self.init_consensus_effects,
-                linear_chain: self.linear_chain.linear_chain().clone(),
+                latest_block: self.linear_chain.latest_block().clone(),
                 event_stream_server: self.event_stream_server,
             },
         );

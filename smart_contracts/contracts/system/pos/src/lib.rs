@@ -12,7 +12,8 @@ use casper_types::{
     proof_of_stake::{
         MintProvider, ProofOfStake, RuntimeProvider, ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE,
     },
-    ApiError, BlockTime, CLValue, Key, Phase, TransferResult, URef, U512,
+    system_contract_errors::pos::Error,
+    BlockTime, CLValue, Key, Phase, TransferredTo, URef, U512,
 };
 
 pub struct ProofOfStakeContract;
@@ -23,8 +24,9 @@ impl MintProvider for ProofOfStakeContract {
         source: URef,
         target: AccountHash,
         amount: U512,
-    ) -> TransferResult {
+    ) -> Result<TransferredTo, Error> {
         system::transfer_from_purse_to_account(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
     fn transfer_purse_to_purse(
@@ -32,12 +34,13 @@ impl MintProvider for ProofOfStakeContract {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ApiError> {
+    ) -> Result<(), Error> {
         system::transfer_from_purse_to_purse(source, target, amount, None)
+            .map_err(|_| Error::Transfer)
     }
 
-    fn balance(&mut self, purse: URef) -> Option<U512> {
-        system::get_balance(purse)
+    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+        Ok(system::get_balance(purse))
     }
 }
 
@@ -46,12 +49,14 @@ impl RuntimeProvider for ProofOfStakeContract {
         runtime::get_key(name)
     }
 
-    fn put_key(&mut self, name: &str, key: Key) {
-        runtime::put_key(name, key)
+    fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
+        runtime::put_key(name, key);
+        Ok(())
     }
 
-    fn remove_key(&mut self, name: &str) {
-        runtime::remove_key(name)
+    fn remove_key(&mut self, name: &str) -> Result<(), Error> {
+        runtime::remove_key(name);
+        Ok(())
     }
 
     fn get_phase(&self) -> Phase {

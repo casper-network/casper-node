@@ -1,19 +1,27 @@
 use casper_engine_test_support::{
     internal::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+        DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::core::{
-    engine_state::Error as CoreError, execution::Error as ExecError,
+use casper_execution_engine::{
+    core::{
+        engine_state::{upgrade::ActivationPoint, Error as CoreError},
+        execution::Error as ExecError,
+    },
+    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
-    account::AccountHash, mint, runtime_args, AccessRights, ApiError, Key, RuntimeArgs, URef, U512,
+    account::AccountHash, mint, proof_of_stake, runtime_args, AccessRights, ApiError, Key,
+    ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
+const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";
 const TRANSFER_RESULT_NAMED_KEY: &str = "transfer_result";
+const TEST_PURSE_NAME: &str = "test_purse";
+const ARG_PURSE_NAME: &str = "purse_name";
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([2u8; 32]);
@@ -131,7 +139,7 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         .commit();
 
     assert_eq!(
-        account_1_starting_balance - transfer_amount,
+        account_1_starting_balance - transfer_amount - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -139,6 +147,20 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         account_2_starting_balance + transfer_amount,
         builder.get_purse_balance(account_2_purse),
         "account 2 ending balance incorrect"
+    );
+
+    // Make sure postconditions are met: payment purse has to be empty after finalization
+    let pos = builder.get_pos_contract_hash();
+    let contract = builder.get_contract(pos).expect("should have contract");
+    let key = contract
+        .named_keys()
+        .get(proof_of_stake::POS_PAYMENT_PURSE)
+        .cloned()
+        .expect("should have named key");
+
+    assert_eq!(
+        builder.get_purse_balance(key.into_uref().unwrap()),
+        U512::zero()
     );
 }
 
@@ -440,6 +462,13 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
+    let account_1_purse = builder
+        .get_account(ACCOUNT_1_ADDR)
+        .expect("should get account 1")
+        .main_purse();
+
+    let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
+
     builder.exec(no_wasm_transfer_request);
 
     let result = builder
@@ -453,12 +482,31 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
 
     let error = result.as_error().expect("should have error");
 
+    let account_1_closing_balance = builder.get_purse_balance(account_1_purse);
+
     assert_eq!(
         format!("{}", &expected_error),
         format!("{}", error),
         "expected_error: {} actual error: {}",
         expected_error,
         error
+    );
+
+    // No balance change expected in invalid transfer tests
+    assert_eq!(account_1_starting_balance, account_1_closing_balance);
+
+    // Make sure postconditions are met: payment purse has to be empty after finalization
+    let pos = builder.get_pos_contract_hash();
+    let contract = builder.get_contract(pos).expect("should have contract");
+    let key = contract
+        .named_keys()
+        .get(proof_of_stake::POS_PAYMENT_PURSE)
+        .cloned()
+        .expect("should have named key");
+
+    assert_eq!(
+        builder.get_purse_balance(key.into_uref().unwrap()),
+        U512::zero()
     );
 }
 
@@ -510,7 +558,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
 
     assert_eq!(
-        account_1_starting_balance - transfer_amount,
+        account_1_starting_balance - transfer_amount - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
         builder.get_purse_balance(account_1_purse),
         "account 1 ending balance incorrect"
     );
@@ -575,4 +623,310 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
         .commit()
         .expect_success()
         .to_owned()
+}
+
+#[ignore]
+#[test]
+fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
+    let create_account_2: bool = false;
+    let mut builder = init_wasmless_transform_builder(create_account_2);
+    let account_1_to_account_2_amount: U512 =
+        U512::from(DEFAULT_WASMLESS_TRANSFER_COST) - U512::one();
+    let account_2_to_account_1_amount: U512 = U512::one();
+
+    let account_1_purse = builder
+        .get_account(ACCOUNT_1_ADDR)
+        .expect("should get account 1")
+        .main_purse();
+
+    assert_eq!(
+        builder.get_account(ACCOUNT_2_ADDR),
+        None,
+        "account 2 should not exist"
+    );
+
+    let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
+
+    let runtime_args = runtime_args! {
+       mint::ARG_TARGET => ACCOUNT_2_ADDR,
+       mint::ARG_AMOUNT => account_1_to_account_2_amount,
+       mint::ARG_ID => <Option<u64>>::None
+    };
+
+    let no_wasm_transfer_request_1 = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(ACCOUNT_1_ADDR)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(runtime_args)
+            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder
+        .exec(no_wasm_transfer_request_1)
+        .expect_success()
+        .commit();
+
+    let account_2 = builder
+        .get_account(ACCOUNT_2_ADDR)
+        .expect("account 2 should exist");
+
+    let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
+
+    assert_eq!(
+        account_1_starting_balance
+            - account_1_to_account_2_amount
+            - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
+        builder.get_purse_balance(account_1_purse),
+        "account 1 ending balance incorrect"
+    );
+    assert_eq!(
+        account_2_starting_balance, account_1_to_account_2_amount,
+        "account 2 ending balance incorrect"
+    );
+
+    // Another transfer but this time created account tries to do a transfer
+    assert!(account_2_to_account_1_amount < U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
+    let runtime_args = runtime_args! {
+       mint::ARG_TARGET => ACCOUNT_1_ADDR,
+       mint::ARG_AMOUNT => account_2_to_account_1_amount,
+       mint::ARG_ID => <Option<u64>>::None
+    };
+
+    let no_wasm_transfer_request_2 = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(ACCOUNT_2_ADDR)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(runtime_args)
+            .with_authorization_keys(&[ACCOUNT_2_ADDR])
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder.exec(no_wasm_transfer_request_2).commit();
+
+    let exec_result = &builder.get_exec_responses().last().unwrap()[0];
+    let error = exec_result
+        .as_error()
+        .unwrap_or_else(|| panic!("should have error {:?}", exec_result));
+    assert!(
+        matches!(error, CoreError::InsufficientPayment),
+        "{:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
+    let create_account_2: bool = false;
+    let mut builder = init_wasmless_transform_builder(create_account_2);
+    let account_1_to_account_2_amount: U512 =
+        U512::from(DEFAULT_WASMLESS_TRANSFER_COST) + U512::one();
+    // This transfer should succeed as after paying for execution of wasmless transfer account_2's
+    // main purse would contain exactly 1 token.
+    let account_2_to_account_1_amount: U512 = U512::one();
+
+    let account_1_purse = builder
+        .get_account(ACCOUNT_1_ADDR)
+        .expect("should get account 1")
+        .main_purse();
+
+    assert_eq!(
+        builder.get_account(ACCOUNT_2_ADDR),
+        None,
+        "account 2 should not exist"
+    );
+
+    let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
+
+    let runtime_args = runtime_args! {
+       mint::ARG_TARGET => ACCOUNT_2_ADDR,
+       mint::ARG_AMOUNT => account_1_to_account_2_amount,
+       mint::ARG_ID => <Option<u64>>::None
+    };
+
+    let no_wasm_transfer_request_1 = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(ACCOUNT_1_ADDR)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(runtime_args)
+            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder
+        .exec(no_wasm_transfer_request_1)
+        .expect_success()
+        .commit();
+
+    let account_2 = builder
+        .get_account(ACCOUNT_2_ADDR)
+        .expect("account 2 should exist");
+
+    let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
+
+    assert_eq!(
+        account_1_starting_balance
+            - account_1_to_account_2_amount
+            - U512::from(DEFAULT_WASMLESS_TRANSFER_COST),
+        builder.get_purse_balance(account_1_purse),
+        "account 1 ending balance incorrect"
+    );
+    assert_eq!(
+        account_2_starting_balance, account_1_to_account_2_amount,
+        "account 2 ending balance incorrect"
+    );
+
+    // Another transfer but this time created account tries to do a transfer
+    assert!(account_2_to_account_1_amount <= U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
+    let runtime_args = runtime_args! {
+       mint::ARG_TARGET => ACCOUNT_1_ADDR,
+       mint::ARG_AMOUNT => account_2_to_account_1_amount,
+       mint::ARG_ID => <Option<u64>>::None
+    };
+
+    let no_wasm_transfer_request_2 = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(ACCOUNT_2_ADDR)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(runtime_args)
+            .with_authorization_keys(&[ACCOUNT_2_ADDR])
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder
+        .exec(no_wasm_transfer_request_2)
+        .commit()
+        .expect_success();
+}
+
+#[ignore]
+#[test]
+fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
+    let create_account_2: bool = false;
+    let mut builder = init_wasmless_transform_builder(create_account_2);
+    let account_1_to_account_2_amount: U512 = U512::from(1000);
+
+    let create_purse_request = ExecuteRequestBuilder::standard(
+        ACCOUNT_1_ADDR,
+        CONTRACT_CREATE_PURSE_01,
+        runtime_args! { ARG_PURSE_NAME => TEST_PURSE_NAME },
+    )
+    .build();
+    builder.exec(create_purse_request).commit().expect_success();
+
+    let account_1 = builder
+        .get_account(ACCOUNT_1_ADDR)
+        .expect("should get account 1");
+
+    let account_1_purse = account_1
+        .named_keys()
+        .get(TEST_PURSE_NAME)
+        .expect("should have purse")
+        .into_uref()
+        .expect("should have purse uref");
+
+    assert_eq!(builder.get_purse_balance(account_1_purse), U512::zero());
+
+    let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
+    assert_eq!(account_1_starting_balance, U512::zero());
+
+    let runtime_args = runtime_args! {
+       mint::ARG_SOURCE => account_1_purse,
+       mint::ARG_TARGET => ACCOUNT_2_ADDR,
+       mint::ARG_AMOUNT => account_1_to_account_2_amount,
+       mint::ARG_ID => <Option<u64>>::None
+    };
+
+    let no_wasm_transfer_request_1 = {
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(ACCOUNT_1_ADDR)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(runtime_args)
+            .with_authorization_keys(&[ACCOUNT_1_ADDR])
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
+
+    builder.exec(no_wasm_transfer_request_1).commit();
+
+    let exec_result = &builder.get_exec_responses().last().unwrap()[0];
+    let error = exec_result.as_error().expect("should have error");
+    assert!(
+        matches!(error, CoreError::InsufficientPayment),
+        "{:?}",
+        error
+    );
+}
+
+#[ignore]
+#[test]
+fn transfer_wasmless_should_observe_upgraded_cost() {
+    let transfer_amount = U512::one();
+    const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
+
+    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST * 2;
+    let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
+    let new_protocol_version = ProtocolVersion::from_parts(
+        old_protocol_version.value().major,
+        old_protocol_version.value().minor,
+        old_protocol_version.value().patch + 1,
+    );
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+
+    let default_account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should get default_account");
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .with_new_protocol_version(new_protocol_version)
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_new_wasmless_transfer_cost(new_wasmless_transfer_cost)
+            .build()
+    };
+
+    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+
+    let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
+
+    let no_wasm_transfer_request_1 = {
+        let wasmless_transfer_args = runtime_args! {
+        mint::ARG_TARGET => ACCOUNT_2_ADDR,
+        mint::ARG_AMOUNT => transfer_amount,
+        mint::ARG_ID => <Option<u64>>::None
+        };
+
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(*DEFAULT_ACCOUNT_ADDR)
+            .with_empty_payment_bytes(runtime_args! {})
+            .with_transfer_args(wasmless_transfer_args)
+            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+            .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item)
+            .with_protocol_version(new_protocol_version)
+            .build()
+    };
+
+    builder
+        .exec(no_wasm_transfer_request_1)
+        .expect_success()
+        .commit();
+
+    let default_account_balance_after = builder.get_purse_balance(default_account.main_purse());
+
+    assert_eq!(
+        default_account_balance_before - transfer_amount - new_wasmless_transfer_cost,
+        default_account_balance_after,
+        "expected wasmless transfer cost to be {} but it was {}",
+        new_wasmless_transfer_cost,
+        default_account_balance_before - default_account_balance_after - transfer_amount
+    );
 }

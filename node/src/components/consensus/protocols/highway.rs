@@ -7,6 +7,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
     iter,
+    path::PathBuf,
 };
 
 use datasize::DataSize;
@@ -19,21 +20,19 @@ use self::round_success_meter::RoundSuccessMeter;
 use casper_types::{auction::BLOCK_REWARD, U512};
 
 use crate::{
-    components::{
-        chainspec_loader::Chainspec,
-        consensus::{
-            consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome},
-            highway_core::{
-                active_validator::Effect as AvEffect,
-                finality_detector::FinalityDetector,
-                highway::{
-                    Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex,
-                    Vertex,
-                },
-                validators::Validators,
+    components::consensus::{
+        config::ProtocolConfig,
+        consensus_protocol::{BlockContext, ConsensusProtocol, ProtocolOutcome},
+        highway_core::{
+            active_validator::Effect as AvEffect,
+            finality_detector::FinalityDetector,
+            highway::{
+                Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex, Vertex,
             },
-            traits::{Context, NodeIdT},
+            state::{Observation, Panorama},
+            validators::{ValidatorIndex, Validators},
         },
+        traits::{ConsensusValueT, Context, NodeIdT},
     },
     types::Timestamp,
     NodeRng,
@@ -67,7 +66,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
         slashed: &HashSet<C::ValidatorId>,
-        chainspec: &Chainspec,
+        protocol_config: &ProtocolConfig,
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
         start_time: Timestamp,
         seed: u64,
@@ -91,7 +90,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         }
 
         // TODO: Apply all upgrades with a height less than or equal to the start height.
-        let highway_config = &chainspec.genesis.highway_config;
+        let highway_config = &protocol_config.highway_config;
 
         let total_weight = u128::from(validators.total_weight());
         let ftt_fraction = highway_config.finality_threshold_fraction;
@@ -266,6 +265,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         // returned vertex that needs to be requeued, also return an `EnqueueVertex`
         // effect.
         let mut results = Vec::new();
+        let mut faulty_senders = HashSet::new();
         while !pvvs.is_empty() {
             let mut state_changed = false;
             for (sender, pvv) in pvvs.drain(..) {
@@ -283,32 +283,45 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                         sender,
                     ));
                 } else {
+                    // If unit is sent by a doppelganger, deactivate this instance of an active
+                    // validator. Continue processing the unit so that it can be added to the state.
+                    if self.highway.is_doppelganger_vertex(pvv.inner()) {
+                        error!(
+                            "received vertex from a doppelganger. \
+                            Are you running multiple nodes with the same validator key?",
+                        );
+                        self.deactivate_validator();
+                        results.push(ProtocolOutcome::DoppelgangerDetected);
+                    }
                     match self.highway.validate_vertex(pvv) {
                         Ok(vv) => {
                             let vertex = vv.inner();
-                            if let (Some(value), Some(timestamp)) =
-                                (vertex.value().cloned(), vertex.timestamp())
-                            {
-                                // It's a block: Request validation before adding it to the state.
-                                self.pending_values
-                                    .entry(value.clone())
-                                    .or_default()
-                                    .push(vv);
-                                results.push(ProtocolOutcome::ValidateConsensusValue(
-                                    sender, value, timestamp,
-                                ));
-                            } else {
-                                // It's not a block: Add it to the state.
-                                let now = Timestamp::now();
-                                results.extend(self.add_valid_vertex(vv, rng, now));
-                                state_changed = true;
+                            match (vertex.value().cloned(), vertex.timestamp()) {
+                                (Some(value), Some(timestamp)) if value.needs_validation() => {
+                                    // Request validation before adding it to the state.
+                                    self.pending_values
+                                        .entry(value.clone())
+                                        .or_default()
+                                        .push(vv);
+                                    results.push(ProtocolOutcome::ValidateConsensusValue(
+                                        sender, value, timestamp,
+                                    ));
+                                }
+                                _ => {
+                                    // Either consensus value doesn't need validation or it's not a
+                                    // proposal. We can add it
+                                    // to the state.
+                                    let now = Timestamp::now();
+                                    results.extend(self.add_valid_vertex(vv, rng, now));
+                                    state_changed = true;
+                                }
                             }
                         }
                         Err((pvv, err)) => {
                             info!(?pvv, ?err, "invalid vertex");
                             // drop all the vertices that might have depended on this one
-                            self.drop_dependent_vertices(vec![pvv.inner().id()]);
-                            // TODO: Disconnect from senders!
+                            faulty_senders
+                                .extend(self.drop_dependent_vertices(vec![pvv.inner().id()]));
                         }
                     }
                 }
@@ -321,6 +334,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 results.extend(self.detect_finality());
             }
         }
+        results.extend(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect));
         results
     }
 
@@ -386,13 +400,20 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         self.highway.state().median_round_exp()
     }
 
-    fn drop_dependent_vertices(&mut self, mut vertices: Vec<Dependency<C>>) {
+    fn drop_dependent_vertices(&mut self, mut vertices: Vec<Dependency<C>>) -> HashSet<I> {
+        let mut senders = HashSet::new();
         while !vertices.is_empty() {
-            vertices = self.do_drop_dependent_vertices(vertices);
+            let (new_vertices, new_senders) = self.do_drop_dependent_vertices(vertices);
+            vertices = new_vertices;
+            senders.extend(new_senders);
         }
+        senders
     }
 
-    fn do_drop_dependent_vertices(&mut self, vertices: Vec<Dependency<C>>) -> Vec<Dependency<C>> {
+    fn do_drop_dependent_vertices(
+        &mut self,
+        vertices: Vec<Dependency<C>>,
+    ) -> (Vec<Dependency<C>>, HashSet<I>) {
         // collect the vertices that depend on the ones we got in the argument and their senders
         let (senders, mut dropped_vertices): (HashSet<I>, Vec<Dependency<C>>) = vertices
             .into_iter()
@@ -405,8 +426,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .map(|(sender, pvv)| (sender, pvv.inner().id()))
             .unzip();
 
-        dropped_vertices.extend(self.drop_by_senders(senders));
-        dropped_vertices
+        dropped_vertices.extend(self.drop_by_senders(senders.clone()));
+        (dropped_vertices, senders)
     }
 
     fn drop_by_senders(&mut self, senders: HashSet<I>) -> Vec<Dependency<C>> {
@@ -443,9 +464,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             if fork_choice.as_ref() == last_finalized {
                 return None;
             }
-            let opt_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
-            let value = opt_block.map(|block| &block.value);
-            fork_choice = opt_block.and_then(|block| block.parent().cloned());
+            let maybe_block = fork_choice.map(|bhash| self.highway.state().block(&bhash));
+            let value = maybe_block.map(|block| &block.value);
+            fork_choice = maybe_block.and_then(|block| block.parent().cloned());
             value
         })
     }
@@ -459,6 +480,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
     RequestDependency(Dependency<C>),
+    LatestStateRequest(Panorama<C>),
 }
 
 impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
@@ -482,6 +504,12 @@ where
             Ok(HighwayMessage::NewVertex(v))
                 if self.highway.has_vertex(&v) || (evidence_only && !v.is_evidence()) =>
             {
+                trace!(
+                    has_vertex = self.highway.has_vertex(&v),
+                    is_evidence = v.is_evidence(),
+                    %evidence_only,
+                    "received an irrelevant vertex"
+                );
                 vec![]
             }
             Ok(HighwayMessage::NewVertex(v)) => {
@@ -490,21 +518,23 @@ where
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
-                        // TODO: Disconnect from senders.
+                        trace!("received an invalid vertex");
                         // drop the vertices that might have depended on this one
-                        self.drop_dependent_vertices(vec![v_id]);
-                        return vec![ProtocolOutcome::InvalidIncomingMessage(
+                        let faulty_senders = self.drop_dependent_vertices(vec![v_id]);
+                        return iter::once(ProtocolOutcome::InvalidIncomingMessage(
                             msg,
                             sender,
                             err.into(),
-                        )];
+                        ))
+                        .chain(faulty_senders.into_iter().map(ProtocolOutcome::Disconnect))
+                        .collect();
                     }
                 };
                 let is_faulty = match pvv.inner().signed_wire_unit() {
                     Some(signed_wire_unit) => self
                         .highway
                         .state()
-                        .is_faulty(signed_wire_unit.wire_unit.creator),
+                        .is_faulty(signed_wire_unit.wire_unit().creator),
                     None => false,
                 };
 
@@ -512,8 +542,10 @@ where
                     Some(timestamp) if timestamp > Timestamp::now() => {
                         // If it's not from an equivocator and from the future, add to queue
                         if !is_faulty {
+                            trace!("received a vertex from the future; storing for later");
                             self.store_vertex_for_addition_later(timestamp, sender, pvv)
                         } else {
+                            trace!("received a vertex from the future from a faulty validator; dropping");
                             vec![]
                         }
                     }
@@ -521,31 +553,107 @@ where
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
                         if !is_faulty || self.vertex_deps.contains_key(&pvv.inner().id()) {
+                            trace!("received a valid vertex");
                             self.add_vertices(vec![(sender, pvv)], rng)
                         } else {
+                            trace!("received a vertex from a faulty validator that is not a dependency; dropping");
                             vec![]
                         }
                     }
                 }
             }
-            Ok(HighwayMessage::RequestDependency(dep)) => match self.highway.get_dependency(&dep) {
-                GetDepOutcome::None => {
-                    info!(?dep, ?sender, "requested dependency doesn't exist");
-                    vec![]
+            Ok(HighwayMessage::RequestDependency(dep)) => {
+                trace!("received a request for a dependency");
+                match self.highway.get_dependency(&dep) {
+                    GetDepOutcome::None => {
+                        info!(?dep, ?sender, "requested dependency doesn't exist");
+                        vec![]
+                    }
+                    GetDepOutcome::Evidence(vid) => {
+                        vec![ProtocolOutcome::SendEvidence(sender, vid)]
+                    }
+                    GetDepOutcome::Vertex(vv) => {
+                        let msg = HighwayMessage::NewVertex(vv.into());
+                        let serialized_msg =
+                            bincode::serialize(&msg).expect("should serialize message");
+                        // TODO: Should this be done via a gossip service?
+                        vec![ProtocolOutcome::CreatedTargetedMessage(
+                            serialized_msg,
+                            sender,
+                        )]
+                    }
                 }
-                GetDepOutcome::Evidence(vid) => vec![ProtocolOutcome::SendEvidence(sender, vid)],
-                GetDepOutcome::Vertex(vv) => {
-                    let msg = HighwayMessage::NewVertex(vv.into());
-                    let serialized_msg =
-                        bincode::serialize(&msg).expect("should serialize message");
-                    // TODO: Should this be done via a gossip service?
-                    vec![ProtocolOutcome::CreatedTargetedMessage(
-                        serialized_msg,
-                        sender,
-                    )]
-                }
-            },
+            }
+            Ok(HighwayMessage::LatestStateRequest(panorama)) => {
+                trace!("received a request for the latest state");
+                let state = self.highway.state();
+
+                let create_message =
+                    |observations: ((ValidatorIndex, &Observation<C>), &Observation<C>)| {
+                        let vid = observations.0 .0;
+                        let observations = (observations.0 .1, observations.1);
+                        match observations {
+                            (obs0, obs1) if obs0 == obs1 => None,
+
+                            (Observation::None, Observation::None) => None,
+
+                            (Observation::Faulty, _) => state.maybe_evidence(vid).map(|evidence| {
+                                HighwayMessage::NewVertex(Vertex::Evidence(evidence.clone()))
+                            }),
+
+                            (_, Observation::Faulty) => {
+                                Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
+                            }
+
+                            (Observation::None, Observation::Correct(hash)) => {
+                                Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
+                            }
+
+                            (Observation::Correct(hash), Observation::None) => state
+                                .wire_unit(hash, *self.highway.instance_id())
+                                .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
+
+                            (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
+                                if state.has_unit(their_hash)
+                                    && state.panorama().sees_correct(state, their_hash)
+                                {
+                                    state
+                                        .wire_unit(our_hash, *self.highway.instance_id())
+                                        .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
+                                } else if !state.has_unit(their_hash) {
+                                    Some(HighwayMessage::RequestDependency(Dependency::Unit(
+                                        *their_hash,
+                                    )))
+                                } else {
+                                    None
+                                }
+                            }
+                        }
+                    };
+
+                state
+                    .panorama()
+                    .enumerate()
+                    .zip(&panorama)
+                    .filter_map(create_message)
+                    .map(|msg| {
+                        let serialized_msg =
+                            bincode::serialize(&msg).expect("should serialize message");
+                        ProtocolOutcome::CreatedTargetedMessage(serialized_msg, sender.clone())
+                    })
+                    .collect()
+            }
         }
+    }
+
+    fn handle_new_peer(&mut self, peer_id: I) -> Vec<ProtocolOutcome<I, C>> {
+        trace!(?peer_id, "connected to a new peer");
+        let msg = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
+        let serialized_msg = bincode::serialize(&msg).expect("should serialize message");
+        vec![ProtocolOutcome::CreatedTargetedMessage(
+            serialized_msg,
+            peer_id,
+        )]
     }
 
     fn handle_timer(
@@ -592,7 +700,6 @@ where
             results
         } else {
             // TODO: Slash proposer?
-            // TODO: Disconnect from senders.
             // Drop vertices dependent on the invalid value.
             let dropped_vertices = self.pending_values.remove(value);
             // recursively remove vertices depending on the dropped ones
@@ -601,14 +708,17 @@ where
                 ?dropped_vertices,
                 "consensus value is invalid; dropping dependent vertices"
             );
-            self.drop_dependent_vertices(
+            let faulty_senders = self.drop_dependent_vertices(
                 dropped_vertices
                     .into_iter()
                     .flatten()
                     .map(|vv| vv.inner().id())
                     .collect(),
             );
-            vec![]
+            faulty_senders
+                .into_iter()
+                .map(ProtocolOutcome::Disconnect)
+                .collect()
         }
     }
 
@@ -617,8 +727,11 @@ where
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
+        unit_hash_file: Option<PathBuf>,
     ) -> Vec<ProtocolOutcome<I, C>> {
-        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
+        let av_effects = self
+            .highway
+            .activate_validator(our_id, secret, timestamp, unit_hash_file);
         self.process_av_effects(av_effects)
     }
 
@@ -661,10 +774,18 @@ where
     }
 
     fn has_received_messages(&self) -> bool {
-        self.highway.state().is_empty()
+        !self.highway.state().is_empty() || !self.vertex_deps.is_empty()
     }
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn is_active(&self) -> bool {
+        self.highway.is_active()
+    }
+
+    fn instance_id(&self) -> &C::InstanceId {
+        self.highway.instance_id()
     }
 }

@@ -1,11 +1,14 @@
-use crate::shared::wasm_config::WasmConfig;
+use std::collections::BTreeMap;
+
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ContractHash, HashAddr,
 };
-use std::collections::BTreeMap;
+
+use crate::shared::wasm_config::WasmConfig;
 
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
+pub const DEFAULT_WASMLESS_TRANSFER_COST: u64 = 10_000;
 
 /// Represents a protocol's data. Intended to be associated with a given protocol version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -15,6 +18,7 @@ pub struct ProtocolData {
     proof_of_stake: ContractHash,
     standard_payment: ContractHash,
     auction: ContractHash,
+    wasmless_transfer_cost: u64,
 }
 
 /// Provides a default instance with non existing urefs and empty costs table.
@@ -29,6 +33,7 @@ impl Default for ProtocolData {
             proof_of_stake: DEFAULT_ADDRESS,
             standard_payment: DEFAULT_ADDRESS,
             auction: DEFAULT_ADDRESS,
+            wasmless_transfer_cost: DEFAULT_WASMLESS_TRANSFER_COST,
         }
     }
 }
@@ -41,6 +46,7 @@ impl ProtocolData {
         proof_of_stake: ContractHash,
         standard_payment: ContractHash,
         auction: ContractHash,
+        wasmless_transfer_cost: u64,
     ) -> Self {
         ProtocolData {
             wasm_config,
@@ -48,6 +54,7 @@ impl ProtocolData {
             proof_of_stake,
             standard_payment,
             auction,
+            wasmless_transfer_cost,
         }
     }
 
@@ -133,6 +140,10 @@ impl ProtocolData {
         }
         true
     }
+
+    pub fn wasmless_transfer_cost(&self) -> u64 {
+        self.wasmless_transfer_cost
+    }
 }
 
 impl ToBytes for ProtocolData {
@@ -143,6 +154,8 @@ impl ToBytes for ProtocolData {
         ret.append(&mut self.proof_of_stake.to_bytes()?);
         ret.append(&mut self.standard_payment.to_bytes()?);
         ret.append(&mut self.auction.to_bytes()?);
+        ret.append(&mut self.wasmless_transfer_cost.to_bytes()?);
+
         Ok(ret)
     }
 
@@ -152,6 +165,7 @@ impl ToBytes for ProtocolData {
             + self.proof_of_stake.serialized_length()
             + self.standard_payment.serialized_length()
             + self.auction.serialized_length()
+            + self.wasmless_transfer_cost.serialized_length()
     }
 }
 
@@ -162,6 +176,7 @@ impl FromBytes for ProtocolData {
         let (proof_of_stake, rem) = HashAddr::from_bytes(rem)?;
         let (standard_payment, rem) = HashAddr::from_bytes(rem)?;
         let (auction, rem) = HashAddr::from_bytes(rem)?;
+        let (wasmless_transfer_cost, rem) = FromBytes::from_bytes(rem)?;
 
         Ok((
             ProtocolData {
@@ -170,6 +185,7 @@ impl FromBytes for ProtocolData {
                 proof_of_stake,
                 standard_payment,
                 auction,
+                wasmless_transfer_cost,
             },
             rem,
         ))
@@ -178,7 +194,7 @@ impl FromBytes for ProtocolData {
 
 #[cfg(test)]
 pub(crate) mod gens {
-    use proptest::prop_compose;
+    use proptest::{num, prop_compose};
 
     use crate::shared::wasm_config::gens::wasm_config_arb;
     use casper_types::gens;
@@ -192,6 +208,7 @@ pub(crate) mod gens {
             proof_of_stake in gens::u8_slice_32(),
             standard_payment in gens::u8_slice_32(),
             auction in gens::u8_slice_32(),
+            wasmless_transfer_cost in num::u64::ANY,
         ) -> ProtocolData {
             ProtocolData {
                 wasm_config,
@@ -199,6 +216,7 @@ pub(crate) mod gens {
                 proof_of_stake,
                 standard_payment,
                 auction,
+                wasmless_transfer_cost,
             }
         }
     }
@@ -211,7 +229,7 @@ mod tests {
     use crate::shared::wasm_config::WasmConfig;
     use casper_types::{bytesrepr, ContractHash};
 
-    use super::{gens, ProtocolData};
+    use super::{gens, ProtocolData, DEFAULT_WASMLESS_TRANSFER_COST};
 
     #[test]
     fn should_return_all_system_contracts() {
@@ -227,6 +245,7 @@ mod tests {
                 proof_of_stake_reference,
                 standard_payment_reference,
                 auction_reference,
+                DEFAULT_WASMLESS_TRANSFER_COST,
             )
         };
 
@@ -260,6 +279,7 @@ mod tests {
                 proof_of_stake_reference,
                 standard_payment_reference,
                 auction_reference,
+                DEFAULT_WASMLESS_TRANSFER_COST,
             )
         };
 

@@ -7,15 +7,12 @@ use serde::{self, Deserialize};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_node::{
-    crypto::{
-        asymmetric_key::{PublicKey as NodePublicKey, SecretKey},
-        hash::Digest,
-    },
+    crypto::{hash::Digest, AsymmetricKeyExt},
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    bytesrepr, CLType, CLValue, ContractHash, Key, NamedArg, RuntimeArgs, UIntParseError, URef,
-    U512,
+    bytesrepr, AsymmetricType, CLType, CLValue, ContractHash, Key, NamedArg, PublicKey,
+    RuntimeArgs, SecretKey, UIntParseError, URef, U512,
 };
 
 use crate::{
@@ -220,7 +217,7 @@ fn standard_payment(value: &str) -> Result<RuntimeArgs> {
     let arg = U512::from_dec_str(value)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
     let mut runtime_args = RuntimeArgs::new();
-    runtime_args.insert(STANDARD_PAYMENT_ARG_NAME, arg);
+    runtime_args.insert(STANDARD_PAYMENT_ARG_NAME, arg)?;
     Ok(runtime_args)
 }
 
@@ -583,10 +580,10 @@ fn version(value: &str) -> Result<u32> {
         .map_err(|error| Error::FailedToParseInt("version", error))
 }
 
-fn account(value: &str) -> Result<NodePublicKey> {
-    NodePublicKey::from_hex(value).map_err(|error| Error::CryptoError {
+fn account(value: &str) -> Result<PublicKey> {
+    PublicKey::from_hex(value).map_err(|error| Error::CryptoError {
         context: "account",
-        error,
+        error: error.into(),
     })
 }
 
@@ -862,7 +859,7 @@ mod tests {
     #[test]
     fn should_parse_public_key_via_args_simple() {
         let hex_value = "0119bf44096984cdfe8541bac167dc3b96c85086aa30b6b6cb0c5c38ad703166e1";
-        let value = PublicKey::from(NodePublicKey::from_hex(hex_value).unwrap());
+        let value = PublicKey::from_hex(hex_value).unwrap();
         valid_simple_args_test(&format!("x:public_key='{}'", hex_value), value);
         valid_simple_args_test(&format!("x:opt_public_key='{}'", hex_value), Some(value));
         valid_simple_args_test::<Option<PublicKey>>("x:opt_public_key=null", None);

@@ -25,9 +25,7 @@ impl From<StoredValue> for state::StoredValue {
             }
             StoredValue::Transfer(transfer) => pb_value.set_transfer(transfer.into()),
             StoredValue::DeployInfo(deploy_info) => pb_value.set_deploy_info(deploy_info.into()),
-            StoredValue::AuctionInfo(auction_info) => {
-                pb_value.set_auction_info(auction_info.into())
-            }
+            StoredValue::EraInfo(era_info) => pb_value.set_era_info(era_info.into()),
         }
 
         pb_value
@@ -64,8 +62,8 @@ impl TryFrom<state::StoredValue> for StoredValue {
             StoredValue_oneof_variants::deploy_info(pb_deploy_info) => {
                 StoredValue::DeployInfo(pb_deploy_info.try_into()?)
             }
-            StoredValue_oneof_variants::auction_info(pb_auction_info) => {
-                StoredValue::AuctionInfo(pb_auction_info.try_into()?)
+            StoredValue_oneof_variants::era_info(pb_era_info) => {
+                StoredValue::EraInfo(pb_era_info.try_into()?)
             }
         };
 

@@ -1,9 +1,9 @@
 use crate::{
     account::AccountHash,
-    auction::{AuctionInfo, EraId},
+    auction::{EraId, EraInfo},
     bytesrepr::{FromBytes, ToBytes},
     system_contract_errors::auction::Error,
-    ApiError, CLTyped, Key, TransferResult, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, Key, TransferredTo, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -13,9 +13,6 @@ pub trait RuntimeProvider {
 
     /// Gets named key under a `name`.
     fn get_key(&self, name: &str) -> Option<Key>;
-
-    /// Puts key under a `name`.
-    fn put_key(&mut self, name: &str, key: Key);
 
     /// Returns a 32-byte BLAKE2b digest
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
@@ -33,7 +30,7 @@ pub trait StorageProvider {
 /// Provides functionality of a system module.
 pub trait SystemProvider {
     /// Creates new purse.
-    fn create_purse(&mut self) -> URef;
+    fn create_purse(&mut self) -> Result<URef, Error>;
 
     /// Gets purse balance.
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
@@ -44,14 +41,10 @@ pub trait SystemProvider {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ApiError>;
-
-    /// Records auction info at the given era id.
-    fn record_auction_info(
-        &mut self,
-        era_id: EraId,
-        auction_info: AuctionInfo,
     ) -> Result<(), Error>;
+
+    /// Records era info at the given era id.
+    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error>;
 }
 
 /// Provides an access to mint.
@@ -62,7 +55,7 @@ pub trait MintProvider {
         source: URef,
         target: AccountHash,
         amount: U512,
-    ) -> TransferResult;
+    ) -> Result<TransferredTo, Error>;
 
     /// Transfers `amount` from `source` purse to a `target` purse.
     fn transfer_purse_to_purse(
@@ -70,10 +63,10 @@ pub trait MintProvider {
         source: URef,
         target: URef,
         amount: U512,
-    ) -> Result<(), ApiError>;
+    ) -> Result<(), Error>;
 
     /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
-    fn balance(&mut self, purse: URef) -> Option<U512>;
+    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
 
     /// Reads the base round reward.
     fn read_base_round_reward(&mut self) -> Result<U512, Error>;

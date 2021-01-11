@@ -6,7 +6,7 @@ use casper_types::{
     account,
     account::AccountHash,
     api_error,
-    auction::{AuctionInfo, EraId},
+    auction::{EraId, EraInfo},
     bytesrepr::{self, ToBytes},
     contracts::{EntryPoints, NamedKeys},
     ContractHash, ContractPackageHash, ContractVersion, Group, Key, URef, U512,
@@ -956,6 +956,8 @@ where
                 // RecordTransfer is a special cased internal host function only callable by the
                 // mint contract and for accounting purposes it isn't represented in protocol data.
                 let (
+                    maybe_to_ptr,
+                    maybe_to_size,
                     source_ptr,
                     source_size,
                     target_ptr,
@@ -964,36 +966,32 @@ where
                     amount_size,
                     id_ptr,
                     id_size,
-                ): (u32, u32, u32, u32, u32, u32, u32, u32) = Args::parse(args)?;
+                ): (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32) = Args::parse(args)?;
+                scoped_instrumenter.add_property("maybe_to_size", maybe_to_size.to_string());
                 scoped_instrumenter.add_property("source_size", source_size.to_string());
                 scoped_instrumenter.add_property("target_size", target_size.to_string());
                 scoped_instrumenter.add_property("amount_size", amount_size.to_string());
                 scoped_instrumenter.add_property("id_size", id_size.to_string());
+                let maybe_to: Option<AccountHash> = self.t_from_mem(maybe_to_ptr, maybe_to_size)?;
                 let source: URef = self.t_from_mem(source_ptr, source_size)?;
                 let target: URef = self.t_from_mem(target_ptr, target_size)?;
                 let amount: U512 = self.t_from_mem(amount_ptr, amount_size)?;
                 let id: Option<u64> = self.t_from_mem(id_ptr, id_size)?;
-                self.record_transfer(source, target, amount, id)?;
+                self.record_transfer(maybe_to, source, target, amount, id)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
 
-            FunctionIndex::RecordAuctionInfo => {
-                // RecordAuctionInfo is a special cased internal host function only callable by the
+            FunctionIndex::RecordEraInfo => {
+                // RecordEraInfo is a special cased internal host function only callable by the
                 // auction contract and for accounting purposes it isn't represented in protocol
                 // data.
-                let (era_id_ptr, era_id_size, auction_info_ptr, auction_info_size): (
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                ) = Args::parse(args)?;
+                let (era_id_ptr, era_id_size, era_info_ptr, era_info_size): (u32, u32, u32, u32) =
+                    Args::parse(args)?;
                 scoped_instrumenter.add_property("era_id_size", era_id_size.to_string());
-                scoped_instrumenter
-                    .add_property("auction_info_size", auction_info_size.to_string());
+                scoped_instrumenter.add_property("era_info_size", era_info_size.to_string());
                 let era_id: EraId = self.t_from_mem(era_id_ptr, era_id_size)?;
-                let auction_info: AuctionInfo =
-                    self.t_from_mem(auction_info_ptr, auction_info_size)?;
-                self.record_auction_info(era_id, auction_info)?;
+                let era_info: EraInfo = self.t_from_mem(era_info_ptr, era_info_size)?;
+                self.record_era_info(era_id, era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
         }

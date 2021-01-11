@@ -9,8 +9,8 @@ use casper_execution_engine::{
 };
 use casper_node::{
     crypto::hash::Digest,
-    rpcs::chain::BlockIdentifier,
-    types::{json_compatibility, Block, BlockValidationError},
+    rpcs::chain::{BlockIdentifier, EraSummary, GetEraInfoResult},
+    types::{json_compatibility, Block, BlockValidationError, JsonBlock},
 };
 use casper_types::{bytesrepr, Key, U512};
 
@@ -67,6 +67,50 @@ impl From<bytesrepr::Error> for ValidateResponseError {
 impl From<BlockValidationError> for ValidateResponseError {
     fn from(e: BlockValidationError) -> Self {
         ValidateResponseError::BlockValidationError(e)
+    }
+}
+
+pub(crate) fn validate_get_era_info_response(
+    response: &JsonRpc,
+) -> Result<(), ValidateResponseError> {
+    let value = response
+        .get_result()
+        .ok_or(ValidateResponseError::ValidateResponseFailedToParse)?;
+
+    let result: GetEraInfoResult = serde_json::from_value(value.to_owned())?;
+
+    match result.era_summary {
+        Some(EraSummary {
+            state_root_hash,
+            era_id,
+            merkle_proof,
+            stored_value,
+            ..
+        }) => {
+            let proof_bytes = hex::decode(merkle_proof)
+                .map_err(|_| ValidateResponseError::ValidateResponseFailedToParse)?;
+            let proofs: Vec<TrieMerkleProof<Key, StoredValue>> =
+                bytesrepr::deserialize(proof_bytes)?;
+            let key = Key::EraInfo(era_id);
+            let path = &[];
+
+            let proof_value = match stored_value {
+                json_compatibility::StoredValue::EraInfo(era_info) => {
+                    StoredValue::EraInfo(era_info)
+                }
+                _ => return Err(ValidateResponseError::ValidateResponseFailedToParse),
+            };
+
+            core::validate_query_proof(
+                &state_root_hash.to_owned().into(),
+                &proofs,
+                &key,
+                path,
+                &proof_value,
+            )
+            .map_err(Into::into)
+        }
+        None => Ok(()),
     }
 }
 
@@ -184,15 +228,16 @@ pub(crate) fn validate_get_block_response(
     maybe_block_identifier: &Option<BlockIdentifier>,
 ) -> Result<(), ValidateResponseError> {
     let maybe_result = response.get_result();
-    let block_value = maybe_result
+    let json_block_value = maybe_result
         .and_then(|value| value.get("block"))
         .ok_or(ValidateResponseError::NoBlockInResponse)?;
-    let maybe_block: Option<Block> = serde_json::from_value(block_value.to_owned())?;
-    let block = if let Some(block) = maybe_block {
-        block
+    let maybe_json_block: Option<JsonBlock> = serde_json::from_value(json_block_value.to_owned())?;
+    let json_block = if let Some(json_block) = maybe_json_block {
+        json_block
     } else {
         return Ok(());
     };
+    let block = Block::from(json_block);
     block.verify()?;
     match maybe_block_identifier {
         Some(BlockIdentifier::Hash(block_hash)) => {

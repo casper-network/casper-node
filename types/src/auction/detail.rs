@@ -287,31 +287,3 @@ where
 
     Ok(amount)
 }
-
-/// Removes bids of specified public keys.
-///
-/// Returns the amount of stake burned by removing the bids.
-pub(crate) fn quash_bid<P: StorageProvider + RuntimeProvider + ?Sized>(
-    provider: &mut P,
-    validator_public_keys: &[PublicKey],
-) -> Result<U512> {
-    // Clean up inside `bids`
-    let mut validators = get_bids(provider)?;
-
-    let mut modified_validators = 0usize;
-
-    let mut burned_amount: U512 = U512::zero();
-
-    for validator_public_key in validator_public_keys {
-        if let Some(bid) = validators.remove(validator_public_key) {
-            burned_amount += *bid.staked_amount();
-            modified_validators += 1;
-        }
-    }
-
-    if modified_validators > 0 {
-        set_bids(provider, validators)?;
-    }
-
-    Ok(burned_amount)
-}

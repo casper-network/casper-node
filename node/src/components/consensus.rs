@@ -13,8 +13,9 @@ mod tests;
 mod traits;
 
 use std::{
-    convert::{Infallible, TryInto},
+    convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
+    time::Duration,
 };
 
 use datasize::DataSize;
@@ -24,11 +25,11 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
-use casper_types::auction::ValidatorWeights;
+use casper_types::{auction::ValidatorWeights, PublicKey};
 
 use crate::{
     components::Component,
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -62,6 +63,8 @@ pub enum ConsensusMessage {
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
+    /// We connected to a peer.
+    NewPeer(I),
     /// A scheduled event to be handled by a specified era
     Timer { era_id: EraId, timestamp: Timestamp },
     /// We are receiving the data we require to propose a new block
@@ -79,6 +82,12 @@ pub enum Event<I> {
         proto_block: ProtoBlock,
         valid: bool,
     },
+    /// Deactivate the era with the given ID, unless the number of faulty validators increases.
+    DeactivateEra {
+        era_id: EraId,
+        faulty_num: usize,
+        delay: Duration,
+    },
     /// Event raised when a new era should be created: once we get the set of validators, the
     /// booking block hash and the seed from the key block
     CreateNewEra {
@@ -92,6 +101,8 @@ pub enum Event<I> {
     },
     /// An event instructing us to shutdown if the latest era received no votes
     Shutdown,
+    /// An event fired when the joiner reactor transitions into validator.
+    FinishedJoining(Timestamp),
 }
 
 impl Debug for ConsensusMessage {
@@ -128,6 +139,7 @@ impl<I: Debug> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
+            Event::NewPeer(peer_id) => write!(f, "new peer connected: {:?}", peer_id),
             Event::Timer { era_id, timestamp } => write!(
                 f,
                 "timer for era {:?} scheduled for timestamp {}",
@@ -160,6 +172,13 @@ impl<I: Debug> Display for Event<I> {
                 if *valid { "valid" } else { "invalid" },
                 proto_block
             ),
+            Event::DeactivateEra {
+                era_id, faulty_num, ..
+            } => write!(
+                f,
+                "Deactivate old era {} unless additional faults are observed; faults so far: {}",
+                era_id.0, faulty_num
+            ),
             Event::CreateNewEra {
                 booking_block_hash,
                 key_block_seed,
@@ -172,6 +191,9 @@ impl<I: Debug> Display for Event<I> {
                 booking_block_hash, key_block_seed, get_validators_result
             ),
             Event::Shutdown => write!(f, "Shutdown if current era is inactive"),
+            Event::FinishedJoining(timestamp) => {
+                write!(f, "The node finished joining the network at {}", timestamp)
+            }
         }
     }
 }
@@ -183,7 +205,7 @@ pub trait ReactorEventT<I>:
     + Send
     + From<NetworkRequest<I, Message>>
     + From<BlockProposerRequest>
-    + From<ConsensusAnnouncement>
+    + From<ConsensusAnnouncement<I>>
     + From<BlockExecutorRequest>
     + From<BlockValidationRequest<ProtoBlock, I>>
     + From<StorageRequest>
@@ -196,7 +218,7 @@ impl<REv, I> ReactorEventT<I> for REv where
         + Send
         + From<NetworkRequest<I, Message>>
         + From<BlockProposerRequest>
-        + From<ConsensusAnnouncement>
+        + From<ConsensusAnnouncement<I>>
         + From<BlockExecutorRequest>
         + From<BlockValidationRequest<ProtoBlock, I>>
         + From<StorageRequest>
@@ -222,6 +244,7 @@ where
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
+            Event::NewPeer(peer_id) => handling_es.handle_new_peer(peer_id),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
@@ -237,6 +260,11 @@ where
                 proto_block,
                 valid,
             } => handling_es.resolve_validity(era_id, sender, proto_block, valid),
+            Event::DeactivateEra {
+                era_id,
+                faulty_num,
+                delay,
+            } => handling_es.handle_deactivate_era(era_id, faulty_num, delay),
             Event::CreateNewEra {
                 block_header,
                 booking_block_hash,
@@ -260,16 +288,7 @@ where
                     panic!("couldn't get the seed from the key block");
                 });
                 let validators = match get_validators_result {
-                    Ok(Some(validator_weights)) => validator_weights
-                        .into_iter()
-                        .filter_map(|(key, stake)| match key.try_into() {
-                            Ok(key) => Some((key, stake)),
-                            Err(error) => {
-                                error!(%error, "error converting the bonded key");
-                                None
-                            }
-                        })
-                        .collect(),
+                    Ok(Some(validator_weights)) => validator_weights,
                     result => {
                         error!(
                             ?result,
@@ -288,6 +307,12 @@ where
                 )
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
+            Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
+            Event::ConsensusRequest(requests::ConsensusRequest::IsBondedValidator(
+                era_id,
+                pk,
+                responder,
+            )) => handling_es.is_bonded_validator(era_id, pk, responder),
         }
     }
 }

@@ -1,51 +1,65 @@
 #!/usr/bin/env bash
-#
-# Renders node peers to stdout.
-# Globals:
-#   NCTL - path to nctl home directory.
+
+source "$NCTL"/sh/utils/main.sh
+
+#######################################
+# Renders ports at specified node(s).
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
+#######################################
+function main()
+{
+    local NODE_ID=${1}
+
+    if [ "$NODE_ID" = "all" ]; then
+        for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+        do
+            echo "------------------------------------------------------------------------------------------------------------------------------------"
+            do_render "$NODE_ID"
+        done
+        echo "------------------------------------------------------------------------------------------------------------------------------------"
+    else
+        do_render "$NODE_ID"
+    fi
+}
 
 #######################################
-# Destructure input args.
+# Displays to stdout current node ports.
+# Globals:
+#   NCTL_BASE_PORT_NETWORK - base port type.
+# Arguments:
+#   Node ordinal identifier.
 #######################################
+function do_render()
+{
+    local NODE_ID=${1}
+    local PORT_VNET
+    local PORT_REST
+    local PORT_RPC
+    local PORT_SSE
 
-# Unset to avoid parameter collisions.
-unset net
-unset node
+    PORT_VNET=$(get_node_port "$NCTL_BASE_PORT_NETWORK" "$NODE_ID")
+    PORT_REST=$(get_node_port_rest "$NODE_ID")
+    PORT_RPC=$(get_node_port_rpc "$NODE_ID")
+    PORT_SSE=$(get_node_port_sse "$NODE_ID")
+
+    log "node-$NODE_ID :: VNET @ $PORT_VNET :: RPC @ $PORT_RPC :: REST @ $PORT_REST :: SSE @ $PORT_SSE"
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-net=${net:-1}
-node=${node:-"all"}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
-source $(get_path_to_net_vars $net)
-
-# Render peer set.
-if [ $node = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
-    do
-        render_node_ports $net $IDX
-    done
-else
-    render_node_ports $net $node
-fi
+main "${NODE_ID:-"all"}"

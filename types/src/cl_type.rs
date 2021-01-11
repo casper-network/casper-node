@@ -140,7 +140,7 @@ pub fn named_key_type() -> CLType {
 }
 
 impl CLType {
-    pub(crate) fn append_bytes(&self, stream: &mut Vec<u8>) {
+    pub(crate) fn append_bytes(&self, stream: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
             CLType::Bool => stream.push(CL_TYPE_TAG_BOOL),
             CLType::I32 => stream.push(CL_TYPE_TAG_I32),
@@ -158,37 +158,38 @@ impl CLType {
             CLType::PublicKey => stream.push(CL_TYPE_TAG_PUBLIC_KEY),
             CLType::Option(cl_type) => {
                 stream.push(CL_TYPE_TAG_OPTION);
-                cl_type.append_bytes(stream);
+                cl_type.append_bytes(stream)?;
             }
             CLType::List(cl_type) => {
                 stream.push(CL_TYPE_TAG_LIST);
-                cl_type.append_bytes(stream);
+                cl_type.append_bytes(stream)?;
             }
             CLType::ByteArray(len) => {
                 stream.push(CL_TYPE_TAG_BYTE_ARRAY);
-                stream.append(&mut len.to_bytes().unwrap());
+                stream.append(&mut len.to_bytes()?);
             }
             CLType::Result { ok, err } => {
                 stream.push(CL_TYPE_TAG_RESULT);
-                ok.append_bytes(stream);
-                err.append_bytes(stream);
+                ok.append_bytes(stream)?;
+                err.append_bytes(stream)?;
             }
             CLType::Map { key, value } => {
                 stream.push(CL_TYPE_TAG_MAP);
-                key.append_bytes(stream);
-                value.append_bytes(stream);
+                key.append_bytes(stream)?;
+                value.append_bytes(stream)?;
             }
             CLType::Tuple1(cl_type_array) => {
-                serialize_cl_tuple_type(CL_TYPE_TAG_TUPLE1, cl_type_array, stream)
+                serialize_cl_tuple_type(CL_TYPE_TAG_TUPLE1, cl_type_array, stream)?
             }
             CLType::Tuple2(cl_type_array) => {
-                serialize_cl_tuple_type(CL_TYPE_TAG_TUPLE2, cl_type_array, stream)
+                serialize_cl_tuple_type(CL_TYPE_TAG_TUPLE2, cl_type_array, stream)?
             }
             CLType::Tuple3(cl_type_array) => {
-                serialize_cl_tuple_type(CL_TYPE_TAG_TUPLE3, cl_type_array, stream)
+                serialize_cl_tuple_type(CL_TYPE_TAG_TUPLE3, cl_type_array, stream)?
             }
             CLType::Any => stream.push(CL_TYPE_TAG_ANY),
         }
+        Ok(())
     }
 }
 
@@ -246,11 +247,15 @@ impl FromBytes for CLType {
             }
             CL_TYPE_TAG_TUPLE1 => {
                 let (mut inner_types, remainder) = parse_cl_tuple_types(1, remainder)?;
+                // NOTE: Assumed safe as `parse_cl_tuple_types` is expected to have exactly 1
+                // element
                 let cl_type = CLType::Tuple1([inner_types.pop_front().unwrap()]);
                 Ok((cl_type, remainder))
             }
             CL_TYPE_TAG_TUPLE2 => {
                 let (mut inner_types, remainder) = parse_cl_tuple_types(2, remainder)?;
+                // NOTE: Assumed safe as `parse_cl_tuple_types` is expected to have exactly 2
+                // elements
                 let cl_type = CLType::Tuple2([
                     inner_types.pop_front().unwrap(),
                     inner_types.pop_front().unwrap(),
@@ -259,6 +264,8 @@ impl FromBytes for CLType {
             }
             CL_TYPE_TAG_TUPLE3 => {
                 let (mut inner_types, remainder) = parse_cl_tuple_types(3, remainder)?;
+                // NOTE: Assumed safe as `parse_cl_tuple_types` is expected to have exactly 3
+                // elements
                 let cl_type = CLType::Tuple3([
                     inner_types.pop_front().unwrap(),
                     inner_types.pop_front().unwrap(),
@@ -276,11 +283,12 @@ fn serialize_cl_tuple_type<'a, T: IntoIterator<Item = &'a Box<CLType>>>(
     tag: u8,
     cl_type_array: T,
     stream: &mut Vec<u8>,
-) {
+) -> Result<(), bytesrepr::Error> {
     stream.push(tag);
     for cl_type in cl_type_array {
-        cl_type.append_bytes(stream);
+        cl_type.append_bytes(stream)?;
     }
+    Ok(())
 }
 
 fn parse_cl_tuple_types(

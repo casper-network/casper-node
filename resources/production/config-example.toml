@@ -16,7 +16,7 @@ chainspec_config_path = '/etc/casper/chainspec.toml'
 [logging]
 
 # Output format.  Possible values are 'text' or 'json'.
-format = 'text'
+format = 'json'
 
 # Colored output.  Has no effect if format = 'json'.
 color = false
@@ -33,6 +33,9 @@ abbreviate_modules = false
 # consensus messages.
 secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 
+# The folder in which the files with per-era latest unit hashes will be stored.
+unit_hashes_folder = "/var/lib/casper/casper-node"
+
 
 # ====================================
 # Configuration options for networking
@@ -47,7 +50,7 @@ public_address = '<IP ADDRESS>:0'
 
 # Address to bind to for listening.
 # If port is set to 0, a random port will be used.
-bind_address = '0.0.0.0:34553'
+bind_address = '0.0.0.0:35000'
 
 # Addresses to connect to in order to join the network.
 #
@@ -57,7 +60,7 @@ bind_address = '0.0.0.0:34553'
 #
 # Multiple addresses can be given and the node will attempt to connect to each, requiring at least
 # one connection.
-known_addresses = ['54.177.84.9:34553', '18.144.69.216:34553', '13.57.251.65:34553']
+known_addresses = ['18.144.176.168:35000', '13.57.200.251:35000']
 
 # The interval (in milliseconds) between each fresh round of gossiping the node's public address.
 gossip_interval = 120_000
@@ -112,6 +115,8 @@ address = '0.0.0.0:9999'
 # The number of event stream events to buffer.
 event_stream_buffer_length = 100
 
+# The capacity of the broadcast channel size.
+broadcast_channel_size = 100
 
 # ===============================================
 # Configuration options for the storage component
@@ -124,7 +129,7 @@ event_stream_buffer_length = 100
 # If the folder doesn't exist, it and any required parents will be created.
 #
 # If unset, the path must be supplied as an argument via the CLI.
-path = '/root/.local/share/casper-node'
+path = '/var/lib/casper/casper-node'
 
 # Maximum size of the database to use for the block store.
 #
@@ -196,6 +201,13 @@ get_remainder_timeout_secs = 5
 # not received within this specified duration.
 get_from_peer_timeout = 3
 
+# ===================================================
+# Configuration options for deploy acceptor component
+# ===================================================
+[deploy_acceptor]
+
+# If true, the deploy acceptor will verify the account associated with a received deploy prior to accepting it.
+verify_accounts = true
 
 # ========================================================
 # Configuration options for the contract runtime component

@@ -15,7 +15,7 @@ use casper_types::{
     contracts::Parameters,
     mint::{
         Mint, RuntimeProvider, StorageProvider, SystemProvider, ARG_AMOUNT, ARG_ID, ARG_PURSE,
-        ARG_SOURCE, ARG_TARGET, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT,
+        ARG_SOURCE, ARG_TARGET, ARG_TO, METHOD_BALANCE, METHOD_CREATE, METHOD_MINT,
         METHOD_READ_BASE_ROUND_REWARD, METHOD_TRANSFER,
     },
     system_contract_errors::mint::Error,
@@ -30,8 +30,9 @@ impl RuntimeProvider for MintContract {
         runtime::get_caller()
     }
 
-    fn put_key(&mut self, name: &str, key: Key) {
-        runtime::put_key(name, key)
+    fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
+        runtime::put_key(name, key);
+        Ok(())
     }
 
     fn get_key(&self, name: &str) -> Option<Key> {
@@ -40,12 +41,17 @@ impl RuntimeProvider for MintContract {
 }
 
 impl StorageProvider for MintContract {
-    fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> URef {
-        storage::new_uref(init)
+    fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> Result<URef, Error> {
+        Ok(storage::new_uref(init))
     }
 
-    fn write_local<K: ToBytes, V: CLTyped + ToBytes>(&mut self, key: K, value: V) {
-        storage::write_local(key, value)
+    fn write_local<K: ToBytes, V: CLTyped + ToBytes>(
+        &mut self,
+        key: K,
+        value: V,
+    ) -> Result<(), Error> {
+        storage::write_local(key, value);
+        Ok(())
     }
 
     fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
@@ -73,12 +79,13 @@ impl StorageProvider for MintContract {
 impl SystemProvider for MintContract {
     fn record_transfer(
         &mut self,
+        maybe_to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        system::record_transfer(source, target, amount, id)
+        system::record_transfer(maybe_to, source, target, amount, id)
             .map_err(|_| Error::RecordTransferFailure)
     }
 }
@@ -118,11 +125,12 @@ pub fn balance() {
 
 pub fn transfer() {
     let mut mint_contract = MintContract;
+    let maybe_to: Option<AccountHash> = runtime::get_named_arg(ARG_TO);
     let source: URef = runtime::get_named_arg(ARG_SOURCE);
     let target: URef = runtime::get_named_arg(ARG_TARGET);
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let id: Option<u64> = runtime::get_named_arg(ARG_ID);
-    let result: Result<(), Error> = mint_contract.transfer(source, target, amount, id);
+    let result: Result<(), Error> = mint_contract.transfer(maybe_to, source, target, amount, id);
     let ret = CLValue::from_t(result).unwrap_or_revert();
     runtime::ret(ret);
 }

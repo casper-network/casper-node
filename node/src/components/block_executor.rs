@@ -34,7 +34,8 @@ use crate::{
     effect::{
         announcements::BlockExecutorAnnouncement,
         requests::{
-            BlockExecutorRequest, ContractRuntimeRequest, LinearChainRequest, StorageRequest,
+            BlockExecutorRequest, ConsensusRequest, ContractRuntimeRequest, LinearChainRequest,
+            StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -53,6 +54,7 @@ pub trait ReactorEventT:
     + From<LinearChainRequest<NodeId>>
     + From<ContractRuntimeRequest>
     + From<BlockExecutorAnnouncement>
+    + From<ConsensusRequest>
     + Send
 {
 }
@@ -63,6 +65,7 @@ impl<REv> ReactorEventT for REv where
         + From<LinearChainRequest<NodeId>>
         + From<ContractRuntimeRequest>
         + From<BlockExecutorAnnouncement>
+        + From<ConsensusRequest>
         + Send
 {
 }
@@ -140,6 +143,14 @@ impl BlockExecutor {
             .iter()
             .map(|hash| **hash)
             .collect::<SmallVec<_>>();
+        if deploy_hashes.is_empty() {
+            let result_event = move |_| Event::GetDeploysResult {
+                finalized_block,
+                deploys: VecDeque::new(),
+            };
+            return effect_builder.immediately().event(result_event);
+        }
+
         let era_id = finalized_block.era_id();
         let height = finalized_block.height();
 
@@ -210,12 +221,12 @@ impl BlockExecutor {
                 let reward_items = era_end
                     .rewards
                     .iter()
-                    .map(|(&vid, &value)| RewardItem::new(vid.into(), value))
+                    .map(|(&vid, &value)| RewardItem::new(vid, value))
                     .collect();
                 let slash_items = era_end
                     .equivocators
                     .iter()
-                    .map(|&vid| SlashItem::new(vid.into()))
+                    .map(|&vid| SlashItem::new(vid))
                     .collect();
                 let request = StepRequest {
                     pre_state_hash: state.state_root_hash.into(),
@@ -238,7 +249,7 @@ impl BlockExecutor {
             state.finalized_block.timestamp().millis(),
             vec![Ok(deploy_item)],
             ProtocolVersion::V1_0_0,
-            state.finalized_block.proposer().into(),
+            state.finalized_block.proposer(),
         );
 
         // TODO: this is currently working coincidentally because we are passing only one
@@ -428,29 +439,21 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
         match event {
             Event::Request(BlockExecutorRequest::ExecuteBlock(finalized_block)) => {
                 debug!(?finalized_block, "execute block");
-                if finalized_block.proto_block().deploys().is_empty() {
-                    return effect_builder
-                        .immediately()
-                        .event(move |_| Event::GetDeploysResult {
-                            finalized_block,
-                            deploys: VecDeque::new(),
-                        });
-                }
                 effect_builder
                     .get_block_at_height_local(finalized_block.height())
                     .event(move |maybe_block| {
-                        Event::BlockAlreadyExists(maybe_block.is_some(), finalized_block)
+                        maybe_block.map(Box::new).map_or_else(
+                            || Event::BlockIsNew(finalized_block),
+                            Event::BlockAlreadyExists,
+                        )
                     })
             }
-            Event::BlockAlreadyExists(exists, finalized_block) => {
-                if !exists {
-                    // If we haven't executed the block before in the past (for example during
-                    // joining), do it now.
-                    self.get_deploys(effect_builder, finalized_block)
-                } else {
-                    Effects::new()
-                }
-            }
+            Event::BlockAlreadyExists(block) => effect_builder
+                .handle_linear_chain_block(block.take_header())
+                .ignore(),
+            // If we haven't executed the block before in the past (for example during
+            // joining), do it now.
+            Event::BlockIsNew(finalized_block) => self.get_deploys(effect_builder, finalized_block),
             Event::GetDeploysResult {
                 finalized_block,
                 deploys,

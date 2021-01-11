@@ -12,7 +12,10 @@ use casper_execution_engine::{
         runtime_context::RuntimeContext,
     },
     shared::{gas::Gas, newtypes::CorrelationId, wasm_prep::Preprocessor},
-    storage::{global_state::StateProvider, protocol_data::ProtocolData},
+    storage::{
+        global_state::StateProvider,
+        protocol_data::{ProtocolData, DEFAULT_WASMLESS_TRANSFER_COST},
+    },
 };
 use casper_types::{
     account::AccountHash,
@@ -93,7 +96,14 @@ where
         let pos = builder.get_mint_contract_hash();
         let standard_payment = builder.get_standard_payment_contract_hash();
         let auction = builder.get_auction_contract_hash();
-        ProtocolData::new(*DEFAULT_WASM_CONFIG, mint, pos, standard_payment, auction)
+        ProtocolData::new(
+            *DEFAULT_WASM_CONFIG,
+            mint,
+            pos,
+            standard_payment,
+            auction,
+            DEFAULT_WASMLESS_TRANSFER_COST,
+        )
     };
 
     let transfers = Vec::default();

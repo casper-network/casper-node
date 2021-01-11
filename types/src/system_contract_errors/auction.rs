@@ -119,9 +119,25 @@ pub enum Error {
     /// Failed to transfer desired amount into unbonding purse.
     #[fail(display = "Transfer to unbonding purse error")]
     TransferToUnbondingPurse = 32,
-    /// Failed to record auction info.
-    #[fail(display = "Record auction info error")]
-    RecordAuctionInfo = 33,
+    /// Failed to record era info.
+    #[fail(display = "Record era info error")]
+    RecordEraInfo = 33,
+    /// Failed to create a [`crate::CLValue`].
+    #[fail(display = "CLValue error")]
+    CLValue = 34,
+    /// Missing seigniorage recipients for given era.
+    #[fail(display = "Missing seigniorage recipients for given era")]
+    MissingSeigniorageRecipients = 35,
+
+    /// Failed to transfer funds.
+    #[fail(display = "Transfer error")]
+    Transfer = 36,
+
+    // NOTE: These variants below and related plumbing will be removed once support for WASM
+    // system contracts will be dropped.
+    #[doc(hidden)]
+    #[fail(display = "GasLimit")]
+    GasLimit = 37,
 
     #[cfg(test)]
     #[doc(hidden)]
@@ -186,7 +202,14 @@ impl TryFrom<u8> for Error {
             d if d == Error::WithdrawDelegatorReward as u8 => Ok(Error::WithdrawDelegatorReward),
             d if d == Error::WithdrawValidatorReward as u8 => Ok(Error::WithdrawValidatorReward),
             d if d == Error::TransferToUnbondingPurse as u8 => Ok(Error::TransferToUnbondingPurse),
-            d if d == Error::RecordAuctionInfo as u8 => Ok(Error::RecordAuctionInfo),
+
+            d if d == Error::RecordEraInfo as u8 => Ok(Error::RecordEraInfo),
+            d if d == Error::CLValue as u8 => Ok(Error::CLValue),
+            d if d == Error::MissingSeigniorageRecipients as u8 => {
+                Ok(Error::MissingSeigniorageRecipients)
+            }
+            d if d == Error::Transfer as u8 => Ok(Error::Transfer),
+            d if d == Error::GasLimit as u8 => Ok(Error::GasLimit),
             _ => Err(TryFromU8ForError(())),
         }
     }

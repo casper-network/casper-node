@@ -77,6 +77,9 @@ use crate::{
 use casper_types::{ExecutionResult, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 
+/// Filename for the LMDB database created by the Storage component.
+const STORAGE_DB_FILENAME: &str = "storage.lmdb";
+
 /// We can set this very low, as there is only a single reader/writer accessing the component at any
 /// one time.
 const MAX_TRANSACTIONS: u32 = 1;
@@ -241,7 +244,7 @@ impl Storage {
             .set_max_readers(MAX_TRANSACTIONS)
             .set_max_dbs(MAX_DB_COUNT)
             .set_map_size(total_size)
-            .open(&root.join("storage.lmdb"))?;
+            .open(&root.join(STORAGE_DB_FILENAME))?;
 
         let block_db = env.create_db(Some("blocks"), DatabaseFlags::empty())?;
         let deploy_db = env.create_db(Some("deploys"), DatabaseFlags::empty())?;

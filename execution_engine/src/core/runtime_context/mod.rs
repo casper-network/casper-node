@@ -16,7 +16,7 @@ use casper_types::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
-    auction::AuctionInfo,
+    auction::EraInfo,
     bytesrepr,
     bytesrepr::ToBytes,
     contracts::NamedKeys,
@@ -247,10 +247,10 @@ where
                 // Users cannot remove deploy infos from global state
                 Ok(())
             }
-            auction_info_addr @ Key::AuctionInfo(_) => {
-                let _auction_info: AuctionInfo = self.read_gs_typed(&auction_info_addr)?;
+            era_info_addr @ Key::EraInfo(_) => {
+                let _era_info: EraInfo = self.read_gs_typed(&era_info_addr)?;
                 self.named_keys.remove(name);
-                // Users cannot remove auction infos from global state
+                // Users cannot remove era infos from global state
                 Ok(())
             }
         }
@@ -331,7 +331,7 @@ where
     /// Generates new deterministic hash for uses as an address.
     pub fn new_hash_address(&mut self) -> Result<[u8; KEY_HASH_LENGTH], Error> {
         let pre_hash_bytes = self.hash_address_generator.borrow_mut().create_address();
-
+        // NOTE: Unwrap below is assumed safe as output size of `KEY_HASH_LENGTH` is a valid value.
         let mut hasher = VarBlake2b::new(KEY_HASH_LENGTH).unwrap();
         hasher.update(&pre_hash_bytes);
         let mut hash_bytes = [0; KEY_HASH_LENGTH];
@@ -377,13 +377,11 @@ where
 
     pub fn read_ls(&mut self, key_bytes: &[u8]) -> Result<Option<CLValue>, Error> {
         let actual_length = key_bytes.len();
-        if actual_length != KEY_HASH_LENGTH {
-            return Err(Error::InvalidKeyLength {
+        let hash: [u8; KEY_HASH_LENGTH] =
+            key_bytes.try_into().map_err(|_| Error::InvalidKeyLength {
                 actual: actual_length,
                 expected: KEY_HASH_LENGTH,
-            });
-        }
-        let hash: [u8; KEY_HASH_LENGTH] = key_bytes.try_into().unwrap();
+            })?;
         let key: Key = hash.into();
         let maybe_stored_value = self
             .tracking_copy
@@ -400,13 +398,11 @@ where
 
     pub fn write_ls(&mut self, key_bytes: &[u8], cl_value: CLValue) -> Result<(), Error> {
         let actual_length = key_bytes.len();
-        if actual_length != KEY_HASH_LENGTH {
-            return Err(Error::InvalidKeyLength {
+        let hash: [u8; KEY_HASH_LENGTH] =
+            key_bytes.try_into().map_err(|_| Error::InvalidKeyLength {
                 actual: actual_length,
                 expected: KEY_HASH_LENGTH,
-            });
-        }
-        let hash: [u8; KEY_HASH_LENGTH] = key_bytes.try_into().unwrap();
+            })?;
         self.metered_write_gs_unsafe(hash, cl_value)?;
         Ok(())
     }
@@ -484,13 +480,13 @@ where
         }
     }
 
-    pub fn write_auction_info(&mut self, key: Key, value: AuctionInfo) {
-        if let Key::AuctionInfo(_) = key {
+    pub fn write_era_info(&mut self, key: Key, value: EraInfo) {
+        if let Key::EraInfo(_) = key {
             self.tracking_copy
                 .borrow_mut()
-                .write(key, StoredValue::AuctionInfo(value));
+                .write(key, StoredValue::EraInfo(value));
         } else {
-            panic!("Do not use this function for writing non-auction-info keys")
+            panic!("Do not use this function for writing non-era-info keys")
         }
     }
 
@@ -595,7 +591,7 @@ where
             StoredValue::ContractPackage(_) => Ok(()),
             StoredValue::Transfer(_) => Ok(()),
             StoredValue::DeployInfo(_) => Ok(()),
-            StoredValue::AuctionInfo(_) => Ok(()),
+            StoredValue::EraInfo(_) => Ok(()),
         }
     }
 
@@ -681,7 +677,7 @@ where
             Key::URef(uref) => uref.is_readable(),
             Key::Transfer(_) => true,
             Key::DeployInfo(_) => true,
-            Key::AuctionInfo(_) => true,
+            Key::EraInfo(_) => true,
         }
     }
 
@@ -692,7 +688,7 @@ where
             Key::URef(uref) => uref.is_addable(),
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
-            Key::AuctionInfo(_) => false,
+            Key::EraInfo(_) => false,
         }
     }
 
@@ -703,7 +699,7 @@ where
             Key::URef(uref) => uref.is_writeable(),
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
-            Key::AuctionInfo(_) => false,
+            Key::EraInfo(_) => false,
         }
     }
 

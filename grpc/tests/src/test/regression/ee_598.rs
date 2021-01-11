@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, shared::motes::Motes};
 use casper_types::{
     account::AccountHash, runtime_args, system_contract_errors::auction, ApiError, PublicKey,
-    RuntimeArgs, U512,
+    RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -19,11 +19,12 @@ const ARG_ACCOUNT_HASH: &str = "account_hash";
 
 const CONTRACT_AUCTION_BIDDING: &str = "auction_bidding.wasm";
 
-const ACCOUNT_1_PK: PublicKey = PublicKey::Ed25519([4; 32]);
+static ACCOUNT_1_PK: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([4; SecretKey::ED25519_LENGTH]).into());
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 
-static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PK.into());
+static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PK));
 static ACCOUNT_1_FUND: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
 static ACCOUNT_1_BALANCE: Lazy<U512> = Lazy::new(|| *ACCOUNT_1_FUND + 100_000);
 static ACCOUNT_1_BOND: Lazy<U512> = Lazy::new(|| U512::from(25_000));
@@ -31,8 +32,8 @@ static ACCOUNT_1_BOND: Lazy<U512> = Lazy::new(|| U512::from(25_000));
 #[ignore]
 #[test]
 fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
-    let public_key = PublicKey::Ed25519([42; 32]);
-    let account_hash = AccountHash::from(public_key);
+    let public_key: PublicKey = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
+    let account_hash = AccountHash::from(&public_key);
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account = GenesisAccount::new(
@@ -65,7 +66,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
                 "ee_598_regression.wasm",
                 runtime_args! {
                     ARG_AMOUNT => *ACCOUNT_1_BOND,
-                    ARG_PUBLIC_KEY => ACCOUNT_1_PK,
+                    ARG_PUBLIC_KEY => *ACCOUNT_1_PK,
                 },
             )
             .with_deploy_hash([2u8; 32])

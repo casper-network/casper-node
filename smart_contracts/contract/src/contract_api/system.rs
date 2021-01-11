@@ -6,7 +6,7 @@ use core::mem::MaybeUninit;
 use casper_types::{
     account::AccountHash,
     api_error,
-    auction::{AuctionInfo, EraId},
+    auction::{EraId, EraInfo},
     bytesrepr,
     system_contract_errors::auction,
     ApiError, ContractHash, SystemContractType, TransferResult, TransferredTo, URef, U512,
@@ -201,17 +201,21 @@ pub fn transfer_from_purse_to_purse(
 /// Needed to support system contract-based execution.
 #[doc(hidden)]
 pub fn record_transfer(
+    maybe_to: Option<AccountHash>,
     source: URef,
     target: URef,
     amount: U512,
     id: Option<u64>,
 ) -> Result<(), ApiError> {
-    let (source_ptr, source_size, _bytes1) = contract_api::to_ptr(source);
-    let (target_ptr, target_size, _bytes2) = contract_api::to_ptr(target);
-    let (amount_ptr, amount_size, _bytes3) = contract_api::to_ptr(amount);
-    let (id_ptr, id_size, _bytes4) = contract_api::to_ptr(id);
+    let (maybe_to_ptr, maybe_to_size, _bytes1) = contract_api::to_ptr(maybe_to);
+    let (source_ptr, source_size, _bytes2) = contract_api::to_ptr(source);
+    let (target_ptr, target_size, _bytes3) = contract_api::to_ptr(target);
+    let (amount_ptr, amount_size, _bytes4) = contract_api::to_ptr(amount);
+    let (id_ptr, id_size, _bytes5) = contract_api::to_ptr(id);
     let result = unsafe {
         ext_ffi::casper_record_transfer(
+            maybe_to_ptr,
+            maybe_to_size,
             source_ptr,
             source_size,
             target_ptr,
@@ -229,23 +233,18 @@ pub fn record_transfer(
     }
 }
 
-/// Records auction info.  Can only be called from within the auction contract.
+/// Records era info.  Can only be called from within the auction contract.
 /// Needed to support system contract-based execution.
 #[doc(hidden)]
-pub fn record_auction_info(era_id: EraId, auction_info: AuctionInfo) -> Result<(), ApiError> {
+pub fn record_era_info(era_id: EraId, era_info: EraInfo) -> Result<(), ApiError> {
     let (era_id_ptr, era_id_size, _bytes1) = contract_api::to_ptr(era_id);
-    let (auction_info_ptr, auction_info_size, _bytes2) = contract_api::to_ptr(auction_info);
+    let (era_info_ptr, era_info_size, _bytes2) = contract_api::to_ptr(era_info);
     let result = unsafe {
-        ext_ffi::casper_record_auction_info(
-            era_id_ptr,
-            era_id_size,
-            auction_info_ptr,
-            auction_info_size,
-        )
+        ext_ffi::casper_record_era_info(era_id_ptr, era_id_size, era_info_ptr, era_info_size)
     };
     if result == 0 {
         Ok(())
     } else {
-        Err(auction::Error::RecordAuctionInfo.into())
+        Err(auction::Error::RecordEraInfo.into())
     }
 }

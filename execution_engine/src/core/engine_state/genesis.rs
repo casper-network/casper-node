@@ -13,7 +13,7 @@ use casper_types::{
     account::AccountHash,
     auction::EraId,
     bytesrepr::{self, FromBytes, ToBytes},
-    Key, ProtocolVersion, PublicKey, U512,
+    Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 use super::SYSTEM_ACCOUNT_ADDR;
@@ -137,7 +137,7 @@ impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
         let account_hash = AccountHash::new(rng.gen());
 
-        let public_key = PublicKey::Ed25519(rng.gen());
+        let public_key = SecretKey::ed25519(rng.gen()).into();
 
         let mut u512_array = [0u8; 64];
         rng.fill_bytes(u512_array.as_mut());
@@ -268,6 +268,7 @@ pub struct ExecConfig {
     locked_funds_period: EraId,
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
+    wasmless_transfer_cost: u64,
 }
 
 impl ExecConfig {
@@ -284,6 +285,7 @@ impl ExecConfig {
         locked_funds_period: EraId,
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: EraId,
+        wasmless_transfer_cost: u64,
     ) -> ExecConfig {
         ExecConfig {
             mint_installer_bytes,
@@ -297,6 +299,7 @@ impl ExecConfig {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
+            wasmless_transfer_cost,
         }
     }
 
@@ -353,6 +356,10 @@ impl ExecConfig {
     pub fn unbonding_delay(&self) -> EraId {
         self.unbonding_delay
     }
+
+    pub fn wasmless_transfer_cost(&self) -> u64 {
+        self.wasmless_transfer_cost
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -387,6 +394,7 @@ impl Distribution<ExecConfig> for Standard {
             rng.gen_range(1, 1_000_000_000),
             rng.gen_range(1, 1_000_000_000),
         );
+        let wasmless_transfer_cost = rng.gen();
 
         ExecConfig {
             mint_installer_bytes,
@@ -400,6 +408,7 @@ impl Distribution<ExecConfig> for Standard {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
+            wasmless_transfer_cost,
         }
     }
 }

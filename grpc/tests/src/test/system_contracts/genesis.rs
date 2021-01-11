@@ -16,8 +16,9 @@ use casper_execution_engine::{
         SYSTEM_ACCOUNT_ADDR,
     },
     shared::{motes::Motes, stored_value::StoredValue},
+    storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
-use casper_types::{mint::TOTAL_SUPPLY_KEY, ProtocolVersion, PublicKey, U512};
+use casper_types::{mint::TOTAL_SUPPLY_KEY, ProtocolVersion, PublicKey, SecretKey, U512};
 
 #[cfg(feature = "use-system-contracts")]
 const BAD_INSTALL: &str = "standard_payment.wasm";
@@ -27,18 +28,21 @@ const ACCOUNT_1_BONDED_AMOUNT: u64 = 1_000_000;
 const ACCOUNT_2_BONDED_AMOUNT: u64 = 2_000_000;
 const ACCOUNT_1_BALANCE: u64 = 1_000_000_000;
 const ACCOUNT_2_BALANCE: u64 = 2_000_000_000;
-const ACCOUNT_1_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([42; 32]);
-const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([43; 32]);
-const ACCOUNT_2_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([44; 32]);
-const ACCOUNT_2_ADDR: AccountHash = AccountHash::new([45; 32]);
+
+static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into());
+static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_1_PUBLIC_KEY));
+static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([44; SecretKey::ED25519_LENGTH]).into());
+static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PUBLIC_KEY));
 
 static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let account_1 = {
         let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
         let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
         GenesisAccount::new(
-            ACCOUNT_1_PUBLIC_KEY,
-            ACCOUNT_1_ADDR,
+            *ACCOUNT_1_PUBLIC_KEY,
+            *ACCOUNT_1_ADDR,
             account_1_balance,
             account_1_bonded_amount,
         )
@@ -47,8 +51,8 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
         let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
         let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
         GenesisAccount::new(
-            ACCOUNT_2_PUBLIC_KEY,
-            ACCOUNT_2_ADDR,
+            *ACCOUNT_2_PUBLIC_KEY,
+            *ACCOUNT_2_ADDR,
             account_2_balance,
             account_2_bonded_amount,
         )
@@ -71,6 +75,7 @@ fn should_run_genesis() {
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+    let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
 
     let exec_config = ExecConfig::new(
         mint_installer_bytes,
@@ -84,6 +89,7 @@ fn should_run_genesis() {
         locked_funds_period,
         round_seigniorage_rate,
         unbonding_delay,
+        wasmless_transfer_cost,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config);
@@ -97,11 +103,11 @@ fn should_run_genesis() {
         .expect("system account should exist");
 
     let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_account(*ACCOUNT_1_ADDR)
         .expect("account 1 should exist");
 
     let account_2 = builder
-        .get_account(ACCOUNT_2_ADDR)
+        .get_account(*ACCOUNT_2_ADDR)
         .expect("account 2 should exist");
 
     let system_account_balance_actual = builder.get_purse_balance(system_account.main_purse());
@@ -145,6 +151,7 @@ fn should_track_total_token_supply_in_mint() {
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+    let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
     let ee_config = ExecConfig::new(
         mint_installer_bytes,
         proof_of_stake_installer_bytes,
@@ -157,6 +164,7 @@ fn should_track_total_token_supply_in_mint() {
         locked_funds_period,
         round_seigniorage_rate,
         unbonding_delay,
+        wasmless_transfer_cost,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);
@@ -206,6 +214,7 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
         let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
         let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
         let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+        let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
 
         let exec_config = ExecConfig::new(
             mint_installer_bytes,
@@ -219,6 +228,7 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
+            wasmless_transfer_cost,
         );
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
     };
@@ -246,6 +256,7 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
         let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
         let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
         let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+        let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
 
         let exec_config = ExecConfig::new(
             mint_installer_bytes,
@@ -259,6 +270,7 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
+            wasmless_transfer_cost,
         );
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
     };

@@ -1,51 +1,43 @@
 #!/usr/bin/env bash
-#
-# Renders a user's account hash.
+
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/views/utils.sh
+
+#######################################
+# Renders node account key.
 # Globals:
-#   NCTL - path to nctl home directory.
+#   NCTL_ACCOUNT_TYPE_NODE - node account type literal.
 # Arguments:
-#   Network ordinal identifier.
-#   User ordinal identifier.
-
+#   Node ordinal identifier.
 #######################################
-# Destructure input args.
-#######################################
+function main()
+{
+    local NODE_ID=${1}
 
-# Unset to avoid parameter collisions.
-unset net
-unset node
+    if [ "$NODE_ID" = "all" ]; then
+        for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+        do
+            render_account_main_purse_uref "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
+        done
+    else
+        render_account_main_purse_uref "$NCTL_ACCOUNT_TYPE_NODE" "$NODE_ID"
+    fi
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-net=${net:-1}
-node=${node:-"all"}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
-source $(get_path_to_net_vars $net)
-
-# Render user main purse u-ref.
-if [ $node = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT); 
-    do
-        render_account_main_purse_uref $net $IDX $NCTL_ACCOUNT_TYPE_NODE $IDX
-    done
-else
-    render_account_main_purse_uref $net $node $NCTL_ACCOUNT_TYPE_USER $node
-fi
+main "${NODE_ID:-"all"}"

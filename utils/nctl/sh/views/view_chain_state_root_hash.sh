@@ -1,54 +1,45 @@
 #!/usr/bin/env bash
-#
-# Renders a state root hash.
-# Globals:
-#   NCTL - path to nctl home directory.
+
+source "$NCTL"/sh/utils/main.sh
+source "$NCTL"/sh/views/utils.sh
+
+#######################################
+# Renders chain state root hash at specified node(s).
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
-
+#   Block hash.
 #######################################
-# Destructure input args.
-#######################################
+function main()
+{
+    local NODE_ID=${1}
+    local BLOCK_HASH=${2}
 
-# Unset to avoid parameter collisions.
-unset block
-unset net
-unset node
+    if [ "$NODE_ID" = "all" ]; then
+        for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+        do
+            render_chain_state_root_hash "$NODE_ID" "$BLOCK_HASH"
+        done
+    else
+        render_chain_state_root_hash "$NODE_ID" "$BLOCK_HASH"
+    fi
+}
+
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
+
+unset BLOCK_HASH
+unset NODE_ID
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        block) block=${VALUE} ;;
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        block) BLOCK_HASH=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-net=${net:-1}
-node=${node:-"all"}
-block=${block:-""}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
-source $(get_path_to_net_vars $net)
-
-# Render state root hash.
-if [ $node = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
-    do
-        render_chain_state_root_hash $net $IDX $block
-    done
-else
-    render_chain_state_root_hash $net $node $block
-fi
+main "${NODE_ID:-"all"}" "${BLOCK_HASH:-""}"

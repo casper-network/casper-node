@@ -12,7 +12,6 @@ use libp2p::{
 use serde::Serialize;
 use static_assertions::const_assert;
 
-use super::OneWayMessage;
 use crate::{
     effect::requests::{NetworkInfoRequest, NetworkRequest},
     protocol::Message,
@@ -61,7 +60,6 @@ pub enum Event<P> {
         /// Number of remaining connection attempts that are being tried for this peer.
         attempts_remaining: u32,
     },
-
     /// Tried to dial an address but it ended up being unreachable.  Contrary to
     /// `UnreachableAddress`, we don't know the identity of the peer that we were trying to reach.
     UnknownPeerUnreachableAddress {
@@ -94,13 +92,7 @@ pub enum Event<P> {
     },
 
     // ========== Other events ==========
-    /// Received one-way network message.
-    IncomingOneWayMessage {
-        source: Box<NodeId>,
-        message: Box<OneWayMessage<P>>,
-    },
-
-    /// Incoming network request.
+    /// A network request made by a different component.
     #[from]
     NetworkRequest {
         #[serde(skip_serializing)]
@@ -113,6 +105,22 @@ pub enum Event<P> {
         #[serde(skip_serializing)]
         info_request: Box<NetworkInfoRequest<NodeId>>,
     },
+}
+
+impl From<NetworkRequest<NodeId, Message>> for Event<Message> {
+    fn from(req: NetworkRequest<NodeId, Message>) -> Self {
+        Event::NetworkRequest {
+            request: Box::new(req),
+        }
+    }
+}
+
+impl From<NetworkInfoRequest<NodeId>> for Event<Message> {
+    fn from(request: NetworkInfoRequest<NodeId>) -> Self {
+        Self::NetworkInfoRequest {
+            info_request: Box::new(request),
+        }
+    }
 }
 
 impl<P: Display> Display for Event<P> {
@@ -173,10 +181,6 @@ impl<P: Display> Display for Event<P> {
                 reason: Err(error),
             } => write!(f, "closed listener {:?}: {}", addresses, error),
             Event::ListenerError { error } => write!(f, "non-fatal listener error: {}", error),
-            Event::IncomingOneWayMessage {
-                source: node_id,
-                message,
-            } => write!(f, "message from {}: {}", node_id, message),
             Event::NetworkRequest { request } => write!(f, "request: {}", request),
             Event::NetworkInfoRequest { info_request } => {
                 write!(f, "info request: {}", info_request)

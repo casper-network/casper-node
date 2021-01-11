@@ -34,7 +34,7 @@ use crate::{
         highway_core::{
             endorsement::{Endorsement, SignedEndorsement},
             evidence::Evidence,
-            highway::{Endorsements, SignedWireUnit, WireUnit},
+            highway::{Endorsements, HashedWireUnit, SignedWireUnit, WireUnit},
             validators::{ValidatorIndex, ValidatorMap},
         },
         traits::Context,
@@ -44,6 +44,12 @@ use crate::{
 };
 use block::Block;
 use tallies::Tallies;
+
+// TODO: The restart mechanism only persists and loads our own latest unit, so that we don't
+// equivocate after a restart. It doesn't yet persist our latest endorsed units, so we could
+// accidentally endorse conflicting votes. Fix this and enable slashing for conflicting
+// endorsements again.
+pub(super) const TODO_ENDORSEMENT_EVIDENCE_DISABLED: bool = true;
 
 #[derive(Debug, Error, PartialEq, Clone)]
 pub(crate) enum UnitError {
@@ -247,12 +253,12 @@ impl<C: Context> State<C> {
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
-    pub(crate) fn opt_evidence(&self, idx: ValidatorIndex) -> Option<&Evidence<C>> {
-        self.opt_fault(idx).and_then(Fault::evidence)
+    pub(crate) fn maybe_evidence(&self, idx: ValidatorIndex) -> Option<&Evidence<C>> {
+        self.maybe_fault(idx).and_then(Fault::evidence)
     }
 
     /// Returns endorsements for `unit`, if any.
-    pub(crate) fn opt_endorsements(&self, unit: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
+    pub(crate) fn maybe_endorsements(&self, unit: &C::Hash) -> Option<Vec<SignedEndorsement<C>>> {
         self.endorsements.get(unit).map(|signatures| {
             signatures
                 .iter_some()
@@ -263,7 +269,7 @@ impl<C: Context> State<C> {
 
     /// Returns whether evidence against validator nr. `idx` is known.
     pub(crate) fn has_evidence(&self, idx: ValidatorIndex) -> bool {
-        self.opt_evidence(idx).is_some()
+        self.maybe_evidence(idx).is_some()
     }
 
     /// Returns whether we have all endorsements for `unit`.
@@ -289,7 +295,7 @@ impl<C: Context> State<C> {
 
     /// Returns hash of unit that needs to be endorsed.
     pub(crate) fn needs_endorsements(&self, unit: &SignedWireUnit<C>) -> Option<C::Hash> {
-        unit.wire_unit
+        unit.wire_unit()
             .endorsed
             .iter()
             .find(|hash| !self.endorsements.contains_key(&hash))
@@ -303,7 +309,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the fault type of validator nr. `idx`, if it is known to be faulty.
-    pub(crate) fn opt_fault(&self, idx: ValidatorIndex) -> Option<&Fault<C>> {
+    pub(crate) fn maybe_fault(&self, idx: ValidatorIndex) -> Option<&Fault<C>> {
         self.faults.get(&idx)
     }
 
@@ -323,7 +329,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the unit with the given hash, if present.
-    pub(crate) fn opt_unit(&self, hash: &C::Hash) -> Option<&Unit<C>> {
+    pub(crate) fn maybe_unit(&self, hash: &C::Hash) -> Option<&Unit<C>> {
         self.units.get(hash)
     }
 
@@ -334,17 +340,17 @@ impl<C: Context> State<C> {
 
     /// Returns the unit with the given hash. Panics if not found.
     pub(crate) fn unit(&self, hash: &C::Hash) -> &Unit<C> {
-        self.opt_unit(hash).expect("unit hash must exist")
+        self.maybe_unit(hash).expect("unit hash must exist")
     }
 
     /// Returns the block contained in the unit with the given hash, if present.
-    pub(crate) fn opt_block(&self, hash: &C::Hash) -> Option<&Block<C>> {
+    pub(crate) fn maybe_block(&self, hash: &C::Hash) -> Option<&Block<C>> {
         self.blocks.get(hash)
     }
 
     /// Returns the block contained in the unit with the given hash. Panics if not found.
     pub(crate) fn block(&self, hash: &C::Hash) -> &Block<C> {
-        self.opt_block(hash).expect("block hash must exist")
+        self.maybe_block(hash).expect("block hash must exist")
     }
 
     /// Returns the complete protocol state's latest panorama.
@@ -368,16 +374,16 @@ impl<C: Context> State<C> {
     ///
     /// The unit must be valid (see `validate_unit`), and its dependencies satisfied.
     pub(crate) fn add_valid_unit(&mut self, swunit: SignedWireUnit<C>) {
-        let wunit = &swunit.wire_unit;
-        let hash = wunit.hash();
+        let wunit = swunit.wire_unit();
+        let hash = swunit.hash();
         if self.has_unit(&hash) {
             warn!(%hash, "called add_valid_unit twice");
             return;
         }
         let instance_id = wunit.instance_id;
         let fork_choice = self.fork_choice(&wunit.panorama).cloned();
-        let (unit, opt_value) = Unit::new(swunit, fork_choice.as_ref(), self);
-        if let Some(value) = opt_value {
+        let (unit, maybe_value) = Unit::new(swunit, fork_choice.as_ref(), self);
+        if let Some(value) = maybe_value {
             let block = Block::new(fork_choice, value, self);
             self.blocks.insert(hash, block);
         }
@@ -411,6 +417,9 @@ impl<C: Context> State<C> {
     /// evidence (see `Evidence::validate`). Returns `false` if the evidence was not added because
     /// the perpetrator is banned or we already have evidence against them.
     pub(crate) fn add_evidence(&mut self, evidence: Evidence<C>) -> bool {
+        if TODO_ENDORSEMENT_EVIDENCE_DISABLED && matches!(evidence, Evidence::Endorsements { .. }) {
+            return false;
+        }
         let idx = evidence.perpetrator();
         match self.faults.get(&idx) {
             Some(&Fault::Banned) | Some(&Fault::Direct(_)) => return false,
@@ -457,6 +466,19 @@ impl<C: Context> State<C> {
         }
     }
 
+    /// Returns whether this state already includes an endorsement of `uhash` by `vidx`.
+    pub(crate) fn has_endorsement(&self, uhash: &C::Hash, vidx: ValidatorIndex) -> bool {
+        self.endorsements
+            .get(uhash)
+            .map(|vmap| vmap[vidx].is_some())
+            .unwrap_or(false)
+            || self
+                .incomplete_endorsements
+                .get(uhash)
+                .map(|ends| ends.contains_key(&vidx))
+                .unwrap_or(false)
+    }
+
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
     /// ones.
     ///
@@ -467,6 +489,9 @@ impl<C: Context> State<C> {
         endorsements: &Endorsements<C>,
         instance_id: &C::InstanceId,
     ) -> Vec<Evidence<C>> {
+        if TODO_ENDORSEMENT_EVIDENCE_DISABLED {
+            return Vec::new();
+        }
         let uhash = endorsements.unit();
         let unit = self.unit(&uhash);
         if !self.has_evidence(unit.creator) {
@@ -503,8 +528,12 @@ impl<C: Context> State<C> {
             known_vidx_endorsements
                 .chain(known_vidx_incomplete_endorsements)
                 .find(|(uhash2, _)| {
-                    // TODO: Limit the difference of sequence numbers?
-                    self.unit(uhash2).creator == unit.creator && !self.is_compatible(&uhash, uhash2)
+                    let unit2 = self.unit(uhash2);
+                    let ee_limit = self.params().endorsement_evidence_limit();
+                    self.unit(uhash2).creator == unit.creator
+                        && !self.is_compatible(&uhash, uhash2)
+                        && unit.seq_number.saturating_add(ee_limit) >= unit2.seq_number
+                        && unit2.seq_number.saturating_add(ee_limit) >= unit.seq_number
                 })
                 .map(|(uhash2, sig2)| {
                     if unit.seq_number <= self.unit(uhash2).seq_number {
@@ -517,26 +546,21 @@ impl<C: Context> State<C> {
 
         // Create an Evidence instance for each conflict we found.
         conflicting_endorsements
-            .filter_map(|(vidx, uhash1, sig1, uhash2, sig2)| {
+            .map(|(vidx, uhash1, sig1, uhash2, sig2)| {
                 let unit1 = self.unit(uhash1);
-                let unit2 = self.unit(uhash2);
-                let ee_limit = self.params().endorsement_evidence_limit();
-                if unit1.seq_number.saturating_add(ee_limit) < unit2.seq_number {
-                    return None;
-                }
                 let swimlane2 = self
                     .swimlane(uhash2)
                     .skip(1)
                     .take_while(|(_, pred2)| pred2.seq_number >= unit1.seq_number)
                     .map(|(pred2_hash, _)| self.wire_unit(pred2_hash, *instance_id).unwrap())
                     .collect();
-                Some(Evidence::Endorsements {
+                Evidence::Endorsements {
                     endorsement1: SignedEndorsement::new(Endorsement::new(*uhash1, vidx), *sig1),
                     unit1: self.wire_unit(uhash1, *instance_id).unwrap(),
                     endorsement2: SignedEndorsement::new(Endorsement::new(*uhash2, vidx), *sig2),
                     unit2: self.wire_unit(uhash2, *instance_id).unwrap(),
                     swimlane2,
-                })
+                }
             })
             .collect()
     }
@@ -547,9 +571,9 @@ impl<C: Context> State<C> {
         hash: &C::Hash,
         instance_id: C::InstanceId,
     ) -> Option<SignedWireUnit<C>> {
-        let unit = self.opt_unit(hash)?.clone();
-        let opt_block = self.opt_block(hash);
-        let value = opt_block.map(|block| block.value.clone());
+        let unit = self.maybe_unit(hash)?.clone();
+        let maybe_block = self.maybe_block(hash);
+        let value = maybe_block.map(|block| block.value.clone());
         let endorsed = unit.claims_endorsed().cloned().collect();
         let wunit = WireUnit {
             panorama: unit.panorama.clone(),
@@ -562,7 +586,7 @@ impl<C: Context> State<C> {
             endorsed,
         };
         Some(SignedWireUnit {
-            wire_unit: wunit,
+            hashed_wire_unit: HashedWireUnit::new_with_hash(wunit, *hash),
             signature: unit.signature,
         })
     }
@@ -620,7 +644,7 @@ impl<C: Context> State<C> {
     /// Returns an error if `swunit` is invalid. This can be called even if the dependencies are
     /// not present yet.
     pub(crate) fn pre_validate_unit(&self, swunit: &SignedWireUnit<C>) -> Result<(), UnitError> {
-        let wunit = &swunit.wire_unit;
+        let wunit = swunit.wire_unit();
         let creator = wunit.creator;
         if creator.0 as usize >= self.validator_count() {
             error!("Nonexistent validator should be rejected in Highway::pre_validate_unit.");
@@ -650,7 +674,7 @@ impl<C: Context> State<C> {
     /// Returns an error if `swunit` is invalid. Must only be called once `pre_validate_unit`
     /// returned `Ok` and all dependencies have been added to the state.
     pub(crate) fn validate_unit(&self, swunit: &SignedWireUnit<C>) -> Result<(), UnitError> {
-        let wunit = &swunit.wire_unit;
+        let wunit = swunit.wire_unit();
         let creator = wunit.creator;
         let panorama = &wunit.panorama;
         let timestamp = wunit.timestamp;
@@ -664,8 +688,8 @@ impl<C: Context> State<C> {
             return Err(UnitError::SequenceNumber);
         }
         let r_id = round_id(timestamp, wunit.round_exp);
-        let opt_prev_unit = wunit.previous().map(|vh| self.unit(vh));
-        if let Some(prev_unit) = opt_prev_unit {
+        let maybe_prev_unit = wunit.previous().map(|vh| self.unit(vh));
+        if let Some(prev_unit) = maybe_prev_unit {
             if prev_unit.round_exp != wunit.round_exp {
                 // The round exponent must not change within a round: Even with respect to the
                 // greater of the two exponents, a round boundary must be between the units.
@@ -695,7 +719,7 @@ impl<C: Context> State<C> {
         if wunit.value.is_some() {
             // If this unit is a block, it must be the first unit in this round, its timestamp must
             // match the round ID, and the creator must be the round leader.
-            if opt_prev_unit.map_or(false, |pv| pv.round_id() == r_id)
+            if maybe_prev_unit.map_or(false, |pv| pv.round_id() == r_id)
                 || timestamp != r_id
                 || self.leader(r_id) != creator
             {
@@ -845,7 +869,7 @@ impl<C: Context> State<C> {
         //   citations by creator's earlier units. So the latest of those earlier units would
         //   already be violating the LNC itself, and thus would not have been added to the state.
         // * Otherwise store the unique naively cited fork in naive_fork.
-        let mut opt_naive_fork = None;
+        let mut maybe_naive_fork = None;
         {
             // Returns true if any endorsed unit cites the given unit.
             let seen_by_endorsed = |hash| endorsed.iter().any(|e_hash| self.sees(e_hash, hash));
@@ -865,14 +889,14 @@ impl<C: Context> State<C> {
                         // No need to traverse further downward.
                         if !seen_by_endorsed(eq_hash) {
                             // The fork is cited naively!
-                            match opt_naive_fork {
+                            match maybe_naive_fork {
                                 // It's the first naively cited fork we found.
-                                None => opt_naive_fork = Some(eq_hash),
+                                None => maybe_naive_fork = Some(eq_hash),
                                 Some(other_hash) => {
                                     // If eq_hash is later than other_hash, it is the tip of the
                                     // same fork. If it is earlier, then other_hash is the tip.
                                     if self.sees_correct(eq_hash, other_hash) {
-                                        opt_naive_fork = Some(eq_hash);
+                                        maybe_naive_fork = Some(eq_hash);
                                     } else if !self.sees_correct(other_hash, eq_hash) {
                                         return false; // We found two incompatible forks!
                                     }
@@ -892,7 +916,7 @@ impl<C: Context> State<C> {
                 }
             }
         }
-        let naive_fork = match opt_naive_fork {
+        let naive_fork = match maybe_naive_fork {
             None => return true, // No forks are cited naively.
             Some(naive_fork) => naive_fork,
         };
@@ -900,8 +924,8 @@ impl<C: Context> State<C> {
         // Iterate over all earlier units by creator, and find all forks by eq_idx they
         // naively cite. If any of those forks are incompatible with naive_fork, the LNC is
         // violated.
-        let mut opt_pred_hash = panorama[creator].correct();
-        while let Some(pred_hash) = opt_pred_hash {
+        let mut maybe_pred_hash = panorama[creator].correct();
+        while let Some(pred_hash) = maybe_pred_hash {
             let pred_unit = self.unit(pred_hash);
             // Returns true if any endorsed (according to pred_unit) unit cites the given unit.
             let seen_by_endorsed = |hash| {
@@ -941,7 +965,7 @@ impl<C: Context> State<C> {
                 // haven't found conflicting naively cited forks yet, there are none.
                 return true;
             }
-            opt_pred_hash = pred_unit.previous();
+            maybe_pred_hash = pred_unit.previous();
         }
         true // No earlier messages, so no conflicting naively cited forks.
     }
@@ -983,8 +1007,8 @@ impl<C: Context> State<C> {
         mut pan: Panorama<C>,
     ) -> Panorama<C> {
         // Make sure the panorama sees the creator's own previous unit.
-        let opt_prev_uhash = self.panorama()[creator].correct();
-        if let Some(prev_uhash) = opt_prev_uhash {
+        let maybe_prev_uhash = self.panorama()[creator].correct();
+        if let Some(prev_uhash) = maybe_prev_uhash {
             if pan[creator].correct() != Some(prev_uhash) {
                 pan = pan.merge(self, &self.inclusive_panorama(prev_uhash));
             }
@@ -996,7 +1020,7 @@ impl<C: Context> State<C> {
         // `pan` violates the LNC.
         // Start from the creator's previous unit, mark all faulty
         // validators as faulty, and add only endorsed units from correct validators.
-        pan = opt_prev_uhash.map_or_else(
+        pan = maybe_prev_uhash.map_or_else(
             || Panorama::new(self.validator_count()),
             |prev_uhash| self.inclusive_panorama(prev_uhash),
         );

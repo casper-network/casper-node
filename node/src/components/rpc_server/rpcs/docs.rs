@@ -25,7 +25,9 @@ use super::{
     Error, ReactorEventT, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
     RpcWithoutParamsExt,
 };
-use crate::{components::CLIENT_API_VERSION, effect::EffectBuilder};
+use crate::{
+    components::CLIENT_API_VERSION, effect::EffectBuilder, rpcs::chain::GetEraInfoBySwitchBlock,
+};
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -76,6 +78,9 @@ static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     );
     schema.push_with_params::<GetItem>("returns a stored value from the network");
     schema.push_with_params::<GetBalance>("returns a purse's balance from the network");
+    schema.push_with_optional_params::<GetEraInfoBySwitchBlock>(
+        "returns an EraInfo from the network",
+    );
     schema.push_without_params::<GetAuctionInfo>(
         "returns the bids and validators as of the most recently added Block",
     );

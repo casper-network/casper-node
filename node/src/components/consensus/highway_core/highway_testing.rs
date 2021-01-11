@@ -32,7 +32,7 @@ use crate::{
             },
             queue::QueueEntry,
         },
-        traits::{Context, ValidatorSecret},
+        traits::{ConsensusValueT, Context, ValidatorSecret},
         BlockContext,
     },
     types::Timestamp,
@@ -40,6 +40,12 @@ use crate::{
 };
 
 type ConsensusValue = Vec<u32>;
+
+impl ConsensusValueT for ConsensusValue {
+    fn needs_validation(&self) -> bool {
+        !self.is_empty()
+    }
+}
 
 const TEST_MIN_ROUND_EXP: u8 = 12;
 const TEST_MAX_ROUND_EXP: u8 = 19;
@@ -243,14 +249,16 @@ impl HighwayValidator {
                                 // Create an equivocating message, with a different timestamp.
                                 // TODO: Don't send both messages to every peer. Add different
                                 // strategies.
-                                let mut wunit = swunit.wire_unit.clone();
-                                wunit.timestamp += 1.into();
-                                let secret = TestSecret(wunit.creator.0.into());
-                                let swunit2 = SignedWireUnit::new(wunit, &secret, rng);
-                                vec![
-                                    msg,
-                                    HighwayMessage::NewVertex(Box::new(Vertex::Unit(swunit2))),
-                                ]
+                                let mut wunit2 = swunit.wire_unit().clone();
+                                match wunit2.value.as_mut() {
+                                    None => wunit2.timestamp += 1.into(),
+                                    Some(v) => v.push(0),
+                                }
+                                let secret = TestSecret(wunit2.creator.0.into());
+                                let hwunit2 = wunit2.into_hashed();
+                                let swunit2 = SignedWireUnit::new(hwunit2, &secret, rng);
+                                let vertex2 = Box::new(Vertex::Unit(swunit2));
+                                vec![msg, HighwayMessage::NewVertex(vertex2)]
                             }
                             _ => vec![msg],
                         }
@@ -857,12 +865,12 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     TEST_MAX_ROUND_EXP,
                     TEST_MIN_ROUND_EXP,
                     TEST_END_HEIGHT,
-                    Timestamp::now(),
+                    Timestamp::zero(),
                     Timestamp::zero(), // Length depends only on block number.
                     TEST_ENDORSEMENT_EVIDENCE_LIMIT,
                 );
                 let mut highway = Highway::new(instance_id, validators.clone(), params);
-                let effects = highway.activate_validator(vid, v_sec, start_time);
+                let effects = highway.activate_validator(vid, v_sec, start_time, None);
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));
 
@@ -1135,7 +1143,6 @@ mod test_harness {
     }
 
     #[test]
-    #[ignore] // TODO(HWY-206)
     fn liveness_test_some_equivocate() {
         let _ = logging::init_with_config(&LoggingConfig::new(LoggingFormat::Text, true, true));
 

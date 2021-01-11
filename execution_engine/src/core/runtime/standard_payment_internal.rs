@@ -1,6 +1,7 @@
 use casper_types::{
     standard_payment::{AccountProvider, MintProvider, ProofOfStakeProvider, StandardPayment},
-    system_contract_errors, ApiError, Key, RuntimeArgs, URef, U512,
+    system_contract_errors::{mint, pos},
+    ApiError, Key, RuntimeArgs, URef, U512,
 };
 
 use crate::{
@@ -11,15 +12,28 @@ use crate::{
 
 pub(crate) const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
 
+impl From<execution::Error> for Option<ApiError> {
+    fn from(exec_error: execution::Error) -> Self {
+        match exec_error {
+            // This is used to propagate [`execution::Error::GasLimit`] to make sure
+            // [`StanadrdPayment`] contract running natively supports propagating gas limit
+            // errors without a panic.
+            execution::Error::GasLimit => Some(mint::Error::GasLimit.into()),
+            // There are possibly other exec errors happening but such translation would be lossy.
+            _ => None,
+        }
+    }
+}
+
 impl<'a, R> AccountProvider for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
     fn get_main_purse(&self) -> Result<URef, ApiError> {
-        self.context
-            .get_main_purse()
-            .map_err(|_| ApiError::InvalidPurse)
+        self.context.get_main_purse().map_err(|exec_error| {
+            <Option<ApiError>>::from(exec_error).unwrap_or(ApiError::InvalidPurse)
+        })
     }
 }
 
@@ -35,10 +49,13 @@ where
         amount: U512,
     ) -> Result<(), ApiError> {
         let mint_contract_hash = self.get_mint_contract();
-        match self.mint_transfer(mint_contract_hash, source, target, amount, None) {
+        match self.mint_transfer(mint_contract_hash, None, source, target, amount, None) {
             Ok(Ok(_)) => Ok(()),
-            Ok(Err(api_error)) => Err(api_error),
-            Err(_) => Err(ApiError::Transfer),
+            Ok(Err(mint_error)) => Err(mint_error.into()),
+            Err(exec_error) => {
+                let maybe_api_error: Option<ApiError> = exec_error.into();
+                Err(maybe_api_error.unwrap_or(ApiError::Transfer))
+            }
         }
     }
 }
@@ -57,10 +74,9 @@ where
                 METHOD_GET_PAYMENT_PURSE,
                 RuntimeArgs::new(),
             )
-            .map_err(|_| {
-                ApiError::ProofOfStake(
-                    system_contract_errors::pos::Error::PaymentPurseNotFound as u8,
-                )
+            .map_err(|exec_error| {
+                let maybe_api_error: Option<ApiError> = exec_error.into();
+                maybe_api_error.unwrap_or_else(|| pos::Error::PaymentPurseNotFound.into())
             })?;
 
         let payment_purse_ref: URef = cl_value.into_t()?;

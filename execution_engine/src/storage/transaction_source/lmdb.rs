@@ -1,13 +1,18 @@
 use std::path::Path;
 
 use casper_types::bytesrepr::Bytes;
-use lmdb::{self, Database, Environment, RoTransaction, RwTransaction, WriteFlags};
+use lmdb::{
+    self, Database, Environment, EnvironmentFlags, RoTransaction, RwTransaction, WriteFlags,
+};
 
 use crate::storage::{
     error,
     transaction_source::{Readable, Transaction, TransactionSource, Writable},
     MAX_DBS,
 };
+
+/// Filename for the LMDB database created by the EE.
+const EE_DB_FILENAME: &str = "data.lmdb";
 
 impl<'a> Transaction for RoTransaction<'a> {
     type Error = lmdb::Error;
@@ -71,10 +76,12 @@ impl LmdbEnvironment {
         max_readers: u32,
     ) -> Result<Self, error::Error> {
         let env = Environment::new()
+            // Set the flag to manage our own directory like in the storage component.
+            .set_flags(EnvironmentFlags::NO_SUB_DIR)
             .set_max_dbs(MAX_DBS)
             .set_map_size(map_size)
             .set_max_readers(max_readers)
-            .open(path.as_ref())?;
+            .open(&path.as_ref().join(EE_DB_FILENAME))?;
         Ok(LmdbEnvironment { env })
     }
 

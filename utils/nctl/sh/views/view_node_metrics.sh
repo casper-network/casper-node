@@ -1,72 +1,66 @@
 #!/usr/bin/env bash
-#
-# Renders node metrics to stdout.
-# Globals:
-#   NCTL - path to nctl home directory.
+
+source "$NCTL"/sh/utils/main.sh
+
+#######################################
+# Renders chain height at specified node(s).
 # Arguments:
-#   Network ordinal identifier.
 #   Node ordinal identifier.
+#   Metric identifier.
+#######################################
+function main()
+{
+    local NODE_ID=${1}
+    local METRIC=${2}
+
+    if [ "$NODE_ID" = "all" ]; then
+        for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
+        do
+            do_render "$NODE_ID" "$METRIC"
+        done
+    else
+        do_render "$NODE_ID" "$METRIC"
+    fi
+}
 
 #######################################
 # Displays to stdout current node metrics.
-# Globals:
-#   NCTL - path to nctl home directory.
 # Arguments:
 #   Network ordinal identifier.
 #   Node ordinal identifier.
 #   Metric name.
 #######################################
-function _view_metrics() {
-    endpoint=$(get_node_address_rest $1 $2)/metrics
-    if [ $3 = "all" ]; then
-        curl -s --location --request GET $endpoint  
+function do_render()
+{
+    local NODE_ID=${1}
+    local METRICS=${2}
+    local ENDPOINT
+
+    ENDPOINT="$(get_node_address_rest "$NODE_ID")"/metrics
+
+    if [ "$METRICS" = "all" ]; then
+        curl -s --location --request GET "$ENDPOINT"  
     else
-        echo "network #$1 :: node #$2 :: "$(curl -s --location --request GET $endpoint | grep $3 | tail -n 1)
+        echo "node #$NODE_ID :: $(curl -s --location --request GET "$ENDPOINT" | grep "$METRICS" | tail -n 1)"
     fi
 }
 
-#######################################
-# Destructure input args.
-#######################################
+# ----------------------------------------------------------------
+# ENTRY POINT
+# ----------------------------------------------------------------
 
-# Unset to avoid parameter collisions.
-unset metric
-unset net
-unset node
+unset NODE_ID
+unset METRIC
 
 for ARGUMENT in "$@"
 do
-    KEY=$(echo $ARGUMENT | cut -f1 -d=)
-    VALUE=$(echo $ARGUMENT | cut -f2 -d=)
+    KEY=$(echo "$ARGUMENT" | cut -f1 -d=)
+    VALUE=$(echo "$ARGUMENT" | cut -f2 -d=)
     case "$KEY" in
-        metric) metric=${VALUE} ;;
-        net) net=${VALUE} ;;
-        node) node=${VALUE} ;;
+        metric) METRIC=${VALUE} ;;
+        node) NODE_ID=${VALUE} ;;
         *)
     esac
 done
 
-# Set defaults.
-metric=${metric:-"all"}
-net=${net:-1}
-node=${node:-"all"}
-
-#######################################
-# Main
-#######################################
-
-# Import utils.
-source $NCTL/sh/utils.sh
-
-# Import net vars.
-source $(get_path_to_net_vars $net)
-
-# Render metrics.
-if [ $node = "all" ]; then
-    for IDX in $(seq 1 $NCTL_NET_NODE_COUNT)
-    do
-        _view_metrics $net $IDX $metric
-    done
-else
-    _view_metrics $net $node $metric
-fi
+main "${NODE_ID:-"all"}" "${METRIC:-"all"}"
