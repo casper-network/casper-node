@@ -10,12 +10,18 @@ use libp2p::{
     Multiaddr,
 };
 use serde::Serialize;
+use static_assertions::const_assert;
 
 use super::OneWayMessage;
 use crate::{
     effect::requests::{NetworkInfoRequest, NetworkRequest},
+    protocol::Message,
     types::NodeId,
 };
+use core::mem;
+
+const _NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<Message>>();
+const_assert!(_NETWORK_EVENT_SIZE < 89);
 
 #[derive(Debug, From, Serialize)]
 pub enum Event<P> {

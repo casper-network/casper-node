@@ -1,15 +1,22 @@
 use std::{
     fmt::{self, Debug, Display, Formatter},
-    io,
+    io, mem,
     net::SocketAddr,
 };
 
 use derive_more::From;
 use serde::Serialize;
+use static_assertions::const_assert;
 use tokio::net::TcpStream;
 
 use super::{Error, GossipedAddress, Message, NodeId, Transport};
-use crate::effect::requests::{NetworkInfoRequest, NetworkRequest};
+use crate::{
+    effect::requests::{NetworkInfoRequest, NetworkRequest},
+    protocol::Message as ProtocolMessage,
+};
+
+const _SMALL_NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
+const_assert!(_SMALL_NETWORK_EVENT_SIZE < 89);
 
 #[derive(Debug, From, Serialize)]
 pub enum Event<P> {

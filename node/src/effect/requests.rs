@@ -7,12 +7,14 @@ use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
+    mem,
     sync::Arc,
 };
 
 use datasize::DataSize;
 use semver::Version;
 use serde::Serialize;
+use static_assertions::const_assert;
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -51,6 +53,11 @@ use crate::{
     utils::DisplayIter,
     Chainspec,
 };
+
+const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
+const _STATE_REQUEST_SIZE: usize = mem::size_of::<StateStoreRequest>();
+const_assert!(_STORAGE_REQUEST_SIZE < 89);
+const_assert!(_STATE_REQUEST_SIZE < 89);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -190,6 +197,7 @@ where
 #[derive(Debug, Serialize)]
 /// A storage request.
 #[must_use]
+#[repr(u8)]
 pub enum StorageRequest {
     /// Store given block.
     PutBlock {
@@ -339,6 +347,7 @@ impl Display for StorageRequest {
 
 /// State store request.
 #[derive(DataSize, Debug, Serialize)]
+#[repr(u8)]
 pub enum StateStoreRequest {
     /// Stores a piece of state to storage.
     Save {

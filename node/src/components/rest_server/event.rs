@@ -1,11 +1,18 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    mem,
+};
 
 use derive_more::From;
+use static_assertions::const_assert;
 
 use crate::{
     effect::{requests::RestRequest, Responder},
     types::NodeId,
 };
+
+const _REST_EVENT_SIZE: usize = mem::size_of::<Event>();
+const_assert!(_REST_EVENT_SIZE < 89);
 
 #[derive(Debug, From)]
 pub enum Event {

@@ -1,5 +1,6 @@
 use std::{
     fmt::{self, Formatter},
+    mem,
     sync::Arc,
 };
 
@@ -7,6 +8,7 @@ use datasize::DataSize;
 use derive_more::From;
 use fmt::Display;
 use serde::{Deserialize, Serialize};
+use static_assertions::const_assert;
 
 use super::{BlockHeight, BlockProposerDeploySets};
 use crate::{
@@ -14,6 +16,9 @@ use crate::{
     types::{DeployHash, DeployHeader, ProtoBlock},
     Chainspec,
 };
+
+const _BLOCK_PROPOSER_EVENT_SIZE: usize = mem::size_of::<Event>();
+const_assert!(_BLOCK_PROPOSER_EVENT_SIZE < 89);
 
 /// A wrapper over `DeployHeader` to differentiate between wasm-less transfers and wasm headers.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]

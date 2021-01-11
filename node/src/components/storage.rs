@@ -106,8 +106,8 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 use static_assertions::const_assert;
 use std::mem;
-const _EVENT_SIZE: usize = mem::size_of::<Event>();
-const_assert!(_EVENT_SIZE <= 96);
+const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
+const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
 #[derive(Debug, From, Serialize)]
 #[repr(u8)]
