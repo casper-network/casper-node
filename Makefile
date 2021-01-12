@@ -18,7 +18,6 @@ EXPLORER    = $(shell find ./smart_contracts/contracts/explorer    -mindepth 1 -
 INTEGRATION = $(shell find ./smart_contracts/contracts/integration -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 PROFILING   = $(shell find ./smart_contracts/contracts/profiling   -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 SRE         = $(shell find ./smart_contracts/contracts/SRE         -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-# SYSTEM      = $(shell find ./smart_contracts/contracts/system      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 TEST        = $(shell find ./smart_contracts/contracts/test        -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 
 BENCH_CONTRACTS     := $(patsubst %, build-contract-rs/%, $(BENCH))
@@ -40,22 +39,13 @@ INTEGRATION += \
 	local-state \
 	remove-associated-key \
 	transfer-to-account-u512
-	# modified-system-upgrader \
-	# pos-bonding \
-	# standard-payment \
 
 HIGHWAY_CONTRACTS += \
 	pos-install \
 	pos
 
-# SYSTEM_CONTRACTS          := $(patsubst %, build-contract-rs/%,                 $(SYSTEM))
-# SYSTEM_CONTRACTS_FEATURED := $(patsubst %, build-system-contract-featured-rs/%, $(SYSTEM))
-
 CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
-# PACKAGED_SYSTEM_CONTRACTS = mint_install.wasm pos_install.wasm standard_payment_install.wasm auction_install.wasm
-# TOOL_TARGET_DIR           = grpc/cargo_casper/target
-# TOOL_WASM_DIR             = grpc/cargo_casper/wasm
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
 	grpc/server \
@@ -83,12 +73,6 @@ build-contract-rs/%:
 	        --package $* \
 	        --target wasm32-unknown-unknown
 
-# build-system-contract-featured-rs/%:
-# 	$(CARGO) build \
-# 	        --release $(filter-out --release, $(CARGO_FLAGS)) \
-# 	        --manifest-path "smart_contracts/contracts/system/$*/Cargo.toml" $(if $(FEATURES),$(if $(filter $(HIGHWAY_CONTRACTS), $*),--features $(FEATURES))) \
-# 	        --target wasm32-unknown-unknown
-
 build-contracts-rs: \
 	$(BENCH_CONTRACTS) \
 	$(CLIENT_CONTRACTS) \
@@ -97,10 +81,6 @@ build-contracts-rs: \
 	$(PROFILING_CONTRACTS) \
 	$(SRE_CONTRACTS) \
 	$(TEST_CONTRACTS)
-	# $(SYSTEM_CONTRACTS) \
-
-# .PHONY: build-system-contracts
-# build-system-contracts: $(SYSTEM_CONTRACTS)
 
 .PHONY: build-client-contracts
 build-client-contracts: $(CLIENT_CONTRACTS)
@@ -192,8 +172,6 @@ check: \
 clean:
 	rm -rf resources/local/chainspec.toml
 	rm -rf $(CONTRACT_TARGET_DIR_AS)
-	# rm -rf $(TOOL_TARGET_DIR)
-	# rm -rf $(TOOL_WASM_DIR)
 	$(CARGO) clean
 
 .PHONY: build-for-packaging
@@ -212,12 +190,6 @@ grpc/server/.rpm:
 .PHONY: rpm
 rpm: grpc/server/.rpm
 	cd grpc/server && $(CARGO) rpm build
-
-# target/system-contracts.tar.gz: $(SYSTEM_CONTRACTS)
-# 	tar -czf $@ -C $(CONTRACT_TARGET_DIR) $(PACKAGED_SYSTEM_CONTRACTS)
-
-# .PHONY: package-system-contracts
-# package-system-contracts: target/system-contracts.tar.gz
 
 .PHONY: package
 package:
