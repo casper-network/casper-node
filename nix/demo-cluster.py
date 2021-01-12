@@ -6,40 +6,73 @@ import click
 import kubernetes
 from kubernetes.client.rest import ApiException
 
-NAMESPACE = "testdemo"
 TAG = "9bddd925"
 
-def main():
+#: Prefix for namespaces of deployed networks. Prevents accidental deletion of namespaces like
+#  `default`.
+NETWORK_NAME_PREFIX = "casper-"
+
+
+def k8s():
     kubernetes.config.load_kube_config()
-    v1 = kubernetes.client.CoreV1Api()
-
-    # Create a new testnetwork
+    return kubernetes.client.CoreV1Api()
 
 
-    # Delete all previous data.
-    click.echo("Resetting namespace {}".format(NAMESPACE), nl=False)
-    delete_namespace(NAMESPACE, v1)
+@click.group()
+def cli():
+    pass
+
+
+@cli.command("destroy")
+@click.argument("name")
+def destroy(name):
+    """Kill a potentially running network"""
+
+    api = k8s()
+
+    network_name = NETWORK_NAME_PREFIX + name
+
+    if not namespace_exists(api, network_name):
+        click.echo("Does not exist: {}".format(network_name))
+        return
+
+    click.echo("Deleting namespace {}".format(network_name), nl=False)
+    delete_namespace(api, network_name)
     click.echo()
+
+
+def main():
     v1.create_namespace({"metadata": {"name": NAMESPACE}})
 
 
+def namespace_exists(api, name):
+    """Checks whether a given namespace exists"""
+    try:
+        ns = api.read_namespace(name)
+    except ApiException as e:
+        if e.status != 404:
+            raise
+        return False
+    return True
 
-def delete_namespace(name, api):
-    watch = kubernetes.watch.Watch()
 
+def delete_namespace(api, name):
+    """Delete a namespace and watch for it to terminate"""
     # It seems the watch API is not supported for namespace reading? We poll manually.
     while True:
-        try:
-            ns = api.read_namespace(NAMESPACE)
-        except ApiException as e:
-            if e.status != 404:
-                raise
-            return
+        if namespace_exists(api, name):
+            try:
+                api.delete_namespace(name)
+            except ApiException as e:
+                if e.status != 404:
+                    raise
+                break
+        else:
+            break
 
         click.echo(".", nl=False)
-        api.delete_namespace(name)
         time.sleep(0.250)
 
 
 if __name__ == "__main__":
-    main()
+    cli()
