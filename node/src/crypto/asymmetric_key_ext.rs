@@ -91,9 +91,9 @@ pub trait AsymmetricKeyExt: Sized {
 
 impl AsymmetricKeyExt for SecretKey {
     fn generate_ed25519() -> Result<Self, Error> {
-        let mut bytes = [0u8; Self::SECP256K1_LENGTH];
+        let mut bytes = [0u8; Self::ED25519_LENGTH];
         getrandom::getrandom(&mut bytes[..]).expect("RNG failure!");
-        Ok(SecretKey::secp256k1(bytes))
+        Ok(SecretKey::ed25519(bytes))
     }
 
     fn generate_secp256k1() -> Result<Self, Error> {

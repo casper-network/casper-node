@@ -769,4 +769,16 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         let from_uncompressed_hex = PublicKey::from_hex(&uncompressed_hex).unwrap();
         assert_eq!(public_key, from_uncompressed_hex);
     }
+
+    #[test]
+    fn generate_ed25519_should_generate_an_ed25519_key() {
+        let secret_key = SecretKey::generate_ed25519().unwrap();
+        assert!(matches!(secret_key, SecretKey::Ed25519(_)))
+    }
+
+    #[test]
+    fn generate_secp256k1_should_generate_an_secp256k1_key() {
+        let secret_key = SecretKey::generate_secp256k1().unwrap();
+        assert!(matches!(secret_key, SecretKey::Secp256k1(_)))
+    }
 }
