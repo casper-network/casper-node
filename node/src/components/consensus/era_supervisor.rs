@@ -829,9 +829,8 @@ where
         let should_emit_error = self
             .era_supervisor
             .active_eras
-            .get(&self.era_supervisor.current_era)
-            .map(|era| !era.consensus.has_received_messages())
-            .unwrap_or(true);
+            .iter()
+            .all(|(_, era)| !era.consensus.has_received_messages());
         if should_emit_error {
             fatal!(
                 self.effect_builder,
