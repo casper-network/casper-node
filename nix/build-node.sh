@@ -7,6 +7,7 @@ set -eu
 TAG=$(git describe --always --dirty)
 TARGET_REPO=clmarc
 
+echo "Building using tag ${TAG}"
 nix-build --argstr tag "${TAG}" node-container.nix
 
 echo "Created new docker image casper-node:${TAG}."
