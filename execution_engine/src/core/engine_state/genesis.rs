@@ -46,9 +46,9 @@ use casper_types::{
     },
     contracts::{ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters},
     mint::{
-        ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_SOURCE, ARG_TARGET, METHOD_BALANCE, METHOD_CREATE,
-        METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD, METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER,
-        ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
+        ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE, ARG_TARGET,
+        METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
+        METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
     },
     proof_of_stake::{
         ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE,
@@ -60,6 +60,8 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 pub const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
+const BALANCE_UREF: &str = "balance_uref";
+const MINT_PURSE_BRIDGE: &str = "purse_uref_balance_uref_bridge";
 
 #[derive(Debug, Serialize)]
 pub enum GenesisResult {
@@ -415,7 +417,7 @@ pub(crate) enum GenesisPurse {
         balance_uref: URef,
         amount: U512,
     },
-    ValdiatorReward {
+    ValidatorReward {
         purse_uref: URef,
         balance_uref: URef,
         amount: U512,
@@ -437,6 +439,8 @@ pub(crate) enum GenesisPurse {
 #[derive(Clone, Debug)]
 pub enum GenesisError {
     MissingProofOfStakePaymentPurse,
+    MissingValidatorRewardPurse,
+    MissingDelegatorRewardPurse,
     CLValue(String),
 }
 
@@ -485,48 +489,31 @@ where
         self.tracking_copy.borrow_mut().effect()
     }
 
-    pub fn create_virtual_system_account(&self) -> Result<(), GenesisError> {
-        let virtual_system_account = {
-            let named_keys = NamedKeys::new();
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
-        };
-
-        // Persist the "virtual system account" to bootstrap the system with.
-        // It will get overwritten with the actual system account later in the process.
-        let key = Key::Account(SYSTEM_ACCOUNT_ADDR);
-        let value = { StoredValue::Account(virtual_system_account) };
-
-        self.tracking_copy.borrow_mut().write(key, value);
-
-        Ok(())
-    }
-
     pub fn create_mint(&self) -> Result<(ContractHash, Vec<GenesisPurse>), GenesisError> {
-        let round_seigniorage_rate_uref = {
-            let round_seigniorage_rate_uref = self
-                .uref_address_generator
-                .borrow_mut()
-                .new_uref(AccessRights::READ_ADD_WRITE);
+        let round_seigniorage_rate_uref =
+            {
+                let round_seigniorage_rate_uref = self
+                    .uref_address_generator
+                    .borrow_mut()
+                    .new_uref(AccessRights::READ_ADD_WRITE);
 
-            let round_seigniorage_rate: Ratio<U512> = {
-                let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
-                    self.exec_config.round_seigniorage_rate().into();
-                Ratio::new(
-                    round_seigniorage_rate_numer.into(),
-                    round_seigniorage_rate_denom.into(),
-                )
+                let round_seigniorage_rate: Ratio<U512> = {
+                    let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
+                        self.exec_config.round_seigniorage_rate().into();
+                    Ratio::new(
+                        round_seigniorage_rate_numer.into(),
+                        round_seigniorage_rate_denom.into(),
+                    )
+                };
+
+                self.tracking_copy.borrow_mut().write(
+                    round_seigniorage_rate_uref.into(),
+                    StoredValue::CLValue(CLValue::from_t(round_seigniorage_rate).map_err(
+                        |_| GenesisError::CLValue(ARG_ROUND_SEIGNIORAGE_RATE.to_string()),
+                    )?),
+                );
+                round_seigniorage_rate_uref
             };
-
-            self.tracking_copy.borrow_mut().write(
-                round_seigniorage_rate_uref.into(),
-                StoredValue::CLValue(
-                    CLValue::from_t(round_seigniorage_rate)
-                        .map_err(|_| GenesisError::CLValue("round_seigniorage_rate".to_string()))?,
-                ),
-            );
-            round_seigniorage_rate_uref
-        };
 
         let total_supply_uref = self
             .uref_address_generator
@@ -557,7 +544,7 @@ where
                         balance_uref,
                         amount,
                     }
-                    | GenesisPurse::ValdiatorReward {
+                    | GenesisPurse::ValidatorReward {
                         purse_uref,
                         balance_uref,
                         amount,
@@ -592,7 +579,7 @@ where
             total_supply_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(total_amount)
-                    .map_err(|_| GenesisError::CLValue("total_supply".to_string()))?,
+                    .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
             ),
         );
 
@@ -650,6 +637,26 @@ where
         let mut named_keys = NamedKeys::new();
         let mut validators = Bids::new();
 
+        let validator_reward_purse = genesis_purses
+            .iter()
+            .find_map(|item| match item {
+                GenesisPurse::ValidatorReward { purse_uref, .. } => Some(purse_uref),
+                _ => None,
+            })
+            .ok_or(GenesisError::MissingValidatorRewardPurse)?;
+        let named_key = Key::URef(*validator_reward_purse);
+        named_keys.insert(VALIDATOR_REWARD_PURSE_KEY.into(), named_key);
+
+        let delegator_reward_purse = genesis_purses
+            .iter()
+            .find_map(|item| match item {
+                GenesisPurse::DelegatorReward { purse_uref, .. } => Some(purse_uref),
+                _ => None,
+            })
+            .ok_or(GenesisError::MissingDelegatorRewardPurse)?;
+        let named_key = Key::URef(*delegator_reward_purse);
+        named_keys.insert(DELEGATOR_REWARD_PURSE_KEY.into(), named_key);
+
         for purses in genesis_purses {
             match purses {
                 GenesisPurse::GenesisValidator {
@@ -660,14 +667,6 @@ where
                 } => {
                     let founding_validator = Bid::locked(*purse_uref, *amount, locked_funds_period);
                     validators.insert(*public_key, founding_validator);
-                }
-                GenesisPurse::DelegatorReward { purse_uref, .. } => {
-                    let named_key = Key::URef(*purse_uref);
-                    named_keys.insert(DELEGATOR_REWARD_PURSE_KEY.into(), named_key);
-                }
-                GenesisPurse::ValdiatorReward { purse_uref, .. } => {
-                    let named_key = Key::URef(*purse_uref);
-                    named_keys.insert(VALIDATOR_REWARD_PURSE_KEY.into(), named_key);
                 }
                 _ => continue,
             }
@@ -684,7 +683,7 @@ where
             era_id_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(INITIAL_ERA_ID)
-                    .map_err(|_| GenesisError::CLValue("initial_era_id".to_string()))?,
+                    .map_err(|_| GenesisError::CLValue(ERA_ID_KEY.to_string()))?,
             ),
         );
         named_keys.insert(ERA_ID_KEY.into(), era_id_uref.into());
@@ -696,7 +695,7 @@ where
         self.tracking_copy.borrow_mut().write(
             initial_seigniorage_recipients_uref.into(),
             StoredValue::CLValue(CLValue::from_t(initial_seigniorage_recipients).map_err(
-                |_| GenesisError::CLValue("initial_seigniorage_recipients".to_string()),
+                |_| GenesisError::CLValue(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()),
             )?),
         );
         named_keys.insert(
@@ -712,7 +711,7 @@ where
             bids_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(validators)
-                    .map_err(|_| GenesisError::CLValue("validators".to_string()))?,
+                    .map_err(|_| GenesisError::CLValue(BIDS_KEY.to_string()))?,
             ),
         );
         named_keys.insert(BIDS_KEY.into(), bids_uref.into());
@@ -725,7 +724,7 @@ where
             unbonding_purses_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(UnbondingPurses::new())
-                    .map_err(|_| GenesisError::CLValue("unbonding_purses".to_string()))?,
+                    .map_err(|_| GenesisError::CLValue(UNBONDING_PURSES_KEY.to_string()))?,
             ),
         );
         named_keys.insert(UNBONDING_PURSES_KEY.into(), unbonding_purses_uref.into());
@@ -739,7 +738,7 @@ where
             validator_slots_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(validator_slots)
-                    .map_err(|_| GenesisError::CLValue("validator_slots".to_string()))?,
+                    .map_err(|_| GenesisError::CLValue(VALIDATOR_SLOTS_KEY.to_string()))?,
             ),
         );
         named_keys.insert(VALIDATOR_SLOTS_KEY.into(), validator_slots_uref.into());
@@ -752,7 +751,7 @@ where
             auction_delay_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(auction_delay)
-                    .map_err(|_| GenesisError::CLValue("auction_delay".to_string()))?,
+                    .map_err(|_| GenesisError::CLValue(AUCTION_DELAY_KEY.to_string()))?,
             ),
         );
         named_keys.insert(AUCTION_DELAY_KEY.into(), auction_delay_uref.into());
@@ -765,7 +764,7 @@ where
             locked_funds_period_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(locked_funds_period)
-                    .map_err(|_| GenesisError::CLValue("locked_funds_period".to_string()))?,
+                    .map_err(|_| GenesisError::CLValue(LOCKED_FUNDS_PERIOD_KEY.to_string()))?,
             ),
         );
         named_keys.insert(
@@ -782,7 +781,7 @@ where
             unbonding_delay_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(unbonding_delay)
-                    .map_err(|_| GenesisError::CLValue("unbonding_delay".to_string()))?,
+                    .map_err(|_| GenesisError::CLValue(UNBONDING_DELAY_KEY.to_string()))?,
             ),
         );
         named_keys.insert(UNBONDING_DELAY_KEY.into(), unbonding_delay_uref.into());
@@ -1162,7 +1161,7 @@ where
             amount: zero,
         });
         let urefs = self.create_purse(zero)?;
-        purses.push(GenesisPurse::ValdiatorReward {
+        purses.push(GenesisPurse::ValidatorReward {
             purse_uref: urefs.0,
             balance_uref: urefs.1,
             amount: zero,
@@ -1235,7 +1234,7 @@ where
             balance_uref.into(),
             StoredValue::CLValue(
                 CLValue::from_t(amount)
-                    .map_err(|_| GenesisError::CLValue("balance_uref".to_string()))?,
+                    .map_err(|_| GenesisError::CLValue(BALANCE_UREF.to_string()))?,
             ),
         );
         self.tracking_copy
@@ -1244,9 +1243,10 @@ where
         // store association between purse and balance urefs
         self.tracking_copy.borrow_mut().write(
             purse_uref.addr().into(),
-            StoredValue::CLValue(CLValue::from_t(Key::URef(balance_uref)).map_err(|_| {
-                GenesisError::CLValue("purse_uref_balance_uref_bridge".to_string())
-            })?),
+            StoredValue::CLValue(
+                CLValue::from_t(Key::URef(balance_uref))
+                    .map_err(|_| GenesisError::CLValue(MINT_PURSE_BRIDGE.to_string()))?,
+            ),
         );
 
         Ok((purse_uref, balance_uref))

@@ -152,11 +152,6 @@ where
             tracking_copy,
         );
 
-        // Create "virtual system account" object.
-        genesis_installer
-            .create_virtual_system_account()
-            .map_err(Error::Genesis)?;
-
         // Create mint
         let (mint_hash, purses) = genesis_installer.create_mint().map_err(Error::Genesis)?;
 
@@ -1093,6 +1088,10 @@ where
             }
         };
 
+        // vestigial system_contract_cache
+        self.system_contract_cache
+            .initialize_with_protocol_data(&protocol_data, &system_module);
+
         let base_key = Key::Account(deploy_item.address);
 
         // Get addr bytes from `address` (which is actually a Key)
@@ -1141,27 +1140,6 @@ where
                 return Ok(ExecutionResult::precondition_failure(error));
             }
         };
-
-        // Get mint system contract details
-        // payment_code_spec_6: system contract validity
-        let mint_hash = protocol_data.mint();
-
-        // cache mint module
-        if !self.system_contract_cache.has(mint_hash) {
-            self.system_contract_cache
-                .insert(mint_hash, system_module.clone());
-        }
-
-        // Get proof of stake system contract URef from account (an account on a
-        // different network may have a pos contract other than the CLPoS)
-        // payment_code_spec_6: system contract validity
-        let proof_of_stake_hash = protocol_data.proof_of_stake();
-
-        // cache proof_of_stake module
-        if !self.system_contract_cache.has(proof_of_stake_hash) {
-            self.system_contract_cache
-                .insert(proof_of_stake_hash, system_module.clone());
-        }
 
         // Get account main purse balance key
         // validation_spec_5: account main purse minimum balance
@@ -1347,7 +1325,7 @@ where
             // payment_code_spec_6: system contract validity
             let proof_of_stake_contract = match tracking_copy
                 .borrow_mut()
-                .get_contract(correlation_id, proof_of_stake_hash)
+                .get_contract(correlation_id, protocol_data.proof_of_stake())
             {
                 Ok(contract) => contract,
                 Err(error) => {
@@ -1591,7 +1569,7 @@ where
             // session, so we need to look them up again from the tracking copy
             let proof_of_stake_contract = match finalization_tc
                 .borrow_mut()
-                .get_contract(correlation_id, proof_of_stake_hash)
+                .get_contract(correlation_id, protocol_data.proof_of_stake())
             {
                 Ok(info) => info,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
@@ -1789,10 +1767,8 @@ where
             }
         };
 
-        if !self.system_contract_cache.has(auction_hash) {
-            self.system_contract_cache
-                .insert(auction_hash, system_module.clone());
-        }
+        self.system_contract_cache
+            .initialize_with_protocol_data(&protocol_data, &system_module);
 
         let virtual_system_account = {
             let named_keys = NamedKeys::new();
