@@ -40,3 +40,24 @@ Here is a brief overview on how to create a cluster on Hetzner's cheap cloud sto
 1. For any non-master node, run `curl -sfL https://get.k3s.io | K3S_URL=https://${SERVERIP}:6443 K3S_TOKEN=${NODETOKEN} sh -`, replacing `${SERVERIP}` with the master node's IP and `${NODETOKEN}` with the previously mentioned token.
 
 Setting `KUBECONFIG` to the path of the downloaded kubeconfig and running `kubectl get nodes` should show all nodes as online shortly after.
+
+### Enabling storage
+
+The final step is to create a storage provider, for which we will be using Longhorn. This is required to be able to offer persistent storage on nodes, see the [Longhorn example in the k3s docs](https://rancher.com/docs/k3s/latest/en/storage/) for details.
+
+The prerequisite is that the `open-iscsi` is installed **on the node itself**. Thus we enter each node and install it:
+
+```console
+# Shortcut to get node IPs
+NODE_IPS=$(kubectl get nodes -o 'jsonpath={.items[*].status.addresses[?(@.type=="InternalIP")].address}')
+for IP in ${NODE_IPS}; do
+    ssh root@$IP "hostname; apt-get -qq update && apt-get -qq install open-iscsi";
+done;
+# ...
+```
+
+With `iscsi` installed, we can now deploy longhorn:
+
+```console
+$ kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/master/deploy/longhorn.yaml
+```
