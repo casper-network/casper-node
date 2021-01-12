@@ -575,10 +575,13 @@ where
         add_to_blocklist: bool,
     ) -> Effects<Event<P>> {
         if let Some(incoming) = self.incoming.remove(&peer_id) {
+            trace!(%peer_id, "removing peer from the incoming connections");
             let _ = self.pending.remove(&incoming.peer_address);
         }
         if let Some(outgoing) = self.outgoing.remove(&peer_id) {
+            trace!(%peer_id, "removing peer from the outgoing connections");
             if add_to_blocklist {
+                trace!(%peer_id, "blacklisting peer");
                 self.blocklist.insert(outgoing.peer_address);
             }
         }
