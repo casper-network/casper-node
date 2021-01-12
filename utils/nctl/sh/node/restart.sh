@@ -29,7 +29,8 @@ fi
 # Clear storage.
 if [ "$CLEAN" = true ]; then
     log "node-$NODE_ID: clearing storage"
-    rm "$(get_path_to_node_storage "$NODE_ID")/*"
+    rm "$(get_path_to_node_storage "$NODE_ID")/*.*"
+    rm "$(get_path_to_node_storage "$NODE_ID")-consensus/*.*"    
 fi
 
 # Start.

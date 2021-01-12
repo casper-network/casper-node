@@ -7,6 +7,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
     iter,
+    path::PathBuf,
 };
 
 use datasize::DataSize;
@@ -28,7 +29,8 @@ use crate::{
             highway::{
                 Dependency, GetDepOutcome, Highway, Params, PreValidatedVertex, ValidVertex, Vertex,
             },
-            validators::Validators,
+            state::{Observation, Panorama},
+            validators::{ValidatorIndex, Validators},
         },
         traits::{ConsensusValueT, Context, NodeIdT},
     },
@@ -478,6 +480,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 enum HighwayMessage<C: Context> {
     NewVertex(Vertex<C>),
     RequestDependency(Dependency<C>),
+    LatestStateRequest(Panorama<C>),
 }
 
 impl<I, C> ConsensusProtocol<I, C> for HighwayProtocol<I, C>
@@ -501,6 +504,12 @@ where
             Ok(HighwayMessage::NewVertex(v))
                 if self.highway.has_vertex(&v) || (evidence_only && !v.is_evidence()) =>
             {
+                trace!(
+                    has_vertex = self.highway.has_vertex(&v),
+                    is_evidence = v.is_evidence(),
+                    %evidence_only,
+                    "received an irrelevant vertex"
+                );
                 vec![]
             }
             Ok(HighwayMessage::NewVertex(v)) => {
@@ -509,6 +518,7 @@ where
                 let pvv = match self.highway.pre_validate_vertex(v) {
                     Ok(pvv) => pvv,
                     Err((_, err)) => {
+                        trace!("received an invalid vertex");
                         // drop the vertices that might have depended on this one
                         let faulty_senders = self.drop_dependent_vertices(vec![v_id]);
                         return iter::once(ProtocolOutcome::InvalidIncomingMessage(
@@ -524,7 +534,7 @@ where
                     Some(signed_wire_unit) => self
                         .highway
                         .state()
-                        .is_faulty(signed_wire_unit.wire_unit.creator),
+                        .is_faulty(signed_wire_unit.wire_unit().creator),
                     None => false,
                 };
 
@@ -532,8 +542,10 @@ where
                     Some(timestamp) if timestamp > Timestamp::now() => {
                         // If it's not from an equivocator and from the future, add to queue
                         if !is_faulty {
+                            trace!("received a vertex from the future; storing for later");
                             self.store_vertex_for_addition_later(timestamp, sender, pvv)
                         } else {
+                            trace!("received a vertex from the future from a faulty validator; dropping");
                             vec![]
                         }
                     }
@@ -541,31 +553,107 @@ where
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
                         if !is_faulty || self.vertex_deps.contains_key(&pvv.inner().id()) {
+                            trace!("received a valid vertex");
                             self.add_vertices(vec![(sender, pvv)], rng)
                         } else {
+                            trace!("received a vertex from a faulty validator that is not a dependency; dropping");
                             vec![]
                         }
                     }
                 }
             }
-            Ok(HighwayMessage::RequestDependency(dep)) => match self.highway.get_dependency(&dep) {
-                GetDepOutcome::None => {
-                    info!(?dep, ?sender, "requested dependency doesn't exist");
-                    vec![]
+            Ok(HighwayMessage::RequestDependency(dep)) => {
+                trace!("received a request for a dependency");
+                match self.highway.get_dependency(&dep) {
+                    GetDepOutcome::None => {
+                        info!(?dep, ?sender, "requested dependency doesn't exist");
+                        vec![]
+                    }
+                    GetDepOutcome::Evidence(vid) => {
+                        vec![ProtocolOutcome::SendEvidence(sender, vid)]
+                    }
+                    GetDepOutcome::Vertex(vv) => {
+                        let msg = HighwayMessage::NewVertex(vv.into());
+                        let serialized_msg =
+                            bincode::serialize(&msg).expect("should serialize message");
+                        // TODO: Should this be done via a gossip service?
+                        vec![ProtocolOutcome::CreatedTargetedMessage(
+                            serialized_msg,
+                            sender,
+                        )]
+                    }
                 }
-                GetDepOutcome::Evidence(vid) => vec![ProtocolOutcome::SendEvidence(sender, vid)],
-                GetDepOutcome::Vertex(vv) => {
-                    let msg = HighwayMessage::NewVertex(vv.into());
-                    let serialized_msg =
-                        bincode::serialize(&msg).expect("should serialize message");
-                    // TODO: Should this be done via a gossip service?
-                    vec![ProtocolOutcome::CreatedTargetedMessage(
-                        serialized_msg,
-                        sender,
-                    )]
-                }
-            },
+            }
+            Ok(HighwayMessage::LatestStateRequest(panorama)) => {
+                trace!("received a request for the latest state");
+                let state = self.highway.state();
+
+                let create_message =
+                    |observations: ((ValidatorIndex, &Observation<C>), &Observation<C>)| {
+                        let vid = observations.0 .0;
+                        let observations = (observations.0 .1, observations.1);
+                        match observations {
+                            (obs0, obs1) if obs0 == obs1 => None,
+
+                            (Observation::None, Observation::None) => None,
+
+                            (Observation::Faulty, _) => state.maybe_evidence(vid).map(|evidence| {
+                                HighwayMessage::NewVertex(Vertex::Evidence(evidence.clone()))
+                            }),
+
+                            (_, Observation::Faulty) => {
+                                Some(HighwayMessage::RequestDependency(Dependency::Evidence(vid)))
+                            }
+
+                            (Observation::None, Observation::Correct(hash)) => {
+                                Some(HighwayMessage::RequestDependency(Dependency::Unit(*hash)))
+                            }
+
+                            (Observation::Correct(hash), Observation::None) => state
+                                .wire_unit(hash, *self.highway.instance_id())
+                                .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu))),
+
+                            (Observation::Correct(our_hash), Observation::Correct(their_hash)) => {
+                                if state.has_unit(their_hash)
+                                    && state.panorama().sees_correct(state, their_hash)
+                                {
+                                    state
+                                        .wire_unit(our_hash, *self.highway.instance_id())
+                                        .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
+                                } else if !state.has_unit(their_hash) {
+                                    Some(HighwayMessage::RequestDependency(Dependency::Unit(
+                                        *their_hash,
+                                    )))
+                                } else {
+                                    None
+                                }
+                            }
+                        }
+                    };
+
+                state
+                    .panorama()
+                    .enumerate()
+                    .zip(&panorama)
+                    .filter_map(create_message)
+                    .map(|msg| {
+                        let serialized_msg =
+                            bincode::serialize(&msg).expect("should serialize message");
+                        ProtocolOutcome::CreatedTargetedMessage(serialized_msg, sender.clone())
+                    })
+                    .collect()
+            }
         }
+    }
+
+    fn handle_new_peer(&mut self, peer_id: I) -> Vec<ProtocolOutcome<I, C>> {
+        trace!(?peer_id, "connected to a new peer");
+        let msg = HighwayMessage::LatestStateRequest(self.highway.state().panorama().clone());
+        let serialized_msg = bincode::serialize(&msg).expect("should serialize message");
+        vec![ProtocolOutcome::CreatedTargetedMessage(
+            serialized_msg,
+            peer_id,
+        )]
     }
 
     fn handle_timer(
@@ -639,8 +727,11 @@ where
         our_id: C::ValidatorId,
         secret: C::ValidatorSecret,
         timestamp: Timestamp,
+        unit_hash_file: Option<PathBuf>,
     ) -> Vec<ProtocolOutcome<I, C>> {
-        let av_effects = self.highway.activate_validator(our_id, secret, timestamp);
+        let av_effects = self
+            .highway
+            .activate_validator(our_id, secret, timestamp, unit_hash_file);
         self.process_av_effects(av_effects)
     }
 
@@ -683,7 +774,7 @@ where
     }
 
     fn has_received_messages(&self) -> bool {
-        self.highway.state().is_empty()
+        !self.highway.state().is_empty() || !self.vertex_deps.is_empty()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -692,5 +783,9 @@ where
 
     fn is_active(&self) -> bool {
         self.highway.is_active()
+    }
+
+    fn instance_id(&self) -> &C::InstanceId {
+        self.highway.instance_id()
     }
 }

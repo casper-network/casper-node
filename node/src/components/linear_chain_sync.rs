@@ -31,11 +31,10 @@ use datasize::DataSize;
 use rand::{seq::SliceRandom, Rng};
 use tracing::{error, info, trace, warn};
 
-use casper_types::U512;
+use casper_types::{PublicKey, U512};
 
 use super::{fetcher::FetchResult, Component};
 use crate::{
-    crypto::asymmetric_key::PublicKey,
     effect::{
         requests::{BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects,

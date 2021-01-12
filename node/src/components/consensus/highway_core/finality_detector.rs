@@ -26,7 +26,7 @@ pub(crate) struct FttExceeded(Weight);
 /// An incremental finality detector.
 ///
 /// It reuses information between subsequent calls, so it must always be applied to the same
-/// `State` instance.
+/// `State` instance: Later calls of `run` must see the same or a superset of the previous state.
 #[derive(Debug)]
 pub(crate) struct FinalityDetector<C: Context> {
     /// The most recent known finalized block.
@@ -45,7 +45,6 @@ impl<C: Context> FinalityDetector<C> {
     }
 
     /// Returns all blocks that have been finalized since the last call.
-    // TODO: Verify the consensus instance ID?
     pub(crate) fn run<'a>(
         &'a mut self,
         highway: &'a Highway<C>,

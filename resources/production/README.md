@@ -66,12 +66,13 @@ Sep 10 10:37:15 joe-ubuntu casper-node[826251]: Sep 10 10:37:15.205 INFO  [caspe
 
 ### Reading logs
 
-Logs were requested to be removed from journald. They now are created in `/var/log/casper/casper-node.log`.
-To generate log files, `40-casper-node.conf` is installed in `/etc/rsyslog.d`. Log rotation is setup with
-`casper-node` in `/etc/logrotate.d`.  If you wish to change log location from `var/log/casper` you need
-to change both of these files.
+Logs are created in `/var/log/casper/casper-node.log`.
 
-Logs can be viewed with `tail /var/log/casper-node.log`. 
+Log redirection (casper-node stdout to file) is set in the systemd service file (`/lib/systemd/system/casper-node.service`) 
+Log rotation is setup in `/etc/logrotate.d/casper-node`.  
+If you wish to change log location from `/var/log/casper` you need to change both of these files.
+
+Logs can be viewed with `tail -f /var/log/casper/casper-node.log`. 
 
 ### Starting and stopping services
 

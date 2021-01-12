@@ -4,21 +4,27 @@
 extern crate alloc;
 
 use alloc::string::String;
-use auction::DelegationRate;
+
 use casper_contract::contract_api::{runtime, system};
-use casper_types::{auction, runtime_args, ApiError, PublicKey, RuntimeArgs, URef, U512};
+use casper_types::{
+    auction::{self, DelegationRate},
+    runtime_args, ApiError, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PURSE: &str = "purse";
 const ADD_BID: &str = "add_bid";
 const WITHDRAW_BID: &str = "withdraw_bid";
 const ARG_ENTRY_POINT_NAME: &str = "method";
-const TEST_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([42; 32]);
+
+fn test_public_key() -> PublicKey {
+    SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into()
+}
 
 fn add_bid(bond_amount: U512, bonding_purse: URef) {
     let contract_hash = system::get_auction();
     let args = runtime_args! {
-        auction::ARG_PUBLIC_KEY => TEST_PUBLIC_KEY,
+        auction::ARG_PUBLIC_KEY => test_public_key(),
         auction::ARG_SOURCE_PURSE => bonding_purse,
         auction::ARG_DELEGATION_RATE => DelegationRate::from(42u8),
         auction::ARG_AMOUNT => bond_amount,
@@ -29,7 +35,7 @@ fn add_bid(bond_amount: U512, bonding_purse: URef) {
 fn withdraw_bid(unbond_amount: Option<U512>) {
     let contract_hash = system::get_auction();
     let args = runtime_args! {
-        auction::ARG_PUBLIC_KEY => TEST_PUBLIC_KEY,
+        auction::ARG_PUBLIC_KEY => test_public_key(),
         ARG_AMOUNT => unbond_amount,
     };
     runtime::call_contract(contract_hash, WITHDRAW_BID, args)

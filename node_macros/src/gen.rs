@@ -3,7 +3,7 @@ use crate::{
     util::suffix_ident,
 };
 use proc_macro2::TokenStream;
-use syn::export::quote::quote;
+use quote::quote;
 
 /// Generates the top level reactor `struct`.
 ///

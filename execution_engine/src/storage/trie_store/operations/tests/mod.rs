@@ -2,6 +2,7 @@ mod keys;
 mod proptests;
 mod read;
 mod scan;
+mod synchronize;
 mod write;
 
 use std::{collections::HashMap, convert};
@@ -479,6 +480,63 @@ fn create_6_leaf_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr:
     Ok((root_hash, tries))
 }
 
+fn create_6_leaf_corrupt_trie() -> Result<(Blake2bHash, Vec<HashedTestTrie>), bytesrepr::Error> {
+    let leaves = hash_test_tries(&TEST_LEAVES)?;
+
+    let node_1 = HashedTrie::new(Trie::node(&[
+        (0, Pointer::LeafPointer(leaves[0].hash)),
+        (1, Pointer::LeafPointer(leaves[1].hash)),
+    ]))?;
+
+    let node_2 = HashedTrie::new(Trie::node(&[
+        (0, Pointer::NodePointer(node_1.hash)),
+        (255, Pointer::LeafPointer(leaves[3].hash)),
+    ]))?;
+
+    let ext = HashedTrie::new(Trie::extension(
+        vec![0u8],
+        Pointer::NodePointer(node_2.hash),
+    ))?;
+
+    let node_3: HashedTestTrie = HashedTrie::new(Trie::node(&[
+        (0, Pointer::NodePointer(ext.hash)),
+        (2, Pointer::LeafPointer(leaves[2].hash)),
+    ]))?;
+
+    let node_4 = HashedTrie::new(Trie::node(&[
+        (0, Pointer::NodePointer(node_3.hash)),
+        (2, Pointer::LeafPointer(leaves[5].hash)),
+    ]))?;
+
+    let node_5 = HashedTrie::new(Trie::node(&[
+        (0, Pointer::NodePointer(node_4.hash)),
+        (1, Pointer::LeafPointer(leaves[4].hash)),
+    ]))?;
+
+    let root = HashedTrie::new(Trie::node(&[(0, Pointer::NodePointer(node_5.hash))]))?;
+
+    let root_hash = root.hash;
+
+    let mut corrupt_node_3: HashedTestTrie = HashedTrie::new(Trie::node(&[
+        (0, Pointer::NodePointer(Blake2bHash::new(b"yep"))),
+        (2, Pointer::LeafPointer(leaves[2].hash)),
+    ]))?;
+
+    corrupt_node_3.hash = node_3.hash;
+
+    let parents: Vec<HashedTestTrie> =
+        vec![root, node_5, node_4, corrupt_node_3, ext, node_2, node_1];
+
+    let tries: Vec<HashedTestTrie> = {
+        let mut ret = Vec::new();
+        ret.extend(leaves);
+        ret.extend(parents);
+        ret
+    };
+
+    Ok((root_hash, tries))
+}
+
 fn put_tries<'a, K, V, R, S, E>(
     environment: &'a R,
     store: &S,
@@ -643,7 +701,7 @@ fn check_keys<K, V, T, S, E>(
     store: &S,
     root: &Blake2bHash,
     leaves: &[Trie<K, V>],
-) -> Result<bool, E>
+) -> bool
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug + Clone + Ord,
     V: ToBytes + FromBytes + Eq + std::fmt::Debug + Copy,
@@ -668,7 +726,7 @@ where
         tmp.sort();
         tmp
     };
-    Ok(expected == actual)
+    expected == actual
 }
 
 fn check_leaves<'a, K, V, R, S, E>(
@@ -719,7 +777,7 @@ where
         store,
         root,
         present,
-    )?);
+    ));
 
     txn.commit()?;
     Ok(())

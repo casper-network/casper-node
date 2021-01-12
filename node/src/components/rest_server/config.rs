@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// Default binding address for the REST HTTP server.
 ///
 /// Uses a fixed port per node, but binds on any interface.
-const DEFAULT_ADDRESS: &str = "0.0.0.0:8888";
+const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
 
 /// REST HTTP server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]

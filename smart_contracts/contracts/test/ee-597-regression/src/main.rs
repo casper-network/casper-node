@@ -3,15 +3,17 @@
 
 extern crate alloc;
 
-use auction::DelegationRate;
 use casper_contract::contract_api::{account, runtime, system};
-use casper_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, URef, U512};
-
-const VALID_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([42; 32]);
+use casper_types::{
+    auction::{self, DelegationRate},
+    runtime_args, ContractHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+};
 
 fn bond(contract_hash: ContractHash, bond_amount: U512, bonding_purse: URef) {
+    let valid_public_key: PublicKey = SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
+
     let runtime_args = runtime_args! {
-        auction::ARG_PUBLIC_KEY => VALID_PUBLIC_KEY,
+        auction::ARG_PUBLIC_KEY => valid_public_key,
         auction::ARG_SOURCE_PURSE => bonding_purse,
         auction::ARG_DELEGATION_RATE => DelegationRate::from(42u8),
         auction::ARG_AMOUNT => bond_amount,

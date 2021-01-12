@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// Default binding address for the JSON-RPC HTTP server.
 ///
 /// Uses a fixed port per node, but binds on any interface.
-const DEFAULT_ADDRESS: &str = "0.0.0.0:7777";
+const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
 
 /// JSON-RPC HTTP server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]

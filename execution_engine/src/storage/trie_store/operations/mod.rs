@@ -3,6 +3,8 @@ mod tests;
 
 use std::{cmp, collections::VecDeque, convert::TryInto, mem};
 
+use tracing::warn;
+
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::{
@@ -22,6 +24,13 @@ pub enum ReadResult<V> {
     Found(V),
     NotFound,
     RootNotFound,
+}
+
+impl<V> ReadResult<V> {
+    #[cfg(test)]
+    pub fn is_found(&self) -> bool {
+        matches!(self, ReadResult::Found(_))
+    }
 }
 
 /// Returns a value from the corresponding key at a given root in a given store
@@ -215,6 +224,71 @@ where
     }
 }
 
+/// Given a root hash, find any try keys that are descendant from it that are:
+/// 1. referenced but not present in the database
+/// 2. referenced and present but whose values' hashes do not equal their keys (ie, corrupted)
+pub fn missing_trie_keys<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
+    txn: &T,
+    store: &S,
+    trie_key: Blake2bHash,
+) -> Result<Vec<Blake2bHash>, E>
+where
+    K: ToBytes + FromBytes + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes + std::fmt::Debug,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    let mut missing_descendants = Vec::new();
+    let mut trie_keys_to_visit_queue = vec![trie_key];
+    while let Some(trie_key) = trie_keys_to_visit_queue.pop() {
+        let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
+        if let Some(trie_value) = &maybe_retrieved_trie {
+            let hash_of_trie_value = {
+                let node_bytes = trie_value.to_bytes()?;
+                Blake2bHash::new(&node_bytes)
+            };
+            if trie_key != hash_of_trie_value {
+                warn!(
+                    "Trie key {:?} has corrupted value {:?} (hash of value is {:?}); \
+                     adding to list of missing nodes",
+                    trie_key, trie_value, hash_of_trie_value
+                );
+                missing_descendants.push(trie_key);
+                continue;
+            }
+        }
+        match maybe_retrieved_trie {
+            // If we can't find the trie_key; it is missing and we'll return it
+            None => {
+                missing_descendants.push(trie_key);
+            }
+            // If we could retrieve the node and it is a leaf, the search can move on
+            Some(Trie::Leaf { .. }) => (),
+            // If we hit a pointer block, queue up all of the nodes it points to
+            Some(Trie::Node { pointer_block }) => {
+                for (_, pointer) in pointer_block.to_indexed_pointers() {
+                    match pointer {
+                        Pointer::LeafPointer(descendant_leaf_trie_key) => {
+                            trie_keys_to_visit_queue.push(descendant_leaf_trie_key)
+                        }
+                        Pointer::NodePointer(descendant_node_trie_key) => {
+                            trie_keys_to_visit_queue.push(descendant_node_trie_key)
+                        }
+                    }
+                }
+            }
+            // If we hit an extension block, add its pointer to the queue
+            Some(Trie::Extension { pointer, .. }) => {
+                trie_keys_to_visit_queue.push(pointer.into_hash())
+            }
+        }
+    }
+    Ok(missing_descendants)
+}
+
 struct TrieScan<K, V> {
     tip: Trie<K, V>,
     parents: Parents<K, V>,
@@ -326,8 +400,8 @@ where
 {
     let mut ret: Vec<(Blake2bHash, Trie<K, V>)> = Vec::new();
     let mut tip_hash = {
-        let trie_bytes = tip.to_bytes()?;
-        Blake2bHash::new(&trie_bytes)
+        let node_bytes = tip.to_bytes()?;
+        Blake2bHash::new(&node_bytes)
     };
     ret.push((tip_hash, tip.to_owned()));
 
@@ -397,7 +471,7 @@ fn add_node_to_parents<K, V>(
     path_to_leaf: &[u8],
     new_parent_node: Trie<K, V>,
     mut parents: Parents<K, V>,
-) -> Result<Parents<K, V>, bytesrepr::Error>
+) -> Parents<K, V>
 where
     K: ToBytes,
     V: ToBytes,
@@ -428,7 +502,7 @@ where
     };
     // Add node to parents, along with index to modify
     parents.push((index, new_parent_node));
-    Ok(parents)
+    parents
 }
 
 /// Takes paths to a new leaf and an existing leaf that share a common prefix,
@@ -609,7 +683,7 @@ where
                 } if key != existing_leaf_key => {
                     let existing_leaf_path = existing_leaf_key.to_bytes()?;
                     let (new_node, parents) = reparent_leaf(&path, &existing_leaf_path, parents)?;
-                    let parents = add_node_to_parents(&path, new_node, parents)?;
+                    let parents = add_node_to_parents(&path, new_node, parents);
                     rehash(new_leaf, parents)?
                 }
                 // This case is unreachable, but the compiler can't figure
@@ -618,7 +692,7 @@ where
                 // If the "tip" is an existing node, then we can add a pointer
                 // to the new leaf to the node's pointer block.
                 node @ Trie::Node { .. } => {
-                    let parents = add_node_to_parents(&path, node, parents)?;
+                    let parents = add_node_to_parents(&path, node, parents);
                     rehash(new_leaf, parents)?
                 }
                 // If the "tip" is an extension node, then we must modify or
@@ -629,7 +703,7 @@ where
                         parents,
                         maybe_hashed_child_extension,
                     } = split_extension(&path, extension, parents)?;
-                    let parents = add_node_to_parents(&path, new_node, parents)?;
+                    let parents = add_node_to_parents(&path, new_node, parents);
                     if let Some(hashed_extension) = maybe_hashed_child_extension {
                         let mut ret = vec![hashed_extension];
                         ret.extend(rehash(new_leaf, parents)?);
@@ -650,6 +724,28 @@ where
             Ok(WriteResult::Written(root_hash))
         }
     }
+}
+
+pub fn put_trie<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
+    txn: &mut T,
+    store: &S,
+    trie: &Trie<K, V>,
+) -> Result<(), E>
+where
+    K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes + Clone + Eq,
+    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    let trie_hash = {
+        let node_bytes = trie.to_bytes()?;
+        Blake2bHash::new(&node_bytes)
+    };
+    store.put(txn, &trie_hash, trie)?;
+    Ok(())
 }
 
 enum KeysIteratorState<K, V, S: TrieStore<K, V>> {

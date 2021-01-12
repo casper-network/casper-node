@@ -1,6 +1,7 @@
 //! Reactor used to join the network.
 
 use std::{
+    collections::BTreeMap,
     env,
     fmt::{self, Display, Formatter},
 };
@@ -10,6 +11,8 @@ use derive_more::From;
 use prometheus::Registry;
 use serde::Serialize;
 use tracing::{error, info, warn};
+
+use casper_types::{PublicKey, U512};
 
 use crate::{
     components::{
@@ -32,7 +35,6 @@ use crate::{
         storage::{self, Storage},
         Component,
     },
-    crypto::asymmetric_key::PublicKey,
     effect::{
         announcements::{
             BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
@@ -58,8 +60,6 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
-use casper_types::U512;
-use smallvec::alloc::collections::BTreeMap;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -414,12 +414,16 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
+        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
 
         let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), effect_builder);
+            EventStreamServer::new(config.event_stream_server.clone(), effect_builder)?;
 
-        let block_validator = BlockValidator::new();
+        let (block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
+        effects.extend(reactor::wrap_effects(
+            Event::BlockValidator,
+            block_validator_effects,
+        ));
 
         let deploy_fetcher = Fetcher::new(config.fetcher);
 

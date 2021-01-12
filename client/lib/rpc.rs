@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::{
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::hash::Digest,
     rpcs::{
         account::{PutDeploy, PutDeployParams},
         chain::{
@@ -23,7 +23,7 @@ use casper_node::{
     },
     types::{BlockHash, Deploy, DeployHash},
 };
-use casper_types::{bytesrepr::ToBytes, Key, RuntimeArgs, URef, U512};
+use casper_types::{bytesrepr::ToBytes, AsymmetricType, Key, PublicKey, RuntimeArgs, URef, U512};
 
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
@@ -58,7 +58,7 @@ impl RpcCall {
     /// `"http://127.0.0.1:7777"`.
     ///
     /// When `verbose` is `true`, the request will be printed to `stdout`.
-    pub(crate) fn new(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<Self> {
+    pub(crate) fn new(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Self {
         let rpc_id = if maybe_rpc_id.is_empty() {
             Id::from(rand::thread_rng().gen::<i64>())
         } else if let Ok(i64_id) = maybe_rpc_id.parse::<i64>() {
@@ -67,11 +67,11 @@ impl RpcCall {
             Id::from(maybe_rpc_id.to_string())
         };
 
-        Ok(Self {
+        Self {
             rpc_id,
             node_address: node_address.trim_end_matches('/').to_string(),
             verbose,
-        })
+        }
     }
 
     pub(crate) fn get_deploy(self, deploy_hash: &str) -> Result<JsonRpc> {

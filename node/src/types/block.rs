@@ -31,7 +31,7 @@ use thiserror::Error;
 use casper_types::auction::BLOCK_REWARD;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    U512,
+    PublicKey, SecretKey, Signature, U512,
 };
 
 use super::{Item, Tag, Timestamp};
@@ -41,8 +41,8 @@ use crate::{
     components::consensus::{self, EraId},
     crypto::{
         self,
-        asymmetric_key::{self, PublicKey, SecretKey, Signature},
         hash::{self, Digest},
+        AsymmetricKeyExt,
     },
     rpcs::docs::DocExample,
     types::{Deploy, DeployHash, NodeRng},
@@ -50,11 +50,11 @@ use crate::{
 };
 
 static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
-    let secret_key_1 = SecretKey::new_ed25519([0; 32]);
+    let secret_key_1 = SecretKey::ed25519([0; 32]);
     let public_key_1 = PublicKey::from(&secret_key_1);
     let equivocators = vec![public_key_1];
 
-    let secret_key_2 = SecretKey::new_ed25519([1; 32]);
+    let secret_key_2 = SecretKey::ed25519([1; 32]);
     let public_key_2 = PublicKey::from(&secret_key_2);
     let mut rewards = BTreeMap::new();
     rewards.insert(public_key_2, 1000);
@@ -96,11 +96,11 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         let mut next_era_validator_weights: BTreeMap<PublicKey, U512> = BTreeMap::new();
         next_era_validator_weights.insert(public_key, U512::from(123));
         next_era_validator_weights.insert(
-            PublicKey::from(&SecretKey::new_ed25519([5u8; SecretKey::ED25519_LENGTH])),
+            PublicKey::from(&SecretKey::ed25519([5u8; SecretKey::ED25519_LENGTH])),
             U512::from(456),
         );
         next_era_validator_weights.insert(
-            PublicKey::from(&SecretKey::new_ed25519([6u8; SecretKey::ED25519_LENGTH])),
+            PublicKey::from(&SecretKey::ed25519([6u8; SecretKey::ED25519_LENGTH])),
             U512::from(789),
         );
         Some(next_era_validator_weights)
@@ -114,7 +114,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         next_era_validator_weights,
     );
     let mut rng = NodeRng::seed_from_u64(0);
-    let signature = asymmetric_key::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
+    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
     block.append_proof(public_key, signature);
     block
 });
@@ -400,13 +400,11 @@ impl FinalizedBlock {
             let equivocators_count = rng.gen_range(0, 5);
             let rewards_count = rng.gen_range(0, 5);
             Some(EraEnd {
-                equivocators: iter::repeat_with(|| {
-                    PublicKey::from(&SecretKey::new_ed25519(rng.gen()))
-                })
-                .take(equivocators_count)
-                .collect(),
+                equivocators: iter::repeat_with(|| PublicKey::from(&SecretKey::ed25519(rng.gen())))
+                    .take(equivocators_count)
+                    .collect(),
                 rewards: iter::repeat_with(|| {
-                    let pub_key = PublicKey::from(&SecretKey::new_ed25519(rng.gen()));
+                    let pub_key = PublicKey::from(&SecretKey::ed25519(rng.gen()));
                     let reward = rng.gen_range(1, BLOCK_REWARD + 1);
                     (pub_key, reward)
                 })
@@ -417,7 +415,7 @@ impl FinalizedBlock {
             None
         };
         let era = rng.gen_range(0, 5);
-        let secret_key: SecretKey = SecretKey::new_ed25519(rng.gen());
+        let secret_key: SecretKey = SecretKey::ed25519(rng.gen());
         let public_key = PublicKey::from(&secret_key);
 
         FinalizedBlock::new(
@@ -929,7 +927,7 @@ impl Block {
         for _ in 0..signatures_count {
             let secret_key = SecretKey::random(rng);
             let public_key = PublicKey::from(&secret_key);
-            let signature = asymmetric_key::sign(block.hash.inner(), &secret_key, &public_key, rng);
+            let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, rng);
             block.append_proof(public_key, signature);
         }
 
@@ -1293,7 +1291,7 @@ impl FinalitySignature {
     ) -> Self {
         let mut bytes = block_hash.inner().to_vec();
         bytes.extend_from_slice(&era_id.0.to_le_bytes());
-        let signature = asymmetric_key::sign(bytes, &secret_key, &public_key, rng);
+        let signature = crypto::sign(bytes, &secret_key, &public_key, rng);
         FinalitySignature {
             block_hash,
             era_id,
@@ -1303,11 +1301,11 @@ impl FinalitySignature {
     }
 
     /// Verifies whether the signature is correct.
-    pub fn verify(&self) -> crypto::asymmetric_key::Result<()> {
+    pub fn verify(&self) -> crypto::Result<()> {
         // NOTE: This needs to be in sync with the `new` constructor.
         let mut bytes = self.block_hash.inner().to_vec();
         bytes.extend_from_slice(&self.era_id.0.to_le_bytes());
-        crypto::asymmetric_key::verify(bytes, &self.signature, &self.public_key)
+        crypto::verify(bytes, &self.signature, &self.public_key)
     }
 }
 
@@ -1431,7 +1429,7 @@ mod tests {
         let mut rng = TestRng::new();
         let block = Block::random(&mut rng);
         // Signature should be over both block hash and era id.
-        let (secret_key, public_key) = asymmetric_key::generate_ed25519_keypair();
+        let (secret_key, public_key) = crypto::generate_ed25519_keypair();
         let secret_rc = Rc::new(secret_key);
         let era_id = EraId(1);
         let fs = FinalitySignature::new(*block.hash(), era_id, &secret_rc, public_key, &mut rng);

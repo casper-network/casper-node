@@ -1,4 +1,5 @@
-use syn::{export::Span, Ident};
+use proc_macro2::Span;
+use syn::Ident;
 
 pub(crate) fn to_ident(s: &str) -> Ident {
     Ident::new(s, Span::call_site())

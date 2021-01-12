@@ -249,17 +249,16 @@ impl HighwayValidator {
                                 // Create an equivocating message, with a different timestamp.
                                 // TODO: Don't send both messages to every peer. Add different
                                 // strategies.
-                                let mut wunit = swunit.wire_unit.clone();
-                                match wunit.value.as_mut() {
-                                    None => wunit.timestamp += 1.into(),
+                                let mut wunit2 = swunit.wire_unit().clone();
+                                match wunit2.value.as_mut() {
+                                    None => wunit2.timestamp += 1.into(),
                                     Some(v) => v.push(0),
                                 }
-                                let secret = TestSecret(wunit.creator.0.into());
-                                let swunit2 = SignedWireUnit::new(wunit, &secret, rng);
-                                vec![
-                                    msg,
-                                    HighwayMessage::NewVertex(Box::new(Vertex::Unit(swunit2))),
-                                ]
+                                let secret = TestSecret(wunit2.creator.0.into());
+                                let hwunit2 = wunit2.into_hashed();
+                                let swunit2 = SignedWireUnit::new(hwunit2, &secret, rng);
+                                let vertex2 = Box::new(Vertex::Unit(swunit2));
+                                vec![msg, HighwayMessage::NewVertex(vertex2)]
                             }
                             _ => vec![msg],
                         }
@@ -871,7 +870,7 @@ impl<DS: DeliveryStrategy> HighwayTestHarnessBuilder<DS> {
                     TEST_ENDORSEMENT_EVIDENCE_LIMIT,
                 );
                 let mut highway = Highway::new(instance_id, validators.clone(), params);
-                let effects = highway.activate_validator(vid, v_sec, start_time);
+                let effects = highway.activate_validator(vid, v_sec, start_time, None);
 
                 let finality_detector = FinalityDetector::new(Weight(ftt));
 

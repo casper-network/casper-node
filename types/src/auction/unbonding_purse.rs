@@ -139,14 +139,17 @@ mod tests {
 
     use crate::{
         auction::{EraId, UnbondingPurse},
-        bytesrepr, AccessRights, PublicKey, URef, U512,
+        bytesrepr, AccessRights, PublicKey, SecretKey, URef, U512,
     };
 
     const BONDING_PURSE: URef = URef::new([41; 32], AccessRights::READ_ADD_WRITE);
     const UNBONDING_PURSE: URef = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
-    const VALIDATOR_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([42; 32]);
-    const UNBONDER_PUBLIC_KEY: PublicKey = PublicKey::Ed25519([43; 32]);
     const ERA_OF_WITHDRAWAL: EraId = EraId::max_value();
+
+    static VALIDATOR_PUBLIC_KEY: Lazy<PublicKey> =
+        Lazy::new(|| SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into());
+    static UNBONDER_PUBLIC_KEY: Lazy<PublicKey> =
+        Lazy::new(|| SecretKey::ed25519([43; SecretKey::ED25519_LENGTH]).into());
     static AMOUNT: Lazy<U512> = Lazy::new(|| U512::max_value() - 1);
 
     #[test]
@@ -154,8 +157,8 @@ mod tests {
         let unbonding_purse = UnbondingPurse {
             bonding_purse: BONDING_PURSE,
             unbonding_purse: UNBONDING_PURSE,
-            validator_public_key: VALIDATOR_PUBLIC_KEY,
-            unbonder_public_key: UNBONDER_PUBLIC_KEY,
+            validator_public_key: *VALIDATOR_PUBLIC_KEY,
+            unbonder_public_key: *UNBONDER_PUBLIC_KEY,
             era_of_creation: ERA_OF_WITHDRAWAL,
             amount: *AMOUNT,
         };
@@ -167,8 +170,8 @@ mod tests {
         let validator_unbonding_purse = UnbondingPurse::new(
             BONDING_PURSE,
             UNBONDING_PURSE,
-            VALIDATOR_PUBLIC_KEY,
-            VALIDATOR_PUBLIC_KEY,
+            *VALIDATOR_PUBLIC_KEY,
+            *VALIDATOR_PUBLIC_KEY,
             ERA_OF_WITHDRAWAL,
             *AMOUNT,
         );
@@ -180,8 +183,8 @@ mod tests {
         let delegator_unbonding_purse = UnbondingPurse::new(
             BONDING_PURSE,
             UNBONDING_PURSE,
-            VALIDATOR_PUBLIC_KEY,
-            UNBONDER_PUBLIC_KEY,
+            *VALIDATOR_PUBLIC_KEY,
+            *UNBONDER_PUBLIC_KEY,
             ERA_OF_WITHDRAWAL,
             *AMOUNT,
         );

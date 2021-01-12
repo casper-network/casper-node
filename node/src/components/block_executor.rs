@@ -4,7 +4,7 @@ mod metrics;
 
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
-    convert::{Infallible, TryInto},
+    convert::Infallible,
     fmt::Debug,
 };
 
@@ -23,14 +23,14 @@ use casper_execution_engine::{
     },
     storage::global_state::CommitResult,
 };
-use casper_types::{ExecutionResult, ProtocolVersion, U512};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, U512};
 
 use crate::{
     components::{
         block_executor::{event::State, metrics::BlockExecutorMetrics},
         Component,
     },
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::hash::Digest,
     effect::{
         announcements::BlockExecutorAnnouncement,
         requests::{
@@ -228,12 +228,12 @@ impl BlockExecutor {
                 let reward_items = era_end
                     .rewards
                     .iter()
-                    .map(|(&vid, &value)| RewardItem::new(vid.into(), value))
+                    .map(|(&vid, &value)| RewardItem::new(vid, value))
                     .collect();
                 let slash_items = era_end
                     .equivocators
                     .iter()
-                    .map(|&vid| SlashItem::new(vid.into()))
+                    .map(|&vid| SlashItem::new(vid))
                     .collect();
                 let request = StepRequest {
                     pre_state_hash: state.state_root_hash.into(),
@@ -257,7 +257,7 @@ impl BlockExecutor {
             state.finalized_block.timestamp().millis(),
             vec![Ok(deploy_item)],
             ProtocolVersion::V1_0_0,
-            state.finalized_block.proposer().into(),
+            state.finalized_block.proposer(),
         );
 
         // TODO: this is currently working coincidentally because we are passing only one
@@ -547,16 +547,6 @@ impl<REv: ReactorEventT> Component<REv> for BlockExecutor {
                         next_era_validators,
                     }) => {
                         state.state_root_hash = post_state_hash.into();
-                        let next_era_validators: BTreeMap<PublicKey, U512> = next_era_validators
-                            .into_iter()
-                            .filter_map(|(key, stake)| match key.try_into() {
-                                Ok(key) => Some((key, stake)),
-                                Err(error) => {
-                                    error!(%error, "error converting the bonded key");
-                                    None
-                                }
-                            })
-                            .collect();
                         self.finalize_block_execution(
                             effect_builder,
                             state,

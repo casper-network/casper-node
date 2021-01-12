@@ -1,10 +1,9 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    components::consensus::traits::ConsensusValueT, crypto::asymmetric_key::PublicKey,
-    types::ProtoBlock,
-};
+use casper_types::PublicKey;
+
+use crate::{components::consensus::traits::ConsensusValueT, types::ProtoBlock};
 
 /// A proposed block. Once the consensus protocol reaches agreement on it, it will be converted to
 /// a `FinalizedBlock`.
