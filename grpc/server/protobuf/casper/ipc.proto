@@ -460,10 +460,36 @@ message ChainSpec {
             uint32 withdraw_validator_reward = 11;
             uint32 read_era_id = 12;
         }
+
+        message MintCosts {
+            uint32 mint = 1;
+            uint32 reduce_total_supply = 2;
+            uint32 create = 3;
+            uint32 balance = 4;
+            uint32 transfer = 5;
+            uint32 read_base_round_reward = 6;
+        }
+
+        message ProofOfStakeCosts {
+            uint32 get_payment_purse = 1;
+            uint32 set_refund_purse = 2;
+            uint32 get_refund_purse = 3;
+            uint32 finalize_payment = 4;
+        }
+
+        message StandardPaymentCosts {
+            uint32 pay = 1;
+        }
         // Wasmless transfer cost expressed in gas
         uint64 wasmless_transfer_cost = 1;
         // Auction entrypoint costs table
         AuctionCosts auction_costs = 2;
+        // Mint entrypoint costs table
+        MintCosts mint_costs = 3;
+        // ProofOfstake entrypoint costs table
+        ProofOfStakeCosts proof_of_stake_costs = 4;
+        // Standard payment costs table
+        StandardPaymentCosts standard_payment_costs = 5;
     }
 
     message UpgradePoint {

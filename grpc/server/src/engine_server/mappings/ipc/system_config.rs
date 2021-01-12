@@ -1,6 +1,9 @@
 use std::convert::TryFrom;
 
-use casper_execution_engine::shared::system_config::{auction_costs::AuctionCosts, SystemConfig};
+use casper_execution_engine::shared::system_config::{
+    auction_costs::AuctionCosts, mint_costs::MintCosts, proof_of_stake_costs::ProofOfStakeCosts,
+    standard_payment_costs::StandardPaymentCosts, SystemConfig,
+};
 
 use crate::engine_server::{ipc, mappings::MappingError};
 
@@ -44,12 +47,87 @@ impl From<ipc::ChainSpec_SystemConfig_AuctionCosts> for AuctionCosts {
     }
 }
 
+impl From<MintCosts> for ipc::ChainSpec_SystemConfig_MintCosts {
+    fn from(mint_costs: MintCosts) -> Self {
+        let mut pb_mint_costs = ipc::ChainSpec_SystemConfig_MintCosts::new();
+
+        pb_mint_costs.set_mint(mint_costs.mint);
+        pb_mint_costs.set_reduce_total_supply(mint_costs.reduce_total_supply);
+        pb_mint_costs.set_create(mint_costs.create);
+        pb_mint_costs.set_balance(mint_costs.balance);
+        pb_mint_costs.set_transfer(mint_costs.transfer);
+        pb_mint_costs.set_read_base_round_reward(mint_costs.read_base_round_reward);
+
+        pb_mint_costs
+    }
+}
+
+impl From<ipc::ChainSpec_SystemConfig_MintCosts> for MintCosts {
+    fn from(pb_mint_costs: ipc::ChainSpec_SystemConfig_MintCosts) -> Self {
+        Self {
+            mint: pb_mint_costs.mint,
+            reduce_total_supply: pb_mint_costs.reduce_total_supply,
+            create: pb_mint_costs.create,
+            balance: pb_mint_costs.balance,
+            transfer: pb_mint_costs.transfer,
+            read_base_round_reward: pb_mint_costs.read_base_round_reward,
+        }
+    }
+}
+
+impl From<StandardPaymentCosts> for ipc::ChainSpec_SystemConfig_StandardPaymentCosts {
+    fn from(standard_payment_costs: StandardPaymentCosts) -> Self {
+        let mut pb_standard_payment_costs = ipc::ChainSpec_SystemConfig_StandardPaymentCosts::new();
+
+        pb_standard_payment_costs.set_pay(standard_payment_costs.pay);
+
+        pb_standard_payment_costs
+    }
+}
+
+impl From<ipc::ChainSpec_SystemConfig_StandardPaymentCosts> for StandardPaymentCosts {
+    fn from(pb_standard_payment_costs: ipc::ChainSpec_SystemConfig_StandardPaymentCosts) -> Self {
+        Self {
+            pay: pb_standard_payment_costs.pay,
+        }
+    }
+}
+
+impl From<ProofOfStakeCosts> for ipc::ChainSpec_SystemConfig_ProofOfStakeCosts {
+    fn from(proof_of_stake_costs: ProofOfStakeCosts) -> Self {
+        let mut pb_standard_payment_costs = ipc::ChainSpec_SystemConfig_ProofOfStakeCosts::new();
+
+        pb_standard_payment_costs.set_get_payment_purse(proof_of_stake_costs.get_payment_purse);
+        pb_standard_payment_costs.set_set_refund_purse(proof_of_stake_costs.set_refund_purse);
+        pb_standard_payment_costs.set_get_refund_purse(proof_of_stake_costs.get_refund_purse);
+        pb_standard_payment_costs.set_finalize_payment(proof_of_stake_costs.finalize_payment);
+
+        pb_standard_payment_costs
+    }
+}
+
+impl From<ipc::ChainSpec_SystemConfig_ProofOfStakeCosts> for ProofOfStakeCosts {
+    fn from(pb_proof_of_stake_costs: ipc::ChainSpec_SystemConfig_ProofOfStakeCosts) -> Self {
+        Self {
+            get_payment_purse: pb_proof_of_stake_costs.get_payment_purse,
+            set_refund_purse: pb_proof_of_stake_costs.set_refund_purse,
+            get_refund_purse: pb_proof_of_stake_costs.get_refund_purse,
+            finalize_payment: pb_proof_of_stake_costs.finalize_payment,
+        }
+    }
+}
+
 impl From<SystemConfig> for ipc::ChainSpec_SystemConfig {
     fn from(system_config: SystemConfig) -> Self {
         let mut pb_system_config = ipc::ChainSpec_SystemConfig::new();
 
         pb_system_config.set_wasmless_transfer_cost(system_config.wasmless_transfer_cost());
         pb_system_config.set_auction_costs(system_config.auction_costs().clone().into());
+        pb_system_config.set_mint_costs(system_config.mint_costs().clone().into());
+        pb_system_config
+            .set_proof_of_stake_costs(system_config.proof_of_stake_costs().clone().into());
+        pb_system_config
+            .set_standard_payment_costs(system_config.standard_payment_costs().clone().into());
 
         pb_system_config
     }
@@ -62,6 +140,9 @@ impl TryFrom<ipc::ChainSpec_SystemConfig> for SystemConfig {
         Ok(SystemConfig::new(
             pb_system_config.get_wasmless_transfer_cost(),
             pb_system_config.take_auction_costs().into(),
+            pb_system_config.take_mint_costs().into(),
+            pb_system_config.take_proof_of_stake_costs().into(),
+            pb_system_config.take_standard_payment_costs().into(),
         ))
     }
 }

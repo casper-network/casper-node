@@ -20,6 +20,15 @@ use casper_execution_engine::{
                 DEFAULT_WITHDRAW_BID_COST, DEFAULT_WITHDRAW_DELEGATOR_REWARD_COST,
                 DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST,
             },
+            mint_costs::{
+                MintCosts, DEFAULT_BALANCE_COST, DEFAULT_MINT_COST,
+                DEFAULT_REDUCE_TOTAL_SUPPLY_COST, DEFAULT_TRANSFER_COST,
+            },
+            proof_of_stake_costs::{
+                ProofOfStakeCosts, DEFAULT_FINALIZE_PAYMENT_COST, DEFAULT_GET_PAYMENT_PURSE_COST,
+                DEFAULT_GET_REFUND_PURSE_COST, DEFAULT_SET_REFUND_PURSE_COST,
+            },
+            standard_payment_costs::{StandardPaymentCosts, DEFAULT_PAY_COST},
             SystemConfig,
         },
     },
@@ -27,7 +36,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{self, DelegationRate},
-    runtime_args,
+    mint, proof_of_stake, runtime_args,
     system_contract_type::AUCTION,
     ProtocolVersion, PublicKey, RuntimeArgs, U512,
 };
@@ -39,6 +48,7 @@ static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_1.into());
 const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99;
+const TRANSFER_AMOUNT: u64 = 123;
 
 const DELEGATION_RATE: DelegationRate = 123;
 
@@ -60,7 +70,6 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
-#[cfg(not(feature = "use-system-contracts"))]
 #[ignore]
 #[test]
 fn should_verify_calling_auction_add_and_withdraw_bid_costs() {
@@ -105,12 +114,12 @@ fn should_verify_calling_auction_add_and_withdraw_bid_costs() {
     builder.exec(add_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(DEFAULT_ADD_BID_COST);
+    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_ADD_BID_COST);
     assert_eq!(
         balance_after,
-        balance_before - U512::from(BOND_AMOUNT) - call_cost
+        balance_before - U512::from(BOND_AMOUNT) - expected_call_cost
     );
-    assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
+    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 
     // Withdraw bid
     let withdraw_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -134,9 +143,9 @@ fn should_verify_calling_auction_add_and_withdraw_bid_costs() {
     builder.exec(withdraw_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(DEFAULT_WITHDRAW_BID_COST);
-    assert_eq!(balance_after, balance_before - call_cost);
-    assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
+    let expecetd_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_WITHDRAW_BID_COST);
+    assert_eq!(balance_after, balance_before - expecetd_call_cost);
+    assert_eq!(builder.last_exec_gas_cost().value(), expecetd_call_cost);
 }
 
 #[ignore]
@@ -149,8 +158,17 @@ fn should_observe_upgraded_add_and_withdraw_bid_call_cost() {
         withdraw_bid: NEW_WITHDRAW_BID_COST,
         ..Default::default()
     };
+    let new_mint_costs = MintCosts::default();
+    let new_standard_payment_costs = StandardPaymentCosts::default();
+    let new_proof_of_stake_costs = ProofOfStakeCosts::default();
 
-    let new_system_config = SystemConfig::new(new_wasmless_transfer_cost, new_auction_costs);
+    let new_system_config = SystemConfig::new(
+        new_wasmless_transfer_cost,
+        new_auction_costs,
+        new_mint_costs,
+        new_proof_of_stake_costs,
+        new_standard_payment_costs,
+    );
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -205,12 +223,12 @@ fn should_observe_upgraded_add_and_withdraw_bid_call_cost() {
     builder.exec(add_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(NEW_ADD_BID_COST);
+    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_ADD_BID_COST);
     assert_eq!(
         balance_after,
-        balance_before - U512::from(BOND_AMOUNT) - call_cost
+        balance_before - U512::from(BOND_AMOUNT) - expected_call_cost
     );
-    assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
+    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 
     // Withdraw bid
     let withdraw_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -235,12 +253,11 @@ fn should_observe_upgraded_add_and_withdraw_bid_call_cost() {
     builder.exec(withdraw_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(NEW_WITHDRAW_BID_COST);
+    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_WITHDRAW_BID_COST);
     assert_eq!(balance_after, balance_before - call_cost);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
 
-#[cfg(not(feature = "use-system-contracts"))]
 #[ignore]
 #[test]
 fn should_verify_calling_auction_delegate_and_undelegate_costs() {
@@ -301,12 +318,12 @@ fn should_verify_calling_auction_delegate_and_undelegate_costs() {
     builder.exec(delegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(DEFAULT_DELEGATE_COST);
+    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_DELEGATE_COST);
     assert_eq!(
         balance_after,
-        balance_before - U512::from(BID_AMOUNT) - call_cost
+        balance_before - U512::from(BID_AMOUNT) - expected_call_cost
     );
-    assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
+    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 
     // Withdraw bid
     let undelegate_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -331,12 +348,11 @@ fn should_verify_calling_auction_delegate_and_undelegate_costs() {
     builder.exec(undelegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(DEFAULT_UNDELEGATE_COST);
-    assert_eq!(balance_after, balance_before - call_cost);
-    assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
+    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_UNDELEGATE_COST);
+    assert_eq!(balance_after, balance_before - expected_call_cost);
+    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
 
-#[cfg(not(feature = "use-system-contracts"))]
 #[ignore]
 #[test]
 fn should_observe_upgraded_delegate_and_undelegate_call_cost() {
@@ -347,8 +363,17 @@ fn should_observe_upgraded_delegate_and_undelegate_call_cost() {
         undelegate: NEW_UNDELEGATE_COST,
         ..Default::default()
     };
+    let new_mint_costs = MintCosts::default();
+    let new_standard_payment_costs = StandardPaymentCosts::default();
+    let new_proof_of_stake_costs = ProofOfStakeCosts::default();
 
-    let new_system_config = SystemConfig::new(new_wasmless_transfer_cost, new_auction_costs);
+    let new_system_config = SystemConfig::new(
+        new_wasmless_transfer_cost,
+        new_auction_costs,
+        new_mint_costs,
+        new_proof_of_stake_costs,
+        new_standard_payment_costs,
+    );
 
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
@@ -420,7 +445,7 @@ fn should_observe_upgraded_delegate_and_undelegate_call_cost() {
     builder.exec(delegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(NEW_DELEGATE_COST);
+    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_DELEGATE_COST);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BID_AMOUNT) - call_cost
@@ -451,12 +476,76 @@ fn should_observe_upgraded_delegate_and_undelegate_call_cost() {
     builder.exec(undelegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(NEW_UNDELEGATE_COST);
+    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_UNDELEGATE_COST);
     assert_eq!(balance_after, balance_before - call_cost);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
 
-#[cfg(not(feature = "use-system-contracts"))]
+#[ignore]
+#[test]
+fn should_call_transfer_directly() {
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    let accounts = {
+        let validator_1 = GenesisAccount::new(
+            VALIDATOR_1,
+            *VALIDATOR_1_ADDR,
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(VALIDATOR_1_STAKE.into()),
+        );
+
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        tmp.push(validator_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    builder.run_genesis(&run_genesis_request);
+
+    let default_account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let validator_1_account = builder
+        .get_account(*VALIDATOR_1_ADDR)
+        .expect("should have account");
+
+    let mint_hash = builder.get_mint_contract_hash();
+
+    let source = default_account.main_purse();
+    let target = validator_1_account.main_purse();
+
+    let id = Some(0u64);
+
+    let transfer_amount = U512::from(TRANSFER_AMOUNT);
+
+    let transfer_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        mint_hash,
+        mint::METHOD_TRANSFER,
+        runtime_args! {
+            mint::ARG_TO => Some(*VALIDATOR_1_ADDR),
+            mint::ARG_SOURCE => source,
+            mint::ARG_TARGET => target,
+            mint::ARG_AMOUNT => U512::from(TRANSFER_AMOUNT),
+            mint::ARG_ID => id,
+        },
+    )
+    .build();
+
+    let balance_before = builder.get_purse_balance(source);
+    builder.exec(transfer_request).expect_success().commit();
+    let balance_after = builder.get_purse_balance(source);
+
+    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_TRANSFER_COST);
+    assert_eq!(
+        balance_after,
+        balance_before - transfer_amount - expected_call_cost
+    );
+    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
+}
+
 #[ignore]
 #[test]
 fn should_charge_for_errorneous_system_contract_calls() {
@@ -464,24 +553,13 @@ fn should_charge_for_errorneous_system_contract_calls() {
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
 
-    let exec_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        SYSTEM_CONTRACT_HASHES_NAME,
-        RuntimeArgs::default(),
-    )
-    .build();
-    builder.exec(exec_request).expect_success().commit();
+    let auction_hash = builder.get_auction_contract_hash();
+    let mint_hash = builder.get_mint_contract_hash();
+    let pos_hash = builder.get_pos_contract_hash();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-
-    let auction_hash = account
-        .named_keys()
-        .get(AUCTION)
-        .unwrap()
-        .into_hash()
-        .unwrap();
 
     // Entrypoints that could fail early due to missing arguments
     let entrypoint_calls = vec![
@@ -522,6 +600,24 @@ fn should_charge_for_errorneous_system_contract_calls() {
             auction::METHOD_WITHDRAW_VALIDATOR_REWARD,
             DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST,
         ),
+        (mint_hash, mint::METHOD_MINT, DEFAULT_MINT_COST),
+        (
+            mint_hash,
+            mint::METHOD_REDUCE_TOTAL_SUPPLY,
+            DEFAULT_REDUCE_TOTAL_SUPPLY_COST,
+        ),
+        (mint_hash, mint::METHOD_BALANCE, DEFAULT_BALANCE_COST),
+        (mint_hash, mint::METHOD_TRANSFER, DEFAULT_TRANSFER_COST),
+        (
+            pos_hash,
+            proof_of_stake::METHOD_SET_REFUND_PURSE,
+            DEFAULT_SET_REFUND_PURSE_COST,
+        ),
+        (
+            pos_hash,
+            proof_of_stake::METHOD_FINALIZE_PAYMENT,
+            DEFAULT_FINALIZE_PAYMENT_COST,
+        ),
     ];
 
     for (contract_hash, entrypoint, expected_cost) in entrypoint_calls {
@@ -548,13 +644,16 @@ fn should_charge_for_errorneous_system_contract_calls() {
 
         let balance_after = builder.get_purse_balance(account.main_purse());
 
-        let call_cost = U512::from(DEFAULT_WITHDRAW_BID_COST);
+        let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(expected_cost);
+        let lhs = balance_after;
+        let rhs = balance_before - call_cost;
         assert_eq!(
-            balance_after,
-            balance_before - call_cost,
-            "Calling a failed entrypoint {} does not incur expected cost of {}",
+            lhs,
+            rhs,
+            "Calling a failed entrypoint {} does not incur expected cost of {} but {}",
             entrypoint,
-            expected_cost
+            expected_cost,
+            if lhs > rhs { lhs - rhs } else { rhs - lhs }
         );
         assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
     }
@@ -622,8 +721,13 @@ fn should_not_charge_system_account_for_running_auction() {
     builder.exec(run_auction_as_user_request).commit();
     let user_funds_after = builder.get_purse_balance(default_account.main_purse());
 
+    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_RUN_AUCTION_COST);
+    let lhs = user_funds_after;
+    let rhs = user_funds_before - expected_call_cost;
     assert_eq!(
-        user_funds_after,
-        user_funds_before - U512::from(DEFAULT_RUN_AUCTION_COST)
+        lhs,
+        rhs,
+        "unexpected difference {}",
+        if lhs > rhs { lhs - rhs } else { rhs - lhs },
     );
 }

@@ -1595,6 +1595,10 @@ where
                 SystemContractCache::clone(&self.system_contract_cache),
             );
 
+        // User is already charged fee for wasmless contract, and we need to make sure we will not
+        // charge for anything that happens while calling transfer entrypoint.
+        session_result = session_result.with_cost(Gas::default());
+
         let finalize_result = {
             let proposer_purse = {
                 let proposer_account: Account = match tracking_copy
@@ -1684,7 +1688,7 @@ where
         }
 
         if session_result.is_success() {
-            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect());
+            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect())
         }
 
         let mut execution_result_builder = ExecutionResultBuilder::new();
@@ -2071,17 +2075,34 @@ where
 
                 let effects_snapshot = tracking_copy.borrow().effect();
 
-                match runtime.call_host_standard_payment() {
+                let standard_payment_pay_cost = {
+                    let system_config = runtime.protocol_data().system_config();
+                    let standard_payment_costs = system_config.standard_payment_costs();
+                    standard_payment_costs.pay
+                };
+
+                if let Err(error) = runtime.charge_system_contract_call(standard_payment_pay_cost) {
+                    return Ok(ExecutionResult::Failure {
+                        error: error.into(),
+                        effect: effects_snapshot,
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
+                    });
+                }
+
+                let saved_call_cost = runtime.context().gas_counter();
+
+                match runtime.call_host_standard_payment(&payment_entry_point.name()) {
                     Ok(()) => ExecutionResult::Success {
                         effect: runtime.context().effect(),
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: saved_call_cost,
                     },
                     Err(error) => ExecutionResult::Failure {
                         error: error.into(),
                         effect: effects_snapshot,
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: saved_call_cost,
                     },
                 }
             }

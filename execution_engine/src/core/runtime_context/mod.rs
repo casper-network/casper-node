@@ -762,6 +762,7 @@ where
             // Don't try to charge a system account for calling a system contract's entry point.
             // This will make sure that (for example) calling a mint's transfer from within auction
             // wouldn't try to incur cost to system account.
+            // It does not try to charge for running a system contract either.
             return Ok(());
         }
         let amount: Gas = call_cost.into();

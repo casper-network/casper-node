@@ -996,7 +996,7 @@ where
         self.context.charge_gas(amount)
     }
 
-    fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
+    pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
     where
         T: Into<Gas>,
     {
@@ -1344,38 +1344,58 @@ where
             mint_context,
         );
 
-        let ret: CLValue = match entry_point_name {
+        let system_config = protocol_data.system_config();
+        let mint_costs = system_config.mint_costs();
+
+        let mut saved_call_cost = None;
+
+        let result = match entry_point_name {
             // Type: `fn mint(amount: U512) -> Result<URef, Error>`
-            mint::METHOD_MINT => {
+            mint::METHOD_MINT => (|| {
+                mint_runtime.charge_system_contract_call(mint_costs.mint)?;
+                saved_call_cost = Some(mint_costs.mint);
+
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
                 let result: Result<URef, system_contract_errors::mint::Error> =
                     mint_runtime.mint(amount);
                 if let Err(system_contract_errors::mint::Error::GasLimit) = result {
                     return Err(execution::Error::GasLimit);
                 }
-                CLValue::from_t(result)?
-            }
-            mint::METHOD_REDUCE_TOTAL_SUPPLY => {
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
+            mint::METHOD_REDUCE_TOTAL_SUPPLY => (|| {
+                mint_runtime.charge_system_contract_call(mint_costs.reduce_total_supply)?;
+                saved_call_cost = Some(mint_costs.reduce_total_supply);
+
                 let amount: U512 = Self::get_named_argument(&runtime_args, mint::ARG_AMOUNT)?;
                 let result: Result<(), system_contract_errors::mint::Error> =
                     mint_runtime.reduce_total_supply(amount);
-                CLValue::from_t(result)?
-            }
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
             // Type: `fn create() -> URef`
-            mint::METHOD_CREATE => {
+            mint::METHOD_CREATE => (|| {
+                mint_runtime.charge_system_contract_call(mint_costs.create)?;
+                saved_call_cost = Some(mint_costs.create);
+
                 let uref = mint_runtime.mint(U512::zero()).map_err(Self::reverter)?;
-                CLValue::from_t(uref).map_err(Self::reverter)?
-            }
+                CLValue::from_t(uref).map_err(Self::reverter)
+            })(),
             // Type: `fn balance(purse: URef) -> Option<U512>`
-            mint::METHOD_BALANCE => {
+            mint::METHOD_BALANCE => (|| {
+                mint_runtime.charge_system_contract_call(mint_costs.balance)?;
+                saved_call_cost = Some(mint_costs.balance);
+
                 let uref: URef = Self::get_named_argument(&runtime_args, mint::ARG_PURSE)?;
                 let maybe_balance: Option<U512> =
                     mint_runtime.balance(uref).map_err(Self::reverter)?;
-                CLValue::from_t(maybe_balance).map_err(Self::reverter)?
-            }
+                CLValue::from_t(maybe_balance).map_err(Self::reverter)
+            })(),
             // Type: `fn transfer(maybe_to: Option<AccountHash>, source: URef, target: URef, amount:
             // U512, id: Option<u64>) -> Result<(), Error>`
-            mint::METHOD_TRANSFER => {
+            mint::METHOD_TRANSFER => (|| {
+                mint_runtime.charge_system_contract_call(mint_costs.transfer)?;
+                saved_call_cost = Some(mint_costs.transfer);
+
                 let maybe_to: Option<AccountHash> =
                     Self::get_named_argument(&runtime_args, mint::ARG_TO)?;
                 let source: URef = Self::get_named_argument(&runtime_args, mint::ARG_SOURCE)?;
@@ -1384,17 +1404,32 @@ where
                 let id: Option<u64> = Self::get_named_argument(&runtime_args, mint::ARG_ID)?;
                 let result: Result<(), system_contract_errors::mint::Error> =
                     mint_runtime.transfer(maybe_to, source, target, amount, id);
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
             // Type: `fn read_base_round_reward() -> Result<U512, Error>`
-            mint::METHOD_READ_BASE_ROUND_REWARD => {
+            mint::METHOD_READ_BASE_ROUND_REWARD => (|| {
+                mint_runtime.charge_system_contract_call(mint_costs.read_base_round_reward)?;
+                saved_call_cost = Some(mint_costs.read_base_round_reward);
+
                 let result: U512 = mint_runtime
                     .read_base_round_reward()
                     .map_err(Self::reverter)?;
-                CLValue::from_t(result).map_err(Self::reverter)?
-            }
-            _ => CLValue::from_t(()).map_err(Self::reverter)?,
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
+
+            _ => CLValue::from_t(()).map_err(Self::reverter),
         };
+
+        // Charge just for the amount that particular entry point cost - using gas cost from the
+        // isolated runtime might have a recursive costs whenever system contract calls other system
+        // contract.
+        if let Some(gas_cost) = saved_call_cost {
+            self.gas(gas_cost.into())?;
+        }
+
+        // Result still contains a result, but the entrypoints logic does not exit early on errors.
+        let ret = result?;
+
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
         self.context.access_rights_extend(access_rights);
@@ -1466,23 +1501,39 @@ where
             runtime_context,
         );
 
-        let ret: CLValue = match entry_point_name {
-            proof_of_stake::METHOD_GET_PAYMENT_PURSE => {
+        let system_config = protocol_data.system_config();
+        let pos_costs = system_config.proof_of_stake_costs();
+        let mut saved_call_cost = None;
+
+        let result = match entry_point_name {
+            proof_of_stake::METHOD_GET_PAYMENT_PURSE => (|| {
+                runtime.charge_system_contract_call(pos_costs.get_payment_purse)?;
+                saved_call_cost = Some(pos_costs.get_payment_purse);
+
                 let rights_controlled_purse =
                     runtime.get_payment_purse().map_err(Self::reverter)?;
-                CLValue::from_t(rights_controlled_purse).map_err(Self::reverter)?
-            }
-            proof_of_stake::METHOD_SET_REFUND_PURSE => {
+                CLValue::from_t(rights_controlled_purse).map_err(Self::reverter)
+            })(),
+            proof_of_stake::METHOD_SET_REFUND_PURSE => (|| {
+                runtime.charge_system_contract_call(pos_costs.set_refund_purse)?;
+                saved_call_cost = Some(pos_costs.set_refund_purse);
+
                 let purse: URef =
                     Self::get_named_argument(&runtime_args, proof_of_stake::ARG_PURSE)?;
                 runtime.set_refund_purse(purse).map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
-            proof_of_stake::METHOD_GET_REFUND_PURSE => {
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+            proof_of_stake::METHOD_GET_REFUND_PURSE => (|| {
+                runtime.charge_system_contract_call(pos_costs.get_refund_purse)?;
+                saved_call_cost = Some(pos_costs.get_refund_purse);
+
                 let maybe_purse = runtime.get_refund_purse().map_err(Self::reverter)?;
-                CLValue::from_t(maybe_purse).map_err(Self::reverter)?
-            }
-            proof_of_stake::METHOD_FINALIZE_PAYMENT => {
+                CLValue::from_t(maybe_purse).map_err(Self::reverter)
+            })(),
+            proof_of_stake::METHOD_FINALIZE_PAYMENT => (|| {
+                runtime.charge_system_contract_call(pos_costs.finalize_payment)?;
+                saved_call_cost = Some(pos_costs.finalize_payment);
+
                 let amount_spent: U512 =
                     Self::get_named_argument(&runtime_args, proof_of_stake::ARG_AMOUNT)?;
                 let account: AccountHash =
@@ -1492,10 +1543,16 @@ where
                 runtime
                     .finalize_payment(amount_spent, account, target)
                     .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)?
-            }
-            _ => CLValue::from_t(()).map_err(Self::reverter)?,
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+            _ => CLValue::from_t(()).map_err(Self::reverter),
         };
+
+        if let Some(gas_cost) = saved_call_cost {
+            self.gas(gas_cost.into())?;
+        }
+
+        let ret = result?;
         let urefs = extract_urefs(&ret)?;
         let access_rights = extract_access_rights_from_urefs(urefs);
         self.context.access_rights_extend(access_rights);
@@ -1506,7 +1563,9 @@ where
         Ok(ret)
     }
 
-    pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
+    pub fn call_host_standard_payment(&mut self, _entry_point_name: &str) -> Result<(), Error> {
+        // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
+        // context.
         let amount: U512 =
             Self::get_named_argument(&self.context.args(), standard_payment::ARG_AMOUNT)?;
         self.pay(amount).map_err(Self::reverter)
@@ -1576,9 +1635,12 @@ where
         let system_config = protocol_data.system_config();
         let auction_costs = system_config.auction_costs();
 
+        let mut saved_call_cost = None;
+
         let result = match entry_point_name {
             auction::METHOD_GET_ERA_VALIDATORS => (|| {
                 runtime.charge_system_contract_call(auction_costs.get_era_validators)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let result = runtime.get_era_validators().map_err(Self::reverter)?;
 
@@ -1587,6 +1649,7 @@ where
 
             auction::METHOD_READ_SEIGNIORAGE_RECIPIENTS => (|| {
                 runtime.charge_system_contract_call(auction_costs.read_seigniorage_recipients)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let result = runtime
                     .read_seigniorage_recipients()
@@ -1597,6 +1660,7 @@ where
 
             auction::METHOD_ADD_BID => (|| {
                 runtime.charge_system_contract_call(auction_costs.add_bid)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
@@ -1615,6 +1679,7 @@ where
 
             auction::METHOD_WITHDRAW_BID => (|| {
                 runtime.charge_system_contract_call(auction_costs.withdraw_bid)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
@@ -1630,6 +1695,7 @@ where
 
             auction::METHOD_DELEGATE => (|| {
                 runtime.charge_system_contract_call(auction_costs.delegate)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let source_purse =
@@ -1646,6 +1712,7 @@ where
 
             auction::METHOD_UNDELEGATE => (|| {
                 runtime.charge_system_contract_call(auction_costs.undelegate)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
                 let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
@@ -1662,6 +1729,7 @@ where
 
             auction::METHOD_RUN_AUCTION => (|| {
                 runtime.charge_system_contract_call(auction_costs.run_auction)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 runtime.run_auction().map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
@@ -1670,6 +1738,7 @@ where
             // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), Error>`
             auction::METHOD_SLASH => (|| {
                 runtime.charge_system_contract_call(auction_costs.slash)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let validator_public_keys =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEYS)?;
@@ -1682,6 +1751,7 @@ where
             // Type: `fn distribute(reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error>`
             auction::METHOD_DISTRIBUTE => (|| {
                 runtime.charge_system_contract_call(auction_costs.distribute)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let reward_factors: BTreeMap<PublicKey, u64> =
                     Self::get_named_argument(&runtime_args, auction::ARG_REWARD_FACTORS)?;
@@ -1693,6 +1763,7 @@ where
             // delegator_public_key: PublicKey, target_purse: URef) -> Result<(), Error>`
             auction::METHOD_WITHDRAW_DELEGATOR_REWARD => (|| {
                 runtime.charge_system_contract_call(auction_costs.withdraw_delegator_reward)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let validator_public_key: PublicKey =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
@@ -1714,6 +1785,7 @@ where
             // URef) -> Result<(), Error>`
             auction::METHOD_WITHDRAW_VALIDATOR_REWARD => (|| {
                 runtime.charge_system_contract_call(auction_costs.withdraw_validator_reward)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let validator_public_key: PublicKey =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
@@ -1728,6 +1800,7 @@ where
             // Type: `fn read_era_id() -> Result<EraId, Error>`
             auction::METHOD_READ_ERA_ID => (|| {
                 runtime.charge_system_contract_call(auction_costs.read_era_id)?;
+                saved_call_cost = Some(runtime.context.gas_counter());
 
                 let result = runtime.read_era_id().map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -1737,7 +1810,9 @@ where
         };
 
         // Charge for the gas spent during execution in an isolated runtime.
-        self.gas(runtime.context.gas_counter())?;
+        if let Some(gas_cost) = saved_call_cost {
+            self.gas(gas_cost - gas_counter)?;
+        }
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;

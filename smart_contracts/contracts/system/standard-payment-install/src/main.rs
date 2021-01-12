@@ -11,12 +11,12 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter},
-    standard_payment::{ACCESS_KEY, ARG_AMOUNT, HASH_KEY, METHOD_CALL},
+    standard_payment::{ACCESS_KEY, ARG_AMOUNT, HASH_KEY, METHOD_PAY},
     CLType, CLValue,
 };
 
 #[no_mangle]
-pub extern "C" fn call() {
+pub extern "C" fn pay() {
     standard_payment::delegate();
 }
 
@@ -26,7 +26,7 @@ pub extern "C" fn install() {
         let mut entry_points = EntryPoints::new();
 
         let entry_point = EntryPoint::new(
-            METHOD_CALL.to_string(),
+            METHOD_PAY.to_string(),
             vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
             CLType::Result {
                 ok: Box::new(CLType::Unit),
