@@ -575,13 +575,13 @@ where
         add_to_blocklist: bool,
     ) -> Effects<Event<P>> {
         if let Some(incoming) = self.incoming.remove(&peer_id) {
-            trace!(%peer_id, "removing peer from the incoming connections");
+            trace!(our_id=%self.our_id, %peer_id, "removing peer from the incoming connections");
             let _ = self.pending.remove(&incoming.peer_address);
         }
         if let Some(outgoing) = self.outgoing.remove(&peer_id) {
-            trace!(%peer_id, "removing peer from the outgoing connections");
+            trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
             if add_to_blocklist {
-                trace!(%peer_id, "blacklisting peer");
+                info!(%peer_id, "blacklisting peer");
                 self.blocklist.insert(outgoing.peer_address);
             }
         }
@@ -955,7 +955,7 @@ async fn server_task<P, REv>(
                 //       The code in its current state will consume 100% CPU if local resource
                 //       exhaustion happens, as no distinction is made and no delay introduced.
                 Err(err) => {
-                    warn!(%cloned_our_id, %err, "dropping incoming connection during accept")
+                    warn!(our_id=%cloned_our_id, %err, "dropping incoming connection during accept")
                 }
             }
         }
