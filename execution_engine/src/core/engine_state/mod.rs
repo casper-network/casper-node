@@ -60,6 +60,7 @@ use crate::{
             execution_result::ExecutionResultBuilder,
             genesis::GenesisInstaller,
             step::{StepRequest, StepResult},
+            upgrade::UpgradeInstaller,
         },
         execution::{self, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
@@ -252,6 +253,19 @@ where
 
         if upgrade_check_result.is_invalid() {
             return Err(Error::InvalidProtocolVersion(new_protocol_version));
+        }
+
+        // 3.1.1.1.1.5 bump system contract major versions
+        if upgrade_check_result.is_major_version() {
+            let upgrade_installer: UpgradeInstaller<S> = UpgradeInstaller::new(
+                new_protocol_version,
+                current_protocol_data,
+                tracking_copy.clone(),
+            );
+
+            upgrade_installer
+                .upgrade_system_contracts_major_version(correlation_id)
+                .map_err(Error::ProtocolUpgrade)?;
         }
 
         // 3.1.1.1.1.6 resolve wasm CostTable for new protocol version

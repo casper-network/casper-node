@@ -37,15 +37,16 @@ impl From<(EngineStateError, ExecutionEffect, Gas)> for DeployResult {
             error @ EngineStateError::InvalidHashLength { .. }
             | error @ EngineStateError::InvalidAccountHashLength { .. }
             | error @ EngineStateError::InvalidProtocolVersion { .. }
-            | error @ EngineStateError::InvalidUpgradeConfig
             | error @ EngineStateError::WasmPreprocessing(_)
             | error @ EngineStateError::WasmSerialization(_)
             | error @ EngineStateError::Exec(ExecutionError::DeploymentAuthorizationFailure)
             | error @ EngineStateError::InvalidKeyVariant
             | error @ EngineStateError::Authorization
             | error @ EngineStateError::InvalidDeployItemVariant(_)
-            | error @ EngineStateError::InvalidUpgradeResult
             | error @ EngineStateError::Genesis(_) => detail::precondition_error(error.to_string()),
+            EngineStateError::ProtocolUpgrade(protocol_upgrade_error) => {
+                detail::precondition_error(protocol_upgrade_error.to_string())
+            }
             EngineStateError::Storage(storage_error) => {
                 detail::execution_error(storage_error, effect, cost)
             }

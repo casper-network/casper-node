@@ -184,9 +184,9 @@ check: \
 	build \
 	check-format \
 	lint \
-	audit \
 	test \
 	test-contracts
+	# audit \
 
 .PHONY: clean
 clean:

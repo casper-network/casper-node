@@ -19,7 +19,6 @@ use crate::{
 
 const DEFAULT_CHAIN_NAME: &str = "casper-devnet";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
-const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 const DEFAULT_AUCTION_DELAY: u64 = 3;
 const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
