@@ -73,10 +73,6 @@ all: build build-contracts
 build:
 	$(CARGO) build $(CARGO_FLAGS)
 
-.PHONY: list
-list:
-	@$(MAKE) -pRrq -f $(lastword $(MAKEFILE_LIST)) : 2>/dev/null | awk -v RS= -F: '/^# File/,/^# Finished Make data base/ {if ($$1 !~ "^[#.]") {print $$1}}' | sort | egrep -v -e '^[^[:alnum:]]' -e '^$@$$'
-
 build-contract-rs/%:
 	$(CARGO) build \
 	        --release $(filter-out --release, $(CARGO_FLAGS)) \
