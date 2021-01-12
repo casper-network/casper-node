@@ -12,14 +12,19 @@ function main()
 {
     local NODE_ID=${1}
     local METRIC=${2}
+    local NODE_ID
 
     if [ "$NODE_ID" = "all" ]; then
         for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
         do
-            do_render "$NODE_ID" "$METRIC"
+            if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
+                do_render "$NODE_ID" "$METRIC"
+            fi        
         done
     else
-        do_render "$NODE_ID" "$METRIC"
+        if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
+            do_render "$NODE_ID" "$METRIC"
+        fi
     fi
 }
 

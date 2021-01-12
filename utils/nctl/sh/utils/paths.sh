@@ -109,6 +109,18 @@ function get_path_to_node_config()
 }
 
 #######################################
+# Returns path to a node's logs directory.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_path_to_node_logs()
+{
+    local NODE_ID=${1} 
+
+    echo "$(get_path_to_net)"/nodes/node-"$NODE_ID"/logs
+}
+
+#######################################
 # Returns path to a node's storage directory.
 # Arguments:
 #   Node ordinal identifier.
