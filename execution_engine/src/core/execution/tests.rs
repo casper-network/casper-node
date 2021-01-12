@@ -1,5 +1,3 @@
-use tracing::warn;
-
 use casper_types::{Key, U512};
 
 use super::Error;

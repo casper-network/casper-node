@@ -5,7 +5,6 @@ use std::{
 };
 
 use parity_wasm::elements::Module;
-use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
