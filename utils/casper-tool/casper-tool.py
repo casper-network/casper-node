@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 import os
+import subprocess
 
 import click
 import shutil
@@ -24,10 +25,21 @@ DEFAULT_WASM_SUBDIR = ["target", "wasm32-unknown-unknown", "release"]
     default=os.path.join(os.path.dirname(__file__), "..", ".."),
 )
 @click.option(
+    "--casper-client",
+    help="path to casper client binary (compiled from basedir by default)",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+)
+@click.option(
     "-p",
     "--production",
     is_flag=True,
     help="Use production chainspec template instead of dev/local",
+)
+@click.option(
+    "-c",
+    "--config-template",
+    type=click.Path(exists=True, dir_okay=False, readable=True),
+    help="Node configuration template to use",
 )
 @click.option(
     "-C",
@@ -44,7 +56,15 @@ DEFAULT_WASM_SUBDIR = ["target", "wasm32-unknown-unknown", "release"]
     ),
 )
 @click.pass_context
-def cli(ctx, basedir, production, chainspec_template, wasm_dir):
+def cli(
+    ctx,
+    basedir,
+    production,
+    chainspec_template,
+    config_template,
+    wasm_dir,
+    casper_client,
+):
     """Casper Network creation tool
 
     Can be used to create new casper-labs chains with automatic validator setups. Useful for testing."""
@@ -60,6 +80,28 @@ def cli(ctx, basedir, production, chainspec_template, wasm_dir):
             basedir, "resources", "local", "chainspec.toml.in"
         )
     obj["wasm_dir"] = wasm_dir or os.path.join(basedir, *DEFAULT_WASM_SUBDIR)
+
+    if config_template:
+        obj["config_template"] = chainspec_template
+    elif production:
+        obj["config_template"] = os.path.join(
+            basedir, "resources", "production", "config.toml"
+        )
+    else:
+        obj["config_template"] = os.path.join(
+            basedir, "resources", "local", "config.toml"
+        )
+
+    if casper_client:
+        obj["casper_client_argv0"] = [casper_client]
+    else:
+        obj["casper_client_argv0"] = [
+            "cargo",
+            "run",
+            "--quiet",
+            "--manifest-path={}".format(os.path.join(basedir, "client", "Cargo.toml")),
+            "--",
+        ]
 
     ctx.obj = obj
     return
@@ -80,7 +122,10 @@ def cli(ctx, basedir, production, chainspec_template, wasm_dir):
     default=300,
     type=int,
 )
-def create_network(obj, target_path, network_name, genesis_in):
+@click.option(
+    "-N", "--number-of-nodes", help="Number of nodes to create data for", default=5
+)
+def create_network(obj, target_path, network_name, genesis_in, number_of_nodes):
     if network_name is None:
         network_name = os.path.basename(target_path)
 
@@ -112,6 +157,20 @@ def create_network(obj, target_path, network_name, genesis_in):
     toml.dump(chainspec, open(chainspec_path, "w"))
     show_val("Chainspec", chainspec_path)
 
+    # Setup each node, collecting all pubkey hashes.
+    show_val("Node config template", obj["config_template"])
+    show_val("Number of nodes", number_of_nodes)
+    pubkeys = {}
+    for n in range(number_of_nodes):
+        node_path = os.path.join(target_path, "node-{}".format(n))
+        os.mkdir(node_path)
+        pubkey_hex = create_node(obj["casper_client_argv0"], obj["config_template"], node_path)
+        pubkeys[n] = pubkey_hex
+
+    accounts_path = os.path.join(chain_path, "accounts.csv")
+    show_val("accounts file", accounts_path)
+    create_accounts_csv(open(accounts_path, "w"), pubkeys)
+
 
 def create_chainspec(template, network_name, genesis_in, contract_paths):
     """Creates a new chainspec from a template.
@@ -140,6 +199,45 @@ def create_chainspec(template, network_name, genesis_in, contract_paths):
         chainspec["genesis"][key] = contract_paths[contract]
 
     return chainspec
+
+
+def create_node(client_argv0, config_template, node_path):
+    """Create a node configuration inside a network.
+
+    Paths are assumed to be set up using `create_chainspec`.
+
+    Returns the nodes public key as a string."""
+
+    # Generate a key
+    key_path = os.path.join(node_path, "keys")
+    run_client(client_argv0, "keygen", key_path)
+
+    config = toml.load(open(config_template))
+    config["node"]["chainspec_config_path"] = "../chain/chainspec.toml"
+
+    config["consensus"]["secret_key_path"] = key_path
+
+    # All the different state/storage paths
+    config["storage"]["path"] = "state/storage"
+    config["consensus"]["unit_hashes_folder"] = "state/unit_hashes"
+
+    config["logging"]["format"] = "json"
+
+    return open(os.path.join(key_path, "public_key_hex")).read().strip()
+
+
+def create_accounts_csv(output_file, pubkeys):
+    items = list(pubkeys.items())
+    items.sort()
+    for id, key_hex in items:
+       motes = 1000000000000000
+       weight = 10000000000000
+       output_file.write("{},{},{}\n".format(key_hex, motes, weight))
+
+
+def run_client(argv0, *args):
+    """Run the casper client, compiling it if necessary, with the given command-line args"""
+    return subprocess.check_output(argv0 + list(args))
 
 
 def show_val(key, value):
