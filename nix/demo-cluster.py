@@ -23,6 +23,21 @@ def cli():
     pass
 
 
+@cli.command("deploy")
+@click.argument("network-path", type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True))
+@click.option("-i", "--id", help="ID for the casper network deployment")
+def deploy(network_path, id):
+  """Deploy a generated network onto cluster namespace"""
+
+  api = k8s()
+  name = NETWORK_NAME_PREFIX + id
+
+  # Ensure we're not overwriting an existing deployment.
+  if namespace_exists(api, name):
+    click.echo("Kubernetes deployment `{}` already exists. Run `destroy` first.".format(name))
+    return
+
+
 @cli.command("destroy")
 @click.argument("name")
 def destroy(name):

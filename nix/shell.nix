@@ -9,4 +9,7 @@ in pkgs.mkShell {
   shellHook = ''
     export KUBECONFIG=$(pwd)/k3s.yaml
   '';
+
+  # Technically not needed for the orchestration tools, but useful when running `casper-tool`.
+  PROTOC = "${pkgs.protobuf}/bin/protoc";
 }
