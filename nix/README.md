@@ -1,5 +1,30 @@
 # Nix-based kubernetes test environment
 
+All operations are based on having the `nix` package manager available. It can be easily be installed using the quickstart instructions found at https://nixos.org/download.html#nix-quick-install, which are just
+
+```console
+$ curl -L https://nixos.org/nix/install | sh
+```
+
+## Building a docker image of a node
+
+To build your current source into a container image, enter a nix-shell in the same folder as this `README.md`, then run `build-node.sh`.
+
+```console
+$ nix-shell
+$ ./build-node.sh
+[...]
+Created new docker image casper-node:f2b9cd7a-dirty.
+
+Load into local docker:
+docker load -i ./result
+
+Publish image
+skopeo --insecure-policy copy docker-archive:./result docker://clmarc/casper-node:f2b9cd7a-dirty
+```
+
+The image will be inside the nix store as a docker archive file, with a local symlink `result` pointing to it. As shown above, there are now options to either upload to a repository (provided you have credentials), or just import it locally. The image tag will be based on the current state of the source tree, if uncommitted changes to any files are present, a `-dirty` will be appended.
+
 ## Setting up a new kubernetes cluster
 
 One option is to use a hosted kubernetes solution, e.g. offerings from Digital Ocean, Amazon or Google. However, hosting a cluster for testing purpose is a cheaper and potentially simpler alternative. We recommend using [k3s](https://k3s.io) to setup a cluster, which is lighter on resources at the cost of not offering high availability for the control plane - a feature not needed for our testing environments.
