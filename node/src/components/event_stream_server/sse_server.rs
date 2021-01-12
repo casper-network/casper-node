@@ -20,9 +20,7 @@ use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
     components::{consensus::EraId, CLIENT_API_VERSION},
-    types::{
-        BlockHash, BlockHeader, DeployHash, FinalitySignature, FinalizedBlock, TimeDiff, Timestamp,
-    },
+    types::{BlockHash, BlockHeader, DeployHash, FinalitySignature, TimeDiff, Timestamp},
 };
 
 /// The URL path.
@@ -44,21 +42,19 @@ pub enum SseData {
     /// client, and will have no associated event ID provided.
     #[data_size(skip)]
     ApiVersion(Version),
-    /// The given block has been finalized.
-    BlockFinalized(FinalizedBlock),
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        block_header: BlockHeader,
+        block_header: Box<BlockHeader>,
     },
     /// The given deploy has been executed, committed and forms part of the given block.
     DeployProcessed {
-        deploy_hash: DeployHash,
+        deploy_hash: Box<DeployHash>,
         account: PublicKey,
         timestamp: Timestamp,
         ttl: TimeDiff,
         dependencies: Vec<DeployHash>,
-        block_hash: BlockHash,
+        block_hash: Box<BlockHash>,
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
@@ -181,8 +177,7 @@ fn stream_to_client(
                 Ok(BroadcastChannelMessage::ServerSentEvent(event)) => {
                     match (event.id, &event.data) {
                         (None, &SseData::ApiVersion { .. }) => Ok(sse::json(event.data).boxed()),
-                        (Some(id), &SseData::BlockFinalized { .. })
-                        | (Some(id), &SseData::BlockAdded { .. })
+                        (Some(id), &SseData::BlockAdded { .. })
                         | (Some(id), &SseData::DeployProcessed { .. })
                         | (Some(id), &SseData::FinalitySignature(_))
                         | (Some(id), &SseData::Fault { .. }) => {
