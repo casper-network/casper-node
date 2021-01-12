@@ -1,30 +1,6 @@
 #!/usr/bin/env bash
 
 #######################################
-# Sets entry in node's config.toml.
-# Arguments:
-#   Node ordinal identifier.
-#   Path node's config file.
-#######################################
-function _update_node_config_on_start()
-{
-    local FILEPATH=${1}
-    local SCRIPT
-    local TRUSTED_ROOT_HASH
-    
-    TRUSTED_ROOT_HASH=$(get_chain_latest_block_hash)
-    log "trusted root hash = $TRUSTED_ROOT_HASH"
-
-    SCRIPT=(
-        "import toml;"
-        "cfg=toml.load('$FILEPATH');"
-        "cfg['node']['trusted_hash']='$TRUSTED_ROOT_HASH';"
-        "toml.dump(cfg, open('$FILEPATH', 'w'));"
-    )
-    python3 -c "${SCRIPT[*]}"
-}
-
-#######################################
 # Spins up a node using supervisord.
 # Arguments:
 #   Node ordinal identifier.
@@ -33,19 +9,22 @@ function _update_node_config_on_start()
 function do_node_start()
 {
     local NODE_ID=${1}
-    local NODE_PROCESS_NAME
+    local TRUSTED_HASH=${2}
     local PATH_TO_NODE_CONFIG
+    local PROCESS_NAME
 
     # Ensure daemon is up.
     do_supervisord_start
 
     # Inject trusted hash.
-    PATH_TO_NODE_CONFIG=$(get_path_to_net)/nodes/node-"$NODE_ID"/config/node-config.toml
-    _update_node_config_on_start "$PATH_TO_NODE_CONFIG"
+    if [ -n "$TRUSTED_HASH" ]; then
+        PATH_TO_NODE_CONFIG=$(get_path_to_net)/nodes/node-"$NODE_ID"/config/node-config.toml
+        _update_node_config_on_start "$PATH_TO_NODE_CONFIG" "$TRUSTED_HASH"
+    fi
 
     # Signal to supervisorctl.
-    NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
-    supervisorctl -c "$(get_path_net_supervisord_cfg)" start "$NODE_PROCESS_NAME"  > /dev/null 2>&1
+    PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
+    supervisorctl -c "$(get_path_net_supervisord_cfg)" start "$PROCESS_NAME"  > /dev/null 2>&1
 }
 
 #######################################
@@ -174,4 +153,27 @@ function do_supervisord_kill()
         supervisorctl -c "$(get_path_net_supervisord_cfg)" stop all &>/dev/null
         supervisorctl -c "$(get_path_net_supervisord_cfg)" shutdown &>/dev/null
     fi
+}
+
+#######################################
+# Sets entry in node's config.toml.
+# Arguments:
+#   Node ordinal identifier.
+#   A trused block hash from which to build chain state.
+#######################################
+function _update_node_config_on_start()
+{
+    local FILEPATH=${1}
+    local TRUSTED_HASH=${2}
+    local SCRIPT
+    
+    log "trusted hash = $TRUSTED_HASH"
+
+    SCRIPT=(
+        "import toml;"
+        "cfg=toml.load('$FILEPATH');"
+        "cfg['node']['trusted_hash']='$TRUSTED_HASH';"
+        "toml.dump(cfg, open('$FILEPATH', 'w'));"
+    )
+    python3 -c "${SCRIPT[*]}"
 }
