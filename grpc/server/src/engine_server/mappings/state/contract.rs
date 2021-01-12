@@ -19,8 +19,8 @@ impl From<Contract> for state::Contract {
             .into_iter()
             .map(Into::into)
             .collect();
-        pb_contract.set_contract_package_hash(contract_package_hash.to_vec());
-        pb_contract.set_contract_wasm_hash(contract_wasm_hash.to_vec());
+        pb_contract.set_contract_package_hash(contract_package_hash.value().to_vec());
+        pb_contract.set_contract_wasm_hash(contract_wasm_hash.value().to_vec());
         pb_contract.set_named_keys(named_keys.into());
         pb_contract.set_entry_points(entry_points.into());
         pb_contract.set_protocol_version(protocol_version.into());

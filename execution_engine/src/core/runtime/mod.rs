@@ -1228,15 +1228,15 @@ where
     }
 
     pub fn is_mint(&self, key: Key) -> bool {
-        key.into_seed() == self.protocol_data().mint()
+        key.into_seed() == self.protocol_data().mint().value()
     }
 
     pub fn is_proof_of_stake(&self, key: Key) -> bool {
-        key.into_seed() == self.protocol_data().proof_of_stake()
+        key.into_seed() == self.protocol_data().proof_of_stake().value()
     }
 
     pub fn is_auction(&self, key: Key) -> bool {
-        key.into_seed() == self.protocol_data().auction()
+        key.into_seed() == self.protocol_data().auction().value()
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(
@@ -1928,7 +1928,7 @@ where
         };
 
         let module = {
-            let maybe_module = self.system_contract_cache.get(key.into_seed());
+            let maybe_module = self.system_contract_cache.get(key.into_seed().into());
             let wasm_key = contract.contract_wasm_key();
 
             let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
@@ -2311,13 +2311,14 @@ where
 
         let contract = Contract::new(
             contract_package_hash,
-            contract_wasm_hash,
+            contract_wasm_hash.into(),
             named_keys,
             entry_points,
             protocol_version,
         );
 
-        let insert_contract_result = contract_package.insert_contract_version(major, contract_hash);
+        let insert_contract_result =
+            contract_package.insert_contract_version(major, contract_hash.into());
 
         self.context
             .metered_write_gs_unsafe(contract_wasm_hash, contract_wasm)?;
@@ -3014,7 +3015,7 @@ where
             Err(error) => return Ok(Err(error)),
         };
 
-        match self.memory.set(dest_ptr, &contract_hash) {
+        match self.memory.set(dest_ptr, contract_hash.as_ref()) {
             Ok(_) => Ok(Ok(())),
             Err(error) => Err(Error::Interpreter(error.into()).into()),
         }

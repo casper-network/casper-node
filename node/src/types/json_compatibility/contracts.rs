@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     Contract as DomainContract, ContractHash, ContractPackage as DomainContractPackage,
-    ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey, ProtocolVersion, URef,
+    ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey, URef,
 };
+use semver::Version;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, DataSize, JsonSchema,
@@ -43,7 +44,8 @@ pub struct Contract {
     #[data_size(skip)]
     entry_points: Vec<EntryPoint>,
     #[data_size(skip)]
-    protocol_version: ProtocolVersion,
+    #[schemars(with = "String")]
+    protocol_version: Version,
 }
 
 impl From<&DomainContract> for Contract {
@@ -62,7 +64,11 @@ impl From<&DomainContract> for Contract {
             contract_wasm_hash: contract.contract_wasm_hash(),
             named_keys,
             entry_points,
-            protocol_version: contract.protocol_version(),
+            protocol_version: Version::from((
+                contract.protocol_version().value().major as u64,
+                contract.protocol_version().value().minor as u64,
+                contract.protocol_version().value().patch as u64,
+            )),
         }
     }
 }

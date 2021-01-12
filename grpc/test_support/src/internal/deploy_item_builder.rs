@@ -160,7 +160,7 @@ impl DeployItemBuilder {
         args: RuntimeArgs,
     ) -> Self {
         self.deploy_item.session_code = Some(ExecutableDeployItem::StoredVersionedContractByHash {
-            hash,
+            hash: hash.into(),
             version,
             entry_point: entry_point.to_owned(),
             args: args
@@ -198,7 +198,7 @@ impl DeployItemBuilder {
         args: RuntimeArgs,
     ) -> Self {
         self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredVersionedContractByHash {
-            hash,
+            hash: hash.into(),
             version,
             entry_point: entry_point.to_owned(),
             args: args

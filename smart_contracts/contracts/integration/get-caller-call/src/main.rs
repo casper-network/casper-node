@@ -11,7 +11,8 @@ pub extern "C" fn call() {
     let contract_hash = runtime::get_key(GET_CALLER_KEY)
         .unwrap_or_revert_with(ApiError::GetKey)
         .into_hash()
-        .unwrap_or_revert();
+        .unwrap_or_revert()
+        .into();
     // Call `define` part of the contract.
     runtime::call_contract(
         contract_hash,

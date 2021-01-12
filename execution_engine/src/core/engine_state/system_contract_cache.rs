@@ -66,7 +66,7 @@ mod tests {
 
         let cache = SystemContractCache::default();
 
-        let result = cache.insert(reference, module);
+        let result = cache.insert(reference.into(), module);
 
         assert!(result.is_none())
     }
@@ -77,7 +77,8 @@ mod tests {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
             address_generator.create_address()
-        };
+        }
+        .into();
 
         assert!(!cache.has(reference))
     }
@@ -88,7 +89,8 @@ mod tests {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
             address_generator.create_address()
-        };
+        }
+        .into();
         let module = Module::default();
 
         cache.insert(reference, module);
@@ -102,7 +104,8 @@ mod tests {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
             address_generator.create_address()
-        };
+        }
+        .into();
         let module = Module::default();
 
         cache.insert(reference, module);
@@ -116,7 +119,8 @@ mod tests {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
             address_generator.create_address()
-        };
+        }
+        .into();
         let module = Module::default();
 
         cache.insert(reference, module);
@@ -129,7 +133,8 @@ mod tests {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
             address_generator.create_address()
-        };
+        }
+        .into();
         let cache = SystemContractCache::default();
 
         let result = cache.get(reference);
@@ -143,7 +148,8 @@ mod tests {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
             address_generator.create_address()
-        };
+        }
+        .into();
         let module = Module::default();
 
         cache.insert(reference, module.clone());
@@ -159,7 +165,8 @@ mod tests {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
             address_generator.create_address()
-        };
+        }
+        .into();
         let module = Module::default();
 
         cache.insert(reference, module.clone());
@@ -179,7 +186,8 @@ mod tests {
         let reference: ContractHash = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
             address_generator.create_address()
-        };
+        }
+        .into();
         let module = Module::default();
 
         cache.insert(reference, module.clone());
@@ -199,7 +207,8 @@ mod tests {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
             address_generator.create_address()
-        };
+        }
+        .into();
         let initial_module = Module::default();
         let updated_module = {
             let section = NameSection::new(Some(ModuleNameSubsection::new("a_mod")), None, None);
@@ -228,7 +237,8 @@ mod tests {
         let reference = {
             let mut address_generator = ADDRESS_GENERATOR.lock().unwrap();
             address_generator.create_address()
-        };
+        }
+        .into();
         let initial_module = Module::default();
         let updated_module = {
             let section = NameSection::new(Some(ModuleNameSubsection::new("a_mod")), None, None);

@@ -624,8 +624,8 @@ impl Default for Contract {
         Contract {
             named_keys: NamedKeys::default(),
             entry_points: EntryPoints::default(),
-            contract_wasm_hash: [0; KEY_HASH_LENGTH],
-            contract_package_hash: [0; KEY_HASH_LENGTH],
+            contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
+            contract_package_hash: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
         }
     }
@@ -980,7 +980,8 @@ mod tests {
         let _named_keys = NamedKeys::new();
         let protocol_version = ProtocolVersion::V1_0_0;
 
-        contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
+        contract_package
+            .insert_contract_version(protocol_version.value().major, contract_hash.into());
 
         contract_package
     }
@@ -996,15 +997,15 @@ mod tests {
         );
         assert_eq!(contract_package.next_contract_version_for(major), 1);
 
-        let next_version = contract_package.insert_contract_version(major, [123; 32]);
+        let next_version = contract_package.insert_contract_version(major, [123; 32].into());
         assert_eq!(next_version, ContractVersionKey::new(major, 1));
         assert_eq!(contract_package.next_contract_version_for(major), 2);
-        let next_version_2 = contract_package.insert_contract_version(major, [124; 32]);
+        let next_version_2 = contract_package.insert_contract_version(major, [124; 32].into());
         assert_eq!(next_version_2, ContractVersionKey::new(major, 2));
 
         let major = 2;
         assert_eq!(contract_package.next_contract_version_for(major), 1);
-        let next_version_3 = contract_package.insert_contract_version(major, [42; 32]);
+        let next_version_3 = contract_package.insert_contract_version(major, [42; 32].into());
         assert_eq!(next_version_3, ContractVersionKey::new(major, 1));
     }
 
@@ -1029,7 +1030,7 @@ mod tests {
 
     #[test]
     fn should_disable_contract_version() {
-        const CONTRACT_HASH: ContractHash = [123; 32];
+        const CONTRACT_HASH: ContractHash = ContractHash::new([123; 32]);
         let mut contract_package = make_contract_package();
 
         assert_eq!(

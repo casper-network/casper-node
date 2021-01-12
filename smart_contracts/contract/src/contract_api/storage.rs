@@ -156,11 +156,11 @@ pub fn new_contract(
 /// are no versions; a version must be added via `add_contract_version` before
 /// the contract can be executed.
 pub fn create_contract_package_at_hash() -> (ContractPackageHash, URef) {
-    let mut hash_addr = ContractPackageHash::default();
+    let hash_addr = ContractPackageHash::default();
     let mut access_addr = [0u8; 32];
     unsafe {
         ext_ffi::casper_create_contract_package_at_hash(
-            hash_addr.as_mut_ptr(),
+            hash_addr.value().as_mut_ptr(),
             access_addr.as_mut_ptr(),
         );
     }
