@@ -353,11 +353,6 @@ where
             }
             Event::GetBlockForFinalitySignaturesResult(fs, maybe_block) => {
                 if let Some(block) = &maybe_block {
-                    assert_eq!(
-                        block.hash(),
-                        &fs.block_hash,
-                        "block loaded from storage should have a matching block hash."
-                    );
                     if block.header().era_id() != fs.era_id {
                         warn!(public_key=%fs.public_key, "Finality signature with invalid era id.");
                         // TODO: Disconnect from the sender.
