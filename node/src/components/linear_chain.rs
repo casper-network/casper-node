@@ -158,6 +158,16 @@ impl<I> LinearChain<I> {
         &self.latest_block
     }
 
+    // Checks if we have already enqueued that finality signature.
+    fn has_finality_signature(&self, fs: &FinalitySignature) -> bool {
+        let creator = fs.public_key;
+        let block_hash = fs.block_hash;
+        self.pending_finality_signatures
+            .get(&creator)
+            .map(|sigs| sigs.contains_key(&block_hash))
+            .unwrap_or(false)
+    }
+
     /// Adds pending finality signatures to the block; returns events to announce and broadcast
     /// them, and the updated block.
     fn collect_pending_finality_signatures<REv>(
@@ -346,6 +356,9 @@ where
                 } = *fs;
                 if let Err(err) = fs.verify() {
                     warn!(%block_hash, %public_key, %err, "received invalid finality signature");
+                    return Effects::new();
+                }
+                if self.has_finality_signature(&fs) {
                     return Effects::new();
                 }
                 effect_builder
