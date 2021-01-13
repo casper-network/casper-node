@@ -67,7 +67,7 @@ impl SessionBuilder {
                 di_builder.with_stored_session_named_key(&name, &entry_point, session_args)
             }
             Code::Hash(hash, entry_point) => {
-                di_builder.with_stored_session_hash(hash.into(), &entry_point, session_args)
+                di_builder.with_stored_session_hash(hash, &entry_point, session_args)
             }
         };
         let expect_failure = false;
@@ -98,7 +98,7 @@ impl SessionBuilder {
             }
             Code::Hash(hash, entry_point) => {
                 self.di_builder
-                    .with_stored_payment_hash(hash.into(), &entry_point, args)
+                    .with_stored_payment_hash(hash, &entry_point, args)
             }
         };
         self

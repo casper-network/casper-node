@@ -34,8 +34,7 @@ fn should_run_ee_1071_regression() {
         .expect("should have hash")
         .clone()
         .into_hash()
-        .expect("should be hash")
-        .into();
+        .expect("should be hash");
 
     let exec_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,

@@ -228,7 +228,7 @@ fn expensive_subcall_should_cost_more() {
 
     let call_expensive_calculation_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        expensive_calculation_contract_hash.into(),
+        expensive_calculation_contract_hash,
         "calculate",
         RuntimeArgs::default(),
     )

@@ -231,8 +231,7 @@ pub extern "C" fn account_function() {
 pub extern "C" fn calls_do_nothing_level1() {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
         .and_then(Key::into_hash)
-        .expect("should have key")
-        .into();
+        .expect("should have key");
     runtime::call_versioned_contract(
         contract_package_hash,
         None,
@@ -245,8 +244,7 @@ pub extern "C" fn calls_do_nothing_level1() {
 pub extern "C" fn calls_do_nothing_level2() {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
         .and_then(Key::into_hash)
-        .expect("should have key")
-        .into();
+        .expect("should have key");
     runtime::call_versioned_contract(
         contract_package_hash,
         None,
@@ -258,8 +256,7 @@ pub extern "C" fn calls_do_nothing_level2() {
 fn measure_arg_size(bytes: usize) {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
         .and_then(Key::into_hash)
-        .expect("should have key")
-        .into();
+        .expect("should have key");
 
     let argument: Vec<u8> = iter::repeat(b'1').take(bytes).collect();
 

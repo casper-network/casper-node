@@ -11,7 +11,7 @@ use casper_contract::{
 use casper_types::{
     contracts::NamedKeys,
     mint::{ACCESS_KEY, HASH_KEY},
-    CLValue, ContractHash, ContractPackageHash, ContractVersion, URef,
+    CLValue, ContractHash, ContractVersion, URef,
 };
 
 pub const MODIFIED_MINT_EXT_FUNCTION_NAME: &str = "modified_mint_ext";
@@ -43,11 +43,10 @@ pub extern "C" fn read_base_round_reward() {
 }
 
 fn upgrade_mint() -> (ContractHash, ContractVersion) {
-    let mint_package_hash: ContractPackageHash = runtime::get_key(HASH_KEY)
+    let mint_package_hash: ContractHash = runtime::get_key(HASH_KEY)
         .expect("should have mint")
         .into_hash()
-        .expect("should be hash")
-        .into();
+        .expect("should be hash");
     let _mint_access_key: URef = runtime::get_key(ACCESS_KEY)
         .unwrap_or_revert()
         .into_uref()

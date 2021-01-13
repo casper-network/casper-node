@@ -94,8 +94,7 @@ pub extern "C" fn create_contract_package_at_hash_function() {
 pub extern "C" fn create_contract_user_group_function() {
     let contract_package_hash = runtime::get_key(CONTRACT_KEY_NAME)
         .and_then(Key::into_hash)
-        .expect("should have package hash")
-        .into();
+        .expect("should have package hash");
     let _result = storage::create_contract_user_group(
         contract_package_hash,
         LABEL_NAME,
@@ -109,8 +108,7 @@ pub extern "C" fn create_contract_user_group_function() {
 pub extern "C" fn provision_urefs_function() {
     let contract_package_hash = runtime::get_key(CONTRACT_KEY_NAME)
         .and_then(Key::into_hash)
-        .expect("should have package hash")
-        .into();
+        .expect("should have package hash");
     let _result = storage::provision_contract_user_group_uref(contract_package_hash, LABEL_NAME)
         .unwrap_or_revert();
 }
@@ -119,8 +117,7 @@ pub extern "C" fn provision_urefs_function() {
 pub extern "C" fn remove_contract_user_group_function() {
     let contract_package_hash = runtime::get_key(CONTRACT_KEY_NAME)
         .and_then(Key::into_hash)
-        .expect("should have package hash")
-        .into();
+        .expect("should have package hash");
     storage::remove_contract_user_group(contract_package_hash, LABEL_NAME).unwrap_or_revert();
 }
 
@@ -128,8 +125,7 @@ pub extern "C" fn remove_contract_user_group_function() {
 pub extern "C" fn new_uref_subcall() {
     let contract_package_hash = runtime::get_key(CONTRACT_KEY_NAME)
         .and_then(Key::into_hash)
-        .expect("should have package hash")
-        .into();
+        .expect("should have package hash");
     runtime::call_versioned_contract(
         contract_package_hash,
         None,
@@ -264,7 +260,7 @@ pub extern "C" fn call() {
 
         named_keys.insert(
             CONTRACT_KEY_NAME.to_string(),
-            Key::Hash(contract_package_hash.value()),
+            Key::Hash(contract_package_hash),
         );
         named_keys.insert(ACCESS_KEY_NAME.to_string(), access_uref.into());
 

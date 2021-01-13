@@ -54,19 +54,19 @@ fn should_put_system_contract_hashes_to_account_context() {
 
     assert_eq!(
         named_keys[MINT].into_hash().expect("should be a hash"),
-        builder.get_mint_contract_hash().value(),
+        builder.get_mint_contract_hash(),
         "mint_contract_hash should match"
     );
     assert_eq!(
         named_keys[PROOF_OF_STAKE]
             .into_hash()
             .expect("should be a hash"),
-        builder.get_pos_contract_hash().value(),
+        builder.get_pos_contract_hash(),
         "pos_contract_hash should match"
     );
     assert_eq!(
         named_keys[AUCTION].into_hash().expect("should be a hash"),
-        builder.get_auction_contract_hash().value(),
+        builder.get_auction_contract_hash(),
         "auction_contract_hash should match"
     );
 }

@@ -55,8 +55,7 @@ pub extern "C" fn session() {
     let counter_key = get_counter_key();
     let contract_hash = counter_key
         .into_hash()
-        .unwrap_or_revert_with(ApiError::UnexpectedKeyVariant)
-        .into();
+        .unwrap_or_revert_with(ApiError::UnexpectedKeyVariant);
     let entry_point_name = ENTRYPOINT_COUNTER;
     let runtime_args = runtime_args! { ARG_COUNTER_METHOD => METHOD_INC };
     runtime::call_contract(contract_hash, entry_point_name, runtime_args)

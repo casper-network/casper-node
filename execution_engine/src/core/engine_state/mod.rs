@@ -964,8 +964,7 @@ where
 
                 let contract_hash = stored_contract_key
                     .into_hash()
-                    .ok_or(Error::InvalidKeyVariant)?
-                    .into();
+                    .ok_or(Error::InvalidKeyVariant)?;
                 let contract = tracking_copy
                     .borrow_mut()
                     .get_contract(correlation_id, contract_hash)?;
@@ -991,8 +990,7 @@ where
                 let contract_package_key = deploy_item.to_contract_hash_key(&account)?.unwrap();
                 let contract_package_hash = contract_package_key
                     .into_hash()
-                    .ok_or(Error::InvalidKeyVariant)?
-                    .into();
+                    .ok_or(Error::InvalidKeyVariant)?;
 
                 let contract_package = tracking_copy
                     .borrow_mut()

@@ -87,8 +87,7 @@ fn store_payment_to_account_context(
         .get(STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME)
         .expect("key should exist")
         .into_hash()
-        .expect("should be a hash")
-        .into();
+        .expect("should be a hash");
 
     (default_account, hash)
 }
@@ -199,7 +198,7 @@ fn should_exec_stored_code_by_hash() {
                     runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
                 )
                 .with_stored_versioned_payment_contract_by_hash(
-                    hash.value(),
+                    hash,
                     Some(CONTRACT_INITIAL_VERSION),
                     PAY,
                     runtime_args! {
@@ -830,7 +829,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_hash(
-                stored_payment_contract_hash.into(),
+                stored_payment_contract_hash,
                 DEFAULT_ENTRY_POINT_NAME,
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
@@ -1199,7 +1198,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
                 RuntimeArgs::new(),
             )
             .with_stored_payment_hash(
-                test_payment_stored_hash.into(),
+                test_payment_stored_hash,
                 "pay",
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )

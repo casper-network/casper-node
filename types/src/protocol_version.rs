@@ -1,6 +1,11 @@
+// TODO - remove once schemars stops causing warning.
+#![allow(clippy::field_reassign_with_default)]
+
 use alloc::vec::Vec;
 use core::fmt;
 
+#[cfg(feature = "std")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -12,6 +17,7 @@ use crate::{
 #[derive(
     Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct ProtocolVersion(SemVer);
 
 /// The result of [`ProtocolVersion::check_next_version`].

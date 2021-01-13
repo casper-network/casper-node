@@ -39,7 +39,7 @@ impl From<ContractPackage> for state::ContractPackage {
         for (version, contract_header) in value.take_versions().into_iter() {
             let mut active_version = state::ContractPackage_Version::new();
             active_version.set_version(version.into());
-            active_version.set_contract_hash(contract_header.value().to_vec());
+            active_version.set_contract_hash(contract_header.to_vec());
             contract_package.mut_active_versions().push(active_version)
         }
 

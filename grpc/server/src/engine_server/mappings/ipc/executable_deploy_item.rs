@@ -91,7 +91,7 @@ impl From<ExecutableDeployItem> for DeployPayload {
                 args,
             } => {
                 let inner = result.mut_stored_contract_hash();
-                inner.set_hash(hash.value().to_vec());
+                inner.set_hash(hash.to_vec());
                 inner.set_entry_point_name(entry_point);
                 inner.set_args(args.into());
             }
@@ -126,7 +126,7 @@ impl From<ExecutableDeployItem> for DeployPayload {
                 args,
             } => {
                 let inner = result.mut_stored_package_by_hash();
-                inner.set_hash(hash.value().to_vec());
+                inner.set_hash(hash.to_vec());
                 if let Some(ver) = version {
                     inner.set_version(ver)
                 }
