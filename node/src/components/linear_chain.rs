@@ -397,6 +397,8 @@ where
                             .map(|res| {
                                 match res {
                                     // Promote this error to a non-error case.
+                                    // It's not an error that we can't find the era that this
+                                    // FinalitySignature is for.
                                     Err(error) if error.is_era_validators_missing() => Ok(false),
                                     _ => res,
                                 }

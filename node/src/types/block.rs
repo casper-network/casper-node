@@ -1442,7 +1442,7 @@ mod tests {
             signature,
             public_key,
         };
-        // Test should fails b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
+        // Test should fail b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
         assert!(fs_manufactured.verify().is_err());
     }
 }
