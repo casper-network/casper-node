@@ -83,7 +83,6 @@ run_node() {
         --config-ext=network.systemd_support=true \
         --config-ext=consensus.secret_key_path=secret_keys/node-${ID}.pem \
         --config-ext=storage.path=${STORAGE_DIR} \
-        --config-ext=network.gossip_interval=1000 \
         --config-ext=node.chainspec_config_path=${CHAINSPEC} \
         ${BIND_ADDRESS_ARG} \
         ${RPC_SERVER_ADDRESS_ARG} \
