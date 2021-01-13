@@ -3,7 +3,7 @@ use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-pub const DEFAULT_PAY_COST: u32 = 23;
+pub const DEFAULT_PAY_COST: u32 = 10_000;
 
 /// Description of costs of calling auction entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
