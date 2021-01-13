@@ -10,7 +10,7 @@ pub const DEFAULT_BALANCE_COST: u32 = 10_000;
 pub const DEFAULT_TRANSFER_COST: u32 = 10_000;
 pub const DEFAULT_READ_BASE_ROUND_REWARD_COST: u32 = 10_000;
 
-/// Description of costs of calling auction entrypoints.
+/// Description of costs of calling mint entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct MintCosts {
     pub mint: u32,
