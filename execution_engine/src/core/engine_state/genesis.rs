@@ -49,8 +49,9 @@ impl fmt::Display for GenesisResult {
             }
             GenesisResult::Serialization(error) => write!(f, "Serialization error: {:?}", error),
             GenesisResult::Success {
-                post_state_hash, ..
-            } => write!(f, "Success: {}", post_state_hash),
+                post_state_hash,
+                effect,
+            } => write!(f, "Success: {} {:?}", post_state_hash, effect),
         }
     }
 }
