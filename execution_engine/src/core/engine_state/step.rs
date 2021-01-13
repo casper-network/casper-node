@@ -4,14 +4,14 @@ use core::fmt;
 use uint::static_assertions::_core::fmt::Formatter;
 
 use casper_types::{
-    bytesrepr, bytesrepr::ToBytes, CLValueError, Key, ProtocolVersion, PublicKey, U512,
+    auction::EraId, bytesrepr, bytesrepr::ToBytes, CLValueError, Key, ProtocolVersion, PublicKey,
+    U512,
 };
 
 use crate::{
-    core::engine_state::Error,
+    core::engine_state::{Error, GetEraValidatorsError},
     shared::{newtypes::Blake2bHash, TypeMismatch},
 };
-use casper_types::auction::EraId;
 
 #[derive(Debug)]
 pub struct SlashItem {
@@ -100,6 +100,8 @@ pub enum StepResult {
     TypeMismatch(TypeMismatch),
     Serialization(bytesrepr::Error),
     CLValueError(CLValueError),
+    GetEraValidatorsError(GetEraValidatorsError),
+    EraValidatorsMissing(EraId),
     Success {
         post_state_hash: Blake2bHash,
         next_era_validators: BTreeMap<PublicKey, U512>,

@@ -668,7 +668,7 @@ pub enum ContractRuntimeRequest {
         #[serde(skip_serializing)]
         step_request: StepRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<StepResult, GetEraValidatorsError>>,
+        responder: Responder<Result<StepResult, engine_state::Error>>,
     },
     /// Check if validator is bonded in the future era (identified by `era_id`).
     IsBonded {

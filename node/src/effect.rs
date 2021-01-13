@@ -1279,7 +1279,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn run_step(
         self,
         step_request: StepRequest,
-    ) -> Result<StepResult, GetEraValidatorsError>
+    ) -> Result<StepResult, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {

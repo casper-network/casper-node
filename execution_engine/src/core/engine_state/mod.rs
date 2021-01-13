@@ -33,7 +33,7 @@ use tracing::{debug, error, warn};
 use casper_types::{
     account::AccountHash,
     auction::{
-        EraId, EraValidators, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
+        EraValidators, ARG_AUCTION_DELAY, ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD,
         ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_REWARD_FACTORS, ARG_UNBONDING_DELAY,
         ARG_VALIDATOR_PUBLIC_KEYS, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
         UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
@@ -45,7 +45,7 @@ use casper_types::{
     system_contract_errors::{self, mint::Error as MintError},
     AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType,
-    Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
+    Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -388,7 +388,7 @@ where
         };
 
         let auction_hash: ContractHash = {
-            let bonded_validators: BTreeMap<casper_types::PublicKey, U512> = ee_config
+            let bonded_validators: BTreeMap<PublicKey, U512> = ee_config
                 .accounts()
                 .iter()
                 .filter_map(|genesis_account| {
@@ -1154,7 +1154,7 @@ where
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
         deploy_item: DeployItem,
-        proposer: casper_types::PublicKey,
+        proposer: PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
         let protocol_data = match self.state.get_protocol_data(protocol_version) {
             Ok(Some(protocol_data)) => protocol_data,
@@ -1707,7 +1707,7 @@ where
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
         deploy_item: DeployItem,
-        proposer: casper_types::PublicKey,
+        proposer: PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
         // spec: https://casperlabs.atlassian.net/wiki/spaces/EN/pages/123404576/Payment+code+execution+specification
 
@@ -2475,7 +2475,7 @@ where
         &self,
         correlation_id: CorrelationId,
         step_request: StepRequest,
-    ) -> Result<StepResult, GetEraValidatorsError> {
+    ) -> Result<StepResult, Error> {
         let protocol_data = match self.state.get_protocol_data(step_request.protocol_version) {
             Ok(Some(protocol_data)) => protocol_data,
             Ok(None) => {
@@ -2542,12 +2542,7 @@ where
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
         let deploy_hash = {
             // seeds address generator w/ protocol version
-            let bytes: Vec<u8> = step_request
-                .protocol_version
-                .value()
-                .into_bytes()
-                .map_err(Error::from)?
-                .to_vec();
+            let bytes: Vec<u8> = step_request.protocol_version.value().into_bytes()?.to_vec();
             DeployHash::new(Blake2bHash::new(&bytes).value())
         };
 
@@ -2682,7 +2677,7 @@ where
                 step_request.pre_state_hash,
                 effects.transforms,
             )
-            .map_err(|err| Error::Exec(err.into()))?;
+            .map_err(Into::into)?;
 
         let post_state_hash = match commit_result {
             CommitResult::Success { state_root } => state_root,
@@ -2695,16 +2690,27 @@ where
                 return Ok(StepResult::Serialization(bytesrepr_error))
             }
         };
-        let mut era_validators_b_tree_map: BTreeMap<
-            EraId,
-            BTreeMap<casper_types::PublicKey, U512>,
-        > = self.get_era_validators(
-            correlation_id,
-            GetEraValidatorsRequest::new(post_state_hash, step_request.protocol_version),
-        )?;
-        let next_era_validators = era_validators_b_tree_map
-            .remove(&step_request.next_era_id)
-            .ok_or(GetEraValidatorsError::EraValidatorsMissing)?;
+
+        let next_era_validators = {
+            let mut era_validators = match self.get_era_validators(
+                correlation_id,
+                GetEraValidatorsRequest::new(post_state_hash, step_request.protocol_version),
+            ) {
+                Ok(era_validators) => era_validators,
+                Err(error) => {
+                    return Ok(StepResult::GetEraValidatorsError(error));
+                }
+            };
+
+            let era_id = &step_request.next_era_id;
+            match era_validators.remove(era_id) {
+                Some(validator_weights) => validator_weights,
+                None => {
+                    return Ok(StepResult::EraValidatorsMissing(*era_id));
+                }
+            }
+        };
+
         Ok(StepResult::Success {
             post_state_hash,
             next_era_validators,
