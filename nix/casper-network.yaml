@@ -5,9 +5,6 @@ metadata:
   labels:
     app: casper-node
 spec:
-  # ports:
-  #   - port: 80
-  #     name: web
   clusterIP: None
   selector:
     app: casper-node
@@ -18,7 +15,7 @@ metadata:
   name: casper-node
 spec:
   serviceName: "casper-node"
-  replicas: 100
+  replicas: 1
   selector:
     matchLabels:
       app: casper-node
@@ -27,27 +24,64 @@ spec:
       labels:
         app: casper-node
     spec:
+      volumes:
+        - name: chain-map
+          configMap:
+            name: chain-map
+      initContainers:
+        - name: init-node
+          image: busybox:1.28
+          command: [
+              "sh",
+              "-c",
+              "mkdir /chain-temp;
+              cd /chain-temp;
+              tar xvf /chain-map/chain_map.tar.xz;
+              cp -vr chain/ ../config/;
+              export NODE_INDEX=${HOSTNAME##*-};
+              cp -vr node-${NODE_INDEX}/ ../config/node;
+              echo 'all done initializing';
+              ",
+            ]
+          volumeMounts:
+            # The stored network definition
+            - name: chain-map
+              mountPath: "/chain-map"
+              readOnly: true
+            # Volume that holds the configuration
+            - name: config
+              mountPath: /config
       containers:
         - name: node
-          image: clmarc/casper-node:784eb0e0
+          # image: clmarc/casper-node:784eb0e0
+          image: busybox:1.28
+          command: ["sh", "-c", "sleep 2222222"]
           resources:
-          limits:
-            cpu: "500m"
-            mem: 1Gi
+            limits:
+              cpu: "500m"
+              memory: "1000Mi"
+            requests:
+              cpu: "250m"
+              memory: "500Mi"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: storage
+              mountPath: /storage
+  volumeClaimTemplates:
+    - metadata:
+        name: config
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "longhorn"
+        resources:
           requests:
-            cpu: "250m"
-            mem: 500Mi
-  #       ports:
-  #       - containerPort: 80
-  #         name: web
-  #       volumeMounts:
-  #       - name: www
-  #         mountPath: /usr/share/nginx/html
-  # volumeClaimTemplates:
-  # - metadata:
-  #     name: www
-  #   spec:
-  #     accessModes: [ "ReadWriteOnce" ]
-  #     resources:
-  #       requests:
-  #         storage: 1Gi
+            storage: 5Mi
+    - metadata:
+        name: storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "longhorn"
+        resources:
+          requests:
+            storage: 1Gi

@@ -3,17 +3,22 @@
 from base64 import b64encode
 import os
 import time
+import tarfile
 
 import click
 import kubernetes
 import toml
 from kubernetes.client.rest import ApiException
+import volatile
 
 TAG = "9bddd925"
 
 #: Prefix for namespaces of deployed networks. Prevents accidental deletion of namespaces like
 #  `default`.
 NETWORK_NAME_PREFIX = "casper-"
+
+#: Maximum size for a compressed network definition, including WASM.
+MAX_CHAIN_MAP_SIZE = 1024 * 1023
 
 
 def k8s():
@@ -61,12 +66,28 @@ def deploy(network_path, id):
     # Create the namespace.
     api.create_namespace({"metadata": {"name": name}})
 
-    # Upload chainspec as a config map.
-    chain_map = load_dir_to_dict(os.path.join(network_path, "chain"))
+    # # Create the uploader pod and physical volume.
+    subprocess.check_call(["kubectl", "--namespace", name, "apply", "-f", "uploader.yaml"])
+
+
+    # Since shared volumes are quite complicated, we store our whole network configuration as a
+    # config map. This limits the size effectively to < 1 MB, but LZMA-compression should be good
+    # enough to bring the size down to < 300 KB, the majority of which are WASM contracts.
+    click.echo("Compressing network definition")
+    chain_map = b64encode(xz_dir(network_path)).decode("ASCII")
+
+    assert len(chain_map) < MAX_CHAIN_MAP_SIZE
+
+    click.echo("Uploading config map with network definition")
     api.create_namespaced_config_map(
         namespace=name,
-        body={"metadata": {"name": "chainspec",}, "binaryData": chain_map},
+        body={
+            "metadata": {"name": "chain-map",},
+            "binaryData": {"chain_map.tar.xz": chain_map},
+        },
     )
+
+    click.echo("Config has been uploaded. You can now deploy the actual network.")
 
 
 @cli.command("destroy")
@@ -98,6 +119,17 @@ def namespace_exists(api, name):
     return True
 
 
+def pod_status(api, namespace, pod_name):
+    """Checks whether a given pod exists in a namespace"""
+    try:
+        pod = api.read_namespaced_pod(name=name, namespace=namespace)
+        return resp.status.phase
+    except ApiException as e:
+        if e.status != 404:
+            raise
+        return None
+
+
 def delete_namespace(api, name):
     """Delete a namespace and watch for it to terminate"""
     # It seems the watch API is not supported for namespace reading? We poll manually.
@@ -116,20 +148,21 @@ def delete_namespace(api, name):
         time.sleep(0.250)
 
 
-def load_dir_to_dict(path):
-    """Loads all of the contents of a directory into a dict.
+def xz_dir(target):
+    """Creates a `.tar.xz`-formatted archive from a path, with all archive paths being relative to
+    the `target` dir.
 
-    Keys are paths relative to `path`, values the file contents encoded as base64."""
+    Returns the archive in-memory."""
+    with volatile.file() as archive:
+        with tarfile.open(archive.name, "w:xz") as tar:
+            for dirpath, _dirnames, filenames in os.walk(target):
+                for filename in filenames:
+                    full_path = os.path.join(dirpath, filename)
+                    relpath = os.path.relpath(full_path, target)
+                    tar.add(full_path, arcname=relpath)
 
-    data = {}
-
-    for dirpath, _dirnames, filenames in os.walk(path):
-        for filename in filenames:
-            full_path = os.path.join(dirpath, filename)
-            relpath = os.path.relpath(full_path, path)
-            data[relpath] = b64encode(open(full_path, "rb").read()).decode("ASCII")
-
-    return data
+        archive.close()
+        return open(archive.name, "rb").read()
 
 
 if __name__ == "__main__":
