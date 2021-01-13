@@ -54,7 +54,7 @@ pub enum Error {
         io::Error,
     ),
     /// Could not resolve root node address.
-    #[error("failed to resolve network address: {0}")]
+    #[error("failed to resolve network address")]
     ResolveAddr(
         #[serde(skip_serializing)]
         #[source]
