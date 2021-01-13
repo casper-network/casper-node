@@ -123,9 +123,18 @@ def cli(
     type=int,
 )
 @click.option(
+    "-c/-C",
+    "--cluster/--no-cluster",
+    help="Setup networking suitable for cluster operation.",
+    default=True,
+    is_flag=True,
+)
+@click.option(
     "-N", "--number-of-nodes", help="Number of nodes to create data for", default=5
 )
-def create_network(obj, target_path, network_name, genesis_in, number_of_nodes):
+def create_network(
+    obj, target_path, network_name, genesis_in, number_of_nodes, cluster
+):
     if network_name is None:
         network_name = os.path.basename(target_path)
 
@@ -164,7 +173,9 @@ def create_network(obj, target_path, network_name, genesis_in, number_of_nodes):
     for n in range(number_of_nodes):
         node_path = os.path.join(target_path, "node-{}".format(n))
         os.mkdir(node_path)
-        pubkey_hex = create_node(obj["casper_client_argv0"], obj["config_template"], node_path)
+        pubkey_hex = create_node(
+            n, obj["casper_client_argv0"], obj["config_template"], node_path, cluster
+        )
         pubkeys[n] = pubkey_hex
 
     accounts_path = os.path.join(chain_path, "accounts.csv")
@@ -201,7 +212,7 @@ def create_chainspec(template, network_name, genesis_in, contract_paths):
     return chainspec
 
 
-def create_node(client_argv0, config_template, node_path):
+def create_node(n, client_argv0, config_template, node_path, cluster):
     """Create a node configuration inside a network.
 
     Paths are assumed to be set up using `create_chainspec`.
@@ -223,6 +234,14 @@ def create_node(client_argv0, config_template, node_path):
 
     config["logging"]["format"] = "json"
 
+    # Cluster-specific configuration
+    if cluster:
+        # Set the public address to `casper-node-XX`, which will resolve to the internal
+        # network IP, and use the automatic port detection by setting `:0`.
+        config["network"]["public_address"] = "casper-node-{}:0".format(n)
+
+    toml.dump(config, open(os.path.join(node_path, "config.toml"), "w"))
+
     return open(os.path.join(key_path, "public_key_hex")).read().strip()
 
 
@@ -230,9 +249,9 @@ def create_accounts_csv(output_file, pubkeys):
     items = list(pubkeys.items())
     items.sort()
     for id, key_hex in items:
-       motes = 1000000000000000
-       weight = 10000000000000
-       output_file.write("{},{},{}\n".format(key_hex, motes, weight))
+        motes = 1000000000000000
+        weight = 10000000000000
+        output_file.write("{},{},{}\n".format(key_hex, motes, weight))
 
 
 def run_client(argv0, *args):
