@@ -90,6 +90,9 @@ impl DeployAcceptor {
     }
 
     /// Handles receiving a new `Deploy` from a peer or client.
+    /// In the case of a peer, there should be no responder and the variant should be `None`
+    /// In the case of a client, there should be a responder to communicate the validity of the
+    /// deploy and the variant will be `Some`
     fn accept<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -138,6 +141,8 @@ impl DeployAcceptor {
             info! {
                 "Received deploy from invalid account using {}", account_key
             };
+            // The client has submitted an invalid deploy. Return an error message to the RPC
+            // component via the responder.
             if let Some(responder) = maybe_responder {
                 effects.extend(responder.respond(Err(Error::InvalidAccount)).ignore());
             }
@@ -149,6 +154,8 @@ impl DeployAcceptor {
             return effects;
         }
 
+        // The client submitted a valid deploy. Return an Ok status to the RPC component via the
+        // responder.
         if let Some(responder) = maybe_responder {
             effects.extend(responder.respond(Ok(())).ignore());
         }
@@ -179,6 +186,8 @@ impl DeployAcceptor {
         let is_acceptable =
             cloned_deploy.is_acceptable(chainspec.chain_name, chainspec.deploy_config);
         if !is_acceptable {
+            // The client has submitted an invalid deploy. Return an error message to the RPC
+            // component via the responder.
             if let Some(responder) = maybe_responder {
                 effects.extend(responder.respond(Err(Error::InvalidDeploy)).ignore());
             }
