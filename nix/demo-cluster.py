@@ -66,9 +66,6 @@ def deploy(network_path, id):
     # Create the namespace.
     api.create_namespace({"metadata": {"name": name}})
 
-    # # Create the uploader pod and physical volume.
-    subprocess.check_call(["kubectl", "--namespace", name, "apply", "-f", "uploader.yaml"])
-
     # Since shared volumes are quite complicated, we store our whole network configuration as a
     # config map. This limits the size effectively to < 1 MB, but LZMA-compression should be good
     # enough to bring the size down to < 300 KB, the majority of which are WASM contracts.

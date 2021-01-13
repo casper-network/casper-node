@@ -54,9 +54,7 @@ spec:
               mountPath: /config
       containers:
         - name: node
-          # image: clmarc/casper-node:784eb0e0
-          image: busybox:1.28
-          command: ["sh", "-c", "sleep 2222222"]
+          image: clmarc/casper-node:c86df7e5
           resources:
             limits:
               cpu: "500m"
