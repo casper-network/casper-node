@@ -5,6 +5,7 @@ use std::{
 };
 
 use parity_wasm::elements::Module;
+use tracing::warn;
 use wasmi::ModuleRef;
 
 use casper_types::{
@@ -38,6 +39,7 @@ macro_rules! on_fail_charge {
             Ok(res) => res,
             Err(e) => {
                 let exec_err: Error = e.into();
+                warn!("Execution failed: {:?}", exec_err);
                 return ExecutionResult::precondition_failure(exec_err.into());
             }
         }
@@ -47,6 +49,7 @@ macro_rules! on_fail_charge {
             Ok(res) => res,
             Err(e) => {
                 let exec_err: Error = e.into();
+                warn!("Execution failed: {:?}", exec_err);
                 return ExecutionResult::Failure {
                     error: exec_err.into(),
                     effect: Default::default(),
@@ -61,6 +64,7 @@ macro_rules! on_fail_charge {
             Ok(res) => res,
             Err(e) => {
                 let exec_err: Error = e.into();
+                warn!("Execution failed: {:?}", exec_err);
                 return ExecutionResult::Failure {
                     error: exec_err.into(),
                     effect: $effect,
