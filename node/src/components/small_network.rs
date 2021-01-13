@@ -581,7 +581,7 @@ where
         if let Some(outgoing) = self.outgoing.remove(&peer_id) {
             trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
             if add_to_blocklist {
-                info!(%peer_id, "blacklisting peer");
+                info!(our_id=%self.our_id, %peer_id, "blacklisting peer");
                 self.blocklist.insert(outgoing.peer_address);
             }
         }
