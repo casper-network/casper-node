@@ -727,7 +727,7 @@ impl reactor::Reactor for Reactor {
                     ),
                 ),
                 ConsensusAnnouncement::Finalized(_) => {
-                    info!("A block was finalized");
+                    // A block was finalized.
                     Effects::new()
                 }
                 ConsensusAnnouncement::Fault {
