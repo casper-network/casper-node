@@ -18,7 +18,7 @@ pub enum VersionCheckResult {
     /// Upgrade possible.
     Valid {
         /// Is this a major protocol version upgrade?
-        is_major_value: bool,
+        is_major_version: bool,
     },
     /// Upgrade is invalid.
     Invalid,
@@ -35,7 +35,7 @@ impl VersionCheckResult {
     /// Checks if given version is a major protocol version upgrade.
     pub fn is_major_version(&self) -> bool {
         match self {
-            VersionCheckResult::Valid { is_major_value } => *is_major_value,
+            VersionCheckResult::Valid { is_major_version } => *is_major_version,
             VersionCheckResult::Invalid => false,
         }
     }
@@ -79,7 +79,7 @@ impl ProtocolVersion {
                 return VersionCheckResult::Invalid;
             }
             return VersionCheckResult::Valid {
-                is_major_value: true,
+                is_major_version: true,
             };
         }
 
@@ -98,7 +98,7 @@ impl ProtocolVersion {
                 return VersionCheckResult::Invalid;
             }
             return VersionCheckResult::Valid {
-                is_major_value: false,
+                is_major_version: false,
             };
         }
 
@@ -111,7 +111,7 @@ impl ProtocolVersion {
         }
 
         VersionCheckResult::Valid {
-            is_major_value: false,
+            is_major_version: false,
         }
     }
 
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn should_follow_version_with_optional_code() {
         let value = VersionCheckResult::Valid {
-            is_major_value: false,
+            is_major_version: false,
         };
         assert!(!value.is_invalid());
         assert!(!value.is_major_version());
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn should_follow_version_with_required_code() {
         let value = VersionCheckResult::Valid {
-            is_major_value: true,
+            is_major_version: true,
         };
         assert!(!value.is_invalid());
         assert!(value.is_major_version());
