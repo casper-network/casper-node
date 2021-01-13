@@ -44,14 +44,17 @@ use casper_types::{
     auction::{self, DelegationRate},
     mint, proof_of_stake, runtime_args,
     system_contract_type::AUCTION,
-    ProtocolVersion, PublicKey, RuntimeArgs, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
-const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
-static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_1.into());
+
+const VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519([123; SecretKey::ED25519_LENGTH]));
+const VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
+static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99;
@@ -270,7 +273,7 @@ fn should_verify_calling_auction_delegate_and_undelegate_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::new(
-            VALIDATOR_1,
+            *VALIDATOR_1,
             *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
@@ -313,7 +316,7 @@ fn should_verify_calling_auction_delegate_and_undelegate_costs() {
         auction::METHOD_DELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            auction::ARG_VALIDATOR => VALIDATOR_1,
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
             auction::ARG_SOURCE_PURSE => source_purse,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
         },
@@ -343,7 +346,7 @@ fn should_verify_calling_auction_delegate_and_undelegate_costs() {
         auction::METHOD_UNDELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            auction::ARG_VALIDATOR => VALIDATOR_1,
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
             auction::ARG_UNBOND_PURSE => source_purse,
         },
@@ -384,7 +387,7 @@ fn should_observe_upgraded_delegate_and_undelegate_call_cost() {
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::new(
-            VALIDATOR_1,
+            *VALIDATOR_1,
             *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
@@ -439,7 +442,7 @@ fn should_observe_upgraded_delegate_and_undelegate_call_cost() {
         auction::METHOD_DELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            auction::ARG_VALIDATOR => VALIDATOR_1,
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
             auction::ARG_SOURCE_PURSE => source_purse,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
         },
@@ -470,7 +473,7 @@ fn should_observe_upgraded_delegate_and_undelegate_call_cost() {
         auction::METHOD_UNDELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            auction::ARG_VALIDATOR => VALIDATOR_1,
+            auction::ARG_VALIDATOR => *VALIDATOR_1,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
             auction::ARG_UNBOND_PURSE => source_purse,
         },
@@ -494,7 +497,7 @@ fn should_call_transfer_directly() {
 
     let accounts = {
         let validator_1 = GenesisAccount::new(
-            VALIDATOR_1,
+            *VALIDATOR_1,
             *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
