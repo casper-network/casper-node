@@ -91,15 +91,12 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::BlockFinalized(finalized_block) => {
-                self.broadcast(SseData::BlockFinalized(*finalized_block))
-            }
             Event::BlockAdded {
                 block_hash,
                 block_header,
             } => self.broadcast(SseData::BlockAdded {
                 block_hash,
-                block_header: *block_header,
+                block_header: Box::new(*block_header),
             }),
             Event::DeployProcessed {
                 deploy_hash,
@@ -107,12 +104,12 @@ where
                 block_hash,
                 execution_result,
             } => self.broadcast(SseData::DeployProcessed {
-                deploy_hash,
+                deploy_hash: Box::new(deploy_hash),
                 account: *deploy_header.account(),
                 timestamp: deploy_header.timestamp(),
                 ttl: deploy_header.ttl(),
                 dependencies: deploy_header.dependencies().clone(),
-                block_hash,
+                block_hash: Box::new(block_hash),
                 execution_result,
             }),
             Event::Fault {

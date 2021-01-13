@@ -726,14 +726,10 @@ impl reactor::Reactor for Reactor {
                         linear_chain_sync::Event::BlockHandled(block_header),
                     ),
                 ),
-                ConsensusAnnouncement::Finalized(block) => reactor::wrap_effects(
-                    Event::EventStreamServer,
-                    self.event_stream_server.handle_event(
-                        effect_builder,
-                        rng,
-                        event_stream_server::Event::BlockFinalized(block),
-                    ),
-                ),
+                ConsensusAnnouncement::Finalized(_) => {
+                    // A block was finalized.
+                    Effects::new()
+                }
                 ConsensusAnnouncement::Fault {
                     era_id,
                     public_key,
