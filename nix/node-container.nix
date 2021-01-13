@@ -10,7 +10,7 @@ in pkgs.dockerTools.buildImage {
   tag = tag;
   contents = with pkgs; [ busybox ];
   config = {
-    Cmd = [ "validator" "/config/config.toml" ];
+    Cmd = [ "validator" "/config/node/config.toml" ];
     Entrypoint = [ "${casper-node}/bin/casper-node" ];
     WorkingDir = "/storage";
     Volumes = {
