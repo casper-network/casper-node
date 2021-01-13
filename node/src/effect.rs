@@ -102,6 +102,7 @@ use crate::{
         chainspec_loader::ChainspecInfo,
         consensus::{BlockContext, EraId},
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
+        deploy_acceptor::Error,
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
@@ -591,13 +592,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces that the HTTP API server has received a deploy.
-    pub(crate) async fn announce_deploy_received(self, deploy: Box<Deploy>)
-    where
+    pub(crate) async fn announce_deploy_received(
+        self,
+        deploy: Box<Deploy>,
+        responder: Option<Responder<Result<(), Error>>>,
+    ) where
         REv: From<RpcServerAnnouncement>,
     {
         self.0
             .schedule(
-                RpcServerAnnouncement::DeployReceived { deploy },
+                RpcServerAnnouncement::DeployReceived { deploy, responder },
                 QueueKind::Api,
             )
             .await;

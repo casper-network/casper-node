@@ -13,7 +13,8 @@ use serde::Serialize;
 use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
-    components::{consensus::EraId, small_network::GossipedAddress},
+    components::{consensus::EraId, deploy_acceptor::Error, small_network::GossipedAddress},
+    effect::Responder,
     types::{
         Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployHeader, FinalitySignature,
         FinalizedBlock, Item, Timestamp,
@@ -68,13 +69,15 @@ pub enum RpcServerAnnouncement {
     DeployReceived {
         /// The received deploy.
         deploy: Box<Deploy>,
+        /// A client responder in the case where a client submits a deploy.
+        responder: Option<Responder<Result<(), Error>>>,
     },
 }
 
 impl Display for RpcServerAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            RpcServerAnnouncement::DeployReceived { deploy } => {
+            RpcServerAnnouncement::DeployReceived { deploy, .. } => {
                 write!(formatter, "api server received {}", deploy.id())
             }
         }
