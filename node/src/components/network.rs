@@ -213,12 +213,14 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         // Specify listener.
         let listening_address = address_str_to_multiaddr(config.bind_address.as_str());
         Swarm::listen_on(&mut swarm, listening_address.clone()).map_err(|error| Error::Listen {
-            address: listening_address,
+            address: listening_address.clone(),
             error,
         })?;
+        info!(%our_id, %listening_address, "network component started listening");
 
         // Schedule connection attempts to known peers.
         for address in known_addresses.keys() {
+            debug!(%our_id, %address, "dialing known address");
             Swarm::dial_addr(&mut swarm, address.clone()).map_err(|error| Error::DialPeer {
                 address: address.clone(),
                 error,
@@ -451,9 +453,16 @@ async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
                     }
                 }
 
-                _ = shutdown_receiver.recv() => {
-                    info!("{}: shutting down libp2p", our_id(&swarm));
-                    break;
+                maybe_shutdown = shutdown_receiver.recv() => {
+                    // Since a `watch` channel is always constructed with an initial value enqueued,
+                    // ignore this (and any others) from the `shutdown_receiver`.
+                    //
+                    // When the receiver yields a `None`, the sender has been dropped, indicating we
+                    // should exit this loop.
+                    if maybe_shutdown.is_none() {
+                        info!("{}: shutting down libp2p", our_id(&swarm));
+                        break;
+                    }
                 }
             }
         }
