@@ -55,12 +55,26 @@ spec:
       terminationGracePeriodSeconds: 5
       containers:
         - name: node
-          image: clmarc/casper-node:91a5d7a0
+          image: clmarc/casper-node:91a5d7a0 # TODO: Dynamically set.
+          # The args override some settings from environment variables.
+          args:
+            [
+              "validator",
+              "/config/node/config.toml",
+              "-C",
+              "network.public_address=$(POD_IP):34553",
+            ]
+          #image: busybox:latest
+          #command: ["/bin/sh", "-c", "echo $POD_IP > /PODIP; sleep 230000"]
           env:
             - name: RUST_LOG
-              value: debug
+              value: info
             - name: RUST_BACKTRACE
               value: "1"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           resources:
             limits:
               cpu: "500m"
