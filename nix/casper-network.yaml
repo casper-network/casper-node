@@ -54,7 +54,7 @@ spec:
               mountPath: /config
       containers:
         - name: node
-          image: clmarc/casper-node:c9dd27f5
+          image: clmarc/casper-node:91a5d7a0
           resources:
             limits:
               cpu: "500m"
