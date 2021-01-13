@@ -5,6 +5,7 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::types::json_compatibility::vectorize;
 use casper_execution_engine::shared::account::Account as ExecutionEngineAccount;
 use casper_types::{account::AccountHash, NamedKey, URef};
 
@@ -40,14 +41,7 @@ impl From<&ExecutionEngineAccount> for Account {
     fn from(ee_account: &ExecutionEngineAccount) -> Self {
         Account {
             account_hash: ee_account.account_hash(),
-            named_keys: ee_account
-                .named_keys()
-                .iter()
-                .map(|(name, key)| NamedKey {
-                    name: name.clone(),
-                    key: key.to_formatted_string(),
-                })
-                .collect(),
+            named_keys: vectorize(ee_account.named_keys()),
             main_purse: ee_account.main_purse(),
             associated_keys: ee_account
                 .associated_keys()
