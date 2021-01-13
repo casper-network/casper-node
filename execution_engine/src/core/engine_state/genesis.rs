@@ -51,7 +51,7 @@ impl fmt::Display for GenesisResult {
             GenesisResult::Success {
                 post_state_hash,
                 effect,
-            } => write!(f, "Success: {} {:?}", post_state_hash, effect),
+            } => write!(f, "Success: {}", post_state_hash),
         }
     }
 }
