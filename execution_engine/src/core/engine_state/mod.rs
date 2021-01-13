@@ -41,11 +41,11 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY},
-    proof_of_stake, runtime_args,
+    proof_of_stake, runtime_args, standard_payment,
     system_contract_errors::{self, mint::Error as MintError},
-    AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType,
-    Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
+    ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
+    EntryPointType, Key, Parameter, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -1941,10 +1941,22 @@ where
                     correlation_id,
                     &protocol_version,
                 )
-                .map(|module| GetModuleResult::Session {
-                    module,
-                    contract_package: ContractPackage::default(),
-                    entry_point: EntryPoint::default(),
+                .map(|module| {
+                    let entry_point = EntryPoint::new(
+                        standard_payment::METHOD_PAY.to_string(),
+                        vec![Parameter::new(standard_payment::ARG_AMOUNT, CLType::U512)],
+                        CLType::Result {
+                            ok: Box::new(CLType::Unit),
+                            err: Box::new(CLType::U32),
+                        },
+                        EntryPointAccess::Public,
+                        EntryPointType::Session,
+                    );
+                    GetModuleResult::Session {
+                        module,
+                        contract_package: ContractPackage::default(),
+                        entry_point,
+                    }
                 })
             } else {
                 self.get_module(

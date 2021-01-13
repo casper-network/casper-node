@@ -3,10 +3,10 @@ use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-pub const DEFAULT_GET_PAYMENT_PURSE_COST: u32 = 19;
-pub const DEFAULT_SET_REFUND_PURSE_COST: u32 = 20;
-pub const DEFAULT_GET_REFUND_PURSE_COST: u32 = 21;
-pub const DEFAULT_FINALIZE_PAYMENT_COST: u32 = 22;
+pub const DEFAULT_GET_PAYMENT_PURSE_COST: u32 = 10_000;
+pub const DEFAULT_SET_REFUND_PURSE_COST: u32 = 10_000;
+pub const DEFAULT_GET_REFUND_PURSE_COST: u32 = 10_000;
+pub const DEFAULT_FINALIZE_PAYMENT_COST: u32 = 10_000;
 
 /// Description of costs of calling proof of stake entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]

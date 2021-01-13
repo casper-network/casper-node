@@ -137,6 +137,23 @@ withdraw_delegator_reward = 10_000
 withdraw_validator_reward = 10_000
 read_era_id = 10_000
 
+[system_config.mint_costs]
+mint = 10_000
+reduce_total_supply = 10_000
+create = 10_000
+balance = 10_000
+transfer = 10_000
+read_base_round_reward = 10_000
+
+[system_config.proof_of_stake_costs]
+get_payment_purse = 10_000
+set_refund_purse = 10_000
+get_refund_purse = 10_000
+finalize_payment = 10_000
+
+[system_config.standard_payment_costs]
+pay = 10_000
+
 [[upgrade]]
 protocol_version = '0.2.0'
 upgrade_installer_path = 'upgrade.wasm'
@@ -257,6 +274,23 @@ distribute = 15_000
 withdraw_delegator_reward = 15_000
 withdraw_validator_reward = 15_000
 read_era_id = 15_000
+
+[upgrade.new_system_config.mint_costs]
+mint = 15_000
+reduce_total_supply = 15_000
+create = 15_000
+balance = 15_000
+transfer = 15_000
+read_base_round_reward = 15_000
+
+[upgrade.new_system_config.proof_of_stake_costs]
+get_payment_purse = 15_000
+set_refund_purse = 15_000
+get_refund_purse = 15_000
+finalize_payment = 15_000
+
+[upgrade.new_system_config.standard_payment_costs]
+pay = 15_000
 
 [[upgrade]]
 protocol_version = '0.3.0'
