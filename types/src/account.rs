@@ -242,10 +242,12 @@ impl AccountHash {
         public_key: &PublicKey,
         blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
     ) -> Self {
+        const SYSTEM_LOWERCASE: &str = "system";
         const ED25519_LOWERCASE: &str = "ed25519";
         const SECP256K1_LOWERCASE: &str = "secp256k1";
 
         let algorithm_name = match public_key {
+            PublicKey::System => SYSTEM_LOWERCASE,
             PublicKey::Ed25519(_) => ED25519_LOWERCASE,
             PublicKey::Secp256k1(_) => SECP256K1_LOWERCASE,
         };
