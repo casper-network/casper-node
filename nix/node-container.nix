@@ -8,7 +8,7 @@ let casper-node = (import ./node.nix) { };
 in pkgs.dockerTools.buildImage {
   name = "casper-node";
   tag = tag;
-  contents = with pkgs; [ busybox ];
+  contents = with pkgs; [ busybox dnsutils ];
   config = {
     Cmd = [ "validator" "/config/node/config.toml" ];
     Entrypoint = [ "${casper-node}/bin/casper-node" ];
