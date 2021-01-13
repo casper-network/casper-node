@@ -883,7 +883,6 @@ mod param_tests {
     const PKG_HASH: &str = "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6";
     const ENTRYPOINT: &str = "entrypoint";
     const VERSION: &str = "0.1.0";
-    const PATH: &str = "../target/wasm32-unknown-unknown/release/standard_payment.wasm";
 
     fn args_simple() -> Vec<&'static str> {
         vec!["name_01:bool='false'", "name_02:u32='42'"]
@@ -966,23 +965,6 @@ mod param_tests {
             .try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::StoredVersionedContractByHash { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
-                    let mut expected = BTreeMap::new();
-                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
-                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
-                    assert_eq!(actual, expected);
-                }
-                other => panic!("incorrect type parsed {:?}", other),
-            }
-        }
-
-        #[test]
-        pub fn with_path() {
-            let params: Result<ExecutableDeployItem> =
-                SessionStrParams::with_path(PATH, args_simple(), "").try_into();
-            match params {
-                Ok(item @ ExecutableDeployItem::ModuleBytes { .. }) => {
                     let args = item.into_runtime_args().unwrap();
                     let actual: BTreeMap<String, CLValue> = args.into();
                     let mut expected = BTreeMap::new();
@@ -1086,23 +1068,6 @@ mod param_tests {
             .try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::StoredVersionedContractByHash { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
-                    let mut expected = BTreeMap::new();
-                    expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
-                    expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
-                    assert_eq!(actual, expected);
-                }
-                other => panic!("incorrect type parsed {:?}", other),
-            }
-        }
-
-        #[test]
-        pub fn with_path() {
-            let params: Result<ExecutableDeployItem> =
-                PaymentStrParams::with_path(PATH, args_simple(), "").try_into();
-            match params {
-                Ok(item @ ExecutableDeployItem::ModuleBytes { .. }) => {
                     let args = item.into_runtime_args().unwrap();
                     let actual: BTreeMap<String, CLValue> = args.into();
                     let mut expected = BTreeMap::new();

@@ -131,7 +131,6 @@ fn main() {
     tests_package::add_rust_toolchain();
     tests_package::add_build_rs();
     tests_package::replace_main_rs();
-    tests_package::copy_wasm_files();
 
     travis_yml::create();
 }

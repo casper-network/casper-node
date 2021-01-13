@@ -30,7 +30,6 @@ fn should_fail_when_target_path_already_exists() {
 }
 
 /// Runs `cmd` and returns the `Output` if successful, or panics on failure.
-#[allow(dead_code)]
 fn output_from_command(mut command: Command) -> Output {
     match command.ok() {
         Ok(output) => output,
@@ -44,7 +43,6 @@ fn output_from_command(mut command: Command) -> Output {
     }
 }
 
-#[allow(dead_code)]
 fn run_tool_and_resulting_tests() {
     let temp_dir = tempfile::tempdir().unwrap().into_path();
 
@@ -73,7 +71,6 @@ fn run_tool_and_resulting_tests() {
 }
 
 #[test]
-#[allow(dead_code)]
 fn should_run_casperlabs_node() {
-    // run_tool_and_resulting_tests();
+    run_tool_and_resulting_tests();
 }

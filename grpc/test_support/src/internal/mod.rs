@@ -34,10 +34,6 @@ pub use wasm_test_builder::{
     InMemoryWasmTestBuilder, LmdbWasmTestBuilder, WasmTestBuilder, WasmTestResult,
 };
 
-pub const MINT_INSTALL_CONTRACT: &str = "mint_install.wasm";
-pub const POS_INSTALL_CONTRACT: &str = "pos_install.wasm";
-pub const STANDARD_PAYMENT_INSTALL_CONTRACT: &str = "standard_payment_install.wasm";
-pub const AUCTION_INSTALL_CONTRACT: &str = "auction_install.wasm";
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 pub const DEFAULT_AUCTION_DELAY: u64 = 3;
 pub const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
