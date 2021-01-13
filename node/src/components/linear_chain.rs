@@ -191,6 +191,10 @@ impl<I> LinearChain<I> {
                 // TODO: disconnect from the sender.
                 break;
             }
+            if block.proofs().contains_key(&fs.public_key) {
+                // Don't send finality signatures we already know of.
+                continue;
+            }
             block.append_proof(fs.public_key, fs.signature);
             let message = Message::FinalitySignature(fs.clone());
             effects.extend(effect_builder.broadcast_message(message).ignore());
