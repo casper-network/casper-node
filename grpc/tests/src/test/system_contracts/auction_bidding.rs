@@ -169,8 +169,6 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     )
     .build();
 
-    println!("{:?}", exec_request_4);
-
     builder.exec(exec_request_4).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
