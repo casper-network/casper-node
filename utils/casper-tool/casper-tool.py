@@ -209,6 +209,9 @@ def create_chainspec(template, network_name, genesis_in, contract_paths):
         key = "{}_installer_path".format(contract)
         chainspec["genesis"][key] = contract_paths[contract]
 
+    # Use a relative path for accounts.csv
+    chainspec["genesis"]["accounts_path"] = "accounts.csv"
+
     return chainspec
 
 
