@@ -34,6 +34,9 @@ abbreviate_modules = false
 # consensus messages.
 secret_key_path = 'secret_key.pem'
 
+# The folder in which the files with per-era latest unit hashes will be stored.
+unit_hashes_folder = "../node-storage"
+
 
 # ====================================
 # Configuration options for networking

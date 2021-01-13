@@ -1,8 +1,9 @@
 use std::{collections::BTreeSet, rc::Rc};
 
-use casper_types::U512;
 use datasize::DataSize;
 use derive_more::Display;
+
+use casper_types::{PublicKey, U512};
 
 use crate::{
     components::consensus::{
@@ -21,7 +22,6 @@ use crate::{
         traits::Context,
         HighwayProtocol,
     },
-    crypto::asymmetric_key::PublicKey,
     testing::TestRng,
     types::{ProtoBlock, Timestamp},
 };
@@ -129,7 +129,7 @@ fn send_a_wire_unit_with_too_small_a_round_exp() {
     };
     let alice_keypair: Keypair = Keypair::from(Rc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
-        SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
+        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair, &mut rng),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
@@ -184,7 +184,7 @@ fn send_a_valid_wire_unit() {
     };
     let alice_keypair: Keypair = Keypair::from(Rc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
-        SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
+        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair, &mut rng),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     let sender = NodeId(123);
@@ -221,12 +221,16 @@ fn detect_doppelganger() {
     };
     let alice_keypair: Keypair = Keypair::from(Rc::new(ALICE_SECRET_KEY.clone()));
     let highway_message: HighwayMessage<ClContext> = HighwayMessage::NewVertex(Vertex::Unit(
-        SignedWireUnit::new(wunit, &alice_keypair, &mut rng),
+        SignedWireUnit::new(wunit.into_hashed(), &alice_keypair, &mut rng),
     ));
     let mut highway_protocol = new_test_highway_protocol(validators, vec![]);
     // Activate ALICE as validator.
-    let _ =
-        highway_protocol.activate_validator(*ALICE_PUBLIC_KEY, alice_keypair, Timestamp::zero());
+    let _ = highway_protocol.activate_validator(
+        *ALICE_PUBLIC_KEY,
+        alice_keypair,
+        Timestamp::zero(),
+        None,
+    );
     assert_eq!(highway_protocol.is_active(), true);
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();

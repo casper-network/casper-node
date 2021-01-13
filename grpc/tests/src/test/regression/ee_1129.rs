@@ -19,7 +19,7 @@ use casper_types::{
     account::AccountHash,
     auction::{self, DelegationRate},
     contracts::DEFAULT_ENTRY_POINT_NAME,
-    runtime_args, PublicKey, RuntimeArgs, U512,
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ENTRY_POINT_NAME: &str = "create_purse";
@@ -29,8 +29,9 @@ const ACCESS_KEY: &str = "access";
 const CONTRACT_EE_1129_REGRESSION: &str = "ee_1129_regression.wasm";
 const ARG_AMOUNT: &str = "amount";
 
-const VALIDATOR_1: PublicKey = PublicKey::Ed25519([3; 32]);
-static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| VALIDATOR_1.into());
+static VALIDATOR_1: Lazy<PublicKey> =
+    Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
+static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
 static UNDERFUNDED_PAYMENT_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(10_001));
 static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(10_001));
@@ -40,7 +41,7 @@ static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(10_00
 fn should_run_ee_1129_underfunded_delegate_call() {
     let accounts = {
         let validator_1 = GenesisAccount::new(
-            VALIDATOR_1,
+            *VALIDATOR_1,
             *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(VALIDATOR_1_STAKE.into()),
@@ -70,7 +71,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 
     let args = runtime_args! {
         auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
-        auction::ARG_VALIDATOR => VALIDATOR_1,
+        auction::ARG_VALIDATOR => *VALIDATOR_1,
         auction::ARG_SOURCE_PURSE => source_purse,
         auction::ARG_AMOUNT => bid_amount,
     };
@@ -110,7 +111,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 fn should_run_ee_1129_underfunded_add_bid_call() {
     let accounts = {
         let validator_1 = GenesisAccount::new(
-            VALIDATOR_1,
+            *VALIDATOR_1,
             *VALIDATOR_1_ADDR,
             Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
             Motes::new(U512::zero()),
@@ -141,7 +142,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
     let delegation_rate: DelegationRate = 10;
 
     let args = runtime_args! {
-            auction::ARG_PUBLIC_KEY => VALIDATOR_1,
+            auction::ARG_PUBLIC_KEY => *VALIDATOR_1,
             auction::ARG_SOURCE_PURSE => unbond_purse,
             auction::ARG_AMOUNT => amount,
             auction::ARG_DELEGATION_RATE => delegation_rate,

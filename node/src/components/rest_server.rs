@@ -38,6 +38,7 @@ use crate::{
     },
     reactor::Finalize,
     types::{NodeId, StatusFeed},
+    utils::{self, ListeningError},
     NodeRng,
 };
 
@@ -78,19 +79,23 @@ pub(crate) struct RestServer {
 }
 
 impl RestServer {
-    pub(crate) fn new<REv>(config: Config, effect_builder: EffectBuilder<REv>) -> Self
+    pub(crate) fn new<REv>(
+        config: Config,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Self, ListeningError>
     where
         REv: ReactorEventT,
     {
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
+        let builder = utils::start_listening(&config.address)?;
         let server_join_handle =
-            tokio::spawn(http_server::run(config, effect_builder, shutdown_receiver));
+            tokio::spawn(http_server::run(builder, effect_builder, shutdown_receiver));
 
-        RestServer {
+        Ok(RestServer {
             shutdown_sender,
             server_join_handle: Some(server_join_handle),
-        }
+        })
     }
 }
 

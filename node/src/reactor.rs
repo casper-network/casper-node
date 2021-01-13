@@ -406,6 +406,13 @@ where
                 .await
                 .expect("could not serialize snapshot");
 
+            let mut file =
+                File::create("queue_dump_debug.txt").expect("could not create dump file");
+            self.scheduler
+                .debug_dump(&mut file)
+                .await
+                .expect("unable to dump queues to file");
+
             // Indicate we are done with the dump.
             crate::QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }

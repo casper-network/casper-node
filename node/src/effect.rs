@@ -94,7 +94,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, Transfer,
+    ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer,
 };
 
 use crate::{
@@ -105,7 +105,7 @@ use crate::{
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::hash::Digest,
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
@@ -418,7 +418,7 @@ impl<REv> EffectBuilder<REv> {
     /// Usually causes the node to cease operations quickly and exit/crash.
     //
     // Note: This function is implemented manually without `async` sugar because the `Send`
-    // inferrence seems to not work in all cases otherwise.
+    // inference seems to not work in all cases otherwise.
     pub fn fatal(self, file: &str, line: u32, msg: String) -> impl Future<Output = ()> + Send {
         panic!("fatal error [{}:{}]: {}", file, line, msg);
         #[allow(unreachable_code)]
@@ -1129,6 +1129,7 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ContractRuntimeRequest>,
     {
+        let execute_request = Box::new(execute_request);
         self.make_request(
             |responder| ContractRuntimeRequest::Execute {
                 execute_request,
@@ -1322,6 +1323,44 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ConsensusRequest::HandleLinearBlock(Box::new(block_header), responder),
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Check if validator is bonded in the era.
+    pub(crate) async fn is_bonded_validator(self, era_id: EraId, public_key: PublicKey) -> bool
+    where
+        REv: From<ConsensusRequest>,
+    {
+        self.make_request(
+            |responder| ConsensusRequest::IsBondedValidator(era_id, public_key, responder),
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Check if validator is bonded in the future era (`era_id`).
+    /// This information is known only by the Contract Runtime since consensus component
+    /// knows only about currently active eras.
+    pub(crate) async fn is_bonded_in_future_era(
+        self,
+        state_root_hash: Digest,
+        era_id: EraId,
+        protocol_version: ProtocolVersion,
+        public_key: PublicKey,
+    ) -> Result<bool, GetEraValidatorsError>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::IsBonded {
+                state_root_hash,
+                era_id,
+                protocol_version,
+                public_key,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

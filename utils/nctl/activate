@@ -37,12 +37,12 @@ alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
 
 # Node control.
 alias nctl-clean='source $NCTL/sh/node/clean.sh'
+alias nctl-clean-logs='source $NCTL/sh/node/clean_logs.sh'
 alias nctl-interactive='source $NCTL/sh/node/interactive.sh'
 alias nctl-join='source $NCTL/sh/node/join.sh'
 alias nctl-leave='source $NCTL/sh/node/leave.sh'
-alias nctl-log-reset='source $NCTL/sh/node/log_reset.sh'
 alias nctl-restart='source $NCTL/sh/node/restart.sh'
-alias nctl-rotate='source $NCTL/sh/utimiscls/rotate_nodeset.sh'
+alias nctl-rotate='source $NCTL/sh/misc/rotate_nodeset.sh'
 alias nctl-start='source $NCTL/sh/node/start.sh'
 alias nctl-start-after-n-blocks='source $NCTL/sh/node/start_after_n_blocks.sh'
 alias nctl-start-after-n-eras='source $NCTL/sh/node/start_after_n_eras.sh'
@@ -73,7 +73,6 @@ alias nctl-view-chain-spec-accounts='source $NCTL/sh/views/view_chain_spec_accou
 # Views #2: node.
 alias nctl-view-node-config='source $NCTL/sh/views/view_node_config.sh'
 alias nctl-view-node-error-log='source $NCTL/sh/views/view_node_log_stderr.sh'
-alias nctl-view-node-event-stream='source $NCTL/sh/views/view_node_event_stream.sh'
 alias nctl-view-node-log='source $NCTL/sh/views/view_node_log_stdout.sh'
 alias nctl-view-node-peers='source $NCTL/sh/views/view_node_peers.sh'
 alias nctl-view-node-ports='source $NCTL/sh/views/view_node_ports.sh'
@@ -81,6 +80,7 @@ alias nctl-view-node-rpc-endpoint='source $NCTL/sh/views/view_node_rpc_endpoint.
 alias nctl-view-node-rpc-schema='source $NCTL/sh/views/view_node_rpc_schema.sh'
 alias nctl-view-node-status='source $NCTL/sh/views/view_node_status.sh'
 alias nctl-view-node-storage='source $NCTL/sh/views/view_node_storage.sh'
+alias nctl-view-node-storage-consensus='source $NCTL/sh/views/view_node_storage_consensus.sh'
 
 # Views #3: node metrics.
 alias nctl-view-node-metrics='source $NCTL/sh/views/view_node_metrics.sh'

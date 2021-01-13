@@ -4,6 +4,7 @@ use casper_execution_engine::{
     core::engine_state::{execute_request::ExecuteRequest, execution_result::ExecutionResult},
     shared::newtypes::Blake2bHash,
 };
+use casper_types::SecretKey;
 
 use crate::engine_server::{ipc, mappings::MappingError};
 
@@ -43,8 +44,7 @@ impl TryFrom<ipc::ExecuteRequest> for ExecuteRequest {
 
         // TODO: it is currently unclear what the expectation is to provide a proposer when using
         // the execution engine in standalone mode.
-        let proposer =
-            casper_types::PublicKey::Ed25519([0; casper_types::ED25519_PUBLIC_KEY_LENGTH]);
+        let proposer = SecretKey::ed25519([0; SecretKey::ED25519_LENGTH]).into();
 
         Ok(ExecuteRequest::new(
             parent_state_hash,

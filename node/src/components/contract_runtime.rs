@@ -23,6 +23,7 @@ use tracing::trace;
 use casper_execution_engine::{
     core::engine_state::{
         genesis::GenesisResult, EngineConfig, EngineState, Error, GetEraValidatorsError,
+        GetEraValidatorsRequest,
     },
     shared::newtypes::CorrelationId,
     storage::{
@@ -78,6 +79,8 @@ pub struct ContractRuntimeMetrics {
     run_query: Histogram,
     get_balance: Histogram,
     get_validator_weights: Histogram,
+    get_era_validators: Histogram,
+    get_era_validator_weights_by_era_id: Histogram,
 }
 
 /// Value of upper bound of histogram.
@@ -88,17 +91,24 @@ const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;
 const EXPONENTIAL_BUCKET_COUNT: usize = 6;
 
 const RUN_EXECUTE_NAME: &str = "contract_runtime_run_execute";
-const RUN_EXECUTE_HELP: &str = "tracking run of engine_state.run_execute.";
+const RUN_EXECUTE_HELP: &str = "tracking run of engine_state.run_execute in seconds.";
 const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
-const APPLY_EFFECT_HELP: &str = "tracking run of engine_state.apply_effect.";
+const APPLY_EFFECT_HELP: &str = "tracking run of engine_state.apply_effect in seconds.";
 const RUN_QUERY_NAME: &str = "contract_runtime_run_query";
-const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query.";
+const RUN_QUERY_HELP: &str = "tracking run of engine_state.run_query in seconds.";
 const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
-const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade";
+const COMMIT_UPGRADE_HELP: &str = "tracking run of engine_state.commit_upgrade in seconds";
 const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
-const GET_BALANCE_HELP: &str = "tracking run of engine_state.get_balance.";
+const GET_BALANCE_HELP: &str = "tracking run of engine_state.get_balance in seconds.";
 const GET_VALIDATOR_WEIGHTS_NAME: &str = "contract_runtime_get_validator_weights";
-const GET_VALIDATOR_WEIGHTS_HELP: &str = "tracking run of engine_state.get_validator_weights.";
+const GET_VALIDATOR_WEIGHTS_HELP: &str =
+    "tracking run of engine_state.get_validator_weights in seconds.";
+const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
+const GET_ERA_VALIDATORS_HELP: &str = "tracking run of engine_state.get_era_validators in seconds.";
+const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME: &str =
+    "contract_runtime_get_era_validator_weights_by_era_id";
+const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP: &str =
+    "tracking run of engine_state.get_era_validator_weights_by_era_id in seconds.";
 
 /// Create prometheus Histogram and register.
 fn register_histogram_metric(
@@ -138,6 +148,16 @@ impl ContractRuntimeMetrics {
                 registry,
                 GET_VALIDATOR_WEIGHTS_NAME,
                 GET_VALIDATOR_WEIGHTS_HELP,
+            )?,
+            get_era_validators: register_histogram_metric(
+                registry,
+                GET_ERA_VALIDATORS_NAME,
+                GET_ERA_VALIDATORS_HELP,
+            )?,
+            get_era_validator_weights_by_era_id: register_histogram_metric(
+                registry,
+                GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME,
+                GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP,
             )?,
         })
     }
@@ -187,7 +207,7 @@ where
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
                         let execution_result =
-                            engine_state.run_execute(correlation_id, execute_request);
+                            engine_state.run_execute(correlation_id, *execute_request);
                         metrics.run_execute.observe(start.elapsed().as_secs_f64());
                         execution_result
                     })
@@ -297,17 +317,56 @@ where
                 }
                 .ignore()
             }
+            Event::Request(ContractRuntimeRequest::IsBonded {
+                state_root_hash,
+                era_id,
+                protocol_version,
+                public_key: validator_key,
+                responder,
+            }) => {
+                trace!(era=%era_id, public_key = %validator_key, "is validator bonded request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                let request =
+                    GetEraValidatorsRequest::new(state_root_hash.into(), protocol_version);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let era_validators =
+                            engine_state.get_era_validators(correlation_id, request);
+                        metrics
+                            .get_validator_weights
+                            .observe(start.elapsed().as_secs_f64());
+                        era_validators
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "is validator bonded result");
+                    let is_bonded =
+                        result.and_then(|validator_map| match validator_map.get(&era_id.0) {
+                            None => Err(GetEraValidatorsError::EraValidatorsMissing),
+                            Some(era_validators) => Ok(era_validators.contains_key(&validator_key)),
+                        });
+                    responder.respond(is_bonded).await
+                }
+                .ignore()
+            }
             Event::Request(ContractRuntimeRequest::GetEraValidators { request, responder }) => {
                 trace!(?request, "get era validators request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+                // Increment the counter to track the amount of times GetEraValidators was
+                // requested.
                 async move {
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
                         let era_validators =
                             engine_state.get_era_validators(correlation_id, request.into());
-                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        metrics
+                            .get_era_validators
+                            .observe(start.elapsed().as_secs_f64());
                         era_validators
                     })
                     .await
@@ -324,6 +383,8 @@ where
                 trace!(?request, "get validator weights by era id request");
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
+                // Increment the counter to track the amount of times GetEraValidatorsByEraId was
+                // requested.
                 async move {
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
@@ -340,7 +401,9 @@ where
                                 Err(GetEraValidatorsError::EraValidatorsMissing) => Ok(None),
                                 Err(error) => Err(error),
                             };
-                        metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                        metrics
+                            .get_era_validator_weights_by_era_id
+                            .observe(start.elapsed().as_secs_f64());
                         ret
                     })
                     .await

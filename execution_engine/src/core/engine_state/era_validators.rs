@@ -19,6 +19,12 @@ pub enum GetEraValidatorsError {
     EraValidatorsMissing,
 }
 
+impl GetEraValidatorsError {
+    pub fn is_era_validators_missing(&self) -> bool {
+        matches!(self, GetEraValidatorsError::EraValidatorsMissing)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetEraValidatorsRequest {
     state_hash: Blake2bHash,

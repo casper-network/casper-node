@@ -13,7 +13,7 @@ mod tests;
 mod traits;
 
 use std::{
-    convert::{Infallible, TryInto},
+    convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     time::Duration,
 };
@@ -25,11 +25,11 @@ use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use casper_execution_engine::core::engine_state::era_validators::GetEraValidatorsError;
-use casper_types::auction::ValidatorWeights;
+use casper_types::{auction::ValidatorWeights, PublicKey};
 
 use crate::{
     components::Component,
-    crypto::{asymmetric_key::PublicKey, hash::Digest},
+    crypto::hash::Digest,
     effect::{
         announcements::ConsensusAnnouncement,
         requests::{
@@ -63,6 +63,8 @@ pub enum ConsensusMessage {
 pub enum Event<I> {
     /// An incoming network message.
     MessageReceived { sender: I, msg: ConsensusMessage },
+    /// We connected to a peer.
+    NewPeer(I),
     /// A scheduled event to be handled by a specified era
     Timer { era_id: EraId, timestamp: Timestamp },
     /// We are receiving the data we require to propose a new block
@@ -137,6 +139,7 @@ impl<I: Debug> Display for Event<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
+            Event::NewPeer(peer_id) => write!(f, "new peer connected: {:?}", peer_id),
             Event::Timer { era_id, timestamp } => write!(
                 f,
                 "timer for era {:?} scheduled for timestamp {}",
@@ -241,6 +244,7 @@ where
         match event {
             Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
+            Event::NewPeer(peer_id) => handling_es.handle_new_peer(peer_id),
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
@@ -284,16 +288,7 @@ where
                     panic!("couldn't get the seed from the key block");
                 });
                 let validators = match get_validators_result {
-                    Ok(Some(validator_weights)) => validator_weights
-                        .into_iter()
-                        .filter_map(|(key, stake)| match key.try_into() {
-                            Ok(key) => Some((key, stake)),
-                            Err(error) => {
-                                error!(%error, "error converting the bonded key");
-                                None
-                            }
-                        })
-                        .collect(),
+                    Ok(Some(validator_weights)) => validator_weights,
                     result => {
                         error!(
                             ?result,
@@ -313,6 +308,11 @@ where
             }
             Event::Shutdown => handling_es.shutdown_if_necessary(),
             Event::FinishedJoining(timestamp) => handling_es.finished_joining(timestamp),
+            Event::ConsensusRequest(requests::ConsensusRequest::IsBondedValidator(
+                era_id,
+                pk,
+                responder,
+            )) => handling_es.is_bonded_validator(era_id, pk, responder),
         }
     }
 }

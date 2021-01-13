@@ -3,15 +3,16 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
 };
 
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    U512,
-};
 use datasize::DataSize;
 use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
+
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    PublicKey, U512,
+};
 
 use crate::{
     components::consensus::{
@@ -19,7 +20,6 @@ use crate::{
         consensus_protocol::ConsensusProtocol, protocols::highway::HighwayProtocol,
         ConsensusMessage,
     },
-    crypto::asymmetric_key::PublicKey,
     types::{ProtoBlock, Timestamp},
 };
 
@@ -240,6 +240,11 @@ impl<I> Era<I> {
     /// Returns the map of validator weights.
     pub(crate) fn validators(&self) -> &BTreeMap<PublicKey, U512> {
         &self.validators
+    }
+
+    /// Returns whether validator identified with `public_key` is bonded in that era.
+    pub(crate) fn is_bonded_validator(&self, public_key: &PublicKey) -> bool {
+        self.validators.contains_key(public_key)
     }
 
     /// Removes and returns all candidate blocks with no missing dependencies.

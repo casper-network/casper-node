@@ -7,7 +7,9 @@
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
+    fs::File,
     hash::Hash,
+    io::{self, BufWriter, Write},
     num::NonZeroUsize,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -140,6 +142,39 @@ where
         map.end()?;
 
         Ok(())
+    }
+}
+
+impl<I, K> WeightedRoundRobin<I, K>
+where
+    I: Debug,
+    K: Copy + Clone + Eq + Hash + IntoEnumIterator + Debug,
+{
+    /// Dump the contents of the queues (`Debug` representation) to a given file.
+    pub async fn debug_dump(&self, file: &mut File) -> Result<(), io::Error> {
+        let mut locks = Vec::new();
+        for kind in K::into_enum_iter() {
+            let queue_guard = self
+                .queues
+                .get(&kind)
+                .expect("missing queue while dumping")
+                .queue
+                .lock()
+                .await;
+
+            locks.push((kind, queue_guard));
+        }
+
+        let mut writer = BufWriter::new(file);
+        for (kind, guard) in locks {
+            let queue = &*guard;
+            writer.write_all(format!("Queue: {:?} ({}) [\n", kind, queue.len()).as_bytes())?;
+            for event in queue.iter() {
+                writer.write_all(format!("\t{:?}\n", event).as_bytes())?;
+            }
+            writer.write_all(b"]\n")?;
+        }
+        writer.flush()
     }
 }
 

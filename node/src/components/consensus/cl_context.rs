@@ -2,13 +2,15 @@ use std::rc::Rc;
 
 use tracing::info;
 
+use casper_types::{PublicKey, SecretKey, Signature};
+
 use crate::{
     components::consensus::{
         candidate_block::CandidateBlock,
         traits::{Context, ValidatorSecret},
     },
     crypto::{
-        asymmetric_key::{self, PublicKey, SecretKey, Signature},
+        self,
         hash::{self, Digest},
     },
     NodeRng,
@@ -40,7 +42,7 @@ impl ValidatorSecret for Keypair {
     type Signature = Signature;
 
     fn sign(&self, hash: &Digest, rng: &mut NodeRng) -> Signature {
-        asymmetric_key::sign(hash, self.secret_key.as_ref(), &self.public_key, rng)
+        crypto::sign(hash, self.secret_key.as_ref(), &self.public_key, rng)
     }
 }
 
@@ -61,7 +63,7 @@ impl Context for ClContext {
     }
 
     fn verify_signature(hash: &Digest, public_key: &PublicKey, signature: &Signature) -> bool {
-        if let Err(error) = asymmetric_key::verify(hash, signature, public_key) {
+        if let Err(error) = crypto::verify(hash, signature, public_key) {
             info!(%error, %signature, %public_key, %hash, "failed to validate signature");
             return false;
         }

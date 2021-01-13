@@ -44,16 +44,15 @@ source "$NCTL"/sh/contracts-auction/do_bid.sh \
     rate="$BID_DELEGATION_RATE"
 
 # Await until time to start node.
-log "awaiting 3 eras"
+log "awaiting 3 eras + 1 block"
 await_n_eras 3 true
-log "awaiting 2 blocks"
-await_n_blocks 2
+await_n_blocks 1 false
 
 # Start/Restart node (with trusted hash).
 if [ "$(get_node_is_up "$NODE_ID")" = true ]; then
     log "restarting node :: node-$NODE_ID"
-    do_node_restart "$NODE_ID"
+    do_node_restart "$NODE_ID" "$(get_chain_latest_block_hash)"
 else
     log "starting node :: node-$NODE_ID"
-    do_node_start "$NODE_ID"
+    do_node_start "$NODE_ID" "$(get_chain_latest_block_hash)"
 fi

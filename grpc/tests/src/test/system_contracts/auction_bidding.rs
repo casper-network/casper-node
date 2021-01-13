@@ -23,7 +23,7 @@ use casper_types::{
     },
     runtime_args,
     system_contract_errors::auction,
-    ApiError, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
+    ApiError, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -220,8 +220,9 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 #[ignore]
 #[test]
 fn should_fail_bonding_with_insufficient_funds() {
-    let account_1_public_key: PublicKey = PublicKey::Ed25519([123; 32]);
-    let account_1_hash = AccountHash::from(account_1_public_key);
+    let account_1_public_key: PublicKey =
+        SecretKey::ed25519([123; SecretKey::ED25519_LENGTH]).into();
+    let account_1_hash = AccountHash::from(&account_1_public_key);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -267,8 +268,9 @@ fn should_fail_bonding_with_insufficient_funds() {
 #[ignore]
 #[test]
 fn should_fail_unbonding_validator_with_locked_funds() {
-    let account_1_public_key = PublicKey::Ed25519([42; 32]);
-    let account_1_hash = AccountHash::from(account_1_public_key);
+    let account_1_public_key: PublicKey =
+        SecretKey::ed25519([42; SecretKey::ED25519_LENGTH]).into();
+    let account_1_hash = AccountHash::from(&account_1_public_key);
     let account_1_balance = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
 
     let accounts = {

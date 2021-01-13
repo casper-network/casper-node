@@ -31,7 +31,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
-    ExecutionResult, Key, ProtocolVersion, Transfer, URef,
+    ExecutionResult, Key, ProtocolVersion, PublicKey, Transfer, URef,
 };
 use hex_fmt::HexFmt;
 
@@ -39,6 +39,7 @@ use super::{Multiple, Responder};
 use crate::{
     components::{
         chainspec_loader::ChainspecInfo,
+        consensus::EraId,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
         fetcher::FetchResult,
     },
@@ -606,7 +607,7 @@ pub enum ContractRuntimeRequest {
     Execute {
         /// Execution request containing deploys.
         #[serde(skip_serializing)]
-        execute_request: ExecuteRequest,
+        execute_request: Box<ExecuteRequest>,
         /// Responder to call with the execution result.
         responder: Responder<Result<ExecutionResults, engine_state::RootNotFound>>,
     },
@@ -669,6 +670,19 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<StepResult, engine_state::Error>>,
     },
+    /// Check if validator is bonded in the future era (identified by `era_id`).
+    IsBonded {
+        /// State root hash of the LFB.
+        state_root_hash: Digest,
+        /// Validator public key.
+        public_key: PublicKey,
+        /// Era ID in which validator should be bonded in.
+        era_id: EraId,
+        /// Protocol version at the `state_root_hash`.
+        protocol_version: ProtocolVersion,
+        /// Responder,
+        responder: Responder<Result<bool, GetEraValidatorsError>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -724,6 +738,12 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::GetProtocolData {
                 protocol_version, ..
             } => write!(formatter, "protocol_version: {}", protocol_version),
+
+            ContractRuntimeRequest::IsBonded {
+                public_key, era_id, ..
+            } => {
+                write!(formatter, "is {} bonded in era {}", public_key, era_id)
+            }
         }
     }
 }
@@ -829,6 +849,8 @@ impl<I: Display> Display for LinearChainRequest<I> {
 pub enum ConsensusRequest {
     /// Request for consensus to sign a new linear chain block and possibly start a new era.
     HandleLinearBlock(Box<BlockHeader>, Responder<Option<FinalitySignature>>),
+    /// Check whether validator identifying with the public key is bonded.
+    IsBondedValidator(EraId, PublicKey, Responder<bool>),
 }
 
 /// ChainspecLoader componenent requests.

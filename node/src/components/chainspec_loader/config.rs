@@ -161,7 +161,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
         };
 
-        let highway = chainspec.genesis.highway_config;
+        let highway = chainspec.genesis.highway_config.clone();
         let deploys = chainspec.genesis.deploy_config;
         let wasm_config = chainspec.genesis.wasm_config;
         let system_config = chainspec.genesis.system_config;

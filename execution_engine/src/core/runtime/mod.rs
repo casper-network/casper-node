@@ -3435,6 +3435,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use proptest::{
         array::uniform32,
         collection::{btree_map, vec},
@@ -3443,10 +3445,9 @@ mod tests {
         result,
     };
 
-    use casper_types::{gens::*, AccessRights, CLType, CLValue, Key, URef};
+    use casper_types::{gens::*, AccessRights, CLType, CLValue, Key, PublicKey, SecretKey, URef};
 
     use super::extract_urefs;
-    use std::collections::BTreeMap;
 
     fn cl_value_with_urefs_arb() -> impl Strategy<Value = (CLValue, Vec<URef>)> {
         // If compiler brings you here it most probably means you've added a variant to `CLType`
@@ -3586,7 +3587,10 @@ mod tests {
     fn extract_from_public_keys_to_urefs_map() {
         let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
         let mut map = BTreeMap::new();
-        map.insert(casper_types::PublicKey::Ed25519([42; 32]), uref);
+        map.insert(
+            PublicKey::from(SecretKey::ed25519([42; SecretKey::ED25519_LENGTH])),
+            uref,
+        );
         let cl_value = CLValue::from_t(map).unwrap();
         assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
     }
@@ -3596,7 +3600,10 @@ mod tests {
         let uref = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
         let key = Key::from(uref);
         let mut map = BTreeMap::new();
-        map.insert(casper_types::PublicKey::Ed25519([42; 32]), key);
+        map.insert(
+            PublicKey::from(SecretKey::ed25519([42; SecretKey::ED25519_LENGTH])),
+            key,
+        );
         let cl_value = CLValue::from_t(map).unwrap();
         assert_eq!(extract_urefs(&cl_value).unwrap(), vec![uref]);
     }

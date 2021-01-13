@@ -28,6 +28,7 @@ function setup_node()
     mkdir "$PATH_TO_NODE"/keys
     mkdir "$PATH_TO_NODE"/logs
     mkdir "$PATH_TO_NODE"/storage
+    mkdir "$PATH_TO_NODE"/storage-consensus
 
     # Set config.
     cp "$NCTL_CASPER_HOME"/resources/local/config.toml "$PATH_TO_NODE_CONFIG"
@@ -65,6 +66,7 @@ function setup_node_config()
         "import toml;"
         "cfg=toml.load('$FILEPATH');"
         "cfg['consensus']['secret_key_path']='../keys/secret_key.pem';"
+        "cfg['consensus']['unit_hashes_folder']='../storage-consensus';"
         "cfg['logging']['format']='json';"
         "cfg['network']['bind_address']='$(get_network_bind_address "$NODE_ID")';"
         "cfg['network']['known_addresses']=[$(get_network_known_addresses "$NODE_ID")];"

@@ -413,12 +413,16 @@ impl reactor::Reactor for Reactor {
 
         let linear_chain_sync = LinearChainSync::new(init_hash);
 
-        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder);
+        let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
 
         let event_stream_server =
-            EventStreamServer::new(config.event_stream_server.clone(), effect_builder);
+            EventStreamServer::new(config.event_stream_server.clone(), effect_builder)?;
 
-        let block_validator = BlockValidator::new();
+        let (block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
+        effects.extend(reactor::wrap_effects(
+            Event::BlockValidator,
+            block_validator_effects,
+        ));
 
         let deploy_fetcher = Fetcher::new(config.fetcher);
 
@@ -588,7 +592,7 @@ impl reactor::Reactor for Reactor {
                     self.dispatch_event(effect_builder, rng, event)
                 }
                 Message::FinalitySignature(_) => {
-                    warn!("Finality signatures not handled in joiner reactor");
+                    warn!("finality signatures not handled in joiner reactor");
                     Effects::new()
                 }
                 other => {
@@ -748,20 +752,20 @@ impl reactor::Reactor for Reactor {
                 ),
                 ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
                     // TODO: handle the announcement and acutally disconnect
-                    warn!("Disconnecting from a given peer not yet implemented.");
+                    warn!("disconnecting from a given peer not yet implemented.");
                     Effects::new()
                 }
             },
             Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.
-                error!("Ignoring block proposer request {}", request);
+                error!("ignoring block proposer request {}", request);
                 Effects::new()
             }
             Event::ProtoBlockValidatorRequest(request) => {
                 // During joining phase, consensus component should not be requesting
                 // validation of the proto block.
-                error!("Ignoring proto block validation request {}", request);
+                error!("ignoring proto block validation request {}", request);
                 Effects::new()
             }
             Event::AddressGossiper(event) => reactor::wrap_effects(

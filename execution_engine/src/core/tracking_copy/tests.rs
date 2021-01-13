@@ -23,7 +23,7 @@ use crate::{
     },
     storage::{
         global_state::{in_memory::InMemoryGlobalState, StateProvider, StateReader},
-        trie::merkle_proof::TrieMerkleProof,
+        trie::{merkle_proof::TrieMerkleProof, Trie},
     },
 };
 
@@ -69,6 +69,14 @@ impl StateReader<Key, StoredValue> for CountingDb {
         _correlation_id: CorrelationId,
         _key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
+        Ok(None)
+    }
+
+    fn read_trie(
+        &self,
+        _correlation_id: CorrelationId,
+        _trie_key: &Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
         Ok(None)
     }
 }

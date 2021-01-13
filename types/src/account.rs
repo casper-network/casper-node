@@ -239,7 +239,7 @@ impl AccountHash {
 
     #[doc(hidden)]
     pub fn from_public_key(
-        public_key: PublicKey,
+        public_key: &PublicKey,
         blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
     ) -> Self {
         const ED25519_LOWERCASE: &str = "ed25519";
@@ -334,8 +334,8 @@ impl TryFrom<&alloc::vec::Vec<u8>> for AccountHash {
     }
 }
 
-impl From<PublicKey> for AccountHash {
-    fn from(public_key: PublicKey) -> Self {
+impl From<&PublicKey> for AccountHash {
+    fn from(public_key: &PublicKey) -> Self {
         AccountHash::from_public_key(public_key, blake2b)
     }
 }

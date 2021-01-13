@@ -1603,7 +1603,7 @@ where
             let proposer_purse = {
                 let proposer_account: Account = match tracking_copy
                     .borrow_mut()
-                    .get_account(correlation_id, proposer.into())
+                    .get_account(correlation_id, AccountHash::from(&proposer))
                 {
                     Ok(account) => account,
                     Err(error) => {
@@ -2159,7 +2159,7 @@ where
         let proposer_purse = {
             let proposer_account: Account = match tracking_copy
                 .borrow_mut()
-                .get_account(correlation_id, proposer.into())
+                .get_account(correlation_id, AccountHash::from(&proposer))
             {
                 Ok(account) => account,
                 Err(error) => {
@@ -2405,10 +2405,9 @@ where
     where
         Error: From<S::Error>,
     {
-        match self.state.commit(correlation_id, pre_state_hash, effects)? {
-            CommitResult::Success { state_root, .. } => Ok(CommitResult::Success { state_root }),
-            commit_result => Ok(commit_result),
-        }
+        self.state
+            .commit(correlation_id, pre_state_hash, effects)
+            .map_err(Error::from)
     }
 
     /// Obtains validator weights for given era.
