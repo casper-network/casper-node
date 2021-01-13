@@ -55,6 +55,11 @@ spec:
       containers:
         - name: node
           image: clmarc/casper-node:91a5d7a0
+          env:
+            - name: RUST_LOG
+              value: debug
+            - name: RUST_BACKTRACE
+              value: "1"
           resources:
             limits:
               cpu: "500m"
