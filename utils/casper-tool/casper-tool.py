@@ -229,7 +229,7 @@ def create_node(n, client_argv0, config_template, node_path, cluster):
     config = toml.load(open(config_template))
     config["node"]["chainspec_config_path"] = "../chain/chainspec.toml"
 
-    config["consensus"]["secret_key_path"] = key_path
+    config["consensus"]["secret_key_path"] = os.path.relpath(key_path, node_path)
 
     # All the different state/storage paths
     config["storage"]["path"] = "state/storage"
