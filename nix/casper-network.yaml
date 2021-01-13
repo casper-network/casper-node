@@ -52,6 +52,7 @@ spec:
             # Volume that holds the configuration
             - name: config
               mountPath: /config
+      terminationGracePeriodSeconds: 5
       containers:
         - name: node
           image: clmarc/casper-node:91a5d7a0
