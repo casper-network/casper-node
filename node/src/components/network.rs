@@ -113,6 +113,8 @@ pub(crate) struct Network<REv, P> {
     /// The addresses of known peers to be used for bootstrapping, and their connection states.
     #[data_size(skip)]
     known_addresses: HashMap<Multiaddr, ConnectionState>,
+    /// Whether this node is a bootstrap node or not.
+    is_bootstrap_node: bool,
     /// The channel through which to send outgoing one-way requests.
     #[data_size(skip)]
     one_way_message_sender: mpsc::UnboundedSender<OneWayOutgoingMessage>,
@@ -172,6 +174,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
                 peers: HashMap::new(),
                 listening_addresses: vec![],
                 known_addresses,
+                is_bootstrap_node: config.is_bootstrap_node,
                 one_way_message_sender,
                 max_one_way_message_size: 0,
                 gossip_message_sender,
@@ -241,6 +244,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             peers: HashMap::new(),
             listening_addresses: vec![],
             known_addresses,
+            is_bootstrap_node: config.is_bootstrap_node,
             one_way_message_sender,
             max_one_way_message_size: config.max_one_way_message_size,
             gossip_message_sender,
@@ -288,7 +292,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         }
 
         if self.is_isolated() {
-            if self.is_bootstrap_node() {
+            if self.is_bootstrap_node {
                 info!(
                     "{}: failed to bootstrap to any other nodes, but continuing to run as we are a \
                     bootstrap node", self.our_id
@@ -379,13 +383,6 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         self.known_addresses
             .values()
             .all(|state| *state == ConnectionState::Failed)
-    }
-
-    /// Returns whether or not this node is listed as a bootstrap node.
-    fn is_bootstrap_node(&self) -> bool {
-        self.known_addresses
-            .keys()
-            .any(|address| self.listening_addresses.contains(address))
     }
 
     /// Returns the node id of this network node.
