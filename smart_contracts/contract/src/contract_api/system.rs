@@ -14,7 +14,7 @@ use casper_types::{
 };
 
 use crate::{
-    contract_api::{self, runtime},
+    contract_api::{self, account, runtime},
     ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
 };
@@ -89,7 +89,8 @@ pub fn create_purse() -> URef {
 }
 
 /// Returns the balance in motes of the given purse.
-pub fn get_balance(purse: URef) -> Option<U512> {
+#[doc(hidden)]
+pub fn get_purse_balance(purse: URef) -> Option<U512> {
     let (purse_ptr, purse_size, _bytes) = contract_api::to_ptr(purse);
 
     let value_size = {
@@ -105,6 +106,11 @@ pub fn get_balance(purse: URef) -> Option<U512> {
     let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
     let value: U512 = bytesrepr::deserialize(value_bytes).unwrap_or_revert();
     Some(value)
+}
+
+/// Returns the balance in motes of a purse.
+pub fn get_balance() -> Option<U512> {
+    get_purse_balance(account::get_main_purse())
 }
 
 /// Transfers `amount` of motes from the default purse of the account to `target`

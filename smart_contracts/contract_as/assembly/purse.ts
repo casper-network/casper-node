@@ -7,6 +7,7 @@ import {URef} from "./uref";
 import {toBytesU64} from "./bytesrepr";
 import {Option} from "./option";
 import {Ref} from "./ref";
+import {getMainPurse} from "./account";
 
 /**
  * The result of a successful transfer between purses.
@@ -98,8 +99,9 @@ export function createPurse(): URef {
 /**
  * Returns the balance in motes of the given purse or a null if given purse
  * is invalid.
+ * @hidden
  */
-export function getBalance(purse: URef): U512 | null {
+export function getPurseBalance(purse: URef): U512 | null {
     let purseBytes = purse.toBytes();
     let balanceSize = new Array<u32>(1);
     balanceSize[0] = 0;
@@ -122,6 +124,10 @@ export function getBalance(purse: URef): U512 | null {
     let balanceBytes = readHostBuffer(balanceSize[0]);
     let balanceResult = U512.fromBytes(balanceBytes);
     return balanceResult.unwrap();
+}
+
+export function getBalance(): U512 | null {
+    getPurseBalance(getMainPurse())
 }
 
 /**

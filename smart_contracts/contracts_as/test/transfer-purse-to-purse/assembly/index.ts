@@ -8,7 +8,7 @@ import {getKey, hasKey, putKey} from "../../../../contract_as/assembly";
 import {CLValue} from "../../../../contract_as/assembly/clvalue";
 import {fromBytesString} from "../../../../contract_as/assembly/bytesrepr";
 import {URef} from "../../../../contract_as/assembly/uref";
-import {createPurse, getBalance, transferFromPurseToPurse} from "../../../../contract_as/assembly/purse";
+import {createPurse, getPurseBalance, transferFromPurseToPurse} from "../../../../contract_as/assembly/purse";
 
 const PURSE_MAIN = "purse:main";
 const PURSE_TRANSFER_RESULT = "purse_transfer_result";
@@ -107,7 +107,7 @@ export function call(): void {
         message = TRANSFER_ERROR_MESSAGE;
     }
     const resultKey = Key.create(CLValue.fromString(message));
-    const finalBalance = getBalance(<URef>sourcePurse);
+    const finalBalance = getPurseBalance(<URef>sourcePurse);
     if(finalBalance === null){
         Error.fromUserError(<u16>CustomError.UnableToGetBalance).revert();
         return;
