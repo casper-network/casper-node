@@ -1,6 +1,12 @@
 //! Core types for a Merkle Trie
 
-use std::{convert::TryInto, mem::MaybeUninit};
+use std::{
+    convert::TryInto,
+    fmt::{self, Debug, Display, Formatter},
+    mem::MaybeUninit,
+};
+
+use serde::{ser::SerializeTuple, Serialize, Serializer};
 
 use crate::shared::newtypes::Blake2bHash;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
@@ -19,7 +25,7 @@ pub const RADIX: usize = 256;
 pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
 
 /// Represents a pointer to the next object in a Merkle Trie
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
 pub enum Pointer {
     LeafPointer(Blake2bHash),
     NodePointer(Blake2bHash),
@@ -92,6 +98,19 @@ pub type PointerBlockArray = [PointerBlockValue; RADIX];
 /// Represents the underlying structure of a node in a Merkle Trie
 #[derive(Copy, Clone)]
 pub struct PointerBlock(PointerBlockArray);
+
+impl Serialize for PointerBlock {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut arr = serializer.serialize_tuple(RADIX)?;
+        for pointer_block_value in &self.0 {
+            arr.serialize_element(pointer_block_value)?;
+        }
+        arr.end()
+    }
+}
 
 impl PointerBlock {
     pub fn new() -> Self {
@@ -249,11 +268,21 @@ impl ::std::fmt::Debug for PointerBlock {
 }
 
 /// Represents a Merkle Trie
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Trie<K, V> {
     Leaf { key: K, value: V },
     Node { pointer_block: Box<PointerBlock> },
     Extension { affix: Bytes, pointer: Pointer },
+}
+
+impl<K, V> Display for Trie<K, V>
+where
+    K: Debug,
+    V: Debug,
+{
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl<K, V> Trie<K, V> {
