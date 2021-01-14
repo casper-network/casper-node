@@ -199,7 +199,7 @@ impl<I> LinearChain<I> {
             if fs.era_id != block_era {
                 // finality signature was created with era id that doesn't match block's era.
                 // TODO: disconnect from the sender.
-                break;
+                continue;
             }
             if block.proofs().contains_key(&fs.public_key) {
                 // Don't send finality signatures we already know of.
