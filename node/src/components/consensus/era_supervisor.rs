@@ -134,35 +134,37 @@ where
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
         let genesis_start_time = protocol_config.timestamp;
+        let initial_era_id = protocol_config.initial_era_id;
+        let initial_block_height = protocol_config.initial_block_height;
 
         let mut era_supervisor = Self {
             active_eras: Default::default(),
             secret_signing_key,
             public_signing_key,
-            current_era: EraId(0),
+            current_era: initial_era_id,
             protocol_config,
             new_consensus,
             node_start_time: Timestamp::now(),
             bonded_eras,
-            next_block_height: 0,
+            next_block_height: initial_block_height,
             metrics,
             finished_joining: false,
             unit_hashes_folder,
         };
 
         let results = era_supervisor.new_era(
-            EraId(0),
+            initial_era_id,
             timestamp,
             validators,
             vec![], // no banned validators in era 0
             0,      // hardcoded seed for era 0
             genesis_start_time,
-            0, // the first block has height 0
+            initial_block_height,
             genesis_state_root_hash,
         );
         let effects = era_supervisor
             .handling_wrapper(effect_builder, &mut rng)
-            .handle_consensus_results(EraId(0), results);
+            .handle_consensus_results(initial_era_id, results);
 
         Ok((era_supervisor, effects))
     }

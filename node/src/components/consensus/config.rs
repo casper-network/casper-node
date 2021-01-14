@@ -12,6 +12,8 @@ use crate::{
     Chainspec,
 };
 
+use super::era_supervisor::EraId;
+
 /// Consensus configuration.
 #[derive(DataSize, Debug, Deserialize, Serialize, Default, Clone)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -37,6 +39,8 @@ pub(crate) struct ProtocolConfig {
     /// Genesis timestamp.
     pub(crate) timestamp: Timestamp,
     pub(crate) upgrades: Vec<UpgradePoint>,
+    pub(crate) initial_era_id: EraId,
+    pub(crate) initial_block_height: u64,
 }
 
 impl From<&Chainspec> for ProtocolConfig {
@@ -48,6 +52,8 @@ impl From<&Chainspec> for ProtocolConfig {
             name: c.genesis.name.clone(),
             timestamp: c.genesis.timestamp,
             upgrades: c.upgrades.clone(),
+            initial_era_id: EraId(c.genesis.initial_era_id.unwrap_or(0)),
+            initial_block_height: c.genesis.initial_block_height.unwrap_or(0),
         }
     }
 }
