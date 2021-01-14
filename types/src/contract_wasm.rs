@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 use core::fmt::Debug;
+
 use serde::Serialize;
 
 use crate::bytesrepr::{Bytes, Error, FromBytes, ToBytes};
