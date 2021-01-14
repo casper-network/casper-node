@@ -54,6 +54,8 @@ struct Genesis {
     standard_payment_installer_path: External<Vec<u8>>,
     auction_installer_path: External<Vec<u8>>,
     accounts_path: External<Vec<GenesisAccount>>,
+    initial_era_id: Option<EraId>,
+    initial_block_height: Option<u64>,
 }
 
 impl Default for Genesis {
@@ -75,6 +77,8 @@ impl Default for Genesis {
             ),
             auction_installer_path: External::path(DEFAULT_AUCTION_INSTALLER_PATH),
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
+            initial_era_id: None,
+            initial_block_height: None,
         }
     }
 }
@@ -161,6 +165,8 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             ),
             auction_installer_path: External::path(DEFAULT_AUCTION_INSTALLER_PATH),
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
+            initial_era_id: chainspec.genesis.initial_era_id,
+            initial_block_height: chainspec.genesis.initial_block_height,
         };
 
         let highway = chainspec.genesis.highway_config.clone();
@@ -245,6 +251,8 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         wasm_config: chainspec.wasm_config,
         deploy_config: chainspec.deploys,
         highway_config: chainspec.highway,
+        initial_era_id: chainspec.genesis.initial_era_id,
+        initial_block_height: chainspec.genesis.initial_block_height,
     };
 
     let mut upgrades = vec![];

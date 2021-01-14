@@ -231,6 +231,12 @@ pub struct GenesisConfig {
     pub(crate) wasm_config: WasmConfig,
     pub(crate) deploy_config: DeployConfig,
     pub(crate) highway_config: HighwayConfig,
+    /// Initial era ID for cases when we restart the network after a failure and want to start from
+    /// an era other than 0.
+    pub(crate) initial_era_id: Option<EraId>,
+    /// Initial block height for cases when we restart the network after a failure and want to
+    /// start from a block height other than 0.
+    pub(crate) initial_block_height: Option<u64>,
 }
 
 impl GenesisConfig {
@@ -284,6 +290,8 @@ impl Debug for GenesisConfig {
             .field("costs", &self.wasm_config)
             .field("deploy_config", &self.deploy_config)
             .field("highway_config", &self.highway_config)
+            .field("initial_era_id", &self.initial_era_id)
+            .field("initial_block_height", &self.initial_block_height)
             .finish()
     }
 }
@@ -316,6 +324,8 @@ impl GenesisConfig {
         let highway_config = HighwayConfig::random(rng);
         let unbonding_delay = rng.gen();
         let wasmless_transfer_cost = rng.gen();
+        let initial_era_id = rng.gen();
+        let initial_block_height = rng.gen();
 
         GenesisConfig {
             name,
@@ -335,6 +345,8 @@ impl GenesisConfig {
             wasm_config: costs,
             deploy_config,
             highway_config,
+            initial_era_id,
+            initial_block_height,
         }
     }
 }
