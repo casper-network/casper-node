@@ -680,7 +680,7 @@ checksum = "631ae5198c9be5e753e5cc215e1bd73c2b466a3565173db433f52bb9d3e66dba"
 
 [[package]]
 name = "cargo-casper"
-version = "0.6.0"
+version = "0.6.3"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -692,7 +692,7 @@ dependencies = [
 
 [[package]]
 name = "casper-client"
-version = "0.6.0"
+version = "0.6.3"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -720,7 +720,7 @@ dependencies = [
 
 [[package]]
 name = "casper-contract"
-version = "0.6.0"
+version = "0.6.3"
 dependencies = [
  "casper-types",
  "hex_fmt",
@@ -731,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-grpc-server"
-version = "0.6.0"
+version = "0.6.3"
 dependencies = [
  "casper-execution-engine",
  "casper-types",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "0.6.0"
+version = "0.6.3"
 dependencies = [
  "casper-contract",
  "casper-engine-grpc-server",
@@ -798,7 +798,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "0.6.0"
+version = "0.6.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -842,7 +842,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "0.6.0"
+version = "0.6.3"
 dependencies = [
  "ansi_term 0.12.1",
  "anyhow",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node-macros"
-version = "0.6.0"
+version = "0.6.3"
 dependencies = [
  "Inflector",
  "indexmap",
@@ -948,7 +948,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "0.6.0"
+version = "0.6.3"
 dependencies = [
  "base16",
  "base64 0.13.0",
@@ -2389,7 +2389,7 @@ checksum = "4060f4657be78b8e766215b02b18a2e862d83745545de804638e2b545e81aee6"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
- "wasi 0.10.1+wasi-snapshot-preview1",
+ "wasi 0.10.0+wasi-snapshot-preview1",
 ]
 
 [[package]]
@@ -5747,11 +5747,12 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.1.43"
+version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca8a50ef2360fbd1eeb0ecd46795a87a19024eb4b53c5dc916ca1fd95fe62438"
+checksum = "6db9e6914ab8b1ae1c260a4ae7a49b6c5611b40328a735b21862567685e73255"
 dependencies = [
  "libc",
+ "wasi 0.10.0+wasi-snapshot-preview1",
  "winapi 0.3.9",
 ]
 
@@ -6702,9 +6703,9 @@ checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"
 
 [[package]]
 name = "wasi"
-version = "0.10.1+wasi-snapshot-preview1"
+version = "0.10.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93c6c3420963c5c64bca373b25e77acb562081b9bb4dd5bb864187742186cea9"
+checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
 
 [[package]]
 name = "wasm-bindgen"
