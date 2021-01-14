@@ -1,12 +1,13 @@
 use alloc::vec::Vec;
 use core::fmt::Debug;
+use serde::Serialize;
 
 use crate::bytesrepr::{Bytes, Error, FromBytes, ToBytes};
 
 const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
 
 /// A container for contract's WASM bytes.
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Serialize)]
 pub struct ContractWasm {
     bytes: Bytes,
 }

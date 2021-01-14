@@ -29,6 +29,7 @@ use crate::{
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
 #[must_use]
+#[allow(clippy::large_enum_variant)]
 pub enum Event {
     /// Chainspec handler event.
     #[from]
