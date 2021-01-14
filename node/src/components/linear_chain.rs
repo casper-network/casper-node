@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer};
 
-use super::Component;
+use super::{consensus::EraId, Component};
 use crate::{
     effect::{
         announcements::LinearChainAnnouncement,
@@ -135,12 +135,45 @@ impl<I: Display> Display for Event<I> {
     }
 }
 
+// Cache for blocks.
+// Blocks are invalidated when a block for newer era is inserted.
+#[derive(DataSize, Debug)]
+struct BlockCache {
+    curr_era: EraId,
+    blocks: HashMap<BlockHash, Block>,
+}
+
+impl BlockCache {
+    fn new() -> Self {
+        BlockCache {
+            curr_era: EraId(0),
+            blocks: Default::default(),
+        }
+    }
+
+    fn get(&self, hash: &BlockHash) -> Option<Block> {
+        self.blocks.get(hash).cloned()
+    }
+
+    fn insert(&mut self, block: Block) {
+        let new_block_era = block.header().era_id();
+        if self.curr_era < new_block_era {
+            // We optimistically assume that most of the signatures that arrive in close temporar
+            // proximity refer to the same era.
+            self.blocks.clear();
+            self.curr_era = new_block_era;
+        }
+        self.blocks.insert(*block.hash(), block);
+    }
+}
+
 #[derive(DataSize, Debug)]
 pub(crate) struct LinearChain<I> {
     /// The most recently added block.
     latest_block: Option<Block>,
     /// Finality signatures to be inserted in a block once it is available.
     pending_finality_signatures: HashMap<PublicKey, HashMap<BlockHash, FinalitySignature>>,
+    block_cache: BlockCache,
     _marker: PhantomData<I>,
 }
 
@@ -149,6 +182,7 @@ impl<I> LinearChain<I> {
         LinearChain {
             latest_block: None,
             pending_finality_signatures: HashMap::new(),
+            block_cache: BlockCache::new(),
             _marker: PhantomData,
         }
     }
@@ -313,6 +347,8 @@ where
             } => {
                 let (block, mut effects) =
                     self.collect_pending_finality_signatures(*block, effect_builder);
+                // Cache the block as we expect more finality signatures to arrive soon.
+                self.block_cache.insert(block.clone());
                 let block = Box::new(block);
                 effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
                     move |_| Event::PutBlockResult {
@@ -361,12 +397,18 @@ where
                 if self.has_finality_signature(&fs) {
                     return Effects::new();
                 }
-                effect_builder
-                    .get_block_from_storage(block_hash)
-                    .event(move |maybe_block| {
-                        let maybe_box_block = maybe_block.map(Box::new);
-                        Event::GetBlockForFinalitySignaturesResult(fs, maybe_box_block)
-                    })
+
+                match self.block_cache.get(&block_hash) {
+                    None => effect_builder.get_block_from_storage(block_hash).event(
+                        move |maybe_block| {
+                            let maybe_box_block = maybe_block.map(Box::new);
+                            Event::GetBlockForFinalitySignaturesResult(fs, maybe_box_block)
+                        },
+                    ),
+                    Some(block) => effect_builder.immediately().event(move |_| {
+                        Event::GetBlockForFinalitySignaturesResult(fs, Some(Box::new(block)))
+                    }),
+                }
             }
             Event::GetBlockForFinalitySignaturesResult(fs, maybe_block) => {
                 if let Some(block) = &maybe_block {
@@ -375,6 +417,9 @@ where
                         // TODO: Disconnect from the sender.
                         return Effects::new();
                     }
+                    // Populate cache so that next finality signatures don't have to read from the
+                    // storage.
+                    self.block_cache.insert(*block.clone())
                 }
                 // Check if validator is bonded in the era in which the block was created.
                 effect_builder
