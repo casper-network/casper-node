@@ -857,12 +857,7 @@ fn should_not_propose_deploy_if_missing_deps() {
 
     // deploy2 has an unsatisfied dependency
     assert!(proposer
-        .propose_proto_block(
-            DeployConfig::default(),
-            block_time,
-            no_deploys,
-            true
-        )
+        .propose_proto_block(DeployConfig::default(), block_time, no_deploys, true)
         .deploys()
         .is_empty());
 }
