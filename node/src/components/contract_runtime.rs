@@ -468,7 +468,7 @@ where
                     })
                     .await
                     .expect("should run");
-                    trace!(?result, "step response");
+                    trace!(?result, "read_trie response");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -487,7 +487,7 @@ where
                     })
                     .await
                     .expect("should run");
-                    trace!(?result, "step response");
+                    trace!(?result, "put_trie response");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -509,7 +509,7 @@ where
                     })
                     .await
                     .expect("should run");
-                    trace!(?result, "step response");
+                    trace!(?result, "missing_trie_keys response");
                     responder.respond(result).await
                 }
                 .ignore()
