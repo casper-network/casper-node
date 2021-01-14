@@ -278,6 +278,7 @@ extern "C" {
     ///
     /// * `purse_ptr` - pointer to position in wasm memory where to write the created `URef`
     /// * `purse_size` - allocated size for the `URef`
+    #[doc(hidden)]
     pub fn casper_create_purse(purse_ptr: *const u8, purse_size: usize) -> i32;
     /// This function uses the mint contract’s transfer function to transfer
     /// tokens from the current account’s main purse to the main purse of the
@@ -348,6 +349,7 @@ extern "C" {
     /// * `id_size` - size of the id (in bytes)
     /// * `result_ptr` - pointer in wasm memory to a value where `TransferredTo` value would be set
     ///   on successful transfer.
+    #[doc(hidden)]
     pub fn casper_transfer_from_purse_to_account(
         source_ptr: *const u8,
         source_size: usize,
@@ -385,6 +387,7 @@ extern "C" {
     /// * `amount_size` - size of the amount (in bytes)
     /// * `id_ptr` - pointer in wasm memory to bytes representing the user-defined transaction id
     /// * `id_size` - size of the id (in bytes)
+    #[doc(hidden)]
     pub fn casper_transfer_from_purse_to_purse(
         source_ptr: *const u8,
         source_size: usize,
@@ -480,6 +483,7 @@ extern "C" {
         dest_size: usize,
     ) -> i32;
     ///
+    #[doc(hidden)]
     pub fn casper_get_main_purse(dest_ptr: *mut u8);
     /// This function copies the contents of the current runtime buffer into the
     /// wasm memory, beginning at the provided offset. It is intended that this

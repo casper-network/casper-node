@@ -6,7 +6,7 @@ import {getMainPurse} from "../../../../contract_as/assembly/account";
 import {Key} from "../../../../contract_as/assembly/key";
 import {putKey} from "../../../../contract_as/assembly";
 import {CLValue} from "../../../../contract_as/assembly/clvalue";
-import {getPurseBalance, transferFromPurseToAccount, TransferredTo} from "../../../../contract_as/assembly/purse";
+import {getBalance, transferFromPurseToAccount, TransferredTo} from "../../../../contract_as/assembly/purse";
 import {URef} from "../../../../contract_as/assembly/uref";
 
 
@@ -52,7 +52,7 @@ export function delegate(): void {
     }
     const transferResultKey = Key.create(CLValue.fromString(message));
     putKey(TRANSFER_RESULT_UREF_NAME, <Key>transferResultKey);
-    const maybeBalance = getPurseBalance(mainPurse);
+    const maybeBalance = getBalance(mainPurse);
     if (maybeBalance === null) {
         Error.fromUserError(<u16>CustomError.UnableToGetBalance).revert();
         return;
