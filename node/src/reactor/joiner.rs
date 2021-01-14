@@ -213,7 +213,11 @@ impl From<StorageRequest> for Event {
 
 impl From<NetworkRequest<NodeId, Message>> for Event {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
-        Event::SmallNetwork(small_network::Event::from(request))
+        if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+            Event::Network(network::Event::from(request))
+        } else {
+            Event::SmallNetwork(small_network::Event::from(request))
+        }
     }
 }
 
