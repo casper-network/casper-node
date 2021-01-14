@@ -51,7 +51,7 @@ impl DeployType {
     }
 
     /// Access payment_amount from all variants.
-    pub fn payment_amount(&self) -> Motes {
+    pub fn payment_amount_motes(&self) -> Motes {
         match self {
             Self::Transfer { payment_amount, .. } => *payment_amount,
             Self::Other { payment_amount, .. } => *payment_amount,

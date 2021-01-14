@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::{self, Display, Formatter},
 };
 
@@ -11,12 +11,21 @@ use crate::{
     types::{DeployHash, DeployHeader, Timestamp},
     Chainspec,
 };
+use casper_execution_engine::shared::gas::Gas;
+
+// Key for pending collection: willingness to pay (header.gas_price), header.payment_amount(),
+// deploy_hash
+type PendingKey = (u64, Gas, DeployHash);
 
 /// Stores the internal state of the BlockProposer.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 pub struct BlockProposerDeploySets {
     /// The collection of deploys pending for inclusion in a block.
-    pub(super) pending: HashMap<DeployHash, DeployType>,
+    /// The key of this map is used as a method of keeping the map sorted first by `gas_price`
+    /// (willingness to pay), then by `payment_amount` and finally include `deploy_hash` to
+    /// facilitate map operations.
+    /// https://github.com/CasperLabs/ceps/blob/Gas_spot_market/text/0022-gas-spot-market.md#ordering
+    pub(super) pending: BTreeMap<PendingKey, DeployType>,
     /// The deploys that have already been included in a finalized block.
     pub(super) finalized_deploys: HashMap<DeployHash, DeployHeader>,
     /// The next block height we expect to be finalized.
@@ -31,7 +40,7 @@ pub struct BlockProposerDeploySets {
 
 impl Default for BlockProposerDeploySets {
     fn default() -> Self {
-        let pending = HashMap::new();
+        let pending = BTreeMap::new();
         let finalized_deploys = Default::default();
         let next_finalized = Default::default();
         let finalization_queue = Default::default();
@@ -100,10 +109,22 @@ pub(super) fn prune_deploys(
 /// Prunes expired deploy information from an individual pending deploy collection, returns the
 /// total deploys pruned
 pub(super) fn prune_pending_deploys(
-    deploys: &mut HashMap<DeployHash, DeployType>,
+    deploys: &mut BTreeMap<PendingKey, DeployType>,
     current_instant: Timestamp,
 ) -> usize {
     let initial_len = deploys.len();
-    deploys.retain(|_hash, wrapper| !wrapper.header().expired(current_instant));
+    let remove_keys = deploys
+        .iter()
+        .filter_map(|(key, wrapper)| {
+            if wrapper.header().expired(current_instant) {
+                Some(*key)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    for key in remove_keys {
+        deploys.remove(&key);
+    }
     initial_len - deploys.len()
 }

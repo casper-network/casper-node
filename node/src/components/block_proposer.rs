@@ -30,7 +30,8 @@ use crate::{
     types::{DeployHash, DeployHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
-use casper_execution_engine::{core::engine_state::CONV_RATE, shared::gas::Gas};
+use casper_execution_engine::shared::gas::Gas;
+
 pub(crate) use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
@@ -156,6 +157,7 @@ where
                         .unwrap_or_default()
                         .with_next_finalized(next_finalized_block),
                     deploy_config: chainspec.genesis.deploy_config,
+                    wasmless_transfer_cost: chainspec.genesis.wasmless_transfer_cost,
                     state_key: deploy_sets::create_storage_key(&chainspec),
                     request_queue: Default::default(),
                     unhandled_finalized: Default::default(),
@@ -205,6 +207,8 @@ struct BlockProposerReady {
     unhandled_finalized: HashSet<DeployHash>,
     // We don't need the whole Chainspec here, just the deploy config.
     deploy_config: DeployConfig,
+    /// Wasmless transfer gas cost.
+    wasmless_transfer_cost: u64,
     /// Key for storing the block proposer state.
     state_key: Vec<u8>,
     /// The queue of requests awaiting being handled.
@@ -332,7 +336,26 @@ impl BlockProposerReady {
         if self.sets.finalized_deploys.contains_key(&hash) {
             info!(%hash, "deploy rejected from the buffer");
         } else {
-            self.sets.pending.insert(hash, deploy_or_transfer);
+            let gas_price = deploy_or_transfer.header().gas_price();
+            let payment_amount_gas = if deploy_or_transfer.is_transfer() {
+                Gas::from(self.wasmless_transfer_cost)
+            } else {
+                match Gas::from_motes(deploy_or_transfer.payment_amount_motes(), gas_price) {
+                    Some(value) => value,
+                    None => {
+                        info!(
+                            "could not convert motes to gas for wasm deploy {} at gas price {}",
+                            hash, gas_price
+                        );
+                        return;
+                    }
+                }
+            };
+
+            // Generate a key that will keep the map of pending deploys sorted in the correct order.
+            let key = (gas_price, payment_amount_gas, hash);
+
+            self.sets.pending.insert(key, deploy_or_transfer);
             info!(%hash, "added deploy to the buffer");
         }
     }
@@ -343,17 +366,27 @@ impl BlockProposerReady {
         I: IntoIterator<Item = DeployHash>,
     {
         for deploy_hash in deploys.into_iter() {
-            match self.sets.pending.remove(&deploy_hash) {
-                Some(deploy_type) => {
-                    self.sets
-                        .finalized_deploys
-                        .insert(deploy_hash, deploy_type.take_header());
-                }
-                // If we haven't seen this deploy before, we still need to take note of it.
-                _ => {
+            let existing = self
+                .sets
+                .pending
+                .iter()
+                .find(|((_, _, entry_deploy_hash), _)| entry_deploy_hash == &deploy_hash)
+                .map(|(key, _)| *key);
+            match existing {
+                Some(key) => match self.sets.pending.remove(&key) {
+                    Some(deploy_type) => {
+                        self.sets
+                            .finalized_deploys
+                            .insert(deploy_hash, deploy_type.take_header());
+                    }
+                    None => {
+                        panic!("should be unreachable");
+                    }
+                },
+                None => {
                     self.unhandled_finalized.insert(deploy_hash);
                 }
-            }
+            };
         }
     }
 
@@ -426,15 +459,18 @@ impl BlockProposerReady {
         let mut block_gas_running_total = Gas::zero();
         let mut block_size_running_total = 0usize;
 
-        for (hash, deploy_type) in self.sets.pending.iter() {
+        // This iteration is reversed to achieve descending order iteration over elements in our
+        // sorted BTreeMap in self.sets.pending.
+        // https://github.com/CasperLabs/ceps/blob/Gas_spot_market/text/0022-gas-spot-market.md#ordering
+        for ((_gas_price, payment_amount_gas, hash), deploy_type) in self.sets.pending.iter().rev()
+        {
             let at_max_transfers = transfers.len() == max_transfers;
             let at_max_deploys = wasm_deploys.len() == max_deploys;
 
             // Early exit if block limits are met.
-            // TODO: break early if gas total is met, but only once we have a constant for the cost
-            // of wasm-less transfers. if block_gas_running_total >= block_gas_limit
             if block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes
                 || (at_max_deploys && at_max_transfers)
+                || block_gas_running_total == block_gas_limit
             {
                 break;
             }
@@ -451,17 +487,8 @@ impl BlockProposerReady {
                 continue;
             }
 
-            let payment_amount_gas = match Gas::from_motes(deploy_type.payment_amount(), CONV_RATE)
-            {
-                Some(value) => value,
-                None => {
-                    error!("payment_amount couldn't be converted from motes to gas");
-                    continue;
-                }
-            };
-
             let gas_running_total = if let Some(gas_running_total) =
-                block_gas_running_total.checked_add(payment_amount_gas)
+                block_gas_running_total.checked_add(*payment_amount_gas)
             {
                 gas_running_total
             } else {
@@ -472,13 +499,14 @@ impl BlockProposerReady {
             if gas_running_total > block_gas_limit {
                 continue;
             }
-            if deploy_type.is_transfer() && !at_max_transfers {
-                transfers.push(*hash);
-            } else if !at_max_deploys {
-                wasm_deploys.push(*hash);
-            }
-            block_gas_running_total = gas_running_total;
 
+            match deploy_type {
+                DeployType::Transfer { .. } if !at_max_transfers => transfers.push(*hash),
+                DeployType::Other { .. } if !at_max_deploys => wasm_deploys.push(*hash),
+                _ => continue,
+            }
+
+            block_gas_running_total = gas_running_total;
             block_size_running_total += deploy_type.size();
         }
 
