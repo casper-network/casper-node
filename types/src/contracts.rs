@@ -13,6 +13,7 @@ use alloc::{
     vec::Vec,
 };
 use core::fmt;
+
 use serde::Serialize;
 
 /// Maximum number of distinct user groups.
