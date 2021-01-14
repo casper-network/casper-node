@@ -697,7 +697,7 @@ pub enum ContractRuntimeRequest {
     /// Insert a trie into global storage
     PutTrie {
         /// The hash of the value to get from the `TrieStore`
-        trie: Trie<Key, StoredValue>,
+        trie: Box<Trie<Key, StoredValue>>,
         /// Responder to call with the result.
         responder: Responder<Result<(), engine_state::Error>>,
     },

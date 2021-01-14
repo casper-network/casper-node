@@ -481,7 +481,7 @@ where
                     let correlation_id = CorrelationId::new();
                     let result = task::spawn_blocking(move || {
                         let start = Instant::now();
-                        let result = engine_state.put_trie(correlation_id, trie);
+                        let result = engine_state.put_trie(correlation_id, &*trie);
                         metrics.read_trie.observe(start.elapsed().as_secs_f64());
                         result
                     })

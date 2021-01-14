@@ -2396,13 +2396,13 @@ where
     pub fn put_trie(
         &self,
         correlation_id: CorrelationId,
-        trie: Trie<Key, StoredValue>,
+        trie: &Trie<Key, StoredValue>,
     ) -> Result<(), Error>
     where
         Error: From<S::Error>,
     {
         self.state
-            .put_trie(correlation_id, &trie)
+            .put_trie(correlation_id, trie)
             .map_err(Error::from)
     }
 
