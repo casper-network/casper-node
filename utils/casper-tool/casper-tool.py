@@ -283,6 +283,10 @@ def create_node(
             for n in known_nodes
         ]
 
+        # Setup for volume operation.
+        config["storage"]["path"] = "/storage"
+        config["consensus"]["unit_hashes_folder"] = "/storage/unit_hashes"
+
     toml.dump(config, open(os.path.join(node_path, "config.toml"), "w"))
 
     return open(os.path.join(key_path, "public_key_hex")).read().strip()
