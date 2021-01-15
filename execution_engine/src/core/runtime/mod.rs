@@ -2795,7 +2795,6 @@ where
         mint_contract_hash: ContractHash,
     ) -> Result<U512, Error> {
         let gas_counter = self.gas_counter();
-
         let call_result = self.call_contract(
             mint_contract_hash,
             mint::METHOD_READ_BASE_ROUND_REWARD,
@@ -2820,7 +2819,6 @@ where
         self.set_gas_counter(gas_counter);
 
         let result: Result<URef, system_contract_errors::mint::Error> = call_result?.into_t()?;
-
         Ok(result.map_err(system_contract_errors::Error::from)?)
     }
 
@@ -2832,7 +2830,6 @@ where
         amount: U512,
     ) -> Result<(), Error> {
         let gas_counter = self.gas_counter();
-
         let runtime_args = {
             let mut runtime_args = RuntimeArgs::new();
             runtime_args.insert(mint::ARG_AMOUNT, amount)?;
@@ -2844,6 +2841,7 @@ where
             runtime_args,
         );
         self.set_gas_counter(gas_counter);
+        
         let result: Result<(), system_contract_errors::mint::Error> = call_result?.into_t()?;
         Ok(result.map_err(system_contract_errors::Error::from)?)
     }
@@ -2855,8 +2853,8 @@ where
         let result =
             self.call_contract(mint_contract_hash, mint::METHOD_CREATE, RuntimeArgs::new());
         self.set_gas_counter(gas_counter);
-        let purse = result?.into_t()?;
 
+        let purse = result?.into_t()?;
         Ok(purse)
     }
 
