@@ -780,7 +780,7 @@ mod transfer {
             ),
             Err(Error::InvalidArgument(
                 "target_account",
-                "Invalid arguments to get_transfer_target - must provide either a target account. account=".to_string()).into())
+                "Invalid arguments to get_transfer_target - must provide a target account. account=".to_string()).into())
         );
     }
 }
