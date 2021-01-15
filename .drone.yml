@@ -310,10 +310,14 @@ steps:
   commands:
     - "make deb"
 
-- name: publish-crate-tag-TODO
+- name: publish-crate
   image: casperlabs/node-build-u1804
   commands:
-  - "echo TODO"
+  - "cargo login ${CARGO_TOKEN}"
+  - "./ci/publish.sh"
+  environment:
+    CARGO_TOKEN:
+      from_secret: crates_io_token
 
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
