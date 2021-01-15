@@ -561,7 +561,7 @@ impl BlockHeader {
         &self.deploy_hashes
     }
 
-    /// The list of deploy hashes included in the block.
+    /// The list of transfer hashes included in the block.
     pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
         &self.transfer_hashes
     }
@@ -1153,6 +1153,7 @@ pub(crate) mod json_compatibility {
         pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
             &self.header.deploy_hashes
         }
+
         /// Returns the hashes of the transfer `Deploy`s included in the `Block`.
         pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
             &self.header.deploy_hashes
