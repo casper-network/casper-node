@@ -700,13 +700,30 @@ fn handle_identify_event(swarm: &mut Swarm<Behavior>, event: IdentifyEvent) {
 /// "/ip4/127.0.0.1/tcp/34553".
 fn address_str_to_multiaddr(address: &str) -> Multiaddr {
     let mut parts_itr = address.split(':');
-    let multiaddr_str = format!(
-        "/ip4/{}/tcp/{}",
-        parts_itr.next().expect("address should contain IP segment"),
-        parts_itr
-            .next()
-            .expect("address should contain port segment")
-    );
+    let multiaddr_str = if address
+        .chars()
+        .next()
+        .expect("cannot convert emptry address")
+        .is_numeric()
+    {
+        format!(
+            "/ip4/{}/tcp/{}",
+            parts_itr.next().expect("address should contain IP segment"),
+            parts_itr
+                .next()
+                .expect("address should contain port segment")
+        )
+    } else {
+        format!(
+            "/dns/{}/tcp/{}",
+            parts_itr
+                .next()
+                .expect("address should contain DNS name segment"),
+            parts_itr
+                .next()
+                .expect("address should contain port segment")
+        )
+    };
     // OK to `expect` for now as this method will become redundant once small_network is removed.
     multiaddr_str
         .parse()
