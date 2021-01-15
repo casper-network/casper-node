@@ -9,7 +9,7 @@ let
 in rustPlatform.buildRustPackage rec {
   name = "casper-node";
   pname = "casper-node";
-  cargoSha256 = "168k343qf1wvvan2j90psc4j88j1f66w6bixpc6r726n3akky1gr";
+  cargoSha256 = "0mzp9r62vx4cayis5fhm0sksr5pn0zly85my30mprrn3dfvwma01";
   src = source;
   buildInputs = with pkgs; [ openssl ];
   nativeBuildInputs = with pkgs; [ pkg-config ];
