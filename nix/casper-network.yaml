@@ -55,7 +55,7 @@ spec:
       terminationGracePeriodSeconds: 5
       containers:
         - name: node
-          image: clmarc/casper-node:4348163c # TODO: Dynamically set.
+          image: clmarc/casper-node:5fbf42f0 # TODO: Dynamically set.
           # The args override some settings from environment variables.
           args:
             [
