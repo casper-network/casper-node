@@ -490,7 +490,7 @@ where
     S: StateProvider,
     S::Error: Into<execution::Error>,
 {
-    pub fn new(
+    pub(crate) fn new(
         correlation_id: CorrelationId,
         genesis_config_hash: Blake2bHash,
         protocol_version: ProtocolVersion,
@@ -533,11 +533,11 @@ where
         }
     }
 
-    pub fn into_execution_effect(self) -> ExecutionEffect {
+    pub(crate) fn into_execution_effect(self) -> ExecutionEffect {
         self.tracking_copy.borrow_mut().effect()
     }
 
-    pub fn create_mint(&self) -> Result<(ContractHash, Vec<GenesisPurse>), GenesisError> {
+    pub(crate) fn create_mint(&self) -> Result<(ContractHash, Vec<GenesisPurse>), GenesisError> {
         let access_key = self
             .address_generators
             .borrow_mut()
@@ -602,7 +602,7 @@ where
         Ok((mint_hash, purses))
     }
 
-    pub fn create_proof_of_stake(
+    pub(crate) fn create_proof_of_stake(
         &self,
         genesis_purses: &[GenesisPurse],
     ) -> Result<ContractHash, GenesisError> {
@@ -633,7 +633,7 @@ where
         Ok(proof_of_stake_hash)
     }
 
-    pub fn create_auction(
+    pub(crate) fn create_auction(
         &self,
         genesis_purses: &[GenesisPurse],
     ) -> Result<ContractHash, GenesisError> {
@@ -805,7 +805,7 @@ where
         Ok(auction_hash)
     }
 
-    pub fn create_standard_payment(&self) -> Result<ContractHash, GenesisError> {
+    pub(crate) fn create_standard_payment(&self) -> ContractHash {
         let named_keys = NamedKeys::new();
 
         let entry_points = self.standard_payment_entry_points();
@@ -817,10 +817,10 @@ where
 
         let (_, standard_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        Ok(standard_payment_hash)
+        standard_payment_hash
     }
 
-    pub fn create_accounts(&self, genesis_purses: &[GenesisPurse]) -> Result<(), GenesisError> {
+    pub(crate) fn create_accounts(&self, genesis_purses: &[GenesisPurse]) {
         for purse in genesis_purses {
             match purse {
                 GenesisPurse::GenesisAccount {
@@ -842,7 +842,6 @@ where
                 _ => continue,
             }
         }
-        Ok(())
     }
 
     fn mint_entry_points(&self) -> EntryPoints {

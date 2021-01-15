@@ -19,7 +19,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    bytesrepr::{self, Bytes, Error as BytesReprError, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
     Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey, EntryPoint,
     EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
@@ -140,7 +140,7 @@ impl ExecutableDeployItem {
         }
     }
 
-    pub fn into_runtime_args(self) -> Result<RuntimeArgs, BytesReprError> {
+    pub fn into_runtime_args(self) -> Result<RuntimeArgs, bytesrepr::Error> {
         match self {
             ExecutableDeployItem::ModuleBytes { args, .. }
             | ExecutableDeployItem::StoredContractByHash { args, .. }
@@ -342,7 +342,7 @@ impl ExecutableDeployItem {
 }
 
 impl ToBytes for ExecutableDeployItem {
-    fn to_bytes(&self) -> Result<Vec<u8>, BytesReprError> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         match self {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
@@ -454,7 +454,7 @@ impl ToBytes for ExecutableDeployItem {
 }
 
 impl FromBytes for ExecutableDeployItem {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), BytesReprError> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             MODULE_BYTES_TAG => {
@@ -525,7 +525,7 @@ impl FromBytes for ExecutableDeployItem {
                 let (args, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((ExecutableDeployItem::Transfer { args }, remainder))
             }
-            _ => Err(BytesReprError::Formatting),
+            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }

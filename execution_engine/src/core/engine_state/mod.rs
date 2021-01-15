@@ -60,7 +60,7 @@ use crate::{
             execution_result::ExecutionResultBuilder,
             genesis::GenesisInstaller,
             step::{StepRequest, StepResult},
-            upgrade::UpgradeInstaller,
+            upgrade::SystemUpgrader,
         },
         execution::{self, AddressGenerators, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
@@ -158,9 +158,7 @@ where
         let (mint_hash, purses) = genesis_installer.create_mint().map_err(Error::Genesis)?;
 
         // Create accounts
-        genesis_installer
-            .create_accounts(&purses)
-            .map_err(Error::Genesis)?;
+        genesis_installer.create_accounts(&purses);
 
         // Create proof of stake
         let proof_of_stake_hash = genesis_installer
@@ -173,9 +171,7 @@ where
             .map_err(Error::Genesis)?;
 
         // Create standard payment
-        let standard_payment_hash = genesis_installer
-            .create_standard_payment()
-            .map_err(Error::Genesis)?;
+        let standard_payment_hash = genesis_installer.create_standard_payment();
 
         // Associate given CostTable with given ProtocolVersion.
         {
@@ -254,13 +250,13 @@ where
 
         // 3.1.1.1.1.5 bump system contract major versions
         if upgrade_check_result.is_major_version() {
-            let upgrade_installer: UpgradeInstaller<S> = UpgradeInstaller::new(
+            let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
                 new_protocol_version,
                 current_protocol_data,
                 tracking_copy.clone(),
             );
 
-            upgrade_installer
+            system_upgrader
                 .upgrade_system_contracts_major_version(correlation_id)
                 .map_err(Error::ProtocolUpgrade)?;
         }
