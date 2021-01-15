@@ -16,6 +16,10 @@ CONTRACTS = ["mint", "pos", "standard_payment", "auction"]
 DEFAULT_WASM_SUBDIR = ["target", "wasm32-unknown-unknown", "release"]
 
 
+#: The port the node is reachable on.
+NODE_PORT = 34553
+
+
 @click.group()
 @click.option(
     "-b",
@@ -125,15 +129,28 @@ def cli(
 @click.option(
     "-c/-C",
     "--cluster/--no-cluster",
-    help="Setup networking suitable for cluster operation.",
+    help="Setup networking suitable for cluster operation (default: enabled).",
     default=True,
     is_flag=True,
 )
 @click.option(
     "-N", "--number-of-nodes", help="Number of nodes to create data for", default=5
 )
+@click.option(
+    "-d",
+    "--discovery-strategy",
+    help="The discovery strategy to use (only valid with `--cluster`)",
+    default="root",
+    type=click.Choice(["root"]),
+)
 def create_network(
-    obj, target_path, network_name, genesis_in, number_of_nodes, cluster
+    obj,
+    target_path,
+    network_name,
+    genesis_in,
+    number_of_nodes,
+    cluster,
+    discovery_strategy,
 ):
     if network_name is None:
         network_name = os.path.basename(target_path)
@@ -171,10 +188,23 @@ def create_network(
     show_val("Number of nodes", number_of_nodes)
     pubkeys = {}
     for n in range(number_of_nodes):
+        if discovery_strategy == "root":
+            known_nodes = [0]
+        else:
+            raise ValueError(
+                "unknown discovery strategy: {}".format(discovery_strategy)
+            )
+
         node_path = os.path.join(target_path, "node-{}".format(n))
         os.mkdir(node_path)
         pubkey_hex = create_node(
-            n, obj["casper_client_argv0"], obj["config_template"], node_path, cluster
+            n,
+            obj["casper_client_argv0"],
+            network_name,
+            obj["config_template"],
+            node_path,
+            cluster,
+            known_nodes,
         )
         pubkeys[n] = pubkey_hex
 
@@ -215,7 +245,9 @@ def create_chainspec(template, network_name, genesis_in, contract_paths):
     return chainspec
 
 
-def create_node(n, client_argv0, config_template, node_path, cluster):
+def create_node(
+    n, client_argv0, network_name, config_template, node_path, cluster, known_nodes
+):
     """Create a node configuration inside a network.
 
     Paths are assumed to be set up using `create_chainspec`.
@@ -229,7 +261,9 @@ def create_node(n, client_argv0, config_template, node_path, cluster):
     config = toml.load(open(config_template))
     config["node"]["chainspec_config_path"] = "../chain/chainspec.toml"
 
-    config["consensus"]["secret_key_path"] = os.path.join(os.path.relpath(key_path, node_path), "secret_key.pem")
+    config["consensus"]["secret_key_path"] = os.path.join(
+        os.path.relpath(key_path, node_path), "secret_key.pem"
+    )
 
     # All the different state/storage paths
     config["storage"]["path"] = "state/storage"
@@ -241,7 +275,13 @@ def create_node(n, client_argv0, config_template, node_path, cluster):
     if cluster:
         # Set the public address to `casper-node-XX`, which will resolve to the internal
         # network IP, and use the automatic port detection by setting `:0`.
-        config["network"]["public_address"] = "casper-node-{}:0".format(n)
+        config["network"]["public_address"] = "casper-node-{}:{}".format(n, NODE_PORT)
+        config["network"]["bind_address"] = "casper-node-{}:{}".format(n, NODE_PORT)
+
+        config["network"]["known_addresses"] = [
+            "casper-node-{}.casper-node.{}:{}".format(n, network_name, NODE_PORT)
+            for n in known_nodes
+        ]
 
     toml.dump(config, open(os.path.join(node_path, "config.toml"), "w"))
 
