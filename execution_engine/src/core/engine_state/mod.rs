@@ -28,7 +28,7 @@ use num_rational::Ratio;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 use parity_wasm::elements::Module;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use casper_types::{
     account::AccountHash,
@@ -1268,12 +1268,8 @@ where
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
-        let input_runtime_args = match deploy_item.session.into_runtime_args() {
-            Ok(runtime_args) => runtime_args,
-            Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
-        };
-
-        let mut runtime_args_builder = TransferRuntimeArgsBuilder::new(input_runtime_args);
+        let mut runtime_args_builder =
+            TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
         match runtime_args_builder.transfer_target_mode(correlation_id, Rc::clone(&tracking_copy)) {
             Ok(mode) => match mode {
                 TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
@@ -2014,15 +2010,7 @@ where
                 ),
             };
 
-            let payment_args = match payment.into_runtime_args() {
-                Ok(args) => args,
-                Err(e) => {
-                    let exec_err: execution::Error = e.into();
-                    warn!("Unable to deserialize arguments: {:?}", exec_err);
-                    return Ok(ExecutionResult::precondition_failure(exec_err.into()));
-                }
-            };
-
+            let payment_args = payment.args().clone();
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             if self.config.use_system_contracts() || !module_bytes_is_empty {
@@ -2251,14 +2239,7 @@ where
             ),
         };
 
-        let session_args = match session.into_runtime_args() {
-            Ok(args) => args,
-            Err(e) => {
-                let exec_err: execution::Error = e.into();
-                warn!("Unable to deserialize session arguments: {:?}", exec_err);
-                return Ok(ExecutionResult::precondition_failure(exec_err.into()));
-            }
-        };
+        let session_args = session.args().clone();
         let mut session_result = {
             // payment_code_spec_3_b_i: if (balance of PoS pay purse) >= (gas spent during
             // payment code execution) * conv_rate, yes session

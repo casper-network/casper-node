@@ -4,6 +4,7 @@
 use alloc::{string::String, vec::Vec};
 use core::fmt;
 
+use datasize::DataSize;
 use failure::Fail;
 #[cfg(feature = "std")]
 use schemars::JsonSchema;
@@ -56,9 +57,10 @@ impl From<bytesrepr::Error> for CLValueError {
 ///
 /// It holds the underlying data as a type-erased, serialized `Vec<u8>` and also holds the
 /// [`CLType`] of the underlying data as a separate member.
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug, DataSize)]
 #[cfg_attr(feature = "std", derive(JsonSchema))]
 pub struct CLValue {
+    #[data_size(skip)]
     cl_type: CLType,
     #[cfg_attr(
         feature = "std",
