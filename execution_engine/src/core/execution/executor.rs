@@ -16,7 +16,7 @@ use crate::{
             execution_effect::ExecutionEffect, execution_result::ExecutionResult,
             system_contract_cache::SystemContractCache, EngineConfig,
         },
-        execution::{address_generator::AddressGenerator, Error},
+        execution::{address_generator::AddressGenerators, Error},
         runtime::{extract_access_rights_from_keys, instance_and_memory, Runtime},
         runtime_context::{self, RuntimeContext},
         tracking_copy::TrackingCopy,
@@ -121,18 +121,7 @@ impl Executor {
             extract_access_rights_from_keys(keys)
         };
 
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let target_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
+        let address_generators = Rc::new(RefCell::new(AddressGenerators::new(&deploy_hash, phase)));
         let gas_counter: Gas = Gas::default();
         let transfers = Vec::default();
 
@@ -153,12 +142,9 @@ impl Executor {
             deploy_hash,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            target_address_generator,
+            address_generators,
             protocol_version,
             correlation_id,
-            phase,
             protocol_data,
             transfers,
         );
@@ -286,18 +272,7 @@ impl Executor {
         R::Error: Into<Error>,
     {
         // use host side standard payment
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let transfer_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
+        let address_generators = Rc::new(RefCell::new(AddressGenerators::new(&deploy_hash, phase)));
 
         let mut runtime = match self.create_runtime(
             system_module,
@@ -311,13 +286,10 @@ impl Executor {
             blocktime,
             deploy_hash,
             payment_gas_limit,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generators,
             protocol_version,
             correlation_id,
             Rc::clone(&tracking_copy),
-            phase,
             protocol_data,
             system_contract_cache,
         ) {
@@ -365,9 +337,9 @@ impl Executor {
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-        phase: Phase,
         protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
+        address_generators: Rc<RefCell<AddressGenerators>>,
     ) -> (Option<T>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue>,
@@ -394,7 +366,9 @@ impl Executor {
                     );
                 }
             }
-            DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => {
+            DirectSystemContractCall::Mint
+            | DirectSystemContractCall::CreatePurse
+            | DirectSystemContractCall::Transfer => {
                 if protocol_data.mint() != base_key.into_seed() {
                     panic!(
                         "{} should only be called with the mint contract",
@@ -412,18 +386,6 @@ impl Executor {
             }
         }
 
-        let hash_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let uref_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-        let transfer_address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-            Rc::new(RefCell::new(generator))
-        };
         let gas_counter = Gas::default(); // maybe const?
 
         // Snapshot of effects before execution, so in case of error only nonce update
@@ -444,13 +406,10 @@ impl Executor {
             blocktime,
             deploy_hash,
             gas_limit,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generators,
             protocol_version,
             correlation_id,
             tracking_copy,
-            phase,
             protocol_data,
             system_contract_cache,
         ) {
@@ -491,13 +450,10 @@ impl Executor {
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         gas_limit: Gas,
-        hash_address_generator: Rc<RefCell<AddressGenerator>>,
-        uref_address_generator: Rc<RefCell<AddressGenerator>>,
-        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+        address_generators: Rc<RefCell<AddressGenerators>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-        phase: Phase,
         protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
     ) -> Result<T, Error>
@@ -521,13 +477,10 @@ impl Executor {
             blocktime,
             deploy_hash,
             gas_limit,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generators,
             protocol_version,
             correlation_id,
             tracking_copy,
-            phase,
             protocol_data,
             system_contract_cache,
         )?;
@@ -578,13 +531,10 @@ impl Executor {
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         gas_limit: Gas,
-        hash_address_generator: Rc<RefCell<AddressGenerator>>,
-        uref_address_generator: Rc<RefCell<AddressGenerator>>,
-        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+        address_generators: Rc<RefCell<AddressGenerators>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-        phase: Phase,
         protocol_data: ProtocolData,
         system_contract_cache: SystemContractCache,
     ) -> Result<(ModuleRef, Runtime<'a, R>), Error>
@@ -614,12 +564,9 @@ impl Executor {
             deploy_hash,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generators,
             protocol_version,
             correlation_id,
-            phase,
             protocol_data,
             transfers,
         );
@@ -647,6 +594,7 @@ pub enum DirectSystemContractCall {
     RunAuction,
     DistributeRewards,
     FinalizePayment,
+    Mint,
     CreatePurse,
     Transfer,
     GetEraValidators,
@@ -660,6 +608,7 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::RunAuction => "run_auction",
             DirectSystemContractCall::DistributeRewards => "distribute",
             DirectSystemContractCall::FinalizePayment => "finalize_payment",
+            DirectSystemContractCall::Mint => "mint",
             DirectSystemContractCall::CreatePurse => "create",
             DirectSystemContractCall::Transfer => "transfer",
             DirectSystemContractCall::GetEraValidators => auction::METHOD_GET_ERA_VALIDATORS,
@@ -699,14 +648,15 @@ impl DirectSystemContractCall {
                 runtime_args,
                 extra_keys,
             ),
-            DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => runtime
-                .call_host_mint(
-                    protocol_version,
-                    entry_point_name,
-                    named_keys,
-                    runtime_args,
-                    extra_keys,
-                ),
+            DirectSystemContractCall::Mint
+            | DirectSystemContractCall::CreatePurse
+            | DirectSystemContractCall::Transfer => runtime.call_host_mint(
+                protocol_version,
+                entry_point_name,
+                named_keys,
+                runtime_args,
+                extra_keys,
+            ),
             DirectSystemContractCall::GetEraValidators => runtime.call_host_auction(
                 protocol_version,
                 entry_point_name,

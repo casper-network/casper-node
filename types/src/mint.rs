@@ -80,7 +80,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .ok_or(Error::TotalSupplyNotFound)?;
 
         // decrease total supply
-        let reduced_total_supply = total_supply - amount;
+        let reduced_total_supply = total_supply.saturating_sub(amount);
 
         // update total supply
         self.write(total_supply_uref, reduced_total_supply)?;

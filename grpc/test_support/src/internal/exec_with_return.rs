@@ -7,7 +7,7 @@ use casper_execution_engine::{
             executable_deploy_item::ExecutableDeployItem, execution_effect::ExecutionEffect,
             EngineConfig, EngineState,
         },
-        execution::{self, AddressGenerator},
+        execution::{self, AddressGenerators},
         runtime::{self, Runtime},
         runtime_context::RuntimeContext,
     },
@@ -62,19 +62,8 @@ where
     ));
 
     let phase = Phase::Session;
-    let address_generator = {
-        let address_generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-        Rc::new(RefCell::new(address_generator))
-    };
-    let transfer_address_generator = {
-        let address_generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-        Rc::new(RefCell::new(address_generator))
-    };
+    let address_generators = Rc::new(RefCell::new(AddressGenerators::new(&deploy_hash, phase)));
     let gas_counter = Gas::default();
-    let fn_store_id = {
-        let fn_store_id = AddressGenerator::new(deploy_hash.as_bytes(), phase);
-        Rc::new(RefCell::new(fn_store_id))
-    };
     let gas_limit = Gas::new(U512::from(std::u64::MAX));
     let protocol_version = ProtocolVersion::V1_0_0;
     let correlation_id = CorrelationId::new();
@@ -121,12 +110,9 @@ where
         deploy_hash,
         gas_limit,
         gas_counter,
-        fn_store_id,
-        address_generator,
-        transfer_address_generator,
+        address_generators,
         protocol_version,
         correlation_id,
-        phase,
         protocol_data,
         transfers,
     );

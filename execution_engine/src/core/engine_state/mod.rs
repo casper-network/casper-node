@@ -62,7 +62,7 @@ use crate::{
             step::{StepRequest, StepResult},
             upgrade::UpgradeInstaller,
         },
-        execution::{self, DirectSystemContractCall, Executor},
+        execution::{self, AddressGenerators, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },
     shared::{
@@ -146,8 +146,10 @@ where
         };
 
         let genesis_installer: GenesisInstaller<S> = GenesisInstaller::new(
+            correlation_id,
             genesis_config_hash,
             protocol_version,
+            self.config,
             ee_config.clone(),
             tracking_copy,
         );
@@ -609,6 +611,11 @@ where
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
         };
 
+        let address_generators = Rc::new(RefCell::new(AddressGenerators::new(
+            &deploy_item.deploy_hash,
+            Phase::Session,
+        )));
+
         let mut runtime_args_builder = TransferRuntimeArgsBuilder::new(input_runtime_args);
         match runtime_args_builder.transfer_target_mode(correlation_id, Rc::clone(&tracking_copy)) {
             Ok(mode) => match mode {
@@ -630,9 +637,9 @@ where
                             protocol_version,
                             correlation_id,
                             Rc::clone(&tracking_copy),
-                            Phase::Session,
                             protocol_data,
                             SystemContractCache::clone(&self.system_contract_cache),
+                            address_generators,
                         );
                     match maybe_uref {
                         Some(main_purse) => {
@@ -729,6 +736,11 @@ where
                 });
             }
 
+            let payment_address_generators = Rc::new(RefCell::new(AddressGenerators::new(
+                &deploy_item.deploy_hash,
+                Phase::Payment,
+            )));
+
             let (payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
                 executor.exec_system_contract(
                     DirectSystemContractCall::GetPaymentPurse,
@@ -745,9 +757,9 @@ where
                     protocol_version,
                     correlation_id,
                     Rc::clone(&tracking_copy),
-                    Phase::Payment,
                     protocol_data,
                     SystemContractCache::clone(&self.system_contract_cache),
+                    Rc::clone(&payment_address_generators),
                 );
 
             let payment_uref = match payment_uref {
@@ -809,9 +821,9 @@ where
                     protocol_version,
                     correlation_id,
                     Rc::clone(&tracking_copy),
-                    Phase::Payment,
                     protocol_data,
                     SystemContractCache::clone(&self.system_contract_cache),
+                    payment_address_generators,
                 );
 
             if let Some(error) = payment_result.as_error().cloned() {
@@ -900,6 +912,11 @@ where
                 }
             };
 
+        let session_address_generators = Rc::new(RefCell::new(AddressGenerators::new(
+            &deploy_item.deploy_hash,
+            Phase::Session,
+        )));
+
         let runtime_args = match RuntimeArgs::try_from(transfer_args) {
             Ok(runtime_args) => runtime_args,
             Err(error) => {
@@ -928,9 +945,9 @@ where
                 protocol_version,
                 correlation_id,
                 Rc::clone(&tracking_copy),
-                Phase::Session,
                 protocol_data,
                 SystemContractCache::clone(&self.system_contract_cache),
+                session_address_generators,
             );
 
         let finalize_result = {
@@ -980,6 +997,11 @@ where
             let tc = tracking_copy.borrow();
             let finalization_tc = Rc::new(RefCell::new(tc.fork()));
 
+            let finalization_address_generators = Rc::new(RefCell::new(AddressGenerators::new(
+                &deploy_item.deploy_hash,
+                Phase::FinalizePayment,
+            )));
+
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::FinalizePayment,
@@ -996,9 +1018,9 @@ where
                     protocol_version,
                     correlation_id,
                     finalization_tc,
-                    Phase::FinalizePayment,
                     protocol_data,
                     SystemContractCache::clone(&self.system_contract_cache),
+                    finalization_address_generators,
                 );
 
             finalize_result
@@ -1580,6 +1602,11 @@ where
             let gas_limit = Gas::new(U512::from(std::u64::MAX));
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
+            let finalization_address_generators = Rc::new(RefCell::new(AddressGenerators::new(
+                &deploy_hash,
+                Phase::FinalizePayment,
+            )));
+
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .exec_system_contract(
                     DirectSystemContractCall::FinalizePayment,
@@ -1596,9 +1623,9 @@ where
                     protocol_version,
                     correlation_id,
                     finalization_tc,
-                    Phase::FinalizePayment,
                     protocol_data,
                     system_contract_cache,
+                    finalization_address_generators,
                 );
 
             finalize_result
@@ -1688,6 +1715,11 @@ where
             DeployHash::new(Blake2bHash::new(&bytes).value())
         };
 
+        let address_generators = Rc::new(RefCell::new(AddressGenerators::new(
+            &deploy_hash,
+            Phase::Session,
+        )));
+
         let (era_validators, execution_result): (Option<EraValidators>, ExecutionResult) = executor
             .exec_system_contract(
                 DirectSystemContractCall::GetEraValidators,
@@ -1704,9 +1736,9 @@ where
                 protocol_version,
                 correlation_id,
                 Rc::clone(&tracking_copy),
-                Phase::Session,
                 protocol_data,
                 SystemContractCache::clone(&self.system_contract_cache),
+                address_generators,
             );
 
         if let Some(error) = execution_result.take_error() {
@@ -1787,6 +1819,11 @@ where
             DeployHash::new(Blake2bHash::new(&bytes).value())
         };
 
+        let address_generators = Rc::new(RefCell::new(AddressGenerators::new(
+            &deploy_hash,
+            Phase::Session,
+        )));
+
         let base_key = Key::from(protocol_data.auction());
 
         let slashed_validators = match step_request.slashed_validators() {
@@ -1823,9 +1860,9 @@ where
             step_request.protocol_version,
             correlation_id,
             Rc::clone(&tracking_copy),
-            Phase::Session,
             protocol_data,
             SystemContractCache::clone(&self.system_contract_cache),
+            Rc::clone(&address_generators),
         );
 
         if let Some(exec_error) = execution_result.take_error() {
@@ -1870,9 +1907,9 @@ where
             step_request.protocol_version,
             correlation_id,
             Rc::clone(&tracking_copy),
-            Phase::Session,
             protocol_data,
             SystemContractCache::clone(&self.system_contract_cache),
+            Rc::clone(&address_generators),
         );
 
         if let Some(exec_error) = execution_result.take_error() {
@@ -1898,9 +1935,9 @@ where
                     step_request.protocol_version,
                     correlation_id,
                     Rc::clone(&tracking_copy),
-                    Phase::Session,
                     protocol_data,
                     SystemContractCache::clone(&self.system_contract_cache),
+                    address_generators,
                 );
 
             if let Some(exec_error) = execution_result.take_error() {

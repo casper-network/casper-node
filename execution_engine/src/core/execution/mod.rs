@@ -6,7 +6,7 @@ mod executor;
 mod tests;
 
 pub use self::{
-    address_generator::{AddressGenerator, AddressGeneratorBuilder},
+    address_generator::{AddressGenerator, AddressGeneratorBuilder, AddressGenerators},
     error::Error,
     executor::{DirectSystemContractCall, Executor},
 };

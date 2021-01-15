@@ -23,7 +23,7 @@ use casper_types::{
 use crate::{
     core::{
         engine_state::execution_effect::ExecutionEffect,
-        execution::{AddressGenerator, Error},
+        execution::{AddressGenerators, Error},
         tracking_copy::{AddResult, TrackingCopy},
         Address,
     },
@@ -96,12 +96,9 @@ pub struct RuntimeContext<'a, R> {
     deploy_hash: DeployHash,
     gas_limit: Gas,
     gas_counter: Gas,
-    hash_address_generator: Rc<RefCell<AddressGenerator>>,
-    uref_address_generator: Rc<RefCell<AddressGenerator>>,
-    transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+    address_generators: Rc<RefCell<AddressGenerators>>,
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
-    phase: Phase,
     protocol_data: ProtocolData,
     entry_point_type: EntryPointType,
     transfers: Vec<TransferAddr>,
@@ -126,12 +123,9 @@ where
         deploy_hash: DeployHash,
         gas_limit: Gas,
         gas_counter: Gas,
-        hash_address_generator: Rc<RefCell<AddressGenerator>>,
-        uref_address_generator: Rc<RefCell<AddressGenerator>>,
-        transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+        address_generators: Rc<RefCell<AddressGenerators>>,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
-        phase: Phase,
         protocol_data: ProtocolData,
         transfers: Vec<TransferAddr>,
     ) -> Self {
@@ -148,12 +142,9 @@ where
             base_key,
             gas_limit,
             gas_counter,
-            hash_address_generator,
-            uref_address_generator,
-            transfer_address_generator,
+            address_generators,
             protocol_version,
             correlation_id,
-            phase,
             protocol_data,
             transfers,
         }
@@ -279,16 +270,8 @@ where
         &self.args
     }
 
-    pub fn uref_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
-        Rc::clone(&self.uref_address_generator)
-    }
-
-    pub fn hash_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
-        Rc::clone(&self.hash_address_generator)
-    }
-
-    pub fn transfer_address_generator(&self) -> Rc<RefCell<AddressGenerator>> {
-        Rc::clone(&self.transfer_address_generator)
+    pub fn address_generators(&self) -> Rc<RefCell<AddressGenerators>> {
+        Rc::clone(&self.address_generators)
     }
 
     pub(super) fn state(&self) -> Rc<RefCell<TrackingCopy<R>>> {
@@ -320,17 +303,17 @@ where
     }
 
     pub fn phase(&self) -> Phase {
-        self.phase
+        self.address_generators.borrow().phase()
     }
 
     /// Generates new deterministic hash for uses as an address.
     pub fn new_hash_address(&mut self) -> Result<[u8; KEY_HASH_LENGTH], Error> {
-        Ok(self.hash_address_generator.borrow_mut().new_hash_address())
+        Ok(self.address_generators.borrow_mut().new_hash_address())
     }
 
     pub fn new_uref(&mut self, value: StoredValue) -> Result<URef, Error> {
         let uref = self
-            .uref_address_generator
+            .address_generators
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.insert_uref(uref);
@@ -345,7 +328,9 @@ where
 
     pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, Error> {
         let transfer_addr = self
-            .transfer_address_generator
+            .address_generators
+            .borrow_mut()
+            .transfer()
             .borrow_mut()
             .create_address();
         Ok(TransferAddr::new(transfer_addr))

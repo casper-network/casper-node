@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
@@ -5,7 +7,7 @@ use blake2::{
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
 
-use casper_types::{AccessRights, Phase, URef};
+use casper_types::{AccessRights, DeployHash, Phase, URef};
 
 use crate::core::{Address, ADDRESS_LENGTH};
 
@@ -27,21 +29,6 @@ impl AddressGenerator {
         let mut buff = [0u8; ADDRESS_LENGTH];
         self.0.fill_bytes(&mut buff);
         buff
-    }
-
-    pub fn new_hash_address(&mut self) -> Address {
-        let pre_hash_bytes = self.create_address();
-        // NOTE: Unwrap below is assumed safe as output size of `ADDRESS_LENGTH` is a valid value.
-        let mut hasher = VarBlake2b::new(ADDRESS_LENGTH).unwrap();
-        hasher.update(&pre_hash_bytes);
-        let mut hash_bytes = [0; ADDRESS_LENGTH];
-        hasher.finalize_variable(|hash| hash_bytes.clone_from_slice(hash));
-        hash_bytes
-    }
-
-    pub fn new_uref(&mut self, access_rights: AccessRights) -> URef {
-        let addr = self.create_address();
-        URef::new(addr, access_rights)
     }
 }
 
@@ -68,6 +55,67 @@ impl AddressGeneratorBuilder {
         hasher.update(self.data);
         hasher.finalize_variable(|hash| seed.clone_from_slice(hash));
         AddressGenerator(ChaChaRng::from_seed(seed))
+    }
+}
+
+pub struct AddressGenerators {
+    phase: Phase,
+    deploy_hash: DeployHash,
+    hash: Rc<RefCell<AddressGenerator>>,
+    uref: Rc<RefCell<AddressGenerator>>,
+    transfer: Rc<RefCell<AddressGenerator>>,
+}
+
+impl AddressGenerators {
+    pub fn new(deploy_hash: &DeployHash, phase: Phase) -> Self {
+        let bytes = deploy_hash.value();
+        AddressGenerators {
+            phase,
+            deploy_hash: *deploy_hash,
+            hash: Rc::new(RefCell::new(AddressGenerator::new(&bytes, phase))),
+            uref: Rc::new(RefCell::new(AddressGenerator::new(&bytes, phase))),
+            transfer: Rc::new(RefCell::new(AddressGenerator::new(&bytes, phase))),
+        }
+    }
+
+    pub fn deploy_hash(&self) -> &DeployHash {
+        &self.deploy_hash
+    }
+
+    pub fn phase(&self) -> Phase {
+        self.phase
+    }
+
+    pub fn hash(&mut self) -> Rc<RefCell<AddressGenerator>> {
+        Rc::clone(&self.hash)
+    }
+
+    pub fn uref(&mut self) -> Rc<RefCell<AddressGenerator>> {
+        Rc::clone(&self.uref)
+    }
+
+    pub fn transfer(&mut self) -> Rc<RefCell<AddressGenerator>> {
+        Rc::clone(&self.transfer)
+    }
+
+    /// Generates a new hash address.
+    pub fn new_hash_address(&mut self) -> Address {
+        // TODO: this method basically duplicates the AddressGeneratorBuilder::build method; one or
+        // the other is likely redundant.
+
+        let pre_hash_bytes = self.hash.borrow_mut().create_address();
+        // NOTE: Unwrap below is assumed safe as output size of `ADDRESS_LENGTH` is a valid value.
+        let mut hasher = VarBlake2b::new(ADDRESS_LENGTH).unwrap();
+        hasher.update(&pre_hash_bytes);
+        let mut hash_bytes = [0; ADDRESS_LENGTH];
+        hasher.finalize_variable(|hash| hash_bytes.clone_from_slice(hash));
+        hash_bytes
+    }
+
+    /// Creates a new uref with specified AccessRights.
+    pub fn new_uref(&mut self, access_rights: AccessRights) -> URef {
+        let addr = self.uref.borrow_mut().create_address();
+        URef::new(addr, access_rights)
     }
 }
 

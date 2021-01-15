@@ -21,7 +21,7 @@ use casper_types::{
 use super::{Address, Error, RuntimeContext};
 use crate::{
     core::{
-        execution::AddressGenerator, runtime::extract_access_rights_from_keys,
+        execution::AddressGenerators, runtime::extract_access_rights_from_keys,
         tracking_copy::TrackingCopy,
     },
     shared::{
@@ -41,7 +41,7 @@ use crate::{
     },
 };
 
-const DEPLOY_HASH: [u8; 32] = [1u8; 32];
+const DEPLOY_HASH: DeployHash = DeployHash::new([1u8; 32]);
 const PHASE: Phase = Phase::Session;
 const GAS_LIMIT: u64 = 500_000_000_000_000u64;
 
@@ -107,12 +107,6 @@ fn random_contract_key<G: RngCore>(entropy_source: &mut G) -> Key {
     Key::Hash(key)
 }
 
-// Create URef Key.
-fn create_uref(address_generator: &mut AddressGenerator, rights: AccessRights) -> Key {
-    let address = address_generator.create_address();
-    Key::URef(URef::new(address, rights))
-}
-
 fn random_hash<G: RngCore>(entropy_source: &mut G) -> Key {
     let mut key = [0u8; KEY_HASH_LENGTH];
     entropy_source.fill_bytes(&mut key);
@@ -124,9 +118,7 @@ fn mock_runtime_context<'a>(
     base_key: Key,
     named_keys: &'a mut NamedKeys,
     access_rights: HashMap<Address, HashSet<AccessRights>>,
-    hash_address_generator: AddressGenerator,
-    uref_address_generator: AddressGenerator,
-    transfer_address_generator: AddressGenerator,
+    address_generators: Rc<RefCell<AddressGenerators>>,
 ) -> RuntimeContext<'a, InMemoryGlobalStateView> {
     let tracking_copy = mock_tracking_copy(base_key, account.clone());
     RuntimeContext::new(
@@ -142,12 +134,9 @@ fn mock_runtime_context<'a>(
         DeployHash::new([1u8; 32]),
         Gas::new(U512::from(GAS_LIMIT)),
         Gas::default(),
-        Rc::new(RefCell::new(hash_address_generator)),
-        Rc::new(RefCell::new(uref_address_generator)),
-        Rc::new(RefCell::new(transfer_address_generator)),
+        address_generators,
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
-        Phase::Session,
         *TEST_PROTOCOL_DATA,
         Vec::default(),
     )
@@ -176,21 +165,19 @@ fn test<T, F>(access_rights: HashMap<Address, HashSet<AccessRights>>, query: F) 
 where
     F: FnOnce(RuntimeContext<InMemoryGlobalStateView>) -> Result<T, Error>,
 {
-    let deploy_hash = [1u8; 32];
     let (base_key, account) = mock_account(AccountHash::new([0u8; 32]));
 
     let mut named_keys = NamedKeys::new();
-    let uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let hash_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let transfer_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
+    let address_generators = Rc::new(RefCell::new(AddressGenerators::new(
+        &DEPLOY_HASH,
+        Phase::Session,
+    )));
     let runtime_context = mock_runtime_context(
         &account,
         base_key,
         &mut named_keys,
         access_rights,
-        hash_address_generator,
-        uref_address_generator,
-        transfer_address_generator,
+        address_generators,
     );
     query(runtime_context)
 }
@@ -198,24 +185,24 @@ where
 #[test]
 fn use_uref_valid() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let mut rng = AddressGenerators::new(&DEPLOY_HASH, PHASE);
+    let uref_key = rng.new_uref(AccessRights::READ_WRITE).into();
+    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     // Use uref as the key to perform an action on the global state.
     // This should succeed because the uref is valid.
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let query_result = test(access_rights, |mut rc| rc.metered_write_gs(uref, value));
+    let query_result = test(access_rights, |mut rc| rc.metered_write_gs(uref_key, value));
     query_result.expect("writing using valid uref should succeed");
 }
 
 #[test]
 fn use_uref_forged() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
+    let rng = Rc::new(RefCell::new(AddressGenerators::new(&DEPLOY_HASH, PHASE)));
+    let uref_key = rng.borrow_mut().new_uref(AccessRights::READ_WRITE).into();
     let access_rights = HashMap::new();
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let query_result = test(access_rights, |mut rc| rc.metered_write_gs(uref, value));
+    let query_result = test(access_rights, |mut rc| rc.metered_write_gs(uref_key, value));
 
     assert_forged_reference(query_result);
 }
@@ -267,18 +254,19 @@ fn account_key_readable_invalid() {
 fn account_key_addable_valid() {
     // Account key is addable if it is a "base" key - current context of the
     // execution.
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref = create_uref(&mut rng, AccessRights::READ);
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let mut rng = AddressGenerators::new(&DEPLOY_HASH, PHASE);
+    let uref_key = rng.new_uref(AccessRights::READ).into();
+    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| {
         let base_key = rc.base_key();
         let uref_name = "NewURef".to_owned();
-        let named_key = StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref)).unwrap());
+        let named_key =
+            StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref_key)).unwrap());
 
         rc.metered_add_gs(base_key, named_key)
             .expect("Adding should work.");
 
-        let named_key_transform = Transform::AddKeys(iter::once((uref_name, uref)).collect());
+        let named_key_transform = Transform::AddKeys(iter::once((uref_name, uref_key)).collect());
 
         assert_eq!(
             *rc.effect().transforms.get(&base_key).unwrap(),
@@ -341,9 +329,7 @@ fn contract_key_addable_valid() {
     let account_hash = AccountHash::new([0u8; 32]);
     let (account_key, account) = mock_account(account_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
-    let hash_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let mut uref_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let transfer_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let address_generators = Rc::new(RefCell::new(AddressGenerators::new(&DEPLOY_HASH, PHASE)));
 
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
@@ -356,12 +342,15 @@ fn contract_key_addable_valid() {
     tracking_copy.borrow_mut().write(contract_key, contract);
 
     let mut named_keys = NamedKeys::new();
-    let uref = create_uref(&mut uref_address_generator, AccessRights::WRITE);
+    let uref_key = address_generators
+        .borrow_mut()
+        .new_uref(AccessRights::WRITE)
+        .into();
     let uref_name = "NewURef".to_owned();
     let named_uref_tuple =
-        StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref)).unwrap());
+        StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref_key)).unwrap());
 
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
 
     let mut runtime_context = RuntimeContext::new(
         Rc::clone(&tracking_copy),
@@ -373,15 +362,12 @@ fn contract_key_addable_valid() {
         &account,
         contract_key,
         BlockTime::new(0),
-        DeployHash::new(DEPLOY_HASH),
+        DEPLOY_HASH,
         Gas::new(U512::from(GAS_LIMIT)),
         Gas::default(),
-        Rc::new(RefCell::new(hash_address_generator)),
-        Rc::new(RefCell::new(uref_address_generator)),
-        Rc::new(RefCell::new(transfer_address_generator)),
+        address_generators,
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
-        PHASE,
         Default::default(),
         Vec::default(),
     );
@@ -393,7 +379,7 @@ fn contract_key_addable_valid() {
     let updated_contract = StoredValue::Contract(Contract::new(
         [0u8; 32],
         [0u8; 32],
-        iter::once((uref_name, uref)).collect(),
+        iter::once((uref_name, uref_key)).collect(),
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,
     ));
@@ -414,9 +400,7 @@ fn contract_key_addable_invalid() {
     let account_hash = AccountHash::new([0u8; 32]);
     let (account_key, account) = mock_account(account_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
-    let hash_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let mut uref_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let transfer_address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let address_generators = Rc::new(RefCell::new(AddressGenerators::new(&DEPLOY_HASH, PHASE)));
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
 
@@ -431,11 +415,14 @@ fn contract_key_addable_invalid() {
 
     let mut named_keys = NamedKeys::new();
 
-    let uref = create_uref(&mut uref_address_generator, AccessRights::WRITE);
+    let uref_key = address_generators
+        .borrow_mut()
+        .new_uref(AccessRights::WRITE)
+        .into();
     let uref_name = "NewURef".to_owned();
-    let named_uref_tuple = StoredValue::CLValue(CLValue::from_t((uref_name, uref)).unwrap());
+    let named_uref_tuple = StoredValue::CLValue(CLValue::from_t((uref_name, uref_key)).unwrap());
 
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     let mut runtime_context = RuntimeContext::new(
         Rc::clone(&tracking_copy),
         EntryPointType::Session,
@@ -446,15 +433,12 @@ fn contract_key_addable_invalid() {
         &account,
         other_contract_key,
         BlockTime::new(0),
-        DeployHash::new(DEPLOY_HASH),
+        DEPLOY_HASH,
         Gas::default(),
         Gas::default(),
-        Rc::new(RefCell::new(hash_address_generator)),
-        Rc::new(RefCell::new(uref_address_generator)),
-        Rc::new(RefCell::new(transfer_address_generator)),
+        address_generators,
         ProtocolVersion::V1_0_0,
         CorrelationId::new(),
-        PHASE,
         Default::default(),
         Vec::default(),
     );
@@ -466,8 +450,8 @@ fn contract_key_addable_invalid() {
 
 #[test]
 fn uref_key_readable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::READ);
+    let mut rng = AddressGenerators::new(&DEPLOY_HASH, PHASE);
+    let uref_key = rng.new_uref(AccessRights::READ).into();
     let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| rc.read_gs(&uref_key));
     assert!(query_result.is_ok());
@@ -475,8 +459,8 @@ fn uref_key_readable_valid() {
 
 #[test]
 fn uref_key_readable_invalid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::WRITE);
+    let mut rng = AddressGenerators::new(&DEPLOY_HASH, PHASE);
+    let uref_key = rng.new_uref(AccessRights::WRITE).into();
     let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| rc.read_gs(&uref_key));
     assert_invalid_access(query_result, AccessRights::READ);
@@ -484,8 +468,8 @@ fn uref_key_readable_invalid() {
 
 #[test]
 fn uref_key_writeable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::WRITE);
+    let mut rng = AddressGenerators::new(&DEPLOY_HASH, PHASE);
+    let uref_key = rng.new_uref(AccessRights::WRITE).into();
     let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| {
         rc.metered_write_gs(
@@ -498,8 +482,8 @@ fn uref_key_writeable_valid() {
 
 #[test]
 fn uref_key_writeable_invalid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::READ);
+    let mut rng = AddressGenerators::new(&DEPLOY_HASH, PHASE);
+    let uref_key = rng.new_uref(AccessRights::READ).into();
     let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| {
         rc.metered_write_gs(
@@ -512,8 +496,8 @@ fn uref_key_writeable_invalid() {
 
 #[test]
 fn uref_key_addable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::ADD_WRITE);
+    let mut rng = AddressGenerators::new(&DEPLOY_HASH, PHASE);
+    let uref_key = rng.new_uref(AccessRights::ADD_WRITE).into();
     let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| {
         rc.metered_write_gs(uref_key, CLValue::from_t(10_i32).unwrap())
@@ -525,8 +509,8 @@ fn uref_key_addable_valid() {
 
 #[test]
 fn uref_key_addable_invalid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref(&mut rng, AccessRights::WRITE);
+    let mut rng = AddressGenerators::new(&DEPLOY_HASH, PHASE);
+    let uref_key = rng.new_uref(AccessRights::WRITE).into();
     let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     let query_result = test(access_rights, |mut rc| {
         rc.metered_add_gs(
@@ -780,22 +764,23 @@ fn remove_uref_works() {
     // into the `TrackingCopy` so that it's later committed to the GlobalState.
 
     let access_rights = HashMap::new();
-    let deploy_hash = [1u8; 32];
     let (base_key, account) = mock_account(AccountHash::new([0u8; 32]));
-    let hash_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let mut uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let transfer_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
+    let address_generators = Rc::new(RefCell::new(AddressGenerators::new(
+        &DEPLOY_HASH,
+        Phase::Session,
+    )));
     let uref_name = "Foo".to_owned();
-    let uref_key = create_uref(&mut uref_address_generator, AccessRights::READ);
+    let uref_key = address_generators
+        .borrow_mut()
+        .new_uref(AccessRights::READ)
+        .into();
     let mut named_keys = iter::once((uref_name.clone(), uref_key)).collect();
     let mut runtime_context = mock_runtime_context(
         &account,
         base_key,
         &mut named_keys,
         access_rights,
-        hash_address_generator,
-        uref_address_generator,
-        transfer_address_generator,
+        address_generators,
     );
 
     assert!(runtime_context.named_keys_contains_key(&uref_name));
@@ -816,20 +801,18 @@ fn validate_valid_purse_of_an_account() {
     // Tests that URef which matches a purse of a given context gets validated
     let mock_purse = [42u8; 32];
     let access_rights = HashMap::new();
-    let deploy_hash = [1u8; 32];
     let (base_key, account) = mock_account_with_purse(AccountHash::new([0u8; 32]), mock_purse);
     let mut named_keys = NamedKeys::new();
-    let hash_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let transfer_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
+    let address_generators = Rc::new(RefCell::new(AddressGenerators::new(
+        &DEPLOY_HASH,
+        Phase::Session,
+    )));
     let runtime_context = mock_runtime_context(
         &account,
         base_key,
         &mut named_keys,
         access_rights,
-        hash_address_generator,
-        uref_address_generator,
-        transfer_address_generator,
+        address_generators,
     );
 
     // URef that has the same id as purse of an account gets validated
@@ -855,9 +838,9 @@ fn validate_valid_purse_of_an_account() {
 #[test]
 fn should_meter_for_gas_storage_write() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref = create_uref(&mut rng, AccessRights::READ_WRITE);
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let mut rng = AddressGenerators::new(&DEPLOY_HASH, PHASE);
+    let uref_key = rng.new_uref(AccessRights::ADD_WRITE).into();
+    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_write_cost = TEST_PROTOCOL_DATA
         .wasm_config()
@@ -866,7 +849,7 @@ fn should_meter_for_gas_storage_write() {
 
     let (gas_usage_before, gas_usage_after) = test(access_rights, |mut rc| {
         let gas_before = rc.gas_counter();
-        rc.metered_write_gs(uref, value).expect("should write");
+        rc.metered_write_gs(uref_key, value).expect("should write");
         let gas_after = rc.gas_counter();
         Ok((gas_before, gas_after))
     })
@@ -885,9 +868,9 @@ fn should_meter_for_gas_storage_write() {
 #[test]
 fn should_meter_for_gas_storage_add() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref = create_uref(&mut rng, AccessRights::ADD_WRITE);
-    let access_rights = extract_access_rights_from_keys(vec![uref]);
+    let mut rng = AddressGenerators::new(&DEPLOY_HASH, PHASE);
+    let uref_key = rng.new_uref(AccessRights::ADD_WRITE).into();
+    let access_rights = extract_access_rights_from_keys(vec![uref_key]);
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_add_cost = TEST_PROTOCOL_DATA
         .wasm_config()
@@ -895,10 +878,10 @@ fn should_meter_for_gas_storage_add() {
         .calculate_gas_cost(value.serialized_length());
 
     let (gas_usage_before, gas_usage_after) = test(access_rights, |mut rc| {
-        rc.metered_write_gs(uref, value.clone())
+        rc.metered_write_gs(uref_key, value.clone())
             .expect("should write");
         let gas_before = rc.gas_counter();
-        rc.metered_add_gs(uref, value).expect("should add");
+        rc.metered_add_gs(uref_key, value).expect("should add");
         let gas_after = rc.gas_counter();
         Ok((gas_before, gas_after))
     })
