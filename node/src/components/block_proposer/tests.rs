@@ -17,6 +17,10 @@ fn default_gas_payment() -> Gas {
     Gas::from(1u32)
 }
 
+fn default_gas_price() -> u64 {
+    1
+}
+
 fn generate_transfer(
     rng: &mut TestRng,
     timestamp: Timestamp,
@@ -24,7 +28,7 @@ fn generate_transfer(
     dependencies: Vec<DeployHash>,
     payment_amount: Gas,
 ) -> Deploy {
-    let gas_price = 0;
+    let gas_price = default_gas_price();
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
 
@@ -59,8 +63,8 @@ fn generate_deploy(
     ttl: TimeDiff,
     dependencies: Vec<DeployHash>,
     payment_amount: Gas,
+    gas_price: u64,
 ) -> Deploy {
-    let gas_price = 0;
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let args = runtime_args! {
@@ -125,10 +129,38 @@ fn should_add_and_take_deploys() {
     let no_deploys = HashSet::new();
     let mut proposer = create_test_proposer();
     let mut rng = crate::new_rng();
-    let deploy1 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
-    let deploy2 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
-    let deploy3 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
-    let deploy4 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
+    let deploy1 = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        default_gas_price(),
+    );
+    let deploy2 = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        default_gas_price(),
+    );
+    let deploy3 = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        default_gas_price(),
+    );
+    let deploy4 = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        default_gas_price(),
+    );
 
     assert!(proposer
         .propose_proto_block(
@@ -226,15 +258,37 @@ fn should_successfully_prune() {
     let ttl = TimeDiff::from(Duration::from_millis(100));
 
     let mut rng = crate::new_rng();
-    let deploy1 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
-    let deploy2 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
-    let deploy3 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
+    let deploy1 = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        default_gas_price(),
+    );
+    let deploy2 = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        default_gas_price(),
+    );
+    let deploy3 = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        default_gas_price(),
+    );
     let deploy4 = generate_deploy(
         &mut rng,
         creation_time + Duration::from_secs(20).into(),
         ttl,
         vec![],
         default_gas_payment(),
+        default_gas_price(),
     );
     let mut proposer = create_test_proposer();
 
@@ -273,8 +327,22 @@ fn should_keep_track_of_unhandled_deploys() {
     let ttl = TimeDiff::from(Duration::from_millis(100));
 
     let mut rng = crate::new_rng();
-    let deploy1 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
-    let deploy2 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
+    let deploy1 = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        default_gas_price(),
+    );
+    let deploy2 = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        default_gas_price(),
+    );
     let mut proposer = create_test_proposer();
 
     // We do NOT add deploy2...
@@ -494,7 +562,14 @@ fn test_proposer_with(
     }
 
     for _ in 0..deploy_count {
-        let deploy = generate_deploy(&mut rng, creation_time, ttl, vec![], payment_amount);
+        let deploy = generate_deploy(
+            &mut rng,
+            creation_time,
+            ttl,
+            vec![],
+            payment_amount,
+            default_gas_price(),
+        );
         println!("generated deploy with size {}", deploy.serialized_length());
         proposer.add_deploy_or_transfer(creation_time, *deploy.id(), deploy.deploy_type().unwrap());
     }
@@ -538,7 +613,14 @@ fn should_return_deploy_dependencies() {
     let block_time = Timestamp::from(120);
 
     let mut rng = crate::new_rng();
-    let deploy1 = generate_deploy(&mut rng, creation_time, ttl, vec![], default_gas_payment());
+    let deploy1 = generate_deploy(
+        &mut rng,
+        creation_time,
+        ttl,
+        vec![],
+        default_gas_payment(),
+        default_gas_price(),
+    );
     // let deploy2 depend on deploy1
     let deploy2 = generate_deploy(
         &mut rng,
@@ -546,6 +628,7 @@ fn should_return_deploy_dependencies() {
         ttl,
         vec![*deploy1.id()],
         default_gas_payment(),
+        default_gas_price(),
     );
 
     let no_deploys = HashSet::new();
