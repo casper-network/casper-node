@@ -1154,6 +1154,7 @@ pub(crate) mod json_compatibility {
             &self.header.deploy_hashes
         }
 
+
         /// Returns the hashes of the transfer `Deploy`s included in the `Block`.
         pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
             &self.header.deploy_hashes
