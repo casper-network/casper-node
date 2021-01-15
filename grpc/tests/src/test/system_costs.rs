@@ -81,7 +81,7 @@ const ARG_TARGET: &str = "target";
 
 #[ignore]
 #[test]
-fn should_verify_calling_auction_add_and_withdraw_bid_costs() {
+fn add_bid_and_withdraw_bid_have_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
@@ -152,14 +152,14 @@ fn should_verify_calling_auction_add_and_withdraw_bid_costs() {
     builder.exec(withdraw_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let expecetd_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_WITHDRAW_BID_COST);
-    assert_eq!(balance_after, balance_before - expecetd_call_cost);
-    assert_eq!(builder.last_exec_gas_cost().value(), expecetd_call_cost);
+    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_WITHDRAW_BID_COST);
+    assert_eq!(balance_after, balance_before - expected_call_cost);
+    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
 
 #[ignore]
 #[test]
-fn should_observe_upgraded_add_and_withdraw_bid_call_cost() {
+fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
 
     let new_auction_costs = AuctionCosts {
@@ -269,7 +269,7 @@ fn should_observe_upgraded_add_and_withdraw_bid_call_cost() {
 
 #[ignore]
 #[test]
-fn should_verify_calling_auction_delegate_and_undelegate_costs() {
+fn delegate_and_undelegate_have_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::new(
@@ -364,7 +364,7 @@ fn should_verify_calling_auction_delegate_and_undelegate_costs() {
 
 #[ignore]
 #[test]
-fn should_observe_upgraded_delegate_and_undelegate_call_cost() {
+fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
 
     let new_auction_costs = AuctionCosts {
@@ -492,7 +492,7 @@ fn should_observe_upgraded_delegate_and_undelegate_call_cost() {
 
 #[ignore]
 #[test]
-fn should_call_transfer_directly() {
+fn mint_transfer_has_expected_costs() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     let accounts = {
@@ -557,7 +557,7 @@ fn should_call_transfer_directly() {
 
 #[ignore]
 #[test]
-fn should_charge_for_errorneous_system_contract_calls() {
+fn should_charge_for_erroneous_system_contract_calls() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
