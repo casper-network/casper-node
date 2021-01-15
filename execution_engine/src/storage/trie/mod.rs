@@ -6,7 +6,7 @@ use std::{
     mem::MaybeUninit,
 };
 
-use serde::{ser::SerializeTuple, Serialize, Serializer};
+use serde::{ser::SerializeTuple, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::shared::newtypes::Blake2bHash;
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
@@ -25,7 +25,7 @@ pub const RADIX: usize = 256;
 pub type Parents<K, V> = Vec<(u8, Trie<K, V>)>;
 
 /// Represents a pointer to the next object in a Merkle Trie
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Pointer {
     LeafPointer(Blake2bHash),
     NodePointer(Blake2bHash),
@@ -109,6 +109,15 @@ impl Serialize for PointerBlock {
             arr.serialize_element(pointer_block_value)?;
         }
         arr.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for PointerBlock {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        unimplemented!()
     }
 }
 
@@ -268,7 +277,7 @@ impl ::std::fmt::Debug for PointerBlock {
 }
 
 /// Represents a Merkle Trie
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trie<K, V> {
     Leaf { key: K, value: V },
     Node { pointer_block: Box<PointerBlock> },

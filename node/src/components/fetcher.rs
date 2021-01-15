@@ -8,10 +8,14 @@ use datasize::DataSize;
 use smallvec::smallvec;
 use tracing::{debug, error};
 
+use casper_execution_engine::{
+    shared::newtypes::Blake2bHash, storage::global_state::ReadTrieResult,
+};
+
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
     effect::{
-        requests::{LinearChainRequest, NetworkRequest, StorageRequest},
+        requests::{ContractRuntimeRequest, LinearChainRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     protocol::Message,
@@ -28,6 +32,7 @@ pub trait ReactorEventT<T>:
     From<Event<T>>
     + From<NetworkRequest<NodeId, Message>>
     + From<StorageRequest>
+    + From<ContractRuntimeRequest>
     // Won't be needed when we implement "get block by height" feature in storage.
     + From<LinearChainRequest<NodeId>>
     + Send
@@ -45,6 +50,7 @@ where
     REv: From<Event<T>>
         + From<NetworkRequest<NodeId, Message>>
         + From<StorageRequest>
+        + From<ContractRuntimeRequest>
         + From<LinearChainRequest<NodeId>>
         + Send
         + 'static,
@@ -255,6 +261,33 @@ impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
                 id,
                 peer,
                 maybe_item: Box::new(result.map(Into::into)),
+            })
+    }
+}
+
+impl ItemFetcher<ReadTrieResult> for Fetcher<ReadTrieResult> {
+    fn responders(
+        &mut self,
+    ) -> &mut HashMap<Blake2bHash, HashMap<NodeId, Vec<FetchResponder<ReadTrieResult>>>> {
+        &mut self.responders
+    }
+
+    fn peer_timeout(&self) -> Duration {
+        self.get_from_peer_timeout
+    }
+
+    fn get_from_storage<REv: ReactorEventT<ReadTrieResult>>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        id: Blake2bHash,
+        peer: NodeId,
+    ) -> Effects<Event<ReadTrieResult>> {
+        effect_builder
+            .read_trie(id)
+            .event(move |read_trie_result| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(Some(read_trie_result)),
             })
     }
 }

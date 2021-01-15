@@ -89,8 +89,14 @@ use casper_execution_engine::{
         step::{StepRequest, StepResult},
         BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
     },
-    shared::{additive_map::AdditiveMap, stored_value::StoredValue, transform::Transform},
-    storage::{global_state::CommitResult, protocol_data::ProtocolData},
+    shared::{
+        additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
+        transform::Transform,
+    },
+    storage::{
+        global_state::{CommitResult, ReadTrieResult},
+        protocol_data::ProtocolData,
+    },
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
@@ -720,6 +726,21 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::GetHighestBlock { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// TODO
+    pub(crate) async fn read_trie(self, trie_key: Blake2bHash) -> ReadTrieResult
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::ReadTrie {
+                trie_key,
+                responder,
+            },
             QueueKind::Regular,
         )
         .await

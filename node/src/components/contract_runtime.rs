@@ -468,6 +468,7 @@ where
                     })
                     .await
                     .expect("should run");
+                    let result = result.unwrap(); // TODO
                     trace!(?result, "read_trie response");
                     responder.respond(result).await
                 }

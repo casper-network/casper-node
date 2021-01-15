@@ -693,7 +693,7 @@ pub enum ContractRuntimeRequest {
         /// The hash of the value to get from the `TrieStore`
         trie_key: Blake2bHash,
         /// Responder to call with the result.
-        responder: Responder<Result<ReadTrieResult, engine_state::Error>>,
+        responder: Responder<ReadTrieResult>,
     },
     /// Insert a trie into global storage
     PutTrie {

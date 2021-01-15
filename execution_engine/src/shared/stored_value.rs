@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use casper_types::{
     auction::EraInfo,
@@ -96,6 +96,15 @@ impl StoredValue {
             StoredValue::DeployInfo(_) => "DeployInfo".to_string(),
             StoredValue::EraInfo(_) => "EraInfo".to_string(),
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for StoredValue {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        unimplemented!()
     }
 }
 

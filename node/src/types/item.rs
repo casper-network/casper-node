@@ -7,6 +7,10 @@ use derive_more::Display;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
+use casper_execution_engine::{
+    shared::newtypes::Blake2bHash, storage::global_state::ReadTrieResult,
+};
+
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
 #[derive(
@@ -47,4 +51,14 @@ pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Dis
 
     /// The ID of the specific item.
     fn id(&self) -> Self::Id;
+}
+
+impl Item for ReadTrieResult {
+    type Id = Blake2bHash;
+    const TAG: Tag = Tag::Deploy;
+    const ID_IS_COMPLETE_ITEM: bool = false;
+
+    fn id(&self) -> Self::Id {
+        unimplemented!()
+    }
 }
