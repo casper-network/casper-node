@@ -9,6 +9,12 @@ in pkgs.dockerTools.buildImage {
   name = "casper-node";
   tag = tag;
   contents = with pkgs; [ busybox dnsutils strace ];
+
+  extraCommands = ''
+    mkdir -p etc
+    echo 'hosts:     files dns' > etc/nsswitch.conf
+  '';
+
   config = {
     Cmd = [ "validator" "/config/node/config.toml" ];
     Entrypoint = [ "${casper-node}/bin/casper-node" ];
