@@ -14,7 +14,7 @@ use alloc::{
 };
 use core::fmt;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;
@@ -53,7 +53,7 @@ pub enum Error {
 
 /// A (labelled) "user group". Each method of a versioned contract may be
 /// assoicated with one or more user groups which are allowed to call it.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Group(String);
 
 impl Group {
@@ -100,7 +100,7 @@ pub const CONTRACT_INITIAL_VERSION: ContractVersion = 1;
 pub type ProtocolVersionMajor = u32;
 
 /// Major element of `ProtocolVersion` combined with `ContractVersion`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ContractVersionKey(ProtocolVersionMajor, ContractVersion);
 
 impl ContractVersionKey {
@@ -171,7 +171,7 @@ pub type DisabledVersions = BTreeSet<ContractVersionKey>;
 pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
 
 /// Contract definition, metadata, and security container.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ContractPackage {
     /// Key used to add or disable versions
     access_key: URef,
@@ -386,7 +386,7 @@ impl FromBytes for ContractPackage {
 pub type EntryPointsMap = BTreeMap<String, EntryPoint>;
 
 /// Collection of named entry points
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntryPoints(EntryPointsMap);
 
 impl Default for EntryPoints {
@@ -460,7 +460,7 @@ impl From<Vec<EntryPoint>> for EntryPoints {
 pub type NamedKeys = BTreeMap<String, Key>;
 
 /// Methods and type signatures supported by a contract.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Contract {
     contract_package_hash: ContractPackageHash,
     contract_wasm_hash: ContractWasmHash,
@@ -627,7 +627,7 @@ impl Default for Contract {
 
 /// Context of method execution
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EntryPointType {
     /// Runs as session code
     Session = 0,
@@ -670,7 +670,7 @@ pub type Parameters = Vec<Parameter>;
 
 /// Type signature of a method. Order of arguments matter since can be
 /// referenced by index as well as name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntryPoint {
     name: String,
     args: Parameters,
@@ -800,7 +800,7 @@ impl FromBytes for EntryPoint {
 
 /// Enum describing the possible access control options for a contract entry
 /// point (method).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EntryPointAccess {
     /// Anyone can call this method (no access controls).
     Public,
@@ -862,7 +862,7 @@ impl FromBytes for EntryPointAccess {
 }
 
 /// Parameter to a method
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Parameter {
     name: String,
     cl_type: CLType,

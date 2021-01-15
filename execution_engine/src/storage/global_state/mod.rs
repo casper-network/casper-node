@@ -49,7 +49,7 @@ pub enum CommitResult {
     Serialization(bytesrepr::Error),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReadTrieResult {
     pub trie_key: Blake2bHash,
     pub maybe_trie: Option<Trie<Key, StoredValue>>,
@@ -72,14 +72,8 @@ impl fmt::Display for CommitResult {
 }
 
 impl fmt::Display for ReadTrieResult {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unimplemented!()
-    }
-}
-
-impl Clone for ReadTrieResult {
-    fn clone(&self) -> Self {
-        unimplemented!()
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
