@@ -59,6 +59,6 @@ impl Item for ReadTrieResult {
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
-        unimplemented!()
+        self.trie_key
     }
 }

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 0a2fb8941a2bd26bca22e4f749e34f10cab194d7361bb1dd5e68ab6a1351145f # shrinks to trie = Leaf { key: Key::Account(0000000000000000000000000000000000000000000000000000000000000000), value: ContractPackage(ContractPackage { access_key: URef(0000000000000000000000000000000000000000000000000000000000000000, NONE), versions: {ContractVersionKey(1, 1): [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, disabled_versions: {}, groups: {} }) }
