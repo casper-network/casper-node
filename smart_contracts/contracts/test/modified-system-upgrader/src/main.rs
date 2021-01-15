@@ -18,6 +18,7 @@ use casper_types::{
         ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
         METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
     },
+    standard_payment::METHOD_PAY,
     CLType, CLValue, ContractHash, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, Parameter, URef,
 };
@@ -58,7 +59,7 @@ pub extern "C" fn version() {
 }
 
 #[no_mangle]
-pub extern "C" fn call() {
+pub extern "C" fn pay() {
     standard_payment::delegate();
 }
 
@@ -187,7 +188,7 @@ fn upgrade_standard_payment() -> (ContractHash, ContractVersion) {
         let mut entry_points = EntryPoints::new();
 
         let entry_point = EntryPoint::new(
-            "call",
+            METHOD_PAY,
             vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
             CLType::Result {
                 ok: Box::new(CLType::Unit),

@@ -41,11 +41,11 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY},
-    proof_of_stake, runtime_args,
+    proof_of_stake, runtime_args, standard_payment,
     system_contract_errors::{self, mint::Error as MintError},
-    AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType,
-    Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
+    ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
+    EntryPointType, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -181,7 +181,7 @@ where
 
         let initial_root_hash = self.state.empty_root();
         let wasm_config = ee_config.wasm_config();
-        let wasmless_transfer_cost = ee_config.wasmless_transfer_cost();
+        let system_config = ee_config.system_config();
 
         let preprocessor = Preprocessor::new(*wasm_config);
 
@@ -464,11 +464,11 @@ where
         // Spec #2: Associate given CostTable with given ProtocolVersion.
         let protocol_data = ProtocolData::new(
             *wasm_config,
+            *system_config,
             mint_hash,
             proof_of_stake_hash,
             standard_payment_hash,
             auction_hash,
-            wasmless_transfer_cost,
         );
 
         self.state
@@ -650,19 +650,19 @@ where
             None => current_protocol_data.wasm_config(),
         };
 
-        let new_wasmless_transfer_cost = match upgrade_config.new_wasmless_transfer_cost() {
-            Some(new_wasmless_transfer_cost) => new_wasmless_transfer_cost,
-            None => current_protocol_data.wasmless_transfer_cost(),
+        let new_system_config = match upgrade_config.system_config() {
+            Some(new_system_config) => new_system_config,
+            None => current_protocol_data.system_config(),
         };
 
         // 3.1.2.2 persist wasm CostTable
         let mut new_protocol_data = ProtocolData::new(
             *new_wasm_config,
+            *new_system_config,
             current_protocol_data.mint(),
             current_protocol_data.proof_of_stake(),
             current_protocol_data.standard_payment(),
             current_protocol_data.auction(),
-            new_wasmless_transfer_cost,
         );
 
         self.state
@@ -1374,8 +1374,9 @@ where
                 }
             };
 
-            let wasmless_transfer_gas_cost =
-                Gas::new(U512::from(protocol_data.wasmless_transfer_cost()));
+            let wasmless_transfer_gas_cost = Gas::new(U512::from(
+                protocol_data.system_config().wasmless_transfer_cost(),
+            ));
 
             let wasmless_transfer_cost =
                 Motes::from_gas(wasmless_transfer_gas_cost, CONV_RATE).expect("gas overflow");
@@ -1595,6 +1596,10 @@ where
                 SystemContractCache::clone(&self.system_contract_cache),
             );
 
+        // User is already charged fee for wasmless contract, and we need to make sure we will not
+        // charge for anything that happens while calling transfer entrypoint.
+        session_result = session_result.with_cost(Gas::default());
+
         let finalize_result = {
             let proposer_purse = {
                 let proposer_account: Account = match tracking_copy
@@ -1684,7 +1689,7 @@ where
         }
 
         if session_result.is_success() {
-            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect());
+            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect())
         }
 
         let mut execution_result_builder = ExecutionResultBuilder::new();
@@ -1937,10 +1942,22 @@ where
                     correlation_id,
                     &protocol_version,
                 )
-                .map(|module| GetModuleResult::Session {
-                    module,
-                    contract_package: ContractPackage::default(),
-                    entry_point: EntryPoint::default(),
+                .map(|module| {
+                    let entry_point = EntryPoint::new(
+                        standard_payment::METHOD_PAY.to_string(),
+                        vec![Parameter::new(standard_payment::ARG_AMOUNT, CLType::U512)],
+                        CLType::Result {
+                            ok: Box::new(CLType::Unit),
+                            err: Box::new(CLType::U32),
+                        },
+                        EntryPointAccess::Public,
+                        EntryPointType::Session,
+                    );
+                    GetModuleResult::Session {
+                        module,
+                        contract_package: ContractPackage::default(),
+                        entry_point,
+                    }
                 })
             } else {
                 self.get_module(
@@ -2071,17 +2088,34 @@ where
 
                 let effects_snapshot = tracking_copy.borrow().effect();
 
-                match runtime.call_host_standard_payment() {
+                let standard_payment_pay_cost = {
+                    let system_config = runtime.protocol_data().system_config();
+                    let standard_payment_costs = system_config.standard_payment_costs();
+                    standard_payment_costs.pay
+                };
+
+                if let Err(error) = runtime.charge_system_contract_call(standard_payment_pay_cost) {
+                    return Ok(ExecutionResult::Failure {
+                        error: error.into(),
+                        effect: effects_snapshot,
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
+                    });
+                }
+
+                let saved_call_cost = runtime.context().gas_counter();
+
+                match runtime.call_host_standard_payment(&payment_entry_point.name()) {
                     Ok(()) => ExecutionResult::Success {
                         effect: runtime.context().effect(),
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: saved_call_cost,
                     },
                     Err(error) => ExecutionResult::Failure {
                         error: error.into(),
                         effect: effects_snapshot,
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: saved_call_cost,
                     },
                 }
             }
