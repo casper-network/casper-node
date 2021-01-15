@@ -28,6 +28,9 @@ pub fn sign<T: AsRef<[u8]>>(
     rng: &mut NodeRng,
 ) -> Signature {
     match (secret_key, public_key) {
+        (SecretKey::System, PublicKey::System) => {
+            panic!("cannot create signature with system keys",)
+        }
         (SecretKey::Ed25519(secret_key), PublicKey::Ed25519(public_key)) => {
             let expanded_secret_key = ExpandedSecretKey::from(secret_key);
             let signature = expanded_secret_key.sign(message.as_ref(), public_key);
@@ -48,6 +51,9 @@ pub fn verify<T: AsRef<[u8]>>(
     public_key: &PublicKey,
 ) -> Result<()> {
     match (signature, public_key) {
+        (Signature::System, _) => Err(Error::AsymmetricKey(String::from(
+            "signatures based on the system key cannot be verified",
+        ))),
         (Signature::Ed25519(signature), PublicKey::Ed25519(public_key)) => public_key
             .verify_strict(
                 message.as_ref(),

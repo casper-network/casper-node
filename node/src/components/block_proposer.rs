@@ -251,7 +251,7 @@ impl BlockProposerReady {
             }
             Event::Prune => {
                 let pruned = self.prune(Timestamp::now());
-                debug!("Pruned {} deploys from buffer", pruned);
+                debug!(%pruned, "pruned deploys from buffer");
 
                 // After pruning, we store a state snapshot.
                 let mut effects = effect_builder
@@ -316,13 +316,12 @@ impl BlockProposerReady {
         deploy_or_transfer: DeployType,
     ) {
         if deploy_or_transfer.header().expired(current_instant) {
-            trace!("expired deploy {} rejected from the buffer", hash);
+            trace!(%hash, "expired deploy rejected from the buffer");
             return;
         }
         if self.unhandled_finalized.remove(&hash) {
-            info!(
-                "deploy {} was previously marked as finalized, storing header",
-                hash
+            info!(%hash,
+                "deploy was previously marked as finalized, storing header"
             );
             self.sets
                 .finalized_deploys
@@ -331,10 +330,10 @@ impl BlockProposerReady {
         }
         // only add the deploy if it isn't contained in a finalized block
         if self.sets.finalized_deploys.contains_key(&hash) {
-            info!("deploy {} rejected from the buffer", hash);
+            info!(%hash, "deploy rejected from the buffer");
         } else {
             self.sets.pending.insert(hash, deploy_or_transfer);
-            info!("added deploy {} to the buffer", hash);
+            info!(%hash, "added deploy to the buffer");
         }
     }
 
@@ -456,7 +455,7 @@ impl BlockProposerReady {
             {
                 Some(value) => value,
                 None => {
-                    tracing::error!("payment_amount couldn't be converted from motes to gas");
+                    error!("payment_amount couldn't be converted from motes to gas");
                     continue;
                 }
             };
@@ -466,7 +465,7 @@ impl BlockProposerReady {
             {
                 gas_running_total
             } else {
-                tracing::warn!("block gas would overflow");
+                warn!("block gas would overflow");
                 continue;
             };
 

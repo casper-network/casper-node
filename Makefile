@@ -12,12 +12,11 @@ DISABLE_LOGGING = RUST_LOG=MatchesNothing
 
 # Rust Contracts
 # Directory names should match crate names
-BENCH       = $(shell find ./smart_contracts/contracts/bench       -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-CLIENT      = $(shell find ./smart_contracts/contracts/client      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-EXPLORER    = $(shell find ./smart_contracts/contracts/explorer    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-INTEGRATION = $(shell find ./smart_contracts/contracts/integration -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-PROFILING   = $(shell find ./smart_contracts/contracts/profiling   -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-SRE         = $(shell find ./smart_contracts/contracts/SRE         -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+BENCH       = $(shell find ./smart_contracts/contracts/bench     -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+CLIENT      = $(shell find ./smart_contracts/contracts/client    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+EXPLORER    = $(shell find ./smart_contracts/contracts/explorer  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+PROFILING   = $(shell find ./smart_contracts/contracts/profiling -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+SRE         = $(shell find ./smart_contracts/contracts/SRE       -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 TEST        = $(shell find ./smart_contracts/contracts/test        -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 
 BENCH_CONTRACTS     := $(patsubst %, build-contract-rs/%, $(BENCH))
@@ -28,17 +27,11 @@ SRE_CONTRACTS       := $(patsubst %, build-contract-rs/%, $(SRE))
 TEST_CONTRACTS      := $(patsubst %, build-contract-rs/%, $(TEST))
 
 # AssemblyScript Contracts
-CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client   -mindepth 1 -maxdepth 1 -type d)
-TEST_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/test     -mindepth 1 -maxdepth 1 -type d)
+CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client -mindepth 1 -maxdepth 1 -type d)
+TEST_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/test   -mindepth 1 -maxdepth 1 -type d)
 
 CLIENT_CONTRACTS_AS  := $(patsubst %, build-contract-as/%, $(CLIENT_CONTRACTS_AS))
 TEST_CONTRACTS_AS    := $(patsubst %, build-contract-as/%, $(TEST_CONTRACTS_AS))
-
-INTEGRATION += \
-	endless-loop \
-	local-state \
-	remove-associated-key \
-	transfer-to-account-u512
 
 HIGHWAY_CONTRACTS += \
 	pos-install \
@@ -77,7 +70,6 @@ build-contracts-rs: \
 	$(BENCH_CONTRACTS) \
 	$(CLIENT_CONTRACTS) \
 	$(EXPLORER_CONTRACTS) \
-	$(INTEGRATION_CONTRACTS) \
 	$(PROFILING_CONTRACTS) \
 	$(SRE_CONTRACTS) \
 	$(TEST_CONTRACTS)

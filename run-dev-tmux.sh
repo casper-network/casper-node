@@ -76,7 +76,6 @@ run_node() {
         "${CONFIG_TOML_PATH}"
         "-C consensus.secret_key_path=${SECRET_KEY_PATH}"
         "-C storage.path=${STORAGE_DIR}"
-        "-C network.gossip_interval=1000"
         "-C rpc_server.address='0.0.0.0:50101'"
     )
 

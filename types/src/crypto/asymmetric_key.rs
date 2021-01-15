@@ -36,6 +36,10 @@ mod tests;
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
+/// Tag for system variant
+pub const SYSTEM_TAG: u8 = 0;
+const SYSTEM: &str = "System";
+
 /// Tag for ed25519 variant
 pub const ED25519_TAG: u8 = 1;
 const ED25519: &str = "Ed25519";
@@ -47,6 +51,9 @@ const SECP256K1: &str = "Secp256k1";
 const SECP256K1_SECRET_KEY_LENGTH: usize = 32;
 const SECP256K1_COMPRESSED_PUBLIC_KEY_LENGTH: usize = 33;
 const SECP256K1_SIGNATURE_LENGTH: usize = 64;
+
+/// Public key for system account
+pub const SYSTEM_ACCOUNT: PublicKey = PublicKey::System;
 
 /// Operations on asymmetric cryptographic type
 pub trait AsymmetricType: Sized + AsRef<[u8]> + Tagged<u8> {
@@ -86,6 +93,9 @@ pub trait AsymmetricType: Sized + AsRef<[u8]> + Tagged<u8> {
         }
     }
 
+    /// Constructs a new system variant.
+    fn system() -> Self;
+
     /// Constructs a new ed25519 variant from a byte slice.
     fn ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error>;
 
@@ -96,6 +106,9 @@ pub trait AsymmetricType: Sized + AsRef<[u8]> + Tagged<u8> {
 /// A secret or private asymmetric key.
 #[derive(DataSize)]
 pub enum SecretKey {
+    /// System secret key.
+    #[data_size(skip)] // Manually verified to have no data on the heap.
+    System,
     /// Ed25519 secret key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519_dalek::SecretKey),
@@ -105,6 +118,9 @@ pub enum SecretKey {
 }
 
 impl SecretKey {
+    /// The length in bytes of a system secret key.
+    pub const SYSTEM_LENGTH: usize = 0;
+
     /// The length in bytes of an Ed25519 secret key.
     pub const ED25519_LENGTH: usize = ed25519_dalek::SECRET_KEY_LENGTH;
 
@@ -128,6 +144,7 @@ impl SecretKey {
     /// Exposes the secret values of the key as a byte slice.
     pub fn as_slice(&self) -> &[u8] {
         match self {
+            SecretKey::System => &[],
             SecretKey::Ed25519(secret_key) => secret_key.as_ref(),
             SecretKey::Secp256k1(secret_key) => secret_key.as_bytes().as_slice(),
         }
@@ -135,6 +152,7 @@ impl SecretKey {
 
     fn variant_name(&self) -> &str {
         match self {
+            SecretKey::System => SYSTEM,
             SecretKey::Ed25519(_) => ED25519,
             SecretKey::Secp256k1(_) => SECP256K1,
         }
@@ -142,6 +160,10 @@ impl SecretKey {
 }
 
 impl AsymmetricType for SecretKey {
+    fn system() -> Self {
+        SecretKey::System
+    }
+
     fn ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
         Ok(SecretKey::Ed25519(
             ed25519_dalek::SecretKey::from_bytes(bytes.as_ref()).map_err(|_| {
@@ -170,6 +192,7 @@ impl AsymmetricType for SecretKey {
 impl AsRef<[u8]> for SecretKey {
     fn as_ref(&self) -> &[u8] {
         match self {
+            SecretKey::System => &[],
             SecretKey::Ed25519(secret_key) => secret_key.as_ref(),
             SecretKey::Secp256k1(secret_key) => secret_key.as_bytes(),
         }
@@ -179,6 +202,7 @@ impl AsRef<[u8]> for SecretKey {
 impl Clone for SecretKey {
     fn clone(&self) -> Self {
         match self {
+            SecretKey::System => SecretKey::System,
             SecretKey::Ed25519(sk) => Self::ed25519_from_bytes(sk.as_ref()).unwrap(),
             SecretKey::Secp256k1(sk) => Self::secp256k1_from_bytes(sk.as_bytes()).unwrap(),
         }
@@ -210,6 +234,7 @@ impl Display for SecretKey {
 impl Tagged<u8> for SecretKey {
     fn tag(&self) -> u8 {
         match self {
+            SecretKey::System => SYSTEM_TAG,
             SecretKey::Ed25519(_) => ED25519_TAG,
             SecretKey::Secp256k1(_) => SECP256K1_TAG,
         }
@@ -220,6 +245,7 @@ impl ToBytes for SecretKey {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         match self {
+            SecretKey::System => buffer.insert(0, SYSTEM_TAG),
             SecretKey::Ed25519(public_key) => {
                 buffer.insert(0, ED25519_TAG);
                 let ed25519_bytes = public_key.as_bytes();
@@ -237,6 +263,7 @@ impl ToBytes for SecretKey {
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
+                SecretKey::System => Self::SYSTEM_LENGTH,
                 SecretKey::Ed25519(_) => Self::ED25519_LENGTH,
                 SecretKey::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
@@ -247,6 +274,7 @@ impl FromBytes for SecretKey {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
+            SYSTEM_TAG => Ok((SecretKey::System, remainder)),
             ED25519_TAG => {
                 let (raw_bytes, remainder): ([u8; Self::ED25519_LENGTH], _) =
                     FromBytes::from_bytes(remainder)?;
@@ -279,6 +307,9 @@ impl<'de> Deserialize<'de> for SecretKey {
 /// A public asymmetric key.
 #[derive(Clone, Copy, DataSize, Eq, PartialEq)]
 pub enum PublicKey {
+    /// System public key.
+    #[data_size(skip)] // Manually verified to have no data on the heap.
+    System,
     /// Ed25519 public key.
     #[data_size(skip)] // Manually verified to have no data on the heap.
     Ed25519(ed25519_dalek::PublicKey),
@@ -288,6 +319,9 @@ pub enum PublicKey {
 }
 
 impl PublicKey {
+    /// The length in bytes of a system public key.
+    pub const SYSTEM_LENGTH: usize = 0;
+
     /// The length in bytes of an Ed25519 public key.
     pub const ED25519_LENGTH: usize = ed25519_dalek::PUBLIC_KEY_LENGTH;
 
@@ -325,6 +359,7 @@ impl PublicKey {
 
     fn variant_name(&self) -> &str {
         match self {
+            PublicKey::System => SYSTEM,
             PublicKey::Ed25519(_) => ED25519,
             PublicKey::Secp256k1(_) => SECP256K1,
         }
@@ -332,6 +367,10 @@ impl PublicKey {
 }
 
 impl AsymmetricType for PublicKey {
+    fn system() -> Self {
+        PublicKey::System
+    }
+
     fn ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
         Ok(PublicKey::Ed25519(
             ed25519_dalek::PublicKey::from_bytes(bytes.as_ref()).map_err(|_| {
@@ -360,6 +399,7 @@ impl AsymmetricType for PublicKey {
 impl From<&SecretKey> for PublicKey {
     fn from(secret_key: &SecretKey) -> PublicKey {
         match secret_key {
+            SecretKey::System => PublicKey::System,
             SecretKey::Ed25519(secret_key) => PublicKey::Ed25519(secret_key.into()),
             SecretKey::Secp256k1(secret_key) => PublicKey::Secp256k1(
                 k256::PublicKey::from_secret_key(secret_key, true)
@@ -378,6 +418,7 @@ impl From<SecretKey> for PublicKey {
 impl AsRef<[u8]> for PublicKey {
     fn as_ref(&self) -> &[u8] {
         match self {
+            PublicKey::System => &[],
             PublicKey::Ed25519(public_key) => public_key.as_ref(),
             PublicKey::Secp256k1(public_key) => public_key.as_ref(),
         }
@@ -437,6 +478,7 @@ impl Hash for PublicKey {
 impl Tagged<u8> for PublicKey {
     fn tag(&self) -> u8 {
         match self {
+            PublicKey::System => SYSTEM_TAG,
             PublicKey::Ed25519(_) => ED25519_TAG,
             PublicKey::Secp256k1(_) => SECP256K1_TAG,
         }
@@ -447,6 +489,9 @@ impl ToBytes for PublicKey {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         match self {
+            PublicKey::System => {
+                buffer.insert(0, SYSTEM_TAG);
+            }
             PublicKey::Ed25519(public_key) => {
                 buffer.insert(0, ED25519_TAG);
                 let ed25519_bytes = public_key.as_bytes();
@@ -464,6 +509,7 @@ impl ToBytes for PublicKey {
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
+                PublicKey::System => Self::SYSTEM_LENGTH,
                 PublicKey::Ed25519(_) => Self::ED25519_LENGTH,
                 PublicKey::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
@@ -474,6 +520,7 @@ impl FromBytes for PublicKey {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
+            SYSTEM_TAG => Ok((PublicKey::System, remainder)),
             ED25519_TAG => {
                 let (raw_bytes, remainder): ([u8; Self::ED25519_LENGTH], _) =
                     FromBytes::from_bytes(remainder)?;
@@ -530,6 +577,8 @@ impl CLTyped for PublicKey {
 /// A signature of given data.
 #[derive(Clone, Copy, DataSize)]
 pub enum Signature {
+    /// System signature.  Cannot be verified.
+    System,
     /// Ed25519 signature.
     //
     // This is held as a byte array rather than an `ed25519_dalek::Signature` as that type doesn't
@@ -542,6 +591,9 @@ pub enum Signature {
 }
 
 impl Signature {
+    /// The length in bytes of a system signature,
+    pub const SYSTEM_LENGTH: usize = 0;
+
     /// The length in bytes of an Ed25519 signature,
     pub const ED25519_LENGTH: usize = ed25519_dalek::SIGNATURE_LENGTH;
 
@@ -574,6 +626,7 @@ impl Signature {
 
     fn variant_name(&self) -> &str {
         match self {
+            Signature::System => SYSTEM,
             Signature::Ed25519(_) => ED25519,
             Signature::Secp256k1(_) => SECP256K1,
         }
@@ -581,6 +634,10 @@ impl Signature {
 }
 
 impl AsymmetricType for Signature {
+    fn system() -> Self {
+        Signature::System
+    }
+
     fn ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
         let signature = ed25519_dalek::Signature::from_bytes(bytes.as_ref()).map_err(|_| {
             Error::AsymmetricKey(format!(
@@ -605,6 +662,7 @@ impl AsymmetricType for Signature {
 impl AsRef<[u8]> for Signature {
     fn as_ref(&self) -> &[u8] {
         match self {
+            Signature::System => &[],
             Signature::Ed25519(signature) => signature.as_ref(),
             Signature::Secp256k1(signature) => signature.as_ref(),
         }
@@ -669,6 +727,7 @@ impl Hash for Signature {
 impl Tagged<u8> for Signature {
     fn tag(&self) -> u8 {
         match self {
+            Signature::System => SYSTEM_TAG,
             Signature::Ed25519(_) => ED25519_TAG,
             Signature::Secp256k1(_) => SECP256K1_TAG,
         }
@@ -679,6 +738,9 @@ impl ToBytes for Signature {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         match self {
+            Signature::System => {
+                buffer.insert(0, SYSTEM_TAG);
+            }
             Signature::Ed25519(signature) => {
                 buffer.insert(0, ED25519_TAG);
                 let ed5519_bytes = signature.to_bytes()?;
@@ -696,6 +758,7 @@ impl ToBytes for Signature {
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
+                Signature::System => Self::SYSTEM_LENGTH,
                 Signature::Ed25519(_) => Self::ED25519_LENGTH,
                 Signature::Secp256k1(_) => Self::SECP256K1_LENGTH,
             }
@@ -706,6 +769,7 @@ impl FromBytes for Signature {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
+            SYSTEM_TAG => Ok((Signature::System, remainder)),
             ED25519_TAG => {
                 let (raw_bytes, remainder): ([u8; Self::ED25519_LENGTH], _) =
                     FromBytes::from_bytes(remainder)?;
@@ -767,6 +831,7 @@ mod detail {
     /// The wrapped contents are the result of calling `t_as_ref()` on the type.
     #[derive(Serialize, Deserialize)]
     pub enum AsymmetricTypeAsBytes<'a> {
+        System,
         Ed25519(&'a [u8]),
         Secp256k1(&'a [u8]),
     }
@@ -774,6 +839,7 @@ mod detail {
     impl<'a> From<&'a SecretKey> for AsymmetricTypeAsBytes<'a> {
         fn from(secret_key: &'a SecretKey) -> Self {
             match secret_key {
+                SecretKey::System => AsymmetricTypeAsBytes::System,
                 SecretKey::Ed25519(ed25519) => AsymmetricTypeAsBytes::Ed25519(ed25519.as_ref()),
                 SecretKey::Secp256k1(secp256k1) => {
                     AsymmetricTypeAsBytes::Secp256k1(secp256k1.as_bytes().as_slice())
@@ -785,6 +851,7 @@ mod detail {
     impl<'a> From<&'a PublicKey> for AsymmetricTypeAsBytes<'a> {
         fn from(public_key: &'a PublicKey) -> Self {
             match public_key {
+                PublicKey::System => AsymmetricTypeAsBytes::System,
                 PublicKey::Ed25519(ed25519) => AsymmetricTypeAsBytes::Ed25519(ed25519.as_ref()),
                 PublicKey::Secp256k1(secp256k1) => {
                     AsymmetricTypeAsBytes::Secp256k1(secp256k1.as_ref())
@@ -796,6 +863,7 @@ mod detail {
     impl<'a> From<&'a Signature> for AsymmetricTypeAsBytes<'a> {
         fn from(signature: &'a Signature) -> Self {
             match signature {
+                Signature::System => AsymmetricTypeAsBytes::System,
                 Signature::Ed25519(ed25519) => AsymmetricTypeAsBytes::Ed25519(ed25519.as_ref()),
                 Signature::Secp256k1(secp256k1) => {
                     AsymmetricTypeAsBytes::Secp256k1(secp256k1.as_ref())
@@ -830,6 +898,7 @@ mod detail {
 
         let as_bytes = AsymmetricTypeAsBytes::deserialize(deserializer)?;
         match as_bytes {
+            AsymmetricTypeAsBytes::System => Ok(T::system()),
             AsymmetricTypeAsBytes::Ed25519(raw_bytes) => {
                 T::ed25519_from_bytes(raw_bytes).map_err(D::Error::custom)
             }

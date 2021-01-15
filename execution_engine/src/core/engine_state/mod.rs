@@ -76,8 +76,9 @@ use crate::{
         wasm_prep::Preprocessor,
     },
     storage::{
-        global_state::{CommitResult, StateProvider},
+        global_state::{CommitResult, ReadTrieResult, StateProvider},
         protocol_data::ProtocolData,
+        trie::Trie,
     },
 };
 
@@ -1651,6 +1652,48 @@ where
     {
         self.state
             .commit(correlation_id, pre_state_hash, effects)
+            .map_err(Error::from)
+    }
+
+    pub fn read_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: Blake2bHash,
+    ) -> Result<ReadTrieResult, Error>
+    where
+        Error: From<S::Error>,
+    {
+        let maybe_trie: Option<Trie<Key, StoredValue>> =
+            self.state.read_trie(correlation_id, &trie_key)?;
+        Ok(ReadTrieResult {
+            trie_key,
+            maybe_trie,
+        })
+    }
+
+    pub fn put_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie: &Trie<Key, StoredValue>,
+    ) -> Result<(), Error>
+    where
+        Error: From<S::Error>,
+    {
+        self.state
+            .put_trie(correlation_id, trie)
+            .map_err(Error::from)
+    }
+
+    pub fn missing_trie_keys(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: Blake2bHash,
+    ) -> Result<Vec<Blake2bHash>, Error>
+    where
+        Error: From<S::Error>,
+    {
+        self.state
+            .missing_trie_keys(correlation_id, trie_key)
             .map_err(Error::from)
     }
 

@@ -213,7 +213,11 @@ impl From<StorageRequest> for Event {
 
 impl From<NetworkRequest<NodeId, Message>> for Event {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
-        Event::SmallNetwork(small_network::Event::from(request))
+        if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+            Event::Network(network::Event::from(request))
+        } else {
+            Event::SmallNetwork(small_network::Event::from(request))
+        }
     }
 }
 
@@ -581,6 +585,7 @@ impl reactor::Reactor for Reactor {
                     let event = Event::DeployAcceptor(deploy_acceptor::Event::Accept {
                         deploy,
                         source: Source::Peer(sender),
+                        responder: None,
                     });
                     self.dispatch_event(effect_builder, rng, event)
                 }
@@ -592,7 +597,7 @@ impl reactor::Reactor for Reactor {
                     self.dispatch_event(effect_builder, rng, event)
                 }
                 Message::FinalitySignature(_) => {
-                    warn!("Finality signatures not handled in joiner reactor");
+                    warn!("finality signatures not handled in joiner reactor");
                     Effects::new()
                 }
                 other => {
@@ -726,14 +731,10 @@ impl reactor::Reactor for Reactor {
                         linear_chain_sync::Event::BlockHandled(block_header),
                     ),
                 ),
-                ConsensusAnnouncement::Finalized(block) => reactor::wrap_effects(
-                    Event::EventStreamServer,
-                    self.event_stream_server.handle_event(
-                        effect_builder,
-                        rng,
-                        event_stream_server::Event::BlockFinalized(block),
-                    ),
-                ),
+                ConsensusAnnouncement::Finalized(_) => {
+                    // A block was finalized.
+                    Effects::new()
+                }
                 ConsensusAnnouncement::Fault {
                     era_id,
                     public_key,
@@ -752,20 +753,20 @@ impl reactor::Reactor for Reactor {
                 ),
                 ConsensusAnnouncement::DisconnectFromPeer(_peer) => {
                     // TODO: handle the announcement and acutally disconnect
-                    warn!("Disconnecting from a given peer not yet implemented.");
+                    warn!("disconnecting from a given peer not yet implemented.");
                     Effects::new()
                 }
             },
             Event::BlockProposerRequest(request) => {
                 // Consensus component should not be trying to create new blocks during joining
                 // phase.
-                error!("Ignoring block proposer request {}", request);
+                error!("ignoring block proposer request {}", request);
                 Effects::new()
             }
             Event::ProtoBlockValidatorRequest(request) => {
                 // During joining phase, consensus component should not be requesting
                 // validation of the proto block.
-                error!("Ignoring proto block validation request {}", request);
+                error!("ignoring proto block validation request {}", request);
                 Effects::new()
             }
             Event::AddressGossiper(event) => reactor::wrap_effects(

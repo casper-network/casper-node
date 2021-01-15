@@ -1228,15 +1228,15 @@ where
     }
 
     pub fn is_mint(&self, key: Key) -> bool {
-        key.into_seed() == self.protocol_data().mint()
+        key.into_hash() == Some(self.protocol_data().mint())
     }
 
     pub fn is_proof_of_stake(&self, key: Key) -> bool {
-        key.into_seed() == self.protocol_data().proof_of_stake()
+        key.into_hash() == Some(self.protocol_data().proof_of_stake())
     }
 
     pub fn is_auction(&self, key: Key) -> bool {
-        key.into_seed() == self.protocol_data().auction()
+        key.into_hash() == Some(self.protocol_data().auction())
     }
 
     pub fn is_standard_payment(&self, key: Key) -> bool {
@@ -1905,7 +1905,9 @@ where
         };
 
         let module = {
-            let maybe_module = self.system_contract_cache.get(key.into_seed());
+            let maybe_module = key
+                .into_hash()
+                .and_then(|hash_addr| self.system_contract_cache.get(hash_addr));
             let wasm_key = contract.contract_wasm_key();
 
             let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
