@@ -1,11 +1,11 @@
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::CONV_RATE, shared::motes::Motes};
+use casper_execution_engine::shared::motes::Motes;
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_TRANSFER_TO_ACCOUNT_NAME: &str = "transfer_to_account";
@@ -47,7 +47,7 @@ fn should_transfer_to_account_stored() {
         .clone();
     let mut result = utils::get_success_result(&response);
     let gas = result.cost();
-    let motes_alpha = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes_alpha = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
     let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
 
@@ -86,7 +86,7 @@ fn should_transfer_to_account_stored() {
 
     result = utils::get_success_result(&response);
     let gas = result.cost();
-    let motes_bravo = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes_bravo = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
     let tally = motes_alpha.value()
         + motes_bravo.value()
