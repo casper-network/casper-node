@@ -12,9 +12,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::{
     core::engine_state::{upgrade::ActivationPoint, GenesisAccount, SYSTEM_ACCOUNT_ADDR},
     shared::{
-        host_function_costs::{
-            HostFunction, HostFunctionCosts, DEFAULT_TRANSFER_FROM_PURSE_TO_PURSE_COST,
-        },
+        host_function_costs::{Cost, HostFunction, HostFunctionCosts},
         motes::Motes,
         opcode_costs::OpcodeCosts,
         storage_costs::StorageCosts,
@@ -60,6 +58,7 @@ const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99;
 const TRANSFER_AMOUNT: u64 = 123;
 const BID_DELEGATION_RATE: DelegationRate = 123;
+const UPDATED_TRANSFER_FROM_PURSE_TO_PURSE_COST: Cost = 12_345;
 
 const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
 const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
@@ -657,12 +656,9 @@ fn should_charge_for_erroneous_system_contract_calls() {
         let lhs = balance_after;
         let rhs = balance_before - call_cost;
         assert_eq!(
-            lhs,
-            rhs,
-            "Calling a failed entrypoint {} does not incur expected cost of {} but {}",
-            entrypoint,
-            expected_cost,
-            if lhs > rhs { lhs - rhs } else { rhs - lhs }
+            lhs, rhs,
+            "Calling a failed entrypoint {} does not incur expected cost of {}",
+            entrypoint, expected_cost,
         );
         assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
     }
@@ -732,12 +728,7 @@ fn should_not_charge_system_account_for_running_auction() {
     let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_RUN_AUCTION_COST);
     let lhs = user_funds_after;
     let rhs = user_funds_before - expected_call_cost;
-    assert_eq!(
-        lhs,
-        rhs,
-        "unexpected difference {}",
-        if lhs > rhs { lhs - rhs } else { rhs - lhs },
-    );
+    assert_eq!(lhs, rhs);
 }
 
 #[ignore]
@@ -772,12 +763,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
     let expected_call_cost = U512::from(DEFAULT_PAY_COST);
     let lhs = user_funds_after;
     let rhs = user_funds_before - expected_call_cost;
-    assert_eq!(
-        lhs,
-        rhs,
-        "unexpected difference {}",
-        if lhs > rhs { lhs - rhs } else { rhs - lhs },
-    );
+    assert_eq!(lhs, rhs,);
 }
 
 #[ignore]
@@ -786,11 +772,6 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
-
-    // We're elevating cost of `transfer_from_purse_to_purse` while zeroing others.
-    // This will verify that user pays for the transfer host function _only_ while host does not
-    // additionally charge for calling mint's "transfer" entrypoint under the hood.
-    let new_transfer_from_purse_to_purse_cost = DEFAULT_TRANSFER_FROM_PURSE_TO_PURSE_COST * 100;
 
     let new_opcode_costs = OpcodeCosts {
         bit: 0,
@@ -812,6 +793,10 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         regular: 0,
     };
     let new_storage_costs = StorageCosts::new(0);
+
+    // We're elevating cost of `transfer_from_purse_to_purse` while zeroing others.
+    // This will verify that user pays for the transfer host function _only_ while host does not
+    // additionally charge for calling mint's "transfer" entrypoint under the hood.
     let new_host_function_costs = HostFunctionCosts {
         read_value: HostFunction::fixed(0),
         read_value_local: HostFunction::fixed(0),
@@ -836,7 +821,9 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         create_purse: HostFunction::fixed(0),
         transfer_to_account: HostFunction::fixed(0),
         transfer_from_purse_to_account: HostFunction::fixed(0),
-        transfer_from_purse_to_purse: HostFunction::fixed(new_transfer_from_purse_to_purse_cost),
+        transfer_from_purse_to_purse: HostFunction::fixed(
+            UPDATED_TRANSFER_FROM_PURSE_TO_PURSE_COST,
+        ),
         get_balance: HostFunction::fixed(0),
         get_phase: HostFunction::fixed(0),
         get_system_contract: HostFunction::fixed(0),
@@ -914,14 +901,9 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
 
     let expected_call_cost = U512::from(DEFAULT_PAY_COST)
         + U512::from(DEFAULT_ADD_BID_COST)
-        + U512::from(new_transfer_from_purse_to_purse_cost)
+        + U512::from(UPDATED_TRANSFER_FROM_PURSE_TO_PURSE_COST)
         + U512::from(BOND_AMOUNT);
     let lhs = user_funds_after;
     let rhs = user_funds_before - expected_call_cost;
-    assert_eq!(
-        lhs,
-        rhs,
-        "unexpected difference {}",
-        if lhs > rhs { lhs - rhs } else { rhs - lhs },
-    );
+    assert_eq!(lhs, rhs);
 }
