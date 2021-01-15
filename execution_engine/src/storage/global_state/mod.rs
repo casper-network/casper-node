@@ -36,13 +36,6 @@ pub trait StateReader<K, V> {
         correlation_id: CorrelationId,
         key: &K,
     ) -> Result<Option<TrieMerkleProof<K, V>>, Self::Error>;
-
-    /// Reads a `Trie<K,V>` from the state if it is present
-    fn read_trie(
-        &self,
-        correlation_id: CorrelationId,
-        trie_key: &Blake2bHash,
-    ) -> Result<Option<Trie<K, V>>, Self::Error>;
 }
 
 #[derive(Debug)]
@@ -52,6 +45,12 @@ pub enum CommitResult {
     KeyNotFound(Key),
     TypeMismatch(TypeMismatch),
     Serialization(bytesrepr::Error),
+}
+
+#[derive(Debug)]
+pub struct ReadTrieResult {
+    pub trie_key: Blake2bHash,
+    pub maybe_trie: Option<Trie<Key, StoredValue>>,
 }
 
 impl fmt::Display for CommitResult {
@@ -109,6 +108,13 @@ pub trait StateProvider {
     ) -> Result<Option<ProtocolData>, Self::Error>;
 
     fn empty_root(&self) -> Blake2bHash;
+
+    /// Reads a `Trie` from the state if it is present
+    fn read_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: &Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error>;
 
     /// Insert a trie node into the trie
     fn put_trie(

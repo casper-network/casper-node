@@ -25,11 +25,13 @@
 
 mod event;
 
-use std::{convert::Infallible, fmt::Display, mem};
+use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
 use rand::{seq::SliceRandom, Rng};
 use tracing::{error, info, trace, warn};
+
+use casper_types::{PublicKey, U512};
 
 use super::{fetcher::FetchResult, Component};
 use crate::{
@@ -80,6 +82,8 @@ enum State {
         /// The most recent block we started to execute. This is updated whenever we start
         /// downloading deploys for the next block to be executed.
         latest_block: Box<Option<BlockHeader>>,
+        /// The weights of the validators for latest block being added.
+        validator_weights: BTreeMap<PublicKey, U512>,
     },
     /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
@@ -90,6 +94,8 @@ enum State {
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
+        /// The validator set for the most recent block being synchronized.
+        validators_for_latest_block: BTreeMap<PublicKey, U512>,
     },
     /// Synchronizing done.
     Done,
@@ -115,20 +121,29 @@ impl Display for State {
 }
 
 impl State {
-    fn sync_trusted_hash(trusted_hash: BlockHash) -> Self {
+    fn sync_trusted_hash(
+        trusted_hash: BlockHash,
+        validator_weights: BTreeMap<PublicKey, U512>,
+    ) -> Self {
         State::SyncingTrustedHash {
             trusted_hash,
             highest_block_seen: 0,
             linear_chain: Vec::new(),
             latest_block: Box::new(None),
+            validator_weights,
         }
     }
 
-    fn sync_descendants(trusted_hash: BlockHash, latest_block: BlockHeader) -> Self {
+    fn sync_descendants(
+        trusted_hash: BlockHash,
+        latest_block: BlockHeader,
+        validators_for_latest_block: BTreeMap<PublicKey, U512>,
+    ) -> Self {
         State::SyncingDescendants {
             trusted_hash,
             latest_block: Box::new(latest_block),
             highest_block_seen: 0,
+            validators_for_latest_block,
         }
     }
 
@@ -161,8 +176,13 @@ pub(crate) struct LinearChainSync<I> {
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
-    pub fn new(init_hash: Option<BlockHash>) -> Self {
-        let state = init_hash.map_or(State::None, State::sync_trusted_hash);
+    pub fn new(
+        init_hash: Option<BlockHash>,
+        genesis_validator_weights: BTreeMap<PublicKey, U512>,
+    ) -> Self {
+        let state = init_hash.map_or(State::None, |init_hash| {
+            State::sync_trusted_hash(init_hash, genesis_validator_weights)
+        });
         LinearChainSync {
             peers: Vec::new(),
             peers_to_try: Vec::new(),
@@ -265,15 +285,32 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         // Reset peers before creating new requests.
         self.reset_peers(rng);
         let block_height = block_header.height();
-        let curr_state = mem::replace(&mut self.state, State::None);
+        let mut curr_state = mem::replace(&mut self.state, State::None);
         match curr_state {
             State::None | State::Done => panic!("Block handled when in {:?} state.", &curr_state),
+            // Keep syncing from genesis if we haven't reached the trusted block hash
+            State::SyncingTrustedHash {
+                highest_block_seen,
+                ref mut validator_weights,
+                ..
+            } if highest_block_seen != block_height => {
+                if let Some(validator_weights_for_new_era) =
+                    block_header.next_era_validator_weights()
+                {
+                    *validator_weights = validator_weights_for_new_era.clone();
+                }
+                self.state = curr_state;
+                self.fetch_next_block_deploys(effect_builder)
+            }
+            // Otherwise transition to State::SyncingDescendants
             State::SyncingTrustedHash {
                 highest_block_seen,
                 trusted_hash,
                 ref latest_block,
+                validator_weights,
                 ..
             } => {
+                assert_eq!(highest_block_seen, block_height);
                 match latest_block.as_ref() {
                     Some(expected) => assert_eq!(
                         expected, &block_header,
@@ -281,24 +318,27 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     ),
                     None => panic!("Unexpected block execution results."),
                 }
-                if block_height == highest_block_seen {
-                    info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
-                    let peer = self.random_peer_unsafe();
-                    // Kick off syncing trusted hash descendants.
-                    self.state = State::sync_descendants(trusted_hash, block_header);
-                    fetch_block_at_height(effect_builder, peer, block_height + 1)
-                } else {
-                    self.state = curr_state;
-                    self.fetch_next_block_deploys(effect_builder)
-                }
+                info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
+                let peer = self.random_peer_unsafe();
+                // Kick off syncing trusted hash descendants.
+                self.state = State::sync_descendants(trusted_hash, block_header, validator_weights);
+                fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             State::SyncingDescendants {
-                ref latest_block, ..
+                ref latest_block,
+                ref mut validators_for_latest_block,
+                ..
             } => {
                 assert_eq!(
                     **latest_block, block_header,
                     "Block execution result doesn't match received block."
                 );
+                match block_header.next_era_validator_weights() {
+                    None => (),
+                    Some(validators_for_next_era) => {
+                        *validators_for_latest_block = validators_for_next_era.clone();
+                    }
+                }
                 self.state = curr_state;
                 self.fetch_next_block(effect_builder, rng, &block_header)
             }

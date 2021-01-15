@@ -704,6 +704,7 @@ impl reactor::Reactor for Reactor {
                             Event::DeployAcceptor(deploy_acceptor::Event::Accept {
                                 deploy,
                                 source: Source::Peer(sender),
+                                responder: None,
                             })
                         }
                         Tag::Block => todo!("Handle GET block response"),
@@ -728,10 +729,14 @@ impl reactor::Reactor for Reactor {
                 let event = consensus::Event::NewPeer(peer_id);
                 self.dispatch_event(effect_builder, rng, Event::Consensus(event))
             }
-            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived { deploy }) => {
+            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
+                deploy,
+                responder,
+            }) => {
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::<NodeId>::Client,
+                    responder,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
@@ -787,15 +792,11 @@ impl reactor::Reactor for Reactor {
 
                 match consensus_announcement {
                     ConsensusAnnouncement::Finalized(block) => {
-                        let mut effects =
+                        let effects =
                             reactor_event_dispatch(block_proposer::Event::FinalizedProtoBlock {
                                 block: block.proto_block().clone(),
                                 height: block.height(),
                             });
-                        let reactor_event = Event::EventStreamServer(
-                            event_stream_server::Event::BlockFinalized(block),
-                        );
-                        effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
                         effects
                     }
                     ConsensusAnnouncement::Handled(_) => {

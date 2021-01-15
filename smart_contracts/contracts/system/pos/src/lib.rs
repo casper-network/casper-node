@@ -40,7 +40,7 @@ impl MintProvider for ProofOfStakeContract {
     }
 
     fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        Ok(system::get_balance(purse))
+        Ok(system::get_purse_balance(purse))
     }
 }
 

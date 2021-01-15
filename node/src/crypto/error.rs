@@ -49,6 +49,10 @@ pub enum Error {
     /// Error trying to write a public key.
     #[error("public key save failed: {0}")]
     PublicKeySave(WriteFileError),
+
+    /// Error trying to manipulate the system key.
+    #[error("invalid operation on system key: {0}")]
+    System(String),
 }
 
 impl From<PemError> for Error {

@@ -45,7 +45,7 @@ use casper_types::{
     system_contract_errors::{self, mint::Error as MintError},
     AccessRights, ApiError, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
-    EntryPointType, Key, Parameter, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
+    EntryPointType, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -86,8 +86,9 @@ use crate::{
         wasm_prep::{self, Preprocessor},
     },
     storage::{
-        global_state::{CommitResult, StateProvider},
+        global_state::{CommitResult, ReadTrieResult, StateProvider},
         protocol_data::ProtocolData,
+        trie::Trie,
     },
 };
 
@@ -388,7 +389,7 @@ where
         };
 
         let auction_hash: ContractHash = {
-            let bonded_validators: BTreeMap<casper_types::PublicKey, U512> = ee_config
+            let bonded_validators: BTreeMap<PublicKey, U512> = ee_config
                 .accounts()
                 .iter()
                 .filter_map(|genesis_account| {
@@ -1154,7 +1155,7 @@ where
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
         deploy_item: DeployItem,
-        proposer: casper_types::PublicKey,
+        proposer: PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
         let protocol_data = match self.state.get_protocol_data(protocol_version) {
             Ok(Some(protocol_data)) => protocol_data,
@@ -1712,7 +1713,7 @@ where
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
         deploy_item: DeployItem,
-        proposer: casper_types::PublicKey,
+        proposer: PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
         // spec: https://casperlabs.atlassian.net/wiki/spaces/EN/pages/123404576/Payment+code+execution+specification
 
@@ -2410,6 +2411,48 @@ where
             .map_err(Error::from)
     }
 
+    pub fn read_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: Blake2bHash,
+    ) -> Result<ReadTrieResult, Error>
+    where
+        Error: From<S::Error>,
+    {
+        let maybe_trie: Option<Trie<Key, StoredValue>> =
+            self.state.read_trie(correlation_id, &trie_key)?;
+        Ok(ReadTrieResult {
+            trie_key,
+            maybe_trie,
+        })
+    }
+
+    pub fn put_trie(
+        &self,
+        correlation_id: CorrelationId,
+        trie: &Trie<Key, StoredValue>,
+    ) -> Result<(), Error>
+    where
+        Error: From<S::Error>,
+    {
+        self.state
+            .put_trie(correlation_id, trie)
+            .map_err(Error::from)
+    }
+
+    pub fn missing_trie_keys(
+        &self,
+        correlation_id: CorrelationId,
+        trie_key: Blake2bHash,
+    ) -> Result<Vec<Blake2bHash>, Error>
+    where
+        Error: From<S::Error>,
+    {
+        self.state
+            .missing_trie_keys(correlation_id, trie_key)
+            .map_err(Error::from)
+    }
+
     /// Obtains validator weights for given era.
     pub fn get_era_validators(
         &self,
@@ -2713,18 +2756,41 @@ where
             )
             .map_err(Into::into)?;
 
-        match commit_result {
-            CommitResult::Success { state_root } => Ok(StepResult::Success {
-                post_state_hash: state_root,
-            }),
-            CommitResult::RootNotFound => Ok(StepResult::RootNotFound),
-            CommitResult::KeyNotFound(key) => Ok(StepResult::KeyNotFound(key)),
+        let post_state_hash = match commit_result {
+            CommitResult::Success { state_root } => state_root,
+            CommitResult::RootNotFound => return Ok(StepResult::RootNotFound),
+            CommitResult::KeyNotFound(key) => return Ok(StepResult::KeyNotFound(key)),
             CommitResult::TypeMismatch(type_mismatch) => {
-                Ok(StepResult::TypeMismatch(type_mismatch))
+                return Ok(StepResult::TypeMismatch(type_mismatch))
             }
             CommitResult::Serialization(bytesrepr_error) => {
-                Ok(StepResult::Serialization(bytesrepr_error))
+                return Ok(StepResult::Serialization(bytesrepr_error))
             }
-        }
+        };
+
+        let next_era_validators = {
+            let mut era_validators = match self.get_era_validators(
+                correlation_id,
+                GetEraValidatorsRequest::new(post_state_hash, step_request.protocol_version),
+            ) {
+                Ok(era_validators) => era_validators,
+                Err(error) => {
+                    return Ok(StepResult::GetEraValidatorsError(error));
+                }
+            };
+
+            let era_id = &step_request.next_era_id;
+            match era_validators.remove(era_id) {
+                Some(validator_weights) => validator_weights,
+                None => {
+                    return Ok(StepResult::EraValidatorsMissing(*era_id));
+                }
+            }
+        };
+
+        Ok(StepResult::Success {
+            post_state_hash,
+            next_era_validators,
+        })
     }
 }

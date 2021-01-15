@@ -1,6 +1,7 @@
 //! Reactor used to join the network.
 
 use std::{
+    collections::BTreeMap,
     env,
     fmt::{self, Display, Formatter},
 };
@@ -10,6 +11,8 @@ use derive_more::From;
 use prometheus::Registry;
 use serde::Serialize;
 use tracing::{error, info, warn};
+
+use casper_types::{PublicKey, U512};
 
 use crate::{
     components::{
@@ -213,7 +216,11 @@ impl From<StorageRequest> for Event {
 
 impl From<NetworkRequest<NodeId, Message>> for Event {
     fn from(request: NetworkRequest<NodeId, Message>) -> Self {
-        Event::SmallNetwork(small_network::Event::from(request))
+        if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+            Event::Network(network::Event::from(request))
+        } else {
+            Event::SmallNetwork(small_network::Event::from(request))
+        }
     }
 }
 
@@ -411,8 +418,6 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let linear_chain_sync = LinearChainSync::new(init_hash);
-
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
 
         let event_stream_server =
@@ -438,13 +443,15 @@ impl reactor::Reactor for Reactor {
 
         let linear_chain = linear_chain::LinearChain::new();
 
-        let validator_weights = chainspec_loader
+        let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
             .chainspec()
             .genesis
             .genesis_validator_stakes()
             .into_iter()
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
+
+        let linear_chain_sync = LinearChainSync::new(init_hash, validator_weights.clone());
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
@@ -581,6 +588,7 @@ impl reactor::Reactor for Reactor {
                     let event = Event::DeployAcceptor(deploy_acceptor::Event::Accept {
                         deploy,
                         source: Source::Peer(sender),
+                        responder: None,
                     });
                     self.dispatch_event(effect_builder, rng, event)
                 }
@@ -726,14 +734,10 @@ impl reactor::Reactor for Reactor {
                         linear_chain_sync::Event::BlockHandled(block_header),
                     ),
                 ),
-                ConsensusAnnouncement::Finalized(block) => reactor::wrap_effects(
-                    Event::EventStreamServer,
-                    self.event_stream_server.handle_event(
-                        effect_builder,
-                        rng,
-                        event_stream_server::Event::BlockFinalized(block),
-                    ),
-                ),
+                ConsensusAnnouncement::Finalized(_) => {
+                    // A block was finalized.
+                    Effects::new()
+                }
                 ConsensusAnnouncement::Fault {
                     era_id,
                     public_key,
