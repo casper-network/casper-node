@@ -23,7 +23,6 @@ impl ToBytes for StandardPaymentCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.pay.to_bytes()?);
-
         Ok(ret)
     }
 
@@ -35,7 +34,6 @@ impl ToBytes for StandardPaymentCosts {
 impl FromBytes for StandardPaymentCosts {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
         let (pay, rem) = FromBytes::from_bytes(bytes)?;
-
         Ok((Self { pay }, rem))
     }
 }

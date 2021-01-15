@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use crate::storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST;
-
 use self::{
     auction_costs::AuctionCosts, mint_costs::MintCosts, proof_of_stake_costs::ProofOfStakeCosts,
     standard_payment_costs::StandardPaymentCosts,

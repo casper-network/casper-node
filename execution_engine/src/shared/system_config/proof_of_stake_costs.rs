@@ -31,6 +31,7 @@ impl Default for ProofOfStakeCosts {
 impl ToBytes for ProofOfStakeCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
+
         ret.append(&mut self.get_payment_purse.to_bytes()?);
         ret.append(&mut self.set_refund_purse.to_bytes()?);
         ret.append(&mut self.get_refund_purse.to_bytes()?);
