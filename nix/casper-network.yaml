@@ -15,7 +15,7 @@ metadata:
   name: casper-node
 spec:
   serviceName: "casper-node"
-  podManagementPolicy: "Parallel"
+  # podManagementPolicy: "Parallel"
   replicas: 5
   selector:
     matchLabels:
