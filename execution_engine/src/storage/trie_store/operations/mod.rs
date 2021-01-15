@@ -126,7 +126,6 @@ where
 
 /// Same as [`read`], except that a [`TrieMerkleProof`] is generated and returned along with the key
 /// and the value given the root and store.
-#[allow(unused)] // TODO: Use this
 pub fn read_with_proof<K, V, T, S, E>(
     _correlation_id: CorrelationId,
     txn: &T,
