@@ -103,12 +103,15 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
 
         let run_auction = pb_step_request.get_run_auction();
 
+        let next_era_id = pb_step_request.get_next_era_id();
+
         Ok(StepRequest::new(
             parent_state_hash,
             protocol_version,
             slash_items,
             reward_items,
             run_auction,
+            next_era_id,
         ))
     }
 }
