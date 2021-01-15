@@ -2841,7 +2841,7 @@ where
             runtime_args,
         );
         self.set_gas_counter(gas_counter);
-        
+
         let result: Result<(), system_contract_errors::mint::Error> = call_result?.into_t()?;
         Ok(result.map_err(system_contract_errors::Error::from)?)
     }

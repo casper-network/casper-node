@@ -37,7 +37,7 @@ impl Default for MintCosts {
 impl ToBytes for MintCosts {
     fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
-        
+
         ret.append(&mut self.mint.to_bytes()?);
         ret.append(&mut self.reduce_total_supply.to_bytes()?);
         ret.append(&mut self.create.to_bytes()?);

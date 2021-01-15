@@ -150,7 +150,7 @@ impl ProtocolData {
 impl ToBytes for ProtocolData {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
-        
+
         ret.append(&mut self.wasm_config.to_bytes()?);
         ret.append(&mut self.system_config.to_bytes()?);
         ret.append(&mut self.mint.to_bytes()?);
