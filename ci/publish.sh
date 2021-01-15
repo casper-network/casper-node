@@ -62,7 +62,7 @@ publish() {
         printf "Publishing...\n"
         pushd $ROOT_DIR/$CRATE_DIR >/dev/null
         set +u
-        cargo publish ${@:2}
+        cargo publish ${@:2} --token ${CARGO_TOKEN}
         set -u
         popd >/dev/null
         printf "Published version %s\n" $LOCAL_VERSION
@@ -81,7 +81,7 @@ publish execution_engine
 publish node_macros
 publish node
 publish grpc/server
-publish client
+publish client  --no-verify
 publish smart_contracts/contract --features=std
 publish grpc/test_support
 publish grpc/cargo_casper --allow-dirty
