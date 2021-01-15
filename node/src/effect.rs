@@ -731,7 +731,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// TODO
+    /// Read a trie by its hash key
     pub(crate) async fn read_trie(self, trie_key: Blake2bHash) -> ReadTrieResult
     where
         REv: From<ContractRuntimeRequest>,

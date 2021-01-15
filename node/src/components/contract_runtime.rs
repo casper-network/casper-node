@@ -18,7 +18,7 @@ use prometheus::{self, Histogram, HistogramOpts, Registry};
 use serde::Serialize;
 use thiserror::Error;
 use tokio::task;
-use tracing::trace;
+use tracing::{error, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -27,9 +27,11 @@ use casper_execution_engine::{
     },
     shared::newtypes::CorrelationId,
     storage::{
-        error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
+        error::lmdb::Error as StorageLmdbError,
+        global_state::{lmdb::LmdbGlobalState, ReadTrieResult},
         protocol_data_store::lmdb::LmdbProtocolDataStore,
-        transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
+        transaction_source::lmdb::LmdbEnvironment,
+        trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{auction::ValidatorWeights, ProtocolVersion};
@@ -468,7 +470,16 @@ where
                     })
                     .await
                     .expect("should run");
-                    let result = result.unwrap(); // TODO
+                    let result = match result {
+                        Ok(result) => result,
+                        Err(error) => {
+                            error!(?error, "read_trie_request");
+                            ReadTrieResult {
+                                trie_key,
+                                maybe_trie: None,
+                            }
+                        }
+                    };
                     trace!(?result, "read_trie response");
                     responder.respond(result).await
                 }
