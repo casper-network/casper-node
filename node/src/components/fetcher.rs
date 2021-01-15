@@ -282,13 +282,21 @@ impl ItemFetcher<ReadTrieResult> for Fetcher<ReadTrieResult> {
         id: Blake2bHash,
         peer: NodeId,
     ) -> Effects<Event<ReadTrieResult>> {
-        effect_builder
-            .read_trie(id)
-            .event(move |read_trie_result| Event::GetFromStorageResult {
-                id,
-                peer,
-                maybe_item: Box::new(Some(read_trie_result)),
-            })
+        effect_builder.read_trie(id).event(move |read_trie_result| {
+            if read_trie_result.maybe_trie.is_none() {
+                Event::GetFromStorageResult {
+                    id,
+                    peer,
+                    maybe_item: Box::new(None),
+                }
+            } else {
+                Event::GetFromStorageResult {
+                    id,
+                    peer,
+                    maybe_item: Box::new(Some(read_trie_result)),
+                }
+            }
+        })
     }
 }
 
