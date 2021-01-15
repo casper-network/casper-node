@@ -186,6 +186,7 @@ def create_network(
     # Setup each node, collecting all pubkey hashes.
     show_val("Node config template", obj["config_template"])
     show_val("Number of nodes", number_of_nodes)
+    show_val("Discovery strategy", discovery_strategy)
     pubkeys = {}
     for n in range(number_of_nodes):
         if discovery_strategy == "root":
