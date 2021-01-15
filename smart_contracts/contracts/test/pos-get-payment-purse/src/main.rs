@@ -36,7 +36,7 @@ pub extern "C" fn call() {
     system::transfer_from_purse_to_purse(source_purse, payment_purse, payment_amount, None)
         .unwrap_or_revert_with(ApiError::User(Error::TransferFromSourceToPayment as u16));
 
-    let payment_balance = system::get_balance(payment_purse)
+    let payment_balance = system::get_purse_balance(payment_purse)
         .unwrap_or_revert_with(ApiError::User(Error::GetBalance as u16));
 
     if payment_balance.saturating_sub(payment_fund) != payment_amount {

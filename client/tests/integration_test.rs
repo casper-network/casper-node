@@ -125,8 +125,6 @@ impl MockServerHandle {
     fn transfer(
         &self,
         amount: &str,
-        maybe_source_purse: &str,
-        maybe_target_purse: &str,
         maybe_target_account: &str,
         deploy_params: DeployStrParams<'static>,
         payment_params: PaymentStrParams<'static>,
@@ -136,8 +134,6 @@ impl MockServerHandle {
             &self.url(),
             false,
             amount,
-            maybe_source_purse,
-            maybe_target_purse,
             maybe_target_account,
             "",
             deploy_params,
@@ -759,15 +755,11 @@ mod transfer {
         // Transfer uses PutDeployParams + PutDeploy
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         let amount = "100";
-        let maybe_source_purse = VALID_PURSE_UREF;
-        let maybe_target_purse = "";
         let maybe_target_account =
             "01522ef6c89038019cb7af05c340623804392dd2bb1f4dab5e4a9c3ab752fc0179";
         assert_eq!(
             server_handle.transfer(
                 amount,
-                maybe_source_purse,
-                maybe_target_purse,
                 maybe_target_account,
                 deploy_params::test_data_valid(),
                 payment_params::test_data_with_name()
@@ -777,40 +769,18 @@ mod transfer {
     }
 
     #[tokio::test(threaded_scheduler)]
-    async fn should_fail_if_both_target_purse_and_target_account_are_provided() {
-        let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
-        let maybe_target_purse = VALID_PURSE_UREF;
-        let maybe_target_account = "12345";
-        assert_eq!(
-            server_handle.transfer(
-                "100",
-                VALID_PURSE_UREF,
-                maybe_target_purse,
-                maybe_target_account,
-                deploy_params::test_data_valid(),
-                payment_params::test_data_with_name()
-            ),
-            Err(Error::InvalidArgument("target_account | target_purse",
-            format!(
-                "Invalid arguments to get_transfer_target - must provide either a target account or purse. account={}, purse={}", maybe_target_account, maybe_target_purse)).into())
-        );
-    }
-
-    #[tokio::test(threaded_scheduler)]
     async fn should_fail_if_both_target_purse_and_target_account_are_excluded() {
         let server_handle = MockServerHandle::spawn::<PutDeployParams>(PutDeploy::METHOD);
         assert_eq!(
             server_handle.transfer(
                 "100",
-                VALID_PURSE_UREF,
-                "",
                 "",
                 deploy_params::test_data_valid(),
                 payment_params::test_data_with_name()
             ),
             Err(Error::InvalidArgument(
-                "target_account | target_purse",
-                "Invalid arguments to get_transfer_target - must provide either a target account or purse. account=, purse=".to_string()).into())
+                "target_account",
+                "Invalid arguments to get_transfer_target - must provide either a target account. account=".to_string()).into())
         );
     }
 }

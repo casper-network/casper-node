@@ -197,7 +197,7 @@ pub extern "C" fn account_function() {
     system::transfer_from_purse_to_purse(main_purse, new_purse, transfer_amount, None)
         .unwrap_or_revert();
 
-    let balance = system::get_balance(new_purse).unwrap_or_revert();
+    let balance = system::get_purse_balance(new_purse).unwrap_or_revert();
     if balance != transfer_amount {
         runtime::revert(Error::Transfer);
     }

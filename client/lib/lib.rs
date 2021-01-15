@@ -185,19 +185,17 @@ pub fn transfer(
     node_address: &str,
     verbose: bool,
     amount: &str,
-    maybe_source_purse: &str,
-    maybe_target_purse: &str,
     maybe_target_account: &str,
     maybe_id: &str,
     deploy_params: DeployStrParams<'_>,
     payment_params: PaymentStrParams<'_>,
 ) -> Result<JsonRpc> {
-    let target = parsing::get_transfer_target(maybe_target_account, maybe_target_purse)?;
+    let target = parsing::get_transfer_target(maybe_target_account)?;
 
     let amount = U512::from_dec_str(amount)
         .map_err(|err| Error::FailedToParseUint("amount", UIntParseError::FromDecStr(err)))?;
 
-    let source_purse = parsing::purse(maybe_source_purse).ok();
+    let source_purse = None;
 
     let maybe_id = parsing::transfer_id(maybe_id)?;
 
