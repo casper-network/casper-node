@@ -82,6 +82,20 @@ impl TestChain {
         }
     }
 
+    /// Instantiates a new test chain configuration using the given initial era ID and initial
+    /// block height.
+    fn new_with_initial_block_and_era(
+        rng: &mut TestRng,
+        size: usize,
+        initial_era: u64,
+        initial_block: u64,
+    ) -> Self {
+        let mut chain = Self::new(rng, size);
+        chain.chainspec.genesis.initial_era_id = Some(initial_era);
+        chain.chainspec.genesis.initial_block_height = Some(initial_block);
+        chain
+    }
+
     /// Creates an initializer/validator configuration for the `idx`th validator.
     fn create_node_config(&mut self, idx: usize, first_node_port: u16) -> validator::Config {
         // Set the network configuration.
@@ -205,6 +219,40 @@ async fn run_validator_network() {
 
     net.settle_on(&mut rng, is_in_era(2), Duration::from_secs(60))
         .await;
+}
+
+#[tokio::test]
+async fn run_validator_network_with_initial_era_and_block() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Instantiate a new chain with a fixed size.
+    const NETWORK_SIZE: usize = 5;
+    let era_id = rng.gen_range(5, 25);
+    let block_height = rng.gen_range(50, 250);
+    let mut chain =
+        TestChain::new_with_initial_block_and_era(&mut rng, NETWORK_SIZE, era_id, block_height);
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // Wait for all nodes to agree on one era.
+    net.settle_on(
+        &mut rng,
+        is_in_era(era_id as usize + 1),
+        Duration::from_secs(90),
+    )
+    .await;
+
+    net.settle_on(
+        &mut rng,
+        is_in_era(era_id as usize + 2),
+        Duration::from_secs(60),
+    )
+    .await;
 }
 
 #[tokio::test]
