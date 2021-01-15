@@ -280,7 +280,7 @@ def create_node(
         config["network"]["bind_address"] = "casper-node-{}:{}".format(n, NODE_PORT)
 
         config["network"]["known_addresses"] = [
-            "casper-node-{}.casper-node.{}:{}".format(n, network_name, NODE_PORT)
+            "casper-node-{}.casper-node.casper-{}:{}".format(n, network_name, NODE_PORT)
             for n in known_nodes
         ]
 
