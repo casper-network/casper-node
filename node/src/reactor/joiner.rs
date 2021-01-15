@@ -411,7 +411,19 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let linear_chain_sync = LinearChainSync::new(init_hash);
+        let initial_era_id = chainspec_loader
+            .chainspec()
+            .genesis
+            .initial_era_id
+            .unwrap_or(0);
+        let initial_block_height = chainspec_loader
+            .chainspec()
+            .genesis
+            .initial_block_height
+            .unwrap_or(0);
+
+        let linear_chain_sync =
+            LinearChainSync::new(init_hash, initial_era_id, initial_block_height);
 
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
 
@@ -434,7 +446,12 @@ impl reactor::Reactor for Reactor {
             .genesis_state_root_hash()
             .expect("Should have Genesis state root hash");
 
-        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone());
+        let block_executor = BlockExecutor::new(
+            genesis_state_root_hash,
+            initial_era_id,
+            initial_block_height,
+            registry.clone(),
+        );
 
         let linear_chain = linear_chain::LinearChain::new();
 

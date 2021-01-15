@@ -28,6 +28,7 @@ use casper_types::{ExecutionResult, ProtocolVersion};
 use crate::{
     components::{
         block_executor::{event::State, metrics::BlockExecutorMetrics},
+        consensus::EraId,
         Component,
     },
     crypto::hash::Digest,
@@ -80,9 +81,11 @@ struct ExecutedBlockSummary {
 type BlockHeight = u64;
 
 /// The Block executor component.
-#[derive(DataSize, Debug, Default)]
+#[derive(DataSize, Debug)]
 pub(crate) struct BlockExecutor {
     genesis_state_root_hash: Digest,
+    initial_era_id: EraId,
+    initial_block_height: BlockHeight,
     /// A mapping from proto block to executed block's ID and post-state hash, to allow
     /// identification of a parent block's details once a finalized block has been executed.
     ///
@@ -98,10 +101,17 @@ pub(crate) struct BlockExecutor {
 }
 
 impl BlockExecutor {
-    pub(crate) fn new(genesis_state_root_hash: Digest, registry: Registry) -> Self {
+    pub(crate) fn new(
+        genesis_state_root_hash: Digest,
+        initial_era_id: u64,
+        initial_block_height: BlockHeight,
+        registry: Registry,
+    ) -> Self {
         let metrics = BlockExecutorMetrics::new(registry).unwrap();
         BlockExecutor {
             genesis_state_root_hash,
+            initial_era_id: EraId(initial_era_id),
+            initial_block_height,
             parent_map: HashMap::new(),
             exec_queue: HashMap::new(),
             metrics,
@@ -385,17 +395,18 @@ impl BlockExecutor {
     }
 
     fn create_block(&mut self, finalized_block: FinalizedBlock, state_root_hash: Digest) -> Block {
-        let (parent_summary_hash, parent_seed) = if finalized_block.is_genesis_child() {
-            // Genesis, no parent summary.
-            (BlockHash::new(Digest::default()), Digest::default())
-        } else {
-            let parent_block_height = finalized_block.height() - 1;
-            let summary = self
-                .parent_map
-                .remove(&parent_block_height)
-                .unwrap_or_else(|| panic!("failed to take {:?}", parent_block_height));
-            (summary.hash, summary.accumulated_seed)
-        };
+        let (parent_summary_hash, parent_seed) =
+            if finalized_block.is_genesis_child(self.initial_era_id, self.initial_block_height) {
+                // Genesis, no parent summary.
+                (BlockHash::new(Digest::default()), Digest::default())
+            } else {
+                let parent_block_height = finalized_block.height() - 1;
+                let summary = self
+                    .parent_map
+                    .remove(&parent_block_height)
+                    .unwrap_or_else(|| panic!("failed to take {:?}", parent_block_height));
+                (summary.hash, summary.accumulated_seed)
+            };
         let block_height = finalized_block.height();
         let block = Block::new(
             parent_summary_hash,
@@ -413,7 +424,7 @@ impl BlockExecutor {
     }
 
     fn pre_state_hash(&mut self, finalized_block: &FinalizedBlock) -> Option<Digest> {
-        if finalized_block.is_genesis_child() {
+        if finalized_block.is_genesis_child(self.initial_era_id, self.initial_block_height) {
             Some(self.genesis_state_root_hash)
         } else {
             // Try to get the parent's post-state-hash from the `parent_map`.

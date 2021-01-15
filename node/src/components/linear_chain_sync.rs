@@ -33,6 +33,7 @@ use tracing::{error, info, trace, warn};
 
 use super::{fetcher::FetchResult, Component};
 use crate::{
+    components::consensus::EraId,
     effect::{
         requests::{BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects,
@@ -157,15 +158,23 @@ pub(crate) struct LinearChainSync<I> {
     // Peers we have not yet requested current block from.
     // NOTE: Maybe use a bitmask to decide which peers were tried?.
     peers_to_try: Vec<I>,
+    initial_era_id: EraId,
+    initial_block_height: u64,
     state: State,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
-    pub fn new(init_hash: Option<BlockHash>) -> Self {
+    pub fn new(
+        init_hash: Option<BlockHash>,
+        initial_era_id: u64,
+        initial_block_height: u64,
+    ) -> Self {
         let state = init_hash.map_or(State::None, State::sync_trusted_hash);
         LinearChainSync {
             peers: Vec::new(),
             peers_to_try: Vec::new(),
+            initial_era_id: EraId(initial_era_id),
+            initial_block_height,
             state,
         }
     }
@@ -224,7 +233,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         match &self.state {
             State::None | State::Done => panic!("Downloaded block when in {} state.", self.state),
             State::SyncingTrustedHash { .. } => {
-                if block_header.is_genesis_child() {
+                if block_header.is_genesis_child(self.initial_era_id, self.initial_block_height) {
                     info!("Linear chain downloaded. Start downloading deploys.");
                     effect_builder
                         .immediately()

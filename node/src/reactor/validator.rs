@@ -406,8 +406,23 @@ impl reactor::Reactor for Reactor {
         let genesis_state_root_hash = chainspec_loader
             .genesis_state_root_hash()
             .expect("should have state root hash");
-        let block_executor = BlockExecutor::new(genesis_state_root_hash, registry.clone())
-            .with_parent_map(latest_block);
+        let initial_era_id = chainspec_loader
+            .chainspec()
+            .genesis
+            .initial_era_id
+            .unwrap_or(0);
+        let initial_block_height = chainspec_loader
+            .chainspec()
+            .genesis
+            .initial_block_height
+            .unwrap_or(0);
+        let block_executor = BlockExecutor::new(
+            genesis_state_root_hash,
+            initial_era_id,
+            initial_block_height,
+            registry.clone(),
+        )
+        .with_parent_map(latest_block);
         let (proto_block_validator, block_validator_effects) = BlockValidator::new(effect_builder);
         let linear_chain = LinearChain::new();
 
