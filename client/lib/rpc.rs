@@ -33,8 +33,6 @@ use crate::{
 
 /// Target for a given transfer.
 pub(crate) enum TransferTarget {
-    /// Transfer to another purse within an account.
-    OwnPurse(URef),
     /// Transfer to another account.
     Account(PublicKey),
 }
@@ -193,9 +191,6 @@ impl RpcCall {
             TransferTarget::Account(target_account) => {
                 let target_account_hash = target_account.to_account_hash().value();
                 transfer_args.insert(TRANSFER_ARG_TARGET, target_account_hash)?;
-            }
-            TransferTarget::OwnPurse(target_purse) => {
-                transfer_args.insert(TRANSFER_ARG_TARGET, target_purse)?;
             }
         }
         transfer_args.insert(TRANSFER_ARG_ID, id)?;

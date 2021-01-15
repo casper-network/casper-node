@@ -25,7 +25,8 @@ pub fn delegate() {
 
     let transfer_result = system::transfer_from_purse_to_account(source, target, amount, id);
 
-    let final_balance = system::get_balance(source).unwrap_or_revert_with(ApiError::User(103));
+    let final_balance =
+        system::get_purse_balance(source).unwrap_or_revert_with(ApiError::User(103));
 
     let result = format!("{:?}", transfer_result);
 

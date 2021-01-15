@@ -7,6 +7,7 @@ import {URef} from "./uref";
 import {toBytesU64} from "./bytesrepr";
 import {Option} from "./option";
 import {Ref} from "./ref";
+import {getMainPurse} from "./account";
 
 /**
  * The result of a successful transfer between purses.
@@ -72,6 +73,7 @@ function makeTransferredTo(value: u32): Ref<TransferredTo> | null {
 /**
  * Creates a new empty purse and returns its [[URef]], or a null in case a
  * purse couldn't be created.
+ * @hidden
  */
 export function createPurse(): URef {
     let bytes = new Uint8Array(UREF_SERIALIZED_LENGTH);
@@ -97,6 +99,7 @@ export function createPurse(): URef {
 /**
  * Returns the balance in motes of the given purse or a null if given purse
  * is invalid.
+ * @hidden
  */
 export function getPurseBalance(purse: URef): U512 | null {
     let purseBytes = purse.toBytes();
@@ -123,6 +126,10 @@ export function getPurseBalance(purse: URef): U512 | null {
     return balanceResult.unwrap();
 }
 
+export function getBalance(): U512 | null {
+    getPurseBalance(getMainPurse())
+}
+
 /**
  * Transfers `amount` of motes from `source` purse to `target` account.
  * If `target` does not exist it will be created.
@@ -131,6 +138,7 @@ export function getPurseBalance(purse: URef): U512 | null {
  * @returns This function will return a [[TransferredTo.TransferError]] in
  * case of transfer error, in case of any other variant the transfer itself
  * can be considered successful.
+ * @hidden
  */
 export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uint8Array, amount: U512): TransferResult {
     let purseBytes = sourcePurse.toBytes();
@@ -171,6 +179,7 @@ export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uin
  * the transfer fails.
  *
  * @returns This function returns non-zero value on error.
+ * @hidden
  */
 export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, amount: U512): Error | null {
     let sourceBytes = sourcePurse.toBytes();
