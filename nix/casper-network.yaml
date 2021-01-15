@@ -58,8 +58,6 @@ spec:
           image: clmarc/casper-node:5fbf42f0 # TODO: Dynamically set.
           # The args override some settings from environment variables.
           args: ["validator", "/config/node/config.toml"]
-          #image: busybox:latest
-          #command: ["/bin/sh", "-c", "echo $POD_IP > /PODIP; sleep 230000"]
           env:
             - name: RUST_LOG
               value: info
