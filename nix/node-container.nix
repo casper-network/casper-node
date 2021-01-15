@@ -3,8 +3,8 @@
 # The container uses the node binary as an entrypoint, and expects it `config.toml` at `/`. By
 # default, it will launch the node in validator mode.
 
-{ pkgs ? (import <nixpkgs>) { }, tag ? "latest" }:
-let casper-node = (import ./node.nix) { };
+{ pkgs ? import ./deps.nix, tag ? "latest" }:
+let casper-node = (import ./node.nix) { inherit pkgs; };
 in pkgs.dockerTools.buildImage {
   name = "casper-node";
   tag = tag;

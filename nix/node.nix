@@ -1,13 +1,8 @@
-{ }:
+{ pkgs ? import ./deps.nix }:
 let
-  moz_overlay = import (builtins.fetchTarball
-    "https://github.com/mozilla/nixpkgs-mozilla/archive/master.tar.gz");
-  pkgs = import <nixpkgs> { overlays = [ moz_overlay ]; };
   rustChannel = (pkgs.rustChannelOf { rustToolchain = ../rust-toolchain; });
   rustPlatform = pkgs.makeRustPlatform {
     rustc = rustChannel.rust;
-    # TODO: Enable for a working development environment.
-    # cargo = rustChannel.rust.override { extensions = [ "rust-src" ]; };
     cargo = rustChannel.rust;
   };
   source = pkgs.nix-gitignore.gitignoreSource [ "nix/" ] ../.;
