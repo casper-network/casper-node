@@ -1,6 +1,7 @@
 //! Reactor used to join the network.
 
 use std::{
+    collections::BTreeMap,
     env,
     fmt::{self, Display, Formatter},
 };
@@ -10,6 +11,8 @@ use derive_more::From;
 use prometheus::Registry;
 use serde::Serialize;
 use tracing::{error, info, warn};
+
+use casper_types::{PublicKey, U512};
 
 use crate::{
     components::{
@@ -415,8 +418,6 @@ impl reactor::Reactor for Reactor {
             Some(hash) => info!("Synchronizing linear chain from: {:?}", hash),
         }
 
-        let linear_chain_sync = LinearChainSync::new(init_hash);
-
         let rest_server = RestServer::new(config.rest_server.clone(), effect_builder)?;
 
         let event_stream_server =
@@ -442,13 +443,15 @@ impl reactor::Reactor for Reactor {
 
         let linear_chain = linear_chain::LinearChain::new();
 
-        let validator_weights = chainspec_loader
+        let validator_weights: BTreeMap<PublicKey, U512> = chainspec_loader
             .chainspec()
             .genesis
             .genesis_validator_stakes()
             .into_iter()
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
+
+        let linear_chain_sync = LinearChainSync::new(init_hash, validator_weights.clone());
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();

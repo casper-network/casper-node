@@ -34,7 +34,7 @@ use casper_types::{
     proof_of_stake,
     system_contract_errors::{self},
     AccessRights, ApiError, BlockTime, CLValue, Contract, DeployHash, DeployInfo, Key, Phase,
-    ProtocolVersion, RuntimeArgs, URef, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -515,7 +515,7 @@ where
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
         deploy_item: DeployItem,
-        proposer: casper_types::PublicKey,
+        proposer: PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
         let protocol_data = match self.state.get_protocol_data(protocol_version) {
             Ok(Some(protocol_data)) => protocol_data,
@@ -1065,7 +1065,7 @@ where
         prestate_hash: Blake2bHash,
         blocktime: BlockTime,
         deploy_item: DeployItem,
-        proposer: casper_types::PublicKey,
+        proposer: PublicKey,
     ) -> Result<ExecutionResult, RootNotFound> {
         // spec: https://casperlabs.atlassian.net/wiki/spaces/EN/pages/123404576/Payment+code+execution+specification
 
@@ -1996,18 +1996,41 @@ where
             )
             .map_err(Into::into)?;
 
-        match commit_result {
-            CommitResult::Success { state_root } => Ok(StepResult::Success {
-                post_state_hash: state_root,
-            }),
-            CommitResult::RootNotFound => Ok(StepResult::RootNotFound),
-            CommitResult::KeyNotFound(key) => Ok(StepResult::KeyNotFound(key)),
+        let post_state_hash = match commit_result {
+            CommitResult::Success { state_root } => state_root,
+            CommitResult::RootNotFound => return Ok(StepResult::RootNotFound),
+            CommitResult::KeyNotFound(key) => return Ok(StepResult::KeyNotFound(key)),
             CommitResult::TypeMismatch(type_mismatch) => {
-                Ok(StepResult::TypeMismatch(type_mismatch))
+                return Ok(StepResult::TypeMismatch(type_mismatch))
             }
             CommitResult::Serialization(bytesrepr_error) => {
-                Ok(StepResult::Serialization(bytesrepr_error))
+                return Ok(StepResult::Serialization(bytesrepr_error))
             }
-        }
+        };
+
+        let next_era_validators = {
+            let mut era_validators = match self.get_era_validators(
+                correlation_id,
+                GetEraValidatorsRequest::new(post_state_hash, step_request.protocol_version),
+            ) {
+                Ok(era_validators) => era_validators,
+                Err(error) => {
+                    return Ok(StepResult::GetEraValidatorsError(error));
+                }
+            };
+
+            let era_id = &step_request.next_era_id;
+            match era_validators.remove(era_id) {
+                Some(validator_weights) => validator_weights,
+                None => {
+                    return Ok(StepResult::EraValidatorsMissing(*era_id));
+                }
+            }
+        };
+
+        Ok(StepResult::Success {
+            post_state_hash,
+            next_era_validators,
+        })
     }
 }
