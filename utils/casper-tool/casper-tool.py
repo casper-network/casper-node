@@ -286,7 +286,7 @@ def create_node(
 
         # Setup for volume operation.
         config["storage"]["path"] = "/storage"
-        config["consensus"]["unit_hashes_folder"] = "/storage/unit_hashes"
+        config["consensus"]["unit_hashes_folder"] = "/storage"
 
     toml.dump(config, open(os.path.join(node_path, "config.toml"), "w"))
 
