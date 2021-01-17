@@ -68,12 +68,14 @@ build-contract-rs/%:
 	        --release $(filter-out --release, $(CARGO_FLAGS)) \
 	        --package $* \
 	        --target wasm32-unknown-unknown
+	wasm-strip target/wasm32-unknown-unknown/release/$(subst -,_,$*).wasm 2>/dev/null | true
 
 build-system-contract-featured-rs/%:
 	$(CARGO) build \
 	        --release $(filter-out --release, $(CARGO_FLAGS)) \
 	        --manifest-path "smart_contracts/contracts/system/$*/Cargo.toml" $(if $(FEATURES),$(if $(filter $(HIGHWAY_CONTRACTS), $*),--features $(FEATURES))) \
 	        --target wasm32-unknown-unknown
+	wasm-strip target/wasm32-unknown-unknown/release/$(subst -,_,$*).wasm 2>/dev/null | true
 
 build-contracts-rs: \
 	$(BENCH_CONTRACTS) \
