@@ -16,7 +16,7 @@ use crate::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
-    types::{Deploy, NodeId},
+    types::{Deploy, DeployValidationFailure, NodeId},
     utils::Source,
     NodeRng,
 };
@@ -29,8 +29,8 @@ pub use event::Event;
 #[derive(Debug, Error)]
 pub enum Error {
     /// An invalid deploy was received from the client.
-    #[error("invalid deploy")]
-    InvalidDeploy,
+    #[error("invalid deploy: {0}")]
+    InvalidDeploy(DeployValidationFailure),
     /// An invalid account sent a deploy
     #[error("invalid account")]
     InvalidAccount,
@@ -185,11 +185,11 @@ impl DeployAcceptor {
         let mut effects = Effects::new();
         let is_acceptable =
             cloned_deploy.is_acceptable(chainspec.chain_name, chainspec.deploy_config);
-        if !is_acceptable {
-            // The client has submitted an invalid deploy. Return an error message to the RPC
-            // component via the responder.
+        if let Err(error) = is_acceptable {
+            // The client has submitted an invalid deploy. Return an error to the RPC component via
+            // the responder.
             if let Some(responder) = maybe_responder {
-                effects.extend(responder.respond(Err(Error::InvalidDeploy)).ignore());
+                effects.extend(responder.respond(Err(Error::InvalidDeploy(error))).ignore());
             }
             effects.extend(
                 effect_builder
