@@ -703,7 +703,7 @@ fn address_str_to_multiaddr(address: &str) -> Multiaddr {
     let multiaddr_str = if address
         .chars()
         .next()
-        .expect("cannot convert emptry address")
+        .expect("cannot convert empty address")
         .is_numeric()
     {
         format!(
