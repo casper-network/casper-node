@@ -1,6 +1,6 @@
 use datasize::DataSize;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use super::Reactor;
 
@@ -101,7 +101,7 @@ impl MemoryMetrics {
                 "joiner_mem_estimator_runtime_s",
                 "time taken to estimate memory usage, in seconds",
             )
-            // Create buckets from one nano second to eigth seconds
+            // Create buckets from four nano second to eight seconds
             .buckets(prometheus::exponential_buckets(0.000_000_004, 2.0, 32)?),
         )?;
 
@@ -161,6 +161,7 @@ impl MemoryMetrics {
         let block_validator = reactor.block_validator.estimate_heap_size() as i64;
         let deploy_fetcher = reactor.deploy_fetcher.estimate_heap_size() as i64;
         let block_executor = reactor.block_executor.estimate_heap_size() as i64;
+        let linear_chain = reactor.linear_chain.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
 
         let total = metrics
@@ -176,6 +177,7 @@ impl MemoryMetrics {
             + block_validator
             + deploy_fetcher
             + block_executor
+            + linear_chain
             + consensus;
 
         self.mem_total.set(total);
@@ -192,13 +194,11 @@ impl MemoryMetrics {
         self.mem_block_validator.set(block_validator);
         self.mem_deploy_fetcher.set(deploy_fetcher);
         self.mem_block_executor.set(block_executor);
+        self.mem_linear_chain.set(linear_chain);
         self.mem_consensus.set(consensus);
 
         // Stop the timer explicitly, don't count logging.
         let duration_s = timer.stop_and_record();
-
-        // Set the estimated flag to `true` as we have checked that the metrics were collected at
-        // least once
 
         debug!(
         %total,
@@ -216,6 +216,7 @@ impl MemoryMetrics {
         %block_validator,
         %deploy_fetcher,
         %block_executor,
+        %linear_chain,
         %consensus,
         "Collected new set of memory metrics for the joiner");
     }
@@ -225,51 +226,69 @@ impl Drop for MemoryMetrics {
     fn drop(&mut self) {
         self.registry
             .unregister(Box::new(self.mem_total.clone()))
-            .expect("did not expect deregistering joiner_mem_total to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect mem_total to fail"));
         self.registry
             .unregister(Box::new(self.mem_metrics.clone()))
-            .expect("did not expect deregistering joiner_mem_metrics to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering joiner_mem_metrics to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_network.clone()))
-            .expect("did not expect deregistering joiner_mem_network to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering joiner_mem_network to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_small_network.clone()))
-            .expect("did not expect deregistering joiner_mem_small_network to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering joiner_mem_small_network to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_address_gossiper.clone()))
-            .expect("did not expect deregistering joiner_mem_address_gossiper to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_address_gossiper to fail"));
         self.registry
             .unregister(Box::new(self.mem_config.clone()))
-            .expect("did not expect deregistering joiner_mem_config to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering joiner_mem_config to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_chainspec_loader.clone()))
-            .expect("did not expect deregistering joiner_mem_chainspec_loader to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_chainspec_loader to fail"));
         self.registry
             .unregister(Box::new(self.mem_storage.clone()))
-            .expect("did not expect deregistering joiner_mem_storage to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering joiner_mem_storage to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_contract_runtime.clone()))
-            .expect("did not expect deregistering joiner_mem_contract_runtime to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_contract_runtime to fail"));
         self.registry
             .unregister(Box::new(self.mem_linear_chain_fetcher.clone()))
-            .expect("did not expect deregistering joiner_mem_linear_chain_fetcher to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_linear_chain_fetcher to fail"));
         self.registry
             .unregister(Box::new(self.mem_linear_chain_sync.clone()))
-            .expect("did not expect deregistering joiner_mem_linear_chain_sync to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_linear_chain_sync to fail"));
         self.registry
             .unregister(Box::new(self.mem_block_validator.clone()))
-            .expect("did not expect deregistering joiner_mem_block_validator to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering joiner_mem_block_validator to fail"));
         self.registry
             .unregister(Box::new(self.mem_deploy_fetcher.clone()))
-            .expect("did not expect deregistering joiner_mem_deploy_fetcher to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering joiner_mem_deploy_fetcher to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_block_executor.clone()))
-            .expect("did not expect deregistering joiner_mem_block_executor to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering joiner_mem_block_executor to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_linear_chain.clone()))
-            .expect("did not expect deregistering joiner_mem_linear_chain to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering joiner_mem_linear_chain to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_consensus.clone()))
-            .expect("did not expect deregistering joiner_mem_consensus to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering joiner_mem_consensus to fail"),
+            );
     }
 }
