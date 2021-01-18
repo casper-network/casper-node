@@ -10,6 +10,7 @@ use casper_types::{
     ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey, URef,
 };
 use semver::Version;
+use crate::types::json_compatibility::vectorize;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, DataSize, JsonSchema,
@@ -51,14 +52,7 @@ pub struct Contract {
 impl From<&DomainContract> for Contract {
     fn from(contract: &DomainContract) -> Self {
         let entry_points = contract.entry_points().clone().take_entry_points();
-        let named_keys = contract
-            .named_keys()
-            .iter()
-            .map(|(name, key)| NamedKey {
-                name: name.clone(),
-                key: key.to_formatted_string(),
-            })
-            .collect();
+        let named_keys = vectorize(contract.named_keys());
         Contract {
             contract_package_hash: contract.contract_package_hash(),
             contract_wasm_hash: contract.contract_wasm_hash(),

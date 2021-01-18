@@ -1168,4 +1168,151 @@ mod tests {
             format!(r#"{{"DeployInfo":"deploy-{}"}}"#, hex_bytes)
         );
     }
+
+    #[test]
+    fn contract_hash_from_slice() {
+        let bytes: Vec<u8> = (0..32).collect();
+        let contract_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
+        let contract_hash = ContractHash::new(contract_hash);
+        assert_eq!(&bytes, &contract_hash.as_bytes());
+    }
+
+    #[test]
+    fn contract_wasm_hash_from_slice() {
+        let bytes: Vec<u8> = (0..32).collect();
+        let contract_hash =
+            HashAddr::try_from(&bytes[..]).expect("should create contract wasm hash");
+        let contract_hash = ContractWasmHash::new(contract_hash);
+        assert_eq!(&bytes, &contract_hash.as_bytes());
+    }
+
+    #[test]
+    fn contract_package_hash_from_slice() {
+        let bytes: Vec<u8> = (0..32).collect();
+        let contract_hash =
+            HashAddr::try_from(&bytes[..]).expect("should create contract hash");
+        let contract_hash = ContractPackageHash::new(contract_hash);
+        assert_eq!(&bytes, &contract_hash.as_bytes());
+    }
+
+    #[test]
+    fn contract_hash_from_str() {
+        let contract_hash = ContractHash([3; 32]);
+        let encoded = contract_hash.to_formatted_string();
+        let decoded = ContractHash::from_formatted_str(&encoded).unwrap();
+        assert_eq!(contract_hash, decoded);
+
+        let invalid_prefix =
+            "contract--0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractHash::from_formatted_str(invalid_prefix).is_err());
+
+        let short_addr = "contract-00000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractHash::from_formatted_str(short_addr).is_err());
+
+        let long_addr =
+            "contract-000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractHash::from_formatted_str(long_addr).is_err());
+
+        let invalid_hex =
+            "contract-000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(ContractHash::from_formatted_str(invalid_hex).is_err());
+    }
+
+    #[test]
+    fn contract_wasm_hash_from_str() {
+        let contract_hash = ContractWasmHash([3; 32]);
+        let encoded = contract_hash.to_formatted_string();
+        let decoded = ContractWasmHash::from_formatted_str(&encoded).unwrap();
+        assert_eq!(contract_hash, decoded);
+
+        let invalid_prefix =
+            "contractwasm-0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractWasmHash::from_formatted_str(invalid_prefix).is_err());
+
+        let short_addr =
+            "contract-wasm-00000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractWasmHash::from_formatted_str(short_addr).is_err());
+
+        let long_addr =
+            "contract-wasm-000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractWasmHash::from_formatted_str(long_addr).is_err());
+
+        let invalid_hex =
+            "contract-wasm-000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(ContractWasmHash::from_formatted_str(invalid_hex).is_err());
+    }
+
+    #[test]
+    fn contract_package_hash_from_str() {
+        let contract_hash = ContractPackageHash([3; 32]);
+        let encoded = contract_hash.to_formatted_string();
+        let decoded = ContractPackageHash::from_formatted_str(&encoded).unwrap();
+        assert_eq!(contract_hash, decoded);
+
+        let invalid_prefix =
+            "contractpackage-0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractPackageHash::from_formatted_str(invalid_prefix).is_err());
+
+        let short_addr =
+            "contract-package-00000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractPackageHash::from_formatted_str(short_addr).is_err());
+
+        let long_addr =
+            "contract-package-000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(ContractPackageHash::from_formatted_str(long_addr).is_err());
+
+        let invalid_hex =
+            "contract-package-000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(ContractPackageHash::from_formatted_str(invalid_hex).is_err());
+    }
+
+    #[test]
+    fn contract_hash_serde_roundtrip() {
+        let contract_hash = ContractHash([255; 32]);
+        let serialized = bincode::serialize(&contract_hash).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
+        assert_eq!(contract_hash, deserialized)
+    }
+
+    #[test]
+    fn contract_hash_json_roundtrip() {
+        let contract_hash = ContractHash([255; 32]);
+        let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(contract_hash, decoded)
+    }
+
+    #[test]
+    fn contract_wasm_hash_serde_roundtrip() {
+        let contract_hash = ContractWasmHash([255; 32]);
+        let serialized = bincode::serialize(&contract_hash).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
+        assert_eq!(contract_hash, deserialized)
+    }
+
+    #[test]
+    fn contract_wasm_hash_json_roundtrip() {
+        let contract_hash = ContractWasmHash([255; 32]);
+        let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(contract_hash, decoded)
+    }
+
+    #[test]
+    fn contract_package_hash_serde_roundtrip() {
+        let contract_hash = ContractPackageHash([255; 32]);
+        let serialized = bincode::serialize(&contract_hash).unwrap();
+        let deserialized = bincode::deserialize(&serialized).unwrap();
+        assert_eq!(contract_hash, deserialized)
+    }
+
+    #[test]
+    fn contract_package_hash_json_roundtrip() {
+        let contract_hash = ContractPackageHash([255; 32]);
+        let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
+        let decoded = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(contract_hash, decoded)
+    }
+
 }
+

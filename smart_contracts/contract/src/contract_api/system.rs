@@ -9,8 +9,8 @@ use casper_types::{
     auction::{EraId, EraInfo},
     bytesrepr,
     system_contract_errors::auction,
-    ApiError, ContractHash, SystemContractType, TransferResult, TransferredTo, URef, U512,
-    UREF_SERIALIZED_LENGTH,
+    ApiError, ContractHash, HashAddr, SystemContractType, TransferResult, TransferredTo, URef,
+    U512, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -23,12 +23,12 @@ fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
     let system_contract_index = system_contract.into();
     let contract_hash: ContractHash = {
         let result = {
-            let hash_data_raw = ContractHash::default();
+            let mut hash_data_raw: HashAddr = ContractHash::default().value();
             let value = unsafe {
                 ext_ffi::casper_get_system_contract(
                     system_contract_index,
-                    hash_data_raw.value().as_mut_ptr(),
-                    hash_data_raw.value().len(),
+                    hash_data_raw.as_mut_ptr(),
+                    hash_data_raw.len(),
                 )
             };
             api_error::result_from(value).map(|_| hash_data_raw)
@@ -36,7 +36,7 @@ fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
         // Revert for any possible error that happened on host side
         let contract_hash_bytes = result.unwrap_or_else(|e| runtime::revert(e));
         // Deserializes a valid URef passed from the host side
-        bytesrepr::deserialize(contract_hash_bytes.value().to_vec()).unwrap_or_revert()
+        bytesrepr::deserialize(contract_hash_bytes.to_vec()).unwrap_or_revert()
     };
     contract_hash
 }

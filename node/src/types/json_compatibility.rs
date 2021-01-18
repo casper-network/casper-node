@@ -9,3 +9,16 @@ pub use account::Account;
 pub use auction_state::AuctionState;
 pub use contracts::{Contract, ContractPackage};
 pub use stored_value::StoredValue;
+use casper_types::NamedKey;
+use casper_types::contracts::NamedKeys;
+
+// A helper function to change NamedKeys into a Vec<NamedKey>
+pub fn vectorize(keys: &NamedKeys) -> Vec<NamedKey> {
+    let named_keys = keys.iter()
+        .map(|(name, key)| NamedKey {
+            name: name.clone(),
+            key: key.to_formatted_string()
+        })
+        .collect();
+    named_keys
+}

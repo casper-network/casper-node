@@ -7,8 +7,8 @@ use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{ContractVersion, EntryPoints, NamedKeys},
-    AccessRights, ApiError, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, URef,
-    UREF_SERIALIZED_LENGTH,
+    AccessRights, ApiError, CLTyped, CLValue, ContractHash, ContractPackageHash, HashAddr, Key,
+    URef, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -156,15 +156,15 @@ pub fn new_contract(
 /// are no versions; a version must be added via `add_contract_version` before
 /// the contract can be executed.
 pub fn create_contract_package_at_hash() -> (ContractPackageHash, URef) {
-    let hash_addr = ContractPackageHash::default();
+    let mut hash_addr: HashAddr = ContractPackageHash::default().value();
     let mut access_addr = [0u8; 32];
     unsafe {
         ext_ffi::casper_create_contract_package_at_hash(
-            hash_addr.value().as_mut_ptr(),
+            hash_addr.as_mut_ptr(),
             access_addr.as_mut_ptr(),
         );
     }
-    let contract_package_hash = hash_addr;
+    let contract_package_hash: ContractPackageHash = hash_addr.into();
     let access_uref = URef::new(access_addr, AccessRights::READ_ADD_WRITE);
 
     (contract_package_hash, access_uref)
