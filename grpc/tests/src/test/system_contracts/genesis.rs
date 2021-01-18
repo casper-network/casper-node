@@ -219,6 +219,7 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
         let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
         let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
         let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+        let initial_era_id = DEFAULT_INITIAL_ERA_ID;
 
         let exec_config = ExecConfig::new(
             mint_installer_bytes,
@@ -233,6 +234,7 @@ fn should_fail_if_bad_mint_install_contract_is_provided() {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
+            initial_era_id,
         );
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
     };
@@ -261,6 +263,7 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
         let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
         let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
         let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+        let initial_era_id = DEFAULT_INITIAL_ERA_ID;
 
         let exec_config = ExecConfig::new(
             mint_installer_bytes,
@@ -275,6 +278,7 @@ fn should_fail_if_bad_pos_install_contract_is_provided() {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
+            initial_era_id,
         );
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
     };
