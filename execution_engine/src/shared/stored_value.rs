@@ -1,5 +1,7 @@
 use std::convert::TryFrom;
 
+use serde::Serialize;
+
 use casper_types::{
     auction::EraInfo,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -21,7 +23,7 @@ enum Tag {
     EraInfo = 7,
 }
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(Eq, PartialEq, Clone, Debug, Serialize)]
 pub enum StoredValue {
     CLValue(CLValue),
     Account(Account),

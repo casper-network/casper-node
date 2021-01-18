@@ -7,7 +7,8 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
-    core::engine_state::genesis::GenesisAccount, shared::wasm_config::WasmConfig,
+    core::engine_state::genesis::GenesisAccount,
+    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_types::auction::EraId;
 
@@ -36,7 +37,6 @@ const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
 /// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
 const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
 const DEFAULT_UNBONDING_DELAY: EraId = 14;
-const DEFAULT_WASMLESS_TRANSFER_COST: u64 = 10_000;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
 struct Genesis {
@@ -48,7 +48,6 @@ struct Genesis {
     protocol_version: Version,
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
-    wasmless_transfer_cost: u64,
     mint_installer_path: External<Vec<u8>>,
     pos_installer_path: External<Vec<u8>>,
     standard_payment_installer_path: External<Vec<u8>>,
@@ -69,7 +68,6 @@ impl Default for Genesis {
             protocol_version: Version::from((1, 0, 0)),
             round_seigniorage_rate: DEFAULT_ROUND_SEIGNIORAGE_RATE,
             unbonding_delay: DEFAULT_UNBONDING_DELAY,
-            wasmless_transfer_cost: DEFAULT_WASMLESS_TRANSFER_COST,
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
             standard_payment_installer_path: External::path(
@@ -90,9 +88,9 @@ struct UpgradePoint {
     upgrade_installer_path: Option<External<Vec<u8>>>,
     activation_point: chainspec::ActivationPoint,
     new_wasm_config: Option<WasmConfig>,
+    new_system_config: Option<SystemConfig>,
     new_deploy_config: Option<DeployConfig>,
     new_validator_slots: Option<u32>,
-    new_wasmless_transfer_cost: Option<u64>,
 }
 
 impl From<&chainspec::UpgradePoint> for UpgradePoint {
@@ -102,9 +100,9 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
             upgrade_installer_path: Some(External::path(DEFAULT_UPGRADE_INSTALLER_PATH)),
             activation_point: upgrade_point.activation_point,
             new_wasm_config: upgrade_point.new_wasm_config,
+            new_system_config: upgrade_point.new_system_config,
             new_deploy_config: upgrade_point.new_deploy_config,
             new_validator_slots: upgrade_point.new_validator_slots,
-            new_wasmless_transfer_cost: upgrade_point.new_wasmless_transfer_cost,
         }
     }
 }
@@ -128,9 +126,9 @@ impl UpgradePoint {
             upgrade_installer_bytes,
             upgrade_installer_args,
             new_wasm_config: self.new_wasm_config,
+            new_system_config: self.new_system_config,
             new_deploy_config: self.new_deploy_config,
             new_validator_slots: self.new_validator_slots,
-            new_wasmless_transfer_cost: self.new_wasmless_transfer_cost,
         })
     }
 }
@@ -144,6 +142,7 @@ pub(super) struct ChainspecConfig {
     deploys: DeployConfig,
     upgrade: Option<Vec<UpgradePoint>>,
     wasm_config: WasmConfig,
+    system_config: SystemConfig,
 }
 
 impl From<&chainspec::Chainspec> for ChainspecConfig {
@@ -157,7 +156,6 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             protocol_version: chainspec.genesis.protocol_version.clone(),
             round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
             unbonding_delay: chainspec.genesis.unbonding_delay,
-            wasmless_transfer_cost: chainspec.genesis.wasmless_transfer_cost,
             mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
             pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
             standard_payment_installer_path: External::path(
@@ -172,6 +170,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
         let highway = chainspec.genesis.highway_config.clone();
         let deploys = chainspec.genesis.deploy_config;
         let wasm_config = chainspec.genesis.wasm_config;
+        let system_config = chainspec.genesis.system_config;
 
         let upgrades = chainspec
             .upgrades
@@ -190,6 +189,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             deploys,
             upgrade,
             wasm_config,
+            system_config,
         }
     }
 }
@@ -241,7 +241,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         locked_funds_period: chainspec.genesis.locked_funds_period,
         round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
         unbonding_delay: chainspec.genesis.unbonding_delay,
-        wasmless_transfer_cost: chainspec.genesis.wasmless_transfer_cost,
         protocol_version: chainspec.genesis.protocol_version,
         mint_installer_bytes,
         pos_installer_bytes,
@@ -249,14 +248,16 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         auction_installer_bytes,
         accounts,
         wasm_config: chainspec.wasm_config,
+        system_config: chainspec.system_config,
         deploy_config: chainspec.deploys,
         highway_config: chainspec.highway,
         initial_era_id: chainspec.genesis.initial_era_id,
         initial_block_height: chainspec.genesis.initial_block_height,
     };
 
-    let mut upgrades = vec![];
-    for upgrade_point in chainspec.upgrade.unwrap_or_default().into_iter() {
+    let chainspec_upgrades = chainspec.upgrade.unwrap_or_default();
+    let mut upgrades = Vec::with_capacity(chainspec_upgrades.len());
+    for upgrade_point in chainspec_upgrades.into_iter() {
         upgrades.push(upgrade_point.try_into_chainspec_upgrade_point(root)?);
     }
 

@@ -37,6 +37,13 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
         } else {
             Some(upgrade_point.take_new_wasm_config().try_into()?)
         };
+
+        let system_config = if !upgrade_point.has_new_system_config() {
+            None
+        } else {
+            Some(upgrade_point.take_new_system_config().try_into()?)
+        };
+
         let activation_point = if !upgrade_point.has_activation_point() {
             None
         } else {
@@ -90,17 +97,6 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             )
         };
 
-        let new_wasmless_transfer_cost: Option<u64> =
-            if !upgrade_point.has_new_wasmless_transfer_cost() {
-                None
-            } else {
-                Some(
-                    upgrade_point
-                        .take_new_wasmless_transfer_cost()
-                        .get_new_wasmless_transfer_cost(),
-                )
-            };
-
         Ok(UpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
@@ -108,13 +104,13 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             upgrade_installer_args,
             upgrade_installer_bytes,
             wasm_config,
+            system_config,
             activation_point,
             new_validator_slots,
             new_auction_delay,
             new_locked_funds_period,
             new_round_seigniorage_rate,
             new_unbonding_delay,
-            new_wasmless_transfer_cost,
         ))
     }
 }

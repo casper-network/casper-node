@@ -299,8 +299,8 @@ message ChainSpec {
             Ratio round_seigniorage_rate = 11;
             // Unbonding delay expressed in eras.
             uint64 unbonding_delay = 12;
-            // Wasmless transfer cost expressed in gas.
-            uint64 wasmless_transfer_cost = 13;
+            // costs associated with the system
+            SystemConfig system_config = 13;
             // Initial era ID
             uint64 initial_era_id = 14;
 
@@ -447,6 +447,53 @@ message ChainSpec {
         HostFunctionCosts host_function_costs = 5;
     }
 
+    message SystemConfig {
+        message AuctionCosts {
+            uint32 get_era_validators = 1;
+            uint32 read_seigniorage_recipients = 2;
+            uint32 add_bid = 3;
+            uint32 withdraw_bid = 4;
+            uint32 delegate = 5;
+            uint32 undelegate = 6;
+            uint32 run_auction = 7;
+            uint32 slash = 8;
+            uint32 distribute = 9;
+            uint32 withdraw_delegator_reward = 10;
+            uint32 withdraw_validator_reward = 11;
+            uint32 read_era_id = 12;
+        }
+
+        message MintCosts {
+            uint32 mint = 1;
+            uint32 reduce_total_supply = 2;
+            uint32 create = 3;
+            uint32 balance = 4;
+            uint32 transfer = 5;
+            uint32 read_base_round_reward = 6;
+        }
+
+        message ProofOfStakeCosts {
+            uint32 get_payment_purse = 1;
+            uint32 set_refund_purse = 2;
+            uint32 get_refund_purse = 3;
+            uint32 finalize_payment = 4;
+        }
+
+        message StandardPaymentCosts {
+            uint32 pay = 1;
+        }
+        // Wasmless transfer cost expressed in gas
+        uint64 wasmless_transfer_cost = 1;
+        // Auction entrypoint costs table
+        AuctionCosts auction_costs = 2;
+        // Mint entrypoint costs table
+        MintCosts mint_costs = 3;
+        // ProofOfstake entrypoint costs table
+        ProofOfStakeCosts proof_of_stake_costs = 4;
+        // Standard payment costs table
+        StandardPaymentCosts standard_payment_costs = 5;
+    }
+
     message UpgradePoint {
         // Hiding this behind an abstraction so we are free
         // to change how such a point is expressed in the future.
@@ -469,8 +516,8 @@ message ChainSpec {
         Ratio new_round_seigniorage_rate = 10;
         // Change the unbonding delay (optional)
         NewUnbondingDelay new_unbonding_delay = 11;
-        // Change the wasmless transfer cost (optional)
-        NewWasmlessTransferCost new_wasmless_transfer_cost = 12;
+        // Change the system config (optional)
+        SystemConfig new_system_config = 12;
     }
 
     message NewValidatorSlots {
@@ -492,10 +539,6 @@ message ChainSpec {
 
     message NewUnbondingDelay {
         uint64 new_unbonding_delay = 1;
-    }
-
-    message NewWasmlessTransferCost {
-        uint64 new_wasmless_transfer_cost = 1;
     }
 }
 
@@ -531,15 +574,16 @@ message GetEraValidatorsRequest {
     casper.state.ProtocolVersion protocol_version = 3;
 }
 
-message GetEraValidatorsResponse {
-    message ValidatorWeights {
-        message ValidatorWeight {
-            bytes public_key_bytes = 1;
-            casper.state.BigInt weight = 2;
-        }
-
-        repeated ValidatorWeight validator_weights = 1;
+message ValidatorWeights {
+    message ValidatorWeight {
+        bytes public_key_bytes = 1;
+        casper.state.BigInt weight = 2;
     }
+
+    repeated ValidatorWeight validator_weights = 1;
+}
+
+message GetEraValidatorsResponse {
 
     message GetEraValidatorsError {
         string message = 1;
@@ -559,6 +603,7 @@ message StepRequest {
     repeated SlashItem slash_items = 3;
     repeated RewardItem reward_items = 4;
     bool run_auction = 5;
+    uint64 next_era_id = 6;
 }
 
 message SlashItem{
@@ -571,13 +616,18 @@ message RewardItem {
 }
 
 message StepResponse {
+    message StepSuccess {
+        bytes poststate_hash = 1;
+        ValidatorWeights next_era_validators = 2;
+    }
+
     message StepError {
         string message = 1;
     }
 
     message StepResult {
         oneof step_result {
-            CommitResult success = 1;
+            StepSuccess success = 1;
             RootNotFound missing_parent = 2;
             StepError error =3;
         }

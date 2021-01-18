@@ -33,8 +33,8 @@ static VALIDATOR_1: Lazy<PublicKey> =
     Lazy::new(|| SecretKey::ed25519([3; SecretKey::ED25519_LENGTH]).into());
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
-static UNDERFUNDED_PAYMENT_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(10_000));
-static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(6_000_000));
+static UNDERFUNDED_PAYMENT_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(10_001));
+static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(10_001));
 
 #[ignore]
 #[test]

@@ -59,6 +59,7 @@ pub struct StepRequestBuilder {
     slash_items: Vec<ipc::SlashItem>,
     reward_items: Vec<ipc::RewardItem>,
     run_auction: bool,
+    next_era_id: u64,
 }
 
 impl StepRequestBuilder {
@@ -91,6 +92,11 @@ impl StepRequestBuilder {
         self
     }
 
+    pub fn with_next_era_id(mut self, next_era_id: u64) -> Self {
+        self.next_era_id = next_era_id;
+        self
+    }
+
     pub fn build(self) -> ipc::StepRequest {
         let mut request = ipc::StepRequest::new();
         request.set_parent_state_hash(self.parent_state_hash);
@@ -98,6 +104,7 @@ impl StepRequestBuilder {
         request.set_slash_items(self.slash_items.into());
         request.set_reward_items(self.reward_items.into());
         request.set_run_auction(self.run_auction);
+        request.set_next_era_id(self.next_era_id);
         request
     }
 }
@@ -109,6 +116,7 @@ impl Default for StepRequestBuilder {
             protocol_version: Default::default(),
             slash_items: Default::default(),
             reward_items: Default::default(),
+            next_era_id: Default::default(),
             run_auction: true, //<-- run_auction by default
         }
     }

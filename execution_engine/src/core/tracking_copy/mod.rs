@@ -26,10 +26,7 @@ use crate::{
         transform::{self, Transform},
         TypeMismatch,
     },
-    storage::{
-        global_state::StateReader,
-        trie::{merkle_proof::TrieMerkleProof, Trie},
-    },
+    storage::{global_state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
 #[derive(Debug)]
@@ -464,14 +461,6 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
         self.reader.read_with_proof(correlation_id, key)
-    }
-
-    fn read_trie(
-        &self,
-        correlation_id: CorrelationId,
-        trie_key: &Blake2bHash,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
-        self.reader.read_trie(correlation_id, trie_key)
     }
 }
 

@@ -42,6 +42,9 @@ trigger:
     - trying
     - staging
     - "release-*"
+  event:
+    exclude:
+      - tag
 
 ---
 # Failure state from pre-checks pipeline
@@ -72,6 +75,9 @@ trigger:
     - trying
     - staging
     - "release-*"
+  event:
+    exclude:
+      - tag
 
 depends_on:
   - pre-checks
@@ -114,6 +120,9 @@ trigger:
     - trying
     - staging
     - "release-*"
+  event:
+    exclude:
+      - tag
 
 ---
 # Packaging pipeline, runs in parallel with cargo-test pipeline
@@ -181,6 +190,9 @@ trigger:
     - trying
     - staging
     - "release-*"
+  event:
+    exclude:
+      - tag
 
 ---
 # Run on success of cargo-test and package pipelines.
@@ -236,7 +248,9 @@ trigger:
     - trying
     - staging
     - "release-*"
-
+  event:
+    exclude:
+      - tag
 
 ---
 # Runs on failure of cargo-test or package pipelines.
@@ -284,6 +298,9 @@ trigger:
     - trying
     - staging
     - "release-*"
+  event:
+    exclude:
+      - tag
 
 depends_on:
   - cargo-test
@@ -309,11 +326,6 @@ steps:
   image: casperlabs/node-build-u1804
   commands:
     - "make deb"
-
-- name: publish-crate-tag-TODO
-  image: casperlabs/node-build-u1804
-  commands:
-  - "echo TODO"
 
 - name: publish-prod-bintray
   image: casperlabs/node-build-u1804
@@ -342,7 +354,14 @@ steps:
     ref:
     - refs/tags/v*
 
-# push to test repo every time we are going to merge to master (via staging), trying or pushing to release (hot fix)
+- name: publish-crate
+  image: casperlabs/node-build-u1804
+  commands:
+    - "./ci/publish_to_crates_io.sh"
+  environment:
+    CARGO_TOKEN:
+      from_secret: crates_io_token
+
 trigger:
   ref:
   - refs/tags/v*

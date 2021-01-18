@@ -3,10 +3,13 @@ use std::{collections::BTreeMap, fmt::Display, vec::Vec};
 use core::fmt;
 use uint::static_assertions::_core::fmt::Formatter;
 
-use casper_types::{bytesrepr, bytesrepr::ToBytes, CLValueError, Key, ProtocolVersion, PublicKey};
+use casper_types::{
+    auction::EraId, bytesrepr, bytesrepr::ToBytes, CLValueError, Key, ProtocolVersion, PublicKey,
+    U512,
+};
 
 use crate::{
-    core::engine_state::Error,
+    core::engine_state::{Error, GetEraValidatorsError},
     shared::{newtypes::Blake2bHash, TypeMismatch},
 };
 
@@ -44,6 +47,7 @@ pub struct StepRequest {
     pub slash_items: Vec<SlashItem>,
     pub reward_items: Vec<RewardItem>,
     pub run_auction: bool,
+    pub next_era_id: EraId,
 }
 
 impl StepRequest {
@@ -53,6 +57,7 @@ impl StepRequest {
         slash_items: Vec<SlashItem>,
         reward_items: Vec<RewardItem>,
         run_auction: bool,
+        next_era_id: EraId,
     ) -> Self {
         Self {
             pre_state_hash,
@@ -60,6 +65,7 @@ impl StepRequest {
             slash_items,
             reward_items,
             run_auction,
+            next_era_id,
         }
     }
 
@@ -94,7 +100,12 @@ pub enum StepResult {
     TypeMismatch(TypeMismatch),
     Serialization(bytesrepr::Error),
     CLValueError(CLValueError),
-    Success { post_state_hash: Blake2bHash },
+    GetEraValidatorsError(GetEraValidatorsError),
+    EraValidatorsMissing(EraId),
+    Success {
+        post_state_hash: Blake2bHash,
+        next_era_validators: BTreeMap<PublicKey, U512>,
+    },
 }
 
 impl Display for StepResult {

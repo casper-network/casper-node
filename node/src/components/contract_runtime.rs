@@ -81,6 +81,9 @@ pub struct ContractRuntimeMetrics {
     get_validator_weights: Histogram,
     get_era_validators: Histogram,
     get_era_validator_weights_by_era_id: Histogram,
+    missing_trie_keys: Histogram,
+    put_trie: Histogram,
+    read_trie: Histogram,
 }
 
 /// Value of upper bound of histogram.
@@ -109,6 +112,12 @@ const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME: &str =
     "contract_runtime_get_era_validator_weights_by_era_id";
 const GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP: &str =
     "tracking run of engine_state.get_era_validator_weights_by_era_id in seconds.";
+const READ_TRIE_NAME: &str = "contract_runtime_read_trie";
+const READ_TRIE_HELP: &str = "tracking run of engine_state.read_trie in seconds.";
+const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
+const PUT_TRIE_HELP: &str = "tracking run of engine_state.put_trie in seconds.";
+const MISSING_TRIE_KEYS_NAME: &str = "contract_runtime_missing_trie_keys";
+const MISSING_TRIE_KEYS_HELP: &str = "tracking run of engine_state.missing_trie_keys in seconds.";
 
 /// Create prometheus Histogram and register.
 fn register_histogram_metric(
@@ -158,6 +167,13 @@ impl ContractRuntimeMetrics {
                 registry,
                 GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_NAME,
                 GET_ERA_VALIDATORS_WEIGHT_BY_ERA_ID_HELP,
+            )?,
+            read_trie: register_histogram_metric(registry, READ_TRIE_NAME, READ_TRIE_HELP)?,
+            put_trie: register_histogram_metric(registry, PUT_TRIE_NAME, PUT_TRIE_HELP)?,
+            missing_trie_keys: register_histogram_metric(
+                registry,
+                MISSING_TRIE_KEYS_NAME,
+                MISSING_TRIE_KEYS_HELP,
             )?,
         })
     }
@@ -431,6 +447,69 @@ where
                     .await
                     .expect("should run");
                     trace!(?result, "step response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::ReadTrie {
+                trie_key,
+                responder,
+            }) => {
+                trace!(?trie_key, "read_trie request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let result = engine_state.read_trie(correlation_id, trie_key);
+                        metrics.read_trie.observe(start.elapsed().as_secs_f64());
+                        result
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "read_trie response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::PutTrie { trie, responder }) => {
+                trace!(?trie, "put_trie request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let result = engine_state.put_trie(correlation_id, &*trie);
+                        metrics.read_trie.observe(start.elapsed().as_secs_f64());
+                        result
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "put_trie response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            Event::Request(ContractRuntimeRequest::MissingTrieKeys {
+                trie_key,
+                responder,
+            }) => {
+                trace!(?trie_key, "missing_trie_keys request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let result = task::spawn_blocking(move || {
+                        let start = Instant::now();
+                        let result = engine_state.missing_trie_keys(correlation_id, trie_key);
+                        metrics.read_trie.observe(start.elapsed().as_secs_f64());
+                        result
+                    })
+                    .await
+                    .expect("should run");
+                    trace!(?result, "missing_trie_keys response");
                     responder.respond(result).await
                 }
                 .ignore()

@@ -12,14 +12,13 @@ DISABLE_LOGGING = RUST_LOG=MatchesNothing
 
 # Rust Contracts
 # Directory names should match crate names
-BENCH       = $(shell find ./smart_contracts/contracts/bench       -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-CLIENT      = $(shell find ./smart_contracts/contracts/client      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-EXPLORER    = $(shell find ./smart_contracts/contracts/explorer    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-INTEGRATION = $(shell find ./smart_contracts/contracts/integration -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-PROFILING   = $(shell find ./smart_contracts/contracts/profiling   -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-SRE         = $(shell find ./smart_contracts/contracts/SRE         -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-SYSTEM      = $(shell find ./smart_contracts/contracts/system      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-TEST        = $(shell find ./smart_contracts/contracts/test        -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+BENCH       = $(shell find ./smart_contracts/contracts/bench     -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+CLIENT      = $(shell find ./smart_contracts/contracts/client    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+EXPLORER    = $(shell find ./smart_contracts/contracts/explorer  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+PROFILING   = $(shell find ./smart_contracts/contracts/profiling -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+SRE         = $(shell find ./smart_contracts/contracts/SRE       -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+SYSTEM      = $(shell find ./smart_contracts/contracts/system    -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+TEST        = $(shell find ./smart_contracts/contracts/test      -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 
 BENCH_CONTRACTS     := $(patsubst %, build-contract-rs/%, $(BENCH))
 CLIENT_CONTRACTS    := $(patsubst %, build-contract-rs/%, $(CLIENT))
@@ -29,20 +28,11 @@ SRE_CONTRACTS       := $(patsubst %, build-contract-rs/%, $(SRE))
 TEST_CONTRACTS      := $(patsubst %, build-contract-rs/%, $(TEST))
 
 # AssemblyScript Contracts
-CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client   -mindepth 1 -maxdepth 1 -type d)
-TEST_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/test     -mindepth 1 -maxdepth 1 -type d)
+CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client -mindepth 1 -maxdepth 1 -type d)
+TEST_CONTRACTS_AS    = $(shell find ./smart_contracts/contracts_as/test   -mindepth 1 -maxdepth 1 -type d)
 
 CLIENT_CONTRACTS_AS  := $(patsubst %, build-contract-as/%, $(CLIENT_CONTRACTS_AS))
 TEST_CONTRACTS_AS    := $(patsubst %, build-contract-as/%, $(TEST_CONTRACTS_AS))
-
-INTEGRATION += \
-	endless-loop \
-	local-state \
-	modified-system-upgrader \
-	pos-bonding \
-	remove-associated-key \
-	standard-payment \
-	transfer-to-account-u512
 
 HIGHWAY_CONTRACTS += \
 	pos-install \
@@ -65,10 +55,6 @@ CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
 	types
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE := $(patsubst %, doc-stable/%, $(CRATES_WITH_DOCS_RS_MANIFEST_TABLE))
-
-.PHONY: list
-list:
-	@$(MAKE) -pRrq -f $(lastword $(MAKEFILE_LIST)) : 2>/dev/null | awk -v RS= -F: '/^# File/,/^# Finished Make data base/ {if ($$1 !~ "^[#.]") {print $$1}}' | sort | egrep -v -e '^[^[:alnum:]]' -e '^$@$$'
 
 .PHONY: all
 all: build build-contracts
@@ -93,7 +79,6 @@ build-contracts-rs: \
 	$(BENCH_CONTRACTS) \
 	$(CLIENT_CONTRACTS) \
 	$(EXPLORER_CONTRACTS) \
-	$(INTEGRATION_CONTRACTS) \
 	$(PROFILING_CONTRACTS) \
 	$(SRE_CONTRACTS) \
 	$(SYSTEM_CONTRACTS) \

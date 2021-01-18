@@ -12,10 +12,7 @@ use casper_execution_engine::{
         runtime_context::RuntimeContext,
     },
     shared::{gas::Gas, newtypes::CorrelationId, wasm_prep::Preprocessor},
-    storage::{
-        global_state::StateProvider,
-        protocol_data::{ProtocolData, DEFAULT_WASMLESS_TRANSFER_COST},
-    },
+    storage::{global_state::StateProvider, protocol_data::ProtocolData},
 };
 use casper_types::{
     account::AccountHash,
@@ -25,6 +22,8 @@ use casper_types::{
 };
 
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
+
+use super::DEFAULT_SYSTEM_CONFIG;
 
 /// This function allows executing the contract stored in the given `wasm_file`, while capturing the
 /// output. It is essentially the same functionality as `Executor::exec`, but the return value of
@@ -98,11 +97,11 @@ where
         let auction = builder.get_auction_contract_hash();
         ProtocolData::new(
             *DEFAULT_WASM_CONFIG,
+            *DEFAULT_SYSTEM_CONFIG,
             mint,
             pos,
             standard_payment,
             auction,
-            DEFAULT_WASMLESS_TRANSFER_COST,
         )
     };
 

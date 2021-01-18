@@ -27,7 +27,7 @@ use casper_types::{
 
 use crate::{
     core::{
-        engine_state::execution_effect::ExecutionEffect,
+        engine_state::{execution_effect::ExecutionEffect, SYSTEM_ACCOUNT_ADDR},
         execution::{AddressGenerator, Error},
         tracking_copy::{AddResult, TrackingCopy},
         Address,
@@ -728,13 +728,44 @@ where
         }
     }
 
+    /// Checks if we are calling a system contract.
+    pub(crate) fn is_system_contract(&self) -> bool {
+        if let Some(hash) = self.base_key().into_hash() {
+            let system_contracts = self.protocol_data().system_contracts();
+            if system_contracts.contains(&hash) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
+        if self.is_system_contract() {
+            // Don't charge storage used while executing a system contract.
+            return Ok(());
+        }
+
         let storage_costs = self.protocol_data().wasm_config().storage_costs();
 
         let gas_cost = storage_costs.calculate_gas_cost(bytes_count);
 
         self.charge_gas(gas_cost)
+    }
+
+    /// Charges gas for using a host system contract's entrypoint.
+    pub(crate) fn charge_system_contract_call<T>(&mut self, call_cost: T) -> Result<(), Error>
+    where
+        T: Into<Gas>,
+    {
+        if self.account.account_hash() == SYSTEM_ACCOUNT_ADDR {
+            // Don't try to charge a system account for calling a system contract's entry point.
+            // This will make sure that (for example) calling a mint's transfer from within auction
+            // wouldn't try to incur cost to system account.
+            return Ok(());
+        }
+        let amount: Gas = call_cost.into();
+        self.charge_gas(amount)
     }
 
     /// Writes data to global state with a measurement
