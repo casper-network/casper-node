@@ -357,7 +357,7 @@ steps:
 - name: publish-crate
   image: casperlabs/node-build-u1804
   commands:
-    - "./ci/publish.sh"
+    - "./ci/publish_to_crates_io.sh"
   environment:
     CARGO_TOKEN:
       from_secret: crates_io_token
