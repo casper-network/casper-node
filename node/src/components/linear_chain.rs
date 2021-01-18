@@ -368,7 +368,7 @@ where
                 let block_hash = block_header.hash();
                 let era_id = block_header.era_id();
                 let height = block_header.height();
-                info!(?block_hash, ?era_id, ?height, "Linear chain block stored.");
+                info!(%block_hash, %era_id, %height, "linear chain block stored");
                 let mut effects = effect_builder
                     .put_execution_results_to_storage(block_hash, execution_results)
                     .ignore();
