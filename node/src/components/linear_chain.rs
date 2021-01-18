@@ -154,18 +154,14 @@ impl BlockCache {
     }
 
     fn get(&self, hash: &BlockHash) -> Option<Block> {
-        match self.blocks.get(hash) {
-            None => None,
-            Some(block_header) => {
-                let mut block = Block::from_header(block_header.clone());
-                if let Some(proofs) = self.proofs.get(hash) {
-                    for (pub_key, sig) in proofs {
-                        block.append_proof(*pub_key, *sig);
-                    }
-                }
-                Some(block)
+        let block_header = self.blocks.get(hash)?;
+        let mut block = Block::from_header(block_header.clone());
+        if let Some(proofs) = self.proofs.get(hash) {
+            for (pub_key, sig) in proofs {
+                block.append_proof(*pub_key, *sig);
             }
         }
+        Some(block)
     }
 
     /// Inserts new block to the cache.
