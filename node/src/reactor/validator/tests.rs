@@ -177,24 +177,13 @@ fn era_ids(runner: &Runner<ConditionCheckReactor<validator::Reactor>>) -> HashSe
 }
 
 /// Given an era number, return a predicate to check if all of the nodes are in that specified era.
-fn is_in_era(era_num: usize) -> impl Fn(&Nodes) -> bool {
+fn is_in_era(era_num: u64) -> impl Fn(&Nodes) -> bool {
     move |nodes: &Nodes| {
-        // check ee's era_validators against consensus' validators
-        let first_node = nodes.values().next().expect("need at least one node");
-
-        // Get a list of eras from the first node.
-        let expected_eras = era_ids(&first_node);
-
-        // Return if not in expected era yet.
-        if expected_eras.len() <= era_num {
-            return false;
-        }
-
-        // Ensure eras are all the same for all other nodes.
+        // Ensure all nodes have the given era ID in their active eras
         nodes
             .values()
             .map(era_ids)
-            .all(|eras| eras == expected_eras)
+            .all(|eras| eras.contains(&EraId(era_num)))
     }
 }
 
@@ -240,19 +229,11 @@ async fn run_validator_network_with_initial_era_and_block() {
         .expect("network initialization failed");
 
     // Wait for all nodes to agree on one era.
-    net.settle_on(
-        &mut rng,
-        is_in_era(era_id as usize + 1),
-        Duration::from_secs(90),
-    )
-    .await;
+    net.settle_on(&mut rng, is_in_era(era_id + 1), Duration::from_secs(90))
+        .await;
 
-    net.settle_on(
-        &mut rng,
-        is_in_era(era_id as usize + 2),
-        Duration::from_secs(60),
-    )
-    .await;
+    net.settle_on(&mut rng, is_in_era(era_id + 2), Duration::from_secs(60))
+        .await;
 }
 
 #[tokio::test]
