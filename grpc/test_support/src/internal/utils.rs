@@ -24,9 +24,10 @@ use casper_types::Key;
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_UNBONDING_DELAY};
 use crate::internal::{
     AUCTION_INSTALL_CONTRACT, DEFAULT_AUCTION_DELAY, DEFAULT_CHAIN_NAME,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP, DEFAULT_LOCKED_FUNDS_PERIOD,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT,
-    POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP, DEFAULT_INITIAL_ERA_ID,
+    DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS,
+    DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
+    STANDARD_PAYMENT_INSTALL_CONTRACT,
 };
 
 static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
@@ -146,6 +147,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let initial_era_id = DEFAULT_INITIAL_ERA_ID;
     ExecConfig::new(
         mint_installer_bytes,
         proof_of_stake_installer_bytes,
@@ -159,6 +161,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
         round_seigniorage_rate,
         unbonding_delay,
         wasmless_transfer_cost,
+        initial_era_id,
     )
 }
 

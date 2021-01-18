@@ -3,8 +3,8 @@ use assert_matches::assert_matches;
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-        DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
+        DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_INITIAL_ERA_ID, DEFAULT_PAYMENT,
+        DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -19,7 +19,7 @@ use casper_types::{
     account::AccountHash,
     auction::{
         Bids, DelegationRate, EraId, UnbondingPurses, ARG_UNBOND_PURSE, ARG_VALIDATOR_PUBLIC_KEYS,
-        BIDS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH, UNBONDING_PURSES_KEY,
+        BIDS_KEY, METHOD_RUN_AUCTION, METHOD_SLASH, UNBONDING_PURSES_KEY,
     },
     runtime_args,
     system_contract_errors::auction,
@@ -157,7 +157,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         U512::zero(),
     );
 
-    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID,);
+    assert_eq!(unbond_list[0].era_of_creation(), DEFAULT_INITIAL_ERA_ID,);
 
     let unbond_era_1 = unbond_list[0].era_of_creation();
 
@@ -504,7 +504,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         U512::zero(),
     );
 
-    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID + 1);
+    assert_eq!(unbond_list[0].era_of_creation(), DEFAULT_INITIAL_ERA_ID + 1);
 
     let unbond_era_1 = unbond_list[0].era_of_creation();
 
@@ -740,7 +740,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         U512::zero(),
     );
 
-    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID + 1);
+    assert_eq!(unbond_list[0].era_of_creation(), DEFAULT_INITIAL_ERA_ID + 1);
 
     let unbond_era_1 = unbond_list[0].era_of_creation();
 

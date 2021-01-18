@@ -1,10 +1,7 @@
-use crate::{account::AccountHash, auction::EraId};
+use crate::account::AccountHash;
 
 /// System account hash.
 pub const SYSTEM_ACCOUNT: AccountHash = AccountHash::new([0; 32]);
-
-/// Initial value of era id we start at genesis.
-pub const INITIAL_ERA_ID: EraId = 0;
 
 /// Delegation rate is a fraction between 0-1. Validator sets the delegation rate
 /// in integer terms, which is then divided by the denominator to obtain the fraction.
@@ -54,6 +51,8 @@ pub const ARG_GENESIS_VALIDATORS: &str = "genesis_validators";
 pub const ARG_AUCTION_DELAY: &str = "auction_delay";
 /// Named constant for `locked_funds_period`
 pub const ARG_LOCKED_FUNDS_PERIOD: &str = "locked_funds_period";
+/// Named constant for `initial_era_id`
+pub const ARG_INITIAL_ERA_ID: &str = "initial_era_id";
 /// Named constant for `unbonding_delay`
 pub const ARG_UNBONDING_DELAY: &str = "unbonding_delay";
 /// Named constant for method `get_era_validators`.

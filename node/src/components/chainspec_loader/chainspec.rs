@@ -470,6 +470,7 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.round_seigniorage_rate,
             self.genesis.unbonding_delay,
             self.genesis.wasmless_transfer_cost,
+            self.genesis.initial_era_id.unwrap_or(0),
         )
     }
 }

@@ -269,6 +269,7 @@ pub struct ExecConfig {
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
     wasmless_transfer_cost: u64,
+    initial_era_id: EraId,
 }
 
 impl ExecConfig {
@@ -286,6 +287,7 @@ impl ExecConfig {
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: EraId,
         wasmless_transfer_cost: u64,
+        initial_era_id: EraId,
     ) -> ExecConfig {
         ExecConfig {
             mint_installer_bytes,
@@ -300,6 +302,7 @@ impl ExecConfig {
             round_seigniorage_rate,
             unbonding_delay,
             wasmless_transfer_cost,
+            initial_era_id,
         }
     }
 
@@ -360,6 +363,10 @@ impl ExecConfig {
     pub fn wasmless_transfer_cost(&self) -> u64 {
         self.wasmless_transfer_cost
     }
+
+    pub fn initial_era_id(&self) -> EraId {
+        self.initial_era_id
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -396,6 +403,8 @@ impl Distribution<ExecConfig> for Standard {
         );
         let wasmless_transfer_cost = rng.gen();
 
+        let initial_era_id = rng.gen_range(0, 20);
+
         ExecConfig {
             mint_installer_bytes,
             proof_of_stake_installer_bytes,
@@ -409,6 +418,7 @@ impl Distribution<ExecConfig> for Standard {
             round_seigniorage_rate,
             unbonding_delay,
             wasmless_transfer_cost,
+            initial_era_id,
         }
     }
 }

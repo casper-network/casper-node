@@ -301,6 +301,8 @@ message ChainSpec {
             uint64 unbonding_delay = 12;
             // Wasmless transfer cost expressed in gas.
             uint64 wasmless_transfer_cost = 13;
+            // Initial era ID
+            uint64 initial_era_id = 14;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;

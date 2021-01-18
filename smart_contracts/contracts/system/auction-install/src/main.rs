@@ -12,11 +12,11 @@ use casper_types::{
     auction::{
         Bid, Bids, EraId, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_AUCTION_DELAY,
-        ARG_GENESIS_VALIDATORS, ARG_LOCKED_FUNDS_PERIOD, ARG_MINT_CONTRACT_PACKAGE_HASH,
-        ARG_UNBONDING_DELAY, ARG_VALIDATOR_SLOTS, AUCTION_DELAY_KEY, BIDS_KEY,
-        DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
-        VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
+        ARG_GENESIS_VALIDATORS, ARG_INITIAL_ERA_ID, ARG_LOCKED_FUNDS_PERIOD,
+        ARG_MINT_CONTRACT_PACKAGE_HASH, ARG_UNBONDING_DELAY, ARG_VALIDATOR_SLOTS,
+        AUCTION_DELAY_KEY, BIDS_KEY, DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY,
+        LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
+        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
     },
     contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
@@ -37,6 +37,7 @@ pub extern "C" fn install() {
     let validator_slots: u32 = runtime::get_named_arg(ARG_VALIDATOR_SLOTS);
     let locked_funds_period: EraId = runtime::get_named_arg(ARG_LOCKED_FUNDS_PERIOD);
     let unbonding_delay: EraId = runtime::get_named_arg(ARG_UNBONDING_DELAY);
+    let initial_era_id: EraId = runtime::get_named_arg(ARG_INITIAL_ERA_ID);
 
     let entry_points = auction::get_entry_points();
     let (contract_package_hash, access_uref) = storage::create_contract_package_at_hash();
@@ -62,10 +63,10 @@ pub extern "C" fn install() {
         }
 
         let auction_delay: u64 = runtime::get_named_arg(ARG_AUCTION_DELAY);
-        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + auction_delay;
+        let initial_snapshot_range = initial_era_id..=initial_era_id + auction_delay;
 
         // Starting era validators
-        named_keys.insert(ERA_ID_KEY.into(), storage::new_uref(INITIAL_ERA_ID).into());
+        named_keys.insert(ERA_ID_KEY.into(), storage::new_uref(initial_era_id).into());
 
         let seigniorage_recipients = compute_seigniorage_recipients(&validators);
 

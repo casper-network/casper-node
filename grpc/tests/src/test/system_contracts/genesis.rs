@@ -3,9 +3,9 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     internal::{
         utils, InMemoryWasmTestBuilder, AUCTION_INSTALL_CONTRACT, DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_UNBONDING_DELAY,
-        DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT,
-        STANDARD_PAYMENT_INSTALL_CONTRACT,
+        DEFAULT_INITIAL_ERA_ID, DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+        DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+        MINT_INSTALL_CONTRACT, POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
     },
     AccountHash,
 };
@@ -76,6 +76,7 @@ fn should_run_genesis() {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let initial_era_id = DEFAULT_INITIAL_ERA_ID;
 
     let exec_config = ExecConfig::new(
         mint_installer_bytes,
@@ -90,6 +91,7 @@ fn should_run_genesis() {
         round_seigniorage_rate,
         unbonding_delay,
         wasmless_transfer_cost,
+        initial_era_id,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config);
@@ -152,6 +154,7 @@ fn should_track_total_token_supply_in_mint() {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let initial_era_id = DEFAULT_INITIAL_ERA_ID;
     let ee_config = ExecConfig::new(
         mint_installer_bytes,
         proof_of_stake_installer_bytes,
@@ -165,6 +168,7 @@ fn should_track_total_token_supply_in_mint() {
         round_seigniorage_rate,
         unbonding_delay,
         wasmless_transfer_cost,
+        initial_era_id,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);
