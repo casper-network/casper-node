@@ -15,9 +15,9 @@ use casper_types::{
     auction::EraId,
     bytesrepr::{self, FromBytes, ToBytes},
     runtime_args, AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractWasm, DeployHash, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef,
-    U512,
+    ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
+    SecretKey, URef, U512,
 };
 
 use super::SYSTEM_ACCOUNT_ADDR;
@@ -860,7 +860,7 @@ where
             ARG_AMOUNT => amount,
         };
 
-        let base_key = Key::Hash(self.protocol_data.mint());
+        let base_key = Key::Hash(self.protocol_data.mint().value());
         let mint = {
             if let StoredValue::Contract(contract) = tracking_copy
                 .borrow_mut()
@@ -918,9 +918,12 @@ where
         entry_points: EntryPoints,
     ) -> (ContractPackageHash, ContractHash) {
         let protocol_version = self.protocol_version;
-        let contract_wasm_hash = self.hash_address_generator.borrow_mut().new_hash_address();
-        let contract_hash = self.hash_address_generator.borrow_mut().new_hash_address();
-        let contract_package_hash = self.hash_address_generator.borrow_mut().new_hash_address();
+        let contract_wasm_hash =
+            ContractWasmHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
+        let contract_hash =
+            ContractHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
+        let contract_package_hash =
+            ContractPackageHash::new(self.hash_address_generator.borrow_mut().new_hash_address());
 
         let contract_wasm = ContractWasm::new(vec![]);
         let contract = Contract::new(

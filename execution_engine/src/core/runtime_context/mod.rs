@@ -719,7 +719,7 @@ where
     pub(crate) fn is_system_contract(&self) -> bool {
         if let Some(hash) = self.base_key().into_hash() {
             let system_contracts = self.protocol_data().system_contracts();
-            if system_contracts.contains(&hash) {
+            if system_contracts.contains(&hash.into()) {
                 return true;
             }
         }

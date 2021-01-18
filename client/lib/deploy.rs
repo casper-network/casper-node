@@ -47,6 +47,8 @@ pub struct ListDeploysResult {
     pub api_version: Version,
     /// The deploy hashes of the block, if found.
     pub deploy_hashes: Option<Vec<DeployHash>>,
+    /// The transfer deploy hashes of the block, if found.
+    pub transfer_hashes: Option<Vec<DeployHash>>,
 }
 
 impl From<GetBlockResult> for ListDeploysResult {
@@ -55,7 +57,12 @@ impl From<GetBlockResult> for ListDeploysResult {
             api_version: get_block_result.api_version,
             deploy_hashes: get_block_result
                 .block
+                .as_ref()
                 .map(|block| block.deploy_hashes().clone()),
+            transfer_hashes: get_block_result
+                .block
+                .as_ref()
+                .map(|block| block.transfer_hashes().clone()),
         }
     }
 }

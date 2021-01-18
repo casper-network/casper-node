@@ -30,10 +30,10 @@ impl Default for ProtocolData {
         ProtocolData {
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
-            mint: DEFAULT_ADDRESS,
-            proof_of_stake: DEFAULT_ADDRESS,
-            standard_payment: DEFAULT_ADDRESS,
-            auction: DEFAULT_ADDRESS,
+            mint: DEFAULT_ADDRESS.into(),
+            proof_of_stake: DEFAULT_ADDRESS.into(),
+            standard_payment: DEFAULT_ADDRESS.into(),
+            auction: DEFAULT_ADDRESS.into(),
         }
     }
 }
@@ -114,16 +114,16 @@ impl ProtocolData {
     /// Retrieves all valid system contracts stored in protocol version
     pub fn system_contracts(&self) -> Vec<ContractHash> {
         let mut vec = Vec::with_capacity(4);
-        if self.mint != DEFAULT_ADDRESS {
+        if self.mint != DEFAULT_ADDRESS.into() {
             vec.push(self.mint)
         }
-        if self.proof_of_stake != DEFAULT_ADDRESS {
+        if self.proof_of_stake != DEFAULT_ADDRESS.into() {
             vec.push(self.proof_of_stake)
         }
-        if self.standard_payment != DEFAULT_ADDRESS {
+        if self.standard_payment != DEFAULT_ADDRESS.into() {
             vec.push(self.standard_payment)
         }
-        if self.auction != DEFAULT_ADDRESS {
+        if self.auction != DEFAULT_ADDRESS.into() {
             vec.push(self.auction)
         }
         vec
@@ -183,11 +183,11 @@ impl FromBytes for ProtocolData {
         Ok((
             ProtocolData {
                 wasm_config,
+                mint: mint.into(),
+                proof_of_stake: proof_of_stake.into(),
+                standard_payment: standard_payment.into(),
+                auction: auction.into(),
                 system_config,
-                mint,
-                proof_of_stake,
-                standard_payment,
-                auction,
             },
             rem,
         ))
@@ -217,10 +217,10 @@ pub(crate) mod gens {
             ProtocolData {
                 wasm_config,
                 system_config,
-                mint,
-                proof_of_stake,
-                standard_payment,
-                auction,
+                mint: mint.into(),
+                proof_of_stake: proof_of_stake.into(),
+                standard_payment: standard_payment.into(),
+                auction: auction.into(),
             }
         }
     }
@@ -237,10 +237,10 @@ mod tests {
 
     #[test]
     fn should_return_all_system_contracts() {
-        let mint_reference = [1u8; 32];
-        let proof_of_stake_reference = [2u8; 32];
-        let standard_payment_reference = [3u8; 32];
-        let auction_reference = [4u8; 32];
+        let mint_reference = [1u8; 32].into();
+        let proof_of_stake_reference = [2u8; 32].into();
+        let standard_payment_reference = [3u8; 32].into();
+        let auction_reference = [4u8; 32].into();
         let protocol_data = {
             let wasm_config = WasmConfig::default();
             let system_config = SystemConfig::default();
@@ -272,10 +272,10 @@ mod tests {
         let expected: Vec<ContractHash> = vec![];
         assert_eq!(ProtocolData::default().system_contracts(), expected);
 
-        let mint_reference = [0u8; 32]; // <-- invalid addr
-        let proof_of_stake_reference = [2u8; 32];
-        let standard_payment_reference = [3u8; 32];
-        let auction_reference = [4u8; 32];
+        let mint_reference = [0u8; 32].into(); // <-- invalid addr
+        let proof_of_stake_reference = [2u8; 32].into();
+        let standard_payment_reference = [3u8; 32].into();
+        let auction_reference = [4u8; 32].into();
         let protocol_data = {
             let wasm_config = WasmConfig::default();
             let system_config = SystemConfig::default();

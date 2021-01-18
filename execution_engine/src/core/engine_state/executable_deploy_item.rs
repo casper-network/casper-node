@@ -123,9 +123,11 @@ pub enum ExecutableDeployItem {
 impl ExecutableDeployItem {
     pub(crate) fn to_contract_hash_key(&self, account: &Account) -> Result<Option<Key>, Error> {
         match self {
-            ExecutableDeployItem::StoredContractByHash { hash, .. }
-            | ExecutableDeployItem::StoredVersionedContractByHash { hash, .. } => {
-                Ok(Some(Key::from(*hash)))
+            ExecutableDeployItem::StoredContractByHash { hash, .. } => {
+                Ok(Some(Key::from(hash.value())))
+            }
+            ExecutableDeployItem::StoredVersionedContractByHash { hash, .. } => {
+                Ok(Some(Key::from(hash.value())))
             }
             ExecutableDeployItem::StoredContractByName { name, .. }
             | ExecutableDeployItem::StoredVersionedContractByName { name, .. } => {
@@ -227,7 +229,7 @@ impl ExecutableDeployItem {
 
                 let contract = tracking_copy
                     .borrow_mut()
-                    .get_contract(correlation_id, contract_hash)?;
+                    .get_contract(correlation_id, contract_hash.into())?;
 
                 if !contract.is_compatible_protocol_version(*protocol_version) {
                     let exec_error = execution::Error::IncompatibleProtocolMajorVersion {
@@ -259,16 +261,18 @@ impl ExecutableDeployItem {
 
                 let contract_package = tracking_copy
                     .borrow_mut()
-                    .get_contract_package(correlation_id, contract_package_hash)?;
+                    .get_contract_package(correlation_id, contract_package_hash.into())?;
 
                 let maybe_version_key =
                     version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| contract_package.current_contract_version())
-                    .ok_or(error::Error::Exec(
-                        execution::Error::NoActiveContractVersions(contract_package_hash),
-                    ))?;
+                    .ok_or_else(|| {
+                        error::Error::Exec(execution::Error::NoActiveContractVersions(
+                            contract_package_hash.into(),
+                        ))
+                    })?;
 
                 if !contract_package.is_version_enabled(contract_version_key) {
                     return Err(error::Error::Exec(
@@ -289,7 +293,7 @@ impl ExecutableDeployItem {
                 (
                     contract_package,
                     contract,
-                    contract_hash,
+                    contract_hash.value(),
                     contract_package_key,
                 )
             }
@@ -309,7 +313,10 @@ impl ExecutableDeployItem {
                 error::Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
             })?;
 
-        if protocol_data.system_contracts().contains(&contract_hash) {
+        if protocol_data
+            .system_contracts()
+            .contains(&contract_hash.into())
+        {
             return Ok(DeployMetadata::System {
                 base_key,
                 contract,
@@ -673,7 +680,7 @@ impl Distribution<ExecutableDeployItem> for Standard {
                 args: args.into(),
             },
             1 => ExecutableDeployItem::StoredContractByHash {
-                hash: rng.gen(),
+                hash: ContractHash::new(rng.gen()),
                 entry_point: random_string(rng),
                 args: args.into(),
             },
@@ -683,7 +690,7 @@ impl Distribution<ExecutableDeployItem> for Standard {
                 args: args.into(),
             },
             3 => ExecutableDeployItem::StoredVersionedContractByHash {
-                hash: rng.gen(),
+                hash: ContractPackageHash::new(rng.gen()),
                 version: rng.gen(),
                 entry_point: random_string(rng),
                 args: args.into(),

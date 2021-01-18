@@ -551,6 +551,7 @@ pub struct BlockHeader {
     state_root_hash: Digest,
     body_hash: Digest,
     deploy_hashes: Vec<DeployHash>,
+    transfer_hashes: Vec<DeployHash>,
     random_bit: bool,
     accumulated_seed: Digest,
     era_end: Option<EraEnd>,
@@ -580,6 +581,11 @@ impl BlockHeader {
     /// The list of deploy hashes included in the block.
     pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
         &self.deploy_hashes
+    }
+
+    /// The list of transfer hashes included in the block.
+    pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
+        &self.transfer_hashes
     }
 
     /// A random bit needed for initializing a future era.
@@ -651,11 +657,12 @@ impl Display for BlockHeader {
         write!(
             formatter,
             "block header parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, accumulated seed {}, timestamp {}",
+            transfers [{}], random bit {}, accumulated seed {}, timestamp {}",
             self.parent_hash.inner(),
             self.state_root_hash,
             self.body_hash,
             DisplayIter::new(self.deploy_hashes.iter()),
+            DisplayIter::new(self.transfer_hashes.iter()),
             self.random_bit,
             self.accumulated_seed,
             self.timestamp,
@@ -674,6 +681,7 @@ impl ToBytes for BlockHeader {
         buffer.extend(self.state_root_hash.to_bytes()?);
         buffer.extend(self.body_hash.to_bytes()?);
         buffer.extend(self.deploy_hashes.to_bytes()?);
+        buffer.extend(self.transfer_hashes.to_bytes()?);
         buffer.extend(self.random_bit.to_bytes()?);
         buffer.extend(self.accumulated_seed.to_bytes()?);
         buffer.extend(self.era_end.to_bytes()?);
@@ -690,6 +698,7 @@ impl ToBytes for BlockHeader {
             + self.state_root_hash.serialized_length()
             + self.body_hash.serialized_length()
             + self.deploy_hashes.serialized_length()
+            + self.transfer_hashes.serialized_length()
             + self.random_bit.serialized_length()
             + self.accumulated_seed.serialized_length()
             + self.era_end.serialized_length()
@@ -707,6 +716,7 @@ impl FromBytes for BlockHeader {
         let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
         let (body_hash, remainder) = Digest::from_bytes(remainder)?;
         let (deploy_hashes, remainder) = Vec::<DeployHash>::from_bytes(remainder)?;
+        let (transfer_hashes, remainder) = Vec::<DeployHash>::from_bytes(remainder)?;
         let (random_bit, remainder) = bool::from_bytes(remainder)?;
         let (accumulated_seed, remainder) = Digest::from_bytes(remainder)?;
         let (era_end, remainder) = Option::<EraEnd>::from_bytes(remainder)?;
@@ -721,6 +731,7 @@ impl FromBytes for BlockHeader {
             state_root_hash,
             body_hash,
             deploy_hashes,
+            transfer_hashes,
             random_bit,
             accumulated_seed,
             era_end,
@@ -808,12 +819,8 @@ impl Block {
             parent_hash,
             state_root_hash,
             body_hash,
-            deploy_hashes: finalized_block
-                .proto_block
-                .wasm_deploys
-                .into_iter()
-                .chain(finalized_block.proto_block.transfers.into_iter())
-                .collect(),
+            deploy_hashes: finalized_block.proto_block.wasm_deploys,
+            transfer_hashes: finalized_block.proto_block.transfers,
             random_bit: finalized_block.proto_block.random_bit,
             accumulated_seed: accumulated_seed.into(),
             era_end: finalized_block.era_end,
@@ -946,12 +953,13 @@ impl Display for Block {
         write!(
             formatter,
             "executed block {}, parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, timestamp {}, era_id {}, height {}, proofs count {}",
+            transfers [{}], random bit {}, timestamp {}, era_id {}, height {}, proofs count {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.state_root_hash,
             self.header.body_hash,
             DisplayIter::new(self.header.deploy_hashes.iter()),
+            DisplayIter::new(self.header.transfer_hashes.iter()),
             self.header.random_bit,
             self.header.timestamp,
             self.header.era_id.0,
@@ -1129,6 +1137,7 @@ pub(crate) mod json_compatibility {
         state_root_hash: Digest,
         body_hash: Digest,
         deploy_hashes: Vec<DeployHash>,
+        transfer_hashes: Vec<DeployHash>,
         random_bit: bool,
         accumulated_seed: Digest,
         era_end: Option<JsonEraEnd>,
@@ -1154,6 +1163,7 @@ pub(crate) mod json_compatibility {
                 state_root_hash: block_header.state_root_hash,
                 body_hash: block_header.body_hash,
                 deploy_hashes: block_header.deploy_hashes,
+                transfer_hashes: block_header.transfer_hashes,
                 random_bit: block_header.random_bit,
                 accumulated_seed: block_header.accumulated_seed,
                 era_end: block_header.era_end.map(JsonEraEnd::from),
@@ -1181,6 +1191,7 @@ pub(crate) mod json_compatibility {
                 state_root_hash: block_header.state_root_hash,
                 body_hash: block_header.body_hash,
                 deploy_hashes: block_header.deploy_hashes,
+                transfer_hashes: block_header.transfer_hashes,
                 random_bit: block_header.random_bit,
                 accumulated_seed: block_header.accumulated_seed,
                 era_end: block_header.era_end.map(EraEnd::from),
@@ -1206,6 +1217,11 @@ pub(crate) mod json_compatibility {
     impl JsonBlock {
         /// Returns the hashes of the `Deploy`s included in the `Block`.
         pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
+            &self.header.deploy_hashes
+        }
+
+        /// Returns the hashes of the transfer `Deploy`s included in the `Block`.
+        pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
             &self.header.deploy_hashes
         }
     }

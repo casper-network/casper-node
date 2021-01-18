@@ -225,7 +225,7 @@ where
         contract_hash: ContractHash,
         contract_name: &str,
     ) -> Result<(), ProtocolUpgradeError> {
-        let contract_key = Key::Hash(contract_hash);
+        let contract_key = Key::Hash(contract_hash.value());
 
         let mut contract = if let StoredValue::Contract(contract) = self
             .tracking_copy
@@ -244,7 +244,7 @@ where
             ));
         };
 
-        let contract_package_key = Key::Hash(contract.contract_package_hash());
+        let contract_package_key = Key::Hash(contract.contract_package_hash().value());
 
         let mut contract_package = if let StoredValue::ContractPackage(contract_package) = self
             .tracking_copy
