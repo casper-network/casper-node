@@ -14,8 +14,8 @@ cmake --build target/build
 
 In the `target/build` directory which was created, you should see the binaries for the examples that have been compiled.
 
-The build also produces a shared library in `target/build/lib/libcasper_client.so` and its header file in
-`target/build/headers/casper_client.h`.
+The build also produces a shared library in `target/build/installed/lib/libcasper_client.so` and its header file in
+`target/build/installed/include/casper_client.h`.
 
 ```
 #include "casper_client.h

@@ -21,7 +21,7 @@ set(ClientBuiltLibSource "${CMAKE_CURRENT_LIST_DIR}/../../../target/${TARGET_DIR
 # The location of the casper_client library after being moved to the ffi examples build directory.
 set(ClientBuiltLibTarget "${InstallPath}/lib/${ClientLibName}")
 # The initial location of the generated header for the casper_client library.
-set(ClientHeadersDirSource "${CMAKE_CURRENT_LIST_DIR}/../../headers")
+set(ClientHeadersDirSource "${CMAKE_CURRENT_LIST_DIR}/../../../target/headers")
 # The location of the casper_client header after being moved to the ffi examples build directory.
 set(ClientHeadersDirTarget "${InstallPath}/include")
 
