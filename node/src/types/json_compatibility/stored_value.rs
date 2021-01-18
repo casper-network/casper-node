@@ -20,9 +20,6 @@ use super::{Account, Contract, ContractPackage};
 
 /// Representation of a value stored in global state.
 ///
-/// Variants like `Account`, `Contract` and `ContractPackage` are formed by serializing the variant
-/// using `ToBytes` and hex- encoding the resulting byte string.
-///
 /// `Account`, `Contract` and `ContractPackage` have their own `json_compatibility` representations
 /// (see their docs for further info).
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]

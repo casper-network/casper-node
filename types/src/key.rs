@@ -59,16 +59,6 @@ impl From<HashAddr> for Key {
     }
 }
 
-/// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.
-#[derive(Debug)]
-pub struct TryFromSliceForContractHashError(());
-
-impl Display for TryFromSliceForContractHashError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "failed to retrieve from slice")
-    }
-}
-
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
 /// are indexed on the network.
 #[repr(C)]

@@ -21,7 +21,7 @@ const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
 const KEY_HASH_LENGTH: usize = 32;
 const WASM_STRING_PREFIX: &str = "contract-wasm-";
 
-/// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.
+/// Associated error type of `TryFrom<&[u8]>` for `ContractWasmHash`.
 #[derive(Debug)]
 pub struct TryFromSliceForContractHashError(());
 
@@ -86,7 +86,7 @@ impl Display for FromStrError {
 pub struct ContractWasmHash(HashAddr);
 
 impl ContractWasmHash {
-    /// Constructs a new `ContractWasmHash` from the raw bytes of the contract hash.
+    /// Constructs a new `ContractWasmHash` from the raw bytes of the contract wasm hash.
     pub const fn new(value: HashAddr) -> ContractWasmHash {
         ContractWasmHash(value)
     }

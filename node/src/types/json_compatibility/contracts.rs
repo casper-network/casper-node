@@ -3,6 +3,7 @@
 
 use datasize::DataSize;
 use schemars::JsonSchema;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use crate::types::json_compatibility::vectorize;
@@ -10,7 +11,6 @@ use casper_types::{
     Contract as DomainContract, ContractHash, ContractPackage as DomainContractPackage,
     ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey, URef,
 };
-use semver::Version;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, DataSize, JsonSchema,

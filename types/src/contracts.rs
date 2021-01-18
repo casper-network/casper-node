@@ -411,7 +411,7 @@ impl JsonSchema for ContractHash {
 pub struct ContractPackageHash(HashAddr);
 
 impl ContractPackageHash {
-    /// Constructs a new `ContractHash` from the raw bytes of the contract hash.
+    /// Constructs a new `ContractPackageHash` from the raw bytes of the contract package hash.
     pub const fn new(value: HashAddr) -> ContractPackageHash {
         ContractPackageHash(value)
     }
