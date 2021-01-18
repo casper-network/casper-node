@@ -36,6 +36,9 @@ secret_key_path = '/etc/casper/validator_keys/secret_key.pem'
 # The folder in which the files with per-era latest unit hashes will be stored.
 unit_hashes_folder = "/var/lib/casper/casper-node"
 
+# The duration for which incoming vertices with missing dependencies should be kept in a queue.
+pending_vertex_timeout = '1day'
+
 
 # ====================================
 # Configuration options for networking

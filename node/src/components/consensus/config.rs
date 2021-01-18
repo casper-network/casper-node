@@ -7,7 +7,7 @@ use casper_types::SecretKey;
 
 use crate::{
     components::chainspec_loader::{HighwayConfig, UpgradePoint},
-    types::Timestamp,
+    types::{TimeDiff, Timestamp},
     utils::External,
     Chainspec,
 };
@@ -21,6 +21,8 @@ pub struct Config {
     pub secret_key_path: External<SecretKey>,
     /// Path to the folder where unit hash files will be stored.
     pub unit_hashes_folder: PathBuf,
+    /// The duration for which incoming vertices with missing dependencies are kept in a queue.
+    pub pending_vertex_timeout: TimeDiff,
 }
 
 /// Consensus protocol configuration.

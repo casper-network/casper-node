@@ -74,7 +74,7 @@ pub struct EraSupervisor<I> {
     /// This map always contains exactly `2 * bonded_eras + 1` entries, with the last one being the
     /// current one.
     active_eras: HashMap<EraId, Era<I>>,
-    pub(super) secret_signing_key: Rc<SecretKey>,
+    secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
     current_era: EraId,
     protocol_config: ProtocolConfig,
