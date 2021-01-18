@@ -225,7 +225,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             State::None | State::Done => panic!("Downloaded block when in {} state.", self.state),
             State::SyncingTrustedHash { .. } => {
                 if block_header.is_genesis_child() {
-                    info!("Linear chain downloaded. Start downloading deploys.");
+                    info!("linear chain downloaded. Start downloading deploys.");
                     effect_builder
                         .immediately()
                         .event(move |_| Event::StartDownloadingDeploys)
@@ -338,7 +338,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
 
         next_block.map_or_else(
             || {
-                warn!("Tried fetching next block deploys when there was no block.");
+                warn!("tried fetching next block deploys when there was no block.");
                 Effects::new()
             },
             |block| fetch_block_deploys(effect_builder, peer, block),
@@ -400,11 +400,11 @@ where
                 match self.state {
                     State::None | State::Done | State::SyncingDescendants { .. } => {
                         // No syncing configured.
-                        trace!("Received `Start` event when in {} state.", self.state);
+                        trace!("received `Start` event when in {} state.", self.state);
                         Effects::new()
                     }
                     State::SyncingTrustedHash { trusted_hash, .. } => {
-                        trace!(?trusted_hash, "Start synchronization");
+                        trace!(?trusted_hash, "start synchronization");
                         // Start synchronization.
                         fetch_block_by_hash(effect_builder, init_peer, trusted_hash)
                     }
@@ -417,7 +417,7 @@ where
                         // We have synchronized all, currently existing, descendants of trusted
                         // hash.
                         self.mark_done();
-                        info!("Finished synchronizing descendants of the trusted hash.");
+                        info!("finished synchronizing descendants of the trusted hash.");
                         Effects::new()
                     }
                     Some(peer) => fetch_block_at_height(effect_builder, peer, block_height),
@@ -432,6 +432,7 @@ where
                     self.block_downloaded(rng, effect_builder, block.header())
                 }
                 BlockByHeightResult::FromPeer(block, peer) => {
+                    trace!(%block_height, %peer, "linear chain block downloaded from a peer");
                     if block.height() != block_height
                         || *block.header().parent_hash() != self.latest_block().unwrap().hash()
                     {
@@ -460,19 +461,23 @@ where
                         error!(%block_hash, "Could not download linear block from any of the peers.");
                         panic!("Failed to download linear chain.")
                     }
-                    Some(peer) => fetch_block_by_hash(effect_builder, peer, block_hash),
+                    Some(peer) => {
+                        trace!(%block_hash, next_peer=%peer, "failed to download block from a peer. Trying next one");
+                        fetch_block_by_hash(effect_builder, peer, block_hash)
+                    }
                 },
                 Some(FetchResult::FromStorage(block)) => {
                     // We shouldn't get invalid data from the storage.
                     // If we do, it's a bug.
                     assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
-                    trace!(%block_hash, "Linear block found in the local storage.");
+                    trace!(%block_hash, "linear block found in the local storage.");
                     self.block_downloaded(rng, effect_builder, block.header())
                 }
                 Some(FetchResult::FromPeer(block, peer)) => {
+                    trace!(%block_hash, %peer, "linear chain block downloaded from a peer");
                     if *block.hash() != block_hash {
                         warn!(
-                            "Block hash mismatch. Expected {} got {} from {}.",
+                            "block hash mismatch. Expected {} got {} from {}.",
                             block_hash,
                             block.hash(),
                             peer
@@ -491,7 +496,7 @@ where
             },
             Event::DeploysFound(block_header) => {
                 let block_height = block_header.height();
-                trace!(%block_height, "Deploys for linear chain block found.");
+                trace!(%block_height, "deploys for linear chain block found.");
                 // Reset used peers so we can download next block with the full set.
                 self.reset_peers(rng);
                 // Execute block
@@ -501,7 +506,7 @@ where
             Event::DeploysNotFound(block_header) => match self.random_peer() {
                 None => {
                     let block_hash = block_header.hash();
-                    error!(%block_hash, "Could not download deploys from linear chain block.");
+                    error!(%block_hash, "could not download deploys from linear chain block.");
                     panic!("Failed to download linear chain deploys.")
                 }
                 Some(peer) => fetch_block_deploys(effect_builder, peer, *block_header),
@@ -512,7 +517,7 @@ where
                 self.fetch_next_block_deploys(effect_builder)
             }
             Event::NewPeerConnected(peer_id) => {
-                trace!(%peer_id, "New peer connected");
+                trace!(%peer_id, "new peer connected");
                 // Add to the set of peers we can request things from.
                 let mut effects = Effects::new();
                 if self.peers.is_empty() {
@@ -530,7 +535,7 @@ where
             Event::BlockHandled(header) => {
                 let block_height = header.height();
                 let block_hash = header.hash();
-                trace!(?block_height, ?block_hash, "Block handled.");
+                trace!(%block_height, %block_hash, "nlock handled.");
                 self.block_handled(rng, effect_builder, *header)
             }
         }
