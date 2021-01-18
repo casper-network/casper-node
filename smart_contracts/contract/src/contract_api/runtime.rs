@@ -11,12 +11,11 @@ use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes},
     contracts::{ContractVersion, NamedKeys},
-    ApiError, BlockTime, CLTyped, CLValue, Key, Phase, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH,
-    BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
+    ApiError, BlockTime, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, Phase,
+    RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
 };
 
 use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
-use casper_types::contracts::{ContractHash, ContractPackageHash};
 
 /// Returns the given [`CLValue`] to the host, terminating the currently running module.
 ///

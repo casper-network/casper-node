@@ -9,7 +9,7 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{contracts::ContractHash, ApiError, RuntimeArgs, URef};
+use casper_types::{ApiError, ContractHash, RuntimeArgs, URef};
 
 #[no_mangle]
 pub extern "C" fn call() {

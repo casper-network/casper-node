@@ -8,7 +8,7 @@ use alloc::string::ToString;
 
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    account::AccountHash, contracts::ContractHash, CLType, CLTyped, ContractVersion, EntryPoint,
+    account::AccountHash, CLType, CLTyped, ContractHash, ContractVersion, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, Parameter,
 };
 

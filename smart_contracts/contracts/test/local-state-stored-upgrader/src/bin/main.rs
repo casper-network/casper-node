@@ -6,8 +6,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::{ContractHash, ContractPackageHash, NamedKeys, Parameters},
-    CLType, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    contracts::{NamedKeys, Parameters},
+    CLType, ContractHash, ContractPackageHash, ContractVersion, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints,
 };
 
 const CONTRACT_NAME: &str = "local_state_stored";

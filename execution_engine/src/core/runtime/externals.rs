@@ -8,8 +8,8 @@ use casper_types::{
     api_error,
     auction::{EraId, EraInfo},
     bytesrepr::{self, ToBytes},
-    contracts::{ContractHash, ContractPackageHash, EntryPoints, NamedKeys},
-    ContractVersion, Group, Key, URef, U512,
+    contracts::{EntryPoints, NamedKeys},
+    ContractHash, ContractPackageHash, ContractVersion, Group, Key, URef, U512,
 };
 
 use super::{args::Args, scoped_instrumenter::ScopedInstrumenter, Error, Runtime};

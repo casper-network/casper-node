@@ -19,10 +19,10 @@ use casper_types::{
     auction::EraInfo,
     bytesrepr,
     bytesrepr::ToBytes,
-    contracts::{ContractPackageHash, NamedKeys},
-    AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, DeployHash, DeployInfo,
-    EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, Transfer,
-    TransferAddr, URef, KEY_HASH_LENGTH,
+    contracts::NamedKeys,
+    AccessRights, BlockTime, CLType, CLValue, Contract, ContractPackage, ContractPackageHash,
+    DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Key, Phase, ProtocolVersion,
+    RuntimeArgs, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
 };
 
 use crate::{

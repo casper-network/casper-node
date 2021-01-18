@@ -12,15 +12,15 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::{ContractHash, ContractPackageHash, NamedKeys, Parameters},
+    contracts::{NamedKeys, Parameters},
     mint::{ACCESS_KEY, HASH_KEY},
     proof_of_stake::{
         ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
         METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
     },
     standard_payment::METHOD_PAY,
-    CLType, CLValue, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Parameter, URef,
+    CLType, CLValue, ContractHash, ContractPackageHash, ContractVersion, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, Parameter, URef,
 };
 
 pub const MODIFIED_MINT_EXT_FUNCTION_NAME: &str = "modified_mint_ext";

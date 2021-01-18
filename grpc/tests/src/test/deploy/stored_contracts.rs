@@ -16,10 +16,8 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    contracts::{
-        ContractHash, ContractVersion, CONTRACT_INITIAL_VERSION, DEFAULT_ENTRY_POINT_NAME,
-    },
-    runtime_args, Key, ProtocolVersion, RuntimeArgs, U512,
+    contracts::{ContractVersion, CONTRACT_INITIAL_VERSION, DEFAULT_ENTRY_POINT_NAME},
+    runtime_args, ContractHash, Key, ProtocolVersion, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);

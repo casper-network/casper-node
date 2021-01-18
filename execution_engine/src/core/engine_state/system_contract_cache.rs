@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use casper_types::contracts::ContractHash;
+use casper_types::ContractHash;
 use parity_wasm::elements::Module;
 
 /// A cache of deserialized contracts.

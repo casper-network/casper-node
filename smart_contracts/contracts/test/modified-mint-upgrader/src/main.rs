@@ -9,9 +9,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::{ContractHash, ContractPackageHash, NamedKeys},
+    contracts::NamedKeys,
     mint::{ACCESS_KEY, HASH_KEY},
-    CLValue, ContractVersion, URef,
+    CLValue, ContractHash, ContractPackageHash, ContractVersion, URef,
 };
 
 pub const MODIFIED_MINT_EXT_FUNCTION_NAME: &str = "modified_mint_ext";

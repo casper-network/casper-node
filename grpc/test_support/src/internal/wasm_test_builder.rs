@@ -54,10 +54,9 @@ use casper_types::{
         EraId, EraValidators, ValidatorWeights, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
     },
     bytesrepr::{self},
-    contracts::ContractHash,
     mint::TOTAL_SUPPLY_KEY,
-    runtime_args, CLTyped, CLValue, Contract, ContractWasm, DeployHash, DeployInfo, Key,
-    RuntimeArgs, Transfer, TransferAddr, URef, U512,
+    runtime_args, CLTyped, CLValue, Contract, ContractHash, ContractWasm, DeployHash, DeployInfo,
+    Key, RuntimeArgs, Transfer, TransferAddr, URef, U512,
 };
 
 use crate::internal::{

@@ -18,8 +18,7 @@ use casper_types::{
         LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_PURSES_KEY,
         VALIDATOR_REWARD_PURSE_KEY,
     },
-    contracts::ContractHash,
-    runtime_args, DeployHash, RuntimeArgs, U512,
+    runtime_args, ContractHash, DeployHash, RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

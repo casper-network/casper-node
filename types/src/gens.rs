@@ -14,10 +14,10 @@ use proptest::{
 
 use crate::{
     account::{AccountHash, Weight},
-    contracts::{ContractHash, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters},
-    AccessRights, CLType, CLValue, Contract, ContractPackage, ContractVersionKey, ContractWasm,
-    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group, Key, NamedArg, Parameter,
-    Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
+    contracts::{ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters},
+    AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractVersionKey,
+    ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group, Key, NamedArg,
+    Parameter, Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {

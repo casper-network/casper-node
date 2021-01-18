@@ -18,10 +18,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::{
-        ContractPackageHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys,
-    },
-    CLType, Key, Parameter, URef,
+    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
+    CLType, ContractPackageHash, Key, Parameter, URef,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

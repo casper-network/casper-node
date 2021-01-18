@@ -3,9 +3,8 @@ use std::convert::TryInto;
 use parity_wasm::elements::Module;
 
 use casper_types::{
-    account::AccountHash,
-    contracts::{ContractHash, ContractPackageHash},
-    CLValue, Contract, ContractPackage, ContractWasm, ContractWasmHash, Key,
+    account::AccountHash, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    ContractWasm, ContractWasmHash, Key,
 };
 
 use crate::{

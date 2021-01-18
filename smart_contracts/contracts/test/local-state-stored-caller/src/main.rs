@@ -2,7 +2,7 @@
 #![no_main]
 
 use casper_contract::contract_api::runtime;
-use casper_types::{contracts::ContractHash, RuntimeArgs};
+use casper_types::{ContractHash, RuntimeArgs};
 
 const ARG_SEED: &str = "seed";
 const ENTRY_FUNCTION_NAME: &str = "delegate";

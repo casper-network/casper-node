@@ -9,8 +9,8 @@ use casper_types::{
     auction::{EraId, EraInfo},
     bytesrepr,
     system_contract_errors::auction,
-    ApiError, HashAddr, SystemContractType, TransferResult, TransferredTo, URef, U512,
-    UREF_SERIALIZED_LENGTH,
+    ApiError, ContractHash, HashAddr, SystemContractType, TransferResult, TransferredTo, URef,
+    U512, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -18,7 +18,6 @@ use crate::{
     ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::contracts::ContractHash;
 
 fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
     let system_contract_index = system_contract.into();

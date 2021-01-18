@@ -7,7 +7,8 @@ use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{ContractVersion, EntryPoints, NamedKeys},
-    AccessRights, ApiError, CLTyped, CLValue, HashAddr, Key, URef, UREF_SERIALIZED_LENGTH,
+    AccessRights, ApiError, CLTyped, CLValue, ContractHash, ContractPackageHash, HashAddr, Key,
+    URef, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -15,7 +16,6 @@ use crate::{
     ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::contracts::{ContractHash, ContractPackageHash};
 
 /// Reads value under `uref` in the global state.
 pub fn read<T: CLTyped + FromBytes>(uref: URef) -> Result<Option<T>, bytesrepr::Error> {

@@ -12,9 +12,9 @@ use casper_contract::{
 };
 use casper_types::{
     account::AccountHash,
-    contracts::{ContractHash, NamedKeys, Parameters},
-    ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, RuntimeArgs,
-    URef, U512,
+    contracts::{NamedKeys, Parameters},
+    ApiError, CLType, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    RuntimeArgs, URef, U512,
 };
 
 const DONATION_AMOUNT: u64 = 1;

@@ -7,8 +7,8 @@ use alloc::string::ToString;
 
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    contracts::{ContractHash, Parameters},
-    CLType, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    contracts::Parameters, CLType, ContractHash, ContractVersion, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";

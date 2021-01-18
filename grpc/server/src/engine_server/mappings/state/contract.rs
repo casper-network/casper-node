@@ -1,8 +1,8 @@
 use std::convert::{TryFrom, TryInto};
 
 use casper_types::{
-    contracts::{Contract, ContractPackageHash, NamedKeys},
-    ContractWasmHash, EntryPoints,
+    contracts::{Contract, NamedKeys},
+    ContractPackageHash, ContractWasmHash, EntryPoints,
 };
 
 use super::NamedKeyMap;
