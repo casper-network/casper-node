@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     convert::Infallible,
     fmt::{self, Display, Formatter},
     marker::PhantomData,
@@ -10,7 +10,7 @@ use derive_more::From;
 use itertools::Itertools;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer};
+use casper_types::{ExecutionResult, ProtocolVersion, PublicKey, SemVer, Signature};
 
 use super::{consensus::EraId, Component};
 use crate::{
@@ -23,7 +23,7 @@ use crate::{
         EffectBuilder, EffectExt, EffectOptionExt, EffectResultExt, Effects, Responder,
     },
     protocol::Message,
-    types::{Block, BlockByHeight, BlockHash, DeployHash, FinalitySignature},
+    types::{Block, BlockByHeight, BlockHash, BlockHeader, DeployHash, FinalitySignature},
     NodeRng,
 };
 
@@ -140,7 +140,8 @@ impl<I: Display> Display for Event<I> {
 #[derive(DataSize, Debug)]
 struct BlockCache {
     curr_era: EraId,
-    blocks: HashMap<BlockHash, Block>,
+    blocks: HashMap<BlockHash, BlockHeader>,
+    proofs: HashMap<BlockHash, BTreeMap<PublicKey, Signature>>,
 }
 
 impl BlockCache {
@@ -148,22 +149,44 @@ impl BlockCache {
         BlockCache {
             curr_era: EraId(0),
             blocks: Default::default(),
+            proofs: Default::default(),
         }
     }
 
     fn get(&self, hash: &BlockHash) -> Option<Block> {
-        self.blocks.get(hash).cloned()
+        match self.blocks.get(hash) {
+            None => None,
+            Some(block_header) => {
+                let mut block = Block::from_header(block_header.clone());
+                if let Some(proofs) = self.proofs.get(hash) {
+                    for (pub_key, sig) in proofs {
+                        block.append_proof(*pub_key, *sig);
+                    }
+                }
+                Some(block)
+            }
+        }
     }
 
+    /// Inserts new block to the cache.
+    /// Caches block's finality signatures as well.
+    /// If we receive a block from a new era, old era blocks are removed.
     fn insert(&mut self, block: Block) {
         let new_block_era = block.header().era_id();
         if self.curr_era < new_block_era {
             // We optimistically assume that most of the signatures that arrive in close temporar
             // proximity refer to the same era.
             self.blocks.clear();
+            self.proofs.clear();
             self.curr_era = new_block_era;
         }
-        self.blocks.insert(*block.hash(), block);
+        if !block.proofs().is_empty() {
+            let entry = self.proofs.entry(*block.hash()).or_default();
+            for (pk, sig) in block.proofs() {
+                entry.insert(*pk, *sig);
+            }
+        }
+        self.blocks.insert(*block.hash(), block.take_header());
     }
 }
 
@@ -202,6 +225,12 @@ impl<I> LinearChain<I> {
             .unwrap_or(false)
     }
 
+    /// Removes all entries for which there are no finality signatures.
+    fn remove_empty_entries(&mut self) {
+        self.pending_finality_signatures
+            .retain(|_, sigs| !sigs.is_empty());
+    }
+
     /// Adds pending finality signatures to the block; returns events to announce and broadcast
     /// them, and the updated block.
     fn collect_pending_finality_signatures<REv>(
@@ -225,8 +254,7 @@ impl<I> LinearChain<I> {
             .filter_map(|sigs| sigs.remove(&block_hash).map(Box::new))
             .filter(|fs| !block.proofs().contains_key(&fs.public_key))
             .collect_vec();
-        self.pending_finality_signatures
-            .retain(|_, sigs| !sigs.is_empty());
+        self.remove_empty_entries();
         let block_era = block.header().era_id();
         // Add new signatures and send the updated block to storage.
         for fs in pending_sigs {
@@ -254,7 +282,7 @@ impl<I> LinearChain<I> {
             public_key,
             ..
         } = fs;
-        debug!(%block_hash, %public_key, "received new finality signature for unknown block");
+        debug!(%block_hash, %public_key, "received new finality signature");
         let sigs = self
             .pending_finality_signatures
             .entry(public_key)
@@ -269,6 +297,23 @@ impl<I> LinearChain<I> {
         }
         // Add the pending signature.
         let _ = sigs.insert(block_hash, fs);
+    }
+
+    /// Removes finality signature from the pending collection.
+    fn remove_from_pending_fs(&mut self, fs: &FinalitySignature) {
+        let FinalitySignature {
+            block_hash,
+            era_id: _era_id,
+            signature: _signature,
+            public_key,
+        } = fs;
+        debug!(%block_hash, %public_key, "removing finality signature from pending collection");
+        let validator_sigs = self
+            .pending_finality_signatures
+            .entry(*public_key)
+            .or_default();
+        validator_sigs.remove(&block_hash);
+        self.remove_empty_entries();
     }
 }
 
@@ -395,9 +440,10 @@ where
                     return Effects::new();
                 }
                 if self.has_finality_signature(&fs) {
+                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key, "finality signature already pending");
                     return Effects::new();
                 }
-
+                self.add_pending_finality_signature(*fs.clone());
                 match self.block_cache.get(&block_hash) {
                     None => effect_builder.get_block_from_storage(block_hash).event(
                         move |maybe_block| {
@@ -418,7 +464,7 @@ where
                         return Effects::new();
                     }
                     // Populate cache so that next finality signatures don't have to read from the
-                    // storage.
+                    // storage. If block is already from cache then this will be a noop.
                     self.block_cache.insert(*block.clone())
                 }
                 // Check if validator is bonded in the era in which the block was created.
@@ -475,26 +521,35 @@ where
                     }
                 }
             }
-            Event::IsBonded(Some(block), fs, true) => {
+            Event::IsBonded(Some(mut block), fs, true) => {
                 // Known block and signature from a bonded validator.
-                self.add_pending_finality_signature(*fs);
-                let old_count = block.proofs().len();
-                let (block, mut effects) =
-                    self.collect_pending_finality_signatures(*block, effect_builder);
-                if block.proofs().len() > old_count {
-                    let block = Box::new(block);
+                // Check if we had already seen this signature before.
+                let signature_known = block
+                    .proofs()
+                    .get(&fs.public_key)
+                    .iter()
+                    .any(|sig| *sig == &fs.signature);
+                // If new, gossip and store.
+                if !signature_known {
+                    let mut effects = broadcast_new_fs(effect_builder, fs.clone());
+                    block.append_proof(fs.public_key, fs.signature);
+                    // Cache the results in case we receive the same finality signature before we
+                    // manage to store it in the database.
+                    self.block_cache.insert(*block.clone());
                     effects.extend(effect_builder.put_block_to_storage(block).ignore());
+                    effects
+                } else {
+                    Effects::new()
                 }
-                effects
             }
-            Event::IsBonded(None, fs, true) => {
+            Event::IsBonded(None, _, true) => {
                 // Unknown block but validator is bonded.
                 // We should finalize the same block eventually. Either in this or in the
                 // next era.
-                self.add_pending_finality_signature(*fs);
                 Effects::new()
             }
             Event::IsBonded(Some(_), fs, false) | Event::IsBonded(None, fs, false) => {
+                self.remove_from_pending_fs(&fs);
                 // Unknown validator.
                 let FinalitySignature {
                     public_key,
@@ -511,4 +566,22 @@ where
             }
         }
     }
+}
+
+// Constructs a network message and gossips the finality signature.
+fn broadcast_new_fs<I, REv>(
+    effect_builder: EffectBuilder<REv>,
+    fs: Box<FinalitySignature>,
+) -> Effects<Event<I>>
+where
+    REv: From<StorageRequest>
+        + From<ConsensusRequest>
+        + From<NetworkRequest<I, Message>>
+        + From<LinearChainAnnouncement>
+        + From<ContractRuntimeRequest>
+        + Send,
+    I: Display + Send + 'static,
+{
+    let message = Message::FinalitySignature(fs);
+    effect_builder.broadcast_message(message).ignore()
 }
