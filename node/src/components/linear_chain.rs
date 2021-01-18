@@ -306,6 +306,7 @@ impl<I> LinearChain<I> {
         if let Some(validator_sigs) = self.pending_finality_signatures.get_mut(public_key) {
             validator_sigs.remove(&block_hash);
         }
+        self.remove_empty_entries();
     }
 }
 
