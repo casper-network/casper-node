@@ -834,6 +834,18 @@ impl Block {
         }
     }
 
+    /// Creates an instance of the block from the block header.
+    pub(crate) fn from_header(header: BlockHeader) -> Self {
+        let body = ();
+        let hash = header.hash();
+        Block {
+            hash,
+            header,
+            body,
+            proofs: BTreeMap::new(),
+        }
+    }
+
     pub(crate) fn header(&self) -> &BlockHeader {
         &self.header
     }
