@@ -20,10 +20,11 @@ use super::{Account, Contract, ContractPackage};
 
 /// Representation of a value stored in global state.
 ///
-/// All variants other than `Account` are formed by serializing the variant using `ToBytes` and hex-
-/// encoding the resulting byte string.
+/// Variants like `Account`, `Contract` and `ContractPackage` are formed by serializing the variant
+/// using `ToBytes` and hex- encoding the resulting byte string.
 ///
-/// `Account` has its own `json_compatibility` representation (see its docs for further info).
+/// `Account`, `Contract` and `ContractPackage` have their own `json_compatibility` representation
+/// (see its docs for further info).
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub enum StoredValue {

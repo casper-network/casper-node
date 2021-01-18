@@ -69,7 +69,7 @@ impl From<HashAddr> for Key {
 /// An alias for [`Key`]s hash variant.
 pub type ContractHashBytes = HashAddr;
 
-/// Associated error type of `TryFrom<&[u8]>` for [`ContractHash`].
+/// Associated error type of `TryFrom<&[u8]>` for `ContractHash`.
 #[derive(Debug)]
 pub struct TryFromSliceForContractHashError(());
 
@@ -79,7 +79,7 @@ impl Display for TryFromSliceForContractHashError {
     }
 }
 
-/// A newtype wrapping a [`ContractHashBytes`] which is the raw bytes of
+/// A newtype wrapping a `ContractHashBytes` which is the raw bytes of
 /// the ContractHash
 #[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ContractHash(ContractHashBytes);
@@ -224,7 +224,7 @@ impl JsonSchema for ContractHash {
 /// An alias for [`Key`]s hash variant.
 pub type ContractWasmHashBytes = HashAddr;
 
-/// A newtype wrapping a [`ContractHashBytes`] which is the raw bytes of
+/// A newtype wrapping a `ContractWasmHashBytes` which is the raw bytes of
 /// the ContractWasmHash
 #[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ContractWasmHash(ContractWasmHashBytes);
@@ -365,7 +365,7 @@ impl JsonSchema for ContractWasmHash {
 /// An alias for [`Key`]s hash variant.
 pub type ContractPackageHashBytes = HashAddr;
 
-/// A newtype wrapping a [`ContractHashBytes`] which is the raw bytes of
+/// A newtype wrapping a `ContractPackageHashBytes` which is the raw bytes of
 /// the ContractPackageHash
 #[derive(DataSize, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ContractPackageHash(ContractPackageHashBytes);
