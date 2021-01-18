@@ -43,7 +43,7 @@ mod tests;
 use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
-    fs, io,
+    fs, io, mem,
     path::PathBuf,
     sync::Arc,
 };
@@ -56,6 +56,7 @@ use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
 };
 use serde::{Deserialize, Serialize};
+use static_assertions::const_assert;
 #[cfg(test)]
 use tempfile::TempDir;
 use thiserror::Error;
@@ -107,8 +108,6 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 /// Mac OS X exhibits performance regressions when `WRITE_MAP` is used.
 #[cfg(target_os = "macos")]
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
-use static_assertions::const_assert;
-use std::mem;
 const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
 const_assert!(_STORAGE_EVENT_SIZE <= 96);
 
