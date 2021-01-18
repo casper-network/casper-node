@@ -55,7 +55,7 @@ spec:
       terminationGracePeriodSeconds: 5
       containers:
         - name: node
-          image: clmarc/casper-node:8300c12e # TODO: Dynamically set.
+          image: clmarc/casper-node:5bb6e0c4 # TODO: Dynamically set.
           # The args override some settings from environment variables.
           args: ["validator", "/config/node/config.toml"]
           env:
