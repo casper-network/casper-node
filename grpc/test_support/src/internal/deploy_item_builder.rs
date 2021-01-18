@@ -9,7 +9,7 @@ use casper_types::{
     HashAddr, RuntimeArgs,
 };
 
-use crate::internal::{DEFAULT_GAS_PRICE, utils};
+use crate::internal::{utils, DEFAULT_GAS_PRICE};
 
 #[derive(Default)]
 struct DeployItemData {
