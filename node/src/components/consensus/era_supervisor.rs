@@ -77,6 +77,7 @@ pub struct EraSupervisor<I> {
     pub(super) secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
     initial_era: EraId,
+    initial_block_height: u64,
     current_era: EraId,
     protocol_config: ProtocolConfig,
     #[data_size(skip)] // Negligible for most closures, zero for functions.
@@ -143,6 +144,7 @@ where
             secret_signing_key,
             public_signing_key,
             initial_era: initial_era_id,
+            initial_block_height,
             current_era: initial_era_id,
             protocol_config,
             new_consensus,
@@ -188,19 +190,24 @@ where
     fn booking_block_height(&self, era_id: EraId) -> u64 {
         // The booking block for era N is the last block of era N - AUCTION_DELAY - 1
         // To find it, we get the start height of era N - AUCTION_DELAY and subtract 1
-        let after_booking_era_id =
-            EraId(era_id.0.saturating_sub(self.protocol_config.auction_delay));
+        let after_booking_era_id = EraId(
+            era_id
+                .0
+                .saturating_sub(self.protocol_config.auction_delay + self.initial_era.0)
+                + self.initial_era.0,
+        );
         self.active_eras
             .get(&after_booking_era_id)
             .expect("should have era after booking block")
             .start_height
-            .saturating_sub(1)
+            .saturating_sub(1 + self.initial_block_height)
+            + self.initial_block_height
     }
 
     fn key_block_height(&self, _era_id: EraId, start_height: u64) -> u64 {
         // the switch block of the previous era
         // TODO: consider defining the key block as a block further in the past
-        start_height.saturating_sub(1)
+        start_height.saturating_sub(1 + self.initial_block_height) + self.initial_block_height
     }
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {

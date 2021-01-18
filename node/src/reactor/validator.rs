@@ -393,19 +393,6 @@ impl reactor::Reactor for Reactor {
             gossiper::get_deploy_from_storage::<Deploy, Event>,
             registry,
         )?;
-        let (block_proposer, block_proposer_effects) = BlockProposer::new(
-            registry.clone(),
-            effect_builder,
-            latest_block
-                .as_ref()
-                .map(|block| block.height() + 1)
-                .unwrap_or(0),
-        )?;
-        let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
-        // Post state hash is expected to be present.
-        let genesis_state_root_hash = chainspec_loader
-            .genesis_state_root_hash()
-            .expect("should have state root hash");
         let initial_era_id = chainspec_loader
             .chainspec()
             .genesis
@@ -416,6 +403,20 @@ impl reactor::Reactor for Reactor {
             .genesis
             .initial_block_height
             .unwrap_or(0);
+        let next_finalized_block = cmp::max(
+            latest_block
+                .as_ref()
+                .map(|block| block.height() + 1)
+                .unwrap_or(0),
+            initial_block_height,
+        );
+        let (block_proposer, block_proposer_effects) =
+            BlockProposer::new(registry.clone(), effect_builder, next_finalized_block)?;
+        let mut effects = reactor::wrap_effects(Event::BlockProposer, block_proposer_effects);
+        // Post state hash is expected to be present.
+        let genesis_state_root_hash = chainspec_loader
+            .genesis_state_root_hash()
+            .expect("should have state root hash");
         let block_executor = BlockExecutor::new(
             genesis_state_root_hash,
             initial_era_id,
