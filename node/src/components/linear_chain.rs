@@ -170,7 +170,7 @@ impl BlockCache {
     fn insert(&mut self, block: Block) {
         let new_block_era = block.header().era_id();
         if self.curr_era < new_block_era {
-            // We optimistically assume that most of the signatures that arrive in close temporar
+            // We optimistically assume that most of the signatures that arrive in close temporal
             // proximity refer to the same era.
             self.blocks.clear();
             self.proofs.clear();
@@ -217,8 +217,7 @@ impl<I> LinearChain<I> {
         let block_hash = fs.block_hash;
         self.pending_finality_signatures
             .get(&creator)
-            .map(|sigs| sigs.contains_key(&block_hash))
-            .unwrap_or(false)
+            .map_or(false, |sigs| sigs.contains_key(&block_hash))
     }
 
     /// Removes all entries for which there are no finality signatures.
@@ -304,12 +303,9 @@ impl<I> LinearChain<I> {
             public_key,
         } = fs;
         debug!(%block_hash, %public_key, "removing finality signature from pending collection");
-        let validator_sigs = self
-            .pending_finality_signatures
-            .entry(*public_key)
-            .or_default();
-        validator_sigs.remove(&block_hash);
-        self.remove_empty_entries();
+        if let Some(validator_sigs) = self.pending_finality_signatures.get_mut(public_key) {
+            validator_sigs.remove(&block_hash);
+        }
     }
 }
 
@@ -436,7 +432,8 @@ where
                     return Effects::new();
                 }
                 if self.has_finality_signature(&fs) {
-                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key, "finality signature already pending");
+                    debug!(block_hash=%fs.block_hash, public_key=%fs.public_key,
+                        "finality signature already pending");
                     return Effects::new();
                 }
                 self.add_pending_finality_signature(*fs.clone());
@@ -526,7 +523,9 @@ where
                     .iter()
                     .any(|sig| *sig == &fs.signature);
                 // If new, gossip and store.
-                if !signature_known {
+                if signature_known {
+                    Effects::new()
+                } else {
                     let mut effects = broadcast_new_fs(effect_builder, fs.clone());
                     block.append_proof(fs.public_key, fs.signature);
                     // Cache the results in case we receive the same finality signature before we
@@ -534,8 +533,6 @@ where
                     self.block_cache.insert(*block.clone());
                     effects.extend(effect_builder.put_block_to_storage(block).ignore());
                     effects
-                } else {
-                    Effects::new()
                 }
             }
             Event::IsBonded(None, _, true) => {
