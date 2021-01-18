@@ -1189,8 +1189,7 @@ mod tests {
     #[test]
     fn contract_package_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
-        let contract_hash =
-            HashAddr::try_from(&bytes[..]).expect("should create contract hash");
+        let contract_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
         let contract_hash = ContractPackageHash::new(contract_hash);
         assert_eq!(&bytes, &contract_hash.as_bytes());
     }
@@ -1313,6 +1312,4 @@ mod tests {
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(contract_hash, decoded)
     }
-
 }
-

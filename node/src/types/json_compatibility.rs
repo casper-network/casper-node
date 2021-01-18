@@ -7,17 +7,17 @@ mod stored_value;
 
 pub use account::Account;
 pub use auction_state::AuctionState;
+use casper_types::{contracts::NamedKeys, NamedKey};
 pub use contracts::{Contract, ContractPackage};
 pub use stored_value::StoredValue;
-use casper_types::NamedKey;
-use casper_types::contracts::NamedKeys;
 
 // A helper function to change NamedKeys into a Vec<NamedKey>
 pub fn vectorize(keys: &NamedKeys) -> Vec<NamedKey> {
-    let named_keys = keys.iter()
+    let named_keys = keys
+        .iter()
         .map(|(name, key)| NamedKey {
             name: name.clone(),
-            key: key.to_formatted_string()
+            key: key.to_formatted_string(),
         })
         .collect();
     named_keys

@@ -5,9 +5,9 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::types::json_compatibility::vectorize;
 use casper_execution_engine::shared::account::Account as ExecutionEngineAccount;
 use casper_types::{account::AccountHash, NamedKey, URef};
-use crate::types::json_compatibility::vectorize;
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]
 #[serde(deny_unknown_fields)]
