@@ -59,7 +59,7 @@ fn should_transfer_to_account_stored() {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_hash(
-                contract_hash,
+                contract_hash.into(),
                 TRANSFER_ENTRYPOINT,
                 runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => transferred_amount },
             )

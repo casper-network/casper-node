@@ -1,5 +1,9 @@
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_types::{bytesrepr::ToBytes, ContractPackageHash, RuntimeArgs};
+use casper_types::{
+    bytesrepr::ToBytes,
+    contracts::{ContractHash, ContractPackageHash},
+    RuntimeArgs,
+};
 
 use crate::error::Result;
 
@@ -14,7 +18,7 @@ pub trait ExecutableDeployItemExt {
 
     /// Creates an `ExecutableDeployItem::StoredContractByHash`.
     fn new_stored_contract_by_hash(
-        hash: ContractPackageHash,
+        hash: ContractHash,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem>;
@@ -53,7 +57,7 @@ impl ExecutableDeployItemExt for ExecutableDeployItem {
     }
 
     fn new_stored_contract_by_hash(
-        hash: ContractPackageHash,
+        hash: ContractHash,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Result<ExecutableDeployItem> {

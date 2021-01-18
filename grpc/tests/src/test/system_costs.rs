@@ -107,7 +107,8 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -137,7 +138,8 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_WITHDRAW_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -215,7 +217,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -246,7 +249,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_WITHDRAW_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -311,7 +315,8 @@ fn delegate_and_undelegate_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_DELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -341,7 +346,8 @@ fn delegate_and_undelegate_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_UNDELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -437,7 +443,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_DELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -468,7 +475,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_UNDELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,

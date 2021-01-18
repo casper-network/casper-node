@@ -109,8 +109,8 @@ impl ExecutableDeployItem {
         account: &Account,
     ) -> Result<Option<Key>, error::Error> {
         match self {
-            ExecutableDeployItem::StoredContractByHash { hash, .. }
-            | ExecutableDeployItem::StoredVersionedContractByHash { hash, .. } => {
+            ExecutableDeployItem::StoredContractByHash { hash, .. } => Ok(Some(Key::from(*hash))),
+            ExecutableDeployItem::StoredVersionedContractByHash { hash, .. } => {
                 Ok(Some(Key::from(*hash)))
             }
             ExecutableDeployItem::StoredContractByName { name, .. }
@@ -500,7 +500,7 @@ impl Distribution<ExecutableDeployItem> for Standard {
                 args: args.into(),
             },
             1 => ExecutableDeployItem::StoredContractByHash {
-                hash: rng.gen(),
+                hash: ContractHash::new(rng.gen()),
                 entry_point: random_string(rng),
                 args: args.into(),
             },
@@ -510,7 +510,7 @@ impl Distribution<ExecutableDeployItem> for Standard {
                 args: args.into(),
             },
             3 => ExecutableDeployItem::StoredVersionedContractByHash {
-                hash: rng.gen(),
+                hash: ContractPackageHash::new(rng.gen()),
                 version: rng.gen(),
                 entry_point: random_string(rng),
                 args: args.into(),

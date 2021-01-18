@@ -5,8 +5,8 @@ use casper_execution_engine::{
     shared::newtypes::Blake2bHash,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, contracts::ContractVersion, ContractHash, DeployHash,
-    HashAddr, RuntimeArgs,
+    account::AccountHash, bytesrepr::ToBytes, ContractHash, ContractVersion, DeployHash, HashAddr,
+    RuntimeArgs,
 };
 
 use crate::internal::utils;
@@ -160,7 +160,7 @@ impl DeployItemBuilder {
         args: RuntimeArgs,
     ) -> Self {
         self.deploy_item.session_code = Some(ExecutableDeployItem::StoredVersionedContractByHash {
-            hash,
+            hash: hash.into(),
             version,
             entry_point: entry_point.to_owned(),
             args: args
@@ -198,7 +198,7 @@ impl DeployItemBuilder {
         args: RuntimeArgs,
     ) -> Self {
         self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredVersionedContractByHash {
-            hash,
+            hash: hash.into(),
             version,
             entry_point: entry_point.to_owned(),
             args: args

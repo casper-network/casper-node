@@ -50,7 +50,7 @@ fn should_get_funds_from_faucet_stored() {
     // call stored faucet
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        contract_hash,
+        contract_hash.into(),
         CALL_FAUCET,
         runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
     )
@@ -90,7 +90,7 @@ fn should_fail_if_already_funded() {
     // call stored faucet
     let exec_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        contract_hash,
+        contract_hash.into(),
         CALL_FAUCET,
         runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
     )
@@ -101,7 +101,7 @@ fn should_fail_if_already_funded() {
     // call stored faucet again; should error
     let exec_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        contract_hash,
+        contract_hash.into(),
         CALL_FAUCET,
         runtime_args! { ARG_TARGET => NEW_ACCOUNT_ADDR, ARG_AMOUNT => amount },
     )

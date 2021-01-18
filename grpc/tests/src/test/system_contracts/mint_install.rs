@@ -49,7 +49,7 @@ fn should_run_mint_install_contract() {
 
     // does not return extra urefs
     assert_eq!(ret_urefs.len(), 0);
-    assert_ne!(contract_package_hash, mint_hash);
+    assert_ne!(contract_package_hash.value(), mint_hash.value());
 
     // should have written a contract under that uref
     let contract_package = match effect.transforms.get(&contract_package_hash.into()) {
