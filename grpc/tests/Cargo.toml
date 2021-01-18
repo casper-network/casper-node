@@ -37,7 +37,6 @@ default = [
     "casper-engine-test-support/test-support"
 ]
 use-as-wasm = ["casper-engine-test-support/use-as-wasm"]
-use-system-contracts = ["casper-engine-test-support/use-system-contracts"]
 
 [lib]
 bench = false

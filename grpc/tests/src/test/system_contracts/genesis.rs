@@ -3,8 +3,8 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     internal::{
         InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_LOCKED_FUNDS_PERIOD,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS,
-        DEFAULT_WASM_CONFIG,
+        DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
+        DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
     },
     AccountHash,
 };
@@ -171,70 +171,4 @@ fn should_track_total_token_supply_in_mint() {
         expected_balance + expected_bonded_amount,
         "unexpected total supply"
     )
-}
-
-#[cfg(feature = "use-system-contracts")]
-#[ignore]
-#[should_panic]
-#[test]
-fn should_fail_if_bad_mint_install_contract_is_provided() {
-    let run_genesis_request = {
-        let protocol_version = ProtocolVersion::V1_0_0;
-        let wasm_config = *DEFAULT_WASM_CONFIG;
-        let system_config = *DEFAULT_SYSTEM_CONFIG;
-        let validator_slots = DEFAULT_VALIDATOR_SLOTS;
-        let auction_delay = DEFAULT_AUCTION_DELAY;
-        let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
-        let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
-        let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-
-        let exec_config = ExecConfig::new(
-            GENESIS_CUSTOM_ACCOUNTS.clone(),
-            wasm_config,
-            system_config,
-            validator_slots,
-            auction_delay,
-            locked_funds_period,
-            round_seigniorage_rate,
-            unbonding_delay,
-        );
-        RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
-    };
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
-}
-
-#[cfg(feature = "use-system-contracts")]
-#[ignore]
-#[should_panic]
-#[test]
-fn should_fail_if_bad_pos_install_contract_is_provided() {
-    let run_genesis_request = {
-        let protocol_version = ProtocolVersion::V1_0_0;
-        let wasm_config = *DEFAULT_WASM_CONFIG;
-        let system_config = *DEFAULT_SYSTEM_CONFIG;
-        let validator_slots = DEFAULT_VALIDATOR_SLOTS;
-        let auction_delay = DEFAULT_AUCTION_DELAY;
-        let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
-        let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
-        let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-
-        let exec_config = ExecConfig::new(
-            GENESIS_CUSTOM_ACCOUNTS.clone(),
-            wasm_config,
-            system_config,
-            validator_slots,
-            auction_delay,
-            locked_funds_period,
-            round_seigniorage_rate,
-            unbonding_delay,
-        );
-        RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config)
-    };
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&run_genesis_request);
 }

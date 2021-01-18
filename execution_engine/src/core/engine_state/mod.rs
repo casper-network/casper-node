@@ -34,7 +34,7 @@ use casper_types::{
     proof_of_stake,
     system_contract_errors::{self},
     AccessRights, ApiError, BlockTime, CLValue, Contract, DeployHash, DeployInfo, Key, Phase,
-    ProtocolVersion, RuntimeArgs, URef, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -137,7 +137,7 @@ where
     ) -> Result<GenesisResult, Error> {
         // Preliminaries
         let initial_root_hash = self.state.empty_root();
-        let system_config = pb_exec_config.take_system_config().try_into()?;
+        let system_config = ee_config.system_config();
 
         let tracking_copy = match self.tracking_copy(initial_root_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
@@ -180,7 +180,6 @@ where
         // Associate given CostTable with given ProtocolVersion.
         {
             let wasm_config = ee_config.wasm_config();
-            let wasmless_transfer_cost = ee_config.wasmless_transfer_cost();
             let protocol_data = ProtocolData::new(
                 *wasm_config,
                 *system_config,

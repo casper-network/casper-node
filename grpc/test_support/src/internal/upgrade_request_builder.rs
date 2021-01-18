@@ -4,8 +4,7 @@ use casper_engine_grpc_server::engine_server::{
     ipc::{
         ChainSpec_ActivationPoint, ChainSpec_NewAuctionDelay, ChainSpec_NewLockedFundsPeriod,
         ChainSpec_NewUnbondingDelay, ChainSpec_NewValidatorSlots, ChainSpec_SystemConfig,
-         ChainSpec_UpgradePoint, ChainSpec_WasmConfig,
-        UpgradeRequest,
+        ChainSpec_UpgradePoint, ChainSpec_WasmConfig, UpgradeRequest,
     },
     state,
 };

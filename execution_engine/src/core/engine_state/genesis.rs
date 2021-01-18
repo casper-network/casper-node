@@ -26,7 +26,7 @@ use crate::{
     },
     shared::{
         account::Account, motes::Motes, newtypes::Blake2bHash, stored_value::StoredValue,
-        wasm_config::WasmConfig, TypeMismatch,
+        system_config::SystemConfig, wasm_config::WasmConfig, TypeMismatch,
     },
     storage::global_state::{CommitResult, StateProvider},
 };
@@ -54,7 +54,7 @@ use casper_types::{
         ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE,
         METHOD_SET_REFUND_PURSE,
     },
-    standard_payment::METHOD_CALL,
+    standard_payment::METHOD_PAY,
 };
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
@@ -1108,7 +1108,7 @@ where
         let mut entry_points = EntryPoints::new();
 
         let entry_point = EntryPoint::new(
-            METHOD_CALL.to_string(),
+            METHOD_PAY.to_string(),
             vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
             CLType::Result {
                 ok: Box::new(CLType::Unit),
