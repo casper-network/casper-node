@@ -20,11 +20,7 @@ use casper_execution_engine::shared::motes::Motes;
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 pub enum DeployType {
     /// Represents a wasm-less transfer.
-    Transfer {
-        header: DeployHeader,
-        payment_amount: Motes,
-        size: usize,
-    },
+    Transfer { header: DeployHeader, size: usize },
     /// Represents a wasm deploy.
     Other {
         header: DeployHeader,
@@ -47,14 +43,6 @@ impl DeployType {
         match self {
             Self::Transfer { header, .. } => header,
             Self::Other { header, .. } => header,
-        }
-    }
-
-    /// Access payment_amount from all variants.
-    pub fn payment_amount_motes(&self) -> Motes {
-        match self {
-            Self::Transfer { payment_amount, .. } => *payment_amount,
-            Self::Other { payment_amount, .. } => *payment_amount,
         }
     }
 

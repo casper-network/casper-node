@@ -19,7 +19,7 @@ fn default_gas_payment() -> Gas {
 }
 
 // gas_price used for test deploys
-const TEST_GAS_PRICE: u64 = 1;
+const TEST_GAS_PRICE: u64 = 2;
 
 fn generate_transfer(
     rng: &mut TestRng,
@@ -270,7 +270,12 @@ fn should_not_add_wasm_deploy_with_zero_gas_price() {
     let mut proposer = create_test_proposer(0);
     // pending
     proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type().unwrap());
-    assert_eq!(proposer.sets.pending.len(), 0, "there should be 0 pending deploys - the one added has a gas price (willingness to pay) of 0");
+    assert_eq!(
+        proposer.sets.pending_deploys.len(),
+        0,
+        "there should be 0 pending deploys - the one added \
+        has a gas price (willingness to pay) of 0"
+    );
 }
 
 #[test]
@@ -279,7 +284,7 @@ fn should_add_transfers() {
     let ttl = TimeDiff::from(Duration::from_millis(100));
 
     let mut rng = crate::new_rng();
-    let mut proposer = create_test_proposer(1);
+    let mut proposer = create_test_proposer(TEST_GAS_PRICE);
     let deploy1 = generate_transfer(
         &mut rng,
         creation_time,
@@ -295,7 +300,7 @@ fn should_add_transfers() {
     // pending
     proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type().unwrap());
     assert_eq!(
-        proposer.sets.pending.len(),
+        proposer.sets.pending_transfers.len(),
         1,
         "there should be 1 pending deploys"
     );
@@ -327,7 +332,7 @@ fn should_successfully_prune() {
     proposer.add_deploy_or_transfer(creation_time, *deploy3.id(), deploy3.deploy_type().unwrap());
     proposer.add_deploy_or_transfer(creation_time, *deploy4.id(), deploy4.deploy_type().unwrap());
     assert_eq!(
-        proposer.sets.pending.len(),
+        proposer.sets.pending_deploys.len(),
         4,
         "there should be 4 pending deploys"
     );
@@ -336,7 +341,7 @@ fn should_successfully_prune() {
     proposer.finalized_deploys(vec![*deploy1.id()]);
 
     assert_eq!(
-        proposer.sets.pending.len(),
+        proposer.sets.pending_deploys.len(),
         3,
         "there should be 3 pending deploys"
     );
@@ -346,7 +351,7 @@ fn should_successfully_prune() {
     let pruned = proposer.prune(test_time);
     assert_eq!(pruned, 0);
 
-    assert_eq!(proposer.sets.pending.len(), 3);
+    assert_eq!(proposer.sets.pending_deploys.len(), 3);
     assert_eq!(proposer.sets.finalized_deploys.len(), 1);
     assert!(proposer.sets.finalized_deploys.contains_key(&deploy1.id()));
 
@@ -354,7 +359,7 @@ fn should_successfully_prune() {
     let pruned = proposer.prune(expired_time);
     assert_eq!(pruned, 3);
 
-    assert_eq!(proposer.sets.pending.len(), 1); // deploy4 is still valid
+    assert_eq!(proposer.sets.pending_deploys.len(), 1); // deploy4 is still valid
     assert_eq!(proposer.sets.finalized_deploys.len(), 0);
 }
 
@@ -422,48 +427,7 @@ fn should_keep_track_of_unhandled_deploys() {
     );
 }
 
-#[test]
-fn should_respect_limits_for_wasmless_transfers() {
-    test_proposer_with(TestArgs {
-        transfer_count: 30,
-        max_transfer_count: 20,
-        expected: TestValues {
-            proposed_count: 20,
-            pending_count: 10,
-        },
-        ..Default::default()
-    });
-}
-
-#[test]
-fn should_respect_limits_for_wasm_deploys() {
-    test_proposer_with(TestArgs {
-        deploy_count: 30,
-        max_deploy_count: 20,
-        expected: TestValues {
-            proposed_count: 20,
-            pending_count: 10,
-        },
-        ..Default::default()
-    });
-}
-
-#[test]
-fn should_respect_limits_for_wasm_deploys_and_transfers_together() {
-    test_proposer_with(TestArgs {
-        transfer_count: 30,
-        max_transfer_count: 20,
-        deploy_count: 30,
-        max_deploy_count: 20,
-        expected: TestValues {
-            proposed_count: 40,
-            pending_count: 20,
-        },
-        ..Default::default()
-    });
-}
-
-#[test]
+#[test_env_log::test]
 fn should_prioritize_deploys_based_on_gas_price_and_payment_amount() {
     let mut proposer = create_test_proposer(5);
     let mut config = proposer.deploy_config;
@@ -488,7 +452,7 @@ fn should_prioritize_deploys_based_on_gas_price_and_payment_amount() {
         transfers.push(gen_transfer(r, 1));
     }
 
-    // 5 more deploys are sent in with a higher gas price
+    // 5 more transfers are sent in with a higher gas price
     for _ in 0..5 {
         transfers.push(gen_transfer(r, 10));
     }
@@ -512,32 +476,34 @@ fn should_prioritize_deploys_based_on_gas_price_and_payment_amount() {
     );
 
     // Our (sorted by gas_price, then payment_amount) list looks like this:
-    //  (
-    //    [ 5  transfers with gas_price=10, payment_amount=5   ]
+    //  pending_transfers (
+    //    [ 5  transfers with gas_price=10   ]
+    //    [ 40 transfers with gas_price=1   ]
+    //  )
+    //  pending_deploys (
     //    [ 5  deploys   with gas_price=1,  payment_amount=100 ]
     //    [ 20 deploys   with gas_price=1,  payment_amount=50  ]
-    //    [ 40 transfers with gas_price=1,  payment_amount=5   ]
     //  )
 
     // 5 transfers chose higher gas_price, and are therefore picked first, and finally 5 more are
     // chosen after wasm deploys.
     assert_eq!(
         block.transfers().len(),
-        5 + 5,
+        40 + 5,
         "should have seen N transfers, proposed: {:#?}",
         block
     );
 
     assert_eq!(
         block.wasm_deploys().len(),
-        5 + 9,
+        5 + 5,
         "should have seen N wasm_deploys, proposed {:#?}",
         block
     );
 
     assert_eq!(
-        proposer.sets.pending.len(),
-        46,
+        proposer.sets.pending_deploys.len(),
+        15,
         "should have seen N pending deploys"
     );
 
@@ -550,10 +516,10 @@ fn should_prioritize_deploys_based_on_gas_price_and_payment_amount() {
     let next_block = proposer.propose_proto_block(config, creation_time, HashSet::new(), true);
     assert_eq!(
         next_block.wasm_deploys().len(),
-        11,
+        15,
         "should have N wasm deploys",
     );
-    assert_eq!(next_block.transfers().len(), 35, "should have N transfers");
+    assert_eq!(next_block.transfers().len(), 0, "should have N transfers");
     let all_deploys = BlockLike::deploys(&next_block)
         .iter()
         .map(|dh| **dh)
@@ -561,24 +527,81 @@ fn should_prioritize_deploys_based_on_gas_price_and_payment_amount() {
     proposer.finalized_deploys(all_deploys);
 
     assert_eq!(
-        proposer.sets.pending.len(),
+        proposer.sets.pending_deploys.len(),
         0,
         "N deploys should remain pending {:#?}",
-        proposer.sets.pending
+        proposer.sets.pending_deploys
+    );
+    assert_eq!(
+        proposer.sets.pending_transfers.len(),
+        0,
+        "N transfers should remain pending {:#?}",
+        proposer.sets.pending_deploys
     );
 }
 
 #[test]
+fn should_respect_limits_for_wasmless_transfers() {
+    test_proposer_with(TestArgs {
+        transfer_count: 30,
+        max_transfer_count: 20,
+        expected: TestValues {
+            proposed_deploys: 0,
+            proposed_transfers: 20,
+            pending_deploys: 0,
+            pending_transfers: 10,
+        },
+        ..Default::default()
+    });
+}
+
+#[test]
+fn should_respect_limits_for_wasm_deploys() {
+    test_proposer_with(TestArgs {
+        deploy_count: 30,
+        max_deploy_count: 20,
+        expected: TestValues {
+            proposed_deploys: 20,
+            proposed_transfers: 0,
+            pending_deploys: 10,
+            pending_transfers: 0,
+        },
+        ..Default::default()
+    });
+}
+
+#[test]
+fn should_respect_limits_for_wasm_deploys_and_transfers_together() {
+    test_proposer_with(TestArgs {
+        transfer_count: 30,
+        max_transfer_count: 20,
+        deploy_count: 30,
+        max_deploy_count: 20,
+        expected: TestValues {
+            proposed_deploys: 20,
+            proposed_transfers: 20,
+            pending_deploys: 10,
+            pending_transfers: 10,
+        },
+        ..Default::default()
+    });
+}
+
+#[test_env_log::test]
 fn should_respect_limits_for_gas_cost() {
     test_proposer_with(TestArgs {
+        wasmless_transfer_cost: 2,
+        deploy_payment_amount: Gas::from(10u32),
         transfer_count: 35,
         max_transfer_count: 20,
         deploy_count: 30,
         max_deploy_count: 20,
-        block_gas_limit: 25,
+        block_gas_limit: 100,
         expected: TestValues {
-            proposed_count: 25,
-            pending_count: 40,
+            proposed_transfers: 20,
+            pending_transfers: 15,
+            proposed_deploys: 12,
+            pending_deploys: 18,
         },
         ..Default::default()
     });
@@ -590,10 +613,11 @@ fn should_respect_block_gas_limit_for_transfers() {
         wasmless_transfer_cost: 5,
         transfer_count: 15,
         block_gas_limit: 20,
-        max_transfer_count: 15,
         expected: TestValues {
-            proposed_count: 4,
-            pending_count: 11,
+            proposed_transfers: 4,
+            pending_transfers: 11,
+            proposed_deploys: 0,
+            pending_deploys: 0,
         },
         ..Default::default()
     });
@@ -602,12 +626,15 @@ fn should_respect_block_gas_limit_for_transfers() {
 #[test]
 fn should_respect_block_gas_limit_for_deploys() {
     test_proposer_with(TestArgs {
+        deploy_payment_amount: Gas::from(2u32),
+        gas_price: 1,
         deploy_count: 15,
         block_gas_limit: 5,
-        max_deploy_count: 15,
         expected: TestValues {
-            proposed_count: 5,
-            pending_count: 10,
+            proposed_deploys: 2,
+            pending_deploys: 13,
+            proposed_transfers: 0,
+            pending_transfers: 0,
         },
         ..Default::default()
     });
@@ -618,11 +645,13 @@ fn should_propose_deploy_if_block_size_limit_met() {
     test_proposer_with(TestArgs {
         transfer_count: 1,
         deploy_count: 1,
-        expected: TestValues {
-            proposed_count: 2,
-            pending_count: 0,
-        },
         max_block_size: Some(2 * DEPLOY_APPROX_MIN_SIZE),
+        expected: TestValues {
+            proposed_transfers: 1,
+            pending_transfers: 0,
+            proposed_deploys: 1,
+            pending_deploys: 0,
+        },
         ..Default::default()
     });
 }
@@ -630,28 +659,31 @@ fn should_propose_deploy_if_block_size_limit_met() {
 #[test]
 fn should_not_propose_deploy_if_block_size_limit_within_threshold() {
     test_proposer_with(TestArgs {
-        transfer_count: 2,
-        deploy_count: 2,
-        max_block_size: Some(2 * DEPLOY_APPROX_MIN_SIZE),
+        transfer_count: 3,
+        deploy_count: 3,
+        max_block_size: Some(4 * DEPLOY_APPROX_MIN_SIZE),
         expected: TestValues {
-            proposed_count: 2,
-            pending_count: 2,
+            proposed_transfers: 3,
+            pending_transfers: 0,
+            proposed_deploys: 1,
+            pending_deploys: 2,
         },
         ..Default::default()
     });
 }
 
-#[test]
-fn should_not_propose_deploy_if_block_size_limit_passed() {
+#[test_env_log::test]
+fn should_not_propose_transfer_if_block_size_limit_passed() {
     test_proposer_with(TestArgs {
         deploy_count: 0,
-        transfer_count: 1,
-        block_gas_limit: 10,
+        transfer_count: 3,
         max_transfer_count: 5,
-        max_block_size: Some(100usize),
+        max_block_size: Some(2 * DEPLOY_APPROX_MIN_SIZE),
         expected: TestValues {
-            proposed_count: 0,
-            pending_count: 1,
+            proposed_transfers: 2,
+            pending_transfers: 1,
+            proposed_deploys: 0,
+            pending_deploys: 0,
         },
         ..Default::default()
     });
@@ -685,8 +717,8 @@ impl Default for TestArgs {
         TestArgs {
             transfer_count: 0,
             deploy_count: 0,
-            wasmless_transfer_cost: 1,
-            gas_price: 1u64,
+            wasmless_transfer_cost: 2,
+            gas_price: TEST_GAS_PRICE,
             deploy_payment_amount: Gas::from(1u32),
             max_deploy_count: 1000,
             max_transfer_count: 1000,
@@ -699,10 +731,14 @@ impl Default for TestArgs {
 
 #[derive(Default, Debug, PartialEq)]
 struct TestValues {
-    /// Post-finalization of proposed block, how many transfers and deploys remain.
-    pending_count: usize,
+    /// Post-finalization of proposed block, how many deploys remain.
+    pending_deploys: usize,
+    /// Post-finalization of proposed block, how many transfers remain.
+    pending_transfers: usize,
     /// Block deploy count proposed.
-    proposed_count: usize,
+    proposed_deploys: usize,
+    /// Block deploy count proposed.
+    proposed_transfers: usize,
 }
 
 fn propose_deploys(
@@ -772,11 +808,10 @@ fn test_proposer_with(
             deploy_payment_amount,
             gas_price,
         );
-        // println!("generated deploy with size {}", deploy.serialized_length());
         proposer.add_deploy_or_transfer(creation_time, *deploy.id(), deploy.deploy_type().unwrap());
     }
     assert_eq!(
-        proposer.sets.pending.len(),
+        proposer.sets.pending_deploys.len(),
         deploy_count as usize,
         "should have {} pending deploys",
         deploy_count
@@ -784,7 +819,6 @@ fn test_proposer_with(
 
     for _ in 0..transfer_count {
         let transfer = generate_transfer(&mut rng, creation_time, ttl, gas_price);
-        // println!( "generated transfer with size {}", transfer.serialized_length() );
         proposer.add_deploy_or_transfer(
             creation_time,
             *transfer.id(),
@@ -792,10 +826,10 @@ fn test_proposer_with(
         );
     }
     assert_eq!(
-        proposer.sets.pending.len(),
-        (deploy_count + transfer_count) as usize,
-        "should have {} pending deploys",
-        deploy_count + transfer_count
+        proposer.sets.pending_transfers.len(),
+        transfer_count as usize,
+        "should have {} pending transfers",
+        transfer_count
     );
 
     let block = proposer.propose_proto_block(config, test_time, past_deploys, true);
@@ -803,8 +837,10 @@ fn test_proposer_with(
     proposer.finalized_deploys(all_deploys.iter().map(|hash| **hash));
 
     let results = TestValues {
-        pending_count: proposer.sets.pending.len(),
-        proposed_count: all_deploys.len(),
+        pending_deploys: proposer.sets.pending_deploys.len(),
+        pending_transfers: proposer.sets.pending_transfers.len(),
+        proposed_transfers: block.transfers().len(),
+        proposed_deploys: block.wasm_deploys().len(),
     };
     assert_eq!(
         results, expected,
@@ -890,7 +926,7 @@ fn should_retain_deploys_with_unmet_dependencies_for_later_proposal() {
 
     proposer.add_deploy_or_transfer(creation_time, *deploy2.id(), deploy2.deploy_type().unwrap());
     assert_eq!(
-        proposer.sets.pending.len(),
+        proposer.sets.pending_deploys.len(),
         1,
         "deploy2 should be in pending"
     );
@@ -906,7 +942,7 @@ fn should_retain_deploys_with_unmet_dependencies_for_later_proposal() {
         .wasm_deploys()
         .is_empty());
     assert_eq!(
-        proposer.sets.pending.len(),
+        proposer.sets.pending_deploys.len(),
         1,
         "deploy with unmet deps should remain in pending"
     );
@@ -935,7 +971,7 @@ fn should_retain_deploys_with_unmet_dependencies_for_later_proposal() {
     );
 
     // 5. pending should now only contain deploy2
-    assert_eq!(proposer.sets.pending.len(), 1);
+    assert_eq!(proposer.sets.pending_deploys.len(), 1);
 
     // 6. finally, propose a block, and deploy2 should be included from pending, because it's
     // dependency, deploy1, was included in a past block.

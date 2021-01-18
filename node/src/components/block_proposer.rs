@@ -186,9 +186,10 @@ where
                 effects.extend(ready_state.handle_event(effect_builder, event));
 
                 // Update metrics after the effects have been applied.
-                self.metrics
-                    .pending_deploys
-                    .set(ready_state.sets.pending.len() as i64);
+                self.metrics.pending_deploys.set(
+                    (ready_state.sets.pending_deploys.len()
+                        + ready_state.sets.pending_transfers.len()) as i64,
+                );
             }
         };
 
@@ -336,27 +337,28 @@ impl BlockProposerReady {
         if self.sets.finalized_deploys.contains_key(&hash) {
             info!(%hash, "deploy rejected from the buffer");
         } else {
-            let gas_price = deploy_or_transfer.header().gas_price();
-            let payment_amount_gas = if deploy_or_transfer.is_transfer() {
-                Gas::from(self.wasmless_transfer_cost)
-            } else {
-                match Gas::from_motes(deploy_or_transfer.payment_amount_motes(), gas_price) {
-                    Some(value) => value,
-                    None => {
-                        info!(
-                            "could not convert motes to gas for wasm deploy {} at gas price {}",
-                            hash, gas_price
-                        );
-                        return;
-                    }
+            match deploy_or_transfer {
+                DeployType::Transfer { .. } => {
+                    self.sets.pending_transfers.insert(hash, deploy_or_transfer);
                 }
-            };
-
-            // Generate a key that will keep the map of pending deploys sorted in the correct order.
-            let key = (gas_price, payment_amount_gas, hash);
-
-            self.sets.pending.insert(key, deploy_or_transfer);
-            info!(%hash, "added deploy to the buffer");
+                DeployType::Other { payment_amount, .. } => {
+                    // Generate a key that will keep the map of pending deploys sorted in the
+                    // correct order.
+                    let gas_price = deploy_or_transfer.header().gas_price();
+                    let payment_amount_gas = match Gas::from_motes(payment_amount, gas_price) {
+                        Some(value) => value,
+                        None => {
+                            info!(
+                                "could not convert motes to gas {} at gas price {}",
+                                hash, gas_price
+                            );
+                            return;
+                        }
+                    };
+                    let key = (gas_price, payment_amount_gas, hash);
+                    self.sets.pending_deploys.insert(key, deploy_or_transfer);
+                }
+            }
         }
     }
 
@@ -368,23 +370,32 @@ impl BlockProposerReady {
         for deploy_hash in deploys.into_iter() {
             let existing = self
                 .sets
-                .pending
+                .pending_deploys
                 .iter()
                 .find(|((_, _, entry_deploy_hash), _)| entry_deploy_hash == &deploy_hash)
                 .map(|(key, _)| *key);
+
             match existing {
-                Some(key) => match self.sets.pending.remove(&key) {
-                    Some(deploy_type) => {
+                Some(key) => {
+                    let deploy_type = self
+                        .sets
+                        .pending_deploys
+                        .remove(&key)
+                        .expect("should exist");
+
+                    self.sets
+                        .finalized_deploys
+                        .insert(deploy_hash, deploy_type.take_header());
+                }
+                None => {
+                    if let Some(transfer) = self.sets.pending_transfers.remove(&deploy_hash) {
+                        trace!("finalized {:?}", deploy_hash);
                         self.sets
                             .finalized_deploys
-                            .insert(deploy_hash, deploy_type.take_header());
+                            .insert(deploy_hash, transfer.take_header());
+                    } else {
+                        self.unhandled_finalized.insert(deploy_hash);
                     }
-                    None => {
-                        panic!("should be unreachable");
-                    }
-                },
-                None => {
-                    self.unhandled_finalized.insert(deploy_hash);
                 }
             };
         }
@@ -459,55 +470,97 @@ impl BlockProposerReady {
         let mut block_gas_running_total = Gas::zero();
         let mut block_size_running_total = 0usize;
 
-        // This iteration is reversed to achieve descending order iteration over elements in our
-        // sorted BTreeMap in self.sets.pending.
-        // https://github.com/CasperLabs/ceps/blob/Gas_spot_market/text/0022-gas-spot-market.md#ordering
-        for ((_gas_price, payment_amount_gas, hash), deploy_type) in self.sets.pending.iter().rev()
-        {
-            let at_max_transfers = transfers.len() == max_transfers;
-            let at_max_deploys = wasm_deploys.len() == max_deploys;
-
-            // Early exit if block limits are met.
-            if block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes
-                || (at_max_deploys && at_max_transfers)
-                || block_gas_running_total == block_gas_limit
-            {
-                break;
-            }
-
-            if !self.is_deploy_valid(
-                &deploy_type.header(),
-                block_timestamp,
-                &deploy_config,
-                &past_deploys,
-            ) || past_deploys.contains(hash)
-                || self.sets.finalized_deploys.contains_key(hash)
-                || block_size_running_total + deploy_type.size() > max_block_size_bytes
-            {
-                continue;
-            }
-
-            let gas_running_total = if let Some(gas_running_total) =
-                block_gas_running_total.checked_add(*payment_amount_gas)
-            {
-                gas_running_total
-            } else {
-                warn!("block gas would overflow");
-                continue;
+        let should_include_deploy =
+            |hash,
+             deploy_type: &DeployType,
+             payment_amount_gas: &Gas,
+             block_gas_running_total: &Gas,
+             block_size_running_total: usize| {
+                if !self.is_deploy_valid(
+                    &deploy_type.header(),
+                    block_timestamp,
+                    &deploy_config,
+                    &past_deploys,
+                ) || past_deploys.contains(hash)
+                    || self.sets.finalized_deploys.contains_key(hash)
+                    || block_size_running_total + deploy_type.size() > max_block_size_bytes
+                {
+                    return None;
+                }
+                let gas_running_total = if let Some(gas_running_total) =
+                    block_gas_running_total.checked_add(*payment_amount_gas)
+                {
+                    gas_running_total
+                } else {
+                    warn!("block gas would overflow");
+                    return None;
+                };
+                if gas_running_total > block_gas_limit {
+                    return None;
+                }
+                Some(gas_running_total)
             };
 
-            if gas_running_total > block_gas_limit {
-                continue;
+        // transfer reservation
+        for (hash, transfer) in self.sets.pending_transfers.iter() {
+            // Early exit if block limits are met.
+            if transfers.len() == max_transfers
+                || block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes
+                || block_gas_running_total == block_gas_limit
+            {
+                trace!(
+                    "reached block transfer limit {} count={} size={} gas={}",
+                    transfers.len(),
+                    transfers.len() == max_transfers,
+                    block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes,
+                    block_gas_running_total == block_gas_limit
+                );
+                break;
             }
-
-            match deploy_type {
-                DeployType::Transfer { .. } if !at_max_transfers => transfers.push(*hash),
-                DeployType::Other { .. } if !at_max_deploys => wasm_deploys.push(*hash),
-                _ => continue,
+            if let Some(gas_running_total) = should_include_deploy(
+                hash,
+                &transfer,
+                &Gas::from(self.wasmless_transfer_cost),
+                &block_gas_running_total,
+                block_size_running_total,
+            ) {
+                transfers.push(*hash);
+                block_gas_running_total = gas_running_total;
+                block_size_running_total += transfer.size();
             }
+        }
 
-            block_gas_running_total = gas_running_total;
-            block_size_running_total += deploy_type.size();
+        // This iteration is reversed to achieve descending order iteration over elements in our
+        // sorted BTreeMap in self.sets.pending_deploys.
+        // https://github.com/CasperLabs/ceps/blob/Gas_spot_market/text/0022-gas-spot-market.md#ordering
+        for ((_gas_price, payment_amount_gas, hash), deploy_type) in
+            self.sets.pending_deploys.iter().rev()
+        {
+            // Early exit if block limits are met.
+            if wasm_deploys.len() == max_deploys
+                || block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes
+                || block_gas_running_total == block_gas_limit
+            {
+                trace!(
+                    "reached block deploy limit {} count={} size={} gas={}",
+                    wasm_deploys.len(),
+                    wasm_deploys.len() == max_transfers,
+                    block_size_running_total + DEPLOY_APPROX_MIN_SIZE >= max_block_size_bytes,
+                    block_gas_running_total == block_gas_limit
+                );
+                break;
+            }
+            if let Some(gas_running_total) = should_include_deploy(
+                hash,
+                &deploy_type,
+                &payment_amount_gas,
+                &block_gas_running_total,
+                block_size_running_total,
+            ) {
+                wasm_deploys.push(*hash);
+                block_gas_running_total = gas_running_total;
+                block_size_running_total += deploy_type.size();
+            }
         }
 
         ProtoBlock::new(wasm_deploys, transfers, random_bit)

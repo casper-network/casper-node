@@ -25,7 +25,8 @@ pub struct BlockProposerDeploySets {
     /// (willingness to pay), then by `payment_amount` and finally include `deploy_hash` to
     /// facilitate map operations.
     /// https://github.com/CasperLabs/ceps/blob/Gas_spot_market/text/0022-gas-spot-market.md#ordering
-    pub(super) pending: BTreeMap<PendingKey, DeployType>,
+    pub(super) pending_deploys: BTreeMap<PendingKey, DeployType>,
+    pub(super) pending_transfers: HashMap<DeployHash, DeployType>,
     /// The deploys that have already been included in a finalized block.
     pub(super) finalized_deploys: HashMap<DeployHash, DeployHeader>,
     /// The next block height we expect to be finalized.
@@ -40,12 +41,14 @@ pub struct BlockProposerDeploySets {
 
 impl Default for BlockProposerDeploySets {
     fn default() -> Self {
-        let pending = BTreeMap::new();
+        let pending_deploys = BTreeMap::new();
+        let pending_transfers = HashMap::new();
         let finalized_deploys = Default::default();
         let next_finalized = Default::default();
         let finalization_queue = Default::default();
         BlockProposerDeploySets {
-            pending,
+            pending_deploys,
+            pending_transfers,
             finalized_deploys,
             next_finalized,
             finalization_queue,
@@ -67,7 +70,7 @@ impl Display for BlockProposerDeploySets {
         write!(
             f,
             "(pending:{}, finalized:{})",
-            self.pending.len(),
+            self.pending_deploys.len(),
             self.finalized_deploys.len()
         )
     }
@@ -89,9 +92,11 @@ impl BlockProposerDeploySets {
     /// Prunes expired deploy information from the BlockProposerState, returns the total deploys
     /// pruned
     pub(crate) fn prune(&mut self, current_instant: Timestamp) -> usize {
-        let pending = prune_pending_deploys(&mut self.pending, current_instant);
+        let pending_deploys = prune_pending_deploys(&mut self.pending_deploys, current_instant);
+        let pending_transfers =
+            prune_pending_transfers(&mut self.pending_transfers, current_instant);
         let finalized = prune_deploys(&mut self.finalized_deploys, current_instant);
-        pending + finalized
+        pending_deploys + pending_transfers + finalized
     }
 }
 
@@ -104,6 +109,17 @@ pub(super) fn prune_deploys(
     let initial_len = deploys.len();
     deploys.retain(|_hash, header| !header.expired(current_instant));
     initial_len - deploys.len()
+}
+
+/// Prunes expired transfer information from an individual deploy collection, returns the total
+/// transfers pruned
+pub(super) fn prune_pending_transfers(
+    transfers: &mut HashMap<DeployHash, DeployType>,
+    current_instant: Timestamp,
+) -> usize {
+    let initial_len = transfers.len();
+    transfers.retain(|_hash, deploy_type| !deploy_type.header().expired(current_instant));
+    initial_len - transfers.len()
 }
 
 /// Prunes expired deploy information from an individual pending deploy collection, returns the

@@ -12,7 +12,6 @@ use std::{
 use datasize::DataSize;
 use hex::FromHexError;
 use itertools::Itertools;
-use num_traits::Zero;
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::{Rng, RngCore};
@@ -495,13 +494,7 @@ impl Deploy {
         let header = self.header().clone();
         let size = self.serialized_length();
         if self.session().is_transfer() {
-            // TODO: we need a non-zero value constant for wasm-less transfer cost.
-            let payment_amount = Motes::zero();
-            Ok(DeployType::Transfer {
-                header,
-                payment_amount,
-                size,
-            })
+            Ok(DeployType::Transfer { header, size })
         } else {
             let payment_item = self.payment().clone();
             let payment_amount = {
