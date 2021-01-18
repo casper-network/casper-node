@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ContractHash, HashAddr,
+    contracts::ContractHash,
+    HashAddr,
 };
 
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
@@ -231,7 +232,7 @@ mod tests {
     use proptest::proptest;
 
     use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
-    use casper_types::{bytesrepr, ContractHash};
+    use casper_types::{bytesrepr, contracts::ContractHash};
 
     use super::{gens, ProtocolData};
 

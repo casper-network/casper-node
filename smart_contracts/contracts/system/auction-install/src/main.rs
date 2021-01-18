@@ -18,10 +18,10 @@ use casper_types::{
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
         VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
     },
-    contracts::{NamedKeys, CONTRACT_INITIAL_VERSION},
+    contracts::{ContractPackageHash, NamedKeys, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system_contract_errors::mint,
-    CLValue, ContractPackageHash, PublicKey, RuntimeArgs, URef, U512,
+    CLValue, PublicKey, RuntimeArgs, URef, U512,
 };
 
 const HASH_KEY_NAME: &str = "auction_hash";

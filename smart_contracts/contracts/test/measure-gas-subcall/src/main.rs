@@ -10,8 +10,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::Parameters, ApiError, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Phase, RuntimeArgs,
+    contracts::{ContractHash, Parameters},
+    ApiError, CLType, CLValue, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Phase, RuntimeArgs,
 };
 
 const ARG_TARGET: &str = "target_contract";

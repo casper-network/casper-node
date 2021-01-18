@@ -3,8 +3,10 @@ use thiserror::Error;
 
 use casper_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
-    bytesrepr, system_contract_errors, AccessRights, ApiError, CLType, CLValueError,
-    ContractPackageHash, ContractVersionKey, Key, URef,
+    bytesrepr,
+    contracts::ContractPackageHash,
+    system_contract_errors, AccessRights, ApiError, CLType, CLValueError, ContractVersionKey, Key,
+    URef,
 };
 
 use crate::{

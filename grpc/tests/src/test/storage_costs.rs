@@ -31,7 +31,8 @@ use casper_types::{
 };
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    CLValue, ContractHash, ProtocolVersion, RuntimeArgs, U512,
+    contracts::ContractHash,
+    CLValue, ProtocolVersion, RuntimeArgs, U512,
 };
 
 use num_rational::Ratio;

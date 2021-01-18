@@ -14,8 +14,8 @@ use casper_contract::{
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
     bytesrepr::Bytes,
-    contracts::NamedKeys,
-    runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
+    contracts::{ContractHash, NamedKeys},
+    runtime_args, ApiError, BlockTime, CLType, CLValue, ContractVersion, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
 };
 

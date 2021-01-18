@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::string::String;
 
 use casper_contract::contract_api::{runtime, storage};
-use casper_types::{runtime_args, ContractHash, RuntimeArgs};
+use casper_types::{contracts::ContractHash, runtime_args, RuntimeArgs};
 
 const METHOD_VERSION: &str = "version";
 const HASH_KEY_NAME: &str = "purse_holder";

@@ -6,7 +6,8 @@ extern crate alloc;
 use casper_contract::contract_api::{account, runtime, system};
 use casper_types::{
     auction::{self, DelegationRate},
-    runtime_args, ContractHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    contracts::ContractHash,
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 
 fn bond(contract_hash: ContractHash, bond_amount: U512, bonding_purse: URef) {

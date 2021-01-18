@@ -3,9 +3,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use casper_types::contracts::ContractHash;
 use parity_wasm::elements::Module;
-
-use casper_types::ContractHash;
 
 /// A cache of deserialized contracts.
 #[derive(Clone, Default, Debug)]
@@ -46,7 +45,7 @@ mod tests {
         engine_state::system_contract_cache::SystemContractCache,
         execution::{AddressGenerator, AddressGeneratorBuilder},
     };
-    use casper_types::ContractHash;
+    use casper_types::contracts::ContractHash;
 
     static ADDRESS_GENERATOR: Lazy<Mutex<AddressGenerator>> = Lazy::new(|| {
         Mutex::new(

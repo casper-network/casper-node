@@ -5,7 +5,7 @@ extern crate alloc;
 
 use alloc::string::String;
 
-use casper_types::{runtime_args, ContractHash, RuntimeArgs, URef, U512};
+use casper_types::{contracts::ContractHash, runtime_args, RuntimeArgs, URef, U512};
 
 use casper_contract::contract_api::{runtime, system};
 

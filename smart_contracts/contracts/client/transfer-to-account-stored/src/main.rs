@@ -6,7 +6,7 @@ extern crate alloc;
 
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    account::AccountHash, CLType, CLTyped, ContractHash, ContractVersion, EntryPoint,
+    account::AccountHash, contracts::ContractHash, CLType, CLTyped, ContractVersion, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, Parameter,
 };
 

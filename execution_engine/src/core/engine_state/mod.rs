@@ -43,9 +43,9 @@ use casper_types::{
     mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY},
     proof_of_stake, runtime_args, standard_payment,
     system_contract_errors::{self, mint::Error as MintError},
-    AccessRights, ApiError, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
-    EntryPointType, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, BlockTime, CLType, CLValue, Contract, ContractPackage,
+    ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointAccess, EntryPointType, Key,
+    Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -91,6 +91,7 @@ use crate::{
         trie::Trie,
     },
 };
+use casper_types::contracts::{ContractHash, ContractPackageHash};
 
 /// Rate for motes/gas conversion.
 ///

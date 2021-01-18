@@ -8,7 +8,7 @@ use casper_execution_engine::{
     core::engine_state::EngineConfig,
     shared::{stored_value::StoredValue, transform::Transform},
 };
-use casper_types::{runtime_args, ContractHash, DeployHash, RuntimeArgs};
+use casper_types::{contracts::ContractHash, runtime_args, DeployHash, RuntimeArgs};
 
 const DEPLOY_HASH_1: DeployHash = DeployHash::new([1u8; 32]);
 

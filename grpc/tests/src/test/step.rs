@@ -16,8 +16,9 @@ use casper_types::{
         Bids, SeigniorageRecipientsSnapshot, BIDS_KEY, BLOCK_REWARD,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, VALIDATOR_REWARD_PURSE_KEY,
     },
+    contracts::ContractHash,
     mint::TOTAL_SUPPLY_KEY,
-    CLValue, ContractHash, Key, ProtocolVersion, PublicKey, SecretKey, U512,
+    CLValue, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> =

@@ -9,8 +9,8 @@ use alloc::string::String;
 use casper_contract::contract_api::{runtime, storage};
 
 use casper_types::{
-    runtime_args, ApiError, CLType, ContractHash, ContractVersion, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Parameter, RuntimeArgs,
+    contracts::ContractHash, runtime_args, ApiError, CLType, ContractVersion, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, Parameter, RuntimeArgs,
 };
 
 // This is making use of the undocumented "FFI" function `gas()` which is used by the Wasm

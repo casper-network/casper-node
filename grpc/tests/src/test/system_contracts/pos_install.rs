@@ -7,8 +7,9 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::engine_state::EngineConfig;
 use casper_types::{
-    account::AccountHash, contracts::NamedKeys, runtime_args, ContractHash, ContractPackageHash,
-    DeployHash, RuntimeArgs, URef, U512,
+    account::AccountHash,
+    contracts::{ContractHash, ContractPackageHash, NamedKeys},
+    runtime_args, DeployHash, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

@@ -11,8 +11,8 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::{
-        EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter,
-        CONTRACT_INITIAL_VERSION,
+        ContractPackageHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys,
+        Parameter, CONTRACT_INITIAL_VERSION,
     },
     proof_of_stake::{
         ACCESS_KEY, ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE, HASH_KEY, METHOD_FINALIZE_PAYMENT,
@@ -21,7 +21,7 @@ use casper_types::{
     },
     runtime_args,
     system_contract_errors::mint,
-    CLType, CLValue, ContractPackageHash, RuntimeArgs, URef, U512,
+    CLType, CLValue, RuntimeArgs, URef, U512,
 };
 
 const ARG_MINT_PACKAGE_HASH: &str = "mint_contract_package_hash";

@@ -7,9 +7,9 @@ use alloc::string::ToString;
 
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    contracts::{NamedKeys, Parameters},
-    CLType, ContractHash, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, RuntimeArgs,
+    contracts::{ContractHash, NamedKeys, Parameters},
+    CLType, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    RuntimeArgs,
 };
 
 const ENTRY_POINT_NAME: &str = "contract_ext";

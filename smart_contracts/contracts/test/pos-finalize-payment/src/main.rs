@@ -5,7 +5,9 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{account::AccountHash, runtime_args, ContractHash, RuntimeArgs, URef, U512};
+use casper_types::{
+    account::AccountHash, contracts::ContractHash, runtime_args, RuntimeArgs, URef, U512,
+};
 
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_AMOUNT_SPENT: &str = "amount_spent";

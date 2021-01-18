@@ -11,9 +11,9 @@ use casper_execution_engine::{
     shared::{stored_value::StoredValue, transform::Transform},
 };
 use casper_types::{
-    contracts::CONTRACT_INITIAL_VERSION, mint::ARG_ROUND_SEIGNIORAGE_RATE, runtime_args,
-    ContractHash, ContractPackageHash, ContractVersionKey, DeployHash, ProtocolVersion,
-    RuntimeArgs, U512,
+    contracts::{ContractHash, ContractPackageHash, CONTRACT_INITIAL_VERSION},
+    mint::ARG_ROUND_SEIGNIORAGE_RATE,
+    runtime_args, ContractVersionKey, DeployHash, ProtocolVersion, RuntimeArgs, U512,
 };
 
 const DEPLOY_HASH_1: DeployHash = DeployHash::new([1u8; 32]);

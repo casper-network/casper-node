@@ -3,7 +3,9 @@
 
 use auction::DelegationRate;
 use casper_contract::contract_api::{account, runtime, system};
-use casper_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, URef, U512};
+use casper_types::{
+    auction, contracts::ContractHash, runtime_args, PublicKey, RuntimeArgs, URef, U512,
+};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";

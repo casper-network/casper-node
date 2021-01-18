@@ -1,5 +1,9 @@
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_types::{bytesrepr::ToBytes, ContractHash, ContractPackageHash, RuntimeArgs};
+use casper_types::{
+    bytesrepr::ToBytes,
+    contracts::{ContractHash, ContractPackageHash},
+    RuntimeArgs,
+};
 
 use crate::error::Result;
 

@@ -16,11 +16,12 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     bytesrepr::{self, Bytes, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
-    ContractHash, ContractPackageHash, Key, RuntimeArgs,
+    Key, RuntimeArgs,
 };
 
 use super::error;
 use crate::{core::execution, shared::account::Account};
+use casper_types::contracts::{ContractHash, ContractPackageHash};
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const MODULE_BYTES_TAG: u8 = 0;

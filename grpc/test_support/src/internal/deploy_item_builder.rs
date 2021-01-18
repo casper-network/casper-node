@@ -5,8 +5,10 @@ use casper_execution_engine::{
     shared::newtypes::Blake2bHash,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, contracts::ContractVersion, ContractHash, DeployHash,
-    HashAddr, RuntimeArgs,
+    account::AccountHash,
+    bytesrepr::ToBytes,
+    contracts::{ContractHash, ContractVersion},
+    DeployHash, HashAddr, RuntimeArgs,
 };
 
 use crate::internal::utils;
