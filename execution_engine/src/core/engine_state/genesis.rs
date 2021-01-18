@@ -1,8 +1,9 @@
-use std::{fmt, iter};
+use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
 
 use datasize::DataSize;
 use num_rational::Ratio;
 use num_traits::Zero;
+use parity_wasm::elements::Module;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -13,22 +14,34 @@ use casper_types::{
     account::AccountHash,
     auction::EraId,
     bytesrepr::{self, FromBytes, ToBytes},
-    AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Key, Parameter, Phase, ProtocolVersion, PublicKey, SecretKey, URef, U512,
+    runtime_args, AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
+    ContractPackageHash, ContractWasm, DeployHash, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, URef,
+    U512,
 };
 
 use super::SYSTEM_ACCOUNT_ADDR;
 use crate::{
     core::{
-        engine_state::execution_effect::ExecutionEffect, execution::AddressGenerator,
+        engine_state::{execution_effect::ExecutionEffect, EngineConfig},
+        execution,
+        execution::{AddressGenerator, Executor},
         tracking_copy::TrackingCopy,
     },
     shared::{
-        account::Account, motes::Motes, newtypes::Blake2bHash, stored_value::StoredValue,
-        system_config::SystemConfig, wasm_config::WasmConfig, TypeMismatch,
+        account::Account,
+        gas::Gas,
+        motes::Motes,
+        newtypes::{Blake2bHash, CorrelationId},
+        stored_value::StoredValue,
+        system_config::SystemConfig,
+        wasm_config::WasmConfig,
+        TypeMismatch,
     },
-    storage::global_state::{CommitResult, StateProvider},
+    storage::{
+        global_state::{CommitResult, StateProvider},
+        protocol_data::ProtocolData,
+    },
 };
 use casper_types::{
     auction::{
@@ -55,13 +68,11 @@ use casper_types::{
         METHOD_SET_REFUND_PURSE,
     },
     standard_payment::METHOD_PAY,
+    system_contract_errors::mint,
 };
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 pub const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
-const BALANCE_UREF: &str = "balance_uref";
-const MINT_PURSE_BRIDGE: &str = "purse_uref_balance_uref_bridge";
 
 #[derive(Debug, Serialize)]
 pub enum GenesisResult {
@@ -407,90 +418,102 @@ impl Distribution<ExecConfig> for Standard {
     }
 }
 
-pub(crate) enum GenesisPurse {
-    ProofOfStake {
-        purse_uref: URef,
-        balance_uref: URef,
-        amount: U512,
-    },
-    DelegatorReward {
-        purse_uref: URef,
-        balance_uref: URef,
-        amount: U512,
-    },
-    ValidatorReward {
-        purse_uref: URef,
-        balance_uref: URef,
-        amount: U512,
-    },
-    GenesisAccount {
-        purse_uref: URef,
-        balance_uref: URef,
-        account_hash: AccountHash,
-        amount: U512,
-    },
-    GenesisValidator {
-        purse_uref: URef,
-        balance_uref: URef,
-        public_key: PublicKey,
-        amount: U512,
-    },
-}
-
 #[derive(Clone, Debug)]
 pub enum GenesisError {
-    MissingProofOfStakePaymentPurse,
-    MissingValidatorRewardPurse,
-    MissingDelegatorRewardPurse,
+    UnableToCreateRuntime,
+    InvalidMintKey,
+    MissingMintContract,
+    UnexpectedStoredValue,
+    MissingPublicKey,
+    ExecutionError(execution::Error),
+    MintError(mint::Error),
     CLValue(String),
 }
 
 pub(crate) struct GenesisInstaller<S>
 where
     S: StateProvider,
+    S::Error: Into<execution::Error>,
 {
+    genesis_config_hash: Blake2bHash,
+    virtual_system_account: Account,
     protocol_version: ProtocolVersion,
+    correlation_id: CorrelationId,
     exec_config: ExecConfig,
     uref_address_generator: Rc<RefCell<AddressGenerator>>,
     hash_address_generator: Rc<RefCell<AddressGenerator>>,
+    transfer_address_generator: Rc<RefCell<AddressGenerator>>,
+    executor: Executor,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+    protocol_data: ProtocolData,
+    system_module: Module,
 }
 
 impl<S> GenesisInstaller<S>
 where
     S: StateProvider,
+    S::Error: Into<execution::Error>,
 {
-    pub fn new(
+    pub(crate) fn new(
         genesis_config_hash: Blake2bHash,
         protocol_version: ProtocolVersion,
+        correlation_id: CorrelationId,
+        engine_config: EngineConfig,
         exec_config: ExecConfig,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+        system_module: Module,
     ) -> Self {
-        let phase = Phase::System;
+        let executor = Executor::new(engine_config);
 
+        let phase = Phase::System;
+        let genesis_config_hash_bytes = genesis_config_hash.as_ref();
         let uref_address_generator = {
-            let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
+            let generator = AddressGenerator::new(genesis_config_hash_bytes, phase);
             Rc::new(RefCell::new(generator))
         };
         let hash_address_generator = {
-            let generator = AddressGenerator::new(genesis_config_hash.as_ref(), phase);
+            let generator = AddressGenerator::new(genesis_config_hash_bytes, phase);
+            Rc::new(RefCell::new(generator))
+        };
+        let transfer_address_generator = {
+            let generator = AddressGenerator::new(genesis_config_hash_bytes, phase);
             Rc::new(RefCell::new(generator))
         };
 
+        let protocol_data = ProtocolData::default();
+
+        let virtual_system_account = {
+            let named_keys = NamedKeys::new();
+            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
+            Account::create(SYSTEM_ACCOUNT_ADDR, named_keys, purse)
+        };
+
+        let key = Key::Account(SYSTEM_ACCOUNT_ADDR);
+        let value = { StoredValue::Account(virtual_system_account.clone()) };
+
+        tracking_copy.borrow_mut().write(key, value);
+
         GenesisInstaller {
+            genesis_config_hash,
+            virtual_system_account,
             protocol_version,
+            correlation_id,
             exec_config,
             uref_address_generator,
             hash_address_generator,
+            transfer_address_generator,
+            executor,
             tracking_copy,
+            protocol_data,
+            system_module,
         }
     }
 
-    pub fn into_execution_effect(self) -> ExecutionEffect {
+    pub(crate) fn finalize(self) -> ExecutionEffect {
         self.tracking_copy.borrow_mut().effect()
     }
 
-    pub fn create_mint(&self) -> Result<(ContractHash, Vec<GenesisPurse>), GenesisError> {
+    pub(crate) fn create_mint(&mut self) -> Result<ContractHash, GenesisError> {
         let round_seigniorage_rate_uref =
             {
                 let round_seigniorage_rate_uref = self
@@ -498,14 +521,12 @@ where
                     .borrow_mut()
                     .new_uref(AccessRights::READ_ADD_WRITE);
 
-                let round_seigniorage_rate: Ratio<U512> = {
-                    let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
-                        self.exec_config.round_seigniorage_rate().into();
-                    Ratio::new(
-                        round_seigniorage_rate_numer.into(),
-                        round_seigniorage_rate_denom.into(),
-                    )
-                };
+                let (round_seigniorage_rate_numer, round_seigniorage_rate_denom) =
+                    self.exec_config.round_seigniorage_rate().into();
+                let round_seigniorage_rate: Ratio<U512> = Ratio::new(
+                    round_seigniorage_rate_numer.into(),
+                    round_seigniorage_rate_denom.into(),
+                );
 
                 self.tracking_copy.borrow_mut().write(
                     round_seigniorage_rate_uref.into(),
@@ -516,14 +537,21 @@ where
                 round_seigniorage_rate_uref
             };
 
-        let total_supply_uref = self
-            .uref_address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
+        let total_supply_uref = {
+            let total_supply_uref = self
+                .uref_address_generator
+                .borrow_mut()
+                .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let mut total_amount = U512::zero();
-
-        let purses: Vec<GenesisPurse> = self.create_purses()?;
+            self.tracking_copy.borrow_mut().write(
+                total_supply_uref.into(),
+                StoredValue::CLValue(
+                    CLValue::from_t(U512::zero())
+                        .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
+                ),
+            );
+            total_supply_uref
+        };
 
         let named_keys = {
             let mut named_keys = NamedKeys::new();
@@ -532,57 +560,10 @@ where
                 round_seigniorage_rate_uref.into(),
             );
 
-            // associate purse urefs and balance urefs
-            for purse in purses.iter() {
-                match purse {
-                    GenesisPurse::ProofOfStake {
-                        purse_uref,
-                        balance_uref,
-                        amount,
-                    }
-                    | GenesisPurse::DelegatorReward {
-                        purse_uref,
-                        balance_uref,
-                        amount,
-                    }
-                    | GenesisPurse::ValidatorReward {
-                        purse_uref,
-                        balance_uref,
-                        amount,
-                    }
-                    | GenesisPurse::GenesisAccount {
-                        purse_uref,
-                        balance_uref,
-                        amount,
-                        ..
-                    }
-                    | GenesisPurse::GenesisValidator {
-                        purse_uref,
-                        balance_uref,
-                        amount,
-                        ..
-                    } => {
-                        total_amount = total_amount + amount;
-                        let purse_uref_name =
-                            purse_uref.remove_access_rights().to_formatted_string();
-                        let named_key = Key::URef(*balance_uref);
-                        named_keys.insert(purse_uref_name, named_key);
-                    }
-                }
-            }
-
             named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), total_supply_uref.into());
 
             named_keys
         };
-
-        self.tracking_copy.borrow_mut().write(
-            total_supply_uref.into(),
-            StoredValue::CLValue(
-                CLValue::from_t(total_amount)
-                    .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
-            ),
-        );
 
         let entry_points = self.mint_entry_points();
 
@@ -591,26 +572,22 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let (_, contract_hash) = self.store_contract(access_key, named_keys, entry_points);
+        let (_, mint_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        Ok((contract_hash, purses))
+        self.protocol_data = ProtocolData::partial_with_mint(mint_hash);
+
+        Ok(mint_hash)
     }
 
-    pub fn create_proof_of_stake(
-        &self,
-        genesis_purses: &[GenesisPurse],
-    ) -> Result<ContractHash, GenesisError> {
-        let proof_of_stake_payment_purse = genesis_purses
-            .iter()
-            .find_map(|item| match item {
-                GenesisPurse::ProofOfStake { purse_uref, .. } => Some(purse_uref),
-                _ => None,
-            })
-            .ok_or(GenesisError::MissingProofOfStakePaymentPurse)?;
+    pub fn create_proof_of_stake(&self) -> Result<ContractHash, GenesisError> {
+        let proof_of_stake_payment_purse = self.create_purse(
+            U512::zero(),
+            DeployHash::new(self.genesis_config_hash.value()),
+        )?;
 
         let named_keys = {
             let mut named_keys = NamedKeys::new();
-            let named_key = Key::URef(*proof_of_stake_payment_purse);
+            let named_key = Key::URef(proof_of_stake_payment_purse);
             named_keys.insert(POS_PAYMENT_PURSE.to_string(), named_key);
             named_keys
         };
@@ -622,56 +599,68 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let (_, contract_hash) = self.store_contract(access_key, named_keys, entry_points);
+        let (_, proof_of_stake_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        Ok(contract_hash)
+        Ok(proof_of_stake_hash)
     }
 
-    pub fn create_auction(
-        &self,
-        genesis_purses: &[GenesisPurse],
-    ) -> Result<ContractHash, GenesisError> {
-        // configured values
+    pub(crate) fn create_auction(&self) -> Result<ContractHash, GenesisError> {
         let locked_funds_period = self.exec_config.locked_funds_period();
         let auction_delay: u64 = self.exec_config.auction_delay();
 
         let mut named_keys = NamedKeys::new();
-        let mut validators = Bids::new();
 
-        let validator_reward_purse = genesis_purses
+        let validator_reward_purse = self.create_purse(
+            U512::zero(),
+            DeployHash::new(self.genesis_config_hash.value()),
+        )?;
+        named_keys.insert(
+            VALIDATOR_REWARD_PURSE_KEY.into(),
+            Key::URef(validator_reward_purse),
+        );
+
+        let delegator_reward_purse = self.create_purse(
+            U512::zero(),
+            DeployHash::new(self.genesis_config_hash.value()),
+        )?;
+        named_keys.insert(
+            DELEGATOR_REWARD_PURSE_KEY.into(),
+            Key::URef(delegator_reward_purse),
+        );
+
+        let genesis_validators: BTreeMap<PublicKey, U512> = self
+            .exec_config
+            .accounts()
             .iter()
-            .find_map(|item| match item {
-                GenesisPurse::ValidatorReward { purse_uref, .. } => Some(purse_uref),
-                _ => None,
-            })
-            .ok_or(GenesisError::MissingValidatorRewardPurse)?;
-        let named_key = Key::URef(*validator_reward_purse);
-        named_keys.insert(VALIDATOR_REWARD_PURSE_KEY.into(), named_key);
-
-        let delegator_reward_purse = genesis_purses
-            .iter()
-            .find_map(|item| match item {
-                GenesisPurse::DelegatorReward { purse_uref, .. } => Some(purse_uref),
-                _ => None,
-            })
-            .ok_or(GenesisError::MissingDelegatorRewardPurse)?;
-        let named_key = Key::URef(*delegator_reward_purse);
-        named_keys.insert(DELEGATOR_REWARD_PURSE_KEY.into(), named_key);
-
-        for purses in genesis_purses {
-            match purses {
-                GenesisPurse::GenesisValidator {
-                    public_key,
-                    purse_uref,
-                    amount,
-                    ..
-                } => {
-                    let founding_validator = Bid::locked(*purse_uref, *amount, locked_funds_period);
-                    validators.insert(*public_key, founding_validator);
+            .filter_map(|genesis_account| {
+                if genesis_account.is_genesis_validator() {
+                    Some((
+                        genesis_account
+                            .public_key()
+                            .ok_or(GenesisError::MissingPublicKey)
+                            .ok()?,
+                        genesis_account.bonded_amount().value(),
+                    ))
+                } else {
+                    None
                 }
-                _ => continue,
+            })
+            .collect();
+
+        let validators = {
+            let mut validators = Bids::new();
+
+            for (public_key, staked_amount) in genesis_validators.iter() {
+                let purse_uref = self.create_purse(
+                    *staked_amount,
+                    DeployHash::new(public_key.to_account_hash().value()),
+                )?;
+                let founding_validator =
+                    Bid::locked(purse_uref, *staked_amount, locked_funds_period);
+                validators.insert(*public_key, founding_validator);
             }
-        }
+            validators
+        };
 
         let initial_seigniorage_recipients =
             self.initial_seigniorage_recipients(&validators, auction_delay);
@@ -794,12 +783,12 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let (_, contract_hash) = self.store_contract(access_key, named_keys, entry_points);
+        let (_, auction_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        Ok(contract_hash)
+        Ok(auction_hash)
     }
 
-    pub fn create_standard_payment(&self) -> Result<ContractHash, GenesisError> {
+    pub(crate) fn create_standard_payment(&self) -> ContractHash {
         let named_keys = NamedKeys::new();
 
         let entry_points = self.standard_payment_entry_points();
@@ -809,34 +798,162 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
 
-        let (_, contract_hash) = self.store_contract(access_key, named_keys, entry_points);
+        let (_, standard_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
 
-        Ok(contract_hash)
+        standard_payment_hash
     }
 
-    pub fn create_accounts(&self, genesis_purses: &[GenesisPurse]) -> Result<(), GenesisError> {
-        for purse in genesis_purses {
-            match purse {
-                GenesisPurse::GenesisAccount {
-                    purse_uref,
-                    account_hash,
-                    ..
-                } => {
-                    let account_key = Key::Account(*account_hash);
-                    let account = {
-                        let main_purse = *purse_uref;
-                        StoredValue::Account(Account::create(
-                            *account_hash,
-                            NamedKeys::new(),
-                            main_purse,
-                        ))
-                    };
-                    self.tracking_copy.borrow_mut().write(account_key, account)
-                }
-                _ => continue,
-            }
+    pub(crate) fn create_accounts(&self) -> Result<(), GenesisError> {
+        let accounts = {
+            let mut ret: Vec<GenesisAccount> =
+                self.exec_config.accounts().to_vec().into_iter().collect();
+            let system_account = GenesisAccount::system(Motes::zero(), Motes::zero());
+            ret.push(system_account);
+            ret
+        };
+
+        for account in accounts {
+            let account_hash = account.account_hash;
+            let main_purse = self.create_purse(
+                account.balance().value(),
+                DeployHash::new(account_hash.value()),
+            )?;
+
+            let key = Key::Account(account_hash);
+            let stored_value = StoredValue::Account(Account::create(
+                account_hash,
+                Default::default(),
+                main_purse,
+            ));
+
+            self.tracking_copy.borrow_mut().write(key, stored_value);
         }
+
         Ok(())
+    }
+
+    fn initial_seigniorage_recipients(
+        &self,
+        validators: &BTreeMap<PublicKey, Bid>,
+        auction_delay: u64,
+    ) -> BTreeMap<u64, SeigniorageRecipients> {
+        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + auction_delay;
+
+        let mut seigniorage_recipients = SeigniorageRecipients::new();
+        for (era_validator, founding_validator) in validators {
+            seigniorage_recipients.insert(
+                *era_validator,
+                SeigniorageRecipient::from(founding_validator),
+            );
+        }
+
+        let mut initial_seigniorage_recipients = SeigniorageRecipientsSnapshot::new();
+        for era_id in initial_snapshot_range {
+            initial_seigniorage_recipients.insert(era_id, seigniorage_recipients.clone());
+        }
+        initial_seigniorage_recipients
+    }
+
+    fn create_purse(&self, amount: U512, deploy_hash: DeployHash) -> Result<URef, GenesisError> {
+        let tracking_copy = Rc::clone(&self.tracking_copy);
+        let args = runtime_args! {
+            ARG_AMOUNT => amount,
+        };
+
+        let base_key = Key::Hash(self.protocol_data.mint());
+        let mint = {
+            if let StoredValue::Contract(contract) = tracking_copy
+                .borrow_mut()
+                .read(self.correlation_id, &base_key)
+                .map_err(|_| GenesisError::InvalidMintKey)?
+                .ok_or(GenesisError::MissingMintContract)?
+            {
+                contract
+            } else {
+                return Err(GenesisError::UnexpectedStoredValue);
+            }
+        };
+
+        let mut named_keys = mint.named_keys().clone();
+
+        let (_instance, mut runtime) = self
+            .executor
+            .create_runtime(
+                self.system_module.clone(),
+                EntryPointType::Contract,
+                args.clone(),
+                &mut named_keys,
+                Default::default(),
+                base_key,
+                &self.virtual_system_account,
+                Default::default(),
+                Default::default(),
+                deploy_hash,
+                Gas::new(U512::MAX),
+                Rc::clone(&self.hash_address_generator),
+                Rc::clone(&self.uref_address_generator),
+                Rc::clone(&self.transfer_address_generator),
+                self.protocol_version,
+                self.correlation_id,
+                Rc::clone(&tracking_copy),
+                Phase::System,
+                self.protocol_data,
+                Default::default(),
+            )
+            .map_err(|_| GenesisError::UnableToCreateRuntime)?;
+
+        let purse_uref = runtime
+            .call_contract(self.protocol_data.mint(), METHOD_MINT, args)
+            .map_err(GenesisError::ExecutionError)?
+            .into_t::<Result<URef, mint::Error>>()
+            .map_err(|cl_value_error| GenesisError::CLValue(cl_value_error.to_string()))?
+            .map_err(GenesisError::MintError)?;
+        Ok(purse_uref)
+    }
+
+    fn store_contract(
+        &self,
+        access_key: URef,
+        named_keys: NamedKeys,
+        entry_points: EntryPoints,
+    ) -> (ContractPackageHash, ContractHash) {
+        let protocol_version = self.protocol_version;
+        let contract_wasm_hash = self.hash_address_generator.borrow_mut().new_hash_address();
+        let contract_hash = self.hash_address_generator.borrow_mut().new_hash_address();
+        let contract_package_hash = self.hash_address_generator.borrow_mut().new_hash_address();
+
+        let contract_wasm = ContractWasm::new(vec![]);
+        let contract = Contract::new(
+            contract_package_hash,
+            contract_wasm_hash,
+            named_keys,
+            entry_points,
+            protocol_version,
+        );
+        let contract_package = {
+            let mut contract_package = ContractPackage::new(
+                access_key,
+                ContractVersions::default(),
+                DisabledVersions::default(),
+                Groups::default(),
+            );
+            contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
+            contract_package
+        };
+
+        self.tracking_copy.borrow_mut().write(
+            contract_wasm_hash.into(),
+            StoredValue::ContractWasm(contract_wasm),
+        );
+        self.tracking_copy
+            .borrow_mut()
+            .write(contract_hash.into(), StoredValue::Contract(contract));
+        self.tracking_copy.borrow_mut().write(
+            contract_package_hash.into(),
+            StoredValue::ContractPackage(contract_package),
+        );
+
+        (contract_package_hash, contract_hash)
     }
 
     fn mint_entry_points(&self) -> EntryPoints {
@@ -1120,182 +1237,6 @@ where
         entry_points.add_entry_point(entry_point);
 
         entry_points
-    }
-
-    fn initial_seigniorage_recipients(
-        &self,
-        validators: &BTreeMap<PublicKey, Bid>,
-        auction_delay: u64,
-    ) -> BTreeMap<u64, SeigniorageRecipients> {
-        let initial_snapshot_range = INITIAL_ERA_ID..=INITIAL_ERA_ID + auction_delay;
-
-        let mut seigniorage_recipients = SeigniorageRecipients::new();
-        for (era_validator, founding_validator) in validators {
-            seigniorage_recipients.insert(
-                *era_validator,
-                SeigniorageRecipient::from(founding_validator),
-            );
-        }
-
-        let mut initial_seigniorage_recipients = SeigniorageRecipientsSnapshot::new();
-        for era_id in initial_snapshot_range {
-            initial_seigniorage_recipients.insert(era_id, seigniorage_recipients.clone());
-        }
-        initial_seigniorage_recipients
-    }
-
-    fn create_purses(&self) -> Result<Vec<GenesisPurse>, GenesisError> {
-        let mut purses = vec![];
-
-        let zero = U512::zero();
-
-        let urefs = self.create_purse(zero)?;
-        purses.push(GenesisPurse::ProofOfStake {
-            purse_uref: urefs.0,
-            balance_uref: urefs.1,
-            amount: zero,
-        });
-        let urefs = self.create_purse(zero)?;
-        purses.push(GenesisPurse::DelegatorReward {
-            purse_uref: urefs.0,
-            balance_uref: urefs.1,
-            amount: zero,
-        });
-        let urefs = self.create_purse(zero)?;
-        purses.push(GenesisPurse::ValidatorReward {
-            purse_uref: urefs.0,
-            balance_uref: urefs.1,
-            amount: zero,
-        });
-
-        let genesis_validators: BTreeMap<PublicKey, U512> = self
-            .exec_config
-            .accounts()
-            .iter()
-            .filter_map(|genesis_account| {
-                if genesis_account.is_genesis_validator() {
-                    // NOTE: Safe as genesis validators are expected to have public key
-                    // specified.
-                    Some((
-                        genesis_account
-                            .public_key()
-                            .expect("should have public key"),
-                        genesis_account.bonded_amount().value(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for (public_key, amount) in genesis_validators {
-            let urefs = self.create_purse(amount)?;
-            let genesis_validator = GenesisPurse::GenesisValidator {
-                purse_uref: urefs.0,
-                balance_uref: urefs.1,
-                public_key,
-                amount,
-            };
-            purses.push(genesis_validator);
-        }
-
-        let accounts = {
-            let mut ret: Vec<GenesisAccount> = self.exec_config.accounts().to_vec();
-            let system_account = GenesisAccount::system(Motes::zero(), Motes::zero());
-            ret.push(system_account);
-            ret
-        };
-
-        for account in accounts {
-            let amount = account.balance.value();
-            let urefs = self.create_purse(amount)?;
-            let genesis_account = GenesisPurse::GenesisAccount {
-                purse_uref: urefs.0,
-                balance_uref: urefs.1,
-                account_hash: account.account_hash,
-                amount,
-            };
-            purses.push(genesis_account);
-        }
-
-        Ok(purses)
-    }
-
-    fn create_purse(&self, amount: U512) -> Result<(URef, URef), GenesisError> {
-        let balance_uref = self
-            .uref_address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-        let purse_uref = self
-            .uref_address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-
-        self.tracking_copy.borrow_mut().write(
-            balance_uref.into(),
-            StoredValue::CLValue(
-                CLValue::from_t(amount)
-                    .map_err(|_| GenesisError::CLValue(BALANCE_UREF.to_string()))?,
-            ),
-        );
-        self.tracking_copy
-            .borrow_mut()
-            .write(purse_uref.into(), StoredValue::CLValue(CLValue::unit()));
-        // store association between purse and balance urefs
-        self.tracking_copy.borrow_mut().write(
-            purse_uref.addr().into(),
-            StoredValue::CLValue(
-                CLValue::from_t(Key::URef(balance_uref))
-                    .map_err(|_| GenesisError::CLValue(MINT_PURSE_BRIDGE.to_string()))?,
-            ),
-        );
-
-        Ok((purse_uref, balance_uref))
-    }
-
-    fn store_contract(
-        &self,
-        access_key: URef,
-        named_keys: NamedKeys,
-        entry_points: EntryPoints,
-    ) -> (ContractPackageHash, ContractHash) {
-        let protocol_version = self.protocol_version;
-        let contract_wasm_hash = self.hash_address_generator.borrow_mut().new_hash_address();
-        let contract_hash = self.hash_address_generator.borrow_mut().new_hash_address();
-        let contract_package_hash = self.hash_address_generator.borrow_mut().new_hash_address();
-
-        let contract_wasm = ContractWasm::new(vec![]);
-        let contract = Contract::new(
-            contract_package_hash,
-            contract_wasm_hash,
-            named_keys,
-            entry_points,
-            protocol_version,
-        );
-        let contract_package = {
-            let mut contract_package = ContractPackage::new(
-                access_key,
-                ContractVersions::default(),
-                DisabledVersions::default(),
-                Groups::default(),
-            );
-            contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
-            contract_package
-        };
-
-        self.tracking_copy.borrow_mut().write(
-            contract_wasm_hash.into(),
-            StoredValue::ContractWasm(contract_wasm),
-        );
-        self.tracking_copy
-            .borrow_mut()
-            .write(contract_hash.into(), StoredValue::Contract(contract));
-        self.tracking_copy.borrow_mut().write(
-            contract_package_hash.into(),
-            StoredValue::ContractPackage(contract_package),
-        );
-
-        (contract_package_hash, contract_hash)
     }
 }
 

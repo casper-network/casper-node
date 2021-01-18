@@ -173,7 +173,7 @@ pub enum ProtocolUpgradeError {
     FailedToDisablePreviousVersion(String),
 }
 
-pub(crate) struct UpgradeInstaller<S>
+pub(crate) struct SystemUpgrader<S>
 where
     S: StateProvider,
 {
@@ -182,16 +182,16 @@ where
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
-impl<S> UpgradeInstaller<S>
+impl<S> SystemUpgrader<S>
 where
     S: StateProvider,
 {
-    pub fn new(
+    pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
         protocol_data: ProtocolData,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
-        UpgradeInstaller {
+        SystemUpgrader {
             new_protocol_version,
             protocol_data,
             tracking_copy,
@@ -199,7 +199,7 @@ where
     }
 
     /// Bump major version for system contracts.
-    pub fn upgrade_system_contracts_major_version(
+    pub(crate) fn upgrade_system_contracts_major_version(
         &self,
         correlation_id: CorrelationId,
     ) -> Result<(), ProtocolUpgradeError> {
@@ -227,50 +227,44 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         let contract_key = Key::Hash(contract_hash);
 
-        let mut contract = {
-            if let StoredValue::Contract(contract) = self
-                .tracking_copy
-                .borrow_mut()
-                .read(correlation_id, &contract_key)
-                .map_err(|_| {
-                    ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
-                })?
-                .ok_or_else(|| {
-                    ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
-                })?
-            {
-                contract
-            } else {
-                return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                    contract_name.to_string(),
-                ));
-            }
+        let mut contract = if let StoredValue::Contract(contract) = self
+            .tracking_copy
+            .borrow_mut()
+            .read(correlation_id, &contract_key)
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
+            })?
+            .ok_or_else(|| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
+            })? {
+            contract
+        } else {
+            return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                contract_name.to_string(),
+            ));
         };
 
         let contract_package_key = Key::Hash(contract.contract_package_hash());
 
-        let mut contract_package = {
-            if let StoredValue::ContractPackage(contract_package) = self
-                .tracking_copy
-                .borrow_mut()
-                .read(correlation_id, &contract_package_key)
-                .map_err(|_| {
-                    ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                        contract_name.to_string(),
-                    )
-                })?
-                .ok_or_else(|| {
-                    ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                        contract_name.to_string(),
-                    )
-                })?
-            {
-                contract_package
-            } else {
-                return Err(ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
+        let mut contract_package = if let StoredValue::ContractPackage(contract_package) = self
+            .tracking_copy
+            .borrow_mut()
+            .read(correlation_id, &contract_package_key)
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
                     contract_name.to_string(),
-                ));
-            }
+                )
+            })?
+            .ok_or_else(|| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
+                    contract_name.to_string(),
+                )
+            })? {
+            contract_package
+        } else {
+            return Err(ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
+                contract_name.to_string(),
+            ));
         };
 
         contract_package

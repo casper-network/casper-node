@@ -60,7 +60,7 @@ use crate::{
             execution_result::ExecutionResultBuilder,
             genesis::GenesisInstaller,
             step::{StepRequest, StepResult},
-            upgrade::UpgradeInstaller,
+            upgrade::SystemUpgrader,
         },
         execution::{self, DirectSystemContractCall, Executor},
         tracking_copy::{TrackingCopy, TrackingCopyExt},
@@ -147,39 +147,44 @@ where
             Err(error) => return Err(error),
         };
 
-        let genesis_installer: GenesisInstaller<S> = GenesisInstaller::new(
+        let wasm_config = ee_config.wasm_config();
+        let preprocessor = Preprocessor::new(*wasm_config);
+
+        let system_module = tracking_copy
+            .borrow_mut()
+            .get_system_module(&preprocessor)?;
+
+        let mut genesis_installer: GenesisInstaller<S> = GenesisInstaller::new(
             genesis_config_hash,
             protocol_version,
+            correlation_id,
+            self.config,
             ee_config.clone(),
             tracking_copy,
+            system_module,
         );
 
         // Create mint
-        let (mint_hash, purses) = genesis_installer.create_mint().map_err(Error::Genesis)?;
+        let mint_hash = genesis_installer.create_mint().map_err(Error::Genesis)?;
 
         // Create accounts
         genesis_installer
-            .create_accounts(&purses)
+            .create_accounts()
             .map_err(Error::Genesis)?;
 
         // Create proof of stake
         let proof_of_stake_hash = genesis_installer
-            .create_proof_of_stake(&purses)
+            .create_proof_of_stake()
             .map_err(Error::Genesis)?;
 
         // Create auction
-        let auction_hash = genesis_installer
-            .create_auction(&purses)
-            .map_err(Error::Genesis)?;
+        let auction_hash = genesis_installer.create_auction().map_err(Error::Genesis)?;
 
         // Create standard payment
-        let standard_payment_hash = genesis_installer
-            .create_standard_payment()
-            .map_err(Error::Genesis)?;
+        let standard_payment_hash = genesis_installer.create_standard_payment();
 
         // Associate given CostTable with given ProtocolVersion.
         {
-            let wasm_config = ee_config.wasm_config();
             let protocol_data = ProtocolData::new(
                 *wasm_config,
                 *system_config,
@@ -195,7 +200,7 @@ where
         }
 
         // Commit the transforms.
-        let execution_effect = genesis_installer.into_execution_effect();
+        let execution_effect = genesis_installer.finalize();
 
         let commit_result = self
             .state
@@ -253,13 +258,13 @@ where
 
         // 3.1.1.1.1.5 bump system contract major versions
         if upgrade_check_result.is_major_version() {
-            let upgrade_installer: UpgradeInstaller<S> = UpgradeInstaller::new(
+            let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
                 new_protocol_version,
                 current_protocol_data,
                 tracking_copy.clone(),
             );
 
-            upgrade_installer
+            system_upgrader
                 .upgrade_system_contracts_major_version(correlation_id)
                 .map_err(Error::ProtocolUpgrade)?;
         }

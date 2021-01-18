@@ -30,6 +30,7 @@ impl AddressGenerator {
     }
 
     pub fn new_hash_address(&mut self) -> Address {
+        // TODO: this appears to duplicate the logic of AddressGeneratorBuilder::build()
         let pre_hash_bytes = self.create_address();
         // NOTE: Unwrap below is assumed safe as output size of `ADDRESS_LENGTH` is a valid value.
         let mut hasher = VarBlake2b::new(ADDRESS_LENGTH).unwrap();
