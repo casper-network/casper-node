@@ -12,11 +12,12 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 use warp_json_rpc::Builder;
 
 use super::{docs::DocExample, Error, ReactorEventT, RpcRequest, RpcWithParams, RpcWithParamsExt};
 use crate::{
-    components::CLIENT_API_VERSION,
+    components::{rpc_server::rpcs::ErrorCode, CLIENT_API_VERSION},
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{Deploy, DeployHash},
@@ -80,7 +81,7 @@ impl RpcWithParamsExt for PutDeploy {
             let deploy_hash = *params.deploy.id();
 
             // Submit the new deploy to be announced.
-            effect_builder
+            let put_deploy_result = effect_builder
                 .make_request(
                     |responder| RpcRequest::SubmitDeploy {
                         deploy: Box::new(params.deploy),
@@ -90,12 +91,29 @@ impl RpcWithParamsExt for PutDeploy {
                 )
                 .await;
 
-            // Return the result.
-            let result = Self::ResponseResult {
-                api_version: CLIENT_API_VERSION.clone(),
-                deploy_hash,
-            };
-            Ok(response_builder.success(result)?)
+            match put_deploy_result {
+                Ok(_) => {
+                    info!(%deploy_hash,
+                    "deploy was stored"
+                    );
+                    let result = Self::ResponseResult {
+                        api_version: CLIENT_API_VERSION.clone(),
+                        deploy_hash,
+                    };
+                    Ok(response_builder.success(result)?)
+                }
+                Err(error) => {
+                    info!(
+                        %deploy_hash,
+                        %error,
+                        "the deploy submitted by the client was invalid",
+                    );
+                    Ok(response_builder.error(warp_json_rpc::Error::custom(
+                        ErrorCode::InvalidDeploy as i64,
+                        error.to_string(),
+                    ))?)
+                }
+            }
         }
         .boxed()
     }

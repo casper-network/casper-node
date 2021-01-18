@@ -49,7 +49,7 @@ impl SystemProvider for AuctionContract {
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        Ok(system::get_balance(purse))
+        Ok(system::get_purse_balance(purse))
     }
 
     fn transfer_from_purse_to_purse(
@@ -103,7 +103,7 @@ impl MintProvider for AuctionContract {
     }
 
     fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        Ok(system::get_balance(purse))
+        Ok(system::get_purse_balance(purse))
     }
 
     fn read_base_round_reward(&mut self) -> Result<U512, Error> {

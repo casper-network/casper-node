@@ -28,6 +28,9 @@ pub fn sign<T: AsRef<[u8]>>(
     rng: &mut NodeRng,
 ) -> Signature {
     match (secret_key, public_key) {
+        (SecretKey::System, PublicKey::System) => {
+            panic!("cannot create signature with system keys",)
+        }
         (SecretKey::Ed25519(secret_key), PublicKey::Ed25519(public_key)) => {
             let expanded_secret_key = ExpandedSecretKey::from(secret_key);
             let signature = expanded_secret_key.sign(message.as_ref(), public_key);
@@ -48,6 +51,9 @@ pub fn verify<T: AsRef<[u8]>>(
     public_key: &PublicKey,
 ) -> Result<()> {
     match (signature, public_key) {
+        (Signature::System, _) => Err(Error::AsymmetricKey(String::from(
+            "signatures based on the system key cannot be verified",
+        ))),
         (Signature::Ed25519(signature), PublicKey::Ed25519(public_key)) => public_key
             .verify_strict(
                 message.as_ref(),
@@ -768,5 +774,17 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         let uncompressed_hex = format!("02{}", hex::encode(uncompressed_public_key.as_bytes()));
         let from_uncompressed_hex = PublicKey::from_hex(&uncompressed_hex).unwrap();
         assert_eq!(public_key, from_uncompressed_hex);
+    }
+
+    #[test]
+    fn generate_ed25519_should_generate_an_ed25519_key() {
+        let secret_key = SecretKey::generate_ed25519().unwrap();
+        assert!(matches!(secret_key, SecretKey::Ed25519(_)))
+    }
+
+    #[test]
+    fn generate_secp256k1_should_generate_an_secp256k1_key() {
+        let secret_key = SecretKey::generate_secp256k1().unwrap();
+        assert!(matches!(secret_key, SecretKey::Secp256k1(_)))
     }
 }

@@ -682,27 +682,6 @@ impl Key {
         }
     }
 
-    // TODO: remove this nightmare
-    /// Creates the seed of a local key for a context with the given base key.
-    pub fn into_seed(self) -> [u8; BLAKE2B_DIGEST_LENGTH] {
-        match self {
-            Key::Account(account_hash) => account_hash.value(),
-            Key::Hash(bytes) => bytes,
-            Key::URef(uref) => uref.addr(),
-            Key::Transfer(transfer_addr) => transfer_addr.value(),
-            Key::DeployInfo(addr) => addr.value(),
-            Key::EraInfo(era_id) => {
-                // stop-gap measure until this method is removed
-                let mut ret = [0u8; BLAKE2B_DIGEST_LENGTH];
-                let era_id_bytes = era_id.to_le_bytes();
-                let era_id_bytes_len = era_id_bytes.len();
-                assert!(era_id_bytes_len < BLAKE2B_DIGEST_LENGTH);
-                ret[..era_id_bytes_len].clone_from_slice(&era_id_bytes);
-                ret
-            }
-        }
-    }
-
     /// Casts a [`Key::URef`] to a [`Key::Hash`]
     pub fn uref_to_hash(&self) -> Option<Key> {
         let uref = self.as_uref()?;

@@ -5,7 +5,7 @@ use casper_types::{
     ContractHash, HashAddr,
 };
 
-use crate::shared::wasm_config::WasmConfig;
+use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 pub const DEFAULT_WASMLESS_TRANSFER_COST: u64 = 10_000;
@@ -14,11 +14,11 @@ pub const DEFAULT_WASMLESS_TRANSFER_COST: u64 = 10_000;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ProtocolData {
     wasm_config: WasmConfig,
+    system_config: SystemConfig,
     mint: ContractHash,
     proof_of_stake: ContractHash,
     standard_payment: ContractHash,
     auction: ContractHash,
-    wasmless_transfer_cost: u64,
 }
 
 /// Provides a default instance with non existing urefs and empty costs table.
@@ -29,11 +29,11 @@ impl Default for ProtocolData {
     fn default() -> ProtocolData {
         ProtocolData {
             wasm_config: WasmConfig::default(),
+            system_config: SystemConfig::default(),
             mint: DEFAULT_ADDRESS.into(),
             proof_of_stake: DEFAULT_ADDRESS.into(),
             standard_payment: DEFAULT_ADDRESS.into(),
             auction: DEFAULT_ADDRESS.into(),
-            wasmless_transfer_cost: DEFAULT_WASMLESS_TRANSFER_COST,
         }
     }
 }
@@ -42,19 +42,19 @@ impl ProtocolData {
     /// Creates a new `ProtocolData` value from a given `WasmCosts` value.
     pub fn new(
         wasm_config: WasmConfig,
+        system_costs: SystemConfig,
         mint: ContractHash,
         proof_of_stake: ContractHash,
         standard_payment: ContractHash,
         auction: ContractHash,
-        wasmless_transfer_cost: u64,
     ) -> Self {
         ProtocolData {
             wasm_config,
+            system_config: system_costs,
             mint,
             proof_of_stake,
             standard_payment,
             auction,
-            wasmless_transfer_cost,
         }
     }
 
@@ -85,9 +85,14 @@ impl ProtocolData {
         }
     }
 
-    /// Gets the `WasmCosts` value from a given [`ProtocolData`] value.
+    /// Gets the `WasmConfig` value from a given [`ProtocolData`] value.
     pub fn wasm_config(&self) -> &WasmConfig {
         &self.wasm_config
+    }
+
+    /// Gets the `SystemConfig` value from a given [`ProtocolData`] value.
+    pub fn system_config(&self) -> &SystemConfig {
+        &self.system_config
     }
 
     pub fn mint(&self) -> ContractHash {
@@ -108,7 +113,7 @@ impl ProtocolData {
 
     /// Retrieves all valid system contracts stored in protocol version
     pub fn system_contracts(&self) -> Vec<ContractHash> {
-        let mut vec = Vec::with_capacity(3);
+        let mut vec = Vec::with_capacity(4);
         if self.mint != DEFAULT_ADDRESS.into() {
             vec.push(self.mint)
         }
@@ -140,43 +145,40 @@ impl ProtocolData {
         }
         true
     }
-
-    pub fn wasmless_transfer_cost(&self) -> u64 {
-        self.wasmless_transfer_cost
-    }
 }
 
 impl ToBytes for ProtocolData {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
+
         ret.append(&mut self.wasm_config.to_bytes()?);
+        ret.append(&mut self.system_config.to_bytes()?);
         ret.append(&mut self.mint.to_bytes()?);
         ret.append(&mut self.proof_of_stake.to_bytes()?);
         ret.append(&mut self.standard_payment.to_bytes()?);
         ret.append(&mut self.auction.to_bytes()?);
-        ret.append(&mut self.wasmless_transfer_cost.to_bytes()?);
 
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
         self.wasm_config.serialized_length()
+            + self.system_config.serialized_length()
             + self.mint.serialized_length()
             + self.proof_of_stake.serialized_length()
             + self.standard_payment.serialized_length()
             + self.auction.serialized_length()
-            + self.wasmless_transfer_cost.serialized_length()
     }
 }
 
 impl FromBytes for ProtocolData {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (wasm_config, rem) = WasmConfig::from_bytes(bytes)?;
+        let (system_config, rem) = FromBytes::from_bytes(rem)?;
         let (mint, rem) = HashAddr::from_bytes(rem)?;
         let (proof_of_stake, rem) = HashAddr::from_bytes(rem)?;
         let (standard_payment, rem) = HashAddr::from_bytes(rem)?;
         let (auction, rem) = HashAddr::from_bytes(rem)?;
-        let (wasmless_transfer_cost, rem) = FromBytes::from_bytes(rem)?;
 
         Ok((
             ProtocolData {
@@ -185,7 +187,7 @@ impl FromBytes for ProtocolData {
                 proof_of_stake: proof_of_stake.into(),
                 standard_payment: standard_payment.into(),
                 auction: auction.into(),
-                wasmless_transfer_cost,
+                system_config,
             },
             rem,
         ))
@@ -194,9 +196,11 @@ impl FromBytes for ProtocolData {
 
 #[cfg(test)]
 pub(crate) mod gens {
-    use proptest::{num, prop_compose};
+    use proptest::prop_compose;
 
-    use crate::shared::wasm_config::gens::wasm_config_arb;
+    use crate::shared::{
+        system_config::gens::system_config_arb, wasm_config::gens::wasm_config_arb,
+    };
     use casper_types::gens;
 
     use super::ProtocolData;
@@ -204,19 +208,19 @@ pub(crate) mod gens {
     prop_compose! {
         pub fn protocol_data_arb()(
             wasm_config in wasm_config_arb(),
+            system_config in system_config_arb(),
             mint in gens::u8_slice_32(),
             proof_of_stake in gens::u8_slice_32(),
             standard_payment in gens::u8_slice_32(),
             auction in gens::u8_slice_32(),
-            wasmless_transfer_cost in num::u64::ANY,
         ) -> ProtocolData {
             ProtocolData {
                 wasm_config,
+                system_config,
                 mint: mint.into(),
                 proof_of_stake: proof_of_stake.into(),
                 standard_payment: standard_payment.into(),
                 auction: auction.into(),
-                wasmless_transfer_cost,
             }
         }
     }
@@ -226,10 +230,10 @@ pub(crate) mod gens {
 mod tests {
     use proptest::proptest;
 
-    use crate::shared::wasm_config::WasmConfig;
+    use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
     use casper_types::{bytesrepr, ContractHash};
 
-    use super::{gens, ProtocolData, DEFAULT_WASMLESS_TRANSFER_COST};
+    use super::{gens, ProtocolData};
 
     #[test]
     fn should_return_all_system_contracts() {
@@ -239,13 +243,14 @@ mod tests {
         let auction_reference = [4u8; 32].into();
         let protocol_data = {
             let wasm_config = WasmConfig::default();
+            let system_config = SystemConfig::default();
             ProtocolData::new(
                 wasm_config,
+                system_config,
                 mint_reference,
                 proof_of_stake_reference,
                 standard_payment_reference,
                 auction_reference,
-                DEFAULT_WASMLESS_TRANSFER_COST,
             )
         };
 
@@ -273,13 +278,14 @@ mod tests {
         let auction_reference = [4u8; 32].into();
         let protocol_data = {
             let wasm_config = WasmConfig::default();
+            let system_config = SystemConfig::default();
             ProtocolData::new(
                 wasm_config,
+                system_config,
                 mint_reference,
                 proof_of_stake_reference,
                 standard_payment_reference,
                 auction_reference,
-                DEFAULT_WASMLESS_TRANSFER_COST,
             )
         };
 

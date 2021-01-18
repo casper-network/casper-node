@@ -4,15 +4,11 @@ use casper_types::{ExecutionResult, PublicKey};
 
 use crate::{
     components::consensus::EraId,
-    types::{
-        BlockHash, BlockHeader, DeployHash, DeployHeader, FinalitySignature, FinalizedBlock,
-        Timestamp,
-    },
+    types::{BlockHash, BlockHeader, DeployHash, DeployHeader, FinalitySignature, Timestamp},
 };
 
 #[derive(Debug)]
 pub enum Event {
-    BlockFinalized(Box<FinalizedBlock>),
     BlockAdded {
         block_hash: BlockHash,
         block_header: Box<BlockHeader>,
@@ -34,11 +30,6 @@ pub enum Event {
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            Event::BlockFinalized(finalized_block) => write!(
-                formatter,
-                "block finalized {}",
-                finalized_block.proto_block().hash()
-            ),
             Event::BlockAdded { block_hash, .. } => write!(formatter, "block added {}", block_hash),
             Event::DeployProcessed { deploy_hash, .. } => {
                 write!(formatter, "deploy processed {}", deploy_hash)

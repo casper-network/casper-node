@@ -9,6 +9,10 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
+#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
+use casper_execution_engine::shared::system_config::{
+    auction_costs::DEFAULT_ADD_BID_COST, standard_payment_costs::DEFAULT_PAY_COST,
+};
 use casper_execution_engine::{
     core::engine_state::upgrade::ActivationPoint,
     shared::{
@@ -182,8 +186,11 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
     builder.exec(exec_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    assert_eq!(balance_before, balance_after);
-    assert_eq!(builder.last_exec_gas_cost().value(), U512::zero());
+    assert_eq!(balance_before, balance_after + DEFAULT_PAY_COST);
+    assert_eq!(
+        builder.last_exec_gas_cost().value(),
+        U512::from(DEFAULT_PAY_COST)
+    );
 }
 
 #[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
@@ -232,8 +239,12 @@ fn should_verify_isolated_auction_storage_is_free() {
     builder.exec(exec_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    assert_eq!(balance_after, balance_before - U512::from(BOND_AMOUNT));
-    assert_eq!(builder.last_exec_gas_cost().value(), U512::zero());
+    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_ADD_BID_COST);
+    assert_eq!(
+        balance_after,
+        balance_before - U512::from(BOND_AMOUNT) - call_cost
+    );
+    assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
 
 #[ignore]

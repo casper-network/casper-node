@@ -83,6 +83,7 @@ fn should_step() {
         .with_slash_item(SlashItem::new(*ACCOUNT_1_PK))
         .with_reward_item(RewardItem::new(*ACCOUNT_1_PK, BLOCK_REWARD / 2))
         .with_reward_item(RewardItem::new(*ACCOUNT_2_PK, BLOCK_REWARD / 2))
+        .with_next_era_id(1)
         .build();
 
     let auction_hash = builder.get_auction_contract_hash();
@@ -173,6 +174,7 @@ fn should_adjust_total_supply() {
         .with_slash_item(SlashItem::new(*ACCOUNT_2_PK))
         .with_reward_item(RewardItem::new(*ACCOUNT_1_PK, 0))
         .with_reward_item(RewardItem::new(*ACCOUNT_2_PK, BLOCK_REWARD / 2))
+        .with_next_era_id(1)
         .build();
 
     builder.step(step_request);

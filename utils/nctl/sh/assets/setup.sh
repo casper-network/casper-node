@@ -55,6 +55,7 @@ function _set_bin()
 function _set_chainspec()
 {
     local GENESIS_DELAY=${1}
+    local COUNT_GENESIS_NODES=${2}
     local PATH_TO_NET
     local PATH_TO_CHAINSPEC
     local GENESIS_NAME
@@ -65,28 +66,50 @@ function _set_chainspec()
     mkdir "$PATH_TO_NET"/chainspec
 
     # Set file.
-    PATH_TO_CHAINSPEC=$PATH_TO_NET/chainspec/chainspec.toml
-    cp "$NCTL_CASPER_HOME"/resources/local/chainspec.toml.in "$PATH_TO_CHAINSPEC"
+    PATH_TO_CHAINSPEC_DIR=$PATH_TO_NET/chainspec
+    PATH_TO_CHAINSPEC_FILE=$PATH_TO_CHAINSPEC_DIR/chainspec.toml
+    cp "$NCTL_CASPER_HOME"/resources/local/chainspec.toml.in "$PATH_TO_CHAINSPEC_FILE"
 
-    # Set config setting: genesis.name.
-    GENESIS_NAME=$(get_chain_name)
-    sed -i "s/casper-example/$GENESIS_NAME/g" "$PATH_TO_CHAINSPEC" > /dev/null 2>&1
-
-    # Set config setting: genesis.timestamp.
-    GENESIS_TIMESTAMP=$(get_genesis_timestamp "$GENESIS_DELAY")
-    sed -i "s/^\([[:alnum:]_]*timestamp\) = .*/\1 = \"${GENESIS_TIMESTAMP}\"/" "$PATH_TO_CHAINSPEC" > /dev/null 2>&1
-
-    # Override config settings as all paths need to point relative to nctl's assets dir:
-    #    genesis.accounts_path
-    #    genesis.mint_installer_path
-    #    genesis.pos_installer_path
-    #    genesis.standard_payment_installer_path
-    #    genesis.auction_installer_path    
-    sed -i "s?\${BASEDIR}/target/wasm32-unknown-unknown/release/?../bin/?g" "$PATH_TO_CHAINSPEC" > /dev/null 2>&1
-    sed -i "s?\${BASEDIR}/resources/local/?./?g" "$PATH_TO_CHAINSPEC" > /dev/null 2>&1
+    # Set file contents.
+    _set_chainspec_config \
+        "$PATH_TO_NET" \
+        "$PATH_TO_CHAINSPEC_FILE" \
+        $(get_chain_name) \
+        $(get_genesis_timestamp "$GENESIS_DELAY") \
+        $((COUNT_GENESIS_NODES * 2))
 
     # Set accounts.csv.
     touch "$PATH_TO_NET"/chainspec/accounts.csv
+}
+
+#######################################
+# Sets entry in node's config.toml.
+# Arguments:
+#   Node ordinal identifier.
+#   Path node's config file.
+#######################################
+function _set_chainspec_config()
+{
+    local PATH_TO_NET=${1}
+    local PATH_TO_FILE=${2}
+    local GENESIS_NAME=${3}
+    local GENESIS_TIMESTAMP=${4}
+    local COUNT_MAX_NODES=${5}
+
+    local SCRIPT=(
+        "import toml;"
+        "cfg=toml.load('$PATH_TO_FILE');"
+        "cfg['genesis']['name']='$GENESIS_NAME';"
+        "cfg['genesis']['timestamp']='$GENESIS_TIMESTAMP';"
+        "cfg['genesis']['validator_slots']=$COUNT_MAX_NODES;"
+        "cfg['genesis']['accounts_path']='$PATH_TO_NET/chainspec/accounts.csv';"
+        "cfg['genesis']['auction_installer_path']='$PATH_TO_NET/bin/auction_install.wasm';"
+        "cfg['genesis']['mint_installer_path']='$PATH_TO_NET/bin/mint_install.wasm';"
+        "cfg['genesis']['pos_installer_path']='$PATH_TO_NET/bin/pos_install.wasm';"
+        "cfg['genesis']['standard_payment_installer_path']='$PATH_TO_NET/bin/standard_payment_install.wasm';"
+        "toml.dump(cfg, open('$PATH_TO_FILE', 'w'));"
+    )
+    python3 -c "${SCRIPT[*]}"
 }
 
 #######################################
@@ -231,7 +254,7 @@ function _main()
     _set_bin
 
     log "... setting chainspec"
-    _set_chainspec "$GENESIS_DELAY"
+    _set_chainspec "$GENESIS_DELAY" "$COUNT_NODES"
 
     log "... setting faucet"
     _set_faucet 

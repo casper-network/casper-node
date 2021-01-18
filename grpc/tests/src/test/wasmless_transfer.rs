@@ -10,6 +10,11 @@ use casper_execution_engine::{
         engine_state::{upgrade::ActivationPoint, Error as CoreError},
         execution::Error as ExecError,
     },
+    shared::system_config::{
+        auction_costs::AuctionCosts, mint_costs::MintCosts,
+        proof_of_stake_costs::ProofOfStakeCosts, standard_payment_costs::StandardPaymentCosts,
+        SystemConfig,
+    },
     storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST,
 };
 use casper_types::{
@@ -870,6 +875,19 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     const DEFAULT_ACTIVATION_POINT: ActivationPoint = 1;
 
     let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST * 2;
+    let new_auction_costs = AuctionCosts::default();
+    let new_mint_costs = MintCosts::default();
+    let new_proof_of_stake_costs = ProofOfStakeCosts::default();
+    let new_standard_payment_costs = StandardPaymentCosts::default();
+
+    let new_system_config = SystemConfig::new(
+        new_wasmless_transfer_cost,
+        new_auction_costs,
+        new_mint_costs,
+        new_proof_of_stake_costs,
+        new_standard_payment_costs,
+    );
+
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let new_protocol_version = ProtocolVersion::from_parts(
         old_protocol_version.value().major,
@@ -889,7 +907,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
-            .with_new_wasmless_transfer_cost(new_wasmless_transfer_cost)
+            .with_new_system_config(new_system_config)
             .build()
     };
 

@@ -9,7 +9,7 @@ use pem::Pem;
 use rand::{Rng, RngCore};
 use untrusted::Input;
 
-use casper_types::{AsymmetricType, PublicKey, SecretKey, ED25519_TAG, SECP256K1_TAG};
+use casper_types::{AsymmetricType, PublicKey, SecretKey, ED25519_TAG, SECP256K1_TAG, SYSTEM_TAG};
 
 #[cfg(test)]
 use crate::testing::TestRng;
@@ -91,9 +91,9 @@ pub trait AsymmetricKeyExt: Sized {
 
 impl AsymmetricKeyExt for SecretKey {
     fn generate_ed25519() -> Result<Self, Error> {
-        let mut bytes = [0u8; Self::SECP256K1_LENGTH];
+        let mut bytes = [0u8; Self::ED25519_LENGTH];
         getrandom::getrandom(&mut bytes[..]).expect("RNG failure!");
-        Ok(SecretKey::secp256k1(bytes))
+        Ok(SecretKey::ed25519(bytes))
     }
 
     fn generate_secp256k1() -> Result<Self, Error> {
@@ -113,6 +113,7 @@ impl AsymmetricKeyExt for SecretKey {
 
     fn to_der(&self) -> Result<Vec<u8>, Error> {
         match self {
+            SecretKey::System => Err(Error::System(String::from("to_der"))),
             SecretKey::Ed25519(secret_key) => {
                 // See https://tools.ietf.org/html/rfc8410#section-10.3
                 let mut key_bytes = vec![];
@@ -215,6 +216,7 @@ impl AsymmetricKeyExt for SecretKey {
         })?;
 
         match key_type_tag {
+            SYSTEM_TAG => Err(Error::AsymmetricKey("cannot construct variant".to_string())),
             ED25519_TAG => SecretKey::ed25519_from_bytes(raw_bytes).map_err(Into::into),
             SECP256K1_TAG => SecretKey::secp256k1_from_bytes(raw_bytes).map_err(Into::into),
             _ => Err(Error::AsymmetricKey("unknown type tag".to_string())),
@@ -223,6 +225,7 @@ impl AsymmetricKeyExt for SecretKey {
 
     fn to_pem(&self) -> Result<String, Error> {
         let tag = match self {
+            SecretKey::System => return Err(Error::System(String::from("to_pem"))),
             SecretKey::Ed25519(_) => ED25519_PEM_SECRET_KEY_TAG.to_string(),
             SecretKey::Secp256k1(_) => SECP256K1_PEM_SECRET_KEY_TAG.to_string(),
         };
@@ -244,6 +247,7 @@ impl AsymmetricKeyExt for SecretKey {
         };
 
         match secret_key {
+            SecretKey::System => return Err(Error::System(String::from("from_pem"))),
             SecretKey::Ed25519(_) => {
                 if pem.tag != ED25519_PEM_SECRET_KEY_TAG {
                     return Err(bad_tag(ED25519_PEM_SECRET_KEY_TAG));
@@ -262,6 +266,7 @@ impl AsymmetricKeyExt for SecretKey {
     #[cfg(test)]
     fn duplicate(&self) -> Self {
         match self {
+            SecretKey::System => SecretKey::System,
             SecretKey::Ed25519(secret_key) => {
                 Self::ed25519_from_bytes(secret_key.as_ref()).expect("could not copy secret key")
             }
@@ -324,6 +329,7 @@ impl AsymmetricKeyExt for PublicKey {
 
     fn to_der(&self) -> Result<Vec<u8>, Error> {
         match self {
+            PublicKey::System => Err(Error::System(String::from("to_der"))),
             PublicKey::Ed25519(public_key) => {
                 // See https://tools.ietf.org/html/rfc8410#section-10.1
                 let mut encoded = vec![];
@@ -390,6 +396,7 @@ impl AsymmetricKeyExt for PublicKey {
 
     fn to_pem(&self) -> Result<String, Error> {
         let tag = match self {
+            PublicKey::System => return Err(Error::System(String::from("to_pem"))),
             PublicKey::Ed25519(_) => ED25519_PEM_PUBLIC_KEY_TAG.to_string(),
             PublicKey::Secp256k1(_) => SECP256K1_PEM_PUBLIC_KEY_TAG.to_string(),
         };
@@ -408,6 +415,7 @@ impl AsymmetricKeyExt for PublicKey {
             ))
         };
         match public_key {
+            PublicKey::System => return Err(Error::System(String::from("from_pem"))),
             PublicKey::Ed25519(_) => {
                 if pem.tag != ED25519_PEM_PUBLIC_KEY_TAG {
                     return Err(bad_tag(ED25519_PEM_PUBLIC_KEY_TAG));
@@ -425,6 +433,7 @@ impl AsymmetricKeyExt for PublicKey {
     #[cfg(test)]
     fn duplicate(&self) -> Self {
         match self {
+            PublicKey::System => PublicKey::System,
             PublicKey::Ed25519(public_key) => {
                 Self::ed25519_from_bytes(public_key.as_ref()).expect("could not copy public key")
             }

@@ -15,7 +15,7 @@ indexmap = "1.6.0"
 Inflector = "0.11.4"
 proc-macro2 = "1.0.21"
 quote = "1.0.8"
-syn = { version = "1.0.40", features = ["full"] }
+syn = { version = "1.0.40", features = ["full", "extra-traits"] }
 
 [lib]
 proc-macro = true

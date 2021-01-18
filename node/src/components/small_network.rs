@@ -308,7 +308,7 @@ where
                     );
                 }
                 Err(err) => {
-                    warn!("failed to resolve known address {}: {}", address, err);
+                    warn!(%address, %err, "failed to resolve known address");
                 }
             }
         }
@@ -354,11 +354,11 @@ where
             // TODO - set this to `warn!` once we are normally testing with networks large enough to
             //        make it a meaningful and infrequent log message.
             trace!(
+                our_id=%self.our_id,
                 wanted = count,
                 selected = peer_ids.len(),
-                "{}: could not select enough random nodes for gossiping, not enough non-excluded \
-                outgoing connections",
-                self.our_id
+                "could not select enough random nodes for gossiping, not enough non-excluded \
+                outgoing connections"
             );
         }
 
@@ -375,11 +375,11 @@ where
         if let Some(connection) = self.outgoing.get(&dest) {
             if let Err(msg) = connection.sender.send(msg) {
                 // We lost the connection, but that fact has not reached us yet.
-                warn!(%dest, ?msg, "{}: dropped outgoing message, lost connection", self.our_id);
+                warn!(our_id=%self.our_id, %dest, ?msg, "dropped outgoing message, lost connection");
             }
         } else {
             // We are not connected, so the reconnection is likely already in progress.
-            debug!(%dest, ?msg, "{}: dropped outgoing message, no connection", self.our_id);
+            debug!(our_id=%self.our_id, %dest, ?msg, "dropped outgoing message, no connection");
         }
     }
 
@@ -395,10 +395,10 @@ where
                 if peer_id == self.our_id {
                     self.is_bootstrap_node = true;
                     debug!(
+                        our_id=%self.our_id,
                         %peer_address,
                         local_address=?transport.get_ref().local_addr(),
-                        "{}: connected incoming to ourself - closing connection",
-                        self.our_id
+                        "connected incoming to ourself - closing connection"
                     );
                     return Effects::new();
                 }
@@ -406,16 +406,16 @@ where
                 // If the peer has already disconnected, allow the connection to drop.
                 if let Err(error) = transport.get_ref().peer_addr() {
                     debug!(
+                        our_id=%self.our_id,
                         %peer_address,
                         local_address=?transport.get_ref().local_addr(),
                         %error,
-                        "{}: incoming connection dropped",
-                        self.our_id
+                        "incoming connection dropped",
                     );
                     return Effects::new();
                 }
 
-                debug!(%peer_id, %peer_address, "{}: established incoming connection", self.our_id);
+                debug!(our_id=%self.our_id, %peer_id, %peer_address, "established incoming connection");
                 // The sink is only used to send a single handshake message, then dropped.
                 let (mut sink, stream) = framed::<P>(transport).split();
                 let handshake = Message::Handshake {
@@ -455,7 +455,7 @@ where
                 effects
             }
             Err(err) => {
-                warn!(%peer_address, %err, "{}: TLS handshake failed", self.our_id);
+                warn!(our_id=%self.our_id, %peer_address, %err, "TLS handshake failed");
                 Effects::new()
             }
         }
@@ -476,9 +476,9 @@ where
 
         if !self.pending.remove(&peer_address) {
             info!(
+                our_id=%self.our_id,
                 %peer_address,
-                "{}: this peer's incoming connection has dropped, so don't establish an outgoing",
-                self.our_id
+                "this peer's incoming connection has dropped, so don't establish an outgoing"
             );
             return Effects::new();
         }
@@ -487,17 +487,17 @@ where
         if peer_id == self.our_id {
             self.is_bootstrap_node = true;
             debug!(
+                our_id=%self.our_id,
                 peer_address=?transport.get_ref().peer_addr(),
                 local_address=?transport.get_ref().local_addr(),
-                "{}: connected outgoing to ourself - closing connection",
-                self.our_id,
+                "connected outgoing to ourself - closing connection",
             );
             return Effects::new();
         }
 
         // The stream is only used to receive a single handshake message and then dropped.
         let (sink, stream) = framed::<P>(transport).split();
-        debug!(%peer_id, %peer_address, "{}: established outgoing connection", self.our_id);
+        debug!(our_id=%self.our_id, %peer_id, %peer_address, "established outgoing connection");
 
         let (sender, receiver) = mpsc::unbounded_channel();
         let connection = OutgoingConnection {
@@ -509,7 +509,7 @@ where
             // We assume that for a reconnect to have happened, the outgoing entry must have
             // been either non-existent yet or cleaned up by the handler of the connection
             // closing event. If this is not the case, an assumed invariant has been violated.
-            error!(%peer_id, "{}: did not expect leftover channel in outgoing map", self.our_id);
+            error!(our_id=%self.our_id, %peer_id, "did not expect leftover channel in outgoing map");
         }
 
         let mut effects = self.check_connection_complete(effect_builder, peer_id.clone());
@@ -550,9 +550,9 @@ where
 
         if let Some(peer_id) = peer_id {
             if let Some(err) = error {
-                warn!(%peer_id, %peer_address, %err, "{}: outgoing connection failed", self.our_id);
+                warn!(our_id=%self.our_id, %peer_id, %peer_address, %err, "outgoing connection failed");
             } else {
-                warn!(%peer_id, %peer_address, "{}: outgoing connection closed", self.our_id);
+                warn!(our_id=%self.our_id, %peer_id, %peer_address, "outgoing connection closed");
             }
             return self.remove(effect_builder, &peer_id, false);
         }
@@ -560,9 +560,9 @@ where
         // If we don't have the node ID passed in here, it was never added as an
         // outgoing connection, hence no need to call `self.remove()`.
         if let Some(err) = error {
-            warn!(%peer_address, %err, "{}: outgoing connection failed", self.our_id);
+            warn!(our_id=%self.our_id, %peer_address, %err, "outgoing connection failed");
         } else {
-            warn!(%peer_address, "{}: outgoing connection closed", self.our_id);
+            warn!(our_id=%self.our_id, %peer_address, "outgoing connection closed");
         }
 
         Effects::new()
@@ -575,10 +575,13 @@ where
         add_to_blocklist: bool,
     ) -> Effects<Event<P>> {
         if let Some(incoming) = self.incoming.remove(&peer_id) {
+            trace!(our_id=%self.our_id, %peer_id, "removing peer from the incoming connections");
             let _ = self.pending.remove(&incoming.peer_address);
         }
         if let Some(outgoing) = self.outgoing.remove(&peer_id) {
+            trace!(our_id=%self.our_id, %peer_id, "removing peer from the outgoing connections");
             if add_to_blocklist {
+                info!(our_id=%self.our_id, %peer_id, "blacklisting peer");
                 self.blocklist.insert(outgoing.peer_address);
             }
         }
@@ -651,11 +654,11 @@ where
             } => {
                 if genesis_config_hash != self.genesis_config_hash {
                     info!(
+                        our_id=%self.our_id,
+                        %peer_id,
                         our_hash=?self.genesis_config_hash,
                         their_hash=?genesis_config_hash,
-                        "{}: dropping connection to {} due to genesis config hash mismatch",
-                        self.our_id,
-                        peer_id
+                        "dropping connection due to genesis config hash mismatch"
                     );
                     return self.remove(effect_builder, &peer_id, false);
                 }
@@ -719,9 +722,9 @@ where
         if self.is_isolated() {
             if self.is_bootstrap_node {
                 info!(
-                    "{}: failed to bootstrap to any other nodes, but continuing to run as we are a \
-                    bootstrap node",
-                    self.our_id
+                    our_id=%self.our_id,
+                    "failed to bootstrap to any other nodes, but continuing to run as we are a \
+                    bootstrap node"
                 );
             } else {
                 // Note that we could retry the connection to other nodes, but for now we
@@ -782,11 +785,11 @@ where
             // Wait for the server to exit cleanly.
             if let Some(join_handle) = self.server_join_handle.take() {
                 match join_handle.await {
-                    Ok(_) => debug!("{}: server exited cleanly", self.our_id),
+                    Ok(_) => debug!(our_id=%self.our_id, "server exited cleanly"),
                     Err(err) => error!(%self.our_id,%err, "could not join server task cleanly"),
                 }
             } else if env::var(ENABLE_LIBP2P_ENV_VAR).is_err() {
-                warn!("{}: server shutdown while already shut down", self.our_id)
+                warn!(our_id=%self.our_id, "server shutdown while already shut down")
             }
         }
         .boxed()
@@ -812,7 +815,7 @@ where
                 peer_address,
                 error,
             } => {
-                warn!(%error, "{}: connection to known node at {} failed", self.our_id, peer_address);
+                warn!(our_id=%self.our_id, %peer_address, %error, "connection to known node failed");
 
                 let was_removed = self.pending.remove(&peer_address);
                 assert!(
@@ -825,7 +828,7 @@ where
                 stream,
                 peer_address,
             } => {
-                debug!(%peer_address, "{}: incoming connection, starting TLS handshake", self.our_id);
+                debug!(our_id=%self.our_id, %peer_address, "incoming connection, starting TLS handshake");
 
                 setup_tls(stream, self.certificate.clone(), self.secret_key.clone())
                     .boxed()
@@ -847,9 +850,11 @@ where
                 peer_address,
             } => {
                 match result {
-                    Ok(()) => info!(%peer_id, %peer_address, "{}: connection closed", self.our_id),
+                    Ok(()) => {
+                        info!(our_id=%self.our_id, %peer_id, %peer_address, "connection closed",)
+                    }
                     Err(err) => {
-                        warn!(%peer_id, %peer_address, %err, "{}: connection dropped", self.our_id)
+                        warn!(our_id=%self.our_id, %peer_id, %peer_address, %err, "connection dropped")
                     }
                 }
                 self.remove(effect_builder, &peer_id, false)
@@ -950,7 +955,7 @@ async fn server_task<P, REv>(
                 //       The code in its current state will consume 100% CPU if local resource
                 //       exhaustion happens, as no distinction is made and no delay introduced.
                 Err(err) => {
-                    warn!(%err, "{}: dropping incoming connection during accept", cloned_our_id)
+                    warn!(our_id=%cloned_our_id, %err, "dropping incoming connection during accept")
                 }
             }
         }
@@ -962,8 +967,8 @@ async fn server_task<P, REv>(
     // infinite loop to terminate, which never happens.
     match select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
         Either::Left(_) => info!(
-            "{}: shutting down socket, no longer accepting incoming connections",
-            our_id
+            %our_id,
+            "shutting down socket, no longer accepting incoming connections"
         ),
         Either::Right(_) => unreachable!(),
     }
@@ -1008,7 +1013,7 @@ async fn handshake_reader<REv, P>(
     REv: From<Event<P>>,
 {
     if let Some(Ok(msg @ Message::Handshake { .. })) = stream.next().await {
-        debug!(%msg, %peer_id, "{}: handshake received", our_id);
+        debug!(%our_id, %msg, %peer_id, "handshake received");
         return event_queue
             .schedule(
                 Event::IncomingMessage { peer_id, msg },
@@ -1016,7 +1021,7 @@ async fn handshake_reader<REv, P>(
             )
             .await;
     }
-    warn!(%peer_id, "{}: receiving handshake failed, closing connection", our_id);
+    warn!(%our_id, %peer_id, "receiving handshake failed, closing connection");
     event_queue
         .schedule(
             Event::OutgoingFailed {
@@ -1049,7 +1054,7 @@ where
         while let Some(msg_result) = stream.next().await {
             match msg_result {
                 Ok(msg) => {
-                    debug!(%msg, peer_id=%peer_id_cloned, "{}: message received", our_id_ref);
+                    debug!(our_id=%our_id_ref, %msg, peer_id=%peer_id_cloned, "message received");
                     // We've received a message, push it to the reactor.
                     event_queue
                         .schedule(
@@ -1062,7 +1067,7 @@ where
                         .await;
                 }
                 Err(err) => {
-                    warn!(%err, peer_id=%peer_id_cloned, "{}: receiving message failed, closing connection", our_id_ref);
+                    warn!(our_id=%our_id_ref, %err, peer_id=%peer_id_cloned, "receiving message failed, closing connection");
                     return Err(err);
                 }
             }
@@ -1076,9 +1081,9 @@ where
     // while loop to terminate.
     match select(Box::pin(shutdown_messages), Box::pin(read_messages)).await {
         Either::Left(_) => info!(
+            our_id=%our_id,
             %peer_id,
-            "{}: shutting down incoming connection message reader",
-            &our_id
+            "shutting down incoming connection message reader"
         ),
         Either::Right(_) => (),
     }

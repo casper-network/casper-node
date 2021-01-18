@@ -49,8 +49,9 @@ done
 
 if [ -z "$1" ]; then
   echo "make command not given."
-  echo "Using 'list' to show targets."
-  make_command="list"
+#  echo "Using 'list' to show targets."
+#  make_command="list"
+  exit 1
 else
   make_command="$1"
 fi

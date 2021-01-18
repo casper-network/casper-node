@@ -106,7 +106,7 @@ pub const CONTRACT_INITIAL_VERSION: ContractVersion = 1;
 pub type ProtocolVersionMajor = u32;
 
 /// Major element of `ProtocolVersion` combined with `ContractVersion`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct ContractVersionKey(ProtocolVersionMajor, ContractVersion);
 
 impl ContractVersionKey {
@@ -177,7 +177,7 @@ pub type DisabledVersions = BTreeSet<ContractVersionKey>;
 pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
 
 /// Contract definition, metadata, and security container.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct ContractPackage {
     /// Key used to add or disable versions
     access_key: URef,
@@ -392,7 +392,7 @@ impl FromBytes for ContractPackage {
 pub type EntryPointsMap = BTreeMap<String, EntryPoint>;
 
 /// Collection of named entry points
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EntryPoints(EntryPointsMap);
 
 impl Default for EntryPoints {
@@ -466,7 +466,7 @@ impl From<Vec<EntryPoint>> for EntryPoints {
 pub type NamedKeys = BTreeMap<String, Key>;
 
 /// Methods and type signatures supported by a contract.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Contract {
     contract_package_hash: ContractPackageHash,
     contract_wasm_hash: ContractWasmHash,

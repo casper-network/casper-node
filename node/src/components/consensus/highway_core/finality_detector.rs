@@ -3,7 +3,7 @@ mod rewards;
 
 use std::iter;
 
-use tracing::trace;
+use tracing::{trace, warn};
 
 use crate::{
     components::consensus::{
@@ -52,6 +52,7 @@ impl<C: Context> FinalityDetector<C> {
         let state = highway.state();
         let fault_w = state.faulty_weight();
         if fault_w >= self.ftt || fault_w > (state.total_weight() - Weight(1)) / 2 {
+            warn!(panorama = ?state.panorama(), "fault tolerance threshold exceeded");
             return Err(FttExceeded(fault_w));
         }
         Ok(iter::from_fn(move || {
@@ -67,15 +68,16 @@ impl<C: Context> FinalityDetector<C> {
             } else {
                 None
             };
-
-            Some(FinalizedBlock {
+            let finalized_block = FinalizedBlock {
                 value: block.value.clone(),
                 timestamp: unit.timestamp,
                 height: block.height,
                 rewards,
                 equivocators: unit.panorama.iter_faulty().map(to_id).collect(),
                 proposer: to_id(unit.creator),
-            })
+            };
+            trace!(panorama = ?state.panorama(), ?finalized_block, "finality detected");
+            Some(finalized_block)
         }))
     }
 

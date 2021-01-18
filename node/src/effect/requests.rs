@@ -41,6 +41,7 @@ use crate::{
         chainspec_loader::ChainspecInfo,
         consensus::EraId,
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
+        deploy_acceptor::Error,
         fetcher::FetchResult,
     },
     crypto::hash::Digest,
@@ -51,6 +52,10 @@ use crate::{
     },
     utils::DisplayIter,
     Chainspec,
+};
+use casper_execution_engine::{
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::{global_state::ReadTrieResult, trie::Trie},
 };
 
 /// A metrics request.
@@ -431,7 +436,7 @@ pub enum RpcRequest<I> {
         /// The deploy to be announced.
         deploy: Box<Deploy>,
         /// Responder to call.
-        responder: Responder<()>,
+        responder: Responder<Result<(), Error>>,
     },
     /// If `maybe_hash` is `Some`, return the specified block if it exists, else `None`.  If
     /// `maybe_hash` is `None`, return the latest block.
@@ -683,6 +688,27 @@ pub enum ContractRuntimeRequest {
         /// Responder,
         responder: Responder<Result<bool, GetEraValidatorsError>>,
     },
+    /// Read a trie by its hash key
+    ReadTrie {
+        /// The hash of the value to get from the `TrieStore`
+        trie_key: Blake2bHash,
+        /// Responder to call with the result.
+        responder: Responder<Result<ReadTrieResult, engine_state::Error>>,
+    },
+    /// Insert a trie into global storage
+    PutTrie {
+        /// The hash of the value to get from the `TrieStore`
+        trie: Box<Trie<Key, StoredValue>>,
+        /// Responder to call with the result.
+        responder: Responder<Result<(), engine_state::Error>>,
+    },
+    /// Insert a trie into global storage
+    MissingTrieKeys {
+        /// The ancestral hash to use when finding hashes that are missing from the `TrieStore`
+        trie_key: Blake2bHash,
+        /// Responder to call with the result.
+        responder: Responder<Result<Vec<Blake2bHash>, engine_state::Error>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -743,6 +769,19 @@ impl Display for ContractRuntimeRequest {
                 public_key, era_id, ..
             } => {
                 write!(formatter, "is {} bonded in era {}", public_key, era_id)
+            }
+            ContractRuntimeRequest::ReadTrie { trie_key, .. } => {
+                write!(formatter, "get trie_key: {}", trie_key)
+            }
+            ContractRuntimeRequest::PutTrie { trie, .. } => {
+                write!(formatter, "trie: {:?}", trie)
+            }
+            ContractRuntimeRequest::MissingTrieKeys { trie_key, .. } => {
+                write!(
+                    formatter,
+                    "find missing descendants of trie_key: {}",
+                    trie_key
+                )
             }
         }
     }
