@@ -31,7 +31,7 @@ use thiserror::Error;
 use casper_types::auction::BLOCK_REWARD;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey, SecretKey, Signature,
+    PublicKey, SecretKey, Signature, U512,
 };
 
 use super::{Item, Tag, Timestamp};
@@ -89,9 +89,30 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
     let finalized_block = FinalizedBlock::doc_example().clone();
     let parent_seed = Digest::from([9u8; Digest::LENGTH]);
 
-    let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
+
+    let next_era_validator_weights = {
+        let mut next_era_validator_weights: BTreeMap<PublicKey, U512> = BTreeMap::new();
+        next_era_validator_weights.insert(public_key, U512::from(123));
+        next_era_validator_weights.insert(
+            PublicKey::from(&SecretKey::ed25519([5u8; SecretKey::ED25519_LENGTH])),
+            U512::from(456),
+        );
+        next_era_validator_weights.insert(
+            PublicKey::from(&SecretKey::ed25519([6u8; SecretKey::ED25519_LENGTH])),
+            U512::from(789),
+        );
+        Some(next_era_validator_weights)
+    };
+
+    let mut block = Block::new(
+        parent_hash,
+        parent_seed,
+        state_root_hash,
+        finalized_block,
+        next_era_validator_weights,
+    );
     let mut rng = NodeRng::seed_from_u64(0);
     let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
     block.append_proof(public_key, signature);
@@ -530,6 +551,7 @@ pub struct BlockHeader {
     state_root_hash: Digest,
     body_hash: Digest,
     deploy_hashes: Vec<DeployHash>,
+    transfer_hashes: Vec<DeployHash>,
     random_bit: bool,
     accumulated_seed: Digest,
     era_end: Option<EraEnd>,
@@ -537,6 +559,7 @@ pub struct BlockHeader {
     era_id: EraId,
     height: u64,
     proposer: PublicKey,
+    next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
 }
 
 impl BlockHeader {
@@ -558,6 +581,11 @@ impl BlockHeader {
     /// The list of deploy hashes included in the block.
     pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
         &self.deploy_hashes
+    }
+
+    /// The list of transfer hashes included in the block.
+    pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
+        &self.transfer_hashes
     }
 
     /// A random bit needed for initializing a future era.
@@ -600,6 +628,11 @@ impl BlockHeader {
         &self.proposer
     }
 
+    /// The validators for the upcoming era and their respective weights.
+    pub fn next_era_validator_weights(&self) -> Option<&BTreeMap<PublicKey, U512>> {
+        self.next_era_validator_weights.as_ref()
+    }
+
     /// Returns true if block is Genesis' child.
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis_child(&self) -> bool {
@@ -624,11 +657,12 @@ impl Display for BlockHeader {
         write!(
             formatter,
             "block header parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, accumulated seed {}, timestamp {}",
+            transfers [{}], random bit {}, accumulated seed {}, timestamp {}",
             self.parent_hash.inner(),
             self.state_root_hash,
             self.body_hash,
             DisplayIter::new(self.deploy_hashes.iter()),
+            DisplayIter::new(self.transfer_hashes.iter()),
             self.random_bit,
             self.accumulated_seed,
             self.timestamp,
@@ -647,6 +681,7 @@ impl ToBytes for BlockHeader {
         buffer.extend(self.state_root_hash.to_bytes()?);
         buffer.extend(self.body_hash.to_bytes()?);
         buffer.extend(self.deploy_hashes.to_bytes()?);
+        buffer.extend(self.transfer_hashes.to_bytes()?);
         buffer.extend(self.random_bit.to_bytes()?);
         buffer.extend(self.accumulated_seed.to_bytes()?);
         buffer.extend(self.era_end.to_bytes()?);
@@ -654,6 +689,7 @@ impl ToBytes for BlockHeader {
         buffer.extend(self.era_id.to_bytes()?);
         buffer.extend(self.height.to_bytes()?);
         buffer.extend(self.proposer.to_bytes()?);
+        buffer.extend(self.next_era_validator_weights.to_bytes()?);
         Ok(buffer)
     }
 
@@ -662,6 +698,7 @@ impl ToBytes for BlockHeader {
             + self.state_root_hash.serialized_length()
             + self.body_hash.serialized_length()
             + self.deploy_hashes.serialized_length()
+            + self.transfer_hashes.serialized_length()
             + self.random_bit.serialized_length()
             + self.accumulated_seed.serialized_length()
             + self.era_end.serialized_length()
@@ -669,6 +706,7 @@ impl ToBytes for BlockHeader {
             + self.era_id.serialized_length()
             + self.height.serialized_length()
             + self.proposer.serialized_length()
+            + self.next_era_validator_weights.serialized_length()
     }
 }
 
@@ -678,6 +716,7 @@ impl FromBytes for BlockHeader {
         let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
         let (body_hash, remainder) = Digest::from_bytes(remainder)?;
         let (deploy_hashes, remainder) = Vec::<DeployHash>::from_bytes(remainder)?;
+        let (transfer_hashes, remainder) = Vec::<DeployHash>::from_bytes(remainder)?;
         let (random_bit, remainder) = bool::from_bytes(remainder)?;
         let (accumulated_seed, remainder) = Digest::from_bytes(remainder)?;
         let (era_end, remainder) = Option::<EraEnd>::from_bytes(remainder)?;
@@ -685,11 +724,14 @@ impl FromBytes for BlockHeader {
         let (era_id, remainder) = EraId::from_bytes(remainder)?;
         let (height, remainder) = u64::from_bytes(remainder)?;
         let (proposer, remainder) = PublicKey::from_bytes(remainder)?;
+        let (next_era_validator_weights, remainder) =
+            Option::<BTreeMap<PublicKey, U512>>::from_bytes(remainder)?;
         let block_header = BlockHeader {
             parent_hash,
             state_root_hash,
             body_hash,
             deploy_hashes,
+            transfer_hashes,
             random_bit,
             accumulated_seed,
             era_end,
@@ -697,6 +739,7 @@ impl FromBytes for BlockHeader {
             era_id,
             height,
             proposer,
+            next_era_validator_weights,
         };
         Ok((block_header, remainder))
     }
@@ -753,6 +796,7 @@ impl Block {
         parent_seed: Digest,
         state_root_hash: Digest,
         finalized_block: FinalizedBlock,
+        next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     ) -> Self {
         let body = ();
         let serialized_body = Self::serialize_body(&body)
@@ -775,12 +819,8 @@ impl Block {
             parent_hash,
             state_root_hash,
             body_hash,
-            deploy_hashes: finalized_block
-                .proto_block
-                .wasm_deploys
-                .into_iter()
-                .chain(finalized_block.proto_block.transfers.into_iter())
-                .collect(),
+            deploy_hashes: finalized_block.proto_block.wasm_deploys,
+            transfer_hashes: finalized_block.proto_block.transfers,
             random_bit: finalized_block.proto_block.random_bit,
             accumulated_seed: accumulated_seed.into(),
             era_end: finalized_block.era_end,
@@ -788,6 +828,7 @@ impl Block {
             era_id,
             height,
             proposer: finalized_block.proposer,
+            next_era_validator_weights,
         };
 
         let hash = header.hash();
@@ -881,7 +922,13 @@ impl Block {
         let finalized_block = FinalizedBlock::random(rng);
         let parent_seed = Digest::random(rng);
 
-        let mut block = Block::new(parent_hash, parent_seed, state_root_hash, finalized_block);
+        let mut block = Block::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            finalized_block,
+            None,
+        );
 
         let signatures_count = rng.gen_range(0, 11);
         for _ in 0..signatures_count {
@@ -906,12 +953,13 @@ impl Display for Block {
         write!(
             formatter,
             "executed block {}, parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            random bit {}, timestamp {}, era_id {}, height {}, proofs count {}",
+            transfers [{}], random bit {}, timestamp {}, era_id {}, height {}, proofs count {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.state_root_hash,
             self.header.body_hash,
             DisplayIter::new(self.header.deploy_hashes.iter()),
+            DisplayIter::new(self.header.transfer_hashes.iter()),
             self.header.random_bit,
             self.header.timestamp,
             self.header.era_id.0,
@@ -1039,6 +1087,13 @@ pub(crate) mod json_compatibility {
         amount: u64,
     }
 
+    #[derive(Serialize, Deserialize, Debug, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct ValidatorWeight {
+        validator: PublicKey,
+        weight: U512,
+    }
+
     /// Equivocation and reward information to be included in the terminal block.
     #[derive(Serialize, Deserialize, Debug, JsonSchema)]
     #[serde(deny_unknown_fields)]
@@ -1082,6 +1137,7 @@ pub(crate) mod json_compatibility {
         state_root_hash: Digest,
         body_hash: Digest,
         deploy_hashes: Vec<DeployHash>,
+        transfer_hashes: Vec<DeployHash>,
         random_bit: bool,
         accumulated_seed: Digest,
         era_end: Option<JsonEraEnd>,
@@ -1089,15 +1145,25 @@ pub(crate) mod json_compatibility {
         era_id: EraId,
         height: u64,
         proposer: PublicKey,
+        next_era_validator_weights: Option<Vec<ValidatorWeight>>,
     }
 
     impl From<BlockHeader> for JsonBlockHeader {
         fn from(block_header: BlockHeader) -> Self {
+            let next_era_validator_weights: Option<Vec<ValidatorWeight>> =
+                block_header.next_era_validator_weights.map(|weights| {
+                    weights
+                        .into_iter()
+                        .map(|(validator, weight)| ValidatorWeight { validator, weight })
+                        .collect()
+                });
+
             JsonBlockHeader {
                 parent_hash: block_header.parent_hash,
                 state_root_hash: block_header.state_root_hash,
                 body_hash: block_header.body_hash,
                 deploy_hashes: block_header.deploy_hashes,
+                transfer_hashes: block_header.transfer_hashes,
                 random_bit: block_header.random_bit,
                 accumulated_seed: block_header.accumulated_seed,
                 era_end: block_header.era_end.map(JsonEraEnd::from),
@@ -1105,17 +1171,27 @@ pub(crate) mod json_compatibility {
                 era_id: block_header.era_id,
                 height: block_header.height,
                 proposer: block_header.proposer,
+                next_era_validator_weights,
             }
         }
     }
 
     impl From<JsonBlockHeader> for BlockHeader {
         fn from(block_header: JsonBlockHeader) -> Self {
+            let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
+                block_header.next_era_validator_weights.map(|weights| {
+                    weights
+                        .into_iter()
+                        .map(|ValidatorWeight { validator, weight }| (validator, weight))
+                        .collect()
+                });
+
             BlockHeader {
                 parent_hash: block_header.parent_hash,
                 state_root_hash: block_header.state_root_hash,
                 body_hash: block_header.body_hash,
                 deploy_hashes: block_header.deploy_hashes,
+                transfer_hashes: block_header.transfer_hashes,
                 random_bit: block_header.random_bit,
                 accumulated_seed: block_header.accumulated_seed,
                 era_end: block_header.era_end.map(EraEnd::from),
@@ -1123,6 +1199,7 @@ pub(crate) mod json_compatibility {
                 era_id: block_header.era_id,
                 height: block_header.height,
                 proposer: block_header.proposer,
+                next_era_validator_weights,
             }
         }
     }
@@ -1140,6 +1217,11 @@ pub(crate) mod json_compatibility {
     impl JsonBlock {
         /// Returns the hashes of the `Deploy`s included in the `Block`.
         pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
+            &self.header.deploy_hashes
+        }
+
+        /// Returns the hashes of the transfer `Deploy`s included in the `Block`.
+        pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
             &self.header.deploy_hashes
         }
     }
@@ -1187,6 +1269,15 @@ pub(crate) mod json_compatibility {
         fn from(proof: JsonProof) -> (PublicKey, Signature) {
             (proof.public_key, proof.signature)
         }
+    }
+
+    #[test]
+    fn block_json_roundtrip() {
+        let mut rng = TestRng::new();
+        let block: Block = Block::random(&mut rng);
+        let json_block = JsonBlock::from(block.clone());
+        let block_deserialized = Block::from(json_block);
+        assert_eq!(block, block_deserialized);
     }
 }
 
@@ -1271,10 +1362,17 @@ mod tests {
     }
 
     #[test]
-    fn bytesrepr_roundtrip() {
+    fn block_bytesrepr_roundtrip() {
         let mut rng = TestRng::new();
         let block = Block::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&block);
+    }
+
+    #[test]
+    fn block_header_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let block_header: BlockHeader = Block::random(&mut rng).header;
+        bytesrepr::test_serialization_roundtrip(&block_header);
     }
 
     #[test]

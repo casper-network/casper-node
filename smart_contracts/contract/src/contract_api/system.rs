@@ -9,12 +9,12 @@ use casper_types::{
     auction::{EraId, EraInfo},
     bytesrepr,
     system_contract_errors::auction,
-    ApiError, ContractHash, SystemContractType, TransferResult, TransferredTo, URef, U512,
-    UREF_SERIALIZED_LENGTH,
+    ApiError, ContractHash, HashAddr, SystemContractType, TransferResult, TransferredTo, URef,
+    U512, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
-    contract_api::{self, runtime},
+    contract_api::{self, account, runtime},
     ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
 };
@@ -23,7 +23,7 @@ fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
     let system_contract_index = system_contract.into();
     let contract_hash: ContractHash = {
         let result = {
-            let mut hash_data_raw = ContractHash::default();
+            let mut hash_data_raw: HashAddr = ContractHash::default().value();
             let value = unsafe {
                 ext_ffi::casper_get_system_contract(
                     system_contract_index,
@@ -70,6 +70,7 @@ pub fn get_auction() -> ContractHash {
 }
 
 /// Creates a new empty purse and returns its [`URef`].
+#[doc(hidden)]
 pub fn create_purse() -> URef {
     let purse_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);
     unsafe {
@@ -88,7 +89,8 @@ pub fn create_purse() -> URef {
 }
 
 /// Returns the balance in motes of the given purse.
-pub fn get_balance(purse: URef) -> Option<U512> {
+#[doc(hidden)]
+pub fn get_purse_balance(purse: URef) -> Option<U512> {
     let (purse_ptr, purse_size, _bytes) = contract_api::to_ptr(purse);
 
     let value_size = {
@@ -104,6 +106,11 @@ pub fn get_balance(purse: URef) -> Option<U512> {
     let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
     let value: U512 = bytesrepr::deserialize(value_bytes).unwrap_or_revert();
     Some(value)
+}
+
+/// Returns the balance in motes of a purse.
+pub fn get_balance() -> Option<U512> {
+    get_purse_balance(account::get_main_purse())
 }
 
 /// Transfers `amount` of motes from the default purse of the account to `target`
@@ -136,6 +143,7 @@ pub fn transfer_to_account(target: AccountHash, amount: U512, id: Option<u64>) -
 
 /// Transfers `amount` of motes from `source` purse to `target` account.  If `target` does not exist
 /// it will be created.
+#[doc(hidden)]
 pub fn transfer_from_purse_to_account(
     source: URef,
     target: AccountHash,
@@ -172,6 +180,7 @@ pub fn transfer_from_purse_to_account(
 
 /// Transfers `amount` of motes from `source` purse to `target` purse.  If `target` does not exist
 /// the transfer fails.
+#[doc(hidden)]
 pub fn transfer_from_purse_to_purse(
     source: URef,
     target: URef,

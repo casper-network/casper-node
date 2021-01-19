@@ -31,7 +31,6 @@ use crate::{
     NodeRng,
 };
 use casper_execution_engine::shared::gas::Gas;
-
 pub(crate) use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
@@ -157,7 +156,7 @@ where
                         .unwrap_or_default()
                         .with_next_finalized(next_finalized_block),
                     deploy_config: chainspec.genesis.deploy_config,
-                    wasmless_transfer_cost: chainspec.genesis.wasmless_transfer_cost,
+                    wasmless_transfer_cost: chainspec.genesis.system_config.wasmless_transfer_cost,
                     state_key: deploy_sets::create_storage_key(&chainspec),
                     request_queue: Default::default(),
                     unhandled_finalized: Default::default(),

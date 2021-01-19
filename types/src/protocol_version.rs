@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::fmt;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes},
@@ -9,7 +9,9 @@ use crate::{
 };
 
 /// A newtype wrapping a [`SemVer`] which represents a Casper Platform protocol version.
-#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(
+    Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub struct ProtocolVersion(SemVer);
 
 /// The result of [`ProtocolVersion::check_next_version`].
@@ -51,12 +53,12 @@ impl ProtocolVersion {
     });
 
     /// Constructs a new `ProtocolVersion` from `version`.
-    pub fn new(version: SemVer) -> ProtocolVersion {
+    pub const fn new(version: SemVer) -> ProtocolVersion {
         ProtocolVersion(version)
     }
 
     /// Constructs a new `ProtocolVersion` from the given semver parts.
-    pub fn from_parts(major: u32, minor: u32, patch: u32) -> ProtocolVersion {
+    pub const fn from_parts(major: u32, minor: u32, patch: u32) -> ProtocolVersion {
         let sem_ver = SemVer::new(major, minor, patch);
         Self::new(sem_ver)
     }

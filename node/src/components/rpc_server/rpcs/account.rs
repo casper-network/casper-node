@@ -102,14 +102,15 @@ impl RpcWithParamsExt for PutDeploy {
                     };
                     Ok(response_builder.success(result)?)
                 }
-                Err(_) => {
+                Err(error) => {
                     info!(
                         %deploy_hash,
+                        %error,
                         "the deploy submitted by the client was invalid",
                     );
                     Ok(response_builder.error(warp_json_rpc::Error::custom(
                         ErrorCode::InvalidDeploy as i64,
-                        "invalid deploy",
+                        error.to_string(),
                     ))?)
                 }
             }

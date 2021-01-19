@@ -69,7 +69,7 @@ pub extern "C" fn call() {
     let transfer_result = system::transfer_from_purse_to_purse(*src_purse, dst_purse, amount, None);
 
     // Assert is done here
-    let final_balance = system::get_balance(main_purse)
+    let final_balance = system::get_purse_balance(main_purse)
         .unwrap_or_revert_with(ApiError::User(CustomError::UnableToGetBalance as u16));
 
     let result = format!("{:?}", transfer_result);

@@ -11,8 +11,8 @@ use casper_node::{
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    bytesrepr, AsymmetricType, CLType, CLValue, ContractHash, Key, NamedArg, PublicKey,
-    RuntimeArgs, SecretKey, UIntParseError, URef, U512,
+    bytesrepr, AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs,
+    SecretKey, UIntParseError, U512,
 };
 
 use crate::{
@@ -405,7 +405,7 @@ pub(super) fn parse_session_info(
 
     if let Some(session_hash) = parse_contract_hash(session_hash)? {
         return ExecutableDeployItem::new_stored_contract_by_hash(
-            session_hash,
+            session_hash.into(),
             entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             session_args,
         );
@@ -423,7 +423,7 @@ pub(super) fn parse_session_info(
 
     if let Some(package_hash) = parse_contract_hash(session_package_hash)? {
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
-            package_hash,
+            package_hash.into(),
             version,
             entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             session_args,
@@ -493,7 +493,7 @@ pub(super) fn parse_payment_info(
 
     if let Some(payment_hash) = parse_contract_hash(payment_hash)? {
         return ExecutableDeployItem::new_stored_contract_by_hash(
-            payment_hash,
+            payment_hash.into(),
             entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
         );
@@ -511,7 +511,7 @@ pub(super) fn parse_payment_info(
 
     if let Some(package_hash) = parse_contract_hash(payment_package_hash)? {
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
-            package_hash,
+            package_hash.into(),
             version,
             entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
@@ -525,27 +525,18 @@ pub(super) fn parse_payment_info(
     ExecutableDeployItem::new_module_bytes(module_bytes, payment_args)
 }
 
-pub(crate) fn get_transfer_target(
-    target_account: &str,
-    target_purse: &str,
-) -> Result<TransferTarget> {
-    match (target_account, target_purse) {
-        ("", _) if !target_purse.is_empty() => {
-            let purse = purse(target_purse)?;
-            Ok(TransferTarget::OwnPurse(purse))
-        }
-        (_, "") if !target_account.is_empty() => {
-            let account = account(target_account)?;
-            Ok(TransferTarget::Account(account))
-        }
-        _ => Err(Error::InvalidArgument(
-            "target_account | target_purse",
+pub(crate) fn get_transfer_target(target_account: &str) -> Result<TransferTarget> {
+    if !target_account.is_empty() {
+        let account = account(target_account)?;
+        Ok(TransferTarget::Account(account))
+    } else {
+        Err(Error::InvalidArgument(
+            "target_account",
             format!(
-                "Invalid arguments to get_transfer_target - must provide either a target \
-                    account or purse. account={}, purse={}",
-                target_account, target_purse
+                "Invalid arguments to get_transfer_target - must provide either a target account. account={}",
+                target_account
             ),
-        )),
+        ))
     }
 }
 
@@ -553,7 +544,7 @@ pub(crate) fn output(value: &str) -> Option<&str> {
     none_if_empty(value)
 }
 
-fn parse_contract_hash(value: &str) -> Result<Option<ContractHash>> {
+fn parse_contract_hash(value: &str) -> Result<Option<HashAddr>> {
     if value.is_empty() {
         return Ok(None);
     }
@@ -587,10 +578,6 @@ fn account(value: &str) -> Result<PublicKey> {
     })
 }
 
-pub(crate) fn purse(value: &str) -> Result<URef> {
-    URef::from_formatted_str(value).map_err(|error| Error::FailedToParseURef("purse", error))
-}
-
 pub(crate) fn transfer_id(value: &str) -> Result<Option<u64>> {
     if str::is_empty(value) {
         return Ok(None);
@@ -607,7 +594,7 @@ mod tests {
 
     use casper_types::{
         account::AccountHash, bytesrepr::ToBytes, AccessRights, CLTyped, CLValue, NamedArg,
-        PublicKey, RuntimeArgs, U128, U256, U512,
+        PublicKey, RuntimeArgs, URef, U128, U256, U512,
     };
 
     use crate::{PaymentStrParams, SessionStrParams};

@@ -61,10 +61,11 @@ pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
-pub use contract_wasm::ContractWasm;
+pub use contract_wasm::{ContractWasm, ContractWasmHash};
 pub use contracts::{
-    Contract, ContractPackage, ContractVersion, ContractVersionKey, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Group, Parameter,
+    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
+    ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group,
+    Parameter,
 };
 pub use crypto::*;
 pub use deploy_info::DeployInfo;
@@ -72,10 +73,7 @@ pub use execution_result::{
     ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
 };
 #[doc(inline)]
-pub use key::{
-    ContractHash, ContractPackageHash, ContractWasmHash, HashAddr, Key, BLAKE2B_DIGEST_LENGTH,
-    KEY_HASH_LENGTH,
-};
+pub use key::{HashAddr, Key, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH};
 pub use named_key::NamedKey;
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};

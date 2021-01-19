@@ -23,7 +23,7 @@ use crate::{
     },
     storage::{
         global_state::{in_memory::InMemoryGlobalState, StateProvider, StateReader},
-        trie::{merkle_proof::TrieMerkleProof, Trie},
+        trie::merkle_proof::TrieMerkleProof,
     },
 };
 
@@ -69,14 +69,6 @@ impl StateReader<Key, StoredValue> for CountingDb {
         _correlation_id: CorrelationId,
         _key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
-        Ok(None)
-    }
-
-    fn read_trie(
-        &self,
-        _correlation_id: CorrelationId,
-        _trie_key: &Blake2bHash,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
         Ok(None)
     }
 }
@@ -339,8 +331,8 @@ proptest! {
         named_keys.insert(name.clone(), k);
         let contract =
             StoredValue::Contract(Contract::new(
-            [2; 32],
-            [3; 32],
+            [2; 32].into(),
+            [3; 32].into(),
             named_keys,
             EntryPoints::default(),
             ProtocolVersion::V1_0_0,
@@ -424,8 +416,8 @@ proptest! {
         contract_named_keys.insert(state_name.clone(), k);
         let contract =
             StoredValue::Contract(Contract::new(
-            [2; 32],
-            [3; 32],
+            [2; 32].into(),
+            [3; 32].into(),
             contract_named_keys,
             EntryPoints::default(),
             ProtocolVersion::V1_0_0,
@@ -526,8 +518,8 @@ fn query_for_circular_references_should_fail() {
     named_keys.insert(key_name.clone(), cl_value_key);
     named_keys.insert(contract_name.clone(), contract_key);
     let contract = StoredValue::Contract(Contract::new(
-        [2; 32],
-        [3; 32],
+        [2; 32].into(),
+        [3; 32].into(),
         named_keys,
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,
@@ -586,8 +578,8 @@ fn validate_query_proof_should_work() {
         tmp
     };
     let contract_value = StoredValue::Contract(Contract::new(
-        [2; 32],
-        [3; 32],
+        [2; 32].into(),
+        [3; 32].into(),
         named_keys,
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,

@@ -9,6 +9,10 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
+#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
+use casper_execution_engine::shared::system_config::{
+    auction_costs::DEFAULT_ADD_BID_COST, standard_payment_costs::DEFAULT_PAY_COST,
+};
 use casper_execution_engine::{
     core::engine_state::upgrade::ActivationPoint,
     shared::{
@@ -182,8 +186,11 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
     builder.exec(exec_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    assert_eq!(balance_before, balance_after);
-    assert_eq!(builder.last_exec_gas_cost().value(), U512::zero());
+    assert_eq!(balance_before, balance_after + DEFAULT_PAY_COST);
+    assert_eq!(
+        builder.last_exec_gas_cost().value(),
+        U512::from(DEFAULT_PAY_COST)
+    );
 }
 
 #[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
@@ -215,7 +222,8 @@ fn should_verify_isolated_auction_storage_is_free() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -231,8 +239,12 @@ fn should_verify_isolated_auction_storage_is_free() {
     builder.exec(exec_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    assert_eq!(balance_after, balance_before - U512::from(BOND_AMOUNT));
-    assert_eq!(builder.last_exec_gas_cost().value(), U512::zero());
+    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_ADD_BID_COST);
+    assert_eq!(
+        balance_after,
+        balance_before - U512::from(BOND_AMOUNT) - call_cost
+    );
+    assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
 
 #[ignore]
@@ -263,7 +275,8 @@ fn should_measure_gas_cost_for_storage_usage_write() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     //
     // Measure  small write
@@ -374,7 +387,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     //
     // Measure  small write
@@ -485,7 +499,8 @@ fn should_measure_gas_cost_for_storage_usage_add() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     //
     // Measure small add
@@ -600,7 +615,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     //
     // Measure small add
@@ -711,7 +727,8 @@ fn should_verify_new_uref_is_charging_for_storage() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -755,7 +772,8 @@ fn should_verify_put_key_is_charging_for_storage() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -799,7 +817,8 @@ fn should_verify_remove_key_is_charging_for_storage() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -843,7 +862,8 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -887,7 +907,8 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -965,7 +986,8 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,

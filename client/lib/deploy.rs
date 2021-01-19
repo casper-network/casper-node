@@ -47,6 +47,8 @@ pub struct ListDeploysResult {
     pub api_version: Version,
     /// The deploy hashes of the block, if found.
     pub deploy_hashes: Option<Vec<DeployHash>>,
+    /// The transfer deploy hashes of the block, if found.
+    pub transfer_hashes: Option<Vec<DeployHash>>,
 }
 
 impl From<GetBlockResult> for ListDeploysResult {
@@ -55,7 +57,12 @@ impl From<GetBlockResult> for ListDeploysResult {
             api_version: get_block_result.api_version,
             deploy_hashes: get_block_result
                 .block
+                .as_ref()
                 .map(|block| block.deploy_hashes().clone()),
+            transfer_hashes: get_block_result
+                .block
+                .as_ref()
+                .map(|block| block.transfer_hashes().clone()),
         }
     }
 }
@@ -309,11 +316,9 @@ mod tests {
     fn should_sign_deploy() {
         let bytes = SAMPLE_DEPLOY.as_bytes();
         let mut deploy = Deploy::read_deploy(bytes).unwrap();
-        assert!(
-            deploy.is_valid(),
-            "deploy should be is_valid() {:#?}",
-            deploy
-        );
+        deploy
+            .is_valid()
+            .unwrap_or_else(|error| panic!("{} - {:#?}", error, deploy));
         assert_eq!(
             deploy.approvals().len(),
             2,
@@ -324,9 +329,6 @@ mod tests {
         let secret_key = SecretKey::generate_ed25519().unwrap();
         Deploy::sign_and_write_deploy(bytes, secret_key, &mut result).unwrap();
         let signed_deploy = Deploy::read_deploy(&result[..]).unwrap();
-
-        // Can be used to update SAMPLE_DEPLOY data:
-        // println!("{}", serde_json::to_string_pretty(&signed_deploy).unwrap());
 
         assert_eq!(
             signed_deploy.approvals().len(),

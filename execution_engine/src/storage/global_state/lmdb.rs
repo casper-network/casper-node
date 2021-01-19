@@ -125,18 +125,6 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         txn.commit()?;
         Ok(ret)
     }
-
-    /// Reads a `Trie<K,V>` from the state if it is present
-    fn read_trie(
-        &self,
-        _correlation_id: CorrelationId,
-        trie_key: &Blake2bHash,
-    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
-        let txn = self.environment.create_read_txn()?;
-        let ret: Option<Trie<Key, StoredValue>> = self.store.get(&txn, trie_key)?;
-        txn.commit()?;
-        Ok(ret)
-    }
 }
 
 impl StateProvider for LmdbGlobalState {
@@ -195,6 +183,17 @@ impl StateProvider for LmdbGlobalState {
 
     fn empty_root(&self) -> Blake2bHash {
         self.empty_root_hash
+    }
+
+    fn read_trie(
+        &self,
+        _correlation_id: CorrelationId,
+        trie_key: &Blake2bHash,
+    ) -> Result<Option<Trie<Key, StoredValue>>, Self::Error> {
+        let txn = self.environment.create_read_txn()?;
+        let ret: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, trie_key)?;
+        txn.commit()?;
+        Ok(ret)
     }
 
     fn put_trie(
