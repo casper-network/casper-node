@@ -8,12 +8,14 @@ use failure::Fail;
 #[cfg(feature = "std")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
-    CLType, CLTyped, Key, PublicKey, URef, U128, U256, U512,
+    CLType, CLTyped,
 };
+
+mod jsonrepr;
 
 /// Error while converting a [`CLValue`] into a given type.
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -128,113 +130,6 @@ impl CLValue {
     pub fn serialized_length(&self) -> usize {
         self.cl_type.serialized_length() + U32_SERIALIZED_LENGTH + self.bytes.len()
     }
-
-    fn jsonify<T: FromBytes + Serialize>(&self) -> Option<Value> {
-        Some(json!(bytesrepr::deserialize::<T>(
-            self.bytes.clone().into()
-        )
-        .ok()?))
-    }
-
-    /// Returns a best-effort attempt to convert the `CLValue` into a meaningful JSON value.  For
-    /// complex types, the returned `Value` will just be the map containing the `CLType` and the
-    /// raw bytes as hex.
-    #[rustfmt::skip]
-    fn to_json(&self) -> Option<Value> {
-        match &self.cl_type {
-            // Simple types.
-            CLType::Bool => self.jsonify::<bool>(),
-            CLType::I32 => self.jsonify::<i32>(),
-            CLType::I64 => self.jsonify::<i64>(),
-            CLType::U8 => self.jsonify::<u8>(),
-            CLType::U32 => self.jsonify::<u32>(),
-            CLType::U64 => self.jsonify::<u64>(),
-            CLType::U128 => self.jsonify::<U128>(),
-            CLType::U256 => self.jsonify::<U256>(),
-            CLType::U512 => self.jsonify::<U512>(),
-            CLType::Unit => self.jsonify::<()>(),
-            CLType::String => self.jsonify::<String>(),
-            CLType::Key => self.jsonify::<Key>(),
-            CLType::URef => self.jsonify::<URef>(),
-            CLType::PublicKey => self.jsonify::<PublicKey>(),
-
-            // Option of simple types.
-            t if *t == Option::<bool>::cl_type() => self.jsonify::<Option<bool>>(),
-            t if *t == Option::<i32>::cl_type() => self.jsonify::<Option<i32>>(),
-            t if *t == Option::<i64>::cl_type() => self.jsonify::<Option<i64>>(),
-            t if *t == Option::<u8>::cl_type() => self.jsonify::<Option<u8>>(),
-            t if *t == Option::<u32>::cl_type() => self.jsonify::<Option<u32>>(),
-            t if *t == Option::<u64>::cl_type() => self.jsonify::<Option<u64>>(),
-            t if *t == Option::<U128>::cl_type() => self.jsonify::<Option<U128>>(),
-            t if *t == Option::<U256>::cl_type() => self.jsonify::<Option<U256>>(),
-            t if *t == Option::<U512>::cl_type() => self.jsonify::<Option<U512>>(),
-            t if *t == Option::<()>::cl_type() => self.jsonify::<Option<()>>(),
-            t if *t == Option::<String>::cl_type() => self.jsonify::<Option<String>>(),
-            t if *t == Option::<Key>::cl_type() => self.jsonify::<Option<Key>>(),
-            t if *t == Option::<URef>::cl_type() => self.jsonify::<Option<URef>>(),
-            t if *t == Option::<PublicKey>::cl_type() => self.jsonify::<Option<PublicKey>>(),
-
-            // Result of simple types.
-            t if *t == Result::<bool, i32>::cl_type() => self.jsonify::<Result<bool, i32>>(),
-            t if *t == Result::<bool, u32>::cl_type() => self.jsonify::<Result<bool, u32>>(),
-            t if *t == Result::<bool, ()>::cl_type() => self.jsonify::<Result<bool, ()>>(),
-            t if *t == Result::<bool, String>::cl_type() => self.jsonify::<Result<bool, String>>(),
-            t if *t == Result::<i32, i32>::cl_type() => self.jsonify::<Result<i32, i32>>(),
-            t if *t == Result::<i32, u32>::cl_type() => self.jsonify::<Result<i32, u32>>(),
-            t if *t == Result::<i32, ()>::cl_type() => self.jsonify::<Result<i32, ()>>(),
-            t if *t == Result::<i32, String>::cl_type() => self.jsonify::<Result<i32, String>>(),
-            t if *t == Result::<i64, i32>::cl_type() => self.jsonify::<Result<i64, i32>>(),
-            t if *t == Result::<i64, u32>::cl_type() => self.jsonify::<Result<i64, u32>>(),
-            t if *t == Result::<i64, ()>::cl_type() => self.jsonify::<Result<i64, ()>>(),
-            t if *t == Result::<i64, String>::cl_type() => self.jsonify::<Result<i64, String>>(),
-            t if *t == Result::<u8, i32>::cl_type() => self.jsonify::<Result<u8, i32>>(),
-            t if *t == Result::<u8, u32>::cl_type() => self.jsonify::<Result<u8, u32>>(),
-            t if *t == Result::<u8, ()>::cl_type() => self.jsonify::<Result<u8, ()>>(),
-            t if *t == Result::<u8, String>::cl_type() => self.jsonify::<Result<u8, String>>(),
-            t if *t == Result::<u32, i32>::cl_type() => self.jsonify::<Result<u32, i32>>(),
-            t if *t == Result::<u32, u32>::cl_type() => self.jsonify::<Result<u32, u32>>(),
-            t if *t == Result::<u32, ()>::cl_type() => self.jsonify::<Result<u32, ()>>(),
-            t if *t == Result::<u32, String>::cl_type() => self.jsonify::<Result<u32, String>>(),
-            t if *t == Result::<u64, i32>::cl_type() => self.jsonify::<Result<u64, i32>>(),
-            t if *t == Result::<u64, u32>::cl_type() => self.jsonify::<Result<u64, u32>>(),
-            t if *t == Result::<u64, ()>::cl_type() => self.jsonify::<Result<u64, ()>>(),
-            t if *t == Result::<u64, String>::cl_type() => self.jsonify::<Result<u64, String>>(),
-            t if *t == Result::<U128, i32>::cl_type() => self.jsonify::<Result<U128, i32>>(),
-            t if *t == Result::<U128, u32>::cl_type() => self.jsonify::<Result<U128, u32>>(),
-            t if *t == Result::<U128, ()>::cl_type() => self.jsonify::<Result<U128, ()>>(),
-            t if *t == Result::<U128, String>::cl_type() => self.jsonify::<Result<U128, String>>(),
-            t if *t == Result::<U256, i32>::cl_type() => self.jsonify::<Result<U256, i32>>(),
-            t if *t == Result::<U256, u32>::cl_type() => self.jsonify::<Result<U256, u32>>(),
-            t if *t == Result::<U256, ()>::cl_type() => self.jsonify::<Result<U256, ()>>(),
-            t if *t == Result::<U256, String>::cl_type() => self.jsonify::<Result<U256, String>>(),
-            t if *t == Result::<U512, i32>::cl_type() => self.jsonify::<Result<U512, i32>>(),
-            t if *t == Result::<U512, u32>::cl_type() => self.jsonify::<Result<U512, u32>>(),
-            t if *t == Result::<U512, ()>::cl_type() => self.jsonify::<Result<U512, ()>>(),
-            t if *t == Result::<U512, String>::cl_type() => self.jsonify::<Result<U512, String>>(),
-            t if *t == Result::<(), i32>::cl_type() => self.jsonify::<Result<(), i32>>(),
-            t if *t == Result::<(), u32>::cl_type() => self.jsonify::<Result<(), u32>>(),
-            t if *t == Result::<(), ()>::cl_type() => self.jsonify::<Result<(), ()>>(),
-            t if *t == Result::<(), String>::cl_type() => self.jsonify::<Result<(), String>>(),
-            t if *t == Result::<String, i32>::cl_type() => self.jsonify::<Result<String, i32>>(),
-            t if *t == Result::<String, u32>::cl_type() => self.jsonify::<Result<String, u32>>(),
-            t if *t == Result::<String, ()>::cl_type() => self.jsonify::<Result<String, ()>>(),
-            t if *t == Result::<String, String>::cl_type() => self.jsonify::<Result<String, String>>(),
-            t if *t == Result::<Key, i32>::cl_type() => self.jsonify::<Result<Key, i32>>(),
-            t if *t == Result::<Key, u32>::cl_type() => self.jsonify::<Result<Key, u32>>(),
-            t if *t == Result::<Key, ()>::cl_type() => self.jsonify::<Result<Key, ()>>(),
-            t if *t == Result::<Key, String>::cl_type() => self.jsonify::<Result<Key, String>>(),
-            t if *t == Result::<URef, i32>::cl_type() => self.jsonify::<Result<URef, i32>>(),
-            t if *t == Result::<URef, u32>::cl_type() => self.jsonify::<Result<URef, u32>>(),
-            t if *t == Result::<URef, ()>::cl_type() => self.jsonify::<Result<URef, ()>>(),
-            t if *t == Result::<URef, String>::cl_type() => self.jsonify::<Result<URef, String>>(),
-            t if *t == Result::<PublicKey, i32>::cl_type() => self.jsonify::<Result<PublicKey, i32>>(),
-            t if *t == Result::<PublicKey, u32>::cl_type() => self.jsonify::<Result<PublicKey, u32>>(),
-            t if *t == Result::<PublicKey, ()>::cl_type() => self.jsonify::<Result<PublicKey, ()>>(),
-            t if *t == Result::<PublicKey, String>::cl_type() => self.jsonify::<Result<PublicKey, String>>(),
-
-            _ => None,
-        }
-    }
 }
 
 impl ToBytes for CLValue {
@@ -276,7 +171,7 @@ impl Serialize for CLValue {
             CLValueJson {
                 cl_type: self.cl_type.clone(),
                 serialized_bytes: base16::encode_lower(&self.bytes),
-                parsed_to_json: self.to_json(),
+                parsed_to_json: jsonrepr::cl_value_to_json(&self),
             }
             .serialize(serializer)
         } else {
@@ -311,8 +206,8 @@ mod tests {
     use crate::{
         account::{AccountHash, ACCOUNT_HASH_LENGTH},
         key::KEY_HASH_LENGTH,
-        AccessRights, DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
-        UREF_ADDR_LENGTH,
+        AccessRights, DeployHash, Key, PublicKey, TransferAddr, URef, DEPLOY_HASH_LENGTH,
+        TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
     };
 
     #[test]
@@ -771,35 +666,35 @@ mod tests {
         fn bool_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<bool, i32>::Ok(true),
-                r#"{"cl_type":{"Result":{"ok":"Bool","err":"I32"}},"parsed_to_json":{"Ok":true}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Bool","err":"I32"}},"parsed_to_json":{"ok":true}}"#,
             );
             check_to_json(
                 Result::<bool, u32>::Ok(true),
-                r#"{"cl_type":{"Result":{"ok":"Bool","err":"U32"}},"parsed_to_json":{"Ok":true}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Bool","err":"U32"}},"parsed_to_json":{"ok":true}}"#,
             );
             check_to_json(
                 Result::<bool, ()>::Ok(true),
-                r#"{"cl_type":{"Result":{"ok":"Bool","err":"Unit"}},"parsed_to_json":{"Ok":true}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Bool","err":"Unit"}},"parsed_to_json":{"ok":true}}"#,
             );
             check_to_json(
                 Result::<bool, String>::Ok(true),
-                r#"{"cl_type":{"Result":{"ok":"Bool","err":"String"}},"parsed_to_json":{"Ok":true}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Bool","err":"String"}},"parsed_to_json":{"ok":true}}"#,
             );
             check_to_json(
                 Result::<bool, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"Bool","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Bool","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<bool, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"Bool","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Bool","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<bool, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"Bool","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Bool","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<bool, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"Bool","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Bool","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -807,35 +702,35 @@ mod tests {
         fn i32_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<i32, i32>::Ok(-1),
-                r#"{"cl_type":{"Result":{"ok":"I32","err":"I32"}},"parsed_to_json":{"Ok":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I32","err":"I32"}},"parsed_to_json":{"ok":-1}}"#,
             );
             check_to_json(
                 Result::<i32, u32>::Ok(-1),
-                r#"{"cl_type":{"Result":{"ok":"I32","err":"U32"}},"parsed_to_json":{"Ok":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I32","err":"U32"}},"parsed_to_json":{"ok":-1}}"#,
             );
             check_to_json(
                 Result::<i32, ()>::Ok(-1),
-                r#"{"cl_type":{"Result":{"ok":"I32","err":"Unit"}},"parsed_to_json":{"Ok":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I32","err":"Unit"}},"parsed_to_json":{"ok":-1}}"#,
             );
             check_to_json(
                 Result::<i32, String>::Ok(-1),
-                r#"{"cl_type":{"Result":{"ok":"I32","err":"String"}},"parsed_to_json":{"Ok":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I32","err":"String"}},"parsed_to_json":{"ok":-1}}"#,
             );
             check_to_json(
                 Result::<i32, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"I32","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I32","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<i32, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"I32","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I32","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<i32, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"I32","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I32","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<i32, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"I32","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I32","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -843,35 +738,35 @@ mod tests {
         fn i64_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<i64, i32>::Ok(-1),
-                r#"{"cl_type":{"Result":{"ok":"I64","err":"I32"}},"parsed_to_json":{"Ok":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I64","err":"I32"}},"parsed_to_json":{"ok":-1}}"#,
             );
             check_to_json(
                 Result::<i64, u32>::Ok(-1),
-                r#"{"cl_type":{"Result":{"ok":"I64","err":"U32"}},"parsed_to_json":{"Ok":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I64","err":"U32"}},"parsed_to_json":{"ok":-1}}"#,
             );
             check_to_json(
                 Result::<i64, ()>::Ok(-1),
-                r#"{"cl_type":{"Result":{"ok":"I64","err":"Unit"}},"parsed_to_json":{"Ok":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I64","err":"Unit"}},"parsed_to_json":{"ok":-1}}"#,
             );
             check_to_json(
                 Result::<i64, String>::Ok(-1),
-                r#"{"cl_type":{"Result":{"ok":"I64","err":"String"}},"parsed_to_json":{"Ok":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I64","err":"String"}},"parsed_to_json":{"ok":-1}}"#,
             );
             check_to_json(
                 Result::<i64, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"I64","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I64","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<i64, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"I64","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I64","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<i64, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"I64","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I64","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<i64, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"I64","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"I64","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -879,35 +774,35 @@ mod tests {
         fn u8_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<u8, i32>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U8","err":"I32"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U8","err":"I32"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u8, u32>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U8","err":"U32"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U8","err":"U32"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u8, ()>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U8","err":"Unit"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U8","err":"Unit"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u8, String>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U8","err":"String"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U8","err":"String"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u8, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"U8","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U8","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<u8, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"U8","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U8","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<u8, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"U8","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U8","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<u8, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"U8","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U8","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -915,35 +810,35 @@ mod tests {
         fn u32_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<u32, i32>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U32","err":"I32"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U32","err":"I32"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u32, u32>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U32","err":"U32"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U32","err":"U32"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u32, ()>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U32","err":"Unit"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U32","err":"Unit"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u32, String>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U32","err":"String"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U32","err":"String"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u32, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"U32","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U32","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<u32, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"U32","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U32","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<u32, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"U32","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U32","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<u32, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"U32","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U32","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -951,35 +846,35 @@ mod tests {
         fn u64_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<u64, i32>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U64","err":"I32"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U64","err":"I32"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u64, u32>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U64","err":"U32"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U64","err":"U32"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u64, ()>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U64","err":"Unit"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U64","err":"Unit"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u64, String>::Ok(1),
-                r#"{"cl_type":{"Result":{"ok":"U64","err":"String"}},"parsed_to_json":{"Ok":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U64","err":"String"}},"parsed_to_json":{"ok":1}}"#,
             );
             check_to_json(
                 Result::<u64, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"U64","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U64","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<u64, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"U64","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U64","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<u64, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"U64","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U64","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<u64, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"U64","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U64","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -987,35 +882,35 @@ mod tests {
         fn u128_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<U128, i32>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U128","err":"I32"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U128","err":"I32"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U128, u32>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U128","err":"U32"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U128","err":"U32"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U128, ()>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U128","err":"Unit"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U128","err":"Unit"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U128, String>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U128","err":"String"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U128","err":"String"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U128, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"U128","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U128","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<U128, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"U128","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U128","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<U128, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"U128","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U128","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<U128, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"U128","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U128","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -1023,35 +918,35 @@ mod tests {
         fn u256_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<U256, i32>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U256","err":"I32"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U256","err":"I32"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U256, u32>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U256","err":"U32"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U256","err":"U32"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U256, ()>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U256","err":"Unit"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U256","err":"Unit"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U256, String>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U256","err":"String"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U256","err":"String"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U256, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"U256","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U256","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<U256, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"U256","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U256","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<U256, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"U256","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U256","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<U256, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"U256","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U256","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -1059,35 +954,35 @@ mod tests {
         fn u512_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<U512, i32>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U512","err":"I32"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U512","err":"I32"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U512, u32>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U512","err":"U32"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U512","err":"U32"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U512, ()>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U512","err":"Unit"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U512","err":"Unit"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U512, String>::Ok(1.into()),
-                r#"{"cl_type":{"Result":{"ok":"U512","err":"String"}},"parsed_to_json":{"Ok":"1"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U512","err":"String"}},"parsed_to_json":{"ok":"1"}}"#,
             );
             check_to_json(
                 Result::<U512, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"U512","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U512","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<U512, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"U512","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U512","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<U512, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"U512","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U512","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<U512, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"U512","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"U512","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -1095,35 +990,35 @@ mod tests {
         fn unit_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<(), i32>::Ok(()),
-                r#"{"cl_type":{"Result":{"ok":"Unit","err":"I32"}},"parsed_to_json":{"Ok":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Unit","err":"I32"}},"parsed_to_json":{"ok":null}}"#,
             );
             check_to_json(
                 Result::<(), u32>::Ok(()),
-                r#"{"cl_type":{"Result":{"ok":"Unit","err":"U32"}},"parsed_to_json":{"Ok":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Unit","err":"U32"}},"parsed_to_json":{"ok":null}}"#,
             );
             check_to_json(
                 Result::<(), ()>::Ok(()),
-                r#"{"cl_type":{"Result":{"ok":"Unit","err":"Unit"}},"parsed_to_json":{"Ok":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Unit","err":"Unit"}},"parsed_to_json":{"ok":null}}"#,
             );
             check_to_json(
                 Result::<(), String>::Ok(()),
-                r#"{"cl_type":{"Result":{"ok":"Unit","err":"String"}},"parsed_to_json":{"Ok":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Unit","err":"String"}},"parsed_to_json":{"ok":null}}"#,
             );
             check_to_json(
                 Result::<(), i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"Unit","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Unit","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<(), u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"Unit","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Unit","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<(), ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"Unit","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Unit","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<(), String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"Unit","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Unit","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -1131,35 +1026,35 @@ mod tests {
         fn string_cl_value_should_encode_to_json() {
             check_to_json(
                 Result::<String, i32>::Ok("test string".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"String","err":"I32"}},"parsed_to_json":{"Ok":"test string"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"String","err":"I32"}},"parsed_to_json":{"ok":"test string"}}"#,
             );
             check_to_json(
                 Result::<String, u32>::Ok("test string".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"String","err":"U32"}},"parsed_to_json":{"Ok":"test string"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"String","err":"U32"}},"parsed_to_json":{"ok":"test string"}}"#,
             );
             check_to_json(
                 Result::<String, ()>::Ok("test string".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"String","err":"Unit"}},"parsed_to_json":{"Ok":"test string"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"String","err":"Unit"}},"parsed_to_json":{"ok":"test string"}}"#,
             );
             check_to_json(
                 Result::<String, String>::Ok("test string".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"String","err":"String"}},"parsed_to_json":{"Ok":"test string"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"String","err":"String"}},"parsed_to_json":{"ok":"test string"}}"#,
             );
             check_to_json(
                 Result::<String, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"String","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"String","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<String, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"String","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"String","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<String, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"String","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"String","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<String, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"String","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"String","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -1168,35 +1063,35 @@ mod tests {
             let key = Key::Hash([2; KEY_HASH_LENGTH]);
             check_to_json(
                 Result::<Key, i32>::Ok(key),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"I32"}},"parsed_to_json":{"Ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"I32"}},"parsed_to_json":{"ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
             );
             check_to_json(
                 Result::<Key, u32>::Ok(key),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"U32"}},"parsed_to_json":{"Ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"U32"}},"parsed_to_json":{"ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
             );
             check_to_json(
                 Result::<Key, ()>::Ok(key),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"Unit"}},"parsed_to_json":{"Ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"Unit"}},"parsed_to_json":{"ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
             );
             check_to_json(
                 Result::<Key, String>::Ok(key),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"String"}},"parsed_to_json":{"Ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"String"}},"parsed_to_json":{"ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
             );
             check_to_json(
                 Result::<Key, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<Key, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<Key, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<Key, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -1205,35 +1100,35 @@ mod tests {
             let uref = URef::new([6; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);
             check_to_json(
                 Result::<URef, i32>::Ok(uref),
-                r#"{"cl_type":{"Result":{"ok":"URef","err":"I32"}},"parsed_to_json":{"Ok":"uref-0606060606060606060606060606060606060606060606060606060606060606-007"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"URef","err":"I32"}},"parsed_to_json":{"ok":"uref-0606060606060606060606060606060606060606060606060606060606060606-007"}}"#,
             );
             check_to_json(
                 Result::<URef, u32>::Ok(uref),
-                r#"{"cl_type":{"Result":{"ok":"URef","err":"U32"}},"parsed_to_json":{"Ok":"uref-0606060606060606060606060606060606060606060606060606060606060606-007"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"URef","err":"U32"}},"parsed_to_json":{"ok":"uref-0606060606060606060606060606060606060606060606060606060606060606-007"}}"#,
             );
             check_to_json(
                 Result::<URef, ()>::Ok(uref),
-                r#"{"cl_type":{"Result":{"ok":"URef","err":"Unit"}},"parsed_to_json":{"Ok":"uref-0606060606060606060606060606060606060606060606060606060606060606-007"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"URef","err":"Unit"}},"parsed_to_json":{"ok":"uref-0606060606060606060606060606060606060606060606060606060606060606-007"}}"#,
             );
             check_to_json(
                 Result::<URef, String>::Ok(uref),
-                r#"{"cl_type":{"Result":{"ok":"URef","err":"String"}},"parsed_to_json":{"Ok":"uref-0606060606060606060606060606060606060606060606060606060606060606-007"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"URef","err":"String"}},"parsed_to_json":{"ok":"uref-0606060606060606060606060606060606060606060606060606060606060606-007"}}"#,
             );
             check_to_json(
                 Result::<URef, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"URef","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"URef","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<URef, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"URef","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"URef","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<URef, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"URef","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"URef","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<URef, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"URef","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"URef","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
 
@@ -1242,35 +1137,35 @@ mod tests {
             let public_key = SecretKey::secp256k1([8; SecretKey::SECP256K1_LENGTH]).into();
             check_to_json(
                 Result::<PublicKey, i32>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed_to_json":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed_to_json":{"ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, u32>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed_to_json":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed_to_json":{"ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, ()>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed_to_json":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed_to_json":{"ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, String>::Ok(public_key),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed_to_json":{"Ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed_to_json":{"ok":"0203f991f944d1e1954a7fc8b9bf62e0d78f015f4c07762d505e20e6c45260a3661b"}}"#,
             );
             check_to_json(
                 Result::<PublicKey, i32>::Err(-1),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed_to_json":{"Err":-1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"I32"}},"parsed_to_json":{"error":-1}}"#,
             );
             check_to_json(
                 Result::<PublicKey, u32>::Err(1),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed_to_json":{"Err":1}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"U32"}},"parsed_to_json":{"error":1}}"#,
             );
             check_to_json(
                 Result::<PublicKey, ()>::Err(()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed_to_json":{"Err":null}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"Unit"}},"parsed_to_json":{"error":null}}"#,
             );
             check_to_json(
                 Result::<PublicKey, String>::Err("e".to_string()),
-                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed_to_json":{"Err":"e"}}"#,
+                r#"{"cl_type":{"Result":{"ok":"PublicKey","err":"String"}},"parsed_to_json":{"error":"e"}}"#,
             );
         }
     }
