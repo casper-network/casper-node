@@ -191,10 +191,12 @@ fn announce_deploy_received(
     }
 }
 
+type FetchedDeployResult = Arc<Mutex<(bool, Option<FetchResult<Deploy, NodeId>>)>>;
+
 fn fetch_deploy(
     deploy_hash: DeployHash,
     node_id: NodeId,
-    fetched: Arc<Mutex<(bool, Option<FetchResult<Deploy>>)>>,
+    fetched: FetchedDeployResult,
 ) -> impl FnOnce(EffectBuilder<ReactorEvent>) -> Effects<ReactorEvent> {
     move |effect_builder: EffectBuilder<ReactorEvent>| {
         effect_builder
@@ -241,8 +243,8 @@ async fn store_deploy(
 async fn assert_settled(
     node_id: &NodeId,
     deploy_hash: DeployHash,
-    expected_result: Option<FetchResult<Deploy>>,
-    fetched: Arc<Mutex<(bool, Option<FetchResult<Deploy>>)>>,
+    expected_result: Option<FetchResult<Deploy, NodeId>>,
+    fetched: FetchedDeployResult,
     network: &mut Network<Reactor>,
     rng: &mut TestRng,
     timeout: Duration,

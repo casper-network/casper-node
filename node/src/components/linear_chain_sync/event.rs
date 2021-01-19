@@ -7,7 +7,7 @@ use std::fmt::{Debug, Display};
 #[derive(Debug)]
 pub enum Event<I> {
     Start(I),
-    GetBlockHashResult(BlockHash, Option<FetchResult<Block>>),
+    GetBlockHashResult(BlockHash, Option<FetchResult<Block, I>>),
     GetBlockHeightResult(u64, BlockByHeightResult<I>),
     /// Deploys from the block have been found.
     DeploysFound(Box<BlockHeader>),

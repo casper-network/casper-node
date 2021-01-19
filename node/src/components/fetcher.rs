@@ -128,7 +128,7 @@ pub trait ItemFetcher<T: Item + 'static> {
     fn signal(
         &mut self,
         id: T::Id,
-        result: Option<FetchResult<T>>,
+        result: Option<FetchResult<T, NodeId>>,
         peer: NodeId,
     ) -> Effects<Event<T>> {
         let mut effects = Effects::new();
