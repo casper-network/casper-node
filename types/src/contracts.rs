@@ -171,7 +171,7 @@ pub type DisabledVersions = BTreeSet<ContractVersionKey>;
 pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
 
 /// Contract definition, metadata, and security container.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ContractPackage {
     /// Key used to add or disable versions
     access_key: URef,
@@ -460,7 +460,7 @@ impl From<Vec<EntryPoint>> for EntryPoints {
 pub type NamedKeys = BTreeMap<String, Key>;
 
 /// Methods and type signatures supported by a contract.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Contract {
     contract_package_hash: ContractPackageHash,
     contract_wasm_hash: ContractWasmHash,
