@@ -575,7 +575,7 @@ where
             Event::BlockHandled(header) => {
                 let block_height = header.height();
                 let block_hash = header.hash();
-                trace!(%block_height, %block_hash, "nlock handled.");
+                trace!(%block_height, %block_hash, "block handled.");
                 self.block_handled(rng, effect_builder, *header)
             }
         }
