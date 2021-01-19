@@ -46,18 +46,19 @@ use futures::{future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
 use quanta::IntoNanoseconds;
+use serde::Serialize;
+use tokio::time::{Duration, Instant};
 use tracing::{debug, debug_span, info, trace, warn};
 use tracing_futures::Instrument;
 
 use crate::{
     effect::{Effect, EffectBuilder, Effects},
+    types::Timestamp,
     utils::{self, WeightedRoundRobin},
     NodeRng,
 };
 use quanta::Clock;
 pub use queue_kind::QueueKind;
-use serde::Serialize;
-use tokio::time::{Duration, Instant};
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -396,7 +397,8 @@ where
         // Dump event queue if requested, stopping the world.
         if crate::QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
             debug!("dumping event queue as requested");
-            let output_fn = "queue_dump.json";
+            let timestamp = Timestamp::now();
+            let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
             let mut serializer = serde_json::Serializer::pretty(
                 File::create(output_fn).expect("could not create output file for queue snapshot"),
             );
@@ -406,8 +408,8 @@ where
                 .await
                 .expect("could not serialize snapshot");
 
-            let mut file =
-                File::create("queue_dump_debug.txt").expect("could not create dump file");
+            let mut file = File::create(format!("/tmp/queue_dump_debug-{}.txt", timestamp))
+                .expect("could not create dump file");
             self.scheduler
                 .debug_dump(&mut file)
                 .await
