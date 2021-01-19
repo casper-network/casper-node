@@ -30,7 +30,7 @@ use crate::{
     types::{DeployHash, DeployHeader, ProtoBlock, Timestamp},
     NodeRng,
 };
-use casper_execution_engine::{core::engine_state::CONV_RATE, shared::gas::Gas};
+use casper_execution_engine::shared::gas::Gas;
 pub(crate) use deploy_sets::BlockProposerDeploySets;
 pub(crate) use event::{DeployType, Event};
 use metrics::BlockProposerMetrics;
@@ -451,8 +451,10 @@ impl BlockProposerReady {
                 continue;
             }
 
-            let payment_amount_gas = match Gas::from_motes(deploy_type.payment_amount(), CONV_RATE)
-            {
+            let payment_amount_gas = match Gas::from_motes(
+                deploy_type.payment_amount(),
+                deploy_type.header().gas_price(),
+            ) {
                 Some(value) => value,
                 None => {
                     error!("payment_amount couldn't be converted from motes to gas");

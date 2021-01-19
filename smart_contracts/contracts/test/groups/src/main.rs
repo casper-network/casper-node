@@ -40,7 +40,7 @@ pub extern "C" fn restricted_contract() {}
 pub extern "C" fn restricted_session_caller() {
     let package_hash: Key = runtime::get_named_arg(ARG_PACKAGE_HASH);
     let contract_version = Some(CONTRACT_INITIAL_VERSION);
-    let contract_package_hash = package_hash.into_hash().unwrap_or_revert();
+    let contract_package_hash = package_hash.into_hash().unwrap_or_revert().into();
     runtime::call_versioned_contract(
         contract_package_hash,
         contract_version,
@@ -52,7 +52,7 @@ pub extern "C" fn restricted_session_caller() {
 fn contract_caller() {
     let package_hash: Key = runtime::get_named_arg(ARG_PACKAGE_HASH);
     let contract_version = Some(CONTRACT_INITIAL_VERSION);
-    let contract_package_hash = package_hash.into_hash().unwrap_or_revert();
+    let contract_package_hash = package_hash.into_hash().unwrap_or_revert().into();
     let runtime_args = runtime_args! {};
     runtime::call_versioned_contract(
         contract_package_hash,

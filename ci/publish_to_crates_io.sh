@@ -62,7 +62,7 @@ publish() {
         printf "Publishing...\n"
         pushd $ROOT_DIR/$CRATE_DIR >/dev/null
         set +u
-        cargo publish ${@:2}
+        cargo publish ${@:2} --token ${CARGO_TOKEN}
         set -u
         popd >/dev/null
         printf "Published version %s\n" $LOCAL_VERSION

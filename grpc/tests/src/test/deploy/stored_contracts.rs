@@ -4,13 +4,13 @@ use casper_engine_grpc_server::engine_server::ipc::DeployCode;
 use casper_engine_test_support::{
     internal::{
         utils, AdditiveMapDiff, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE,
+        DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{upgrade::ActivationPoint, CONV_RATE},
+    core::engine_state::upgrade::ActivationPoint,
     shared::{account::Account, motes::Motes, stored_value::StoredValue, transform::Transform},
     storage::global_state::in_memory::InMemoryGlobalState,
 };
@@ -87,7 +87,8 @@ fn store_payment_to_account_context(
         .get(STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME)
         .expect("key should exist")
         .into_hash()
-        .expect("should be a hash");
+        .expect("should be a hash")
+        .into();
 
     (default_account, hash)
 }
@@ -147,7 +148,7 @@ fn should_exec_non_stored_code() {
 
     let success_result = utils::get_success_result(&response);
     let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
     let tally = motes.value() + U512::from(transferred_amount) + modified_balance;
 
     assert_eq!(
@@ -181,7 +182,7 @@ fn should_exec_stored_code_by_hash() {
             .clone();
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        let motes_alpha = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+        let motes_alpha = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
         (motes_alpha, modified_balance_alpha)
     };
 
@@ -198,7 +199,7 @@ fn should_exec_stored_code_by_hash() {
                     runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
                 )
                 .with_stored_versioned_payment_contract_by_hash(
-                    hash,
+                    hash.value(),
                     Some(CONTRACT_INITIAL_VERSION),
                     PAY,
                     runtime_args! {
@@ -225,7 +226,7 @@ fn should_exec_stored_code_by_hash() {
 
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        let motes_bravo = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+        let motes_bravo = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
         (motes_bravo, modified_balance_bravo)
     };
@@ -278,7 +279,7 @@ fn should_exec_stored_code_by_named_hash() {
             .clone();
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        let motes_alpha = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+        let motes_alpha = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
         (motes_alpha, modified_balance_alpha)
     };
 
@@ -322,7 +323,7 @@ fn should_exec_stored_code_by_named_hash() {
 
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        let motes_bravo = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+        let motes_bravo = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
         (motes_bravo, modified_balance_bravo)
     };
@@ -374,7 +375,7 @@ fn should_exec_payment_and_session_stored_code() {
             .clone();
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        Motes::from_gas(gas, CONV_RATE).expect("should have motes")
+        Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes")
     };
 
     // next store transfer contract
@@ -411,7 +412,7 @@ fn should_exec_payment_and_session_stored_code() {
 
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        Motes::from_gas(gas, CONV_RATE).expect("should have motes")
+        Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes")
     };
 
     let transferred_amount = 1;
@@ -456,7 +457,7 @@ fn should_exec_payment_and_session_stored_code() {
 
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        Motes::from_gas(gas, CONV_RATE).expect("should have motes")
+        Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes")
     };
 
     let modified_balance: U512 = {
@@ -829,7 +830,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_hash(
-                stored_payment_contract_hash,
+                stored_payment_contract_hash.into(),
                 DEFAULT_ENTRY_POINT_NAME,
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
@@ -1198,7 +1199,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
                 RuntimeArgs::new(),
             )
             .with_stored_payment_hash(
-                test_payment_stored_hash,
+                test_payment_stored_hash.into(),
                 "pay",
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )

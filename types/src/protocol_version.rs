@@ -53,12 +53,12 @@ impl ProtocolVersion {
     });
 
     /// Constructs a new `ProtocolVersion` from `version`.
-    pub fn new(version: SemVer) -> ProtocolVersion {
+    pub const fn new(version: SemVer) -> ProtocolVersion {
         ProtocolVersion(version)
     }
 
     /// Constructs a new `ProtocolVersion` from the given semver parts.
-    pub fn from_parts(major: u32, minor: u32, patch: u32) -> ProtocolVersion {
+    pub const fn from_parts(major: u32, minor: u32, patch: u32) -> ProtocolVersion {
         let sem_ver = SemVer::new(major, minor, patch);
         Self::new(sem_ver)
     }

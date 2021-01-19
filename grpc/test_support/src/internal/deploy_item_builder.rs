@@ -5,11 +5,11 @@ use casper_execution_engine::{
     shared::newtypes::Blake2bHash,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, contracts::ContractVersion, ContractHash, DeployHash,
-    HashAddr, RuntimeArgs,
+    account::AccountHash, bytesrepr::ToBytes, ContractHash, ContractVersion, DeployHash, HashAddr,
+    RuntimeArgs,
 };
 
-use crate::internal::utils;
+use crate::internal::{utils, DEFAULT_GAS_PRICE};
 
 #[derive(Default)]
 struct DeployItemData {
@@ -160,7 +160,7 @@ impl DeployItemBuilder {
         args: RuntimeArgs,
     ) -> Self {
         self.deploy_item.session_code = Some(ExecutableDeployItem::StoredVersionedContractByHash {
-            hash,
+            hash: hash.into(),
             version,
             entry_point: entry_point.to_owned(),
             args: args
@@ -198,7 +198,7 @@ impl DeployItemBuilder {
         args: RuntimeArgs,
     ) -> Self {
         self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredVersionedContractByHash {
-            hash,
+            hash: hash.into(),
             version,
             entry_point: entry_point.to_owned(),
             args: args
@@ -260,7 +260,7 @@ impl DeployItemBuilder {
 impl Default for DeployItemBuilder {
     fn default() -> Self {
         let deploy_item = DeployItemData {
-            gas_price: 1,
+            gas_price: DEFAULT_GAS_PRICE,
             ..Default::default()
         };
         DeployItemBuilder { deploy_item }

@@ -1,6 +1,6 @@
 use datasize::DataSize;
 use prometheus::{self, Histogram, HistogramOpts, IntGauge, Registry};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use super::Reactor;
 
@@ -231,54 +231,76 @@ impl Drop for MemoryMetrics {
     fn drop(&mut self) {
         self.registry
             .unregister(Box::new(self.mem_total.clone()))
-            .expect("did not expect deregistering mem_total, to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering mem_total, to fail"));
         self.registry
             .unregister(Box::new(self.mem_metrics.clone()))
-            .expect("did not expect deregistering mem_metrics, to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering mem_metrics, to fail"));
         self.registry
             .unregister(Box::new(self.mem_net.clone()))
-            .expect("did not expect deregistering mem_net, to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering mem_net, to fail"));
         self.registry
             .unregister(Box::new(self.mem_address_gossiper.clone()))
-            .expect("did not expect deregistering mem_address_gossiper, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_address_gossiper, to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_storage.clone()))
-            .expect("did not expect deregistering mem_storage, to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering mem_storage, to fail"));
         self.registry
             .unregister(Box::new(self.mem_contract_runtime.clone()))
-            .expect("did not expect deregistering mem_contract_runtime, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_contract_runtime, to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_rpc_server.clone()))
-            .expect("did not expect deregistering mem_rpc_server, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_rpc_server, to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_rest_server.clone()))
             .expect("did not expect deregistering mem_rest_server, to fail");
         self.registry
             .unregister(Box::new(self.mem_event_stream_server.clone()))
-            .expect("did not expect deregistering mem_event_stream_server, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_event_stream_server, to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_chainspec_loader.clone()))
-            .expect("did not expect deregistering mem_chainspec_loader, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_chainspec_loader, to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_consensus.clone()))
-            .expect("did not expect deregistering mem_consensus, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_consensus, to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_deploy_fetcher.clone()))
-            .expect("did not expect deregistering mem_deploy_fetcher, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_deploy_fetcher, to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_deploy_gossiper.clone()))
-            .expect("did not expect deregistering mem_deploy_gossiper, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_deploy_gossiper, to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_block_proposer.clone()))
-            .expect("did not expect deregistering mem_block_proposer, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_block_proposer, to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_block_executor.clone()))
-            .expect("did not expect deregistering mem_block_executor, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_block_executor, to fail"),
+            );
         self.registry
             .unregister(Box::new(self.mem_proto_block_validator.clone()))
-            .expect("did not expect deregistering mem_proto_block_validator, to fail");
+            .unwrap_or_else(|err| warn!(%err, "did not expect deregistering mem_proto_block_validator, to fail"));
         self.registry
             .unregister(Box::new(self.mem_linear_chain.clone()))
-            .expect("did not expect deregistering mem_linear_chain, to fail");
+            .unwrap_or_else(
+                |err| warn!(%err, "did not expect deregistering mem_linear_chain, to fail"),
+            );
     }
 }

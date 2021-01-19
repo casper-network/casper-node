@@ -16,7 +16,7 @@ use tracing::{error, warn};
 
 use casper_execution_engine::{
     core::engine_state::genesis::{ExecConfig, GenesisAccount},
-    shared::{motes::Motes, wasm_config::WasmConfig},
+    shared::{motes::Motes, system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_types::{auction::EraId, PublicKey, U512};
 
@@ -218,8 +218,6 @@ pub struct GenesisConfig {
     pub(crate) round_seigniorage_rate: Ratio<u64>,
     /// The delay for paying out the the unbonding amount.
     pub(crate) unbonding_delay: EraId,
-    /// Wasmless transfer cost expressed in gas.
-    pub(crate) wasmless_transfer_cost: u64,
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
@@ -229,6 +227,7 @@ pub struct GenesisConfig {
     pub(crate) auction_installer_bytes: Vec<u8>,
     pub(crate) accounts: Vec<GenesisAccount>,
     pub(crate) wasm_config: WasmConfig,
+    pub(crate) system_config: SystemConfig,
     pub(crate) deploy_config: DeployConfig,
     pub(crate) highway_config: HighwayConfig,
 }
@@ -311,11 +310,11 @@ impl GenesisConfig {
         let standard_payment_installer_bytes = vec![rng.gen()];
         let auction_installer_bytes = vec![rng.gen()];
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
-        let costs = rng.gen();
+        let wasm_config = rng.gen();
         let deploy_config = DeployConfig::random(rng);
         let highway_config = HighwayConfig::random(rng);
         let unbonding_delay = rng.gen();
-        let wasmless_transfer_cost = rng.gen();
+        let system_config = rng.gen();
 
         GenesisConfig {
             name,
@@ -325,14 +324,14 @@ impl GenesisConfig {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
-            wasmless_transfer_cost,
             protocol_version,
             mint_installer_bytes,
             pos_installer_bytes,
             standard_payment_installer_bytes,
             auction_installer_bytes,
             accounts,
-            wasm_config: costs,
+            wasm_config,
+            system_config,
             deploy_config,
             highway_config,
         }
@@ -352,9 +351,9 @@ pub(crate) struct UpgradePoint {
     pub(crate) upgrade_installer_bytes: Option<Vec<u8>>,
     pub(crate) upgrade_installer_args: Option<Vec<u8>>,
     pub(crate) new_wasm_config: Option<WasmConfig>,
+    pub(crate) new_system_config: Option<SystemConfig>,
     pub(crate) new_deploy_config: Option<DeployConfig>,
     pub(crate) new_validator_slots: Option<u32>,
-    pub(crate) new_wasmless_transfer_cost: Option<u64>,
 }
 
 #[cfg(test)]
@@ -386,7 +385,7 @@ impl UpgradePoint {
             None
         };
         let new_validator_slots = rng.gen::<Option<u32>>();
-        let new_wasmless_transfer_cost = rng.gen();
+        let new_system_config = rng.gen();
 
         UpgradePoint {
             activation_point,
@@ -394,9 +393,9 @@ impl UpgradePoint {
             upgrade_installer_bytes,
             upgrade_installer_args,
             new_wasm_config: new_costs,
+            new_system_config,
             new_deploy_config,
             new_validator_slots,
-            new_wasmless_transfer_cost,
         }
     }
 }
@@ -452,12 +451,12 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.auction_installer_bytes,
             self.genesis.accounts,
             self.genesis.wasm_config,
+            self.genesis.system_config,
             self.genesis.validator_slots,
             self.genesis.auction_delay,
             self.genesis.locked_funds_period,
             self.genesis.round_seigniorage_rate,
             self.genesis.unbonding_delay,
-            self.genesis.wasmless_transfer_cost,
         )
     }
 }

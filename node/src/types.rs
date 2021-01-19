@@ -20,7 +20,8 @@ pub use block::{
 };
 pub(crate) use block::{BlockByHeight, BlockLike, FinalizedBlock, ProtoBlock};
 pub use deploy::{
-    Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, Error as DeployError,
+    Approval, Deploy, DeployHash, DeployHeader, DeployMetadata, DeployValidationFailure,
+    Error as DeployError,
 };
 pub use item::{Item, Tag};
 pub use node_config::NodeConfig;

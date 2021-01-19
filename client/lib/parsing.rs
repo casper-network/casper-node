@@ -11,8 +11,8 @@ use casper_node::{
     types::{DeployHash, TimeDiff, Timestamp},
 };
 use casper_types::{
-    bytesrepr, AsymmetricType, CLType, CLValue, ContractHash, Key, NamedArg, PublicKey,
-    RuntimeArgs, SecretKey, UIntParseError, U512,
+    bytesrepr, AsymmetricType, CLType, CLValue, HashAddr, Key, NamedArg, PublicKey, RuntimeArgs,
+    SecretKey, UIntParseError, U512,
 };
 
 use crate::{
@@ -405,7 +405,7 @@ pub(super) fn parse_session_info(
 
     if let Some(session_hash) = parse_contract_hash(session_hash)? {
         return ExecutableDeployItem::new_stored_contract_by_hash(
-            session_hash,
+            session_hash.into(),
             entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             session_args,
         );
@@ -423,7 +423,7 @@ pub(super) fn parse_session_info(
 
     if let Some(package_hash) = parse_contract_hash(session_package_hash)? {
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
-            package_hash,
+            package_hash.into(),
             version,
             entry_point(session_entry_point).ok_or_else(invalid_entry_point)?,
             session_args,
@@ -493,7 +493,7 @@ pub(super) fn parse_payment_info(
 
     if let Some(payment_hash) = parse_contract_hash(payment_hash)? {
         return ExecutableDeployItem::new_stored_contract_by_hash(
-            payment_hash,
+            payment_hash.into(),
             entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
         );
@@ -511,7 +511,7 @@ pub(super) fn parse_payment_info(
 
     if let Some(package_hash) = parse_contract_hash(payment_package_hash)? {
         return ExecutableDeployItem::new_stored_versioned_contract_by_hash(
-            package_hash,
+            package_hash.into(),
             version,
             entry_point(payment_entry_point).ok_or_else(invalid_entry_point)?,
             payment_args,
@@ -544,7 +544,7 @@ pub(crate) fn output(value: &str) -> Option<&str> {
     none_if_empty(value)
 }
 
-fn parse_contract_hash(value: &str) -> Result<Option<ContractHash>> {
+fn parse_contract_hash(value: &str) -> Result<Option<HashAddr>> {
     if value.is_empty() {
         return Ok(None);
     }

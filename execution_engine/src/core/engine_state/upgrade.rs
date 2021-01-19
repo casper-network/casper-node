@@ -6,7 +6,9 @@ use casper_types::{auction::EraId, bytesrepr, Key, ProtocolVersion};
 
 use crate::{
     core::engine_state::execution_effect::ExecutionEffect,
-    shared::{newtypes::Blake2bHash, wasm_config::WasmConfig, TypeMismatch},
+    shared::{
+        newtypes::Blake2bHash, system_config::SystemConfig, wasm_config::WasmConfig, TypeMismatch,
+    },
     storage::global_state::CommitResult,
 };
 
@@ -64,13 +66,13 @@ pub struct UpgradeConfig {
     upgrade_installer_args: Option<Vec<u8>>,
     upgrade_installer_bytes: Option<Vec<u8>>,
     wasm_config: Option<WasmConfig>,
+    system_config: Option<SystemConfig>,
     activation_point: Option<ActivationPoint>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_locked_funds_period: Option<EraId>,
     new_round_seigniorage_rate: Option<Ratio<u64>>,
     new_unbonding_delay: Option<EraId>,
-    new_wasmless_transfer_cost: Option<u64>,
 }
 
 impl UpgradeConfig {
@@ -82,13 +84,13 @@ impl UpgradeConfig {
         upgrade_installer_args: Option<Vec<u8>>,
         upgrade_installer_bytes: Option<Vec<u8>>,
         wasm_config: Option<WasmConfig>,
+        system_config: Option<SystemConfig>,
         activation_point: Option<ActivationPoint>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
         new_locked_funds_period: Option<EraId>,
         new_round_seigniorage_rate: Option<Ratio<u64>>,
         new_unbonding_delay: Option<EraId>,
-        new_wasmless_transfer_cost: Option<u64>,
     ) -> Self {
         UpgradeConfig {
             pre_state_hash,
@@ -97,13 +99,13 @@ impl UpgradeConfig {
             upgrade_installer_args,
             upgrade_installer_bytes,
             wasm_config,
+            system_config,
             activation_point,
             new_validator_slots,
             new_auction_delay,
             new_locked_funds_period,
             new_round_seigniorage_rate,
             new_unbonding_delay,
-            new_wasmless_transfer_cost,
         }
     }
 
@@ -133,6 +135,10 @@ impl UpgradeConfig {
         self.wasm_config.as_ref()
     }
 
+    pub fn system_config(&self) -> Option<&SystemConfig> {
+        self.system_config.as_ref()
+    }
+
     pub fn activation_point(&self) -> Option<u64> {
         self.activation_point
     }
@@ -155,9 +161,5 @@ impl UpgradeConfig {
 
     pub fn new_unbonding_delay(&self) -> Option<EraId> {
         self.new_unbonding_delay
-    }
-
-    pub fn new_wasmless_transfer_cost(&self) -> Option<u64> {
-        self.new_wasmless_transfer_cost
     }
 }

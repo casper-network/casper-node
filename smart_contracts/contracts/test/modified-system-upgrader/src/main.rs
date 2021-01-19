@@ -18,8 +18,9 @@ use casper_types::{
         ARG_ACCOUNT, ARG_AMOUNT, ARG_PURSE, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE,
         METHOD_GET_REFUND_PURSE, METHOD_SET_REFUND_PURSE,
     },
-    CLType, CLValue, ContractHash, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter, URef,
+    standard_payment::METHOD_PAY,
+    CLType, CLValue, ContractHash, ContractPackageHash, ContractVersion, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, Parameter, URef,
 };
 
 pub const MODIFIED_MINT_EXT_FUNCTION_NAME: &str = "modified_mint_ext";
@@ -58,19 +59,20 @@ pub extern "C" fn version() {
 }
 
 #[no_mangle]
-pub extern "C" fn call() {
+pub extern "C" fn pay() {
     standard_payment::delegate();
 }
 
 fn upgrade_mint() -> (ContractHash, ContractVersion) {
-    let mint_package_hash: ContractHash = runtime::get_key(HASH_KEY)
+    let mint_package_hash: ContractPackageHash = runtime::get_key(HASH_KEY)
         .expect("should have mint")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
     let _mint_access_key: URef = runtime::get_key(ACCESS_KEY)
         .unwrap_or_revert()
         .into_uref()
-        .expect("shuold be uref");
+        .expect("should be uref");
 
     let mut entry_points = modified_mint::get_entry_points();
     let entry_point = EntryPoint::new(
@@ -90,10 +92,11 @@ fn upgrade_proof_of_stake() -> (ContractHash, ContractVersion) {
     const HASH_KEY_NAME: &str = "pos_hash";
     const ACCESS_KEY_NAME: &str = "pos_access";
 
-    let pos_package_hash: ContractHash = runtime::get_key(HASH_KEY_NAME)
+    let pos_package_hash: ContractPackageHash = runtime::get_key(HASH_KEY_NAME)
         .expect("should have mint")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
     let _pos_access_key: URef = runtime::get_key(ACCESS_KEY_NAME)
         .unwrap_or_revert()
         .into_uref()
@@ -174,10 +177,11 @@ fn upgrade_standard_payment() -> (ContractHash, ContractVersion) {
     const ACCESS_KEY_NAME: &str = "standard_payment_access";
     const ARG_AMOUNT: &str = "amount";
 
-    let standard_payment_package_hash: ContractHash = runtime::get_key(HASH_KEY_NAME)
+    let standard_payment_package_hash: ContractPackageHash = runtime::get_key(HASH_KEY_NAME)
         .expect("should have mint")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
     let _standard_payment_access_key: URef = runtime::get_key(ACCESS_KEY_NAME)
         .unwrap_or_revert()
         .into_uref()
@@ -187,7 +191,7 @@ fn upgrade_standard_payment() -> (ContractHash, ContractVersion) {
         let mut entry_points = EntryPoints::new();
 
         let entry_point = EntryPoint::new(
-            "call",
+            METHOD_PAY,
             vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
             CLType::Result {
                 ok: Box::new(CLType::Unit),

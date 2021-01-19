@@ -303,7 +303,7 @@ impl Executor {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
             | DirectSystemContractCall::DistributeRewards => {
-                if Some(protocol_data.auction()) != base_key.into_hash() {
+                if Some(protocol_data.auction().value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()
@@ -312,7 +312,7 @@ impl Executor {
             }
             DirectSystemContractCall::FinalizePayment
             | DirectSystemContractCall::GetPaymentPurse => {
-                if Some(protocol_data.proof_of_stake()) != base_key.into_hash() {
+                if Some(protocol_data.proof_of_stake().value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the proof of stake contract",
                         direct_system_contract_call.entry_point_name()
@@ -320,7 +320,7 @@ impl Executor {
                 }
             }
             DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => {
-                if Some(protocol_data.mint()) != base_key.into_hash() {
+                if Some(protocol_data.mint().value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the mint contract",
                         direct_system_contract_call.entry_point_name()
@@ -328,7 +328,7 @@ impl Executor {
                 }
             }
             DirectSystemContractCall::GetEraValidators => {
-                if Some(protocol_data.auction()) != base_key.into_hash() {
+                if Some(protocol_data.auction().value()) != base_key.into_hash() {
                     panic!(
                         "{} should only be called with the auction contract",
                         direct_system_contract_call.entry_point_name()

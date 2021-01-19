@@ -41,11 +41,11 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contracts::{NamedKeys, ENTRY_POINT_NAME_INSTALL, UPGRADE_ENTRY_POINT_NAME},
     mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY},
-    proof_of_stake, runtime_args,
+    proof_of_stake, runtime_args, standard_payment,
     system_contract_errors::{self, mint::Error as MintError},
-    AccessRights, ApiError, BlockTime, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointType,
-    Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
+    AccessRights, ApiError, BlockTime, CLType, CLValue, Contract, ContractHash, ContractPackage,
+    ContractPackageHash, ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
+    EntryPointType, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs, URef, U512,
 };
 
 pub use self::{
@@ -92,13 +92,7 @@ use crate::{
     },
 };
 
-/// Rate for motes/gas conversion.
-///
-/// gas * CONV_RATE = motes
-/// motes / CONV_RATE = gas
-pub const CONV_RATE: u64 = 1;
-
-pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000 * CONV_RATE));
+pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000u64));
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
@@ -181,7 +175,7 @@ where
 
         let initial_root_hash = self.state.empty_root();
         let wasm_config = ee_config.wasm_config();
-        let wasmless_transfer_cost = ee_config.wasmless_transfer_cost();
+        let system_config = ee_config.system_config();
 
         let preprocessor = Preprocessor::new(*wasm_config);
 
@@ -464,11 +458,11 @@ where
         // Spec #2: Associate given CostTable with given ProtocolVersion.
         let protocol_data = ProtocolData::new(
             *wasm_config,
+            *system_config,
             mint_hash,
             proof_of_stake_hash,
             standard_payment_hash,
             auction_hash,
-            wasmless_transfer_cost,
         );
 
         self.state
@@ -650,19 +644,19 @@ where
             None => current_protocol_data.wasm_config(),
         };
 
-        let new_wasmless_transfer_cost = match upgrade_config.new_wasmless_transfer_cost() {
-            Some(new_wasmless_transfer_cost) => new_wasmless_transfer_cost,
-            None => current_protocol_data.wasmless_transfer_cost(),
+        let new_system_config = match upgrade_config.system_config() {
+            Some(new_system_config) => new_system_config,
+            None => current_protocol_data.system_config(),
         };
 
         // 3.1.2.2 persist wasm CostTable
         let mut new_protocol_data = ProtocolData::new(
             *new_wasm_config,
+            *new_system_config,
             current_protocol_data.mint(),
             current_protocol_data.proof_of_stake(),
             current_protocol_data.standard_payment(),
             current_protocol_data.auction(),
-            new_wasmless_transfer_cost,
         );
 
         self.state
@@ -965,7 +959,8 @@ where
 
                 let contract_hash = stored_contract_key
                     .into_hash()
-                    .ok_or(Error::InvalidKeyVariant)?;
+                    .ok_or(Error::InvalidKeyVariant)?
+                    .into();
                 let contract = tracking_copy
                     .borrow_mut()
                     .get_contract(correlation_id, contract_hash)?;
@@ -991,7 +986,8 @@ where
                 let contract_package_key = deploy_item.to_contract_hash_key(&account)?.unwrap();
                 let contract_package_hash = contract_package_key
                     .into_hash()
-                    .ok_or(Error::InvalidKeyVariant)?;
+                    .ok_or(Error::InvalidKeyVariant)?
+                    .into();
 
                 let contract_package = tracking_copy
                     .borrow_mut()
@@ -1374,11 +1370,13 @@ where
                 }
             };
 
-            let wasmless_transfer_gas_cost =
-                Gas::new(U512::from(protocol_data.wasmless_transfer_cost()));
+            let wasmless_transfer_gas_cost = Gas::new(U512::from(
+                protocol_data.system_config().wasmless_transfer_cost(),
+            ));
 
             let wasmless_transfer_cost =
-                Motes::from_gas(wasmless_transfer_gas_cost, CONV_RATE).expect("gas overflow");
+                Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price)
+                    .expect("gas overflow");
 
             if source_purse_balance < wasmless_transfer_cost {
                 // We can't continue if the minimum funds in source purse are lower than the
@@ -1539,8 +1537,8 @@ where
             // (a) payment purse should be empty before the payment operation
             // (b) after executing payment code it's balance has to be equal to the wasmless gas
             // cost price
-            let payment_gas =
-                Gas::from_motes(payment_purse_balance, CONV_RATE).expect("gas overflow");
+            let payment_gas = Gas::from_motes(payment_purse_balance, deploy_item.gas_price)
+                .expect("gas overflow");
 
             debug_assert_eq!(payment_gas, wasmless_transfer_gas_cost);
 
@@ -1595,6 +1593,10 @@ where
                 SystemContractCache::clone(&self.system_contract_cache),
             );
 
+        // User is already charged fee for wasmless contract, and we need to make sure we will not
+        // charge for anything that happens while calling transfer entrypoint.
+        session_result = session_result.with_cost(Gas::default());
+
         let finalize_result = {
             let proposer_purse = {
                 let proposer_account: Account = match tracking_copy
@@ -1612,7 +1614,8 @@ where
             let proof_of_stake_args = {
                 // Gas spent during payment code execution
                 let finalize_cost_motes: Motes =
-                    Motes::from_gas(payment_result.cost(), CONV_RATE).expect("motes overflow");
+                    Motes::from_gas(payment_result.cost(), deploy_item.gas_price)
+                        .expect("motes overflow");
 
                 let account = deploy_item.address;
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
@@ -1684,7 +1687,7 @@ where
         }
 
         if session_result.is_success() {
-            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect());
+            session_result = session_result.with_effect(tracking_copy.borrow_mut().effect())
         }
 
         let mut execution_result_builder = ExecutionResultBuilder::new();
@@ -1906,8 +1909,9 @@ where
         // Execute provided payment code
         let payment_result = {
             // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
-            // conv_rate)
-            let pay_gas_limit = Gas::from_motes(max_payment_cost, CONV_RATE).unwrap_or_default();
+            // gas_price)
+            let pay_gas_limit =
+                Gas::from_motes(max_payment_cost, deploy_item.gas_price).unwrap_or_default();
 
             let module_bytes_is_empty = match payment {
                 ExecutableDeployItem::ModuleBytes {
@@ -1937,10 +1941,22 @@ where
                     correlation_id,
                     &protocol_version,
                 )
-                .map(|module| GetModuleResult::Session {
-                    module,
-                    contract_package: ContractPackage::default(),
-                    entry_point: EntryPoint::default(),
+                .map(|module| {
+                    let entry_point = EntryPoint::new(
+                        standard_payment::METHOD_PAY.to_string(),
+                        vec![Parameter::new(standard_payment::ARG_AMOUNT, CLType::U512)],
+                        CLType::Result {
+                            ok: Box::new(CLType::Unit),
+                            err: Box::new(CLType::U32),
+                        },
+                        EntryPointAccess::Public,
+                        EntryPointType::Session,
+                    );
+                    GetModuleResult::Session {
+                        module,
+                        contract_package: ContractPackage::default(),
+                        entry_point,
+                    }
                 })
             } else {
                 self.get_module(
@@ -2071,17 +2087,34 @@ where
 
                 let effects_snapshot = tracking_copy.borrow().effect();
 
-                match runtime.call_host_standard_payment() {
+                let standard_payment_pay_cost = {
+                    let system_config = runtime.protocol_data().system_config();
+                    let standard_payment_costs = system_config.standard_payment_costs();
+                    standard_payment_costs.pay
+                };
+
+                if let Err(error) = runtime.charge_system_contract_call(standard_payment_pay_cost) {
+                    return Ok(ExecutionResult::Failure {
+                        error: error.into(),
+                        effect: effects_snapshot,
+                        transfers: runtime.context().transfers().to_owned(),
+                        cost: runtime.context().gas_counter(),
+                    });
+                }
+
+                let saved_call_cost = runtime.context().gas_counter();
+
+                match runtime.call_host_standard_payment(&payment_entry_point.name()) {
                     Ok(()) => ExecutionResult::Success {
                         effect: runtime.context().effect(),
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: saved_call_cost,
                     },
                     Err(error) => ExecutionResult::Failure {
                         error: error.into(),
                         effect: effects_snapshot,
                         transfers: runtime.context().transfers().to_owned(),
-                        cost: runtime.context().gas_counter(),
+                        cost: saved_call_cost,
                     },
                 }
             }
@@ -2136,7 +2169,9 @@ where
             proposer_account.main_purse()
         };
 
-        if let Some(forced_transfer) = payment_result.check_forced_transfer(payment_purse_balance) {
+        if let Some(forced_transfer) =
+            payment_result.check_forced_transfer(payment_purse_balance, deploy_item.gas_price)
+        {
             // Get rewards purse balance key
             // payment_code_spec_6: system contract validity
             let proposer_main_purse_balance_key = {
@@ -2163,6 +2198,7 @@ where
                 error,
                 max_payment_cost,
                 account_main_purse_balance,
+                deploy_item.gas_price,
                 account_main_purse_balance_key,
                 proposer_main_purse_balance_key,
             ) {
@@ -2225,12 +2261,12 @@ where
         };
         let mut session_result = {
             // payment_code_spec_3_b_i: if (balance of PoS pay purse) >= (gas spent during
-            // payment code execution) * conv_rate, yes session
-            // session_code_spec_1: gas limit = ((balance of PoS payment purse) / conv_rate)
+            // payment code execution) * gas_price, yes session
+            // session_code_spec_1: gas limit = ((balance of PoS payment purse) / gas_price)
             // - (gas spent during payment execution)
-            let session_gas_limit: Gas = Gas::from_motes(payment_purse_balance, CONV_RATE)
-                .unwrap_or_default()
-                - payment_result_cost;
+            let session_gas_limit: Gas =
+                Gas::from_motes(payment_purse_balance, deploy_item.gas_price).unwrap_or_default()
+                    - payment_result_cost;
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             executor.exec(
@@ -2291,9 +2327,9 @@ where
             let finalization_tc = Rc::new(RefCell::new(post_session_tc.fork()));
 
             let proof_of_stake_args = {
-                //((gas spent during payment code execution) + (gas spent during session code execution)) * conv_rate
+                //((gas spent during payment code execution) + (gas spent during session code execution)) * gas_price
                 let finalize_cost_motes: Motes =
-                    Motes::from_gas(execution_result_builder.total_cost(), CONV_RATE)
+                    Motes::from_gas(execution_result_builder.total_cost(), deploy_item.gas_price)
                         .expect("motes overflow");
 
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {

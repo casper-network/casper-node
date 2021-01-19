@@ -391,8 +391,8 @@ fn contract_key_addable_valid() {
         .expect("Adding should work.");
 
     let updated_contract = StoredValue::Contract(Contract::new(
-        [0u8; 32],
-        [0u8; 32],
+        [0u8; 32].into(),
+        [0u8; 32].into(),
         iter::once((uref_name, uref)).collect(),
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,

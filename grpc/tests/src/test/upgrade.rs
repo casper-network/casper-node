@@ -273,7 +273,8 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
         .get(HASH_KEY_NAME)
         .expect("should have stored uref")
         .into_hash()
-        .expect("should have hash");
+        .expect("should have hash")
+        .into();
 
     // verify version before upgrade
     let account = builder
@@ -371,7 +372,8 @@ fn should_support_extending_functionality() {
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .expect("should have stored uref")
         .into_hash()
-        .expect("should have hash");
+        .expect("should have hash")
+        .into();
 
     // call stored contract and persist a known uref before upgrade
     {
@@ -439,7 +441,8 @@ fn should_support_extending_functionality() {
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .expect("should have stored uref")
         .into_hash()
-        .expect("should have hash");
+        .expect("should have hash")
+        .into();
     assert_ne!(stored_hash, stored_hash_2);
 
     // call new remove function
@@ -534,7 +537,7 @@ fn should_maintain_named_keys_across_upgrade() {
 
         // verify known uref actually exists prior to upgrade
         let contract = builder
-            .get_contract(stored_hash)
+            .get_contract(stored_hash.into())
             .expect("should have contract");
         assert!(
             contract.named_keys().contains_key(purse_name),
@@ -561,7 +564,7 @@ fn should_maintain_named_keys_across_upgrade() {
 
     // verify all urefs still exist in named_keys after upgrade
     let contract = builder
-        .get_contract(stored_hash)
+        .get_contract(stored_hash.into())
         .expect("should have contract");
 
     for index in 0..TOTAL_PURSES {
