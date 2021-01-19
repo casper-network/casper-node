@@ -95,4 +95,4 @@ pub use crate::internal::DEFAULT_ACCOUNT_ADDR;
 pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000u64;
 
 /// Minimal amount for a transfer that creates new accounts.
-pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000u64;
+pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000u64;

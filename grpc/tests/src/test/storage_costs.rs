@@ -183,10 +183,17 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(exec_request).expect_success().commit();
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    assert_eq!(balance_before, balance_after + DEFAULT_PAY_COST);
+    assert_eq!(balance_after, balance_before - transaction_fee);
+
     assert_eq!(
         builder.last_exec_gas_cost().value(),
         U512::from(DEFAULT_PAY_COST)
@@ -236,13 +243,19 @@ fn should_verify_isolated_auction_storage_is_free() {
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(exec_request).expect_success().commit();
+
     let balance_after = builder.get_purse_balance(account.main_purse());
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_ADD_BID_COST);
     assert_eq!(
         balance_after,
-        balance_before - U512::from(BOND_AMOUNT) - call_cost
+        balance_before - U512::from(BOND_AMOUNT) - transaction_fee
     );
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }

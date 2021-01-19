@@ -503,11 +503,11 @@ fn should_correctly_charge_when_session_code_fails() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
-    builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
-        .commit()
-        .finish();
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder.exec(exec_request).commit().finish();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -520,15 +520,8 @@ fn should_correctly_charge_when_session_code_fails() {
         "balance should be less than initial balance"
     );
 
-    let response = builder
-        .get_exec_response(0)
-        .expect("there should be a response")
-        .clone();
-
-    let success_result = utils::get_success_result(&response);
-    let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
-    let tally = motes.value() + modified_balance;
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+    let tally = transaction_fee + modified_balance;
 
     assert_eq!(
         initial_balance, tally,
@@ -560,8 +553,11 @@ fn should_correctly_charge_when_session_code_succeeds() {
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
+    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
+
+    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
+
     builder
-        .run_genesis(&DEFAULT_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .expect_success()
         .commit()
@@ -578,15 +574,10 @@ fn should_correctly_charge_when_session_code_succeeds() {
         "balance should be less than initial balance"
     );
 
-    let response = builder
-        .get_exec_response(0)
-        .expect("there should be a response")
-        .clone();
+    let transaction_fee_1 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let success_result = utils::get_success_result(&response);
-    let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
-    let total = motes.value() + U512::from(transferred_amount);
+    let total = transaction_fee_1 + U512::from(transferred_amount);
     let tally = total + modified_balance;
 
     assert_eq!(

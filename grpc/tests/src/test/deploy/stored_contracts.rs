@@ -4,14 +4,14 @@ use casper_engine_grpc_server::engine_server::ipc::DeployCode;
 use casper_engine_test_support::{
     internal::{
         utils, AdditiveMapDiff, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE,
-        DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+        UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
     core::engine_state::upgrade::ActivationPoint,
-    shared::{account::Account, motes::Motes, stored_value::StoredValue, transform::Transform},
+    shared::{account::Account, stored_value::StoredValue, transform::Transform},
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -126,7 +126,11 @@ fn should_exec_non_stored_code() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let test_result = builder.exec_commit_finish(exec_request);
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -140,16 +144,7 @@ fn should_exec_non_stored_code() {
         "balance should be less than initial balance"
     );
 
-    let response = test_result
-        .builder()
-        .get_exec_response(0)
-        .expect("there should be a response")
-        .clone();
-
-    let success_result = utils::get_success_result(&response);
-    let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
-    let tally = motes.value() + U512::from(transferred_amount) + modified_balance;
+    let tally = transaction_fee + U512::from(transferred_amount) + modified_balance;
 
     assert_eq!(
         initial_balance, tally,
@@ -167,6 +162,8 @@ fn should_exec_stored_code_by_hash() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // store payment
+    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
+
     let (default_account, hash) = store_payment_to_account_context(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
@@ -175,20 +172,17 @@ fn should_exec_stored_code_by_hash() {
         // get modified balance
         let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
 
-        // get cost
-        let response = builder
-            .get_exec_response(0)
-            .expect("there should be a response")
-            .clone();
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        let motes_alpha = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
-        (motes_alpha, modified_balance_alpha)
+        let transaction_fee_alpha =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
+        (transaction_fee_alpha, modified_balance_alpha)
     };
 
     let transferred_amount = 1;
 
     // next make another deploy that USES stored payment logic
+
+    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
+
     {
         let exec_request_stored_payment = {
             let account_1_account_hash = ACCOUNT_1_ADDR;
@@ -219,16 +213,10 @@ fn should_exec_stored_code_by_hash() {
     let (motes_bravo, modified_balance_bravo) = {
         let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
 
-        let response = builder
-            .get_exec_response(1)
-            .expect("there should be a response")
-            .clone();
+        let transaction_fee_bravo =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
 
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        let motes_bravo = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
-
-        (motes_bravo, modified_balance_bravo)
+        (transaction_fee_bravo, modified_balance_bravo)
     };
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -243,10 +231,7 @@ fn should_exec_stored_code_by_hash() {
         "second modified balance should be less than first modified balance"
     );
 
-    let tally = motes_alpha.value()
-        + motes_bravo.value()
-        + U512::from(transferred_amount)
-        + modified_balance_bravo;
+    let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
 
     assert_eq!(
         initial_balance, tally,
@@ -264,6 +249,8 @@ fn should_exec_stored_code_by_named_hash() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // store payment
+    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
+
     let (default_account, _) = store_payment_to_account_context(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
@@ -273,19 +260,17 @@ fn should_exec_stored_code_by_named_hash() {
         let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
 
         // get cost
-        let response = builder
-            .get_exec_response(0)
-            .expect("there should be a response")
-            .clone();
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        let motes_alpha = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
-        (motes_alpha, modified_balance_alpha)
+        let transaction_fee_alpha =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
+
+        (transaction_fee_alpha, modified_balance_alpha)
     };
 
     let transferred_amount = 1;
 
     // next make another deploy that USES stored payment logic
+    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
+
     {
         let exec_request_stored_payment = {
             let account_1_account_hash = ACCOUNT_1_ADDR;
@@ -316,16 +301,10 @@ fn should_exec_stored_code_by_named_hash() {
     let (motes_bravo, modified_balance_bravo) = {
         let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
 
-        let response = builder
-            .get_exec_response(1)
-            .expect("there should be a response")
-            .clone();
+        let transaction_fee_bravo =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
 
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        let motes_bravo = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
-
-        (motes_bravo, modified_balance_bravo)
+        (transaction_fee_bravo, modified_balance_bravo)
     };
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -340,10 +319,7 @@ fn should_exec_stored_code_by_named_hash() {
         "second modified balance should be less than first modified balance"
     );
 
-    let tally = motes_alpha.value()
-        + motes_bravo.value()
-        + U512::from(transferred_amount)
-        + modified_balance_bravo;
+    let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
 
     assert_eq!(
         initial_balance, tally,
@@ -361,22 +337,14 @@ fn should_exec_payment_and_session_stored_code() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // store payment
+    // get cost
+    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
+
     store_payment_to_account_context(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
 
-    let motes_alpha = {
-        // get modified balance
-
-        // get cost
-        let response = builder
-            .get_exec_response(0)
-            .expect("there should be a response")
-            .clone();
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes")
-    };
+    let motes_alpha = builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
 
     // next store transfer contract
     let exec_request_store_transfer = {
@@ -401,19 +369,14 @@ fn should_exec_payment_and_session_stored_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let test_result = builder.exec_commit_finish(exec_request_store_transfer);
+    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
 
-    let motes_bravo = {
-        let response = test_result
-            .builder()
-            .get_exec_response(1)
-            .expect("there should be a response")
-            .clone();
+    builder
+        .exec(exec_request_store_transfer)
+        .commit()
+        .expect_success();
 
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes")
-    };
+    let motes_bravo = builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
 
     let transferred_amount = 1;
 
@@ -446,19 +409,14 @@ fn should_exec_payment_and_session_stored_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let test_result = builder.exec_commit_finish(exec_request_stored_only);
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    let motes_charlie = {
-        let response = test_result
-            .builder()
-            .get_exec_response(2)
-            .expect("there should be a response")
-            .clone();
+    builder
+        .exec(exec_request_stored_only)
+        .commit()
+        .expect_success();
 
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes")
-    };
+    let motes_charlie = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let modified_balance: U512 = {
         let default_account = builder
@@ -469,9 +427,9 @@ fn should_exec_payment_and_session_stored_code() {
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
 
-    let tally = motes_alpha.value()
-        + motes_bravo.value()
-        + motes_charlie.value()
+    let tally = motes_alpha
+        + motes_bravo
+        + motes_charlie
         + U512::from(transferred_amount)
         + modified_balance;
 
