@@ -397,24 +397,7 @@ where
         // Dump event queue if requested, stopping the world.
         if crate::QUEUE_DUMP_REQUESTED.load(Ordering::SeqCst) {
             debug!("dumping event queue as requested");
-            let timestamp = Timestamp::now();
-            let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
-            let mut serializer = serde_json::Serializer::pretty(
-                File::create(output_fn).expect("could not create output file for queue snapshot"),
-            );
-
-            self.scheduler
-                .snapshot(&mut serializer)
-                .await
-                .expect("could not serialize snapshot");
-
-            let mut file = File::create(format!("/tmp/queue_dump_debug-{}.txt", timestamp))
-                .expect("could not create dump file");
-            self.scheduler
-                .debug_dump(&mut file)
-                .await
-                .expect("unable to dump queues to file");
-
+            self.dump_queues().await;
             // Indicate we are done with the dump.
             crate::QUEUE_DUMP_REQUESTED.store(false, Ordering::SeqCst);
         }
@@ -458,6 +441,37 @@ where
             .await;
 
         self.event_count += 1;
+    }
+
+    // Handles dumping queue contents to files in /tmp.
+    async fn dump_queues(&self) {
+        let timestamp = Timestamp::now();
+        let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
+        let mut serializer = serde_json::Serializer::pretty(match File::create(&output_fn) {
+            Ok(file) => file,
+            Err(error) => {
+                tracing::error!(%error, "could not create output file ({}) for queue snapshot", output_fn);
+                return;
+            }
+        });
+
+        if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
+            tracing::error!(%error, "could not serialize snapshot to {}", output_fn);
+            return;
+        }
+
+        let debug_dump_filename = format!("/tmp/queue_dump_debug-{}.txt", timestamp);
+        let mut file = match File::create(&debug_dump_filename) {
+            Ok(file) => file,
+            Err(error) => {
+                tracing::error!(%error, "could not create debug output file ({}) for queue snapshot", debug_dump_filename);
+                return;
+            }
+        };
+        if let Err(error) = self.scheduler.debug_dump(&mut file).await {
+            tracing::error!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
+            return;
+        }
     }
 
     /// Processes a single event if there is one, returns `None` otherwise.
