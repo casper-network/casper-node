@@ -2,13 +2,13 @@ use std::convert::TryInto;
 
 use casper_engine_test_support::{
     internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+        DEFAULT_GAS_PRICE, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{genesis::POS_PAYMENT_PURSE, CONV_RATE},
+    core::engine_state::genesis::POS_PAYMENT_PURSE,
     shared::{account::Account, motes::Motes},
 };
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
@@ -134,7 +134,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
             .expect("there should be a response");
 
         let success_result = utils::get_success_result(response);
-        Motes::from_gas(success_result.cost(), CONV_RATE)
+        Motes::from_gas(success_result.cost(), DEFAULT_GAS_PRICE)
             .expect("should have motes")
             .value()
     };

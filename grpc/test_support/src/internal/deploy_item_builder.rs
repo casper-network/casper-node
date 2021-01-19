@@ -9,7 +9,7 @@ use casper_types::{
     RuntimeArgs,
 };
 
-use crate::internal::utils;
+use crate::internal::{utils, DEFAULT_GAS_PRICE};
 
 #[derive(Default)]
 struct DeployItemData {
@@ -260,7 +260,7 @@ impl DeployItemBuilder {
 impl Default for DeployItemBuilder {
     fn default() -> Self {
         let deploy_item = DeployItemData {
-            gas_price: 1,
+            gas_price: DEFAULT_GAS_PRICE,
             ..Default::default()
         };
         DeployItemBuilder { deploy_item }
