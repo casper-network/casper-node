@@ -225,16 +225,16 @@ mod tests {
               "name_01",
               {
                 "cl_type": "Bool",
-                "serialized_bytes": "00",
-                "parsed_to_json": false
+                "bytes": "00",
+                "parsed": false
               }
             ],
             [
               "name_02",
               {
                 "cl_type": "I32",
-                "serialized_bytes": "2a000000",
-                "parsed_to_json": 42
+                "bytes": "2a000000",
+                "parsed": 42
               }
             ]
           ]
@@ -250,16 +250,16 @@ mod tests {
               "name_01",
               {
                 "cl_type": "Bool",
-                "serialized_bytes": "00",
-                "parsed_to_json": false
+                "bytes": "00",
+                "parsed": false
               }
             ],
             [
               "name_02",
               {
                 "cl_type": "I32",
-                "serialized_bytes": "2a000000",
-                "parsed_to_json": 42
+                "bytes": "2a000000",
+                "parsed": 42
               }
             ]
           ]
