@@ -8,9 +8,7 @@ use datasize::DataSize;
 use smallvec::smallvec;
 use tracing::{debug, error};
 
-use casper_execution_engine::{
-    shared::newtypes::Blake2bHash, storage::global_state::ReadTrieResult,
-};
+use casper_execution_engine::shared::newtypes::Blake2bHash;
 
 use crate::{
     components::{fetcher::event::FetchResponder, Component},
@@ -24,6 +22,8 @@ use crate::{
     NodeRng,
 };
 
+use casper_execution_engine::{shared::stored_value::StoredValue, storage::trie::Trie};
+use casper_types::Key;
 pub use config::Config;
 pub use event::{Event, FetchResult};
 
@@ -265,10 +265,12 @@ impl ItemFetcher<BlockByHeight> for Fetcher<BlockByHeight> {
     }
 }
 
-impl ItemFetcher<ReadTrieResult> for Fetcher<ReadTrieResult> {
+type GlobalStorageTrie = Trie<Key, StoredValue>;
+
+impl ItemFetcher<GlobalStorageTrie> for Fetcher<GlobalStorageTrie> {
     fn responders(
         &mut self,
-    ) -> &mut HashMap<Blake2bHash, HashMap<NodeId, Vec<FetchResponder<ReadTrieResult>>>> {
+    ) -> &mut HashMap<Blake2bHash, HashMap<NodeId, Vec<FetchResponder<GlobalStorageTrie>>>> {
         &mut self.responders
     }
 
@@ -276,27 +278,19 @@ impl ItemFetcher<ReadTrieResult> for Fetcher<ReadTrieResult> {
         self.get_from_peer_timeout
     }
 
-    fn get_from_storage<REv: ReactorEventT<ReadTrieResult>>(
+    fn get_from_storage<REv: ReactorEventT<GlobalStorageTrie>>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         id: Blake2bHash,
         peer: NodeId,
-    ) -> Effects<Event<ReadTrieResult>> {
-        effect_builder.read_trie(id).event(move |read_trie_result| {
-            if read_trie_result.maybe_trie.is_none() {
-                Event::GetFromStorageResult {
-                    id,
-                    peer,
-                    maybe_item: Box::new(None),
-                }
-            } else {
-                Event::GetFromStorageResult {
-                    id,
-                    peer,
-                    maybe_item: Box::new(Some(read_trie_result)),
-                }
-            }
-        })
+    ) -> Effects<Event<GlobalStorageTrie>> {
+        effect_builder
+            .read_trie(id)
+            .event(move |maybe_trie| Event::GetFromStorageResult {
+                id,
+                peer,
+                maybe_item: Box::new(maybe_trie),
+            })
     }
 }
 

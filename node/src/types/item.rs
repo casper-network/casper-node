@@ -8,8 +8,10 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use casper_execution_engine::{
-    shared::newtypes::Blake2bHash, storage::global_state::ReadTrieResult,
+    shared::{newtypes::Blake2bHash, stored_value::StoredValue},
+    storage::trie::Trie,
 };
+use casper_types::{bytesrepr::ToBytes, Key};
 
 /// An identifier for a specific type implementing the `Item` trait.  Each different implementing
 /// type should have a unique `Tag` variant.
@@ -53,12 +55,13 @@ pub trait Item: Clone + Serialize + DeserializeOwned + Send + Sync + Debug + Dis
     fn id(&self) -> Self::Id;
 }
 
-impl Item for ReadTrieResult {
+impl Item for Trie<Key, StoredValue> {
     type Id = Blake2bHash;
     const TAG: Tag = Tag::Deploy;
     const ID_IS_COMPLETE_ITEM: bool = false;
 
     fn id(&self) -> Self::Id {
-        self.trie_key
+        let node_bytes = self.to_bytes().expect("Could not serialize trie to bytes");
+        Blake2bHash::new(&node_bytes)
     }
 }

@@ -27,11 +27,9 @@ use casper_execution_engine::{
     },
     shared::newtypes::CorrelationId,
     storage::{
-        error::lmdb::Error as StorageLmdbError,
-        global_state::{lmdb::LmdbGlobalState, ReadTrieResult},
+        error::lmdb::Error as StorageLmdbError, global_state::lmdb::LmdbGlobalState,
         protocol_data_store::lmdb::LmdbProtocolDataStore,
-        transaction_source::lmdb::LmdbEnvironment,
-        trie_store::lmdb::LmdbTrieStore,
+        transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{auction::ValidatorWeights, ProtocolVersion};
@@ -474,10 +472,7 @@ where
                         Ok(result) => result,
                         Err(error) => {
                             error!(?error, "read_trie_request");
-                            ReadTrieResult {
-                                trie_key,
-                                maybe_trie: None,
-                            }
+                            None
                         }
                     };
                     trace!(?result, "read_trie response");

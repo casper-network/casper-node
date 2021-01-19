@@ -55,7 +55,7 @@ use crate::{
 };
 use casper_execution_engine::{
     shared::{newtypes::Blake2bHash, stored_value::StoredValue},
-    storage::{global_state::ReadTrieResult, trie::Trie},
+    storage::trie::Trie,
 };
 
 /// A metrics request.
@@ -693,7 +693,7 @@ pub enum ContractRuntimeRequest {
         /// The hash of the value to get from the `TrieStore`
         trie_key: Blake2bHash,
         /// Responder to call with the result.
-        responder: Responder<ReadTrieResult>,
+        responder: Responder<Option<Trie<Key, StoredValue>>>,
     },
     /// Insert a trie into global storage
     PutTrie {
@@ -702,7 +702,7 @@ pub enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<(), engine_state::Error>>,
     },
-    /// Insert a trie into global storage
+    /// Get the missing keys under a given trie key in global storage
     MissingTrieKeys {
         /// The ancestral hash to use when finding hashes that are missing from the `TrieStore`
         trie_key: Blake2bHash,

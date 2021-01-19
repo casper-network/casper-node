@@ -93,10 +93,7 @@ use casper_execution_engine::{
         additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
         transform::Transform,
     },
-    storage::{
-        global_state::{CommitResult, ReadTrieResult},
-        protocol_data::ProtocolData,
-    },
+    storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
@@ -732,7 +729,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Read a trie by its hash key
-    pub(crate) async fn read_trie(self, trie_key: Blake2bHash) -> ReadTrieResult
+    pub(crate) async fn read_trie(self, trie_key: Blake2bHash) -> Option<Trie<Key, StoredValue>>
     where
         REv: From<ContractRuntimeRequest>,
     {
