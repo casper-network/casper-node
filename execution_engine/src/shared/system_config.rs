@@ -18,7 +18,7 @@ use crate::storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST;
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct SystemConfig {
     /// Wasmless transfer cost expressed in gas.
-    pub (crate) wasmless_transfer_cost: u64,
+    wasmless_transfer_cost: u64,
 
     /// Configuration of auction entrypoint costs.
     auction_costs: AuctionCosts,
