@@ -13,12 +13,10 @@ use crate::{
 use super::*;
 use casper_types::standard_payment::ARG_AMOUNT;
 
+const DEFAULT_TEST_GAS_PRICE: u64 = 1;
+
 fn default_gas_payment() -> Gas {
     Gas::from(1u32)
-}
-
-fn default_gas_price() -> u64 {
-    1
 }
 
 fn generate_transfer(
@@ -28,7 +26,7 @@ fn generate_transfer(
     dependencies: Vec<DeployHash>,
     payment_amount: Gas,
 ) -> Deploy {
-    let gas_price = default_gas_price();
+    let gas_price = DEFAULT_TEST_GAS_PRICE;
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
 
@@ -135,7 +133,7 @@ fn should_add_and_take_deploys() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
     let deploy2 = generate_deploy(
         &mut rng,
@@ -143,7 +141,7 @@ fn should_add_and_take_deploys() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
     let deploy3 = generate_deploy(
         &mut rng,
@@ -151,7 +149,7 @@ fn should_add_and_take_deploys() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
     let deploy4 = generate_deploy(
         &mut rng,
@@ -159,7 +157,7 @@ fn should_add_and_take_deploys() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
 
     assert!(proposer
@@ -264,7 +262,7 @@ fn should_successfully_prune() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
     let deploy2 = generate_deploy(
         &mut rng,
@@ -272,7 +270,7 @@ fn should_successfully_prune() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
     let deploy3 = generate_deploy(
         &mut rng,
@@ -280,7 +278,7 @@ fn should_successfully_prune() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
     let deploy4 = generate_deploy(
         &mut rng,
@@ -288,7 +286,7 @@ fn should_successfully_prune() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
     let mut proposer = create_test_proposer();
 
@@ -333,7 +331,7 @@ fn should_keep_track_of_unhandled_deploys() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
     let deploy2 = generate_deploy(
         &mut rng,
@@ -341,7 +339,7 @@ fn should_keep_track_of_unhandled_deploys() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
     let mut proposer = create_test_proposer();
 
@@ -568,7 +566,7 @@ fn test_proposer_with(
             ttl,
             vec![],
             payment_amount,
-            default_gas_price(),
+            DEFAULT_TEST_GAS_PRICE,
         );
         println!("generated deploy with size {}", deploy.serialized_length());
         proposer.add_deploy_or_transfer(creation_time, *deploy.id(), deploy.deploy_type().unwrap());
@@ -619,7 +617,7 @@ fn should_return_deploy_dependencies() {
         ttl,
         vec![],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
     // let deploy2 depend on deploy1
     let deploy2 = generate_deploy(
@@ -628,7 +626,7 @@ fn should_return_deploy_dependencies() {
         ttl,
         vec![*deploy1.id()],
         default_gas_payment(),
-        default_gas_price(),
+        DEFAULT_TEST_GAS_PRICE,
     );
 
     let no_deploys = HashSet::new();
