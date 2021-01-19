@@ -549,7 +549,12 @@ where
                     error!(%block_hash, "could not download deploys from linear chain block.");
                     panic!("Failed to download linear chain deploys.")
                 }
-                Some(peer) => fetch_block_deploys(effect_builder, peer, *block_header),
+                Some(peer) => {
+                    let block_hash = (*block_header).hash();
+                    trace!(%block_hash, next_peer=%peer,
+                        "failed to download deploys from a peer. Trying next one");
+                    fetch_block_deploys(effect_builder, peer, *block_header)
+                }
             },
             Event::StartDownloadingDeploys => {
                 // Start downloading deploys from the first block of the linear chain.
