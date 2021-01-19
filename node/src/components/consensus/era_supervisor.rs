@@ -37,7 +37,7 @@ use crate::{
         },
         metrics::ConsensusMetrics,
         traits::NodeIdT,
-        Config, ConsensusMessage, Event, ReactorEventT,
+        Config, ConsensusMessage, Event, ReactorEventT, TimerId,
     },
     crypto::hash::Digest,
     effect::{EffectBuilder, EffectExt, Effects, Responder},
@@ -400,9 +400,10 @@ where
         &mut self,
         era_id: EraId,
         timestamp: Timestamp,
+        timer_id: TimerId,
     ) -> Effects<Event<I>> {
         self.delegate_to_era(era_id, move |consensus, rng| {
-            consensus.handle_timer(timestamp, rng)
+            consensus.handle_timer(timestamp, timer_id, rng)
         })
     }
 
@@ -679,11 +680,15 @@ where
                 .effect_builder
                 .send_message(to, era_id.message(out_msg).into())
                 .ignore(),
-            ProtocolOutcome::ScheduleTimer(timestamp) => {
+            ProtocolOutcome::ScheduleTimer(timestamp, timer_id) => {
                 let timediff = timestamp.saturating_sub(Timestamp::now());
                 self.effect_builder
                     .set_timeout(timediff.into())
-                    .event(move |_| Event::Timer { era_id, timestamp })
+                    .event(move |_| Event::Timer {
+                        era_id,
+                        timestamp,
+                        timer_id,
+                    })
             }
             ProtocolOutcome::CreateNewBlock {
                 block_context,

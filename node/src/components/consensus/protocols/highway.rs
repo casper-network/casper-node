@@ -33,6 +33,7 @@ use crate::{
             validators::{ValidatorIndex, Validators},
         },
         traits::{ConsensusValueT, Context, NodeIdT},
+        TimerId,
     },
     types::Timestamp,
     NodeRng,
@@ -41,6 +42,9 @@ use crate::{
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
 /// even if eras are longer than this.
 const MAX_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 10000;
+
+const TIMER_ID_ACTIVE_VALIDATOR: TimerId = TimerId(0);
+const TIMER_ID_ADD_VERTEX: TimerId = TimerId(1);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
@@ -166,7 +170,12 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 self.calculate_round_exponent(&vv);
                 self.process_new_vertex(vv.into())
             }
-            AvEffect::ScheduleTimer(timestamp) => vec![ProtocolOutcome::ScheduleTimer(timestamp)],
+            AvEffect::ScheduleTimer(timestamp) => {
+                vec![ProtocolOutcome::ScheduleTimer(
+                    timestamp,
+                    TIMER_ID_ACTIVE_VALIDATOR,
+                )]
+            }
             AvEffect::RequestNewBlock {
                 block_context,
                 fork_choice,
@@ -222,7 +231,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .entry(future_timestamp)
             .or_insert_with(Vec::new)
             .push((sender, pvv));
-        vec![ProtocolOutcome::ScheduleTimer(future_timestamp)]
+        vec![ProtocolOutcome::ScheduleTimer(
+            future_timestamp,
+            TIMER_ID_ADD_VERTEX,
+        )]
     }
 
     /// Call `Self::add_vertices` on any vertices in `vertices_to_be_added_later` which are
@@ -309,8 +321,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                                 }
                                 _ => {
                                     // Either consensus value doesn't need validation or it's not a
-                                    // proposal. We can add it
-                                    // to the state.
+                                    // proposal. We can add it to the state.
                                     let now = Timestamp::now();
                                     results.extend(self.add_valid_vertex(vv, rng, now));
                                     state_changed = true;
@@ -659,12 +670,17 @@ where
     fn handle_timer(
         &mut self,
         timestamp: Timestamp,
+        timer_id: TimerId,
         rng: &mut NodeRng,
     ) -> Vec<ProtocolOutcome<I, C>> {
-        let effects = self.highway.handle_timer(timestamp, rng);
-        let mut results = self.process_av_effects(effects);
-        results.extend(self.add_past_due_stored_vertices(timestamp, rng));
-        results
+        match timer_id {
+            TIMER_ID_ACTIVE_VALIDATOR => {
+                let effects = self.highway.handle_timer(timestamp, rng);
+                self.process_av_effects(effects)
+            }
+            TIMER_ID_ADD_VERTEX => self.add_past_due_stored_vertices(timestamp, rng),
+            _ => unreachable!("unexpected timer ID"),
+        }
     }
 
     fn propose(

@@ -58,6 +58,11 @@ pub enum ConsensusMessage {
     EvidenceRequest { era_id: EraId, pub_key: PublicKey },
 }
 
+/// An ID to distinguish different timers. What they are used for is specific to each consensus
+/// protocol implementation.
+#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TimerId(pub u8);
+
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
 pub enum Event<I> {
@@ -66,7 +71,11 @@ pub enum Event<I> {
     /// We connected to a peer.
     NewPeer(I),
     /// A scheduled event to be handled by a specified era
-    Timer { era_id: EraId, timestamp: Timestamp },
+    Timer {
+        era_id: EraId,
+        timestamp: Timestamp,
+        timer_id: TimerId,
+    },
     /// We are receiving the data we require to propose a new block
     NewProtoBlock {
         era_id: EraId,
@@ -140,10 +149,14 @@ impl<I: Debug> Display for Event<I> {
         match self {
             Event::MessageReceived { sender, msg } => write!(f, "msg from {:?}: {}", sender, msg),
             Event::NewPeer(peer_id) => write!(f, "new peer connected: {:?}", peer_id),
-            Event::Timer { era_id, timestamp } => write!(
+            Event::Timer {
+                era_id,
+                timestamp,
+                timer_id,
+            } => write!(
                 f,
-                "timer for era {:?} scheduled for timestamp {}",
-                era_id, timestamp
+                "timer (ID {}) for era {} scheduled for timestamp {}",
+                timer_id.0, era_id.0, timestamp,
             ),
             Event::NewProtoBlock {
                 era_id,
@@ -242,7 +255,11 @@ where
     ) -> Effects<Self::Event> {
         let mut handling_es = self.handling_wrapper(effect_builder, &mut rng);
         match event {
-            Event::Timer { era_id, timestamp } => handling_es.handle_timer(era_id, timestamp),
+            Event::Timer {
+                era_id,
+                timestamp,
+                timer_id,
+            } => handling_es.handle_timer(era_id, timestamp, timer_id),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
             Event::NewPeer(peer_id) => handling_es.handle_new_peer(peer_id),
             Event::NewProtoBlock {
