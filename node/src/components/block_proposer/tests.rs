@@ -32,15 +32,15 @@ fn generate_transfer(
 
     let args = runtime_args! {
         ARG_AMOUNT => payment_amount.value()
-    }
-    .to_bytes()
-    .expect("should serialize");
+    };
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
-        args: args.into(),
+        args,
     };
 
-    let session = ExecutableDeployItem::Transfer { args: Bytes::new() };
+    let session = ExecutableDeployItem::Transfer {
+        args: RuntimeArgs::new(),
+    };
 
     Deploy::new(
         timestamp,
@@ -67,16 +67,14 @@ fn generate_deploy(
     let chain_name = "chain".to_string();
     let args = runtime_args! {
         ARG_AMOUNT => payment_amount.value()
-    }
-    .to_bytes()
-    .expect("should serialize");
+    };
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
-        args: args.into(),
+        args,
     };
     let session = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
-        args: Bytes::new(),
+        args: RuntimeArgs::new(),
     };
 
     Deploy::new(
