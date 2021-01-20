@@ -410,7 +410,6 @@ where
                     trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
                     match self.peers.random_peer() {
                         None => {
-                            let block_hash = block_header.hash();
                             error!(%block_hash, "could not download deploys from linear chain block.");
                             panic!("Failed to download linear chain deploys.")
                         }
