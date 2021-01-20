@@ -3,16 +3,13 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::{
-        engine_state::{Error as EngineError, CONV_RATE},
-        execution::Error,
-    },
+    core::{engine_state::Error as EngineError, execution::Error},
     shared::motes::Motes,
 };
 use casper_types::{
@@ -76,8 +73,8 @@ fn should_transfer_to_account() {
 
     let genesis_balance = builder.get_purse_balance(default_account_purse);
 
-    let gas_cost =
-        Motes::from_gas(builder.exec_costs(0)[0], CONV_RATE).expect("should convert gas to motes");
+    let gas_cost = Motes::from_gas(builder.exec_costs(0)[0], DEFAULT_GAS_PRICE)
+        .expect("should convert gas to motes");
 
     assert_eq!(
         genesis_balance,
@@ -131,7 +128,7 @@ fn should_transfer_from_account_to_account() {
 
     let modified_balance = builder.get_purse_balance(default_account_purse);
 
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_1_response)[0], CONV_RATE)
+    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_1_response)[0], DEFAULT_GAS_PRICE)
         .expect("should convert");
 
     let expected_balance = initial_genesis_amount - gas_cost.value() - transfer_1_amount;
@@ -172,7 +169,7 @@ fn should_transfer_from_account_to_account() {
 
     let account_1_balance = builder.get_purse_balance(account_1_purse);
 
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_2_response)[0], CONV_RATE)
+    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_2_response)[0], DEFAULT_GAS_PRICE)
         .expect("should convert");
 
     assert_eq!(
@@ -231,8 +228,8 @@ fn should_transfer_to_existing_account() {
 
     let genesis_balance = builder.get_purse_balance(default_account_purse);
 
-    let gas_cost =
-        Motes::from_gas(builder.exec_costs(0)[0], CONV_RATE).expect("should convert gas to motes");
+    let gas_cost = Motes::from_gas(builder.exec_costs(0)[0], DEFAULT_GAS_PRICE)
+        .expect("should convert gas to motes");
 
     assert_eq!(
         genesis_balance,
@@ -265,8 +262,8 @@ fn should_transfer_to_existing_account() {
 
     let account_1_balance = builder.get_purse_balance(account_1_purse);
 
-    let gas_cost =
-        Motes::from_gas(builder.exec_costs(1)[0], CONV_RATE).expect("should convert gas to motes");
+    let gas_cost = Motes::from_gas(builder.exec_costs(1)[0], DEFAULT_GAS_PRICE)
+        .expect("should convert gas to motes");
 
     assert_eq!(
         account_1_balance,

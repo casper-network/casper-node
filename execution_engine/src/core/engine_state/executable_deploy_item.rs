@@ -40,34 +40,19 @@ pub enum ExecutableDeployItem {
         #[schemars(with = "String", description = "Hex-encoded raw Wasm bytes.")]
         module_bytes: Bytes,
         // assumes implicit `call` noarg entrypoint
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
     StoredContractByHash {
         #[serde(with = "HexForm")]
         #[schemars(with = "String", description = "Hex-encoded hash.")]
         hash: ContractHash,
         entry_point: String,
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
     StoredContractByName {
         name: String,
         entry_point: String,
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
     StoredVersionedContractByHash {
         #[serde(with = "HexForm")]
@@ -75,31 +60,16 @@ pub enum ExecutableDeployItem {
         hash: ContractPackageHash,
         version: Option<ContractVersion>, // defaults to highest enabled version
         entry_point: String,
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
     StoredVersionedContractByName {
         name: String,
         version: Option<ContractVersion>, // defaults to highest enabled version
         entry_point: String,
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
     Transfer {
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
 }
 
@@ -126,20 +96,6 @@ impl ExecutableDeployItem {
         }
     }
 
-    pub fn into_runtime_args(self) -> Result<RuntimeArgs, Error> {
-        match self {
-            ExecutableDeployItem::ModuleBytes { args, .. }
-            | ExecutableDeployItem::StoredContractByHash { args, .. }
-            | ExecutableDeployItem::StoredContractByName { args, .. }
-            | ExecutableDeployItem::StoredVersionedContractByHash { args, .. }
-            | ExecutableDeployItem::StoredVersionedContractByName { args, .. }
-            | ExecutableDeployItem::Transfer { args } => {
-                let runtime_args: RuntimeArgs = bytesrepr::deserialize(args.into())?;
-                Ok(runtime_args)
-            }
-        }
-    }
-
     pub fn entry_point_name(&self) -> &str {
         match self {
             ExecutableDeployItem::ModuleBytes { .. } | ExecutableDeployItem::Transfer { .. } => {
@@ -152,7 +108,7 @@ impl ExecutableDeployItem {
         }
     }
 
-    pub fn args(&self) -> &Bytes {
+    pub fn args(&self) -> &RuntimeArgs {
         match self {
             ExecutableDeployItem::ModuleBytes { args, .. }
             | ExecutableDeployItem::StoredContractByHash { args, .. }
@@ -415,7 +371,7 @@ impl Display for ExecutableDeployItem {
                 "stored-versioned-contract: {}, version: latest, entry-point: {}",
                 name, entry_point,
             ),
-            ExecutableDeployItem::Transfer { args } => write!(f, "transfer-args {}", HexFmt(&args)),
+            ExecutableDeployItem::Transfer { .. } => write!(f, "transfer"),
         }
     }
 }
@@ -426,7 +382,7 @@ impl Debug for ExecutableDeployItem {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => f
                 .debug_struct("ModuleBytes")
                 .field("module_bytes", &format!("[{} bytes]", module_bytes.len()))
-                .field("args", &HexFmt(&args))
+                .field("args", args)
                 .finish(),
             ExecutableDeployItem::StoredContractByHash {
                 hash,
@@ -436,7 +392,7 @@ impl Debug for ExecutableDeployItem {
                 .debug_struct("StoredContractByHash")
                 .field("hash", &HexFmt(hash))
                 .field("entry_point", &entry_point)
-                .field("args", &HexFmt(&args))
+                .field("args", args)
                 .finish(),
             ExecutableDeployItem::StoredContractByName {
                 name,
@@ -446,7 +402,7 @@ impl Debug for ExecutableDeployItem {
                 .debug_struct("StoredContractByName")
                 .field("name", &name)
                 .field("entry_point", &entry_point)
-                .field("args", &HexFmt(&args))
+                .field("args", args)
                 .finish(),
             ExecutableDeployItem::StoredVersionedContractByHash {
                 hash,
@@ -458,7 +414,7 @@ impl Debug for ExecutableDeployItem {
                 .field("hash", &HexFmt(hash))
                 .field("version", version)
                 .field("entry_point", &entry_point)
-                .field("args", &HexFmt(&args))
+                .field("args", args)
                 .finish(),
             ExecutableDeployItem::StoredVersionedContractByName {
                 name,
@@ -470,12 +426,11 @@ impl Debug for ExecutableDeployItem {
                 .field("name", &name)
                 .field("version", version)
                 .field("entry_point", &entry_point)
-                .field("args", &HexFmt(&args))
+                .field("args", args)
                 .finish(),
-            ExecutableDeployItem::Transfer { args } => f
-                .debug_struct("Transfer")
-                .field("args", &HexFmt(&args))
-                .finish(),
+            ExecutableDeployItem::Transfer { args } => {
+                f.debug_struct("Transfer").field("args", args).finish()
+            }
         }
     }
 }
@@ -492,36 +447,37 @@ impl Distribution<ExecutableDeployItem> for Standard {
             rng.sample_iter(&Alphanumeric).take(20).collect()
         }
 
-        let args = random_bytes(rng);
+        let mut args = RuntimeArgs::new();
+        let _ = args.insert(random_string(rng), Bytes::from(random_bytes(rng)));
 
         match rng.gen_range(0, 6) {
             0 => ExecutableDeployItem::ModuleBytes {
                 module_bytes: random_bytes(rng).into(),
-                args: args.into(),
+                args,
             },
             1 => ExecutableDeployItem::StoredContractByHash {
                 hash: ContractHash::new(rng.gen()),
                 entry_point: random_string(rng),
-                args: args.into(),
+                args,
             },
             2 => ExecutableDeployItem::StoredContractByName {
                 name: random_string(rng),
                 entry_point: random_string(rng),
-                args: args.into(),
+                args,
             },
             3 => ExecutableDeployItem::StoredVersionedContractByHash {
                 hash: ContractPackageHash::new(rng.gen()),
                 version: rng.gen(),
                 entry_point: random_string(rng),
-                args: args.into(),
+                args,
             },
             4 => ExecutableDeployItem::StoredVersionedContractByName {
                 name: random_string(rng),
                 version: rng.gen(),
                 entry_point: random_string(rng),
-                args: args.into(),
+                args,
             },
-            5 => ExecutableDeployItem::Transfer { args: args.into() },
+            5 => ExecutableDeployItem::Transfer { args },
             _ => unreachable!(),
         }
     }

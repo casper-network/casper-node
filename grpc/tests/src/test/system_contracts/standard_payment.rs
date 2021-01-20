@@ -3,13 +3,13 @@ use assert_matches::assert_matches;
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{Error, CONV_RATE, MAX_PAYMENT},
+        engine_state::{Error, MAX_PAYMENT},
         execution,
     },
     shared::{gas::Gas, motes::Motes, transform::Transform},
@@ -360,8 +360,8 @@ fn should_forward_payment_execution_gas_limit_error() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
-    let payment_gas_limit =
-        Gas::from_motes(Motes::new(*MAX_PAYMENT), CONV_RATE).expect("should convert to gas");
+    let payment_gas_limit = Gas::from_motes(Motes::new(*MAX_PAYMENT), DEFAULT_GAS_PRICE)
+        .expect("should convert to gas");
     assert_eq!(
         execution_result.cost(),
         payment_gas_limit,
@@ -407,7 +407,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
-    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), CONV_RATE)
+    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
         execution_result.cost(),
@@ -458,7 +458,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
 
     let success_result = utils::get_success_result(&response);
     let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
     let tally = motes.value() + modified_balance;
 
@@ -470,7 +470,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
-    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), CONV_RATE)
+    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
         execution_result.cost(),
@@ -527,7 +527,7 @@ fn should_correctly_charge_when_session_code_fails() {
 
     let success_result = utils::get_success_result(&response);
     let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
     let tally = motes.value() + modified_balance;
 
     assert_eq!(
@@ -585,7 +585,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
 
     let success_result = utils::get_success_result(&response);
     let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
     let total = motes.value() + U512::from(transferred_amount);
     let tally = total + modified_balance;
 
