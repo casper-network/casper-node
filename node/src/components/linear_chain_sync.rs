@@ -93,7 +93,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         I: Send + 'static,
         REv: ReactorEventT<I>,
     {
-        self.peers.reset_peers(rng);
+        self.peers.reset(rng);
         self.state.block_downloaded(block_header);
         self.add_block(block_header.clone());
         match &self.state {
@@ -138,7 +138,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let hash = block_header.hash();
         trace!(%hash, %height, "Downloaded linear chain block.");
         // Reset peers before creating new requests.
-        self.peers.reset_peers(rng);
+        self.peers.reset(rng);
         let block_height = block_header.height();
         let mut curr_state = mem::replace(&mut self.state, State::None);
         match curr_state {
@@ -174,7 +174,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                     None => panic!("Unexpected block execution results."),
                 }
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
-                let peer = self.peers.random_peer_unsafe();
+                let peer = self.peers.random_unsafe();
                 // Kick off syncing trusted hash descendants.
                 self.state = State::sync_descendants(trusted_hash, block_header, validator_weights);
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
@@ -209,7 +209,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         I: Send + 'static,
         REv: ReactorEventT<I>,
     {
-        let peer = self.peers.random_peer_unsafe();
+        let peer = self.peers.random_unsafe();
 
         let next_block = match &mut self.state {
             State::None | State::Done => {
@@ -250,8 +250,8 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         I: Send + 'static,
         REv: ReactorEventT<I>,
     {
-        self.peers.reset_peers(rng);
-        let peer = self.peers.random_peer_unsafe();
+        self.peers.reset(rng);
+        let peer = self.peers.random_unsafe();
         match self.state {
             State::SyncingTrustedHash { .. } => {
                 let parent_hash = *block_header.parent_hash();
@@ -308,7 +308,7 @@ where
             Event::GetBlockHeightResult(block_height, fetch_result) => match fetch_result {
                 BlockByHeightResult::Absent(peer) => {
                     trace!(%block_height, %peer, "failed to download block by height. Trying next peer");
-                    match self.peers.random_peer() {
+                    match self.peers.random() {
                         None => {
                             // `block_height` not found on any of the peers.
                             // We have synchronized all, currently existing, descendants of trusted
@@ -343,7 +343,7 @@ where
                             "block mismatch",
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
-                        self.peers.ban_peer(peer.clone());
+                        self.peers.ban(peer.clone());
                         return self.handle_event(
                             effect_builder,
                             rng,
@@ -359,7 +359,7 @@ where
             Event::GetBlockHashResult(block_hash, fetch_result) => match fetch_result {
                 BlockByHashResult::Absent(peer) => {
                     trace!(%block_hash, %peer, "failed to download block by hash. Trying next peer");
-                    match self.peers.random_peer() {
+                    match self.peers.random() {
                         None => {
                             error!(%block_hash, "Could not download linear block from any of the peers.");
                             panic!("Failed to download linear chain.")
@@ -385,7 +385,7 @@ where
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
                         // `KeyFingerprint` type and we're abstract in what peer type is.
-                        self.peers.ban_peer(peer.clone());
+                        self.peers.ban(peer.clone());
                         return self.handle_event(
                             effect_builder,
                             rng,
@@ -400,17 +400,19 @@ where
                     let block_hash = block_header.hash();
                     trace!(%block_hash, "deploys for linear chain block found");
                     // Reset used peers so we can download next block with the full set.
-                    self.peers.reset_peers(rng);
+                    self.peers.reset(rng);
                     // Execute block
                     let finalized_block: FinalizedBlock = (*block_header).into();
                     effect_builder.execute_block(finalized_block).ignore()
                 }
                 event::DeploysResult::NotFound(block_header, peer) => {
                     let block_hash = block_header.hash();
-                    trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
-                    match self.peers.random_peer() {
+                    trace!(%block_hash, %peer,
+                        "deploy for linear chain block not found. Trying next peer");
+                    match self.peers.random() {
                         None => {
-                            error!(%block_hash, "could not download deploys from linear chain block.");
+                            error!(%block_hash,
+                                "could not download deploys from linear chain block.");
                             panic!("Failed to download linear chain deploys.")
                         }
                         Some(peer) => fetch_block_deploys(effect_builder, peer, *block_header),
@@ -419,7 +421,7 @@ where
             },
             Event::StartDownloadingDeploys => {
                 // Start downloading deploys from the first block of the linear chain.
-                self.peers.reset_peers(rng);
+                self.peers.reset(rng);
                 self.fetch_next_block_deploys(effect_builder)
             }
             Event::NewPeerConnected(peer_id) => {
