@@ -406,10 +406,13 @@ where
                     BlockByHashResult::FromPeer(block, peer) => {
                         self.metrics.observe_get_block_by_hash();
                         trace!(%block_hash, %peer, "linear chain block downloaded from a peer");
-                        if *block.hash() != block_hash {
+                        let header_hash = block.header().hash();
+                        if header_hash != block_hash || header_hash != *block.hash() {
                             warn!(
-                                "block hash mismatch. Expected {} got {} from {}.",
+                                "Block hash mismatch. Expected {} got {} from {}.\
+                                 Block claims to have hash {}. Disconnecting.",
                                 block_hash,
+                                header_hash,
                                 block.hash(),
                                 peer
                             );
