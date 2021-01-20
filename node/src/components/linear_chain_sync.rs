@@ -308,6 +308,7 @@ where
             Event::GetBlockHeightResult(block_height, fetch_result) => match fetch_result {
                 BlockByHeightResult::Absent(peer) => {
                     trace!(%block_height, %peer, "failed to download block by height. Trying next peer");
+                    self.peers.failure(&peer);
                     match self.peers.random() {
                         None => {
                             // `block_height` not found on any of the peers.
@@ -343,7 +344,7 @@ where
                             "block mismatch",
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
-                        self.peers.ban(peer.clone());
+                        self.peers.ban(&peer);
                         return self.handle_event(
                             effect_builder,
                             rng,
@@ -353,12 +354,14 @@ where
                             ),
                         );
                     }
+                    self.peers.success(peer);
                     self.block_downloaded(rng, effect_builder, block.header())
                 }
             },
             Event::GetBlockHashResult(block_hash, fetch_result) => match fetch_result {
                 BlockByHashResult::Absent(peer) => {
                     trace!(%block_hash, %peer, "failed to download block by hash. Trying next peer");
+                    self.peers.failure(&peer);
                     match self.peers.random() {
                         None => {
                             error!(%block_hash, "Could not download linear block from any of the peers.");
@@ -384,14 +387,14 @@ where
                             peer
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
-                        // `KeyFingerprint` type and we're abstract in what peer type is.
-                        self.peers.ban(peer.clone());
+                        self.peers.ban(&peer);
                         return self.handle_event(
                             effect_builder,
                             rng,
                             Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(peer)),
                         );
                     }
+                    self.peers.success(peer);
                     self.block_downloaded(rng, effect_builder, block.header())
                 }
             },
@@ -407,8 +410,8 @@ where
                 }
                 event::DeploysResult::NotFound(block_header, peer) => {
                     let block_hash = block_header.hash();
-                    trace!(%block_hash, %peer,
-                        "deploy for linear chain block not found. Trying next peer");
+                    trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
+                    self.peers.failure(&peer);
                     match self.peers.random() {
                         None => {
                             error!(%block_hash,
