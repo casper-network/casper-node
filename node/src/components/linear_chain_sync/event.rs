@@ -1,5 +1,4 @@
 use crate::{
-    components::fetcher::FetchResult,
     types::{Block, BlockHash, BlockHeader},
 };
 use std::fmt::{Debug, Display};
@@ -7,7 +6,7 @@ use std::fmt::{Debug, Display};
 #[derive(Debug)]
 pub enum Event<I> {
     Start(I),
-    GetBlockHashResult(BlockHash, Option<FetchResult<Block, I>>),
+    GetBlockHashResult(BlockHash, BlockByHashResult<I>),
     GetBlockHeightResult(u64, BlockByHeightResult<I>),
     /// Deploys from the block have been found.
     DeploysFound(Box<BlockHeader>),
@@ -16,6 +15,13 @@ pub enum Event<I> {
     StartDownloadingDeploys,
     NewPeerConnected(I),
     BlockHandled(Box<BlockHeader>),
+}
+
+#[derive(Debug)]
+pub enum BlockByHashResult<I> {
+    Absent(I),
+    FromStorage(Box<Block>),
+    FromPeer(Box<Block>, I),
 }
 
 #[derive(Debug)]

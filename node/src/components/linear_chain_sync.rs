@@ -33,6 +33,8 @@ use tracing::{error, info, trace, warn};
 
 use casper_types::{PublicKey, U512};
 
+use self::event::BlockByHashResult;
+
 use super::{fetcher::FetchResult, Component};
 use crate::{
     effect::{
@@ -496,24 +498,24 @@ where
                 }
             },
             Event::GetBlockHashResult(block_hash, fetch_result) => match fetch_result {
-                None => match self.random_peer() {
-                    None => {
-                        error!(%block_hash, "Could not download linear block from any of the peers.");
-                        panic!("Failed to download linear chain.")
+                BlockByHashResult::Absent(peer) => {
+                    trace!(%block_hash, %peer, "failed to download block. Trying next peer");
+                    match self.random_peer() {
+                        None => {
+                            error!(%block_hash, "Could not download linear block from any of the peers.");
+                            panic!("Failed to download linear chain.")
+                        }
+                        Some(peer) => fetch_block_by_hash(effect_builder, peer, block_hash),
                     }
-                    Some(peer) => {
-                        trace!(%block_hash, next_peer=%peer, "failed to download block from a peer. Trying next one");
-                        fetch_block_by_hash(effect_builder, peer, block_hash)
-                    }
-                },
-                Some(FetchResult::FromStorage(block)) => {
+                }
+                BlockByHashResult::FromStorage(block) => {
                     // We shouldn't get invalid data from the storage.
                     // If we do, it's a bug.
                     assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
                     trace!(%block_hash, "linear block found in the local storage.");
                     self.block_downloaded(rng, effect_builder, block.header())
                 }
-                Some(FetchResult::FromPeer(block, peer)) => {
+                BlockByHashResult::FromPeer(block, peer) => {
                     trace!(%block_hash, %peer, "linear chain block downloaded from a peer");
                     if *block.hash() != block_hash {
                         warn!(
@@ -523,12 +525,12 @@ where
                             peer
                         );
                         // NOTE: Signal misbehaving validator to networking layer.
-                        // NOTE: Cannot call `self.ban_peer` with `peer` value b/c it's fixed for
                         // `KeyFingerprint` type and we're abstract in what peer type is.
+                        self.ban_peer(peer.clone());
                         return self.handle_event(
                             effect_builder,
                             rng,
-                            Event::GetBlockHashResult(block_hash, None),
+                            Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(peer)),
                         );
                     }
                     self.block_downloaded(rng, effect_builder, block.header())
@@ -607,7 +609,7 @@ where
         })
 }
 
-fn fetch_block_by_hash<I: Send + 'static, REv>(
+fn fetch_block_by_hash<I: Clone + Send + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block_hash: BlockHash,
@@ -615,10 +617,20 @@ fn fetch_block_by_hash<I: Send + 'static, REv>(
 where
     REv: ReactorEventT<I>,
 {
-    effect_builder.fetch_block(block_hash, peer).map_or_else(
-        move |value| Event::GetBlockHashResult(block_hash, Some(value)),
-        move || Event::GetBlockHashResult(block_hash, None),
-    )
+    let cloned = peer.clone();
+    effect_builder
+        .fetch_block(block_hash, peer.clone())
+        .map_or_else(
+            move |fetch_result| match fetch_result {
+                FetchResult::FromStorage(block) => {
+                    Event::GetBlockHashResult(block_hash, BlockByHashResult::FromStorage(block))
+                }
+                FetchResult::FromPeer(block, peer) => {
+                    Event::GetBlockHashResult(block_hash, BlockByHashResult::FromPeer(block, peer))
+                }
+            },
+            move || Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(cloned)),
+        )
 }
 
 fn fetch_block_at_height<I: Send + Clone + 'static, REv>(
