@@ -388,7 +388,7 @@ impl FinalizedBlock {
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let deploy_count = rng.gen_range(0, 11);
-        let deploy_hashes = iter::repeat_with(|| DeployHash::new(Digest::random(rng)))
+        let deploy_hashes = iter::repeat_with(|| DeployHash::new(rng.gen()))
             .take(deploy_count)
             .collect();
         let random_bit = rng.gen();
@@ -503,8 +503,7 @@ impl BlockHash {
     /// Creates a random block hash.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let hash = Digest::random(rng);
-        BlockHash(hash)
+        BlockHash(rng.gen())
     }
 }
 
@@ -917,10 +916,10 @@ impl Block {
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let parent_hash = BlockHash::new(Digest::random(rng));
-        let state_root_hash = Digest::random(rng);
+        let parent_hash = BlockHash::new(rng.gen());
+        let state_root_hash = rng.gen();
         let finalized_block = FinalizedBlock::random(rng);
-        let parent_seed = Digest::random(rng);
+        let parent_seed = rng.gen();
 
         let mut block = Block::new(
             parent_hash,

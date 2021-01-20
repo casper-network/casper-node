@@ -17,7 +17,10 @@ use datasize::DataSize;
 use hex_buffer_serde::{Hex, HexForm};
 use hex_fmt::HexFmt;
 #[cfg(test)]
-use rand::Rng;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -25,8 +28,6 @@ use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
 use super::Error;
-#[cfg(test)]
-use crate::testing::TestRng;
 
 /// The hash digest; a wrapped `u8` array.
 #[derive(
@@ -71,10 +72,12 @@ impl Digest {
         hex::decode_to_slice(hex_input, &mut inner)?;
         Ok(Digest(inner))
     }
+}
 
+#[cfg(test)]
+impl Distribution<Digest> for Standard {
     /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
-    pub fn random(rng: &mut TestRng) -> Self {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Digest {
         Digest(rng.gen::<[u8; Digest::LENGTH]>())
     }
 }
@@ -267,7 +270,7 @@ mod test {
     #[test]
     fn bytesrepr_roundtrip() {
         let mut rng = crate::new_rng();
-        let hash = Digest::random(&mut rng);
+        let hash: Digest = rng.gen();
         bytesrepr::test_serialization_roundtrip(&hash);
     }
 }

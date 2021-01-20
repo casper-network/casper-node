@@ -479,7 +479,7 @@ mod tests {
     use test::Bencher;
 
     use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION_SECS, *};
-    use crate::{crypto::hash::Digest, testing::TestRng, types::DeployHash, utils::DisplayIter};
+    use crate::{testing::TestRng, types::DeployHash, utils::DisplayIter};
 
     const EXPECTED_DEFAULT_INFECTION_TARGET: usize = 3;
     const EXPECTED_DEFAULT_HOLDERS_LIMIT: usize = 15;
@@ -948,7 +948,7 @@ mod tests {
         const ENTRY_COUNT: usize = 10_000;
         let mut rng = crate::new_rng();
         let node_ids = random_node_ids(&mut rng);
-        let deploy_ids = iter::repeat_with(|| DeployHash::new(Digest::random(&mut rng)))
+        let deploy_ids = iter::repeat_with(|| DeployHash::new(rng.gen()))
             .take(ENTRY_COUNT)
             .collect::<Vec<_>>();
 

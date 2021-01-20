@@ -207,8 +207,7 @@ impl DeployHash {
     /// Creates a random deploy hash.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
-        let hash = Digest::random(rng);
-        DeployHash(hash)
+        DeployHash(rng.gen())
     }
 }
 
@@ -845,7 +844,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let mut rng = crate::new_rng();
-        let hash = DeployHash(Digest::random(&mut rng));
+        let hash = DeployHash(rng.gen());
         bytesrepr::test_serialization_roundtrip(&hash);
 
         let deploy = Deploy::random(&mut rng);
