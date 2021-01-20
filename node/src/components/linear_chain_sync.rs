@@ -624,19 +624,17 @@ where
     REv: ReactorEventT<I>,
 {
     let cloned = peer.clone();
-    effect_builder
-        .fetch_block(block_hash, peer)
-        .map_or_else(
-            move |fetch_result| match fetch_result {
-                FetchResult::FromStorage(block) => {
-                    Event::GetBlockHashResult(block_hash, BlockByHashResult::FromStorage(block))
-                }
-                FetchResult::FromPeer(block, peer) => {
-                    Event::GetBlockHashResult(block_hash, BlockByHashResult::FromPeer(block, peer))
-                }
-            },
-            move || Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(cloned)),
-        )
+    effect_builder.fetch_block(block_hash, peer).map_or_else(
+        move |fetch_result| match fetch_result {
+            FetchResult::FromStorage(block) => {
+                Event::GetBlockHashResult(block_hash, BlockByHashResult::FromStorage(block))
+            }
+            FetchResult::FromPeer(block, peer) => {
+                Event::GetBlockHashResult(block_hash, BlockByHashResult::FromPeer(block, peer))
+            }
+        },
+        move || Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(cloned)),
+    )
 }
 
 fn fetch_block_at_height<I: Send + Clone + 'static, REv>(
