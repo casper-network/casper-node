@@ -226,6 +226,7 @@ pub struct GenesisConfig {
     pub(crate) system_config: SystemConfig,
     pub(crate) deploy_config: DeployConfig,
     pub(crate) highway_config: HighwayConfig,
+    pub(crate) state_root_hash: Option<Digest>,
 }
 
 impl GenesisConfig {
@@ -267,6 +268,7 @@ impl Debug for GenesisConfig {
             .field("costs", &self.wasm_config)
             .field("deploy_config", &self.deploy_config)
             .field("highway_config", &self.highway_config)
+            .field("state_root_hash", &self.state_root_hash)
             .finish()
     }
 }
@@ -295,6 +297,7 @@ impl GenesisConfig {
         let highway_config = HighwayConfig::random(rng);
         let unbonding_delay = rng.gen();
         let system_config = rng.gen();
+        let state_root_hash = rng.gen();
 
         GenesisConfig {
             name,
@@ -310,6 +313,7 @@ impl GenesisConfig {
             system_config,
             deploy_config,
             highway_config,
+            state_root_hash,
         }
     }
 }

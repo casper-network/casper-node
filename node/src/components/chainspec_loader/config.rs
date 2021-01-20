@@ -14,6 +14,7 @@ use casper_types::auction::EraId;
 
 use super::{chainspec, DeployConfig, Error, HighwayConfig};
 use crate::{
+    crypto::hash::Digest,
     types::Timestamp,
     utils::{read_file, External},
 };
@@ -44,6 +45,7 @@ struct Genesis {
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
     accounts_path: External<Vec<GenesisAccount>>,
+    state_root_hash: Option<Digest>,
 }
 
 impl Default for Genesis {
@@ -58,6 +60,7 @@ impl Default for Genesis {
             round_seigniorage_rate: DEFAULT_ROUND_SEIGNIORAGE_RATE,
             unbonding_delay: DEFAULT_UNBONDING_DELAY,
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
+            state_root_hash: None,
         }
     }
 }
@@ -123,6 +126,7 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
             unbonding_delay: chainspec.genesis.unbonding_delay,
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
+            state_root_hash: chainspec.genesis.state_root_hash,
         };
 
         let highway = chainspec.genesis.highway_config.clone();
@@ -181,6 +185,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         system_config: chainspec.system_config,
         deploy_config: chainspec.deploys,
         highway_config: chainspec.highway,
+        state_root_hash: chainspec.genesis.state_root_hash,
     };
 
     let chainspec_upgrades = chainspec.upgrade.unwrap_or_default();
