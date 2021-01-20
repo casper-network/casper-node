@@ -8,6 +8,8 @@ After=network-online.target
 
 [Service]
 Type=simple
+# Enabling new network for testing, value is not important, just that env var exists
+Environment="CASPER_ENABLE_LIBP2P=TRUE"
 ExecStartPre=/etc/casper/systemd_pre_start.sh
 #StandardOutput can only append log files from systemd version 240 + (Ubuntu 20.04). Use ExecStart with redirection as workaround.
 #seperate stderr logging as it outputs non-JSON stack traces
