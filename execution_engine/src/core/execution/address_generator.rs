@@ -5,7 +5,7 @@ use blake2::{
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
 
-use casper_types::Phase;
+use casper_types::{AccessRights, Phase, URef};
 
 use crate::core::{Address, ADDRESS_LENGTH};
 
@@ -27,6 +27,22 @@ impl AddressGenerator {
         let mut buff = [0u8; ADDRESS_LENGTH];
         self.0.fill_bytes(&mut buff);
         buff
+    }
+
+    pub fn new_hash_address(&mut self) -> Address {
+        // TODO: this appears to duplicate the logic of AddressGeneratorBuilder::build()
+        let pre_hash_bytes = self.create_address();
+        // NOTE: Unwrap below is assumed safe as output size of `ADDRESS_LENGTH` is a valid value.
+        let mut hasher = VarBlake2b::new(ADDRESS_LENGTH).unwrap();
+        hasher.update(&pre_hash_bytes);
+        let mut hash_bytes = [0; ADDRESS_LENGTH];
+        hasher.finalize_variable(|hash| hash_bytes.clone_from_slice(hash));
+        hash_bytes
+    }
+
+    pub fn new_uref(&mut self, access_rights: AccessRights) -> URef {
+        let addr = self.create_address();
+        URef::new(addr, access_rights)
     }
 }
 

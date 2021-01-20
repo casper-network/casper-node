@@ -15,10 +15,8 @@ use casper_execution_engine::{
     storage::{global_state::StateProvider, protocol_data::ProtocolData},
 };
 use casper_types::{
-    account::AccountHash,
-    bytesrepr::{Bytes, FromBytes},
-    BlockTime, CLTyped, DeployHash, EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs, URef,
-    U512,
+    account::AccountHash, bytesrepr::FromBytes, BlockTime, CLTyped, DeployHash, EntryPointType,
+    Key, Phase, ProtocolVersion, RuntimeArgs, URef, U512,
 };
 
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
@@ -133,38 +131,31 @@ where
     let wasm_bytes = utils::read_wasm_file_bytes(wasm_file);
     let deploy_item = ExecutableDeployItem::ModuleBytes {
         module_bytes: wasm_bytes.into(),
-        args: Bytes::new(),
+        args: RuntimeArgs::new(),
     };
 
     let wasm_config = *DEFAULT_WASM_CONFIG;
 
     let preprocessor = Preprocessor::new(wasm_config);
-    let parity_module = builder
-        .get_engine_state()
-        .get_module(
+    let parity_module = deploy_item
+        .get_deploy_metadata(
             tracking_copy,
-            &deploy_item,
             &account,
             correlation_id,
             &preprocessor,
             &protocol_version,
+            &protocol_data,
+            phase,
         )
         .expect("should get wasm module");
 
-    let (instance, memory) = runtime::instance_and_memory(
-        parity_module.clone().take_module(),
-        protocol_version,
-        &wasm_config,
-    )
-    .expect("should be able to make wasm instance from module");
+    let module = parity_module.take_module().expect("should have module");
 
-    let mut runtime = Runtime::new(
-        config,
-        Default::default(),
-        memory,
-        parity_module.take_module(),
-        context,
-    );
+    let (instance, memory) =
+        runtime::instance_and_memory(module.clone(), protocol_version, &wasm_config)
+            .expect("should be able to make wasm instance from module");
+
+    let mut runtime = Runtime::new(config, Default::default(), memory, module, context);
 
     match instance.invoke_export(entry_point_name, &[], &mut runtime) {
         Ok(_) => None,

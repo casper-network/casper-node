@@ -221,10 +221,6 @@ pub struct GenesisConfig {
     // We don't have an implementation for the semver version type, we skip it for now
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
-    pub(crate) mint_installer_bytes: Vec<u8>,
-    pub(crate) pos_installer_bytes: Vec<u8>,
-    pub(crate) standard_payment_installer_bytes: Vec<u8>,
-    pub(crate) auction_installer_bytes: Vec<u8>,
     pub(crate) accounts: Vec<GenesisAccount>,
     pub(crate) wasm_config: WasmConfig,
     pub(crate) system_config: SystemConfig,
@@ -267,18 +263,6 @@ impl Debug for GenesisConfig {
                 "protocol_version",
                 &format_args!("{}", self.protocol_version),
             )
-            .field(
-                "mint_installer_bytes",
-                &format_args!("[{} bytes]", self.mint_installer_bytes.len()),
-            )
-            .field(
-                "pos_installer_bytes",
-                &format_args!("[{} bytes]", self.pos_installer_bytes.len()),
-            )
-            .field(
-                "standard_payment_installer_bytes",
-                &format_args!("[{} bytes]", self.standard_payment_installer_bytes.len()),
-            )
             .field("accounts", &self.accounts)
             .field("costs", &self.wasm_config)
             .field("deploy_config", &self.deploy_config)
@@ -305,10 +289,6 @@ impl GenesisConfig {
             rng.gen::<u8>() as u64,
             rng.gen::<u8>() as u64,
         );
-        let mint_installer_bytes = vec![rng.gen()];
-        let pos_installer_bytes = vec![rng.gen()];
-        let standard_payment_installer_bytes = vec![rng.gen()];
-        let auction_installer_bytes = vec![rng.gen()];
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];
         let wasm_config = rng.gen();
         let deploy_config = DeployConfig::random(rng);
@@ -325,10 +305,6 @@ impl GenesisConfig {
             round_seigniorage_rate,
             unbonding_delay,
             protocol_version,
-            mint_installer_bytes,
-            pos_installer_bytes,
-            standard_payment_installer_bytes,
-            auction_installer_bytes,
             accounts,
             wasm_config,
             system_config,
@@ -348,8 +324,6 @@ pub(crate) struct UpgradePoint {
     pub(crate) activation_point: ActivationPoint,
     #[data_size(skip)]
     pub(crate) protocol_version: Version,
-    pub(crate) upgrade_installer_bytes: Option<Vec<u8>>,
-    pub(crate) upgrade_installer_args: Option<Vec<u8>>,
     pub(crate) new_wasm_config: Option<WasmConfig>,
     pub(crate) new_system_config: Option<SystemConfig>,
     pub(crate) new_deploy_config: Option<DeployConfig>,
@@ -368,16 +342,6 @@ impl UpgradePoint {
             rng.gen::<u8>() as u64,
             rng.gen::<u8>() as u64,
         );
-        let upgrade_installer_bytes = if rng.gen() {
-            Some(vec![rng.gen()])
-        } else {
-            None
-        };
-        let upgrade_installer_args = if rng.gen() {
-            Some(vec![rng.gen()])
-        } else {
-            None
-        };
         let new_costs = if rng.gen() { Some(rng.gen()) } else { None };
         let new_deploy_config = if rng.gen() {
             Some(DeployConfig::random(rng))
@@ -390,8 +354,6 @@ impl UpgradePoint {
         UpgradePoint {
             activation_point,
             protocol_version,
-            upgrade_installer_bytes,
-            upgrade_installer_args,
             new_wasm_config: new_costs,
             new_system_config,
             new_deploy_config,
@@ -445,10 +407,6 @@ impl Chainspec {
 impl Into<ExecConfig> for Chainspec {
     fn into(self) -> ExecConfig {
         ExecConfig::new(
-            self.genesis.mint_installer_bytes,
-            self.genesis.pos_installer_bytes,
-            self.genesis.standard_payment_installer_bytes,
-            self.genesis.auction_installer_bytes,
             self.genesis.accounts,
             self.genesis.wasm_config,
             self.genesis.system_config,
@@ -575,15 +533,6 @@ mod tests {
         assert_eq!(spec.genesis.name, "test-chain");
         assert_eq!(spec.genesis.timestamp.millis(), 1600454700000);
         assert_eq!(spec.genesis.protocol_version, Version::from((0, 1, 0)));
-        assert_eq!(spec.genesis.mint_installer_bytes, b"Mint installer bytes");
-        assert_eq!(
-            spec.genesis.pos_installer_bytes,
-            b"Proof of Stake installer bytes"
-        );
-        assert_eq!(
-            spec.genesis.standard_payment_installer_bytes,
-            b"Standard Payment installer bytes"
-        );
 
         assert_eq!(spec.genesis.accounts.len(), 4);
         for index in 0..4 {
@@ -633,11 +582,6 @@ mod tests {
         let upgrade0 = &spec.upgrades[0];
         assert_eq!(upgrade0.activation_point, ActivationPoint { height: 23 });
         assert_eq!(upgrade0.protocol_version, Version::from((0, 2, 0)));
-        assert_eq!(
-            upgrade0.upgrade_installer_bytes,
-            Some(b"Upgrade installer bytes".to_vec())
-        );
-        assert!(upgrade0.upgrade_installer_args.is_none());
 
         let new_wasm_config = upgrade0
             .new_wasm_config
@@ -675,8 +619,6 @@ mod tests {
         let upgrade1 = &spec.upgrades[1];
         assert_eq!(upgrade1.activation_point, ActivationPoint { height: 39 });
         assert_eq!(upgrade1.protocol_version, Version::from((0, 3, 0)));
-        assert!(upgrade1.upgrade_installer_bytes.is_none());
-        assert!(upgrade1.upgrade_installer_args.is_none());
         assert!(upgrade1.new_wasm_config.is_none());
         assert!(upgrade1.new_deploy_config.is_none());
     }

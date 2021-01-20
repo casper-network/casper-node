@@ -1,9 +1,8 @@
 use std::collections::BTreeMap;
 
-use casper_engine_grpc_server::engine_server::ipc::DeployCode;
 use casper_engine_test_support::{
     internal::{
-        utils, AdditiveMapDiff, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+        AdditiveMapDiff, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
         UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
@@ -27,8 +26,6 @@ const DO_NOTHING_CONTRACT_PACKAGE_HASH_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_CONTRACT_HASH_NAME: &str = "do_nothing_hash";
 const INITIAL_VERSION: ContractVersion = CONTRACT_INITIAL_VERSION;
 const ENTRY_FUNCTION_NAME: &str = "delegate";
-const MODIFIED_MINT_UPGRADER_CONTRACT_NAME: &str = "modified_mint_upgrader.wasm";
-const MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME: &str = "modified_system_upgrader.wasm";
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const STORED_PAYMENT_CONTRACT_NAME: &str = "test_payment_stored.wasm";
 const STORED_PAYMENT_CONTRACT_HASH_NAME: &str = "test_payment_hash";
@@ -46,22 +43,11 @@ const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
 
 /// Prepares a upgrade request with pre-loaded deploy code, and new protocol version.
-fn make_upgrade_request(
-    new_protocol_version: ProtocolVersion,
-    code: &str,
-) -> UpgradeRequestBuilder {
-    let installer_code = {
-        let bytes = utils::read_wasm_file_bytes(code);
-        let mut deploy_code = DeployCode::new();
-        deploy_code.set_code(bytes);
-        deploy_code
-    };
-
+fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequestBuilder {
     UpgradeRequestBuilder::new()
         .with_current_protocol_version(PROTOCOL_VERSION)
         .with_new_protocol_version(new_protocol_version)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
-        .with_installer_code(installer_code)
 }
 
 fn store_payment_to_account_context(
@@ -671,8 +657,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -767,8 +752,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -852,8 +836,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -943,8 +926,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -1022,8 +1004,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -1090,8 +1071,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 

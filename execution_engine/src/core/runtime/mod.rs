@@ -1554,7 +1554,7 @@ where
         Ok(ret)
     }
 
-    pub fn call_host_standard_payment(&mut self, _entry_point_name: &str) -> Result<(), Error> {
+    pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
         // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
         // context.
         let gas_counter = self.gas_counter();
@@ -1945,13 +1945,6 @@ where
         }
     }
 
-    pub(crate) fn access_rights_extend(
-        &mut self,
-        access_rights: HashMap<Address, HashSet<AccessRights>>,
-    ) {
-        self.context.access_rights_extend(access_rights)
-    }
-
     fn execute_contract(
         &mut self,
         key: Key,
@@ -1995,32 +1988,30 @@ where
                 }
             }
 
-            if !self.config.use_system_contracts() {
-                if self.is_mint(key) {
-                    return self.call_host_mint(
-                        self.context.protocol_version(),
-                        entry_point.name(),
-                        &mut named_keys,
-                        &args,
-                        &extra_keys,
-                    );
-                } else if self.is_proof_of_stake(key) {
-                    return self.call_host_proof_of_stake(
-                        self.context.protocol_version(),
-                        entry_point.name(),
-                        &mut named_keys,
-                        &args,
-                        &extra_keys,
-                    );
-                } else if self.is_auction(key) {
-                    return self.call_host_auction(
-                        self.context.protocol_version(),
-                        entry_point.name(),
-                        &mut named_keys,
-                        &args,
-                        &extra_keys,
-                    );
-                }
+            if self.is_mint(key) {
+                return self.call_host_mint(
+                    self.context.protocol_version(),
+                    entry_point.name(),
+                    &mut named_keys,
+                    &args,
+                    &extra_keys,
+                );
+            } else if self.is_proof_of_stake(key) {
+                return self.call_host_proof_of_stake(
+                    self.context.protocol_version(),
+                    entry_point.name(),
+                    &mut named_keys,
+                    &args,
+                    &extra_keys,
+                );
+            } else if self.is_auction(key) {
+                return self.call_host_auction(
+                    self.context.protocol_version(),
+                    entry_point.name(),
+                    &mut named_keys,
+                    &args,
+                    &extra_keys,
+                );
             }
 
             extra_keys

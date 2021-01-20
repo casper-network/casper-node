@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 
-#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
+#[cfg(not(feature = "use-as-wasm"))]
 use casper_engine_test_support::internal::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     internal::{
@@ -9,10 +9,8 @@ use casper_engine_test_support::{
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
-use casper_execution_engine::shared::system_config::{
-    auction_costs::DEFAULT_ADD_BID_COST, standard_payment_costs::DEFAULT_PAY_COST,
-};
+#[cfg(not(feature = "use-as-wasm"))]
+use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
 use casper_execution_engine::{
     core::engine_state::upgrade::ActivationPoint,
     shared::{
@@ -23,7 +21,7 @@ use casper_execution_engine::{
         wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
 };
-#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
+#[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
     auction::{self, DelegationRate},
     runtime_args,
@@ -38,9 +36,9 @@ use num_rational::Ratio;
 
 const DEFAULT_ACTIVATION_POINT: ActivationPoint = 0;
 const STORAGE_COSTS_NAME: &str = "storage_costs.wasm";
-#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
+#[cfg(not(feature = "use-as-wasm"))]
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
-#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
+#[cfg(not(feature = "use-as-wasm"))]
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 const CONTRACT_KEY_NAME: &str = "contract";
 
@@ -165,7 +163,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
     builder
 }
 
-#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
+#[cfg(not(feature = "use-as-wasm"))]
 #[ignore]
 #[test]
 fn should_verify_isolate_host_side_payment_code_is_free() {
@@ -192,15 +190,15 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    assert_eq!(balance_after, balance_before - transaction_fee);
-
     assert_eq!(
-        builder.last_exec_gas_cost().value(),
-        U512::from(DEFAULT_PAY_COST)
+        balance_after,
+        balance_before - transaction_fee,
+        "balance before and after should match"
     );
+    assert_eq!(builder.last_exec_gas_cost().value(), U512::zero());
 }
 
-#[cfg(not(any(feature = "use-system-contracts", feature = "use-as-wasm")))]
+#[cfg(not(feature = "use-as-wasm"))]
 #[ignore]
 #[test]
 fn should_verify_isolated_auction_storage_is_free() {
@@ -222,6 +220,8 @@ fn should_verify_isolated_auction_storage_is_free() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
+    let bond_amount = U512::from(BOND_AMOUNT);
+
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         account
@@ -235,7 +235,7 @@ fn should_verify_isolated_auction_storage_is_free() {
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_SOURCE_PURSE => account.main_purse(),
-            auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
+            auction::ARG_AMOUNT => bond_amount,
             auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
@@ -252,12 +252,18 @@ fn should_verify_isolated_auction_storage_is_free() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_ADD_BID_COST);
+    let expected = balance_before - bond_amount - transaction_fee;
+
     assert_eq!(
         balance_after,
-        balance_before - U512::from(BOND_AMOUNT) - transaction_fee
+        expected,
+        "before and after should match; off by: {}",
+        expected - balance_after
     );
-    assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
+    assert_eq!(
+        builder.last_exec_gas_cost().value(),
+        U512::from(DEFAULT_ADD_BID_COST)
+    );
 }
 
 #[ignore]

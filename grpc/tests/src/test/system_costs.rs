@@ -30,7 +30,7 @@ use casper_execution_engine::{
             proof_of_stake_costs::{
                 ProofOfStakeCosts, DEFAULT_FINALIZE_PAYMENT_COST, DEFAULT_SET_REFUND_PURSE_COST,
             },
-            standard_payment_costs::{StandardPaymentCosts, DEFAULT_PAY_COST},
+            standard_payment_costs::StandardPaymentCosts,
             SystemConfig,
         },
         wasm,
@@ -48,9 +48,9 @@ use casper_types::{
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 
-const VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
+static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519([123; SecretKey::ED25519_LENGTH]));
-const VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
+static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
@@ -127,7 +127,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     let transaction_fee_1 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_ADD_BID_COST);
+    let expected_call_cost = U512::from(DEFAULT_ADD_BID_COST);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BOND_AMOUNT) - transaction_fee_1
@@ -164,7 +164,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_WITHDRAW_BID_COST);
+    let expected_call_cost = U512::from(DEFAULT_WITHDRAW_BID_COST);
     assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
@@ -252,7 +252,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let transaction_fee_1 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_ADD_BID_COST);
+    let expected_call_cost = U512::from(NEW_ADD_BID_COST);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BOND_AMOUNT) - transaction_fee_1
@@ -289,8 +289,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
-    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_WITHDRAW_BID_COST);
-
+    let call_cost = U512::from(NEW_WITHDRAW_BID_COST);
     assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
@@ -363,7 +362,7 @@ fn delegate_and_undelegate_have_expected_costs() {
     let transaction_fee_1 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_DELEGATE_COST);
+    let expected_call_cost = U512::from(DEFAULT_DELEGATE_COST);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BID_AMOUNT) - transaction_fee_1,
@@ -400,7 +399,7 @@ fn delegate_and_undelegate_have_expected_costs() {
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_UNDELEGATE_COST);
+    let expected_call_cost = U512::from(DEFAULT_UNDELEGATE_COST);
     assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
@@ -503,7 +502,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let transaction_fee_1 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_DELEGATE_COST);
+    let call_cost = U512::from(NEW_DELEGATE_COST);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BID_AMOUNT) - transaction_fee_1,
@@ -541,9 +540,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
-    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_UNDELEGATE_COST);
+    let call_cost = U512::from(NEW_UNDELEGATE_COST);
     assert_eq!(balance_after, balance_before - transaction_fee_2);
-
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
 
@@ -609,7 +607,7 @@ fn mint_transfer_has_expected_costs() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_TRANSFER_COST);
+    let expected_call_cost = U512::from(DEFAULT_TRANSFER_COST);
     assert_eq!(
         balance_after,
         balance_before - transfer_amount - transaction_fee,
@@ -720,8 +718,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
 
         let balance_after = builder.get_purse_balance(account.main_purse());
 
-        let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(expected_cost);
-
+        let call_cost = U512::from(expected_cost);
         assert_eq!(
             balance_after,
             balance_before - transaction_fee,
@@ -768,12 +765,9 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST);
-    let lhs = user_funds_after;
-    let rhs = user_funds_before - transaction_fee;
-    assert_eq!(lhs, rhs,);
+    assert_eq!(user_funds_after, user_funds_before - transaction_fee,);
 
-    assert_eq!(builder.last_exec_gas_cost(), Gas::new(expected_call_cost));
+    assert_eq!(builder.last_exec_gas_cost(), Gas::new(U512::zero()));
 }
 
 #[ignore]
@@ -916,9 +910,9 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let transaction_fee_1 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST)
-        + U512::from(DEFAULT_ADD_BID_COST)
-        + U512::from(UPDATED_TRANSFER_FROM_PURSE_TO_PURSE_COST);
+    let expected_call_cost =
+        U512::from(DEFAULT_ADD_BID_COST) + U512::from(UPDATED_TRANSFER_FROM_PURSE_TO_PURSE_COST);
+
     let lhs = user_funds_after;
     let rhs = user_funds_before - transaction_fee_1 - U512::from(BOND_AMOUNT);
     assert_eq!(lhs, rhs);

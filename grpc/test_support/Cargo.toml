@@ -29,6 +29,5 @@ version-sync = "0.9"
 
 [features]
 use-as-wasm = []
-use-system-contracts = []
 test-support = ["casper-engine-grpc-server/test-support", "casper-contract/test-support"]
 

@@ -11,11 +11,6 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/grpc/cargo_c
 license-file = "../../LICENSE"
 include = [
     "src/*.rs",
-    "wasm/mint_install.wasm",
-    "wasm/pos_install.wasm",
-    "wasm/standard_payment.wasm",
-    "wasm/standard_payment_install.wasm",
-    "wasm/auction_install.wasm",
     "Cargo.lock",
     "Cargo.toml",
 ]

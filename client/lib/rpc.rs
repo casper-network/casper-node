@@ -23,7 +23,7 @@ use casper_node::{
     },
     types::{BlockHash, Deploy, DeployHash},
 };
-use casper_types::{bytesrepr::ToBytes, AsymmetricType, Key, PublicKey, RuntimeArgs, URef, U512};
+use casper_types::{AsymmetricType, Key, PublicKey, RuntimeArgs, URef, U512};
 
 use crate::{
     deploy::{DeployExt, DeployParams, SendDeploy, Transfer},
@@ -195,7 +195,7 @@ impl RpcCall {
         }
         transfer_args.insert(TRANSFER_ARG_ID, id)?;
         let session = ExecutableDeployItem::Transfer {
-            args: transfer_args.to_bytes()?.into(),
+            args: transfer_args,
         };
         let deploy = Deploy::with_payment_and_session(deploy_params, payment, session);
         let params = PutDeployParams { deploy };

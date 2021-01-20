@@ -19,12 +19,7 @@ use crate::{
 };
 
 const DEFAULT_CHAIN_NAME: &str = "casper-devnet";
-const DEFAULT_MINT_INSTALLER_PATH: &str = "mint_install.wasm";
-const DEFAULT_POS_INSTALLER_PATH: &str = "pos_install.wasm";
-const DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH: &str = "standard_payment_install.wasm";
-const DEFAULT_AUCTION_INSTALLER_PATH: &str = "auction_install.wasm";
 const DEFAULT_ACCOUNTS_CSV_PATH: &str = "accounts.csv";
-const DEFAULT_UPGRADE_INSTALLER_PATH: &str = "upgrade_install.wasm";
 const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 const DEFAULT_AUCTION_DELAY: u64 = 3;
 const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
@@ -48,10 +43,6 @@ struct Genesis {
     protocol_version: Version,
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
-    mint_installer_path: External<Vec<u8>>,
-    pos_installer_path: External<Vec<u8>>,
-    standard_payment_installer_path: External<Vec<u8>>,
-    auction_installer_path: External<Vec<u8>>,
     accounts_path: External<Vec<GenesisAccount>>,
 }
 
@@ -66,12 +57,6 @@ impl Default for Genesis {
             protocol_version: Version::from((1, 0, 0)),
             round_seigniorage_rate: DEFAULT_ROUND_SEIGNIORAGE_RATE,
             unbonding_delay: DEFAULT_UNBONDING_DELAY,
-            mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
-            pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
-            standard_payment_installer_path: External::path(
-                DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH,
-            ),
-            auction_installer_path: External::path(DEFAULT_AUCTION_INSTALLER_PATH),
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
         }
     }
@@ -81,7 +66,6 @@ impl Default for Genesis {
 #[serde(deny_unknown_fields)]
 struct UpgradePoint {
     protocol_version: Version,
-    upgrade_installer_path: Option<External<Vec<u8>>>,
     activation_point: chainspec::ActivationPoint,
     new_wasm_config: Option<WasmConfig>,
     new_system_config: Option<SystemConfig>,
@@ -93,7 +77,6 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
     fn from(upgrade_point: &chainspec::UpgradePoint) -> Self {
         UpgradePoint {
             protocol_version: upgrade_point.protocol_version.clone(),
-            upgrade_installer_path: Some(External::path(DEFAULT_UPGRADE_INSTALLER_PATH)),
             activation_point: upgrade_point.activation_point,
             new_wasm_config: upgrade_point.new_wasm_config,
             new_system_config: upgrade_point.new_system_config,
@@ -104,28 +87,15 @@ impl From<&chainspec::UpgradePoint> for UpgradePoint {
 }
 
 impl UpgradePoint {
-    fn try_into_chainspec_upgrade_point<P: AsRef<Path>>(
-        self,
-        root: P,
-    ) -> Result<chainspec::UpgradePoint, Error> {
-        let upgrade_installer_bytes = self
-            .upgrade_installer_path
-            .map(|ext_vec| ext_vec.load(root.as_ref()))
-            .transpose()
-            .map_err(Error::LoadUpgradeInstaller)?;
-        // TODO - read this in?
-        let upgrade_installer_args = None;
-
-        Ok(chainspec::UpgradePoint {
+    fn into_chainspec_upgrade_point<P: AsRef<Path>>(self, _root: P) -> chainspec::UpgradePoint {
+        chainspec::UpgradePoint {
             activation_point: self.activation_point,
             protocol_version: self.protocol_version,
-            upgrade_installer_bytes,
-            upgrade_installer_args,
             new_wasm_config: self.new_wasm_config,
             new_system_config: self.new_system_config,
             new_deploy_config: self.new_deploy_config,
             new_validator_slots: self.new_validator_slots,
-        })
+        }
     }
 }
 
@@ -152,12 +122,6 @@ impl From<&chainspec::Chainspec> for ChainspecConfig {
             protocol_version: chainspec.genesis.protocol_version.clone(),
             round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
             unbonding_delay: chainspec.genesis.unbonding_delay,
-            mint_installer_path: External::path(DEFAULT_MINT_INSTALLER_PATH),
-            pos_installer_path: External::path(DEFAULT_POS_INSTALLER_PATH),
-            standard_payment_installer_path: External::path(
-                DEFAULT_STANDARD_PAYMENT_INSTALLER_PATH,
-            ),
-            auction_installer_path: External::path(DEFAULT_AUCTION_INSTALLER_PATH),
             accounts_path: External::path(DEFAULT_ACCOUNTS_CSV_PATH),
         };
 
@@ -197,30 +161,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         .parent()
         .unwrap_or_else(|| Path::new(""));
 
-    let mint_installer_bytes = chainspec
-        .genesis
-        .mint_installer_path
-        .load(root)
-        .map_err(Error::LoadMintInstaller)?;
-
-    let pos_installer_bytes = chainspec
-        .genesis
-        .pos_installer_path
-        .load(root)
-        .map_err(Error::LoadPosInstaller)?;
-
-    let standard_payment_installer_bytes = chainspec
-        .genesis
-        .standard_payment_installer_path
-        .load(root)
-        .map_err(Error::LoadStandardPaymentInstaller)?;
-
-    let auction_installer_bytes = chainspec
-        .genesis
-        .auction_installer_path
-        .load(root)
-        .map_err(Error::LoadAuctionInstaller)?;
-
     let accounts: Vec<GenesisAccount> = chainspec
         .genesis
         .accounts_path
@@ -236,10 +176,6 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
         round_seigniorage_rate: chainspec.genesis.round_seigniorage_rate,
         unbonding_delay: chainspec.genesis.unbonding_delay,
         protocol_version: chainspec.genesis.protocol_version,
-        mint_installer_bytes,
-        pos_installer_bytes,
-        standard_payment_installer_bytes,
-        auction_installer_bytes,
         accounts,
         wasm_config: chainspec.wasm_config,
         system_config: chainspec.system_config,
@@ -250,7 +186,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(chainspec_path: P) -> Result<chainspec:
     let chainspec_upgrades = chainspec.upgrade.unwrap_or_default();
     let mut upgrades = Vec::with_capacity(chainspec_upgrades.len());
     for upgrade_point in chainspec_upgrades.into_iter() {
-        upgrades.push(upgrade_point.try_into_chainspec_upgrade_point(root)?);
+        upgrades.push(upgrade_point.into_chainspec_upgrade_point(root));
     }
 
     Ok(chainspec::Chainspec { genesis, upgrades })
