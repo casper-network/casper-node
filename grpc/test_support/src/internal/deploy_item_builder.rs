@@ -5,11 +5,10 @@ use casper_execution_engine::{
     shared::newtypes::Blake2bHash,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr::ToBytes, ContractHash, ContractVersion, DeployHash, HashAddr,
-    RuntimeArgs,
+    account::AccountHash, ContractHash, ContractVersion, DeployHash, HashAddr, RuntimeArgs,
 };
 
-use crate::internal::utils;
+use crate::internal::{utils, DEFAULT_GAS_PRICE};
 
 #[derive(Default)]
 struct DeployItemData {
@@ -36,10 +35,9 @@ impl DeployItemBuilder {
     }
 
     pub fn with_payment_bytes(mut self, module_bytes: Vec<u8>, args: RuntimeArgs) -> Self {
-        let args = Self::serialize_args(args);
         self.deploy_item.payment_code = Some(ExecutableDeployItem::ModuleBytes {
             module_bytes: module_bytes.into(),
-            args: args.into(),
+            args,
         });
         self
     }
@@ -59,11 +57,10 @@ impl DeployItemBuilder {
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {
-        let args = Self::serialize_args(args);
         self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredContractByHash {
             hash,
             entry_point: entry_point.into(),
-            args: args.into(),
+            args,
         });
         self
     }
@@ -74,20 +71,18 @@ impl DeployItemBuilder {
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Self {
-        let args = Self::serialize_args(args);
         self.deploy_item.payment_code = Some(ExecutableDeployItem::StoredContractByName {
             name: uref_name.to_owned(),
             entry_point: entry_point_name.into(),
-            args: args.into(),
+            args,
         });
         self
     }
 
     pub fn with_session_bytes(mut self, module_bytes: Vec<u8>, args: RuntimeArgs) -> Self {
-        let args = Self::serialize_args(args);
         self.deploy_item.session_code = Some(ExecutableDeployItem::ModuleBytes {
             module_bytes: module_bytes.into(),
-            args: args.into(),
+            args,
         });
         self
     }
@@ -98,8 +93,7 @@ impl DeployItemBuilder {
     }
 
     pub fn with_transfer_args(mut self, args: RuntimeArgs) -> Self {
-        let args = Self::serialize_args(args);
-        self.deploy_item.session_code = Some(ExecutableDeployItem::Transfer { args: args.into() });
+        self.deploy_item.session_code = Some(ExecutableDeployItem::Transfer { args });
         self
     }
 
@@ -109,11 +103,10 @@ impl DeployItemBuilder {
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {
-        let args = Self::serialize_args(args);
         self.deploy_item.session_code = Some(ExecutableDeployItem::StoredContractByHash {
             hash,
             entry_point: entry_point.into(),
-            args: args.into(),
+            args,
         });
         self
     }
@@ -124,11 +117,10 @@ impl DeployItemBuilder {
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {
-        let args = Self::serialize_args(args);
         self.deploy_item.session_code = Some(ExecutableDeployItem::StoredContractByName {
             name: name.to_owned(),
             entry_point: entry_point.into(),
-            args: args.into(),
+            args,
         });
         self
     }
@@ -144,10 +136,7 @@ impl DeployItemBuilder {
             name: name.to_owned(),
             version,
             entry_point: entry_point.to_owned(),
-            args: args
-                .to_bytes()
-                .expect("should serialize runtime args")
-                .into(),
+            args,
         });
         self
     }
@@ -163,10 +152,7 @@ impl DeployItemBuilder {
             hash: hash.into(),
             version,
             entry_point: entry_point.to_owned(),
-            args: args
-                .to_bytes()
-                .expect("should serialize runtime args")
-                .into(),
+            args,
         });
         self
     }
@@ -182,10 +168,7 @@ impl DeployItemBuilder {
             name: key_name.to_owned(),
             version,
             entry_point: entry_point.to_owned(),
-            args: args
-                .to_bytes()
-                .expect("should serialize runtime args")
-                .into(),
+            args,
         });
         self
     }
@@ -201,10 +184,7 @@ impl DeployItemBuilder {
             hash: hash.into(),
             version,
             entry_point: entry_point.to_owned(),
-            args: args
-                .to_bytes()
-                .expect("should serialize runtime args")
-                .into(),
+            args,
         });
         self
     }
@@ -251,16 +231,12 @@ impl DeployItemBuilder {
             deploy_hash: self.deploy_item.deploy_hash,
         }
     }
-
-    fn serialize_args(args: RuntimeArgs) -> Vec<u8> {
-        args.into_bytes().expect("should serialize args")
-    }
 }
 
 impl Default for DeployItemBuilder {
     fn default() -> Self {
         let deploy_item = DeployItemData {
-            gas_price: 1,
+            gas_price: DEFAULT_GAS_PRICE,
             ..Default::default()
         };
         DeployItemBuilder { deploy_item }
