@@ -1,6 +1,4 @@
-use crate::{
-    types::{Block, BlockHash, BlockHeader},
-};
+use crate::types::{Block, BlockHash, BlockHeader};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug)]
@@ -26,7 +24,7 @@ pub enum BlockByHashResult<I> {
 
 #[derive(Debug)]
 pub enum BlockByHeightResult<I> {
-    Absent,
+    Absent(I),
     FromStorage(Box<Block>),
     FromPeer(Box<Block>, I),
 }
