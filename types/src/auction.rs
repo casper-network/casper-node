@@ -23,14 +23,16 @@ pub use bid::Bid;
 pub use constants::*;
 pub use delegator::Delegator;
 pub use era_info::*;
-pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider};
+pub use providers::{
+    AccountProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider,
+};
 pub use seigniorage_recipient::SeigniorageRecipient;
 pub use types::*;
 pub use unbonding_purse::UnbondingPurse;
 
 /// Bonding auction contract interface
 pub trait Auction:
-    StorageProvider + SystemProvider + RuntimeProvider + MintProvider + Sized
+    StorageProvider + SystemProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
 {
     /// Returns era_validators.
     ///
@@ -72,7 +74,6 @@ pub trait Auction:
     fn add_bid(
         &mut self,
         public_key: PublicKey,
-        source: URef,
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<U512> {
@@ -84,6 +85,8 @@ pub trait Auction:
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
         }
+
+        let source = self.get_main_purse()?;
 
         // Update bids or stakes
         let mut validators = detail::get_bids(self)?;
@@ -161,7 +164,6 @@ pub trait Auction:
     fn delegate(
         &mut self,
         delegator_public_key: PublicKey,
-        source: URef,
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512> {
@@ -173,6 +175,8 @@ pub trait Auction:
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
         }
+
+        let source = self.get_main_purse()?;
 
         let mut bids = detail::get_bids(self)?;
 

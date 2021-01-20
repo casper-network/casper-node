@@ -24,8 +24,6 @@ pub const ARG_PUBLIC_KEY: &str = "public_key";
 pub const ARG_VALIDATOR: &str = "validator";
 /// Named constant for `delegator`.
 pub const ARG_DELEGATOR: &str = "delegator";
-/// Named constant for `source_purse`.
-pub const ARG_SOURCE_PURSE: &str = "source_purse";
 /// Named constant for `validator_purse`.
 pub const ARG_VALIDATOR_PURSE: &str = "validator_purse";
 /// Named constant for `validator_keys`.

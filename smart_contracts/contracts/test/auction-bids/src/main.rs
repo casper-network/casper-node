@@ -5,13 +5,13 @@ extern crate alloc;
 
 use alloc::{collections::BTreeMap, string::String};
 
-use casper_contract::contract_api::{account, runtime, storage, system};
+use casper_contract::contract_api::{runtime, storage, system};
 
 use casper_types::{
     auction::{
         SeigniorageRecipients, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_REWARD_FACTORS,
-        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY,
-        METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION,
+        ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, METHOD_DELEGATE,
+        METHOD_DISTRIBUTE, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION,
         METHOD_UNDELEGATE, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     runtime_args, ApiError, PublicKey, RuntimeArgs, URef, U512,
@@ -57,7 +57,6 @@ fn delegate() {
     let args = runtime_args! {
         ARG_DELEGATOR => delegator,
         ARG_VALIDATOR => validator,
-        ARG_SOURCE_PURSE => account::get_main_purse(),
         ARG_AMOUNT => amount,
     };
 

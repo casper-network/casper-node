@@ -37,7 +37,7 @@ const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 const GENESIS_ACCOUNT_STAKE: u64 = 100_000;
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
-const TEST_BOND_FROM_MAIN_PURSE: &str = "bond-from-main-purse";
+const TEST_BOND: &str = "bond";
 const TEST_SEED_NEW_ACCOUNT: &str = "seed_new_account";
 
 const ARG_AMOUNT: &str = "amount";
@@ -238,7 +238,7 @@ fn should_fail_bonding_with_insufficient_funds() {
         account_1_hash,
         CONTRACT_AUCTION_BIDDING,
         runtime_args! {
-            ARG_ENTRY_POINT => TEST_BOND_FROM_MAIN_PURSE,
+            ARG_ENTRY_POINT => TEST_BOND,
             ARG_AMOUNT => *DEFAULT_PAYMENT + GENESIS_ACCOUNT_STAKE,
             ARG_PUBLIC_KEY => account_1_public_key,
         },

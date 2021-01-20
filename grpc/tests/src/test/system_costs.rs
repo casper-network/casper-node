@@ -58,8 +58,7 @@ const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99;
 const TRANSFER_AMOUNT: u64 = 123;
 const BID_DELEGATION_RATE: DelegationRate = 123;
-const UPDATED_TRANSFER_FROM_PURSE_TO_PURSE_COST: Cost = 12_345;
-
+const UPDATED_CALL_CONTRACT_COST: Cost = 12_345;
 const NEW_ADD_BID_COST: u32 = DEFAULT_ADD_BID_COST * 2;
 const NEW_WITHDRAW_BID_COST: u32 = DEFAULT_WITHDRAW_BID_COST * 3;
 const NEW_DELEGATE_COST: u32 = DEFAULT_DELEGATE_COST * 4;
@@ -112,7 +111,6 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            auction::ARG_SOURCE_PURSE => account.main_purse(),
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
@@ -222,7 +220,6 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            auction::ARG_SOURCE_PURSE => account.main_purse(),
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
@@ -321,7 +318,6 @@ fn delegate_and_undelegate_have_expected_costs() {
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_VALIDATOR => *VALIDATOR_1,
-            auction::ARG_SOURCE_PURSE => source_purse,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
         },
     )
@@ -449,7 +445,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_VALIDATOR => *VALIDATOR_1,
-            auction::ARG_SOURCE_PURSE => source_purse,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
         },
     )
@@ -826,9 +821,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         create_purse: HostFunction::fixed(0),
         transfer_to_account: HostFunction::fixed(0),
         transfer_from_purse_to_account: HostFunction::fixed(0),
-        transfer_from_purse_to_purse: HostFunction::fixed(
-            UPDATED_TRANSFER_FROM_PURSE_TO_PURSE_COST,
-        ),
+        transfer_from_purse_to_purse: HostFunction::fixed(0),
         get_balance: HostFunction::fixed(0),
         get_phase: HostFunction::fixed(0),
         get_system_contract: HostFunction::fixed(0),
@@ -838,7 +831,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         create_contract_user_group: HostFunction::fixed(0),
         add_contract_version: HostFunction::fixed(0),
         disable_contract_version: HostFunction::fixed(0),
-        call_contract: HostFunction::fixed(0),
+        call_contract: HostFunction::fixed(UPDATED_CALL_CONTRACT_COST),
         call_versioned_contract: HostFunction::fixed(0),
         get_named_arg_size: HostFunction::fixed(0),
         get_named_arg: HostFunction::fixed(0),
@@ -905,9 +898,10 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let user_funds_after = builder.get_purse_balance(default_account.main_purse());
 
     let expected_call_cost = U512::from(DEFAULT_ADD_BID_COST)
-        + U512::from(UPDATED_TRANSFER_FROM_PURSE_TO_PURSE_COST)
+        + U512::from(UPDATED_CALL_CONTRACT_COST)
         + U512::from(BOND_AMOUNT);
     let lhs = user_funds_after;
     let rhs = user_funds_before - expected_call_cost;
+
     assert_eq!(lhs, rhs);
 }

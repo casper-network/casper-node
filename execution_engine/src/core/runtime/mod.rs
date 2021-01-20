@@ -1653,14 +1653,12 @@ where
 
                 let account_hash =
                     Self::get_named_argument(&runtime_args, auction::ARG_PUBLIC_KEY)?;
-                let source_purse =
-                    Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
                 let delegation_rate =
                     Self::get_named_argument(&runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
-                    .add_bid(account_hash, source_purse, delegation_rate, amount)
+                    .add_bid(account_hash, delegation_rate, amount)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -1685,13 +1683,11 @@ where
                 runtime.charge_system_contract_call(auction_costs.delegate)?;
 
                 let delegator = Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR)?;
-                let source_purse =
-                    Self::get_named_argument(&runtime_args, auction::ARG_SOURCE_PURSE)?;
                 let validator = Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(&runtime_args, auction::ARG_AMOUNT)?;
 
                 let result = runtime
-                    .delegate(delegator, source_purse, validator, amount)
+                    .delegate(delegator, validator, amount)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
