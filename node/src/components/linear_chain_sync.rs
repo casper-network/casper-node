@@ -404,9 +404,9 @@ where
                 let finalized_block: FinalizedBlock = (*block_header).into();
                 effect_builder.execute_block(finalized_block).ignore()
             }
-            Event::DeploysNotFound(block_header) => {
+            Event::DeploysNotFound(block_header, peer) => {
                 let block_hash = block_header.hash();
-                trace!(%block_hash, "deploy for linear chain block not found. Trying next peer");
+                trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
                 match self.peers.random_peer() {
                     None => {
                         let block_hash = block_header.hash();
@@ -452,7 +452,7 @@ where
     }
 }
 
-fn fetch_block_deploys<I: Send + 'static, REv>(
+fn fetch_block_deploys<I: Clone + Send + 'static, REv>(
     effect_builder: EffectBuilder<REv>,
     peer: I,
     block_header: BlockHeader,
@@ -462,12 +462,12 @@ where
 {
     let block_timestamp = block_header.timestamp();
     effect_builder
-        .validate_block(peer, block_header, block_timestamp)
+        .validate_block(peer.clone(), block_header, block_timestamp)
         .event(move |(found, block_header)| {
             if found {
                 Event::DeploysFound(Box::new(block_header))
             } else {
-                Event::DeploysNotFound(Box::new(block_header))
+                Event::DeploysNotFound(Box::new(block_header), peer)
             }
         })
 }

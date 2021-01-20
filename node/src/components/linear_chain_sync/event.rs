@@ -9,7 +9,7 @@ pub enum Event<I> {
     /// Deploys from the block have been found.
     DeploysFound(Box<BlockHeader>),
     /// Deploys from the block have not been found.
-    DeploysNotFound(Box<BlockHeader>),
+    DeploysNotFound(Box<BlockHeader>, I),
     StartDownloadingDeploys,
     NewPeerConnected(I),
     BlockHandled(Box<BlockHeader>),
@@ -40,8 +40,8 @@ where
                 write!(f, "Get block result for {}: {:?}", block_hash, r)
             }
             Event::DeploysFound(block) => write!(f, "Deploys for block found: {}", block.hash()),
-            Event::DeploysNotFound(block_hash) => {
-                write!(f, "Deploy for block found: {}", block_hash.hash())
+            Event::DeploysNotFound(block_hash, _) => {
+                write!(f, "Deploy for block not found: {}", block_hash.hash())
             }
             Event::StartDownloadingDeploys => write!(f, "Start downloading deploys event."),
             Event::NewPeerConnected(peer_id) => write!(f, "A new peer connected: {}", peer_id),
