@@ -163,7 +163,7 @@ clean:
 	$(CARGO) clean
 
 .PHONY: build-for-packaging
-build-for-packaging:  build-client-contracts
+build-for-packaging: build-client-contracts
 	$(CARGO) build --release
 
 .PHONY: deb
