@@ -73,7 +73,7 @@ impl LinearChainSyncMetrics {
             .observe(self.request_start.elapsed().as_secs_f64());
     }
 
-    pub fn observe_get_deploy(&mut self) {
+    pub fn observe_get_deploys(&mut self) {
         self.get_deploys
             .observe(self.request_start.elapsed().as_secs_f64());
     }

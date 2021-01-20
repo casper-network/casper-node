@@ -430,7 +430,7 @@ where
                 }
             }
             Event::GetDeploysResult(fetch_result) => {
-                self.metrics.observe_get_deploy();
+                self.metrics.observe_get_deploys();
                 match fetch_result {
                     event::DeploysResult::Found(block_header) => {
                         let block_hash = block_header.hash();
