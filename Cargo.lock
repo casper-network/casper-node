@@ -340,14 +340,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "auction"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "auction-bidding"
 version = "0.1.0"
 dependencies = [
@@ -359,15 +351,6 @@ dependencies = [
 name = "auction-bids"
 version = "0.1.0"
 dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "auction-install"
-version = "0.1.0"
-dependencies = [
- "auction",
  "casper-contract",
  "casper-types",
 ]
@@ -3476,25 +3459,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mint-install"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
- "mint-token",
- "num-rational 0.3.2",
-]
-
-[[package]]
 name = "mint-purse"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "mint-token"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
@@ -3541,43 +3506,6 @@ dependencies = [
  "net2",
  "winapi 0.2.8",
  "ws2_32-sys",
-]
-
-[[package]]
-name = "modified-mint"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
- "mint-token",
-]
-
-[[package]]
-name = "modified-mint-caller"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "modified-mint-upgrader"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
- "modified-mint",
-]
-
-[[package]]
-name = "modified-system-upgrader"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
- "modified-mint",
- "pos",
- "standard-payment",
 ]
 
 [[package]]
@@ -4253,15 +4181,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pos"
-version = "0.1.0"
-dependencies = [
- "base16",
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "pos-finalize-payment"
 version = "0.1.0"
 dependencies = [
@@ -4275,16 +4194,6 @@ version = "0.1.0"
 dependencies = [
  "casper-contract",
  "casper-types",
-]
-
-[[package]]
-name = "pos-install"
-version = "0.1.0"
-dependencies = [
- "base16",
- "casper-contract",
- "casper-types",
- "pos",
 ]
 
 [[package]]
@@ -5367,23 +5276,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
-name = "standard-payment"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "standard-payment-install"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
- "standard-payment",
-]
-
-[[package]]
 name = "state-initializer"
 version = "0.1.0"
 dependencies = [
@@ -5592,20 +5484,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "test-mint-token"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "test-payment-stored"
 version = "0.1.0"
 dependencies = [
  "casper-contract",
  "casper-types",
- "standard-payment",
 ]
 
 [[package]]

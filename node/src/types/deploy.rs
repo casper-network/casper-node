@@ -26,8 +26,9 @@ use casper_execution_engine::{
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    runtime_args,
     standard_payment::ARG_AMOUNT,
-    AsymmetricType, ExecutionResult, PublicKey, SecretKey, Signature, U512,
+    AsymmetricType, ExecutionResult, PublicKey, RuntimeArgs, SecretKey, Signature, U512,
 };
 
 use super::{BlockHash, Item, Tag, TimeDiff, Timestamp};
@@ -46,14 +47,18 @@ use crate::{
 };
 
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
+    let payment_args = runtime_args! {
+        "quantity" => 1000
+    };
     let payment = ExecutableDeployItem::StoredContractByName {
         name: String::from("casper-example"),
         entry_point: String::from("example-entry-point"),
-        args: vec![1, 1].into(),
+        args: payment_args,
     };
-    let session = ExecutableDeployItem::Transfer {
-        args: vec![2, 2].into(),
+    let session_args = runtime_args! {
+        "amount" => 1000
     };
+    let session = ExecutableDeployItem::Transfer { args: session_args };
     let serialized_body = serialize_body(&payment, &session);
     let body_hash = hash::hash(&serialized_body);
 
@@ -537,10 +542,10 @@ impl Deploy {
                 // - args to exist
                 // - contain "amount"
                 // - be a valid U512 value.
-                let args = payment_item
-                    .into_runtime_args()
-                    .map_err(|_| Error::InvalidPayment)?;
-                let value = args.get(ARG_AMOUNT).ok_or(Error::InvalidPayment)?;
+                let value = payment_item
+                    .args()
+                    .get(ARG_AMOUNT)
+                    .ok_or(Error::InvalidPayment)?;
                 let value = value
                     .clone()
                     .into_t::<U512>()
@@ -859,9 +864,11 @@ mod tests {
             chain_name.to_string(),
             ExecutableDeployItem::ModuleBytes {
                 module_bytes: Bytes::new(),
-                args: Bytes::new(),
+                args: RuntimeArgs::new(),
             },
-            ExecutableDeployItem::Transfer { args: Bytes::new() },
+            ExecutableDeployItem::Transfer {
+                args: RuntimeArgs::new(),
+            },
             &secret_key,
             rng,
         )
@@ -918,7 +925,9 @@ mod tests {
         let mut deploy = create_deploy(&mut rng, DeployConfig::default().max_ttl, 0, "net-1");
 
         deploy.session = ExecutableDeployItem::Transfer {
-            args: Bytes::from(vec![1]),
+            args: runtime_args! {
+                "amount" => 1
+            },
         };
         check_is_not_valid(deploy, DeployValidationFailure::InvalidBodyHash);
     }

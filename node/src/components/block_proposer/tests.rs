@@ -2,10 +2,7 @@ use once_cell::sync::Lazy;
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
-    bytesrepr::{Bytes, ToBytes},
-    runtime_args,
-    standard_payment::ARG_AMOUNT,
-    RuntimeArgs, SecretKey,
+    bytesrepr::Bytes, runtime_args, standard_payment::ARG_AMOUNT, RuntimeArgs, SecretKey,
 };
 
 use crate::{
@@ -45,7 +42,9 @@ fn generate_transfer_with_deps(
         args: Default::default(),
     };
 
-    let session = ExecutableDeployItem::Transfer { args: Bytes::new() };
+    let session = ExecutableDeployItem::Transfer {
+        args: RuntimeArgs::new(),
+    };
 
     Deploy::new(
         timestamp,
@@ -82,16 +81,14 @@ fn generate_deploy_with_deps(
     let chain_name = "chain".to_string();
     let args = runtime_args! {
         ARG_AMOUNT => payment_amount.value()
-    }
-    .to_bytes()
-    .expect("should serialize");
+    };
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
-        args: args.into(),
+        args,
     };
     let session = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
-        args: Bytes::new(),
+        args: RuntimeArgs::new(),
     };
 
     Deploy::new(

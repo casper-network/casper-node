@@ -3,8 +3,6 @@ mod associated_keys;
 
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
-
 use casper_types::{
     account::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
@@ -18,7 +16,7 @@ use casper_types::{
 pub use action_thresholds::ActionThresholds;
 pub use associated_keys::AssociatedKeys;
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Account {
     account_hash: AccountHash,
     named_keys: NamedKeys,

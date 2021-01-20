@@ -35,10 +35,6 @@ pub use wasm_test_builder::{
     InMemoryWasmTestBuilder, LmdbWasmTestBuilder, WasmTestBuilder, WasmTestResult,
 };
 
-pub const MINT_INSTALL_CONTRACT: &str = "mint_install.wasm";
-pub const POS_INSTALL_CONTRACT: &str = "pos_install.wasm";
-pub const STANDARD_PAYMENT_INSTALL_CONTRACT: &str = "standard_payment_install.wasm";
-pub const AUCTION_INSTALL_CONTRACT: &str = "auction_install.wasm";
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 pub const DEFAULT_AUCTION_DELAY: u64 = 3;
 pub const DEFAULT_LOCKED_FUNDS_PERIOD: EraId = 15;
@@ -99,21 +95,7 @@ pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_0
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
 pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
 pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
-    let mint_installer_bytes;
-    let pos_installer_bytes;
-    let standard_payment_installer_bytes;
-    let auction_installer_bytes;
-    mint_installer_bytes = utils::read_wasm_file_bytes(MINT_INSTALL_CONTRACT);
-    pos_installer_bytes = utils::read_wasm_file_bytes(POS_INSTALL_CONTRACT);
-    standard_payment_installer_bytes =
-        utils::read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
-    auction_installer_bytes = utils::read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
-
     ExecConfig::new(
-        mint_installer_bytes,
-        pos_installer_bytes,
-        standard_payment_installer_bytes,
-        auction_installer_bytes,
         DEFAULT_ACCOUNTS.clone(),
         *DEFAULT_WASM_CONFIG,
         *DEFAULT_SYSTEM_CONFIG,

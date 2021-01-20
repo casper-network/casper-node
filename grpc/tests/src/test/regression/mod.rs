@@ -3,7 +3,6 @@ mod ee_1071;
 mod ee_1103;
 mod ee_1119;
 mod ee_1120;
-#[cfg(not(feature = "use-system-contracts"))]
 mod ee_1129;
 mod ee_221;
 mod ee_401;

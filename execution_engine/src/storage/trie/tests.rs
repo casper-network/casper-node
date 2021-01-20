@@ -49,9 +49,12 @@ mod pointer_block {
 mod proptests {
     use proptest::prelude::proptest;
 
-    use casper_types::bytesrepr;
+    use casper_types::{bytesrepr, Key};
 
-    use crate::storage::trie::gens::*;
+    use crate::{
+        shared::stored_value::StoredValue,
+        storage::trie::{gens::*, PointerBlock, Trie},
+    };
 
     proptest! {
         #[test]
@@ -72,6 +75,23 @@ mod proptests {
         #[test]
         fn roundtrip_trie(trie in trie_arb()) {
             bytesrepr::test_serialization_roundtrip(&trie);
+        }
+
+        #[test]
+        fn serde_roundtrip_trie_pointer_block(pointer_block in trie_pointer_block_arb()) {
+             let json_str = serde_json::to_string(&pointer_block).unwrap();
+             let deserialized_pointer_block: PointerBlock = serde_json::from_str(&json_str).unwrap();
+             assert_eq!(pointer_block, deserialized_pointer_block)
+        }
+
+        #[test]
+        fn serde_roundtrip_trie(trie in trie_arb()) {
+             let json_str = match serde_json::to_string(&trie) {
+               Ok(json_str) => json_str,
+               Err(_) => panic!("bad trie {}", trie)
+             };
+             let deserialized_trie: Trie<Key, StoredValue> = serde_json::from_str(&json_str).unwrap();
+             assert_eq!(trie, deserialized_trie)
         }
     }
 }
