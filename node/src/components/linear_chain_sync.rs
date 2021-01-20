@@ -305,9 +305,17 @@ where
         match event {
             Event::Start(init_peer) => {
                 match self.state {
-                    State::None | State::Done | State::SyncingDescendants { .. } => {
+                    State::None => {
                         // No syncing configured.
                         trace!("received `Start` event when in {} state.", self.state);
+                        Effects::new()
+                    }
+                    State::Done | State::SyncingDescendants { .. } => {
+                        // Illegal states for syncing start.
+                        error!(
+                            "should not have received `Start` event when in {} state.",
+                            self.state
+                        );
                         Effects::new()
                     }
                     State::SyncingTrustedHash { trusted_hash, .. } => {
