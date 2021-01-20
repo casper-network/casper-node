@@ -24,6 +24,7 @@
 //! we might miss more eras.
 
 mod event;
+mod traits;
 
 use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem};
 
@@ -37,35 +38,13 @@ use self::event::BlockByHashResult;
 
 use super::{fetcher::FetchResult, Component};
 use crate::{
-    effect::{
-        requests::{BlockExecutorRequest, BlockValidationRequest, FetcherRequest, StorageRequest},
-        EffectBuilder, EffectExt, EffectOptionExt, Effects,
-    },
-    types::{Block, BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
+    effect::{EffectBuilder, EffectExt, EffectOptionExt, Effects},
+    types::{BlockByHeight, BlockHash, BlockHeader, FinalizedBlock},
     NodeRng,
 };
 use event::BlockByHeightResult;
 pub use event::Event;
-
-pub trait ReactorEventT<I>:
-    From<StorageRequest>
-    + From<FetcherRequest<I, Block>>
-    + From<FetcherRequest<I, BlockByHeight>>
-    + From<BlockValidationRequest<BlockHeader, I>>
-    + From<BlockExecutorRequest>
-    + Send
-{
-}
-
-impl<I, REv> ReactorEventT<I> for REv where
-    REv: From<StorageRequest>
-        + From<FetcherRequest<I, Block>>
-        + From<FetcherRequest<I, BlockByHeight>>
-        + From<BlockValidationRequest<BlockHeader, I>>
-        + From<BlockExecutorRequest>
-        + Send
-{
-}
+pub use traits::ReactorEventT;
 
 #[derive(DataSize, Debug)]
 enum State {
