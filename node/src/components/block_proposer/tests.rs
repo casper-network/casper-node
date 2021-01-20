@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
@@ -14,9 +16,7 @@ use crate::{
 
 use super::*;
 
-fn default_gas_payment() -> Gas {
-    Gas::from(1u32)
-}
+static DEFAULT_GAS_PAYMENT: Lazy<Gas> = Lazy::new(|| Gas::from(1u32));
 
 // gas_price used for test deploys
 const TEST_GAS_PRICE: u64 = 2;
@@ -147,28 +147,28 @@ fn should_add_and_take_deploys() {
         &mut rng,
         creation_time,
         ttl,
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         TEST_GAS_PRICE,
     );
     let deploy2 = generate_deploy(
         &mut rng,
         creation_time,
         ttl,
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         TEST_GAS_PRICE,
     );
     let deploy3 = generate_deploy(
         &mut rng,
         creation_time,
         ttl,
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         TEST_GAS_PRICE,
     );
     let deploy4 = generate_deploy(
         &mut rng,
         creation_time,
         ttl,
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         TEST_GAS_PRICE,
     );
 
@@ -266,7 +266,7 @@ fn should_not_add_wasm_deploy_with_zero_gas_price() {
     let ttl = TimeDiff::from(Duration::from_millis(100));
 
     let mut rng = crate::new_rng();
-    let deploy1 = generate_deploy(&mut rng, creation_time, ttl, default_gas_payment(), 0);
+    let deploy1 = generate_deploy(&mut rng, creation_time, ttl, *DEFAULT_GAS_PAYMENT, 0);
     let mut proposer = create_test_proposer(0);
     // pending
     proposer.add_deploy_or_transfer(creation_time, *deploy1.id(), deploy1.deploy_type().unwrap());
@@ -314,14 +314,14 @@ fn should_successfully_prune() {
     let ttl = TimeDiff::from(Duration::from_millis(100));
 
     let mut rng = crate::new_rng();
-    let deploy1 = generate_deploy(&mut rng, creation_time, ttl, default_gas_payment(), 1);
-    let deploy2 = generate_deploy(&mut rng, creation_time, ttl, default_gas_payment(), 1);
-    let deploy3 = generate_deploy(&mut rng, creation_time, ttl, default_gas_payment(), 1);
+    let deploy1 = generate_deploy(&mut rng, creation_time, ttl, *DEFAULT_GAS_PAYMENT, 1);
+    let deploy2 = generate_deploy(&mut rng, creation_time, ttl, *DEFAULT_GAS_PAYMENT, 1);
+    let deploy3 = generate_deploy(&mut rng, creation_time, ttl, *DEFAULT_GAS_PAYMENT, 1);
     let deploy4 = generate_deploy(
         &mut rng,
         creation_time + Duration::from_secs(20).into(),
         ttl,
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         TEST_GAS_PRICE,
     );
     let mut proposer = create_test_proposer(0);
@@ -374,14 +374,14 @@ fn should_keep_track_of_unhandled_deploys() {
         &mut rng,
         creation_time,
         ttl,
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         TEST_GAS_PRICE,
     );
     let deploy2 = generate_deploy(
         &mut rng,
         creation_time,
         ttl,
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         TEST_GAS_PRICE,
     );
     let mut proposer = create_test_proposer(0);
@@ -872,7 +872,7 @@ fn should_not_propose_deploy_if_missing_deps() {
         &mut rng,
         creation_time,
         ttl,
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         TEST_GAS_PRICE,
     );
     // let deploy2 depend on deploy1
@@ -881,7 +881,7 @@ fn should_not_propose_deploy_if_missing_deps() {
         creation_time,
         ttl,
         vec![*deploy1.id()],
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         0,
     );
 
@@ -909,7 +909,7 @@ fn should_retain_deploys_with_unmet_dependencies_for_later_proposal() {
         &mut rng,
         creation_time,
         ttl,
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         TEST_GAS_PRICE,
     );
     let deploy2 = generate_deploy_with_deps(
@@ -917,7 +917,7 @@ fn should_retain_deploys_with_unmet_dependencies_for_later_proposal() {
         creation_time,
         ttl,
         vec![*deploy1.id()],
-        default_gas_payment(),
+        *DEFAULT_GAS_PAYMENT,
         TEST_GAS_PRICE,
     );
 
