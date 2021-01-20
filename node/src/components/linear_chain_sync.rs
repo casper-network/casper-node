@@ -24,6 +24,7 @@
 //! we might miss more eras.
 
 mod event;
+mod metrics;
 mod peers;
 mod state;
 mod traits;
@@ -31,6 +32,7 @@ mod traits;
 use std::{collections::BTreeMap, convert::Infallible, fmt::Display, mem};
 
 use datasize::DataSize;
+use prometheus::Registry;
 use tracing::{error, info, trace, warn};
 
 use casper_types::{PublicKey, U512};
@@ -45,6 +47,7 @@ use crate::{
 };
 use event::BlockByHeightResult;
 pub use event::Event;
+pub use metrics::LinearChainSyncMetrics;
 pub use peers::PeersState;
 pub use state::State;
 pub use traits::ReactorEventT;
@@ -53,20 +56,24 @@ pub use traits::ReactorEventT;
 pub(crate) struct LinearChainSync<I> {
     peers: PeersState<I>,
     state: State,
+    #[data_size(skip)]
+    metrics: LinearChainSyncMetrics,
 }
 
 impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     pub fn new(
+        registry: &Registry,
         init_hash: Option<BlockHash>,
         genesis_validator_weights: BTreeMap<PublicKey, U512>,
-    ) -> Self {
+    ) -> Result<Self, prometheus::Error> {
         let state = init_hash.map_or(State::None, |init_hash| {
             State::sync_trusted_hash(init_hash, genesis_validator_weights)
         });
-        LinearChainSync {
+        Ok(LinearChainSync {
             peers: PeersState::new(),
             state,
-        }
+            metrics: LinearChainSyncMetrics::new(registry)?,
+        })
     }
 
     /// Add new block to linear chain.
@@ -236,7 +243,10 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
                 warn!("tried fetching next block deploys when there was no block.");
                 Effects::new()
             },
-            |block| fetch_block_deploys(effect_builder, peer, block),
+            |block| {
+                self.metrics.reset_start_time();
+                fetch_block_deploys(effect_builder, peer, block)
+            },
         )
     }
 
@@ -255,10 +265,12 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         match self.state {
             State::SyncingTrustedHash { .. } => {
                 let parent_hash = *block_header.parent_hash();
+                self.metrics.reset_start_time();
                 fetch_block_by_hash(effect_builder, peer, parent_hash)
             }
             State::SyncingDescendants { .. } => {
                 let next_height = block_header.height() + 1;
+                self.metrics.reset_start_time();
                 fetch_block_at_height(effect_builder, peer, next_height)
             }
             State::Done | State::None => {
@@ -301,127 +313,152 @@ where
                     State::SyncingTrustedHash { trusted_hash, .. } => {
                         trace!(?trusted_hash, "start synchronization");
                         // Start synchronization.
+                        self.metrics.reset_start_time();
                         fetch_block_by_hash(effect_builder, init_peer, trusted_hash)
                     }
                 }
             }
-            Event::GetBlockHeightResult(block_height, fetch_result) => match fetch_result {
-                BlockByHeightResult::Absent(peer) => {
-                    trace!(%block_height, %peer, "failed to download block by height. Trying next peer");
-                    self.peers.failure(&peer);
-                    match self.peers.random() {
-                        None => {
-                            // `block_height` not found on any of the peers.
-                            // We have synchronized all, currently existing, descendants of trusted
-                            // hash.
-                            self.mark_done();
-                            info!("finished synchronizing descendants of the trusted hash.");
-                            Effects::new()
+            Event::GetBlockHeightResult(block_height, fetch_result) => {
+                match fetch_result {
+                    BlockByHeightResult::Absent(peer) => {
+                        self.metrics.observe_get_block_by_height();
+                        trace!(%block_height, %peer, "failed to download block by height. Trying next peer");
+                        self.peers.failure(&peer);
+                        match self.peers.random() {
+                            None => {
+                                // `block_height` not found on any of the peers.
+                                // We have synchronized all, currently existing, descendants of
+                                // trusted hash.
+                                self.mark_done();
+                                info!("finished synchronizing descendants of the trusted hash.");
+                                Effects::new()
+                            }
+                            Some(peer) => {
+                                self.metrics.reset_start_time();
+                                fetch_block_at_height(effect_builder, peer, block_height)
+                            }
                         }
-                        Some(peer) => fetch_block_at_height(effect_builder, peer, block_height),
                     }
-                }
-                BlockByHeightResult::FromStorage(block) => {
-                    // We shouldn't get invalid data from the storage.
-                    // If we do, it's a bug.
-                    assert_eq!(block.height(), block_height, "Block height mismatch.");
-                    trace!(%block_height, "Linear block found in the local storage.");
-                    // When syncing descendants of a trusted hash, we might have some of them in our
-                    // local storage. If that's the case, just continue.
-                    self.block_downloaded(rng, effect_builder, block.header())
-                }
-                BlockByHeightResult::FromPeer(block, peer) => {
-                    trace!(%block_height, %peer, "linear chain block downloaded from a peer");
-                    if block.height() != block_height
-                        || *block.header().parent_hash() != self.latest_block().unwrap().hash()
-                    {
-                        warn!(
-                            %peer,
-                            got_height = block.height(),
-                            expected_height = block_height,
-                            got_parent = %block.header().parent_hash(),
-                            expected_parent = %self.latest_block().unwrap().hash(),
-                            "block mismatch",
-                        );
-                        // NOTE: Signal misbehaving validator to networking layer.
-                        self.peers.ban(&peer);
-                        return self.handle_event(
-                            effect_builder,
-                            rng,
-                            Event::GetBlockHeightResult(
-                                block_height,
-                                BlockByHeightResult::Absent(peer),
-                            ),
-                        );
+                    BlockByHeightResult::FromStorage(block) => {
+                        // We shouldn't get invalid data from the storage.
+                        // If we do, it's a bug.
+                        assert_eq!(block.height(), block_height, "Block height mismatch.");
+                        trace!(%block_height, "Linear block found in the local storage.");
+                        // When syncing descendants of a trusted hash, we might have some of them in
+                        // our local storage. If that's the case, just
+                        // continue.
+                        self.block_downloaded(rng, effect_builder, block.header())
                     }
-                    self.peers.success(peer);
-                    self.block_downloaded(rng, effect_builder, block.header())
-                }
-            },
-            Event::GetBlockHashResult(block_hash, fetch_result) => match fetch_result {
-                BlockByHashResult::Absent(peer) => {
-                    trace!(%block_hash, %peer, "failed to download block by hash. Trying next peer");
-                    self.peers.failure(&peer);
-                    match self.peers.random() {
-                        None => {
-                            error!(%block_hash, "Could not download linear block from any of the peers.");
-                            panic!("Failed to download linear chain.")
+                    BlockByHeightResult::FromPeer(block, peer) => {
+                        self.metrics.observe_get_block_by_height();
+                        trace!(%block_height, %peer, "linear chain block downloaded from a peer");
+                        if block.height() != block_height
+                            || *block.header().parent_hash() != self.latest_block().unwrap().hash()
+                        {
+                            warn!(
+                                %peer,
+                                got_height = block.height(),
+                                expected_height = block_height,
+                                got_parent = %block.header().parent_hash(),
+                                expected_parent = %self.latest_block().unwrap().hash(),
+                                "block mismatch",
+                            );
+                            // NOTE: Signal misbehaving validator to networking layer.
+                            self.peers.ban(&peer);
+                            return self.handle_event(
+                                effect_builder,
+                                rng,
+                                Event::GetBlockHeightResult(
+                                    block_height,
+                                    BlockByHeightResult::Absent(peer),
+                                ),
+                            );
                         }
-                        Some(peer) => fetch_block_by_hash(effect_builder, peer, block_hash),
+                        self.peers.success(peer);
+                        self.block_downloaded(rng, effect_builder, block.header())
                     }
                 }
-                BlockByHashResult::FromStorage(block) => {
-                    // We shouldn't get invalid data from the storage.
-                    // If we do, it's a bug.
-                    assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
-                    trace!(%block_hash, "linear block found in the local storage.");
-                    self.block_downloaded(rng, effect_builder, block.header())
-                }
-                BlockByHashResult::FromPeer(block, peer) => {
-                    trace!(%block_hash, %peer, "linear chain block downloaded from a peer");
-                    if *block.hash() != block_hash {
-                        warn!(
-                            "block hash mismatch. Expected {} got {} from {}.",
-                            block_hash,
-                            block.hash(),
-                            peer
-                        );
-                        // NOTE: Signal misbehaving validator to networking layer.
-                        self.peers.ban(&peer);
-                        return self.handle_event(
-                            effect_builder,
-                            rng,
-                            Event::GetBlockHashResult(block_hash, BlockByHashResult::Absent(peer)),
-                        );
+            }
+            Event::GetBlockHashResult(block_hash, fetch_result) => {
+                match fetch_result {
+                    BlockByHashResult::Absent(peer) => {
+                        self.metrics.observe_get_block_by_hash();
+                        trace!(%block_hash, %peer, "failed to download block by hash. Trying next peer");
+                        self.peers.failure(&peer);
+                        match self.peers.random() {
+                            None => {
+                                error!(%block_hash, "Could not download linear block from any of the peers.");
+                                panic!("Failed to download linear chain.")
+                            }
+                            Some(peer) => {
+                                self.metrics.reset_start_time();
+                                fetch_block_by_hash(effect_builder, peer, block_hash)
+                            }
+                        }
                     }
-                    self.peers.success(peer);
-                    self.block_downloaded(rng, effect_builder, block.header())
+                    BlockByHashResult::FromStorage(block) => {
+                        // We shouldn't get invalid data from the storage.
+                        // If we do, it's a bug.
+                        assert_eq!(*block.hash(), block_hash, "Block hash mismatch.");
+                        trace!(%block_hash, "linear block found in the local storage.");
+                        self.block_downloaded(rng, effect_builder, block.header())
+                    }
+                    BlockByHashResult::FromPeer(block, peer) => {
+                        self.metrics.observe_get_block_by_hash();
+                        trace!(%block_hash, %peer, "linear chain block downloaded from a peer");
+                        if *block.hash() != block_hash {
+                            warn!(
+                                "block hash mismatch. Expected {} got {} from {}.",
+                                block_hash,
+                                block.hash(),
+                                peer
+                            );
+                            // NOTE: Signal misbehaving validator to networking layer.
+                            self.peers.ban(&peer);
+                            return self.handle_event(
+                                effect_builder,
+                                rng,
+                                Event::GetBlockHashResult(
+                                    block_hash,
+                                    BlockByHashResult::Absent(peer),
+                                ),
+                            );
+                        }
+                        self.peers.success(peer);
+                        self.block_downloaded(rng, effect_builder, block.header())
+                    }
                 }
-            },
-            Event::GetDeploysResult(fetch_result) => match fetch_result {
-                event::DeploysResult::Found(block_header) => {
-                    let block_hash = block_header.hash();
-                    trace!(%block_hash, "deploys for linear chain block found");
-                    // Reset used peers so we can download next block with the full set.
-                    self.peers.reset(rng);
-                    // Execute block
-                    let finalized_block: FinalizedBlock = (*block_header).into();
-                    effect_builder.execute_block(finalized_block).ignore()
-                }
-                event::DeploysResult::NotFound(block_header, peer) => {
-                    let block_hash = block_header.hash();
-                    trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
-                    self.peers.failure(&peer);
-                    match self.peers.random() {
-                        None => {
-                            error!(%block_hash,
+            }
+            Event::GetDeploysResult(fetch_result) => {
+                self.metrics.observe_get_deploy();
+                match fetch_result {
+                    event::DeploysResult::Found(block_header) => {
+                        let block_hash = block_header.hash();
+                        trace!(%block_hash, "deploys for linear chain block found");
+                        // Reset used peers so we can download next block with the full set.
+                        self.peers.reset(rng);
+                        // Execute block
+                        let finalized_block: FinalizedBlock = (*block_header).into();
+                        effect_builder.execute_block(finalized_block).ignore()
+                    }
+                    event::DeploysResult::NotFound(block_header, peer) => {
+                        let block_hash = block_header.hash();
+                        trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
+                        self.peers.failure(&peer);
+                        match self.peers.random() {
+                            None => {
+                                error!(%block_hash,
                                 "could not download deploys from linear chain block.");
-                            panic!("Failed to download linear chain deploys.")
+                                panic!("Failed to download linear chain deploys.")
+                            }
+                            Some(peer) => {
+                                self.metrics.reset_start_time();
+                                fetch_block_deploys(effect_builder, peer, *block_header)
+                            }
                         }
-                        Some(peer) => fetch_block_deploys(effect_builder, peer, *block_header),
                     }
                 }
-            },
+            }
             Event::StartDownloadingDeploys => {
                 // Start downloading deploys from the first block of the linear chain.
                 self.peers.reset(rng);
