@@ -40,7 +40,7 @@ impl<I: Clone + PartialEq + 'static> PeersState<I> {
             self.next_succ().or_else(|| self.peers_to_try.pop())
         } else {
             self.succ_attempts = 0;
-            self.peers_to_try.pop()
+            self.peers_to_try.pop().or_else(|| self.next_succ())
         }
     }
 
