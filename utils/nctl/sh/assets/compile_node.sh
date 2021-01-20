@@ -7,11 +7,10 @@
 #   NCTL - path to nctl home directory.
 ########################################
 
-# Import utils.
 source "$NCTL"/sh/utils/main.sh
 
 pushd "$NCTL_CASPER_HOME" || exit
-# make setup-rs
-make build-system-contracts -j
+
 cargo build --release --package casper-node
+
 popd || exit

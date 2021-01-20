@@ -161,7 +161,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let unbond_era_1 = unbond_list[0].era_of_creation();
 
-    let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
+    let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         auction,
         METHOD_RUN_AUCTION,
@@ -169,7 +169,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     )
     .build();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder.exec(exec_request_4).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
@@ -193,7 +193,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     assert_eq!(unbond_era_2, unbond_era_1);
 
-    let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
+    let exec_request_5 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
         auction,
         METHOD_SLASH,
@@ -205,7 +205,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     )
     .build();
 
-    builder.exec(exec_request_4).expect_success().commit();
+    builder.exec(exec_request_5).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert!(

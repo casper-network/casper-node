@@ -19,7 +19,6 @@ source "$NCTL"/sh/assets/setup_node.sh
 # Sets assets pertaining to network binaries.
 # Globals:
 #   NCTL_CASPER_HOME - path to node software github repo.
-#   NCTL_CONTRACTS_SYSTEM - array of system contracts.
 #   NCTL_CONTRACTS_CLIENT - array of client side contracts.
 #######################################
 function _set_bin()
@@ -33,12 +32,6 @@ function _set_bin()
     # Set executables.
     cp "$NCTL_CASPER_HOME"/target/release/casper-client "$PATH_TO_BIN"
     cp "$NCTL_CASPER_HOME"/target/release/casper-node "$PATH_TO_BIN"
-
-    # Set system contracts.
-	for CONTRACT in "${NCTL_CONTRACTS_SYSTEM[@]}"
-	do
-        cp "$NCTL_CASPER_HOME"/target/wasm32-unknown-unknown/release/"$CONTRACT" "$PATH_TO_BIN"
-	done
 
     # Set client contracts.
 	for CONTRACT in "${NCTL_CONTRACTS_CLIENT[@]}"
@@ -103,10 +96,6 @@ function _set_chainspec_config()
         "cfg['genesis']['timestamp']='$GENESIS_TIMESTAMP';"
         "cfg['genesis']['validator_slots']=$COUNT_MAX_NODES;"
         "cfg['genesis']['accounts_path']='$PATH_TO_NET/chainspec/accounts.csv';"
-        "cfg['genesis']['auction_installer_path']='$PATH_TO_NET/bin/auction_install.wasm';"
-        "cfg['genesis']['mint_installer_path']='$PATH_TO_NET/bin/mint_install.wasm';"
-        "cfg['genesis']['pos_installer_path']='$PATH_TO_NET/bin/pos_install.wasm';"
-        "cfg['genesis']['standard_payment_installer_path']='$PATH_TO_NET/bin/standard_payment_install.wasm';"
         "toml.dump(cfg, open('$PATH_TO_FILE', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"

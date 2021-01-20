@@ -20,17 +20,6 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
 
         let upgrade_point = pb_upgrade_request.mut_upgrade_point();
         let new_protocol_version: ProtocolVersion = upgrade_point.take_protocol_version().into();
-        let (upgrade_installer_bytes, upgrade_installer_args) =
-            if !upgrade_point.has_upgrade_installer() {
-                (None, None)
-            } else {
-                let upgrade_installer = upgrade_point.take_upgrade_installer();
-                let bytes = upgrade_installer.code;
-                let bytes = if bytes.is_empty() { None } else { Some(bytes) };
-                let args = upgrade_installer.args;
-                let args = if args.is_empty() { None } else { Some(args) };
-                (bytes, args)
-            };
 
         let wasm_config = if !upgrade_point.has_new_wasm_config() {
             None
@@ -101,8 +90,6 @@ impl TryFrom<UpgradeRequest> for UpgradeConfig {
             pre_state_hash,
             current_protocol_version,
             new_protocol_version,
-            upgrade_installer_args,
-            upgrade_installer_bytes,
             wasm_config,
             system_config,
             activation_point,
