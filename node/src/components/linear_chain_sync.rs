@@ -35,7 +35,7 @@ use tracing::{error, info, trace, warn};
 
 use casper_types::{PublicKey, U512};
 
-use self::event::BlockByHashResult;
+use self::event::{BlockByHashResult, DeploysResult};
 
 use super::{fetcher::FetchResult, Component};
 use crate::{
@@ -395,32 +395,34 @@ where
                     self.block_downloaded(rng, effect_builder, block.header())
                 }
             },
-            Event::DeploysFound(block_header) => {
-                let block_hash = block_header.hash();
-                trace!(%block_hash, "deploys for linear chain block found");
-                // Reset used peers so we can download next block with the full set.
-                self.peers.reset_peers(rng);
-                // Execute block
-                let finalized_block: FinalizedBlock = (*block_header).into();
-                effect_builder.execute_block(finalized_block).ignore()
-            }
-            Event::DeploysNotFound(block_header, peer) => {
-                let block_hash = block_header.hash();
-                trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
-                match self.peers.random_peer() {
-                    None => {
-                        let block_hash = block_header.hash();
-                        error!(%block_hash, "could not download deploys from linear chain block.");
-                        panic!("Failed to download linear chain deploys.")
-                    }
-                    Some(peer) => {
-                        let block_hash = (*block_header).hash();
-                        trace!(%block_hash, next_peer=%peer,
-                        "failed to download deploys from a peer. Trying next one");
-                        fetch_block_deploys(effect_builder, peer, *block_header)
+            Event::GetDeploysResult(fetch_result) => match fetch_result {
+                event::DeploysResult::Found(block_header) => {
+                    let block_hash = block_header.hash();
+                    trace!(%block_hash, "deploys for linear chain block found");
+                    // Reset used peers so we can download next block with the full set.
+                    self.peers.reset_peers(rng);
+                    // Execute block
+                    let finalized_block: FinalizedBlock = (*block_header).into();
+                    effect_builder.execute_block(finalized_block).ignore()
+                }
+                event::DeploysResult::NotFound(block_header, peer) => {
+                    let block_hash = block_header.hash();
+                    trace!(%block_hash, %peer, "deploy for linear chain block not found. Trying next peer");
+                    match self.peers.random_peer() {
+                        None => {
+                            let block_hash = block_header.hash();
+                            error!(%block_hash, "could not download deploys from linear chain block.");
+                            panic!("Failed to download linear chain deploys.")
+                        }
+                        Some(peer) => {
+                            let block_hash = (*block_header).hash();
+                            trace!(%block_hash, next_peer=%peer,
+                                "failed to download deploys from a peer. Trying next one");
+                            fetch_block_deploys(effect_builder, peer, *block_header)
+                        }
                     }
                 }
-            }
+            },
             Event::StartDownloadingDeploys => {
                 // Start downloading deploys from the first block of the linear chain.
                 self.peers.reset_peers(rng);
@@ -465,9 +467,9 @@ where
         .validate_block(peer.clone(), block_header, block_timestamp)
         .event(move |(found, block_header)| {
             if found {
-                Event::DeploysFound(Box::new(block_header))
+                Event::GetDeploysResult(DeploysResult::Found(Box::new(block_header)))
             } else {
-                Event::DeploysNotFound(Box::new(block_header), peer)
+                Event::GetDeploysResult(DeploysResult::NotFound(Box::new(block_header), peer))
             }
         })
 }
