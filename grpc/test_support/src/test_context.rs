@@ -4,14 +4,16 @@ use casper_execution_engine::{
     core::engine_state::{
         genesis::{GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
-        CONV_RATE,
     },
     shared::motes::Motes,
 };
 use casper_types::{AccessRights, Key, PublicKey, URef, U512};
 
 use crate::{
-    internal::{InMemoryWasmTestBuilder, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH},
+    internal::{
+        InMemoryWasmTestBuilder, DEFAULT_GAS_PRICE, DEFAULT_GENESIS_CONFIG,
+        DEFAULT_GENESIS_CONFIG_HASH,
+    },
     Account, AccountHash, Error, Result, Session, URefAddr, Value,
 };
 
@@ -82,7 +84,7 @@ impl TestContext {
 
                 let expected_source_ending_balance = source_initial_balance
                     - Motes::new(session_transfer_info.transfer_amount)
-                    - Motes::from_gas(gas_cost, CONV_RATE).expect("motes from gas");
+                    - Motes::from_gas(gas_cost, DEFAULT_GAS_PRICE).expect("motes from gas");
                 let actual_source_ending_balance = self
                     .maybe_purse_balance(Some(session_transfer_info.source_purse))
                     .expect("source ending balance");

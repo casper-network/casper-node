@@ -15,7 +15,6 @@
 mod cl_type;
 mod deploy;
 mod error;
-mod executable_deploy_item_ext;
 #[cfg(feature = "ffi")]
 pub mod ffi;
 pub mod keygen;
@@ -36,7 +35,6 @@ pub use deploy::ListDeploysResult;
 use deploy::{DeployExt, DeployParams};
 pub use error::Error;
 use error::Result;
-use executable_deploy_item_ext::ExecutableDeployItemExt;
 use parsing::none_if_empty;
 use rpc::{RpcCall, TransferTarget};
 pub use validation::ValidateResponseError;
@@ -901,8 +899,7 @@ mod param_tests {
                 SessionStrParams::with_hash(HASH, ENTRYPOINT, args_simple(), "").try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::StoredContractByHash { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let actual: BTreeMap<String, CLValue> = item.args().clone().into();
                     let mut expected = BTreeMap::new();
                     expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
@@ -918,8 +915,7 @@ mod param_tests {
                 SessionStrParams::with_name(NAME, ENTRYPOINT, args_simple(), "").try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::StoredContractByName { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let actual: BTreeMap<String, CLValue> = item.args().clone().into();
                     let mut expected = BTreeMap::new();
                     expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
@@ -941,8 +937,7 @@ mod param_tests {
             .try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::StoredVersionedContractByName { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let actual: BTreeMap<String, CLValue> = item.args().clone().into();
                     let mut expected = BTreeMap::new();
                     expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
@@ -964,8 +959,7 @@ mod param_tests {
             .try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::StoredVersionedContractByHash { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let actual: BTreeMap<String, CLValue> = item.args().clone().into();
                     let mut expected = BTreeMap::new();
                     expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
@@ -981,8 +975,7 @@ mod param_tests {
                 SessionStrParams::with_path(PATH, args_simple(), "").try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::ModuleBytes { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let actual: BTreeMap<String, CLValue> = item.args().clone().into();
                     let mut expected = BTreeMap::new();
                     expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
@@ -1007,9 +1000,8 @@ mod param_tests {
                 PaymentStrParams::with_amount("100").try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::ModuleBytes { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
                     let amount = CLValue::from_t(U512::from(100)).unwrap();
-                    assert_eq!(args.get("amount"), Some(&amount));
+                    assert_eq!(item.args().get("amount"), Some(&amount));
                 }
                 other => panic!("incorrect type parsed {:?}", other),
             }
@@ -1021,8 +1013,7 @@ mod param_tests {
                 PaymentStrParams::with_hash(HASH, ENTRYPOINT, args_simple(), "").try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::StoredContractByHash { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let actual: BTreeMap<String, CLValue> = item.args().clone().into();
                     let mut expected = BTreeMap::new();
                     expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
@@ -1038,8 +1029,7 @@ mod param_tests {
                 PaymentStrParams::with_name(NAME, ENTRYPOINT, args_simple(), "").try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::StoredContractByName { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let actual: BTreeMap<String, CLValue> = item.args().clone().into();
                     let mut expected = BTreeMap::new();
                     expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
@@ -1061,8 +1051,7 @@ mod param_tests {
             .try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::StoredVersionedContractByName { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let actual: BTreeMap<String, CLValue> = item.args().clone().into();
                     let mut expected = BTreeMap::new();
                     expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
@@ -1084,8 +1073,7 @@ mod param_tests {
             .try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::StoredVersionedContractByHash { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let actual: BTreeMap<String, CLValue> = item.args().clone().into();
                     let mut expected = BTreeMap::new();
                     expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());
@@ -1101,8 +1089,7 @@ mod param_tests {
                 PaymentStrParams::with_path(PATH, args_simple(), "").try_into();
             match params {
                 Ok(item @ ExecutableDeployItem::ModuleBytes { .. }) => {
-                    let args = item.into_runtime_args().unwrap();
-                    let actual: BTreeMap<String, CLValue> = args.into();
+                    let actual: BTreeMap<String, CLValue> = item.args().clone().into();
                     let mut expected = BTreeMap::new();
                     expected.insert("name_01".to_owned(), CLValue::from_t(false).unwrap());
                     expected.insert("name_02".to_owned(), CLValue::from_t(42u32).unwrap());

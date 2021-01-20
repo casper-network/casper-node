@@ -28,7 +28,7 @@ use num_rational::Ratio;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 use parity_wasm::elements::Module;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use casper_types::{
     account::AccountHash,
@@ -92,13 +92,7 @@ use crate::{
     },
 };
 
-/// Rate for motes/gas conversion.
-///
-/// gas * CONV_RATE = motes
-/// motes / CONV_RATE = gas
-pub const CONV_RATE: u64 = 1;
-
-pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000 * CONV_RATE));
+pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000u64));
 
 pub const SYSTEM_ACCOUNT_ADDR: AccountHash = AccountHash::new([0u8; 32]);
 
@@ -1268,12 +1262,8 @@ where
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
-        let input_runtime_args = match deploy_item.session.into_runtime_args() {
-            Ok(runtime_args) => runtime_args,
-            Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
-        };
-
-        let mut runtime_args_builder = TransferRuntimeArgsBuilder::new(input_runtime_args);
+        let mut runtime_args_builder =
+            TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
         match runtime_args_builder.transfer_target_mode(correlation_id, Rc::clone(&tracking_copy)) {
             Ok(mode) => match mode {
                 TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
@@ -1381,7 +1371,8 @@ where
             ));
 
             let wasmless_transfer_cost =
-                Motes::from_gas(wasmless_transfer_gas_cost, CONV_RATE).expect("gas overflow");
+                Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price)
+                    .expect("gas overflow");
 
             if source_purse_balance < wasmless_transfer_cost {
                 // We can't continue if the minimum funds in source purse are lower than the
@@ -1542,8 +1533,8 @@ where
             // (a) payment purse should be empty before the payment operation
             // (b) after executing payment code it's balance has to be equal to the wasmless gas
             // cost price
-            let payment_gas =
-                Gas::from_motes(payment_purse_balance, CONV_RATE).expect("gas overflow");
+            let payment_gas = Gas::from_motes(payment_purse_balance, deploy_item.gas_price)
+                .expect("gas overflow");
 
             debug_assert_eq!(payment_gas, wasmless_transfer_gas_cost);
 
@@ -1619,7 +1610,8 @@ where
             let proof_of_stake_args = {
                 // Gas spent during payment code execution
                 let finalize_cost_motes: Motes =
-                    Motes::from_gas(payment_result.cost(), CONV_RATE).expect("motes overflow");
+                    Motes::from_gas(payment_result.cost(), deploy_item.gas_price)
+                        .expect("motes overflow");
 
                 let account = deploy_item.address;
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
@@ -1913,8 +1905,9 @@ where
         // Execute provided payment code
         let payment_result = {
             // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
-            // conv_rate)
-            let pay_gas_limit = Gas::from_motes(max_payment_cost, CONV_RATE).unwrap_or_default();
+            // gas_price)
+            let pay_gas_limit =
+                Gas::from_motes(max_payment_cost, deploy_item.gas_price).unwrap_or_default();
 
             let module_bytes_is_empty = match payment {
                 ExecutableDeployItem::ModuleBytes {
@@ -2014,15 +2007,7 @@ where
                 ),
             };
 
-            let payment_args = match payment.into_runtime_args() {
-                Ok(args) => args,
-                Err(e) => {
-                    let exec_err: execution::Error = e.into();
-                    warn!("Unable to deserialize arguments: {:?}", exec_err);
-                    return Ok(ExecutionResult::precondition_failure(exec_err.into()));
-                }
-            };
-
+            let payment_args = payment.args().clone();
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             if self.config.use_system_contracts() || !module_bytes_is_empty {
@@ -2172,7 +2157,9 @@ where
             proposer_account.main_purse()
         };
 
-        if let Some(forced_transfer) = payment_result.check_forced_transfer(payment_purse_balance) {
+        if let Some(forced_transfer) =
+            payment_result.check_forced_transfer(payment_purse_balance, deploy_item.gas_price)
+        {
             // Get rewards purse balance key
             // payment_code_spec_6: system contract validity
             let proposer_main_purse_balance_key = {
@@ -2199,6 +2186,7 @@ where
                 error,
                 max_payment_cost,
                 account_main_purse_balance,
+                deploy_item.gas_price,
                 account_main_purse_balance_key,
                 proposer_main_purse_balance_key,
             ) {
@@ -2251,22 +2239,15 @@ where
             ),
         };
 
-        let session_args = match session.into_runtime_args() {
-            Ok(args) => args,
-            Err(e) => {
-                let exec_err: execution::Error = e.into();
-                warn!("Unable to deserialize session arguments: {:?}", exec_err);
-                return Ok(ExecutionResult::precondition_failure(exec_err.into()));
-            }
-        };
+        let session_args = session.args().clone();
         let mut session_result = {
             // payment_code_spec_3_b_i: if (balance of PoS pay purse) >= (gas spent during
-            // payment code execution) * conv_rate, yes session
-            // session_code_spec_1: gas limit = ((balance of PoS payment purse) / conv_rate)
+            // payment code execution) * gas_price, yes session
+            // session_code_spec_1: gas limit = ((balance of PoS payment purse) / gas_price)
             // - (gas spent during payment execution)
-            let session_gas_limit: Gas = Gas::from_motes(payment_purse_balance, CONV_RATE)
-                .unwrap_or_default()
-                - payment_result_cost;
+            let session_gas_limit: Gas =
+                Gas::from_motes(payment_purse_balance, deploy_item.gas_price).unwrap_or_default()
+                    - payment_result_cost;
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             executor.exec(
@@ -2327,9 +2308,9 @@ where
             let finalization_tc = Rc::new(RefCell::new(post_session_tc.fork()));
 
             let proof_of_stake_args = {
-                //((gas spent during payment code execution) + (gas spent during session code execution)) * conv_rate
+                //((gas spent during payment code execution) + (gas spent during session code execution)) * gas_price
                 let finalize_cost_motes: Motes =
-                    Motes::from_gas(execution_result_builder.total_cost(), CONV_RATE)
+                    Motes::from_gas(execution_result_builder.total_cost(), deploy_item.gas_price)
                         .expect("motes overflow");
 
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {

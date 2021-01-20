@@ -1,11 +1,11 @@
 use casper_engine_test_support::{
     internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+        DEFAULT_GAS_PRICE, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{core::engine_state::CONV_RATE, shared::motes::Motes};
+use casper_execution_engine::shared::motes::Motes;
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -104,7 +104,7 @@ fn should_charge_non_main_purse() {
 
     let result = utils::get_success_result(&response);
     let gas = result.cost();
-    let motes = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
     let expected_resting_balance = account_1_purse_funding_amount - motes.value();
 
