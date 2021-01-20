@@ -396,27 +396,31 @@ where
                 }
             },
             Event::DeploysFound(block_header) => {
-                let block_height = block_header.height();
-                trace!(%block_height, "deploys for linear chain block found.");
+                let block_hash = block_header.hash();
+                trace!(%block_hash, "deploys for linear chain block found");
                 // Reset used peers so we can download next block with the full set.
                 self.peers.reset_peers(rng);
                 // Execute block
                 let finalized_block: FinalizedBlock = (*block_header).into();
                 effect_builder.execute_block(finalized_block).ignore()
             }
-            Event::DeploysNotFound(block_header) => match self.peers.random_peer() {
-                None => {
-                    let block_hash = block_header.hash();
-                    error!(%block_hash, "could not download deploys from linear chain block.");
-                    panic!("Failed to download linear chain deploys.")
-                }
-                Some(peer) => {
-                    let block_hash = (*block_header).hash();
-                    trace!(%block_hash, next_peer=%peer,
+            Event::DeploysNotFound(block_header) => {
+                let block_hash = block_header.hash();
+                trace!(%block_hash, "deploy for linear chain block not found. Trying next peer");
+                match self.peers.random_peer() {
+                    None => {
+                        let block_hash = block_header.hash();
+                        error!(%block_hash, "could not download deploys from linear chain block.");
+                        panic!("Failed to download linear chain deploys.")
+                    }
+                    Some(peer) => {
+                        let block_hash = (*block_header).hash();
+                        trace!(%block_hash, next_peer=%peer,
                         "failed to download deploys from a peer. Trying next one");
-                    fetch_block_deploys(effect_builder, peer, *block_header)
+                        fetch_block_deploys(effect_builder, peer, *block_header)
+                    }
                 }
-            },
+            }
             Event::StartDownloadingDeploys => {
                 // Start downloading deploys from the first block of the linear chain.
                 self.peers.reset_peers(rng);
