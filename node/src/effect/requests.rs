@@ -798,7 +798,7 @@ pub enum FetcherRequest<I, T: Item> {
         /// The peer id of the peer to be asked if the item is not held locally
         peer: I,
         /// Responder to call with the result.
-        responder: Responder<Option<FetchResult<T>>>,
+        responder: Responder<Option<FetchResult<T, I>>>,
     },
 }
 

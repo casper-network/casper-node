@@ -147,7 +147,7 @@ where
                                 // ...then request it.
                                 let deploy_hash = *deploy_hash;
                                 let validate_deploy =
-                                    move |result: FetchResult<Deploy>| match result {
+                                    move |result: FetchResult<Deploy, I>| match result {
                                         FetchResult::FromStorage(deploy)
                                         | FetchResult::FromPeer(deploy, _) => {
                                             if deploy.header().is_valid(
