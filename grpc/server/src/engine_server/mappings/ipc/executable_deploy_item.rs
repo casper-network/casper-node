@@ -1,6 +1,10 @@
 use std::convert::{TryFrom, TryInto};
 
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
+use casper_types::{
+    bytesrepr::{self, ToBytes},
+    RuntimeArgs,
+};
 
 use crate::engine_server::{
     ipc::{DeployPayload, DeployPayload_oneof_payload},
@@ -10,11 +14,15 @@ use crate::engine_server::{
 impl TryFrom<DeployPayload_oneof_payload> for ExecutableDeployItem {
     type Error = MappingError;
     fn try_from(pb_deploy_payload: DeployPayload_oneof_payload) -> Result<Self, Self::Error> {
+        let into_args = |serialized_args: Vec<u8>| -> Result<RuntimeArgs, Self::Error> {
+            Ok(bytesrepr::deserialize(serialized_args)?)
+        };
+
         Ok(match pb_deploy_payload {
             DeployPayload_oneof_payload::deploy_code(pb_deploy_code) => {
                 ExecutableDeployItem::ModuleBytes {
                     module_bytes: pb_deploy_code.code.into(),
-                    args: pb_deploy_code.args.into(),
+                    args: into_args(pb_deploy_code.args)?,
                 }
             }
             DeployPayload_oneof_payload::stored_contract_hash(mut pb_stored_contract_hash) => {
@@ -26,14 +34,14 @@ impl TryFrom<DeployPayload_oneof_payload> for ExecutableDeployItem {
                 ExecutableDeployItem::StoredContractByHash {
                     hash,
                     entry_point: pb_stored_contract_hash.entry_point_name,
-                    args: pb_stored_contract_hash.args.into(),
+                    args: into_args(pb_stored_contract_hash.args)?,
                 }
             }
             DeployPayload_oneof_payload::stored_contract_name(pb_stored_contract_name) => {
                 ExecutableDeployItem::StoredContractByName {
                     name: pb_stored_contract_name.name,
                     entry_point: pb_stored_contract_name.entry_point_name,
-                    args: pb_stored_contract_name.args.into(),
+                    args: into_args(pb_stored_contract_name.args)?,
                 }
             }
             DeployPayload_oneof_payload::stored_package_by_name(mut pb_stored_package_by_name) => {
@@ -47,7 +55,7 @@ impl TryFrom<DeployPayload_oneof_payload> for ExecutableDeployItem {
                         None
                     },
                     entry_point: pb_stored_package_by_name.entry_point_name,
-                    args: pb_stored_package_by_name.args.into(),
+                    args: into_args(pb_stored_package_by_name.args)?,
                 }
             }
             DeployPayload_oneof_payload::stored_package_by_hash(mut pb_stored_package_by_hash) => {
@@ -66,11 +74,11 @@ impl TryFrom<DeployPayload_oneof_payload> for ExecutableDeployItem {
                         None
                     },
                     entry_point: pb_stored_package_by_hash.entry_point_name,
-                    args: pb_stored_package_by_hash.args.into(),
+                    args: into_args(pb_stored_package_by_hash.args)?,
                 }
             }
             DeployPayload_oneof_payload::transfer(pb_transfer) => ExecutableDeployItem::Transfer {
-                args: pb_transfer.args.into(),
+                args: into_args(pb_transfer.args)?,
             },
         })
     }
@@ -83,7 +91,7 @@ impl From<ExecutableDeployItem> for DeployPayload {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
                 let code = result.mut_deploy_code();
                 code.set_code(module_bytes.into());
-                code.set_args(args.into());
+                code.set_args(args.to_bytes().expect("should serialize args"));
             }
             ExecutableDeployItem::StoredContractByHash {
                 hash,
@@ -91,9 +99,9 @@ impl From<ExecutableDeployItem> for DeployPayload {
                 args,
             } => {
                 let inner = result.mut_stored_contract_hash();
-                inner.set_hash(hash.to_vec());
+                inner.set_hash(hash.value().to_vec());
                 inner.set_entry_point_name(entry_point);
-                inner.set_args(args.into());
+                inner.set_args(args.to_bytes().expect("should serialize args"));
             }
             ExecutableDeployItem::StoredContractByName {
                 name,
@@ -103,7 +111,7 @@ impl From<ExecutableDeployItem> for DeployPayload {
                 let inner = result.mut_stored_contract_name();
                 inner.set_name(name);
                 inner.set_entry_point_name(entry_point);
-                inner.set_args(args.into());
+                inner.set_args(args.to_bytes().expect("should serialize args"));
             }
             ExecutableDeployItem::StoredVersionedContractByName {
                 name,
@@ -117,7 +125,7 @@ impl From<ExecutableDeployItem> for DeployPayload {
                     inner.set_version(ver)
                 }
                 inner.set_entry_point_name(entry_point);
-                inner.set_args(args.into());
+                inner.set_args(args.to_bytes().expect("should serialize args"));
             }
             ExecutableDeployItem::StoredVersionedContractByHash {
                 hash,
@@ -126,16 +134,16 @@ impl From<ExecutableDeployItem> for DeployPayload {
                 args,
             } => {
                 let inner = result.mut_stored_package_by_hash();
-                inner.set_hash(hash.to_vec());
+                inner.set_hash(hash.value().to_vec());
                 if let Some(ver) = version {
                     inner.set_version(ver)
                 }
                 inner.set_entry_point_name(entry_point);
-                inner.set_args(args.into());
+                inner.set_args(args.to_bytes().expect("should serialize args"));
             }
             ExecutableDeployItem::Transfer { args } => {
                 let inner = result.mut_transfer();
-                inner.set_args(args.into());
+                inner.set_args(args.to_bytes().expect("should serialize args"));
             }
         }
         result

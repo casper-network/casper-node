@@ -3,13 +3,13 @@ use assert_matches::assert_matches;
 use casper_engine_test_support::{
     internal::{
         utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+        DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::{
-        engine_state::{Error, CONV_RATE, MAX_PAYMENT},
+        engine_state::{Error, MAX_PAYMENT},
         execution,
     },
     shared::{gas::Gas, motes::Motes, transform::Transform},
@@ -73,157 +73,6 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
         transform.len(),
         expected_transfers_count,
         "there should be no transforms if the account main purse has less than max payment"
-    );
-}
-
-#[cfg(feature = "use-system-contracts")]
-#[ignore]
-#[test]
-fn should_raise_insufficient_payment_when_payment_code_does_not_pay_enough() {
-    let account_1_account_hash = ACCOUNT_1_ADDR;
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
-
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_deploy_hash([1; 32])
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(1)})
-            .with_session_code(
-                TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(1) },
-            )
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    builder.exec(exec_request).commit();
-
-    let proposer_reward_modified_balance = builder.get_proposer_purse_balance();
-
-    let paid_transaction_fee = proposer_reward_modified_balance - proposer_reward_starting_balance;
-
-    let modified_balance = builder.get_purse_balance(
-        builder
-            .get_account(*DEFAULT_ACCOUNT_ADDR)
-            .expect("should have account")
-            .main_purse(),
-    );
-
-    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let penalty_payment_amount = *MAX_PAYMENT;
-
-    assert_eq!(
-        modified_balance,
-        initial_balance - penalty_payment_amount,
-        "modified balance is incorrect"
-    );
-
-    assert_eq!(
-        paid_transaction_fee, penalty_payment_amount,
-        "transaction fee is incorrect"
-    );
-
-    assert_eq!(
-        initial_balance,
-        (modified_balance + paid_transaction_fee),
-        "no net resources should be gained or lost post-distribution"
-    );
-
-    let response = builder
-        .get_exec_response(0)
-        .expect("there should be a response");
-
-    let execution_result = utils::get_success_result(response);
-    let error_message = format!(
-        "{:?}",
-        execution_result.as_error().expect("should have error")
-    );
-
-    assert_eq!(
-        error_message, "InsufficientPayment",
-        "expected insufficient payment"
-    );
-}
-
-#[cfg(feature = "use-system-contracts")]
-#[ignore]
-#[test]
-fn should_raise_insufficient_payment_error_when_out_of_gas() {
-    let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount: U512 = U512::from(1);
-    let transferred_amount = U512::from(1);
-
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_deploy_hash([1; 32])
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount})
-            .with_session_code(
-                TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount }
-            )
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
-
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
-
-    builder.exec(exec_request).commit().finish();
-
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
-    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    let expected_reward_balance = *MAX_PAYMENT;
-
-    let modified_balance = builder.get_purse_balance(
-        builder
-            .get_account(*DEFAULT_ACCOUNT_ADDR)
-            .expect("should have account")
-            .main_purse(),
-    );
-
-    assert_eq!(
-        modified_balance,
-        initial_balance - expected_reward_balance,
-        "modified balance is incorrect"
-    );
-
-    assert_eq!(
-        transaction_fee, expected_reward_balance,
-        "transaction fee is incorrect"
-    );
-
-    assert_eq!(
-        initial_balance,
-        (modified_balance + transaction_fee),
-        "no net resources should be gained or lost post-distribution"
-    );
-
-    let response = builder
-        .get_exec_response(0)
-        .expect("there should be a response");
-
-    let execution_result = utils::get_success_result(response);
-    let error_message = format!(
-        "{:?}",
-        execution_result.as_error().expect("should have error")
-    );
-
-    assert_eq!(
-        error_message, "InsufficientPayment",
-        "expected insufficient payment"
     );
 }
 
@@ -360,8 +209,8 @@ fn should_forward_payment_execution_gas_limit_error() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
-    let payment_gas_limit =
-        Gas::from_motes(Motes::new(*MAX_PAYMENT), CONV_RATE).expect("should convert to gas");
+    let payment_gas_limit = Gas::from_motes(Motes::new(*MAX_PAYMENT), DEFAULT_GAS_PRICE)
+        .expect("should convert to gas");
     assert_eq!(
         execution_result.cost(),
         payment_gas_limit,
@@ -407,7 +256,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
-    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), CONV_RATE)
+    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
         execution_result.cost(),
@@ -458,7 +307,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
 
     let success_result = utils::get_success_result(&response);
     let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
     let tally = motes.value() + modified_balance;
 
@@ -470,7 +319,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     let execution_result = utils::get_success_result(response);
     let error = execution_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
-    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), CONV_RATE)
+    let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
         execution_result.cost(),
@@ -527,7 +376,7 @@ fn should_correctly_charge_when_session_code_fails() {
 
     let success_result = utils::get_success_result(&response);
     let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
     let tally = motes.value() + modified_balance;
 
     assert_eq!(
@@ -585,7 +434,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
 
     let success_result = utils::get_success_result(&response);
     let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
     let total = motes.value() + U512::from(transferred_amount);
     let tally = total + modified_balance;
 

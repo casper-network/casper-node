@@ -16,6 +16,8 @@ use crate::{
     account::{self, AccountHash, TryFromSliceForAccountHashError},
     auction::EraId,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
+    contract_wasm::ContractWasmHash,
+    contracts::{ContractHash, ContractPackageHash},
     uref::{self, URef, UREF_SERIALIZED_LENGTH},
     DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
 };
@@ -56,13 +58,6 @@ impl From<HashAddr> for Key {
         Key::Hash(addr)
     }
 }
-
-/// An alias for [`Key`]s hash variant.
-pub type ContractHash = HashAddr;
-/// An alias for [`Key`]s hash variant.
-pub type ContractWasmHash = HashAddr;
-/// An alias for [`Key`]s hash variant.
-pub type ContractPackageHash = HashAddr;
 
 /// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
 /// are indexed on the network.
@@ -284,6 +279,24 @@ impl From<AccountHash> for Key {
 impl From<TransferAddr> for Key {
     fn from(transfer_addr: TransferAddr) -> Key {
         Key::Transfer(transfer_addr)
+    }
+}
+
+impl From<ContractHash> for Key {
+    fn from(contract_hash: ContractHash) -> Key {
+        Key::Hash(contract_hash.value())
+    }
+}
+
+impl From<ContractWasmHash> for Key {
+    fn from(wasm_hash: ContractWasmHash) -> Key {
+        Key::Hash(wasm_hash.value())
+    }
+}
+
+impl From<ContractPackageHash> for Key {
+    fn from(package_hash: ContractPackageHash) -> Key {
+        Key::Hash(package_hash.value())
     }
 }
 

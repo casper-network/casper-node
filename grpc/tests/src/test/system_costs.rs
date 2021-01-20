@@ -30,7 +30,7 @@ use casper_execution_engine::{
             proof_of_stake_costs::{
                 ProofOfStakeCosts, DEFAULT_FINALIZE_PAYMENT_COST, DEFAULT_SET_REFUND_PURSE_COST,
             },
-            standard_payment_costs::{StandardPaymentCosts, DEFAULT_PAY_COST},
+            standard_payment_costs::StandardPaymentCosts,
             SystemConfig,
         },
         wasm,
@@ -49,9 +49,9 @@ const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 
-const VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
+static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519([123; SecretKey::ED25519_LENGTH]));
-const VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
+static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*VALIDATOR_1_SECRET_KEY));
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
 const BOND_AMOUNT: u64 = 42;
@@ -107,7 +107,8 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -122,7 +123,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     builder.exec(add_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_ADD_BID_COST);
+    let expected_call_cost = U512::from(DEFAULT_ADD_BID_COST);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BOND_AMOUNT) - expected_call_cost
@@ -137,7 +138,8 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_WITHDRAW_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -151,7 +153,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     builder.exec(withdraw_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_WITHDRAW_BID_COST);
+    let expected_call_cost = U512::from(DEFAULT_WITHDRAW_BID_COST);
     assert_eq!(balance_after, balance_before - expected_call_cost);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
@@ -215,7 +217,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_ADD_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -231,7 +234,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     builder.exec(add_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_ADD_BID_COST);
+    let expected_call_cost = U512::from(NEW_ADD_BID_COST);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BOND_AMOUNT) - expected_call_cost
@@ -246,7 +249,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_WITHDRAW_BID,
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -261,7 +265,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     builder.exec(withdraw_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_WITHDRAW_BID_COST);
+    let call_cost = U512::from(NEW_WITHDRAW_BID_COST);
     assert_eq!(balance_after, balance_before - call_cost);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
@@ -311,7 +315,8 @@ fn delegate_and_undelegate_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_DELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -326,7 +331,7 @@ fn delegate_and_undelegate_have_expected_costs() {
     builder.exec(delegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_DELEGATE_COST);
+    let expected_call_cost = U512::from(DEFAULT_DELEGATE_COST);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BID_AMOUNT) - expected_call_cost
@@ -341,7 +346,8 @@ fn delegate_and_undelegate_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_UNDELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -356,7 +362,7 @@ fn delegate_and_undelegate_have_expected_costs() {
     builder.exec(undelegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_UNDELEGATE_COST);
+    let expected_call_cost = U512::from(DEFAULT_UNDELEGATE_COST);
     assert_eq!(balance_after, balance_before - expected_call_cost);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
@@ -437,7 +443,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_DELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -453,7 +460,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     builder.exec(delegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_DELEGATE_COST);
+    let call_cost = U512::from(NEW_DELEGATE_COST);
     assert_eq!(
         balance_after,
         balance_before - U512::from(BID_AMOUNT) - call_cost
@@ -468,7 +475,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .get(AUCTION)
             .unwrap()
             .into_hash()
-            .unwrap(),
+            .unwrap()
+            .into(),
         auction::METHOD_UNDELEGATE,
         runtime_args! {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
@@ -484,7 +492,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     builder.exec(undelegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(NEW_UNDELEGATE_COST);
+    let call_cost = U512::from(NEW_UNDELEGATE_COST);
     assert_eq!(balance_after, balance_before - call_cost);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
@@ -546,7 +554,7 @@ fn mint_transfer_has_expected_costs() {
     builder.exec(transfer_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(source);
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_TRANSFER_COST);
+    let expected_call_cost = U512::from(DEFAULT_TRANSFER_COST);
     assert_eq!(
         balance_after,
         balance_before - transfer_amount - expected_call_cost
@@ -652,7 +660,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
 
         let balance_after = builder.get_purse_balance(account.main_purse());
 
-        let call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(expected_cost);
+        let call_cost = U512::from(expected_cost);
         let lhs = balance_after;
         let rhs = balance_before - call_cost;
         assert_eq!(
@@ -725,7 +733,7 @@ fn should_not_charge_system_account_for_running_auction() {
     builder.exec(run_auction_as_user_request).commit();
     let user_funds_after = builder.get_purse_balance(default_account.main_purse());
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST) + U512::from(DEFAULT_RUN_AUCTION_COST);
+    let expected_call_cost = U512::from(DEFAULT_RUN_AUCTION_COST);
     let lhs = user_funds_after;
     let rhs = user_funds_before - expected_call_cost;
     assert_eq!(lhs, rhs);
@@ -760,10 +768,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
     builder.exec(do_nothing_request).commit().expect_success();
     let user_funds_after = builder.get_purse_balance(default_account.main_purse());
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST);
-    let lhs = user_funds_after;
-    let rhs = user_funds_before - expected_call_cost;
-    assert_eq!(lhs, rhs,);
+    assert_eq!(user_funds_after, user_funds_before,);
 }
 
 #[ignore]
@@ -899,8 +904,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     builder.exec(add_bid_request).commit().expect_success();
     let user_funds_after = builder.get_purse_balance(default_account.main_purse());
 
-    let expected_call_cost = U512::from(DEFAULT_PAY_COST)
-        + U512::from(DEFAULT_ADD_BID_COST)
+    let expected_call_cost = U512::from(DEFAULT_ADD_BID_COST)
         + U512::from(UPDATED_TRANSFER_FROM_PURSE_TO_PURSE_COST)
         + U512::from(BOND_AMOUNT);
     let lhs = user_funds_after;

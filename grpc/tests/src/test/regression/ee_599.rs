@@ -2,12 +2,12 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
+        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::{core::engine_state::CONV_RATE, shared::motes::Motes};
+use casper_execution_engine::shared::motes::Motes;
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_EE_599_REGRESSION: &str = "ee_599_regression.wasm";
@@ -92,7 +92,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
         .builder()
         .get_exec_response(0)
         .expect("should have response");
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], CONV_RATE)
+    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], DEFAULT_GAS_PRICE)
         .expect("should convert");
 
     let error_msg = result_2
@@ -164,7 +164,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
         .get_exec_response(0)
         .expect("should have response");
 
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], CONV_RATE)
+    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], DEFAULT_GAS_PRICE)
         .expect("should convert");
 
     let error_msg = result_2
@@ -246,7 +246,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
         .get_exec_response(0)
         .expect("should have response");
 
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], CONV_RATE)
+    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], DEFAULT_GAS_PRICE)
         .expect("should convert");
 
     let error_msg = result_2
@@ -322,7 +322,7 @@ fn should_not_be_able_to_get_main_purse_in_invalid_context() {
         .get_exec_response(0)
         .expect("should have response");
 
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], CONV_RATE)
+    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], DEFAULT_GAS_PRICE)
         .expect("should convert");
 
     let error_msg = result_2

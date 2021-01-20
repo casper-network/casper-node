@@ -251,7 +251,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_hash(contract_hash, SESSION_CODE_TEST, args)
+            .with_stored_session_hash(contract_hash.into(), SESSION_CODE_TEST, args)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
@@ -264,7 +264,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_hash(contract_hash, CONTRACT_CODE_TEST, args)
+            .with_stored_session_hash(contract_hash.into(), CONTRACT_CODE_TEST, args)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([3; 32])
@@ -277,7 +277,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
         let args = runtime_args! {};
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_hash(contract_hash, ADD_NEW_KEY_AS_SESSION, args)
+            .with_stored_session_hash(contract_hash.into(), ADD_NEW_KEY_AS_SESSION, args)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([4; 32])

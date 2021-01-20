@@ -47,6 +47,8 @@ pub struct ListDeploysResult {
     pub api_version: Version,
     /// The deploy hashes of the block, if found.
     pub deploy_hashes: Option<Vec<DeployHash>>,
+    /// The transfer deploy hashes of the block, if found.
+    pub transfer_hashes: Option<Vec<DeployHash>>,
 }
 
 impl From<GetBlockResult> for ListDeploysResult {
@@ -55,7 +57,12 @@ impl From<GetBlockResult> for ListDeploysResult {
             api_version: get_block_result.api_version,
             deploy_hashes: get_block_result
                 .block
+                .as_ref()
                 .map(|block| block.deploy_hashes().clone()),
+            transfer_hashes: get_block_result
+                .block
+                .as_ref()
+                .map(|block| block.transfer_hashes().clone()),
         }
     }
 }
@@ -195,46 +202,80 @@ mod tests {
     const ENTRYPOINT: &str = "entrypoint";
     const VERSION: &str = "0.1.0";
     const SAMPLE_DEPLOY: &str = r#"{
-        "hash": "5e5baa4f7c77233d1cabe8e28569e597eb5a00e62b29c3278d5179378551bb99",
-        "header": {
-          "account": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
-          "timestamp": "2020-11-24T17:38:19.515Z",
-          "ttl": "10s",
-          "gas_price": 1,
-          "body_hash": "1edd9716bc3b94fb2e4bdc769a1bcb0b3c7c4df2135ff1c2a405f0ae22e47646",
-          "dependencies": [
-            "be5fdeea0240e999e376f8ecbce1bd4fd9336f58dae4a5842558a4da6ad35aa8",
-            "168d7ea9c88e76b3eef72759f2a7af24663cc871a469c7ba1387ca479e82fb41"
-          ],
-          "chain_name": "casper-test-chain-name-1"
+      "hash": "4858bbd79ab7b825244c4e6959cbcd588a05608168ef36518bc6590937191d55",
+      "header": {
+        "account": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
+        "timestamp": "2021-01-19T01:18:19.120Z",
+        "ttl": "10s",
+        "gas_price": 1,
+        "body_hash": "95f2f2358c4864f01f8b073ae6f5ae67baeaf7747fc0799d0078743c513bc1de",
+        "dependencies": [
+          "be5fdeea0240e999e376f8ecbce1bd4fd9336f58dae4a5842558a4da6ad35aa8",
+          "168d7ea9c88e76b3eef72759f2a7af24663cc871a469c7ba1387ca479e82fb41"
+        ],
+        "chain_name": "casper-test-chain-name-1"
+      },
+      "payment": {
+        "StoredVersionedContractByHash": {
+          "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
+          "version": null,
+          "entry_point": "entrypoint",
+          "args": [
+            [
+              "name_01",
+              {
+                "cl_type": "Bool",
+                "bytes": "00",
+                "parsed": false
+              }
+            ],
+            [
+              "name_02",
+              {
+                "cl_type": "I32",
+                "bytes": "2a000000",
+                "parsed": 42
+              }
+            ]
+          ]
+        }
+      },
+      "session": {
+        "StoredVersionedContractByHash": {
+          "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
+          "version": null,
+          "entry_point": "entrypoint",
+          "args": [
+            [
+              "name_01",
+              {
+                "cl_type": "Bool",
+                "bytes": "00",
+                "parsed": false
+              }
+            ],
+            [
+              "name_02",
+              {
+                "cl_type": "I32",
+                "bytes": "2a000000",
+                "parsed": 42
+              }
+            ]
+          ]
+        }
+      },
+      "approvals": [
+        {
+          "signer": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
+          "signature": "010f538ef188770cdbf608bc2d7aa9460108b419b2b629f5e0714204a7f29149809a1d52776b0c514e3320494fdf6f9e9747f06f2c14ddf6f924ce218148e2840a"
         },
-        "payment": {
-          "StoredVersionedContractByHash": {
-            "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
-            "version": null,
-            "entry_point": "entrypoint",
-            "args": "02000000070000006e616d655f3031010000000000070000006e616d655f3032040000002a00000001"
-          }
-        },
-        "session": {
-          "StoredVersionedContractByHash": {
-            "hash": "09dcee4b212cfd53642ab323fbef07dafafc6f945a80a00147f62910a915c4e6",
-            "version": null,
-            "entry_point": "entrypoint",
-            "args": "02000000070000006e616d655f3031010000000000070000006e616d655f3032040000002a00000001"
-          }
-        },
-        "approvals": [
-            {
-                "signer": "01f60bce2bb1059c41910eac1e7ee6c3ef4c8fcc63a901eb9603c1524cadfb0c18",
-                "signature": "010925cbe2ae196a23eafa6b169c36381b4c2f9701c0f9adfef7304bd5f5fbca8b4c08ef439694b6b9597133a6b017b0bc031fbf85fe3725bb0dd5187567839606"
-            },
-            {
-                "signer": "012b4ea314a3d130fa382d3443189adb1e085f24581da256a2ee56dd253e7c56ed",
-                "signature": "017146b3d3684b7124e97ffe962a229cdca7775b6001ad8204f2c97ffba5fe6dbaf72e1636c123a13915f2972f18229e5c8392222a77d7f6b00e1635d63d814700"
-            }
-        ]
-      }"#;
+        {
+          "signer": "01e67d6e56ae07eca98b07ecec8cfbe826b4d5bc51f3a86590c0882cdafbd72fcc",
+          "signature": "01c4f58d7f6145c1e4397efce766149cde5450cbe74991269161e5e1f30a397e6bc4c484f3c72a645cefd42c55cfde0294bfd91de55ca977798c3c8d2a7e43a40c"
+        }
+      ]
+    }"#;
 
     #[derive(Debug)]
     struct ErrWrapper(pub Error);
@@ -280,13 +321,15 @@ mod tests {
         );
         deploy.write_deploy(&mut output).unwrap();
 
+        // The test output can be used to generate data for SAMPLE_DEPLOY:
+        // let secret_key = SecretKey::generate_ed25519().unwrap();
+        // deploy.sign(&secret_key, &mut casper_node::new_rng());
+        // println!("{}", serde_json::to_string_pretty(&deploy).unwrap());
+
         let result = String::from_utf8(output).unwrap();
 
         let expected = Deploy::read_deploy(SAMPLE_DEPLOY.as_bytes()).unwrap();
         let actual = Deploy::read_deploy(result.as_bytes()).unwrap();
-
-        // The test output can be used to generate data for SAMPLE_DEPLOY:
-        // println!("{}", serde_json::to_string_pretty(&actual).unwrap());
 
         assert_eq!(expected.header().account(), actual.header().account());
         assert_eq!(expected.header().ttl(), actual.header().ttl());
@@ -309,11 +352,9 @@ mod tests {
     fn should_sign_deploy() {
         let bytes = SAMPLE_DEPLOY.as_bytes();
         let mut deploy = Deploy::read_deploy(bytes).unwrap();
-        assert!(
-            deploy.is_valid(),
-            "deploy should be is_valid() {:#?}",
-            deploy
-        );
+        deploy
+            .is_valid()
+            .unwrap_or_else(|error| panic!("{} - {:#?}", error, deploy));
         assert_eq!(
             deploy.approvals().len(),
             2,
@@ -324,9 +365,6 @@ mod tests {
         let secret_key = SecretKey::generate_ed25519().unwrap();
         Deploy::sign_and_write_deploy(bytes, secret_key, &mut result).unwrap();
         let signed_deploy = Deploy::read_deploy(&result[..]).unwrap();
-
-        // Can be used to update SAMPLE_DEPLOY data:
-        // println!("{}", serde_json::to_string_pretty(&signed_deploy).unwrap());
 
         assert_eq!(
             signed_deploy.approvals().len(),

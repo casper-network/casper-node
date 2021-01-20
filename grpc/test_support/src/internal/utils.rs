@@ -22,10 +22,9 @@ use casper_types::Key;
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::internal::{
-    AUCTION_INSTALL_CONTRACT, DEFAULT_AUCTION_DELAY, DEFAULT_CHAIN_NAME,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP, DEFAULT_LOCKED_FUNDS_PERIOD,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINT_INSTALL_CONTRACT,
-    POS_INSTALL_CONTRACT, STANDARD_PAYMENT_INSTALL_CONTRACT,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAIN_NAME, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP, DEFAULT_LOCKED_FUNDS_PERIOD, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 
 static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
@@ -134,10 +133,6 @@ pub fn read_wasm_file_bytes<T: AsRef<Path>>(contract_file: T) -> Vec<u8> {
 }
 
 pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
-    let mint_installer_bytes = read_wasm_file_bytes(MINT_INSTALL_CONTRACT);
-    let proof_of_stake_installer_bytes = read_wasm_file_bytes(POS_INSTALL_CONTRACT);
-    let standard_payment_installer_bytes = read_wasm_file_bytes(STANDARD_PAYMENT_INSTALL_CONTRACT);
-    let auction_installer_bytes = read_wasm_file_bytes(AUCTION_INSTALL_CONTRACT);
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let system_config = *DEFAULT_SYSTEM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
@@ -146,10 +141,6 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     ExecConfig::new(
-        mint_installer_bytes,
-        proof_of_stake_installer_bytes,
-        standard_payment_installer_bytes,
-        auction_installer_bytes,
         accounts,
         wasm_config,
         system_config,

@@ -29,7 +29,7 @@ pub fn delegate() {
         .unwrap_or_revert();
 
     runtime::call_contract(
-        contract_hash,
+        contract_hash.into(),
         ENTRYPOINT,
         runtime_args! {
             ARG_SOURCE => source,

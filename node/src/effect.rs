@@ -798,7 +798,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         deploy_hash: DeployHash,
         peer: I,
-    ) -> Option<FetchResult<Deploy>>
+    ) -> Option<FetchResult<Deploy, I>>
     where
         REv: From<FetcherRequest<I, Deploy>>,
         I: Send + 'static,
@@ -819,7 +819,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_hash: BlockHash,
         peer: I,
-    ) -> Option<FetchResult<Block>>
+    ) -> Option<FetchResult<Block, I>>
     where
         REv: From<FetcherRequest<I, Block>>,
         I: Send + 'static,
@@ -840,7 +840,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_height: u64,
         peer: I,
-    ) -> Option<FetchResult<BlockByHeight>>
+    ) -> Option<FetchResult<BlockByHeight, I>>
     where
         REv: From<FetcherRequest<I, BlockByHeight>>,
         I: Send + 'static,

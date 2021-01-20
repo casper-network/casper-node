@@ -1243,15 +1243,15 @@ where
     }
 
     pub fn is_mint(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.protocol_data().mint())
+        key.into_hash() == Some(self.protocol_data().mint().value())
     }
 
     pub fn is_proof_of_stake(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.protocol_data().proof_of_stake())
+        key.into_hash() == Some(self.protocol_data().proof_of_stake().value())
     }
 
     pub fn is_auction(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.protocol_data().auction())
+        key.into_hash() == Some(self.protocol_data().auction().value())
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(
@@ -1554,7 +1554,7 @@ where
         Ok(ret)
     }
 
-    pub fn call_host_standard_payment(&mut self, _entry_point_name: &str) -> Result<(), Error> {
+    pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
         // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
         // context.
         let gas_counter = self.gas_counter();
@@ -1945,13 +1945,6 @@ where
         }
     }
 
-    pub(crate) fn access_rights_extend(
-        &mut self,
-        access_rights: HashMap<Address, HashSet<AccessRights>>,
-    ) {
-        self.context.access_rights_extend(access_rights)
-    }
-
     fn execute_contract(
         &mut self,
         key: Key,
@@ -1995,32 +1988,30 @@ where
                 }
             }
 
-            if !self.config.use_system_contracts() {
-                if self.is_mint(key) {
-                    return self.call_host_mint(
-                        self.context.protocol_version(),
-                        entry_point.name(),
-                        &mut named_keys,
-                        &args,
-                        &extra_keys,
-                    );
-                } else if self.is_proof_of_stake(key) {
-                    return self.call_host_proof_of_stake(
-                        self.context.protocol_version(),
-                        entry_point.name(),
-                        &mut named_keys,
-                        &args,
-                        &extra_keys,
-                    );
-                } else if self.is_auction(key) {
-                    return self.call_host_auction(
-                        self.context.protocol_version(),
-                        entry_point.name(),
-                        &mut named_keys,
-                        &args,
-                        &extra_keys,
-                    );
-                }
+            if self.is_mint(key) {
+                return self.call_host_mint(
+                    self.context.protocol_version(),
+                    entry_point.name(),
+                    &mut named_keys,
+                    &args,
+                    &extra_keys,
+                );
+            } else if self.is_proof_of_stake(key) {
+                return self.call_host_proof_of_stake(
+                    self.context.protocol_version(),
+                    entry_point.name(),
+                    &mut named_keys,
+                    &args,
+                    &extra_keys,
+                );
+            } else if self.is_auction(key) {
+                return self.call_host_auction(
+                    self.context.protocol_version(),
+                    entry_point.name(),
+                    &mut named_keys,
+                    &args,
+                    &extra_keys,
+                );
             }
 
             extra_keys
@@ -2029,7 +2020,7 @@ where
         let module = {
             let maybe_module = key
                 .into_hash()
-                .and_then(|hash_addr| self.system_contract_cache.get(hash_addr));
+                .and_then(|hash_addr| self.system_contract_cache.get(hash_addr.into()));
             let wasm_key = contract.contract_wasm_key();
 
             let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
@@ -2412,13 +2403,14 @@ where
 
         let contract = Contract::new(
             contract_package_hash,
-            contract_wasm_hash,
+            contract_wasm_hash.into(),
             named_keys,
             entry_points,
             protocol_version,
         );
 
-        let insert_contract_result = contract_package.insert_contract_version(major, contract_hash);
+        let insert_contract_result =
+            contract_package.insert_contract_version(major, contract_hash.into());
 
         self.context
             .metered_write_gs_unsafe(contract_wasm_hash, contract_wasm)?;
@@ -3129,7 +3121,7 @@ where
             Err(error) => return Ok(Err(error)),
         };
 
-        match self.memory.set(dest_ptr, &contract_hash) {
+        match self.memory.set(dest_ptr, contract_hash.as_ref()) {
             Ok(_) => Ok(Ok(())),
             Err(error) => Err(Error::Interpreter(error.into()).into()),
         }

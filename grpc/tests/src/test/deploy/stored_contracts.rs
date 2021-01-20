@@ -1,16 +1,15 @@
 use std::collections::BTreeMap;
 
-use casper_engine_grpc_server::engine_server::ipc::DeployCode;
 use casper_engine_test_support::{
     internal::{
         utils, AdditiveMapDiff, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT,
-        DEFAULT_RUN_GENESIS_REQUEST,
+        UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE,
+        DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{upgrade::ActivationPoint, CONV_RATE},
+    core::engine_state::upgrade::ActivationPoint,
     shared::{account::Account, motes::Motes, stored_value::StoredValue, transform::Transform},
     storage::global_state::in_memory::InMemoryGlobalState,
 };
@@ -27,8 +26,6 @@ const DO_NOTHING_CONTRACT_PACKAGE_HASH_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_CONTRACT_HASH_NAME: &str = "do_nothing_hash";
 const INITIAL_VERSION: ContractVersion = CONTRACT_INITIAL_VERSION;
 const ENTRY_FUNCTION_NAME: &str = "delegate";
-const MODIFIED_MINT_UPGRADER_CONTRACT_NAME: &str = "modified_mint_upgrader.wasm";
-const MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME: &str = "modified_system_upgrader.wasm";
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const STORED_PAYMENT_CONTRACT_NAME: &str = "test_payment_stored.wasm";
 const STORED_PAYMENT_CONTRACT_HASH_NAME: &str = "test_payment_hash";
@@ -46,22 +43,11 @@ const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
 
 /// Prepares a upgrade request with pre-loaded deploy code, and new protocol version.
-fn make_upgrade_request(
-    new_protocol_version: ProtocolVersion,
-    code: &str,
-) -> UpgradeRequestBuilder {
-    let installer_code = {
-        let bytes = utils::read_wasm_file_bytes(code);
-        let mut deploy_code = DeployCode::new();
-        deploy_code.set_code(bytes);
-        deploy_code
-    };
-
+fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequestBuilder {
     UpgradeRequestBuilder::new()
         .with_current_protocol_version(PROTOCOL_VERSION)
         .with_new_protocol_version(new_protocol_version)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
-        .with_installer_code(installer_code)
 }
 
 fn store_payment_to_account_context(
@@ -87,7 +73,8 @@ fn store_payment_to_account_context(
         .get(STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME)
         .expect("key should exist")
         .into_hash()
-        .expect("should be a hash");
+        .expect("should be a hash")
+        .into();
 
     (default_account, hash)
 }
@@ -147,7 +134,7 @@ fn should_exec_non_stored_code() {
 
     let success_result = utils::get_success_result(&response);
     let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
     let tally = motes.value() + U512::from(transferred_amount) + modified_balance;
 
     assert_eq!(
@@ -181,7 +168,7 @@ fn should_exec_stored_code_by_hash() {
             .clone();
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        let motes_alpha = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+        let motes_alpha = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
         (motes_alpha, modified_balance_alpha)
     };
 
@@ -198,7 +185,7 @@ fn should_exec_stored_code_by_hash() {
                     runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
                 )
                 .with_stored_versioned_payment_contract_by_hash(
-                    hash,
+                    hash.value(),
                     Some(CONTRACT_INITIAL_VERSION),
                     PAY,
                     runtime_args! {
@@ -225,7 +212,7 @@ fn should_exec_stored_code_by_hash() {
 
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        let motes_bravo = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+        let motes_bravo = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
         (motes_bravo, modified_balance_bravo)
     };
@@ -278,7 +265,7 @@ fn should_exec_stored_code_by_named_hash() {
             .clone();
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        let motes_alpha = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+        let motes_alpha = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
         (motes_alpha, modified_balance_alpha)
     };
 
@@ -322,7 +309,7 @@ fn should_exec_stored_code_by_named_hash() {
 
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        let motes_bravo = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
+        let motes_bravo = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
         (motes_bravo, modified_balance_bravo)
     };
@@ -374,7 +361,7 @@ fn should_exec_payment_and_session_stored_code() {
             .clone();
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        Motes::from_gas(gas, CONV_RATE).expect("should have motes")
+        Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes")
     };
 
     // next store transfer contract
@@ -411,7 +398,7 @@ fn should_exec_payment_and_session_stored_code() {
 
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        Motes::from_gas(gas, CONV_RATE).expect("should have motes")
+        Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes")
     };
 
     let transferred_amount = 1;
@@ -456,7 +443,7 @@ fn should_exec_payment_and_session_stored_code() {
 
         let result = utils::get_success_result(&response);
         let gas = result.cost();
-        Motes::from_gas(gas, CONV_RATE).expect("should have motes")
+        Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes")
     };
 
     let modified_balance: U512 = {
@@ -712,8 +699,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -808,8 +794,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -829,7 +814,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_hash(
-                stored_payment_contract_hash,
+                stored_payment_contract_hash.into(),
                 DEFAULT_ENTRY_POINT_NAME,
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
@@ -893,8 +878,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -984,8 +968,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -1063,8 +1046,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -1131,8 +1113,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -1198,7 +1179,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
                 RuntimeArgs::new(),
             )
             .with_stored_payment_hash(
-                test_payment_stored_hash,
+                test_payment_stored_hash.into(),
                 "pay",
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )

@@ -22,14 +22,6 @@ export NCTL_BASE_PORT_SSE=60000
 export NCTL_BASE_PORT_NETWORK=34452
 
 # Set of chain system contracts.
-export NCTL_CONTRACTS_SYSTEM=(
-    auction_install.wasm
-    mint_install.wasm
-    pos_install.wasm
-    standard_payment_install.wasm
-)
-
-# Set of chain system contracts.
 export NCTL_CONTRACTS_CLIENT=(
     add_bid.wasm
     delegate.wasm

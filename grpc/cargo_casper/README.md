@@ -50,11 +50,6 @@ my_project/
 │   ├── rust-toolchain
 │   ├── src
 │   │   └── integration_tests.rs
-│   └── wasm
-│       ├── mint_install.wasm
-│       ├── pos_install.wasm
-│       ├── standard_payment_install.wasm
-│       └── standard_payment.wasm
 └── .travis.yml
 ```
 
