@@ -6,13 +6,16 @@ pub enum Event<I> {
     Start(I),
     GetBlockHashResult(BlockHash, BlockByHashResult<I>),
     GetBlockHeightResult(u64, BlockByHeightResult<I>),
-    /// Deploys from the block have been found.
-    DeploysFound(Box<BlockHeader>),
-    /// Deploys from the block have not been found.
-    DeploysNotFound(Box<BlockHeader>),
+    GetDeploysResult(DeploysResult<I>),
     StartDownloadingDeploys,
     NewPeerConnected(I),
     BlockHandled(Box<BlockHeader>),
+}
+
+#[derive(Debug)]
+pub enum DeploysResult<I> {
+    Found(Box<BlockHeader>),
+    NotFound(Box<BlockHeader>, I),
 }
 
 #[derive(Debug)]
@@ -39,9 +42,8 @@ where
             Event::GetBlockHashResult(block_hash, r) => {
                 write!(f, "Get block result for {}: {:?}", block_hash, r)
             }
-            Event::DeploysFound(block) => write!(f, "Deploys for block found: {}", block.hash()),
-            Event::DeploysNotFound(block_hash) => {
-                write!(f, "Deploy for block found: {}", block_hash.hash())
+            Event::GetDeploysResult(result) => {
+                write!(f, "Get deploys for block result {:?}", result)
             }
             Event::StartDownloadingDeploys => write!(f, "Start downloading deploys event."),
             Event::NewPeerConnected(peer_id) => write!(f, "A new peer connected: {}", peer_id),
