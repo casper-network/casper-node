@@ -12,9 +12,34 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     account::AccountHash,
-    auction::EraId,
+    auction::{
+        Bid, Bids, DelegationRate, EraId, SeigniorageRecipient, SeigniorageRecipients,
+        SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
+        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
+        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_UNBOND_PURSE, ARG_VALIDATOR,
+        ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY, DELEGATOR_REWARD_PURSE_KEY,
+        ERA_ID_KEY, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ADD_BID, METHOD_DELEGATE,
+        METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
+        METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
+        VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
+    },
     bytesrepr::{self, FromBytes, ToBytes},
-    runtime_args, AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
+    contracts::{ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters},
+    mint::{
+        ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE, ARG_TARGET,
+        METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
+        METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
+    },
+    proof_of_stake::{
+        ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE,
+        METHOD_SET_REFUND_PURSE,
+    },
+    runtime_args,
+    standard_payment::METHOD_PAY,
+    system_contract_errors::mint,
+    AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractWasm, ContractWasmHash, DeployHash, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, Key, Parameter, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
     SecretKey, URef, U512,
@@ -42,33 +67,6 @@ use crate::{
         global_state::{CommitResult, StateProvider},
         protocol_data::ProtocolData,
     },
-};
-use casper_types::{
-    auction::{
-        Bid, Bids, DelegationRate, SeigniorageRecipient, SeigniorageRecipients,
-        SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
-        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_UNBOND_PURSE, ARG_VALIDATOR,
-        ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY, DELEGATOR_REWARD_PURSE_KEY,
-        ERA_ID_KEY, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ADD_BID, METHOD_DELEGATE,
-        METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
-        METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
-        VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
-    },
-    contracts::{ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters},
-    mint::{
-        ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE, ARG_TARGET,
-        METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
-        METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
-    },
-    proof_of_stake::{
-        ARG_ACCOUNT, METHOD_FINALIZE_PAYMENT, METHOD_GET_PAYMENT_PURSE, METHOD_GET_REFUND_PURSE,
-        METHOD_SET_REFUND_PURSE,
-    },
-    standard_payment::METHOD_PAY,
-    system_contract_errors::mint,
 };
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
@@ -559,9 +557,7 @@ where
                 ROUND_SEIGNIORAGE_RATE_KEY.to_string(),
                 round_seigniorage_rate_uref.into(),
             );
-
             named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), total_supply_uref.into());
-
             named_keys
         };
 
@@ -855,14 +851,14 @@ where
     }
 
     fn create_purse(&self, amount: U512, deploy_hash: DeployHash) -> Result<URef, GenesisError> {
-        let tracking_copy = Rc::clone(&self.tracking_copy);
         let args = runtime_args! {
             ARG_AMOUNT => amount,
         };
 
         let base_key = Key::Hash(self.protocol_data.mint().value());
         let mint = {
-            if let StoredValue::Contract(contract) = tracking_copy
+            if let StoredValue::Contract(contract) = self
+                .tracking_copy
                 .borrow_mut()
                 .read(self.correlation_id, &base_key)
                 .map_err(|_| GenesisError::InvalidMintKey)?
@@ -895,7 +891,7 @@ where
                 Rc::clone(&self.transfer_address_generator),
                 self.protocol_version,
                 self.correlation_id,
-                Rc::clone(&tracking_copy),
+                Rc::clone(&self.tracking_copy),
                 Phase::System,
                 self.protocol_data,
                 Default::default(),
