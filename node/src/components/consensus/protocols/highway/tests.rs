@@ -17,7 +17,7 @@ use crate::{
             validators::ValidatorIndex,
             State,
         },
-        protocols::highway::HighwayMessage,
+        protocols::highway::{HighwayMessage, TIMER_ID_VERTEX},
         tests::utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
         traits::Context,
         HighwayProtocol,
@@ -190,11 +190,15 @@ fn send_a_valid_wire_unit() {
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
 
-    let outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
-
-    match &outcomes[..] {
-        &[ProtocolOutcome::CreatedGossipMessage(_), ProtocolOutcome::FinalizedBlock(_)] => (),
-        outcomes => panic!("Unexpected outcomes: {:?}", outcomes),
+    let mut outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
+    while let Some(outcome) = outcomes.pop() {
+        match outcome {
+            ProtocolOutcome::CreatedGossipMessage(_) | ProtocolOutcome::FinalizedBlock(_) => (),
+            ProtocolOutcome::ScheduleTimer(timestamp, TIMER_ID_VERTEX) => {
+                outcomes.extend(highway_protocol.handle_timer(timestamp, TIMER_ID_VERTEX, &mut rng))
+            }
+            outcome => panic!("Unexpected outcome: {:?}", outcome),
+        }
     }
 }
 
@@ -237,9 +241,15 @@ fn detect_doppelganger() {
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a
     // doppelganger.
-    let outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
-    assert!(outcomes
-        .iter()
-        .any(|eff| matches!(eff, ProtocolOutcome::DoppelgangerDetected)));
-    assert_eq!(highway_protocol.is_active(), false);
+    let mut outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
+    while let Some(outcome) = outcomes.pop() {
+        match outcome {
+            ProtocolOutcome::DoppelgangerDetected => return,
+            ProtocolOutcome::ScheduleTimer(timestamp, TIMER_ID_VERTEX) => {
+                outcomes.extend(highway_protocol.handle_timer(timestamp, TIMER_ID_VERTEX, &mut rng))
+            }
+            _ => (),
+        }
+    }
+    panic!("failed to return DoppelgangerDetected effect");
 }
