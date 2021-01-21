@@ -149,6 +149,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
         locked_funds_period,
         round_seigniorage_rate,
         unbonding_delay,
+        None,
     )
 }
 

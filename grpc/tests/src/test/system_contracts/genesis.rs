@@ -76,6 +76,7 @@ fn should_run_genesis() {
         locked_funds_period,
         round_seigniorage_rate,
         unbonding_delay,
+        None,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config);
@@ -142,6 +143,7 @@ fn should_track_total_token_supply_in_mint() {
         locked_funds_period,
         round_seigniorage_rate,
         unbonding_delay,
+        None,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);

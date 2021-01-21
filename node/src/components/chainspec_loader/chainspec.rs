@@ -419,6 +419,7 @@ impl Into<ExecConfig> for Chainspec {
             self.genesis.locked_funds_period,
             self.genesis.round_seigniorage_rate,
             self.genesis.unbonding_delay,
+            self.genesis.state_root_hash.map(|hash| hash.into()),
         )
     }
 }

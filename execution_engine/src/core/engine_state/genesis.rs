@@ -311,6 +311,7 @@ pub struct ExecConfig {
     locked_funds_period: EraId,
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
+    state_root_hash: Option<Blake2bHash>,
 }
 
 impl ExecConfig {
@@ -324,6 +325,7 @@ impl ExecConfig {
         locked_funds_period: EraId,
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: EraId,
+        state_root_hash: Option<Blake2bHash>,
     ) -> ExecConfig {
         ExecConfig {
             accounts,
@@ -334,6 +336,7 @@ impl ExecConfig {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
+            state_root_hash,
         }
     }
 
@@ -378,6 +381,10 @@ impl ExecConfig {
     pub fn unbonding_delay(&self) -> EraId {
         self.unbonding_delay
     }
+
+    pub fn state_root_hash(&self) -> Option<Blake2bHash> {
+        self.state_root_hash
+    }
 }
 
 impl Distribution<ExecConfig> for Standard {
@@ -403,6 +410,12 @@ impl Distribution<ExecConfig> for Standard {
             rng.gen_range(1, 1_000_000_000),
         );
 
+        let state_root_hash = if rng.gen() {
+            Some(Blake2bHash::new(&rng.gen::<[u8; Blake2bHash::LENGTH]>()))
+        } else {
+            None
+        };
+
         ExecConfig {
             accounts,
             wasm_config,
@@ -412,6 +425,7 @@ impl Distribution<ExecConfig> for Standard {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
+            state_root_hash,
         }
     }
 }

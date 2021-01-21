@@ -130,7 +130,14 @@ where
         ee_config: &ExecConfig,
     ) -> Result<GenesisResult, Error> {
         // Preliminaries
-        let initial_root_hash = self.state.empty_root();
+        let initial_root_hash = if let Some(state_root_hash) = ee_config.state_root_hash() {
+            return Ok(GenesisResult::Success {
+                post_state_hash: state_root_hash,
+                effect: Default::default(),
+            });
+        } else {
+            self.state.empty_root()
+        };
         let system_config = ee_config.system_config();
 
         let tracking_copy = match self.tracking_copy(initial_root_hash) {

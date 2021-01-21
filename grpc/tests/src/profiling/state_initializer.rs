@@ -76,6 +76,7 @@ fn main() {
         DEFAULT_LOCKED_FUNDS_PERIOD,
         DEFAULT_ROUND_SEIGNIORAGE_RATE,
         DEFAULT_UNBONDING_DELAY,
+        None,
     );
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,

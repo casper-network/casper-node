@@ -1,6 +1,9 @@
 use std::convert::{TryFrom, TryInto};
 
-use casper_execution_engine::core::engine_state::genesis::{ExecConfig, GenesisAccount};
+use casper_execution_engine::{
+    core::engine_state::genesis::{ExecConfig, GenesisAccount},
+    shared::newtypes::Blake2bHash,
+};
 
 use crate::engine_server::{ipc, mappings::MappingError};
 
@@ -22,6 +25,17 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
         let locked_funds_period = pb_exec_config.get_locked_funds_period();
         let round_seigniorage_rate = pb_exec_config.take_round_seigniorage_rate().into();
         let unbonding_delay = pb_exec_config.get_unbonding_delay();
+        let state_root_hash = if pb_exec_config.has_state_root_hash_bytes() {
+            let hash = Blake2bHash::try_from(&pb_exec_config.get_state_root_hash_bytes() as &[u8])
+                .map_err(|_| {
+                    MappingError::invalid_hash_length(
+                        pb_exec_config.get_state_root_hash_bytes().len(),
+                    )
+                })?;
+            Some(hash)
+        } else {
+            None
+        };
         Ok(ExecConfig::new(
             accounts,
             wasm_config,
@@ -31,6 +45,7 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
             locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
+            state_root_hash,
         ))
     }
 }
@@ -54,6 +69,9 @@ impl From<ExecConfig> for ipc::ChainSpec_GenesisConfig_ExecConfig {
         pb_exec_config.set_locked_funds_period(exec_config.locked_funds_period());
         pb_exec_config.set_round_seigniorage_rate(exec_config.round_seigniorage_rate().into());
         pb_exec_config.set_unbonding_delay(exec_config.unbonding_delay());
+        if let Some(state_root_hash) = exec_config.state_root_hash() {
+            pb_exec_config.set_state_root_hash_bytes(state_root_hash.to_vec());
+        }
         pb_exec_config
     }
 }

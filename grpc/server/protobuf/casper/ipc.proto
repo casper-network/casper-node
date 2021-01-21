@@ -298,6 +298,10 @@ message ChainSpec {
             uint64 unbonding_delay = 12;
             // costs associated with the system
             SystemConfig system_config = 13;
+            // initial state root hash
+            oneof optional_state_root_hash {
+                bytes state_root_hash_bytes = 15;
+            }
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;
