@@ -34,17 +34,13 @@ This is the core application for the Casper blockchain.
 
 ### Pre-Requisites for Building
 
-cmake 3.1.4 or greater
-
-[Rust](https://www.rust-lang.org/tools/install)
-
-libssl-dev
-
-pkg-config
-
-gcc
-
-g++
+* CMake 3.1.4 or greater
+* [Rust](https://www.rust-lang.org/tools/install)
+* libssl-dev
+* pkg-config
+* gcc
+* g++
+* optionally [wasm-strip](https://github.com/WebAssembly/wabt) (used to reduce the size of compiled Wasm)
 
 ### Setup
 

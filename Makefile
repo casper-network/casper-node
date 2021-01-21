@@ -61,6 +61,7 @@ build-contract-rs/%:
 	        --release $(filter-out --release, $(CARGO_FLAGS)) \
 	        --package $* \
 	        --target wasm32-unknown-unknown
+	wasm-strip target/wasm32-unknown-unknown/release/$(subst -,_,$*).wasm 2>/dev/null | true
 
 build-contracts-rs: \
 	$(BENCH_CONTRACTS) \
