@@ -51,23 +51,53 @@ const TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP: TimerId = TimerId(1);
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
 
+/// An incoming vertex that we haven't added to the protocol state yet.
+#[derive(DataSize, Debug)]
+pub(crate) struct PendingVertex<I, C>
+where
+    C: Context,
+{
+    /// The peer who sent it to us.
+    sender: I,
+    /// The pre-validated vertex.
+    pvv: PreValidatedVertex<C>,
+    /// The time when we received it.
+    time_received: Timestamp,
+}
+
+impl<I, C: Context> PendingVertex<I, C> {
+    /// Returns a new pending vertex with the current timestamp.
+    fn new(sender: I, pvv: PreValidatedVertex<C>) -> Self {
+        Self {
+            sender,
+            pvv,
+            time_received: Timestamp::now(),
+        }
+    }
+
+    /// Returns the vertex waiting to be added.
+    fn vertex(&self) -> &Vertex<C> {
+        self.pvv.inner()
+    }
+}
+
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
 where
     C: Context,
 {
     /// Incoming vertices we can't add yet because they are still missing a dependency.
-    vertex_deps: BTreeMap<Dependency<C>, Vec<(I, PreValidatedVertex<C>)>>,
+    vertex_deps: BTreeMap<Dependency<C>, Vec<PendingVertex<I, C>>>,
     /// Incoming blocks we can't add yet because we are waiting for validation.
     pending_values: HashMap<C::ConsensusValue, Vec<ValidVertex<C>>>,
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// The vertices that are scheduled to be processed at a later time.  The keys of this
     /// `BTreeMap` are timestamps when the corresponding vector of vertices will be added.
-    vertices_to_be_added_later: BTreeMap<Timestamp, Vec<(I, PreValidatedVertex<C>)>>,
+    vertices_to_be_added_later: BTreeMap<Timestamp, Vec<PendingVertex<I, C>>>,
     /// Vertices that might be ready to add to the protocol state: We are not currently waiting for
     /// a requested dependency.
-    vertices_to_be_added: Vec<(I, PreValidatedVertex<C>)>,
+    vertices_to_be_added: Vec<PendingVertex<I, C>>,
     /// A tracker for whether we are keeping up with the current round exponent or not.
     round_success_meter: RoundSuccessMeter<C>,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
@@ -241,13 +271,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         sender: I,
         pvv: PreValidatedVertex<C>,
     ) -> Vec<ProtocolOutcome<I, C>> {
-        if Timestamp::now() + self.pending_vertex_timeout < future_timestamp {
-            return Vec::new(); // Timestamp too far in the future; ignore.
-        }
         self.vertices_to_be_added_later
             .entry(future_timestamp)
             .or_insert_with(Vec::new)
-            .push((sender, pvv));
+            .push(PendingVertex::new(sender, pvv));
         vec![ProtocolOutcome::ScheduleTimer(
             future_timestamp,
             TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP,
@@ -276,12 +303,12 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     }
 
     /// Schedules vertices to be added to the protocol state.
-    fn schedule_add_vertices<T>(&mut self, pvvs: T) -> Vec<ProtocolOutcome<I, C>>
+    fn schedule_add_vertices<T>(&mut self, pending_vertices: T) -> Vec<ProtocolOutcome<I, C>>
     where
-        T: IntoIterator<Item = (I, PreValidatedVertex<C>)>,
+        T: IntoIterator<Item = PendingVertex<I, C>>,
     {
         let was_empty = self.vertices_to_be_added.is_empty();
-        self.vertices_to_be_added.extend(pvvs);
+        self.vertices_to_be_added.extend(pending_vertices);
         if was_empty && !self.vertices_to_be_added.is_empty() {
             vec![ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
         } else {
@@ -294,11 +321,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// unblocked now.
     fn add_vertex(&mut self, rng: &mut NodeRng) -> Vec<ProtocolOutcome<I, C>> {
         // Get the next vertex to be added; skip the ones that are already in the protocol state.
-        let (sender, pvv) = loop {
+        let pending_vertex = loop {
             match self.vertices_to_be_added.pop() {
                 None => return vec![], // No vertex is currently waiting to be added.
-                Some((_, pvv)) if self.highway.has_vertex(pvv.inner()) => (), // Already added.
-                Some((sender, pvv)) => break (sender, pvv),
+                Some(pv) if self.highway.has_vertex(pv.vertex()) => (), // Already added.
+                Some(pv) => break pv,
             }
         };
 
@@ -311,11 +338,12 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         // If we are still missing a dependency, store the vertex in the map and request the
         // dependency from the sender.
-        if let Some(dep) = self.highway.missing_dependency(&pvv) {
+        if let Some(dep) = self.highway.missing_dependency(&pending_vertex.pvv) {
+            let sender = pending_vertex.sender.clone();
             self.vertex_deps
                 .entry(dep.clone())
                 .or_default()
-                .push((sender.clone(), pvv));
+                .push(pending_vertex);
             let msg = HighwayMessage::RequestDependency(dep);
             results.push(ProtocolOutcome::CreatedTargetedMessage(
                 bincode::serialize(&msg).expect("should serialize message"),
@@ -326,7 +354,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         // If unit is sent by a doppelganger, deactivate this instance of an active
         // validator. Continue processing the unit so that it can be added to the state.
-        if self.highway.is_doppelganger_vertex(pvv.inner()) {
+        if self.highway.is_doppelganger_vertex(pending_vertex.vertex()) {
             error!(
                 "received vertex from a doppelganger. \
                  Are you running multiple nodes with the same validator key?",
@@ -337,7 +365,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
 
         // If the vertex is invalid, drop all vertices that depend on this one, and disconnect from
         // the faulty senders.
-        let vv = match self.highway.validate_vertex(pvv) {
+        let vv = match self.highway.validate_vertex(pending_vertex.pvv) {
             Ok(vv) => vv,
             Err((pvv, err)) => {
                 info!(?pvv, ?err, "invalid vertex");
@@ -356,7 +384,9 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                     .or_default()
                     .push(vv);
                 results.push(ProtocolOutcome::ValidateConsensusValue(
-                    sender, value, timestamp,
+                    pending_vertex.sender,
+                    value,
+                    timestamp,
                 ));
                 return results;
             }
@@ -423,11 +453,11 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .filter(|dep| self.highway.has_dependency(dep))
             .cloned()
             .collect_vec();
-        let pvvs = satisfied_deps
+        let pvs = satisfied_deps
             .into_iter()
             .flat_map(|dep| self.vertex_deps.remove(&dep).unwrap())
             .collect_vec();
-        self.schedule_add_vertices(pvvs)
+        self.schedule_add_vertices(pvs)
     }
 
     /// Returns the median round exponent of all the validators that haven't been observed to be
@@ -460,7 +490,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             .filter(|dep| dep.is_unit())
             .flat_map(|vertex| self.vertex_deps.remove(&vertex))
             .flatten()
-            .map(|(sender, pvv)| (sender, pvv.inner().id()))
+            .map(|pv| (pv.sender, pv.pvv.inner().id()))
             .unzip();
 
         dropped_vertices.extend(self.drop_by_senders(senders.clone()));
@@ -471,10 +501,10 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let mut dropped_vertices = Vec::new();
         let mut keys_to_drop = Vec::new();
         for (key, dependent_vertices) in self.vertex_deps.iter_mut() {
-            dependent_vertices.retain(|(sender, pvv)| {
-                if senders.contains(sender) {
+            dependent_vertices.retain(|pv| {
+                if senders.contains(&pv.sender) {
                     // remember the deps we drop
-                    dropped_vertices.push(pvv.inner().id());
+                    dropped_vertices.push(pv.vertex().id());
                     false
                 } else {
                     true
@@ -575,33 +605,35 @@ where
                     None => false,
                 };
 
+                let now = Timestamp::now();
                 match pvv.timestamp() {
-                    Some(timestamp) if timestamp > Timestamp::now() => {
-                        // If it's not from an equivocator and from the future, add to queue
-                        if !is_faulty {
-                            trace!("received a vertex from the future; storing for later");
-                            self.store_vertex_for_addition_later(timestamp, sender, pvv)
-                        } else {
-                            trace!(
-                                "received a vertex from the future from a faulty validator; \
-                                dropping"
-                            );
-                            vec![]
-                        }
+                    Some(timestamp) if timestamp > now + self.pending_vertex_timeout => {
+                        trace!("received a vertex with a timestamp far in the future; dropping");
+                        vec![]
                     }
-                    _ => {
+                    Some(timestamp) if timestamp > now && is_faulty => {
+                        trace!(
+                            "received a vertex from the future from a faulty validator; dropping"
+                        );
+                        vec![]
+                    }
+                    Some(timestamp) if timestamp > now => {
+                        // If it's not from an equivocator and from the future, add to queue
+                        trace!("received a vertex from the future; storing for later");
+                        self.store_vertex_for_addition_later(timestamp, sender, pvv)
+                    }
+                    _ if !is_faulty || self.vertex_deps.contains_key(&pvv.inner().id()) => {
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
-                        if !is_faulty || self.vertex_deps.contains_key(&pvv.inner().id()) {
-                            trace!("received a valid vertex");
-                            self.schedule_add_vertices(iter::once((sender, pvv)))
-                        } else {
-                            trace!(
-                                "received a vertex from a faulty validator that is not a \
+                        trace!("received a valid vertex");
+                        self.schedule_add_vertices(iter::once(PendingVertex::new(sender, pvv)))
+                    }
+                    _ => {
+                        trace!(
+                            "received a vertex from a faulty validator that is not a \
                                 dependency; dropping"
-                            );
-                            vec![]
-                        }
+                        );
+                        vec![]
                     }
                 }
             }
