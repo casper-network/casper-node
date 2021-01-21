@@ -16,7 +16,13 @@ pub mod system_contract_cache;
 mod transfer;
 pub mod upgrade;
 
-use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, iter::FromIterator, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    convert::TryFrom,
+    iter::FromIterator,
+    rc::Rc,
+};
 
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -129,8 +135,7 @@ where
         protocol_version: ProtocolVersion,
         ee_config: &ExecConfig,
     ) -> Result<GenesisResult, Error> {
-        // Preliminaries
-        let initial_root_hash = if let Some(state_root_hash) = ee_config.state_root_hash() {
+        if let Some(state_root_hash) = ee_config.state_root_hash() {
             let missing_descendants = self
                 .state
                 .missing_trie_keys(correlation_id, state_root_hash)
@@ -141,13 +146,32 @@ where
                     missing_descendants,
                 }));
             }
-            return Ok(GenesisResult::Success {
-                post_state_hash: state_root_hash,
-                effect: Default::default(),
-            });
+            self.commit_genesis_with_state(
+                correlation_id,
+                genesis_config_hash,
+                protocol_version,
+                ee_config,
+                state_root_hash,
+            )
         } else {
-            self.state.empty_root()
-        };
+            self.commit_fresh_genesis(
+                correlation_id,
+                genesis_config_hash,
+                protocol_version,
+                ee_config,
+            )
+        }
+    }
+
+    pub fn commit_fresh_genesis(
+        &self,
+        correlation_id: CorrelationId,
+        genesis_config_hash: Blake2bHash,
+        protocol_version: ProtocolVersion,
+        ee_config: &ExecConfig,
+    ) -> Result<GenesisResult, Error> {
+        // Preliminaries
+        let initial_root_hash = self.state.empty_root();
         let system_config = ee_config.system_config();
 
         let tracking_copy = match self.tracking_copy(initial_root_hash) {
@@ -218,6 +242,107 @@ where
             .commit(
                 correlation_id,
                 initial_root_hash,
+                execution_effect.transforms.to_owned(),
+            )
+            .map_err(Into::into)?;
+
+        // Return the result
+        let genesis_result = GenesisResult::from_commit_result(commit_result, execution_effect);
+
+        Ok(genesis_result)
+    }
+
+    pub fn commit_genesis_with_state(
+        &self,
+        correlation_id: CorrelationId,
+        genesis_config_hash: Blake2bHash,
+        protocol_version: ProtocolVersion,
+        ee_config: &ExecConfig,
+        state_root_hash: Blake2bHash,
+    ) -> Result<GenesisResult, Error> {
+        let tracking_copy = match self.tracking_copy(state_root_hash) {
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            // NOTE: As genesis is ran once per instance condition below is considered programming
+            // error
+            Ok(None) => panic!("state has not been initialized properly"),
+            Err(error) => return Err(error),
+        };
+
+        let opt_protocol_data = self
+            .state
+            .get_protocol_data(protocol_version)
+            .map_err(Into::into)?;
+
+        let preprocessor = Preprocessor::new(*ee_config.wasm_config());
+
+        let system_module = tracking_copy
+            .borrow_mut()
+            .get_system_module(&preprocessor)?;
+
+        let mut genesis_installer: GenesisInstaller<S> = GenesisInstaller::new(
+            genesis_config_hash,
+            protocol_version,
+            correlation_id,
+            self.config,
+            ee_config.clone(),
+            tracking_copy,
+            system_module,
+        );
+
+        if let Some(protocol_data) = opt_protocol_data {
+            genesis_installer = genesis_installer.with_protocol_data(protocol_data);
+        }
+
+        let mint_hash = if let Some(ref protocol_data) = opt_protocol_data {
+            protocol_data.mint()
+        } else {
+            // Create mint
+            genesis_installer.create_mint().map_err(Error::Genesis)?
+        };
+
+        // Create accounts
+        genesis_installer
+            .create_accounts()
+            .map_err(Error::Genesis)?;
+
+        // Create auction
+        let auction_hash = genesis_installer.create_auction().map_err(Error::Genesis)?;
+
+        let protocol_data = if let Some(mut protocol_data) = opt_protocol_data {
+            let mut update_map = BTreeMap::new();
+            update_map.insert(protocol_data.auction(), auction_hash);
+            protocol_data.update_from(update_map);
+            protocol_data
+        } else {
+            // Create proof of stake
+            let proof_of_stake_hash = genesis_installer
+                .create_proof_of_stake()
+                .map_err(Error::Genesis)?;
+
+            // Create standard payment
+            let standard_payment_hash = genesis_installer.create_standard_payment();
+            ProtocolData::new(
+                *ee_config.wasm_config(),
+                *ee_config.system_config(),
+                mint_hash,
+                proof_of_stake_hash,
+                standard_payment_hash,
+                auction_hash,
+            )
+        };
+
+        self.state
+            .put_protocol_data(protocol_version, &protocol_data)
+            .map_err(Into::into)?;
+
+        // Commit the transforms.
+        let execution_effect = genesis_installer.finalize();
+
+        let commit_result = self
+            .state
+            .commit(
+                correlation_id,
+                state_root_hash,
                 execution_effect.transforms.to_owned(),
             )
             .map_err(Into::into)?;

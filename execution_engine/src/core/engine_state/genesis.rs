@@ -525,6 +525,11 @@ where
         }
     }
 
+    pub(crate) fn with_protocol_data(mut self, protocol_data: ProtocolData) -> Self {
+        self.protocol_data = protocol_data;
+        self
+    }
+
     pub(crate) fn finalize(self) -> ExecutionEffect {
         self.tracking_copy.borrow_mut().effect()
     }
