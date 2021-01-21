@@ -1,7 +1,7 @@
 //! A network of test reactors.
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{btree_map::Entry, BTreeMap},
     fmt::{Debug, Display},
     hash::Hash,
     time::Duration,
@@ -25,7 +25,7 @@ use crate::{
 /// Type alias for set of nodes inside a network.
 ///
 /// Provided as a convenience for writing condition functions for `settle_on` and friends.
-pub type Nodes<R> = HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>;
+pub type Nodes<R> = BTreeMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>;
 
 /// A reactor with networking functionality.
 pub trait NetworkedReactor: Sized {
@@ -47,12 +47,13 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 #[derive(Debug, Default)]
 pub struct Network<R: Reactor + NetworkedReactor> {
     /// Current network.
-    nodes: HashMap<<R as NetworkedReactor>::NodeId, Runner<ConditionCheckReactor<R>>>,
+    nodes: Nodes<R>,
 }
 
 impl<R> Network<R>
 where
     R: Reactor + NetworkedReactor,
+    R::NodeId: Ord,
     R::Config: Default,
     <R as Reactor>::Error: Debug,
     R::Event: Serialize,
@@ -85,13 +86,14 @@ where
 impl<R> Network<R>
 where
     R: Reactor + NetworkedReactor,
+    R::NodeId: Ord,
     R::Event: Serialize,
     R::Error: From<prometheus::Error> + From<R::Error>,
 {
     /// Creates a new network.
     pub fn new() -> Self {
         Network {
-            nodes: HashMap::new(),
+            nodes: BTreeMap::new(),
         }
     }
 
@@ -272,7 +274,7 @@ where
     }
 
     /// Returns the internal map of nodes.
-    pub fn nodes(&self) -> &HashMap<R::NodeId, Runner<ConditionCheckReactor<R>>> {
+    pub fn nodes(&self) -> &Nodes<R> {
         &self.nodes
     }
 

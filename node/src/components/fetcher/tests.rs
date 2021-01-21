@@ -17,10 +17,10 @@ use crate::{
         Responder,
     },
     protocol::Message,
-    reactor::{Reactor as ReactorTrait, Runner},
+    reactor::Reactor as ReactorTrait,
     testing::{
-        network::{Network, NetworkedReactor},
-        ConditionCheckReactor, TestRng,
+        network::{Network, NetworkedReactor, Nodes},
+        TestRng,
     },
     types::{Deploy, DeployHash, NodeId},
     utils::{Loadable, WithDir},
@@ -249,9 +249,7 @@ async fn assert_settled(
     rng: &mut TestRng,
     timeout: Duration,
 ) {
-    let has_responded = |_nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
-        fetched.lock().unwrap().0
-    };
+    let has_responded = |_nodes: &Nodes<Reactor>| fetched.lock().unwrap().0;
 
     network.settle_on(rng, has_responded, timeout).await;
 
