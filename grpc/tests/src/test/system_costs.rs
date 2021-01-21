@@ -142,7 +142,6 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
-            auction::ARG_UNBOND_PURSE => account.main_purse(),
         },
     )
     .build();
@@ -252,7 +251,6 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         runtime_args! {
             auction::ARG_PUBLIC_KEY => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
-            auction::ARG_UNBOND_PURSE => account.main_purse(),
         },
     )
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
@@ -303,8 +301,6 @@ fn delegate_and_undelegate_have_expected_costs() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let source_purse = account.main_purse();
-
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         account
@@ -349,7 +345,6 @@ fn delegate_and_undelegate_have_expected_costs() {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_VALIDATOR => *VALIDATOR_1,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
-            auction::ARG_UNBOND_PURSE => source_purse,
         },
     )
     .build();
@@ -430,8 +425,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let source_purse = account.main_purse();
-
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         account
@@ -477,7 +470,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
             auction::ARG_VALIDATOR => *VALIDATOR_1,
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
-            auction::ARG_UNBOND_PURSE => source_purse,
         },
     )
     .with_protocol_version(*NEW_PROTOCOL_VERSION)

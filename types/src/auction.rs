@@ -16,7 +16,7 @@ use num_rational::Ratio;
 use crate::{
     account::AccountHash,
     system_contract_errors::auction::{Error, Result},
-    PublicKey, URef, U512,
+    PublicKey, U512,
 };
 
 pub use bid::Bid;
@@ -119,16 +119,13 @@ pub trait Auction:
     ///
     /// The function returns a the new amount of motes remaining in the bid. If the target bid
     /// does not exist, the function call returns an error.
-    fn withdraw_bid(
-        &mut self,
-        public_key: PublicKey,
-        amount: U512,
-        unbonding_purse: URef,
-    ) -> Result<U512> {
+    fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
+
+        let unbonding_purse = self.get_main_purse()?;
 
         // Update bids or stakes
         let mut bids = detail::get_bids(self)?;
@@ -221,12 +218,13 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-        unbonding_purse: URef,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
         }
+
+        let unbonding_purse = self.get_main_purse()?;
 
         let mut bids = detail::get_bids(self)?;
 

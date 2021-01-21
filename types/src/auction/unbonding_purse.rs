@@ -55,7 +55,7 @@ impl UnbondingPurse {
     }
 
     /// Returns unbonding purse which will be used to deliver funds.
-    pub fn unbonding_purse(&self) -> &URef {
+    pub(crate) fn unbonding_purse(&self) -> &URef {
         &self.unbonding_purse
     }
 

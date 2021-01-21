@@ -2,8 +2,8 @@
 #![no_main]
 
 use auction::DelegationRate;
-use casper_contract::contract_api::{account, runtime, system};
-use casper_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, URef, U512};
+use casper_contract::contract_api::{runtime, system};
+use casper_types::{auction, runtime_args, ContractHash, PublicKey, RuntimeArgs, U512};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";
@@ -17,16 +17,10 @@ fn add_bid(contract_hash: ContractHash, public_key: PublicKey, bond_amount: U512
     runtime::call_contract::<U512>(contract_hash, auction::METHOD_ADD_BID, runtime_args);
 }
 
-fn withdraw_bid(
-    contract_hash: ContractHash,
-    public_key: PublicKey,
-    unbond_amount: U512,
-    unbond_purse: URef,
-) -> U512 {
+fn withdraw_bid(contract_hash: ContractHash, public_key: PublicKey, unbond_amount: U512) -> U512 {
     let args = runtime_args! {
         auction::ARG_AMOUNT => unbond_amount,
         auction::ARG_PUBLIC_KEY => public_key,
-        auction::ARG_UNBOND_PURSE => unbond_purse,
     };
     runtime::call_contract(contract_hash, auction::METHOD_WITHDRAW_BID, args)
 }
@@ -38,10 +32,5 @@ pub extern "C" fn call() {
     // unbond attempt for more than is staked should fail
     let contract_hash = system::get_auction();
     add_bid(contract_hash, public_key, amount);
-    withdraw_bid(
-        contract_hash,
-        public_key,
-        amount + 1,
-        account::get_main_purse(),
-    );
+    withdraw_bid(contract_hash, public_key, amount + 1);
 }
