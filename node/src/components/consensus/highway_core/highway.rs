@@ -168,10 +168,11 @@ impl<C: Context> Highway<C> {
         validators: Validators<C::ValidatorId>,
         params: Params,
     ) -> Highway<C> {
-        info!(%validators, instance=%instance_id, "creating Highway instance");
         let weights = validators.iter().map(Validator::weight);
         let banned = validators.iter_banned_idx();
         let state = State::new(weights, params, banned);
+        let total_weight = state.total_weight();
+        info!(?total_weight, %validators, instance=%instance_id, "creating Highway instance");
         Highway {
             instance_id,
             validators,

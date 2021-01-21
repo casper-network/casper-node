@@ -10,6 +10,7 @@ use crate::{
             highway::Dependency,
             state::{State, Unit, UnitError},
             validators::{ValidatorIndex, ValidatorMap},
+            Weight,
         },
         traits::Context,
     },
@@ -234,5 +235,65 @@ impl<C: Context> Panorama<C> {
             }
         }
         Ok(())
+    }
+}
+
+/// Utility enum to represent participation of the validator in the panorama.
+pub(crate) enum ParticipationStatus {
+    Active,
+    None,
+    Faulty,
+}
+
+impl Debug for ParticipationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParticipationStatus::Active => write!(f, "A"),
+            ParticipationStatus::None => write!(f, "N"),
+            ParticipationStatus::Faulty => write!(f, "F"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct PanoramaStakes {
+    validators_participation: ValidatorMap<ParticipationStatus>,
+    era_weight: Weight,
+    active_weight: Weight,
+    passive_weight: Weight,
+    faulty_weight: Weight,
+}
+
+impl PanoramaStakes {
+    pub(crate) fn new<C: Context>(panorama: &Panorama<C>, weights: &ValidatorMap<Weight>) -> Self {
+        let mut active_weight = Weight(0);
+        let mut passive_weight = Weight(0);
+        let mut faulty_weight = Weight(0);
+        let panorama_voted_stake: Vec<ParticipationStatus> = panorama
+            .enumerate()
+            .map(|(idx, obs)| match obs {
+                Observation::Correct(_) => {
+                    active_weight += *weights.get(idx);
+                    ParticipationStatus::Active
+                }
+                Observation::Faulty => {
+                    faulty_weight += *weights.get(idx);
+                    ParticipationStatus::Faulty
+                }
+                Observation::None => {
+                    passive_weight += *weights.get(idx);
+                    ParticipationStatus::None
+                }
+            })
+            .collect();
+        let validators_participation = ValidatorMap::from(panorama_voted_stake);
+        let era_weight = weights.iter().sum();
+        PanoramaStakes {
+            validators_participation,
+            era_weight,
+            active_weight,
+            passive_weight,
+            faulty_weight,
+        }
     }
 }

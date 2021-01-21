@@ -12,7 +12,7 @@ pub(crate) use params::Params;
 use quanta::Clock;
 pub(crate) use weight::Weight;
 
-pub(crate) use panorama::{Observation, Panorama};
+pub(crate) use panorama::{Observation, Panorama, PanoramaStakes};
 pub(super) use unit::Unit;
 
 use std::{
@@ -405,9 +405,9 @@ impl<C: Context> State<C> {
             let block = Block::new(fork_choice, value, self);
             self.blocks.insert(hash, block);
         }
+        trace!(?unit, "adding valid unit to the protocol state");
         self.add_ping(unit.creator, unit.timestamp);
         self.units.insert(hash, unit);
-
         // Update the panorama.
         let unit = self.unit(&hash);
         let creator = unit.creator;
@@ -429,6 +429,8 @@ impl<C: Context> State<C> {
             }
         };
         self.panorama[creator] = new_obs;
+        let panorama_stakes = PanoramaStakes::new(&self.panorama, &self.weights);
+        info!(?panorama_stakes, "panorama stakes");
     }
 
     /// Adds direct evidence proving a validator to be faulty, unless that validators is already
