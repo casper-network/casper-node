@@ -351,6 +351,15 @@ where
         })
     }
 
+    /// Inject an event into the event queue.
+    ///
+    /// This function can be used in tests in directly insert an event into the event queue.
+    #[cfg(test)]
+    pub(crate) fn inject_event(&mut self, event: R::Event, queue_kind: QueueKind) {
+        let event_queue = EventQueueHandle::new(self.scheduler);
+        event_queue.schedule(event, queue_kind);
+    }
+
     /// Inject (schedule then process) effects created via a call to `create_effects` which is
     /// itself passed an instance of an `EffectBuilder`.
     #[cfg(test)]
