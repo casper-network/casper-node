@@ -47,7 +47,7 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ExecutionResults, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisResult, POS_PAYMENT_PURSE},
+    genesis::{ExecConfig, GenesisAccount, GenesisError, GenesisResult, POS_PAYMENT_PURSE},
     query::{QueryRequest, QueryResult},
     system_contract_cache::SystemContractCache,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
@@ -131,6 +131,16 @@ where
     ) -> Result<GenesisResult, Error> {
         // Preliminaries
         let initial_root_hash = if let Some(state_root_hash) = ee_config.state_root_hash() {
+            let missing_descendants = self
+                .state
+                .missing_trie_keys(correlation_id, state_root_hash)
+                .map_err(|err| Error::Exec(err.into()))?;
+            if !missing_descendants.is_empty() {
+                return Err(Error::Genesis(GenesisError::MissingStateKeys {
+                    state_root_hash,
+                    missing_descendants,
+                }));
+            }
             return Ok(GenesisResult::Success {
                 post_state_hash: state_root_hash,
                 effect: Default::default(),

@@ -437,6 +437,10 @@ pub enum GenesisError {
     MissingMintContract,
     UnexpectedStoredValue,
     MissingPublicKey,
+    MissingStateKeys {
+        state_root_hash: Blake2bHash,
+        missing_descendants: Vec<Blake2bHash>,
+    },
     ExecutionError(execution::Error),
     MintError(mint::Error),
     CLValue(String),
