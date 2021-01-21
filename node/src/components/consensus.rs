@@ -63,6 +63,11 @@ pub enum ConsensusMessage {
 #[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TimerId(pub u8);
 
+/// An ID to distinguish queued actions. What they are used for is specific to each consensus
+/// protocol implementation.
+#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ActionId(pub u8);
+
 /// Consensus component event.
 #[derive(DataSize, Debug, From)]
 pub enum Event<I> {
@@ -76,6 +81,8 @@ pub enum Event<I> {
         timestamp: Timestamp,
         timer_id: TimerId,
     },
+    /// A queued action to be handled by a specific era
+    Action { era_id: EraId, action_id: ActionId },
     /// We are receiving the data we require to propose a new block
     NewProtoBlock {
         era_id: EraId,
@@ -158,6 +165,9 @@ impl<I: Debug> Display for Event<I> {
                 "timer (ID {}) for era {} scheduled for timestamp {}",
                 timer_id.0, era_id.0, timestamp,
             ),
+            Event::Action { era_id, action_id } => {
+                write!(f, "action (ID {}) for era {}", action_id.0, era_id.0)
+            }
             Event::NewProtoBlock {
                 era_id,
                 proto_block,
@@ -260,6 +270,7 @@ where
                 timestamp,
                 timer_id,
             } => handling_es.handle_timer(era_id, timestamp, timer_id),
+            Event::Action { era_id, action_id } => handling_es.handle_action(era_id, action_id),
             Event::MessageReceived { sender, msg } => handling_es.handle_message(sender, msg),
             Event::NewPeer(peer_id) => handling_es.handle_new_peer(peer_id),
             Event::NewProtoBlock {

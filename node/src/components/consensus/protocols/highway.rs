@@ -33,7 +33,7 @@ use crate::{
             validators::{ValidatorIndex, Validators},
         },
         traits::{ConsensusValueT, Context, NodeIdT},
-        TimerId,
+        ActionId, TimerId,
     },
     types::Timestamp,
     NodeRng,
@@ -47,8 +47,9 @@ const MAX_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 10000;
 const TIMER_ID_ACTIVE_VALIDATOR: TimerId = TimerId(0);
 /// The timer for adding a vertex with a future timestamp.
 const TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP: TimerId = TimerId(1);
-/// The timer for adding a vertex from the `vertices_to_be_added` queue.
-const TIMER_ID_VERTEX: TimerId = TimerId(2);
+
+/// The action of adding a vertex from the `vertices_to_be_added` queue.
+const ACTION_ID_VERTEX: ActionId = ActionId(0);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct HighwayProtocol<I, C>
@@ -274,8 +275,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let was_empty = self.vertices_to_be_added.is_empty();
         self.vertices_to_be_added.extend(pvvs);
         if was_empty && !self.vertices_to_be_added.is_empty() {
-            let now = Timestamp::now();
-            vec![ProtocolOutcome::ScheduleTimer(now, TIMER_ID_VERTEX)]
+            vec![ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
         } else {
             Vec::new()
         }
@@ -298,8 +298,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         let mut results = if self.vertices_to_be_added.is_empty() {
             Vec::new()
         } else {
-            let now = Timestamp::now();
-            vec![ProtocolOutcome::ScheduleTimer(now, TIMER_ID_VERTEX)]
+            vec![ProtocolOutcome::QueueAction(ACTION_ID_VERTEX)]
         };
 
         // If we are still missing a dependency, store the vertex in the map and request the
@@ -704,8 +703,18 @@ where
                 self.process_av_effects(effects)
             }
             TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP => self.add_past_due_stored_vertices(timestamp),
-            TIMER_ID_VERTEX => self.add_vertex(rng),
             _ => unreachable!("unexpected timer ID"),
+        }
+    }
+
+    fn handle_action(
+        &mut self,
+        action_id: ActionId,
+        rng: &mut NodeRng,
+    ) -> Vec<ProtocolOutcome<I, C>> {
+        match action_id {
+            ACTION_ID_VERTEX => self.add_vertex(rng),
+            _ => unreachable!("unexpected action ID"),
         }
     }
 

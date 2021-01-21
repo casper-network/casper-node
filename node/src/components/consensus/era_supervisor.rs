@@ -37,7 +37,7 @@ use crate::{
         },
         metrics::ConsensusMetrics,
         traits::NodeIdT,
-        Config, ConsensusMessage, Event, ReactorEventT, TimerId,
+        ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
     },
     crypto::hash::Digest,
     effect::{EffectBuilder, EffectExt, Effects, Responder},
@@ -407,6 +407,16 @@ where
         })
     }
 
+    pub(super) fn handle_action(
+        &mut self,
+        era_id: EraId,
+        action_id: ActionId,
+    ) -> Effects<Event<I>> {
+        self.delegate_to_era(era_id, move |consensus, rng| {
+            consensus.handle_action(action_id, rng)
+        })
+    }
+
     pub(super) fn handle_message(&mut self, sender: I, msg: ConsensusMessage) -> Effects<Event<I>> {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
@@ -690,6 +700,10 @@ where
                         timer_id,
                     })
             }
+            ProtocolOutcome::QueueAction(action_id) => self
+                .effect_builder
+                .immediately()
+                .event(move |()| Event::Action { era_id, action_id }),
             ProtocolOutcome::CreateNewBlock {
                 block_context,
                 past_values,

@@ -17,7 +17,7 @@ use crate::{
             validators::ValidatorIndex,
             State,
         },
-        protocols::highway::{HighwayMessage, TIMER_ID_VERTEX},
+        protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
         tests::utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
         traits::Context,
         HighwayProtocol,
@@ -194,8 +194,8 @@ fn send_a_valid_wire_unit() {
     while let Some(outcome) = outcomes.pop() {
         match outcome {
             ProtocolOutcome::CreatedGossipMessage(_) | ProtocolOutcome::FinalizedBlock(_) => (),
-            ProtocolOutcome::ScheduleTimer(timestamp, TIMER_ID_VERTEX) => {
-                outcomes.extend(highway_protocol.handle_timer(timestamp, TIMER_ID_VERTEX, &mut rng))
+            ProtocolOutcome::QueueAction(ACTION_ID_VERTEX) => {
+                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX, &mut rng))
             }
             outcome => panic!("Unexpected outcome: {:?}", outcome),
         }
@@ -245,8 +245,8 @@ fn detect_doppelganger() {
     while let Some(outcome) = outcomes.pop() {
         match outcome {
             ProtocolOutcome::DoppelgangerDetected => return,
-            ProtocolOutcome::ScheduleTimer(timestamp, TIMER_ID_VERTEX) => {
-                outcomes.extend(highway_protocol.handle_timer(timestamp, TIMER_ID_VERTEX, &mut rng))
+            ProtocolOutcome::QueueAction(ACTION_ID_VERTEX) => {
+                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX, &mut rng))
             }
             _ => (),
         }
