@@ -4,6 +4,7 @@ use core::convert::TryInto;
 use num_rational::Ratio;
 
 use crate::{
+    account::AccountHash,
     auction::{
         constants::*, Auction, Bids, EraId, MintProvider, RuntimeProvider, SeigniorageAllocation,
         SeigniorageRecipientsSnapshot, StorageProvider, SystemProvider, UnbondingPurse,
@@ -146,14 +147,19 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
             // current era id + unbonding delay is equal or greater than the `era_of_creation` that
             // was calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
+                let account_hash =
+                    AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), |x| {
+                        provider.blake2b(x)
+                    });
+
                 // Move funds from bid purse to unbonding purse
-                provider
-                    .transfer_from_purse_to_purse(
+                let _transferred_to = provider
+                    .transfer_purse_to_account(
                         *unbonding_purse.bonding_purse(),
-                        *unbonding_purse.unbonding_purse(),
+                        account_hash,
                         *unbonding_purse.amount(),
                     )
-                    .map_err(|_| Error::TransferToUnbondingPurse)?
+                    .map_err(|_| Error::TransferToUnbondingPurse)?;
             } else {
                 new_unbonding_list.push(*unbonding_purse);
             }
@@ -178,7 +184,6 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     validator_public_key: PublicKey,
     unbonder_public_key: PublicKey,
     bonding_purse: URef,
-    unbonding_purse: URef,
     amount: U512,
 ) -> Result<U512> {
     if provider.get_balance(bonding_purse)?.unwrap_or_default() < amount {
@@ -189,7 +194,6 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     let era_of_creation = provider.read_era_id()?;
     let new_unbonding_purse = UnbondingPurse::new(
         bonding_purse,
-        unbonding_purse,
         validator_public_key,
         unbonder_public_key,
         era_of_creation,

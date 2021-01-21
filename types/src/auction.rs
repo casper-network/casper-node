@@ -125,8 +125,6 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let unbonding_purse = self.get_main_purse()?;
-
         // Update bids or stakes
         let mut bids = detail::get_bids(self)?;
 
@@ -137,7 +135,6 @@ pub trait Auction:
             public_key,
             public_key, // validator is the unbonder
             *bid.bonding_purse(),
-            unbonding_purse,
             amount,
         )?;
 
@@ -224,8 +221,6 @@ pub trait Auction:
             return Err(Error::InvalidPublicKey);
         }
 
-        let unbonding_purse = self.get_main_purse()?;
-
         let mut bids = detail::get_bids(self)?;
 
         let delegators = match bids.get_mut(&validator_public_key) {
@@ -243,7 +238,6 @@ pub trait Auction:
                     validator_public_key,
                     delegator_public_key,
                     *delegator.bonding_purse(),
-                    unbonding_purse,
                     amount,
                 )?;
                 let updated_stake = delegator.decrease_stake(amount)?;
@@ -536,8 +530,6 @@ pub trait Auction:
             None => return Err(Error::DelegatorNotFound),
         };
 
-        let target_purse = self.get_main_purse()?;
-
         let reward_amount = *delegator.reward();
 
         if reward_amount.is_zero() {
@@ -550,7 +542,7 @@ pub trait Auction:
             .into_uref()
             .ok_or(Error::InvalidKeyVariant)?;
 
-        self.transfer_purse_to_purse(source_purse, target_purse, reward_amount)
+        self.transfer_purse_to_account(source_purse, account_hash, reward_amount)
             .map_err(|_| Error::WithdrawDelegatorReward)?;
 
         delegator.zero_reward();
@@ -587,9 +579,7 @@ pub trait Auction:
             .into_uref()
             .ok_or(Error::InvalidKeyVariant)?;
 
-        let target_purse = self.get_main_purse()?;
-
-        self.transfer_purse_to_purse(source_purse, target_purse, reward_amount)
+        self.transfer_purse_to_account(source_purse, account_hash, reward_amount)
             .map_err(|_| Error::WithdrawValidatorReward)?;
 
         bid.zero_reward();
