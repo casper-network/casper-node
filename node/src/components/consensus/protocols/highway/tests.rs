@@ -9,6 +9,7 @@ use crate::{
     components::consensus::{
         candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
+        config::Config,
         consensus_protocol::{ConsensusProtocol, ProtocolOutcome},
         highway_core::{
             highway::{SignedWireUnit, Vertex, WireUnit},
@@ -67,11 +68,17 @@ where
         .map(|(pk, w)| (pk, w.into()))
         .collect::<Vec<_>>();
     let chainspec = new_test_chainspec(weights.clone());
+    let config = Config {
+        secret_key_path: Default::default(),
+        unit_hashes_folder: Default::default(),
+        pending_vertex_timeout: "1min".parse().unwrap(),
+    };
     HighwayProtocol::<NodeId, ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
         &init_slashed.into_iter().collect(),
         &(&chainspec).into(),
+        &config,
         None,
         0.into(),
         0,

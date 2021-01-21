@@ -61,6 +61,7 @@ type ConsensusConstructor<I> = dyn Fn(
     BTreeMap<PublicKey, U512>,                    // validator weights
     &HashSet<PublicKey>,                          // slashed validators that are banned in this era
     &ProtocolConfig,                              // the network's chainspec
+    &Config,                                      // The consensus part of the node config.
     Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
     Timestamp,                                    // start time for this era
     u64,                                          // random seed
@@ -78,6 +79,7 @@ pub struct EraSupervisor<I> {
     pub(super) public_signing_key: PublicKey,
     current_era: EraId,
     protocol_config: ProtocolConfig,
+    config: Config,
     #[data_size(skip)] // Negligible for most closures, zero for functions.
     new_consensus: Box<ConsensusConstructor<I>>,
     node_start_time: Timestamp,
@@ -128,7 +130,7 @@ where
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let unit_hashes_folder = config.with_dir(config.value().unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
-        let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
+        let secret_signing_key = Rc::new(config.secret_key_path.clone().load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
         let bonded_eras: u64 = protocol_config.unbonding_delay - protocol_config.auction_delay;
         let metrics = ConsensusMetrics::new(registry)
@@ -141,6 +143,7 @@ where
             public_signing_key,
             current_era: EraId(0),
             protocol_config,
+            config,
             new_consensus,
             node_start_time: Timestamp::now(),
             bonded_eras,
@@ -273,6 +276,7 @@ where
             validators.clone(),
             &slashed,
             &self.protocol_config,
+            &self.config,
             prev_era.map(|era| &*era.consensus),
             start_time,
             seed,
