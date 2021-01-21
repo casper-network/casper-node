@@ -16,6 +16,14 @@ use tracing::{error, info, warn};
 
 use casper_types::{PublicKey, U512};
 
+#[cfg(not(feature = "fast-sync"))]
+use crate::components::linear_chain_sync::{self, LinearChainSync};
+#[cfg(feature = "fast-sync")]
+use crate::components::{
+    linear_chain_fast_sync as linear_chain_sync,
+    linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
+};
+
 use crate::{
     components::{
         block_executor::{self, BlockExecutor},
@@ -29,7 +37,6 @@ use crate::{
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
-        linear_chain_sync::{self, LinearChainSync},
         metrics::Metrics,
         network::{self, Network, ENABLE_LIBP2P_ENV_VAR},
         rest_server::{self, RestServer},
