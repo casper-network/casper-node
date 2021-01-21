@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
 
+use casper_execution_engine::shared::motes::Motes;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+        ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_GAS_PRICE,
         DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
@@ -64,8 +65,6 @@ fn withdraw_validator_reward(
     validator: PublicKey,
     protocol_version: Option<ProtocolVersion>,
 ) -> U512 {
-    const REWARD_PURSE: &str = "reward_purse"; // used in auction-bids contract
-
     let withdraw_request = {
         let mut builder = ExecuteRequestBuilder::standard(
             sender,
@@ -83,18 +82,18 @@ fn withdraw_validator_reward(
         builder.build()
     };
 
+    let account = builder.get_account(sender).expect("should have account");
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+
     builder.exec(withdraw_request).commit().expect_success();
 
-    let validator_reward_purse = builder
-        .get_account(sender)
-        .expect("should have account")
-        .named_keys()
-        .get(REWARD_PURSE)
-        .expect("should have key")
-        .into_uref()
-        .expect("should be uref");
+    let balance_after = builder.get_purse_balance(account.main_purse());
 
-    builder.get_purse_balance(validator_reward_purse)
+    let gas_cost = builder.last_exec_gas_cost();
+    let motes = Motes::from_gas(gas_cost, DEFAULT_GAS_PRICE).unwrap();
+
+    balance_after + motes.value() - balance_before
 }
 
 fn withdraw_delegator_reward(
@@ -104,8 +103,6 @@ fn withdraw_delegator_reward(
     delegator: PublicKey,
     protocol_version: Option<ProtocolVersion>,
 ) -> U512 {
-    const REWARD_PURSE: &str = "reward_purse"; // used in auction-bids contract
-
     let withdraw_request = {
         let mut builder = ExecuteRequestBuilder::standard(
             sender,
@@ -122,18 +119,18 @@ fn withdraw_delegator_reward(
         builder.build()
     };
 
+    let account = builder.get_account(sender).expect("should have account");
+
+    let balance_before = builder.get_purse_balance(account.main_purse());
+
     builder.exec(withdraw_request).commit().expect_success();
 
-    let validator_reward_purse = builder
-        .get_account(sender)
-        .expect("should have account")
-        .named_keys()
-        .get(REWARD_PURSE)
-        .expect("should have key")
-        .into_uref()
-        .expect("should be uref");
+    let balance_after = builder.get_purse_balance(account.main_purse());
 
-    builder.get_purse_balance(validator_reward_purse)
+    let gas_cost = builder.last_exec_gas_cost();
+    let motes = Motes::from_gas(gas_cost, DEFAULT_GAS_PRICE).unwrap();
+
+    balance_after + motes.value() - balance_before
 }
 #[ignore]
 #[test]

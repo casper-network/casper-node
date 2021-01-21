@@ -1747,14 +1747,8 @@ where
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
                 let delegator_public_key: PublicKey =
                     Self::get_named_argument(&runtime_args, auction::ARG_DELEGATOR_PUBLIC_KEY)?;
-                let target_purse: URef =
-                    Self::get_named_argument(&runtime_args, auction::ARG_TARGET_PURSE)?;
                 runtime
-                    .withdraw_delegator_reward(
-                        validator_public_key,
-                        delegator_public_key,
-                        target_purse,
-                    )
+                    .withdraw_delegator_reward(validator_public_key, delegator_public_key)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
@@ -1766,10 +1760,8 @@ where
 
                 let validator_public_key: PublicKey =
                     Self::get_named_argument(&runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
-                let target_purse: URef =
-                    Self::get_named_argument(&runtime_args, auction::ARG_TARGET_PURSE)?;
                 runtime
-                    .withdraw_validator_reward(validator_public_key, target_purse)
+                    .withdraw_validator_reward(validator_public_key)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),

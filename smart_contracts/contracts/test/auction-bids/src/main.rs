@@ -10,9 +10,9 @@ use casper_contract::contract_api::{runtime, storage, system};
 use casper_types::{
     auction::{
         SeigniorageRecipients, ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_REWARD_FACTORS,
-        ARG_TARGET_PURSE, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, METHOD_DELEGATE,
-        METHOD_DISTRIBUTE, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION,
-        METHOD_UNDELEGATE, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
+        ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, METHOD_DELEGATE, METHOD_DISTRIBUTE,
+        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
+        METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
     runtime_args, ApiError, PublicKey, RuntimeArgs, URef, U512,
 };
@@ -23,10 +23,6 @@ const ARG_DELEGATE: &str = "delegate";
 const ARG_UNDELEGATE: &str = "undelegate";
 const ARG_RUN_AUCTION: &str = "run_auction";
 const ARG_READ_SEIGNIORAGE_RECIPIENTS: &str = "read_seigniorage_recipients";
-
-const REWARD_PURSE: &str = "reward_purse";
-const DELEGATE_PURSE: &str = "delegate_purse";
-const UNDELEGATE_PURSE: &str = "undelegate_purse";
 
 #[repr(u16)]
 enum Error {
@@ -60,9 +56,7 @@ fn delegate() {
         ARG_AMOUNT => amount,
     };
 
-    let (purse, _amount): (URef, U512) = runtime::call_contract(auction, METHOD_DELEGATE, args);
-
-    runtime::put_key(DELEGATE_PURSE, purse.into())
+    let (_purse, _amount): (URef, U512) = runtime::call_contract(auction, METHOD_DELEGATE, args);
 }
 
 fn undelegate() {
@@ -77,10 +71,8 @@ fn undelegate() {
         ARG_DELEGATOR => delegator,
     };
 
-    let (purse, _remaining_bid): (URef, U512) =
+    let (_purse, _remaining_bid): (URef, U512) =
         runtime::call_contract(auction, METHOD_UNDELEGATE, args);
-
-    runtime::put_key(UNDELEGATE_PURSE, purse.into());
 }
 
 fn run_auction() {
@@ -112,14 +104,9 @@ fn withdraw_delegator_reward() {
     let validator_public_key: PublicKey = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEY);
     let delegator_public_key: PublicKey = runtime::get_named_arg(ARG_DELEGATOR_PUBLIC_KEY);
 
-    let reward_purse = system::create_purse();
-
-    runtime::put_key(REWARD_PURSE, reward_purse.into());
-
     let args = runtime_args! {
         ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
         ARG_DELEGATOR_PUBLIC_KEY => delegator_public_key,
-        ARG_TARGET_PURSE => reward_purse,
     };
     runtime::call_contract::<()>(auction, METHOD_WITHDRAW_DELEGATOR_REWARD, args);
 }
@@ -128,13 +115,8 @@ fn withdraw_validator_reward() {
     let auction = system::get_auction();
     let validator_public_key: PublicKey = runtime::get_named_arg(ARG_VALIDATOR_PUBLIC_KEY);
 
-    let reward_purse = system::create_purse();
-
-    runtime::put_key(REWARD_PURSE, reward_purse.into());
-
     let args = runtime_args! {
         ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
-        ARG_TARGET_PURSE => reward_purse,
     };
     runtime::call_contract::<()>(auction, METHOD_WITHDRAW_VALIDATOR_REWARD, args);
 }

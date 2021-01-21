@@ -520,7 +520,6 @@ pub trait Auction:
         &mut self,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
-        target_purse: URef,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
@@ -538,6 +537,8 @@ pub trait Auction:
             Some(delegator) => delegator,
             None => return Err(Error::DelegatorNotFound),
         };
+
+        let target_purse = self.get_main_purse()?;
 
         let reward_amount = *delegator.reward();
 
@@ -563,11 +564,7 @@ pub trait Auction:
 
     /// Allows validators to withdraw the seigniorage rewards they have earned.
     /// Pays out the entire accumulated amount to the destination purse.
-    fn withdraw_validator_reward(
-        &mut self,
-        validator_public_key: PublicKey,
-        target_purse: URef,
-    ) -> Result<U512> {
+    fn withdraw_validator_reward(&mut self, validator_public_key: PublicKey) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
@@ -591,6 +588,8 @@ pub trait Auction:
             .ok_or(Error::MissingKey)?
             .into_uref()
             .ok_or(Error::InvalidKeyVariant)?;
+
+        let target_purse = self.get_main_purse()?;
 
         self.transfer_purse_to_purse(source_purse, target_purse, reward_amount)
             .map_err(|_| Error::WithdrawValidatorReward)?;
