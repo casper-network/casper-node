@@ -149,7 +149,13 @@ export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uin
     }
     let amountBytes = amount.toBytes();
     
-    const optId = new Option(id !== null ? arrayToTyped(toBytesU64(id.value)) : null);
+    let optId: Option;
+    if (id !== null) {
+        optId = new Option(arrayToTyped(toBytesU64(id.value)));
+    }
+    else {
+        optId = new Option(null);
+    }
     const idBytes = optId.toBytes();
     
     let resultPtr = new Uint32Array(1);
@@ -190,7 +196,14 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
     let targetBytes = targetPurse.toBytes();
     let amountBytes = amount.toBytes();
 
-    const optId = new Option(id !== null ? arrayToTyped(toBytesU64(id.value)) : null);
+    let optId: Option;
+    if (id !== null) {
+        const idValue = (<Ref<u64>>id).value;
+        optId = new Option(arrayToTyped(toBytesU64(idValue)));
+    }
+    else {
+        optId = new Option(null);
+    }
     const idBytes = optId.toBytes();
 
     let ret = externals.transfer_from_purse_to_purse(
@@ -224,7 +237,13 @@ export function transferToAccount(targetAccount: Uint8Array, amount: U512, id: R
     }
     let amountBytes = amount.toBytes();
     
-    const optId = new Option(id !== null ? arrayToTyped(toBytesU64(id.value)) : null);
+    let optId: Option;
+    if (id !== null) {
+        optId = new Option(arrayToTyped(toBytesU64(id.value)));
+    }
+    else {
+        optId = new Option(null);
+    }
     const idBytes = optId.toBytes();
 
     let resultPtr = new Uint32Array(1);
