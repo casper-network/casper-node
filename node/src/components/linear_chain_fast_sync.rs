@@ -131,28 +131,15 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         let mut curr_state = mem::replace(&mut self.state, State::None);
         match curr_state {
             State::None | State::Done => panic!("Block handled when in {:?} state.", &curr_state),
-            // Keep syncing from genesis if we haven't reached the trusted block hash
-            State::SyncingTrustedHash {
-                highest_block_seen,
-                ref mut validator_weights,
-                ..
-            } if highest_block_seen != block_height => {
-                if let Some(validator_weights_for_new_era) =
-                    block_header.next_era_validator_weights()
-                {
-                    *validator_weights = validator_weights_for_new_era.clone();
-                }
-                self.state = curr_state;
-                self.fetch_next_block_deploys(effect_builder)
-            }
-            // Otherwise transition to State::SyncingDescendants
+            // If the block we are handling is the highest block seen, transition to syncing
+            // descendants
             State::SyncingTrustedHash {
                 highest_block_seen,
                 trusted_hash,
                 ref latest_block,
                 validator_weights,
                 ..
-            } => {
+            } if highest_block_seen == block_height => {
                 assert_eq!(highest_block_seen, block_height);
                 match latest_block.as_ref() {
                     Some(expected) => assert_eq!(
@@ -166,6 +153,19 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
                 // Kick off syncing trusted hash descendants.
                 self.state = State::sync_descendants(trusted_hash, block_header, validator_weights);
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
+            }
+            // Keep syncing from genesis if we haven't reached the trusted block hash
+            State::SyncingTrustedHash {
+                ref mut validator_weights,
+                ..
+            } => {
+                if let Some(validator_weights_for_new_era) =
+                    block_header.next_era_validator_weights()
+                {
+                    *validator_weights = validator_weights_for_new_era.clone();
+                }
+                self.state = curr_state;
+                self.fetch_next_block_deploys(effect_builder)
             }
             State::SyncingDescendants {
                 ref latest_block,
