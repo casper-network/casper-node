@@ -1106,7 +1106,10 @@ impl<REv> EffectBuilder<REv> {
         .transpose()
         .unwrap_or_else(|err| {
             let type_name = type_name::<T>();
-            panic!("could not deserialize state from storage type name {:?} err {:?}", type_name, err);
+            panic!(
+                "could not deserialize state from storage type name {:?} err {:?}",
+                type_name, err
+            );
         })
     }
 
