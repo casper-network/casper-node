@@ -1,12 +1,11 @@
 use std::collections::BTreeMap;
 
-use casper_execution_engine::shared::motes::Motes;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
-        ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_GAS_PRICE,
+        ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
         DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
@@ -86,14 +85,15 @@ fn withdraw_validator_reward(
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(withdraw_request).commit().expect_success();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let gas_cost = builder.last_exec_gas_cost();
-    let motes = Motes::from_gas(gas_cost, DEFAULT_GAS_PRICE).unwrap();
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    balance_after + motes.value() - balance_before
+    balance_after + transaction_fee - balance_before
 }
 
 fn withdraw_delegator_reward(
@@ -123,14 +123,15 @@ fn withdraw_delegator_reward(
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(withdraw_request).commit().expect_success();
 
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let gas_cost = builder.last_exec_gas_cost();
-    let motes = Motes::from_gas(gas_cost, DEFAULT_GAS_PRICE).unwrap();
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    balance_after + motes.value() - balance_before
+    balance_after + transaction_fee - balance_before
 }
 #[ignore]
 #[test]

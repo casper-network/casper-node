@@ -7,11 +7,11 @@ use casper_engine_test_support::{
         DEFAULT_PROTOCOL_VERSION, DEFAULT_RUN_GENESIS_REQUEST,
     },
     AccountHash, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{upgrade::ActivationPoint, GenesisAccount, SYSTEM_ACCOUNT_ADDR},
+    core::engine_state::{upgrade::ActivationPoint, GenesisAccount},
     shared::{
+        gas::Gas,
         host_function_costs::{Cost, HostFunction, HostFunctionCosts},
         motes::Motes,
         opcode_costs::OpcodeCosts,
@@ -46,7 +46,6 @@ use casper_types::{
 };
 
 const SYSTEM_CONTRACT_HASHES_NAME: &str = "system_contract_hashes.wasm";
-const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
@@ -75,7 +74,6 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 });
 
 const ARG_AMOUNT: &str = "amount";
-const ARG_TARGET: &str = "target";
 
 #[ignore]
 #[test]
@@ -118,13 +116,19 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
+
     builder.exec(add_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
+
+    let transaction_fee_1 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
     let expected_call_cost = U512::from(DEFAULT_ADD_BID_COST);
     assert_eq!(
         balance_after,
-        balance_before - U512::from(BOND_AMOUNT) - expected_call_cost
+        balance_before - U512::from(BOND_AMOUNT) - transaction_fee_1
     );
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 
@@ -147,11 +151,18 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
+
     builder.exec(withdraw_bid_request).expect_success().commit();
+
     let balance_after = builder.get_purse_balance(account.main_purse());
 
+    let transaction_fee_2 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
+
     let expected_call_cost = U512::from(DEFAULT_WITHDRAW_BID_COST);
-    assert_eq!(balance_after, balance_before - expected_call_cost);
+    assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
 
@@ -227,13 +238,20 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
+
     builder.exec(add_bid_request).expect_success().commit();
+
     let balance_after = builder.get_purse_balance(account.main_purse());
+
+    let transaction_fee_1 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
     let expected_call_cost = U512::from(NEW_ADD_BID_COST);
     assert_eq!(
         balance_after,
-        balance_before - U512::from(BOND_AMOUNT) - expected_call_cost
+        balance_before - U512::from(BOND_AMOUNT) - transaction_fee_1
     );
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 
@@ -257,11 +275,17 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
+
     builder.exec(withdraw_bid_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
+    let transaction_fee_2 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
+
     let call_cost = U512::from(NEW_WITHDRAW_BID_COST);
-    assert_eq!(balance_after, balance_before - call_cost);
+    assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
 
@@ -320,13 +344,20 @@ fn delegate_and_undelegate_have_expected_costs() {
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
+
     builder.exec(delegate_request).expect_success().commit();
+
     let balance_after = builder.get_purse_balance(account.main_purse());
+
+    let transaction_fee_1 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
     let expected_call_cost = U512::from(DEFAULT_DELEGATE_COST);
     assert_eq!(
         balance_after,
-        balance_before - U512::from(BID_AMOUNT) - expected_call_cost
+        balance_before - U512::from(BID_AMOUNT) - transaction_fee_1,
     );
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 
@@ -350,11 +381,17 @@ fn delegate_and_undelegate_have_expected_costs() {
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
+
     builder.exec(undelegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
+    let transaction_fee_2 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
+
     let expected_call_cost = U512::from(DEFAULT_UNDELEGATE_COST);
-    assert_eq!(balance_after, balance_before - expected_call_cost);
+    assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
 
@@ -444,14 +481,19 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
+    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
+
     let balance_before = builder.get_purse_balance(account.main_purse());
     builder.exec(delegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
+    let transaction_fee_1 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
+
     let call_cost = U512::from(NEW_DELEGATE_COST);
     assert_eq!(
         balance_after,
-        balance_before - U512::from(BID_AMOUNT) - call_cost
+        balance_before - U512::from(BID_AMOUNT) - transaction_fee_1,
     );
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 
@@ -476,11 +518,17 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
+
     builder.exec(undelegate_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(account.main_purse());
 
+    let transaction_fee_2 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
+
     let call_cost = U512::from(NEW_UNDELEGATE_COST);
-    assert_eq!(balance_after, balance_before - call_cost);
+    assert_eq!(balance_after, balance_before - transaction_fee_2);
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 }
 
@@ -538,13 +586,18 @@ fn mint_transfer_has_expected_costs() {
     .build();
 
     let balance_before = builder.get_purse_balance(source);
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(transfer_request).expect_success().commit();
     let balance_after = builder.get_purse_balance(source);
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let expected_call_cost = U512::from(DEFAULT_TRANSFER_COST);
     assert_eq!(
         balance_after,
-        balance_before - transfer_amount - expected_call_cost
+        balance_before - transfer_amount - transaction_fee,
     );
     assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
@@ -634,6 +687,8 @@ fn should_charge_for_erroneous_system_contract_calls() {
 
         let balance_before = builder.get_purse_balance(account.main_purse());
 
+        let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
         builder.exec(exec_request).commit();
 
         let _error = builder
@@ -645,85 +700,21 @@ fn should_charge_for_erroneous_system_contract_calls() {
             .as_error()
             .unwrap_or_else(|| panic!("should have error while executing {}", entrypoint));
 
+        let transaction_fee =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+
         let balance_after = builder.get_purse_balance(account.main_purse());
 
         let call_cost = U512::from(expected_cost);
-        let lhs = balance_after;
-        let rhs = balance_before - call_cost;
         assert_eq!(
-            lhs, rhs,
+            balance_after,
+            balance_before - transaction_fee,
             "Calling a failed entrypoint {} does not incur expected cost of {}",
-            entrypoint, expected_cost,
+            entrypoint,
+            expected_cost,
         );
         assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
     }
-}
-
-#[ignore]
-#[test]
-fn should_not_charge_system_account_for_running_auction() {
-    // This verifies a corner case where system account calls `run_auction` entrypoint, but it
-    // shouldn't be charged for doing so. Otherwise if that happens the system could fail as in
-    // production code system account is most likely empty.
-    let fund_system_account_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_TRANSFER_TO_ACCOUNT,
-        runtime_args! { ARG_TARGET => SYSTEM_ACCOUNT_ADDR, ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) },
-    )
-    .build();
-
-    let mut builder = InMemoryWasmTestBuilder::default();
-
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
-
-    let auction_hash = builder.get_auction_contract_hash();
-
-    builder
-        .exec(fund_system_account_request)
-        .commit()
-        .expect_success();
-
-    let system_account = builder
-        .get_account(SYSTEM_ACCOUNT_ADDR)
-        .expect("should have system account");
-    let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account");
-
-    let run_auction_as_system_request = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ACCOUNT_ADDR,
-        auction_hash,
-        auction::METHOD_RUN_AUCTION,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let run_auction_as_user_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *DEFAULT_ACCOUNT_ADDR,
-        auction_hash,
-        auction::METHOD_RUN_AUCTION,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    // Verify that system account is not charged
-    let system_funds_before = builder.get_purse_balance(system_account.main_purse());
-    builder
-        .exec(run_auction_as_system_request)
-        .commit()
-        .expect_success();
-    let system_funds_after = builder.get_purse_balance(system_account.main_purse());
-
-    assert_eq!(system_funds_before, system_funds_after);
-
-    let user_funds_before = builder.get_purse_balance(default_account.main_purse());
-    builder.exec(run_auction_as_user_request).commit();
-    let user_funds_after = builder.get_purse_balance(default_account.main_purse());
-
-    let expected_call_cost = U512::from(DEFAULT_RUN_AUCTION_COST);
-    let lhs = user_funds_after;
-    let rhs = user_funds_before - expected_call_cost;
-    assert_eq!(lhs, rhs);
 }
 
 #[ignore]
@@ -752,10 +743,18 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
     };
 
     let user_funds_before = builder.get_purse_balance(default_account.main_purse());
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(do_nothing_request).commit().expect_success();
+
     let user_funds_after = builder.get_purse_balance(default_account.main_purse());
 
-    assert_eq!(user_funds_after, user_funds_before,);
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+
+    assert_eq!(user_funds_after, user_funds_before - transaction_fee,);
+
+    assert_eq!(builder.last_exec_gas_cost(), Gas::new(U512::zero()));
 }
 
 #[ignore]
@@ -886,14 +885,23 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
 
     // Verify that user is called and deploy raises runtime error
     let user_funds_before = builder.get_purse_balance(default_account.main_purse());
+
+    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
+
     builder.exec(add_bid_request).commit().expect_success();
+
     let user_funds_after = builder.get_purse_balance(default_account.main_purse());
 
-    let expected_call_cost = U512::from(DEFAULT_ADD_BID_COST)
-        + U512::from(UPDATED_CALL_CONTRACT_COST)
-        + U512::from(BOND_AMOUNT);
-    let lhs = user_funds_after;
-    let rhs = user_funds_before - expected_call_cost;
+    let transaction_fee_1 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    assert_eq!(lhs, rhs);
+    let expected_call_cost =
+        U512::from(DEFAULT_ADD_BID_COST) + U512::from(UPDATED_CALL_CONTRACT_COST);
+
+    assert_eq!(
+        user_funds_after,
+        user_funds_before - transaction_fee_1 - U512::from(BOND_AMOUNT)
+    );
+
+    assert_eq!(builder.last_exec_gas_cost(), Gas::new(expected_call_cost));
 }

@@ -1,11 +1,10 @@
 use casper_engine_test_support::{
     internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-        DEFAULT_GAS_PRICE, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
+        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
+        DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::shared::motes::Motes;
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -90,23 +89,16 @@ fn should_charge_non_main_purse() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let transfer_result = builder
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder
         .exec(account_payment_exec_request)
         .expect_success()
-        .commit()
-        .finish();
+        .commit();
 
-    let response = transfer_result
-        .builder()
-        .get_exec_response(2)
-        .expect("there should be a response")
-        .clone();
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let result = utils::get_success_result(&response);
-    let gas = result.cost();
-    let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
-
-    let expected_resting_balance = account_1_purse_funding_amount - motes.value();
+    let expected_resting_balance = account_1_purse_funding_amount - transaction_fee;
 
     let purse_final_balance = builder.get_purse_balance(purse);
 

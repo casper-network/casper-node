@@ -181,11 +181,18 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(exec_request).expect_success().commit();
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+
     let balance_after = builder.get_purse_balance(account.main_purse());
 
     assert_eq!(
-        balance_before, balance_after,
+        balance_after,
+        balance_before - transaction_fee,
         "balance before and after should match"
     );
     assert_eq!(builder.last_exec_gas_cost().value(), U512::zero());
@@ -235,10 +242,16 @@ fn should_verify_isolated_auction_storage_is_free() {
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(exec_request).expect_success().commit();
+
     let balance_after = builder.get_purse_balance(account.main_purse());
 
-    let expected = balance_before - bond_amount - DEFAULT_ADD_BID_COST;
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+
+    let expected = balance_before - bond_amount - transaction_fee;
 
     assert_eq!(
         balance_after,
