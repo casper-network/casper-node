@@ -200,3 +200,44 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
 
     return Error.fromResult(ret);
 }
+
+/**
+ * Transfers `amount` of motes from main purse purse to `target` account.
+ * If `target` does not exist it will be created.
+ *
+ * @param amount Amount is denominated in motes
+ * @returns This function will return a [[TransferredTo.TransferError]] in
+ * case of transfer error, in case of any other variant the transfer itself
+ * can be considered successful.
+ * @hidden
+ */
+export function transferToAccount(targetAccount: Uint8Array, amount: U512): TransferResult {
+    let targetBytes = new Array<u8>(targetAccount.length);
+    for (let i = 0; i < targetAccount.length; i++) {
+        targetBytes[i] = targetAccount[i];
+    }
+    let amountBytes = amount.toBytes();
+    let idBytes = new Option(null).toBytes();
+    let resultPtr = new Uint32Array(1);
+
+    let ret = externals.transfer_to_account(
+        targetBytes.dataStart,
+        targetBytes.length,
+        amountBytes.dataStart,
+        amountBytes.length,
+        idBytes.dataStart,
+        idBytes.length,
+        resultPtr.dataStart,
+    );
+
+    const error = Error.fromResult(ret);
+    if (error !== null) {
+        return TransferResult.makeErr(error);
+    }
+
+    const transferredTo = makeTransferredTo(resultPtr[0]);
+    if (transferredTo !== null) {
+        return TransferResult.makeOk(transferredTo);
+    }
+    return TransferResult.makeErr(Error.fromErrorCode(ErrorCode.Transfer));
+}
