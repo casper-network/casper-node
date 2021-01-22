@@ -21,6 +21,7 @@ const ACCESS_KEY_NAME = "purse_holder_access";
 const ARG_PURSE = "purse_name";
 const VERSION = "1.0.0";
 const PURSE_HOLDER_STORED_CONTRACT_NAME = "purse_holder_stored";
+const IS_LOCKED = "is_locked";
 
 enum CustomError {
   MissingMethodNameArg = 0,
@@ -44,6 +45,7 @@ export function version(): void {
 
 export function call(): void {
   let entryPoints = new CL.EntryPoints();
+  let is_locked = CL.getNamedArg(IS_LOCKED);
 
   {
     let args = new Array<Pair<String, CLType>>();
@@ -56,16 +58,32 @@ export function call(): void {
     entryPoints.addEntryPoint(entryPointAdd);
   }
 
-  let result = CL.newContract(
-    entryPoints,
-    null,
-    HASH_KEY_NAME,
-    ACCESS_KEY_NAME);
+  if (is_locked[0] == true) {
+    let result = CL.newLockedContract(
+        entryPoints,
+        null,
+        HASH_KEY_NAME,
+        ACCESS_KEY_NAME
+    );
+    putKey(PURSE_HOLDER_STORED_CONTRACT_NAME, Key.fromHash(result.contractHash));
+    const versionKey = Key.create(CLValue.fromString(VERSION));
+    if (versionKey === null) {
+      Error.fromErrorCode(ErrorCode.Formatting).revert();
+    }
+    putKey(ENTRY_POINT_VERSION, <Key>versionKey);
 
-  putKey(PURSE_HOLDER_STORED_CONTRACT_NAME, Key.fromHash(result.contractHash));
-  const versionKey = Key.create(CLValue.fromString(VERSION));
-  if (versionKey === null) {
-    Error.fromErrorCode(ErrorCode.Formatting).revert();
+  } else if (is_locked[0] == false) {
+    let result = CL.newContract(
+        entryPoints,
+        null,
+        HASH_KEY_NAME,
+        ACCESS_KEY_NAME);
+
+    putKey(PURSE_HOLDER_STORED_CONTRACT_NAME, Key.fromHash(result.contractHash));
+    const versionKey = Key.create(CLValue.fromString(VERSION));
+    if (versionKey === null) {
+      Error.fromErrorCode(ErrorCode.Formatting).revert();
+    }
+    putKey(ENTRY_POINT_VERSION, <Key>versionKey);
   }
-  putKey(ENTRY_POINT_VERSION, <Key>versionKey);
 }

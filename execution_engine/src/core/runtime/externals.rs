@@ -554,12 +554,13 @@ where
             FunctionIndex::CreateContractPackageAtHash => {
                 // args(0) = pointer to wasm memory where to write 32-byte Hash address
                 // args(1) = pointer to wasm memory where to write 32-byte access key address
-                let (hash_dest_ptr, access_dest_ptr) = Args::parse(args)?;
+                // args(2) = boolean flag to determine if the contract can be versioned
+                let (hash_dest_ptr, access_dest_ptr, is_locked) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.create_contract_package_at_hash,
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
-                let (hash_addr, access_addr) = self.create_contract_package_at_hash()?;
+                let (hash_addr, access_addr) = self.create_contract_package_at_hash(is_locked)?;
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;
                 Ok(None)

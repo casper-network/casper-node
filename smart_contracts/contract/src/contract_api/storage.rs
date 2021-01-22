@@ -124,7 +124,9 @@ pub fn new_uref<T: CLTyped + ToBytes>(init: T) -> URef {
     bytesrepr::deserialize(bytes).unwrap_or_revert()
 }
 
-/// Create a new contract stored under a Key::Hash at version 1
+/// Create a new contract stored under a Key::Hash at version 1. You may upgrade this contract in
+/// the future; if you want a contract that is locked (i.e. cannot be upgraded) call
+/// `new_locked_contract` instead.
 /// if `named_keys` are provided, will apply them
 /// if `hash_name` is provided, puts contract hash in current context's named keys under `hash_name`
 /// if `uref_name` is provided, puts access_uref in current context's named keys under `uref_name`
@@ -134,7 +136,32 @@ pub fn new_contract(
     hash_name: Option<String>,
     uref_name: Option<String>,
 ) -> (ContractHash, ContractVersion) {
-    let (contract_package_hash, access_uref) = create_contract_package_at_hash();
+    create_contract(entry_points, named_keys, hash_name, uref_name, false)
+}
+
+/// Create a locked contract stored under a Key::Hash, which can never be upgraded. This is an
+/// irreversible decision; for a contract that can be upgraded use `new_contract` instead.
+/// if `named_keys` are provided, will apply them
+/// if `hash_name` is provided, puts contract hash in current context's named keys under `hash_name`
+/// if `uref_name` is provided, puts access_uref in current context's named keys under `uref_name`
+pub fn new_locked_contract(
+    entry_points: EntryPoints,
+    named_keys: Option<NamedKeys>,
+    hash_name: Option<String>,
+    uref_name: Option<String>,
+) -> ContractHash {
+    let (contract_hash, _) = create_contract(entry_points, named_keys, hash_name, uref_name, true);
+    contract_hash
+}
+
+fn create_contract(
+    entry_points: EntryPoints,
+    named_keys: Option<NamedKeys>,
+    hash_name: Option<String>,
+    uref_name: Option<String>,
+    is_locked: bool,
+) -> (ContractHash, ContractVersion) {
+    let (contract_package_hash, access_uref) = create_contract_package(is_locked);
 
     if let Some(hash_name) = hash_name {
         runtime::put_key(&hash_name, contract_package_hash.into());
@@ -156,12 +183,17 @@ pub fn new_contract(
 /// are no versions; a version must be added via `add_contract_version` before
 /// the contract can be executed.
 pub fn create_contract_package_at_hash() -> (ContractPackageHash, URef) {
+    create_contract_package(false)
+}
+
+fn create_contract_package(is_locked: bool) -> (ContractPackageHash, URef) {
     let mut hash_addr: HashAddr = ContractPackageHash::default().value();
     let mut access_addr = [0u8; 32];
     unsafe {
         ext_ffi::casper_create_contract_package_at_hash(
             hash_addr.as_mut_ptr(),
             access_addr.as_mut_ptr(),
+            is_locked,
         );
     }
     let contract_package_hash: ContractPackageHash = hash_addr.into();

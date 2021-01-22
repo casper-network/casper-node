@@ -929,12 +929,15 @@ where
             entry_points,
             protocol_version,
         );
+
+        // Genesis contracts can be versioned contracts.
         let contract_package = {
             let mut contract_package = ContractPackage::new(
                 access_key,
                 ContractVersions::default(),
                 DisabledVersions::default(),
                 Groups::default(),
+                false,
             );
             contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
             contract_package
