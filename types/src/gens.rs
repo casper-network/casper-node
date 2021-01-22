@@ -327,6 +327,6 @@ pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
         groups_arb(),
     )
         .prop_map(|(access_key, versions, disabled_versions, groups)| {
-            ContractPackage::new(access_key, versions, disabled_versions, groups)
+            ContractPackage::new(access_key, versions, disabled_versions, groups, false)
         })
 }

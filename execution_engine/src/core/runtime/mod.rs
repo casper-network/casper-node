@@ -2273,21 +2273,28 @@ where
         Ok(Ok(()))
     }
 
-    fn create_contract_package(&mut self) -> Result<(ContractPackage, URef), Error> {
+    fn create_contract_package(
+        &mut self,
+        is_locked: bool,
+    ) -> Result<(ContractPackage, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = ContractPackage::new(
             access_key,
             ContractVersions::default(),
             DisabledVersions::default(),
             Groups::default(),
+            is_locked,
         );
 
         Ok((contract_package, access_key))
     }
 
-    fn create_contract_package_at_hash(&mut self) -> Result<([u8; 32], [u8; 32]), Error> {
+    fn create_contract_package_at_hash(
+        &mut self,
+        is_locked: bool,
+    ) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
-        let (contract_package, access_key) = self.create_contract_package()?;
+        let (contract_package, access_key) = self.create_contract_package(is_locked)?;
         self.context
             .metered_write_gs_unsafe(addr, contract_package)?;
         Ok((addr, access_key.addr()))
@@ -2380,6 +2387,13 @@ where
         let mut contract_package: ContractPackage = self
             .context
             .get_validated_contract_package(contract_package_hash)?;
+
+        let version = contract_package.current_contract_version();
+
+        // Return an error if the contract is locked and has some version associated with it.
+        if contract_package.is_locked() && version.is_some() {
+            return Err(Error::LockedContract(contract_package_hash));
+        }
 
         let contract_wasm_hash = self.context.new_hash_address()?;
         let contract_wasm = {

@@ -12,7 +12,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter,
+    contracts::CONTRACT_INITIAL_VERSION, CLType, CLValue, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Parameter,
 };
 
 pub const METHOD_ADD: &str = "add";
@@ -43,6 +44,7 @@ pub extern "C" fn version() {
 
 #[no_mangle]
 pub extern "C" fn call() {
+    let is_locked: bool = runtime::get_named_arg("is_locked");
     let entry_points = {
         let mut entry_points = EntryPoints::new();
         let add = EntryPoint::new(
@@ -64,12 +66,23 @@ pub extern "C" fn call() {
         entry_points
     };
 
-    let (contract_hash, contract_version) = storage::new_contract(
-        entry_points,
-        None,
-        Some(HASH_KEY_NAME.to_string()),
-        Some(ACCESS_KEY_NAME.to_string()),
-    );
+    let (contract_hash, contract_version) = if !is_locked {
+        storage::new_contract(
+            entry_points,
+            None,
+            Some(HASH_KEY_NAME.to_string()),
+            Some(ACCESS_KEY_NAME.to_string()),
+        )
+    } else {
+        let contract_hash = storage::new_locked_contract(
+            entry_points,
+            None,
+            Some(HASH_KEY_NAME.to_string()),
+            Some(ACCESS_KEY_NAME.to_string()),
+        );
+        (contract_hash, CONTRACT_INITIAL_VERSION)
+    };
+
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
     runtime::put_key(PURSE_HOLDER_STORED_CONTRACT_NAME, contract_hash.into());
     runtime::put_key(ENTRY_POINT_VERSION, storage::new_uref(VERSION).into());
