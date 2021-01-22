@@ -8,6 +8,7 @@ import {toBytesU64} from "./bytesrepr";
 import {Option} from "./option";
 import {Ref} from "./ref";
 import {getMainPurse} from "./account";
+import {arrayToTyped} from "./utils";
 
 /**
  * The result of a successful transfer between purses.
@@ -140,14 +141,17 @@ export function getBalance(): U512 | null {
  * can be considered successful.
  * @hidden
  */
-export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uint8Array, amount: U512): TransferResult {
+export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uint8Array, amount: U512, id: Ref<u64> | null = null): TransferResult {
     let purseBytes = sourcePurse.toBytes();
     let targetBytes = new Array<u8>(targetAccount.length);
     for (let i = 0; i < targetAccount.length; i++) {
         targetBytes[i] = targetAccount[i];
     }
     let amountBytes = amount.toBytes();
-    let idBytes = new Option(null).toBytes();
+    
+    const optId = new Option(id !== null ? arrayToTyped(toBytesU64(id.value)) : null);
+    const idBytes = optId.toBytes();
+    
     let resultPtr = new Uint32Array(1);
 
     let ret = externals.transfer_from_purse_to_account(
@@ -181,11 +185,13 @@ export function transferFromPurseToAccount(sourcePurse: URef, targetAccount: Uin
  * @returns This function returns non-zero value on error.
  * @hidden
  */
-export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, amount: U512): Error | null {
+export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, amount: U512, id: Ref<u64> | null = null): Error | null {
     let sourceBytes = sourcePurse.toBytes();
     let targetBytes = targetPurse.toBytes();
     let amountBytes = amount.toBytes();
-    let idBytes = new Option(null).toBytes();
+
+    const optId = new Option(id !== null ? arrayToTyped(toBytesU64(id.value)) : null);
+    const idBytes = optId.toBytes();
 
     let ret = externals.transfer_from_purse_to_purse(
         sourceBytes.dataStart,
@@ -211,13 +217,16 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
  * can be considered successful.
  * @hidden
  */
-export function transferToAccount(targetAccount: Uint8Array, amount: U512): TransferResult {
+export function transferToAccount(targetAccount: Uint8Array, amount: U512, id: Ref<u64> | null = null): TransferResult {
     let targetBytes = new Array<u8>(targetAccount.length);
     for (let i = 0; i < targetAccount.length; i++) {
         targetBytes[i] = targetAccount[i];
     }
     let amountBytes = amount.toBytes();
-    let idBytes = new Option(null).toBytes();
+    
+    const optId = new Option(id !== null ? arrayToTyped(toBytesU64(id.value)) : null);
+    const idBytes = optId.toBytes();
+
     let resultPtr = new Uint32Array(1);
 
     let ret = externals.transfer_to_account(
