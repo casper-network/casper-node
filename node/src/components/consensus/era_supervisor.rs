@@ -258,10 +258,10 @@ where
             info!(era = era_id.0, %our_id, "not voting; not a validator");
             false
         } else if !self.finished_joining {
-            info!(era = era_id.0, "not voting; still joining");
+            info!(era = era_id.0, %our_id, "not voting; still joining");
             false
         } else {
-            info!(era = era_id.0, "start voting");
+            info!(era = era_id.0, %our_id, "start voting");
             true
         };
 
