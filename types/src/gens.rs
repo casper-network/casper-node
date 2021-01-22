@@ -14,7 +14,9 @@ use proptest::{
 
 use crate::{
     account::{AccountHash, Weight},
-    contracts::{ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters},
+    contracts::{
+        ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
+    },
     AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractVersionKey,
     ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group, Key, NamedArg,
     Parameter, Phase, ProtocolVersion, SemVer, URef, U128, U256, U512,
@@ -327,6 +329,12 @@ pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
         groups_arb(),
     )
         .prop_map(|(access_key, versions, disabled_versions, groups)| {
-            ContractPackage::new(access_key, versions, disabled_versions, groups, false)
+            ContractPackage::new(
+                access_key,
+                versions,
+                disabled_versions,
+                groups,
+                ContractPackageStatus::default(),
+            )
         })
 }

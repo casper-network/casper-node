@@ -52,6 +52,7 @@ use crate::{
     },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
+use casper_types::contracts::ContractPackageStatus;
 
 pub struct Runtime<'a, R> {
     system_contract_cache: SystemContractCache,
@@ -2275,7 +2276,7 @@ where
 
     fn create_contract_package(
         &mut self,
-        is_locked: bool,
+        is_locked: ContractPackageStatus,
     ) -> Result<(ContractPackage, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = ContractPackage::new(
@@ -2291,10 +2292,10 @@ where
 
     fn create_contract_package_at_hash(
         &mut self,
-        is_locked: bool,
+        lock_status: ContractPackageStatus,
     ) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
-        let (contract_package, access_key) = self.create_contract_package(is_locked)?;
+        let (contract_package, access_key) = self.create_contract_package(lock_status)?;
         self.context
             .metered_write_gs_unsafe(addr, contract_package)?;
         Ok((addr, access_key.addr()))

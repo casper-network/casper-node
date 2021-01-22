@@ -18,6 +18,7 @@ use crate::{
     shared::{gas::Gas, host_function_costs::Cost, stored_value::StoredValue},
     storage::global_state::StateReader,
 };
+use casper_types::contracts::ContractPackageStatus;
 
 impl<'a, R> Externals for Runtime<'a, R>
 where
@@ -560,7 +561,11 @@ where
                     &host_function_costs.create_contract_package_at_hash,
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
-                let (hash_addr, access_addr) = self.create_contract_package_at_hash(is_locked)?;
+                let (hash_addr, access_addr) = if is_locked {
+                    self.create_contract_package_at_hash(ContractPackageStatus::Locked)?
+                } else {
+                    self.create_contract_package_at_hash(ContractPackageStatus::Unlocked)?
+                };
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;
                 Ok(None)

@@ -68,6 +68,7 @@ use crate::{
         protocol_data::ProtocolData,
     },
 };
+use casper_types::contracts::ContractPackageStatus;
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 pub const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
@@ -937,7 +938,7 @@ where
                 ContractVersions::default(),
                 DisabledVersions::default(),
                 Groups::default(),
-                false,
+                ContractPackageStatus::default(),
             );
             contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
             contract_package
