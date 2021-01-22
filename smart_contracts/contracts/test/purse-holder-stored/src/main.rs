@@ -25,6 +25,7 @@ const ENTRY_POINT_VERSION: &str = "version";
 const HASH_KEY_NAME: &str = "purse_holder";
 const ACCESS_KEY_NAME: &str = "purse_holder_access";
 const ARG_PURSE: &str = "purse_name";
+const ARG_IS_LOCKED: &str = "is_locked";
 const VERSION: &str = "1.0.0";
 const PURSE_HOLDER_STORED_CONTRACT_NAME: &str = "purse_holder_stored";
 const CONTRACT_VERSION: &str = "contract_version";
@@ -44,7 +45,7 @@ pub extern "C" fn version() {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let is_locked: bool = runtime::get_named_arg("is_locked");
+    let is_locked: bool = runtime::get_named_arg(ARG_IS_LOCKED);
     let entry_points = {
         let mut entry_points = EntryPoints::new();
         let add = EntryPoint::new(
@@ -74,13 +75,12 @@ pub extern "C" fn call() {
             Some(ACCESS_KEY_NAME.to_string()),
         )
     } else {
-        let contract_hash = storage::new_locked_contract(
+        storage::new_locked_contract(
             entry_points,
             None,
             Some(HASH_KEY_NAME.to_string()),
             Some(ACCESS_KEY_NAME.to_string()),
-        );
-        (contract_hash, CONTRACT_INITIAL_VERSION)
+        )
     };
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());

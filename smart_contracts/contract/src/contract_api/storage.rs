@@ -149,9 +149,8 @@ pub fn new_locked_contract(
     named_keys: Option<NamedKeys>,
     hash_name: Option<String>,
     uref_name: Option<String>,
-) -> ContractHash {
-    let (contract_hash, _) = create_contract(entry_points, named_keys, hash_name, uref_name, true);
-    contract_hash
+) -> (ContractHash, ContractVersion) {
+    create_contract(entry_points, named_keys, hash_name, uref_name, true)
 }
 
 fn create_contract(

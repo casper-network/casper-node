@@ -19,9 +19,9 @@ const ENTRY_POINT_VERSION = "version";
 const HASH_KEY_NAME = "purse_holder";
 const ACCESS_KEY_NAME = "purse_holder_access";
 const ARG_PURSE = "purse_name";
+const ARG_IS_LOCKED = "is_locked";
 const VERSION = "1.0.0";
 const PURSE_HOLDER_STORED_CONTRACT_NAME = "purse_holder_stored";
-const IS_LOCKED = "is_locked";
 
 enum CustomError {
   MissingMethodNameArg = 0,
@@ -45,7 +45,7 @@ export function version(): void {
 
 export function call(): void {
   let entryPoints = new CL.EntryPoints();
-  let is_locked = CL.getNamedArg(IS_LOCKED);
+  let is_locked = CL.getNamedArg(ARG_IS_LOCKED);
 
   {
     let args = new Array<Pair<String, CLType>>();

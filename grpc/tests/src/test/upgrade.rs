@@ -253,7 +253,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
                 *DEFAULT_ACCOUNT_ADDR,
                 &contract_name,
                 runtime_args! {
-                ARG_IS_LOCKED => false,
+                    ARG_IS_LOCKED => false,
                 },
             )
             .build()
@@ -352,7 +352,7 @@ fn should_support_extending_functionality() {
                 *DEFAULT_ACCOUNT_ADDR,
                 &contract_name,
                 runtime_args! {
-                ARG_IS_LOCKED => false
+                    ARG_IS_LOCKED => false
                 },
             )
             .build()
@@ -495,7 +495,7 @@ fn should_maintain_named_keys_across_upgrade() {
                 *DEFAULT_ACCOUNT_ADDR,
                 &contract_name,
                 runtime_args! {
-                ARG_IS_LOCKED => false
+                    ARG_IS_LOCKED => false
                 },
             )
             .build()
