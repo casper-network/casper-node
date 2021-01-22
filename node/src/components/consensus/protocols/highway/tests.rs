@@ -73,7 +73,7 @@ where
         unit_hashes_folder: Default::default(),
         pending_vertex_timeout: "1min".parse().unwrap(),
     };
-    HighwayProtocol::<NodeId, ClContext>::new_boxed(
+    let (hw_proto, outcomes) = HighwayProtocol::<NodeId, ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
         &init_slashed.into_iter().collect(),
@@ -82,7 +82,11 @@ where
         None,
         0.into(),
         0,
-    )
+    );
+    // We expect only the vertex purge timer outcome. If there are more, the tests might need to
+    // handle them.
+    assert_eq!(1, outcomes.len());
+    hw_proto
 }
 
 #[test]

@@ -47,6 +47,8 @@ const MAX_ENDORSEMENT_EVIDENCE_LIMIT: u64 = 10000;
 const TIMER_ID_ACTIVE_VALIDATOR: TimerId = TimerId(0);
 /// The timer for adding a vertex with a future timestamp.
 const TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP: TimerId = TimerId(1);
+/// The timer for purging expired pending vertices from the queues.
+const TIMER_ID_PURGE_VERTICES: TimerId = TimerId(2);
 
 /// The action of adding a vertex from the `vertices_to_be_added` queue.
 const ACTION_ID_VERTEX: ActionId = ActionId(0);
@@ -79,6 +81,11 @@ impl<I, C: Context> PendingVertex<I, C> {
     fn vertex(&self) -> &Vertex<C> {
         self.pvv.inner()
     }
+
+    /// Returns `true` if this vertex was received longer than `timeout` ago.
+    fn expired(&self, timeout: TimeDiff) -> bool {
+        self.time_received + timeout < Timestamp::now()
+    }
 }
 
 #[derive(DataSize, Debug)]
@@ -106,7 +113,7 @@ where
 
 impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
     /// Creates a new boxed `HighwayProtocol` instance.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
     pub(crate) fn new_boxed(
         instance_id: C::InstanceId,
         validator_stakes: BTreeMap<C::ValidatorId, U512>,
@@ -116,7 +123,7 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
         prev_cp: Option<&dyn ConsensusProtocol<I, C>>,
         start_time: Timestamp,
         seed: u64,
-    ) -> Box<dyn ConsensusProtocol<I, C>> {
+    ) -> (Box<dyn ConsensusProtocol<I, C>>, Vec<ProtocolOutcome<I, C>>) {
         let sum_stakes: U512 = validator_stakes.iter().map(|(_, stake)| *stake).sum();
         assert!(
             !sum_stakes.is_zero(),
@@ -177,11 +184,16 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             endorsement_evidence_limit,
         );
 
+        let outcomes = vec![ProtocolOutcome::ScheduleTimer(
+            Timestamp::now() + config.pending_vertex_timeout,
+            TIMER_ID_PURGE_VERTICES,
+        )];
+
         let min_round_exp = params.min_round_exp();
         let max_round_exp = params.max_round_exp();
         let round_exp = params.init_round_exp();
         let start_timestamp = params.start_timestamp();
-        Box::new(HighwayProtocol {
+        let hw_proto = Box::new(HighwayProtocol {
             vertex_deps: BTreeMap::new(),
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
@@ -195,7 +207,8 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
                 start_timestamp,
             ),
             pending_vertex_timeout: config.pending_vertex_timeout,
-        })
+        });
+        (hw_proto, outcomes)
     }
 
     fn process_av_effects<E>(&mut self, av_effects: E) -> Vec<ProtocolOutcome<I, C>>
@@ -300,6 +313,41 @@ impl<I: NodeIdT, C: Context + 'static> HighwayProtocol<I, C> {
             }
         }
         results
+    }
+
+    /// Removes expired pending vertices from the queues, and schedules the next purge.
+    fn purge_vertices(&mut self) -> Vec<ProtocolOutcome<I, C>> {
+        let timeout = self.pending_vertex_timeout;
+        self.vertices_to_be_added.retain(|pv| !pv.expired(timeout));
+        for pvs in self
+            .vertices_to_be_added_later
+            .values_mut()
+            .chain(self.vertex_deps.values_mut())
+        {
+            pvs.retain(|pv| !pv.expired(timeout));
+        }
+        let keys = self
+            .vertices_to_be_added_later
+            .iter()
+            .filter(|(_, pvs)| pvs.is_empty())
+            .map(|(key, _)| *key)
+            .collect_vec();
+        for key in keys {
+            self.vertices_to_be_added_later.remove(&key);
+        }
+        let keys = self
+            .vertex_deps
+            .iter()
+            .filter(|(_, pvs)| pvs.is_empty())
+            .map(|(key, _)| key.clone())
+            .collect_vec();
+        for key in keys {
+            self.vertex_deps.remove(&key);
+        }
+        vec![ProtocolOutcome::ScheduleTimer(
+            Timestamp::now() + timeout,
+            TIMER_ID_PURGE_VERTICES,
+        )]
     }
 
     /// Schedules vertices to be added to the protocol state.
@@ -743,6 +791,7 @@ where
                 self.process_av_effects(effects)
             }
             TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP => self.add_past_due_stored_vertices(timestamp),
+            TIMER_ID_PURGE_VERTICES => self.purge_vertices(),
             _ => unreachable!("unexpected timer ID"),
         }
     }

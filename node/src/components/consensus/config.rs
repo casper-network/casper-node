@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// Consensus configuration.
-#[derive(DataSize, Debug, Deserialize, Serialize, Default, Clone)]
+#[derive(DataSize, Debug, Deserialize, Serialize, Clone)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -23,6 +23,16 @@ pub struct Config {
     pub unit_hashes_folder: PathBuf,
     /// The duration for which incoming vertices with missing dependencies are kept in a queue.
     pub pending_vertex_timeout: TimeDiff,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            secret_key_path: External::Missing,
+            unit_hashes_folder: Default::default(),
+            pending_vertex_timeout: "10sec".parse().unwrap(),
+        }
+    }
 }
 
 /// Consensus protocol configuration.

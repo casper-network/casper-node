@@ -65,7 +65,10 @@ type ConsensusConstructor<I> = dyn Fn(
     Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
     Timestamp,                                    // start time for this era
     u64,                                          // random seed
-) -> Box<dyn ConsensusProtocol<I, ClContext>>;
+) -> (
+    Box<dyn ConsensusProtocol<I, ClContext>>,
+    Vec<ProtocolOutcome<I, ClContext>>,
+);
 
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
@@ -271,7 +274,7 @@ where
             .checked_sub(1)
             .and_then(|last_era_id| self.active_eras.get(&last_era_id));
 
-        let mut consensus = (self.new_consensus)(
+        let (mut consensus, mut outcomes) = (self.new_consensus)(
             instance_id,
             validators.clone(),
             &slashed,
@@ -282,17 +285,20 @@ where
             seed,
         );
 
-        let results = if should_activate {
+        if should_activate {
             let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
             let unit_hash_file = self.unit_hashes_folder.join(format!(
                 "unit_hash_{:?}_{}.dat",
                 instance_id,
                 self.public_signing_key.to_hex()
             ));
-            consensus.activate_validator(our_id, secret, timestamp, Some(unit_hash_file))
-        } else {
-            Vec::new()
-        };
+            outcomes.extend(consensus.activate_validator(
+                our_id,
+                secret,
+                timestamp,
+                Some(unit_hash_file),
+            ))
+        }
 
         let era = Era::new(
             consensus,
@@ -311,7 +317,7 @@ where
             self.active_eras.remove(&obsolete_era_id);
         }
 
-        results
+        outcomes
     }
 
     /// Returns `true` if the specified era is active and bonded.
