@@ -47,12 +47,6 @@ pub enum CommitResult {
     Serialization(bytesrepr::Error),
 }
 
-#[derive(Debug)]
-pub struct ReadTrieResult {
-    pub trie_key: Blake2bHash,
-    pub maybe_trie: Option<Trie<Key, StoredValue>>,
-}
-
 impl fmt::Display for CommitResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {

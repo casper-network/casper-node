@@ -18,7 +18,7 @@ use prometheus::{self, Histogram, HistogramOpts, Registry};
 use serde::Serialize;
 use thiserror::Error;
 use tokio::task;
-use tracing::trace;
+use tracing::{error, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
@@ -468,6 +468,13 @@ where
                     })
                     .await
                     .expect("should run");
+                    let result = match result {
+                        Ok(result) => result,
+                        Err(error) => {
+                            error!(?error, "read_trie_request");
+                            None
+                        }
+                    };
                     trace!(?result, "read_trie response");
                     responder.respond(result).await
                 }

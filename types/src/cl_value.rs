@@ -9,12 +9,14 @@ use failure::Fail;
 #[cfg(feature = "std")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
-    CLType, CLTyped, Key, PublicKey, URef, U128, U256, U512,
+    CLType, CLTyped,
 };
+
+mod jsonrepr;
 
 /// Error while converting a [`CLValue`] into a given type.
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -135,113 +137,6 @@ impl CLValue {
     pub fn serialized_length(&self) -> usize {
         self.cl_type.serialized_length() + U32_SERIALIZED_LENGTH + self.bytes.len()
     }
-
-    fn jsonify<T: FromBytes + Serialize>(&self) -> Option<Value> {
-        Some(json!(bytesrepr::deserialize::<T>(
-            self.bytes.clone().into()
-        )
-        .ok()?))
-    }
-
-    /// Returns a best-effort attempt to convert the `CLValue` into a meaningful JSON value.  For
-    /// complex types, the returned `Value` will just be the map containing the `CLType` and the
-    /// raw bytes as hex.
-    #[rustfmt::skip]
-    fn to_json(&self) -> Option<Value> {
-        match &self.cl_type {
-            // Simple types.
-            CLType::Bool => self.jsonify::<bool>(),
-            CLType::I32 => self.jsonify::<i32>(),
-            CLType::I64 => self.jsonify::<i64>(),
-            CLType::U8 => self.jsonify::<u8>(),
-            CLType::U32 => self.jsonify::<u32>(),
-            CLType::U64 => self.jsonify::<u64>(),
-            CLType::U128 => self.jsonify::<U128>(),
-            CLType::U256 => self.jsonify::<U256>(),
-            CLType::U512 => self.jsonify::<U512>(),
-            CLType::Unit => self.jsonify::<()>(),
-            CLType::String => self.jsonify::<String>(),
-            CLType::Key => self.jsonify::<Key>(),
-            CLType::URef => self.jsonify::<URef>(),
-            CLType::PublicKey => self.jsonify::<PublicKey>(),
-
-            // Option of simple types.
-            t if *t == Option::<bool>::cl_type() => self.jsonify::<Option<bool>>(),
-            t if *t == Option::<i32>::cl_type() => self.jsonify::<Option<i32>>(),
-            t if *t == Option::<i64>::cl_type() => self.jsonify::<Option<i64>>(),
-            t if *t == Option::<u8>::cl_type() => self.jsonify::<Option<u8>>(),
-            t if *t == Option::<u32>::cl_type() => self.jsonify::<Option<u32>>(),
-            t if *t == Option::<u64>::cl_type() => self.jsonify::<Option<u64>>(),
-            t if *t == Option::<U128>::cl_type() => self.jsonify::<Option<U128>>(),
-            t if *t == Option::<U256>::cl_type() => self.jsonify::<Option<U256>>(),
-            t if *t == Option::<U512>::cl_type() => self.jsonify::<Option<U512>>(),
-            t if *t == Option::<()>::cl_type() => self.jsonify::<Option<()>>(),
-            t if *t == Option::<String>::cl_type() => self.jsonify::<Option<String>>(),
-            t if *t == Option::<Key>::cl_type() => self.jsonify::<Option<Key>>(),
-            t if *t == Option::<URef>::cl_type() => self.jsonify::<Option<URef>>(),
-            t if *t == Option::<PublicKey>::cl_type() => self.jsonify::<Option<PublicKey>>(),
-
-            // Result of simple types.
-            t if *t == Result::<bool, i32>::cl_type() => self.jsonify::<Result<bool, i32>>(),
-            t if *t == Result::<bool, u32>::cl_type() => self.jsonify::<Result<bool, u32>>(),
-            t if *t == Result::<bool, ()>::cl_type() => self.jsonify::<Result<bool, ()>>(),
-            t if *t == Result::<bool, String>::cl_type() => self.jsonify::<Result<bool, String>>(),
-            t if *t == Result::<i32, i32>::cl_type() => self.jsonify::<Result<i32, i32>>(),
-            t if *t == Result::<i32, u32>::cl_type() => self.jsonify::<Result<i32, u32>>(),
-            t if *t == Result::<i32, ()>::cl_type() => self.jsonify::<Result<i32, ()>>(),
-            t if *t == Result::<i32, String>::cl_type() => self.jsonify::<Result<i32, String>>(),
-            t if *t == Result::<i64, i32>::cl_type() => self.jsonify::<Result<i64, i32>>(),
-            t if *t == Result::<i64, u32>::cl_type() => self.jsonify::<Result<i64, u32>>(),
-            t if *t == Result::<i64, ()>::cl_type() => self.jsonify::<Result<i64, ()>>(),
-            t if *t == Result::<i64, String>::cl_type() => self.jsonify::<Result<i64, String>>(),
-            t if *t == Result::<u8, i32>::cl_type() => self.jsonify::<Result<u8, i32>>(),
-            t if *t == Result::<u8, u32>::cl_type() => self.jsonify::<Result<u8, u32>>(),
-            t if *t == Result::<u8, ()>::cl_type() => self.jsonify::<Result<u8, ()>>(),
-            t if *t == Result::<u8, String>::cl_type() => self.jsonify::<Result<u8, String>>(),
-            t if *t == Result::<u32, i32>::cl_type() => self.jsonify::<Result<u32, i32>>(),
-            t if *t == Result::<u32, u32>::cl_type() => self.jsonify::<Result<u32, u32>>(),
-            t if *t == Result::<u32, ()>::cl_type() => self.jsonify::<Result<u32, ()>>(),
-            t if *t == Result::<u32, String>::cl_type() => self.jsonify::<Result<u32, String>>(),
-            t if *t == Result::<u64, i32>::cl_type() => self.jsonify::<Result<u64, i32>>(),
-            t if *t == Result::<u64, u32>::cl_type() => self.jsonify::<Result<u64, u32>>(),
-            t if *t == Result::<u64, ()>::cl_type() => self.jsonify::<Result<u64, ()>>(),
-            t if *t == Result::<u64, String>::cl_type() => self.jsonify::<Result<u64, String>>(),
-            t if *t == Result::<U128, i32>::cl_type() => self.jsonify::<Result<U128, i32>>(),
-            t if *t == Result::<U128, u32>::cl_type() => self.jsonify::<Result<U128, u32>>(),
-            t if *t == Result::<U128, ()>::cl_type() => self.jsonify::<Result<U128, ()>>(),
-            t if *t == Result::<U128, String>::cl_type() => self.jsonify::<Result<U128, String>>(),
-            t if *t == Result::<U256, i32>::cl_type() => self.jsonify::<Result<U256, i32>>(),
-            t if *t == Result::<U256, u32>::cl_type() => self.jsonify::<Result<U256, u32>>(),
-            t if *t == Result::<U256, ()>::cl_type() => self.jsonify::<Result<U256, ()>>(),
-            t if *t == Result::<U256, String>::cl_type() => self.jsonify::<Result<U256, String>>(),
-            t if *t == Result::<U512, i32>::cl_type() => self.jsonify::<Result<U512, i32>>(),
-            t if *t == Result::<U512, u32>::cl_type() => self.jsonify::<Result<U512, u32>>(),
-            t if *t == Result::<U512, ()>::cl_type() => self.jsonify::<Result<U512, ()>>(),
-            t if *t == Result::<U512, String>::cl_type() => self.jsonify::<Result<U512, String>>(),
-            t if *t == Result::<(), i32>::cl_type() => self.jsonify::<Result<(), i32>>(),
-            t if *t == Result::<(), u32>::cl_type() => self.jsonify::<Result<(), u32>>(),
-            t if *t == Result::<(), ()>::cl_type() => self.jsonify::<Result<(), ()>>(),
-            t if *t == Result::<(), String>::cl_type() => self.jsonify::<Result<(), String>>(),
-            t if *t == Result::<String, i32>::cl_type() => self.jsonify::<Result<String, i32>>(),
-            t if *t == Result::<String, u32>::cl_type() => self.jsonify::<Result<String, u32>>(),
-            t if *t == Result::<String, ()>::cl_type() => self.jsonify::<Result<String, ()>>(),
-            t if *t == Result::<String, String>::cl_type() => self.jsonify::<Result<String, String>>(),
-            t if *t == Result::<Key, i32>::cl_type() => self.jsonify::<Result<Key, i32>>(),
-            t if *t == Result::<Key, u32>::cl_type() => self.jsonify::<Result<Key, u32>>(),
-            t if *t == Result::<Key, ()>::cl_type() => self.jsonify::<Result<Key, ()>>(),
-            t if *t == Result::<Key, String>::cl_type() => self.jsonify::<Result<Key, String>>(),
-            t if *t == Result::<URef, i32>::cl_type() => self.jsonify::<Result<URef, i32>>(),
-            t if *t == Result::<URef, u32>::cl_type() => self.jsonify::<Result<URef, u32>>(),
-            t if *t == Result::<URef, ()>::cl_type() => self.jsonify::<Result<URef, ()>>(),
-            t if *t == Result::<URef, String>::cl_type() => self.jsonify::<Result<URef, String>>(),
-            t if *t == Result::<PublicKey, i32>::cl_type() => self.jsonify::<Result<PublicKey, i32>>(),
-            t if *t == Result::<PublicKey, u32>::cl_type() => self.jsonify::<Result<PublicKey, u32>>(),
-            t if *t == Result::<PublicKey, ()>::cl_type() => self.jsonify::<Result<PublicKey, ()>>(),
-            t if *t == Result::<PublicKey, String>::cl_type() => self.jsonify::<Result<PublicKey, String>>(),
-
-            _ => None,
-        }
-    }
 }
 
 impl ToBytes for CLValue {
@@ -283,7 +178,7 @@ impl Serialize for CLValue {
             CLValueJson {
                 cl_type: self.cl_type.clone(),
                 bytes: base16::encode_lower(&self.bytes),
-                parsed: self.to_json(),
+                parsed: jsonrepr::cl_value_to_json(&self),
             }
             .serialize(serializer)
         } else {
@@ -318,8 +213,8 @@ mod tests {
     use crate::{
         account::{AccountHash, ACCOUNT_HASH_LENGTH},
         key::KEY_HASH_LENGTH,
-        AccessRights, DeployHash, TransferAddr, DEPLOY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
-        UREF_ADDR_LENGTH,
+        AccessRights, DeployHash, Key, PublicKey, TransferAddr, URef, DEPLOY_HASH_LENGTH,
+        TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
     };
 
     #[test]

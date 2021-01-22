@@ -460,7 +460,8 @@ impl reactor::Reactor for Reactor {
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
 
-        let linear_chain_sync = LinearChainSync::new(init_hash, validator_weights.clone());
+        let linear_chain_sync =
+            LinearChainSync::new(registry, init_hash, validator_weights.clone())?;
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
