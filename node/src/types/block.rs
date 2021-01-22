@@ -841,6 +841,18 @@ impl Block {
         }
     }
 
+    /// Creates an instance of the block from the block header.
+    pub(crate) fn from_header(header: BlockHeader) -> Self {
+        let body = ();
+        let hash = header.hash();
+        Block {
+            hash,
+            header,
+            body,
+            proofs: BTreeMap::new(),
+        }
+    }
+
     pub(crate) fn header(&self) -> &BlockHeader {
         &self.header
     }
@@ -1458,7 +1470,7 @@ mod tests {
             signature,
             public_key,
         };
-        // Test should fails b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
+        // Test should fail b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
         assert!(fs_manufactured.verify().is_err());
     }
 }
