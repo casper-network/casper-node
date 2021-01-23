@@ -7,9 +7,7 @@ use num_traits::{FromPrimitive, ToPrimitive};
 #[repr(usize)]
 pub enum FunctionIndex {
     WriteFuncIndex,
-    WriteLocalFuncIndex,
     ReadFuncIndex,
-    ReadLocalFuncIndex,
     AddFuncIndex,
     NewFuncIndex,
     RetFuncIndex,
