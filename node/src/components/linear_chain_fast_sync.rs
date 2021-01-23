@@ -84,9 +84,16 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         self.peers.reset(rng);
         self.state.block_downloaded(block_header);
         self.add_block(block_header.clone());
-        match &self.state {
+        match &mut self.state {
             State::None | State::Done => panic!("Downloaded block when in {} state.", self.state),
-            State::SyncingTrustedHash { .. } => {
+            State::SyncingTrustedHash {
+                trusted_hash,
+                trusted_header,
+                ..
+            } => {
+                if block_header.hash() == *trusted_hash {
+                    *trusted_header = Some(Box::new(block_header.clone()));
+                }
                 if block_header.is_genesis_child() {
                     info!("linear chain downloaded. Start downloading deploys.");
                     effect_builder
@@ -131,15 +138,22 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
         let mut curr_state = mem::replace(&mut self.state, State::None);
         match curr_state {
             State::None | State::Done => panic!("Block handled when in {:?} state.", &curr_state),
+            State::SyncingTrustedHash {
+                highest_block_seen,
+                trusted_header: None,
+                ..
+            } if highest_block_seen == block_height => panic!("Should always have trusted header"),
             // If the block we are handling is the highest block seen, transition to syncing
             // descendants
             State::SyncingTrustedHash {
                 highest_block_seen,
                 trusted_hash,
+                trusted_header,
                 ref latest_block,
                 validator_weights,
                 ..
             } if highest_block_seen == block_height => {
+                // TODO: Fail gracefully in these cases
                 assert_eq!(highest_block_seen, block_height);
                 match latest_block.as_ref() {
                     Some(expected) => assert_eq!(
@@ -148,10 +162,17 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
                     ),
                     None => panic!("Unexpected block execution results."),
                 }
+                let trusted_header = trusted_header.expect("trusted header must be present");
+
                 info!(%block_height, "Finished synchronizing linear chain up until trusted hash.");
                 let peer = self.peers.random_unsafe();
                 // Kick off syncing trusted hash descendants.
-                self.state = State::sync_descendants(trusted_hash, block_header, validator_weights);
+                self.state = State::sync_descendants(
+                    trusted_hash,
+                    trusted_header,
+                    block_header,
+                    validator_weights,
+                );
                 fetch_block_at_height(effect_builder, peer, block_height + 1)
             }
             // Keep syncing from genesis if we haven't reached the trusted block hash
