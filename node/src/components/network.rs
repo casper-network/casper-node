@@ -30,6 +30,7 @@ use libp2p::{
     gossipsub::GossipsubEvent,
     identify::IdentifyEvent,
     identity::Keypair,
+    kad::KademliaEvent,
     noise::{self, NoiseConfig, X25519Spec},
     request_response::{RequestResponseEvent, RequestResponseMessage},
     swarm::{SwarmBuilder, SwarmEvent},
@@ -109,6 +110,10 @@ pub struct Network<REv, P> {
     our_id: NodeId,
     #[data_size(skip)]
     peers: HashMap<NodeId, ConnectedPoint>,
+    /// A set of peers whose address we currently know. Kept in-sync with the internal Kademlia
+    /// routing table.
+    #[data_size(skip)]
+    seen_peers: HashSet<PeerId>,
     #[data_size(skip)]
     listening_addresses: Vec<Multiaddr>,
     /// The addresses of known peers to be used for bootstrapping, and their connection states.
@@ -173,6 +178,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             let network = Network {
                 our_id,
                 peers: HashMap::new(),
+                seen_peers: HashSet::new(),
                 listening_addresses: vec![],
                 known_addresses,
                 is_bootstrap_node: config.is_bootstrap_node,
@@ -243,6 +249,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         let network = Network {
             our_id,
             peers: HashMap::new(),
+            seen_peers: HashSet::new(),
             listening_addresses: vec![],
             known_addresses,
             is_bootstrap_node: config.is_bootstrap_node,
@@ -394,8 +401,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
 
     /// Returns the set of known addresses.
     #[cfg(test)]
-    pub(crate) fn known_addresses(&self) -> HashSet<Multiaddr> {
-        self.known_addresses.keys().cloned().collect()
+    pub(crate) fn seen_peers(&self) -> &HashSet<PeerId> {
+        &self.seen_peers
     }
 }
 
@@ -539,6 +546,11 @@ async fn handle_swarm_event<REv: ReactorEventT<P>, P: PayloadT, E: Display>(
         SwarmEvent::Behaviour(SwarmBehaviorEvent::Gossiper(event)) => {
             return handle_gossip_event(swarm, event_queue, event).await;
         }
+        SwarmEvent::Behaviour(SwarmBehaviorEvent::Kademlia(KademliaEvent::RoutingUpdated {
+            peer,
+            old_peer,
+            ..
+        })) => Event::RoutingTableUpdated { peer, old_peer },
         SwarmEvent::Behaviour(SwarmBehaviorEvent::Kademlia(event)) => {
             debug!(?event, "{}: new kademlia event", our_id(swarm));
             return;
@@ -846,6 +858,22 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                 debug!(%error, "{}: non-fatal listener error", self.our_id);
                 Effects::new()
             }
+            Event::RoutingTableUpdated { peer, old_peer } => {
+                if let Some(ref old_peer_id) = old_peer {
+                    self.seen_peers.remove(old_peer_id);
+                }
+                self.seen_peers.insert(peer.clone());
+
+                debug!(
+                    inserted = ?peer,
+                    removed = ?old_peer,
+                    new_size = self.seen_peers.len(),
+                    "kademlia routing table updated"
+                );
+
+                Effects::new()
+            }
+
             Event::NetworkRequest {
                 request:
                     NetworkRequest::SendMessage {
