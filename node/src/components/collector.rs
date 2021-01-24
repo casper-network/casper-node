@@ -5,7 +5,7 @@ use std::{
 
 use derive_more::From;
 use serde::Serialize;
-use tracing::info;
+use tracing::debug;
 
 use crate::{
     effect::{announcements::NetworkAnnouncement, EffectBuilder, Effects},
@@ -50,7 +50,7 @@ where
 
 impl<REv, P> Component<REv> for Collector<P>
 where
-    P: Display,
+    P: Display + Debug,
 {
     type Event = Event<P>;
     type ConstructionError = Infallible;
@@ -65,7 +65,7 @@ where
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 payload, ..
             }) => {
-                info!("collected {}", payload);
+                debug!("collected {}", payload);
                 self.payloads.push(payload);
             }
             _ => {}
