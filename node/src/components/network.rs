@@ -8,6 +8,8 @@ mod peer_discovery;
 mod protocol_id;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests2;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -103,7 +105,7 @@ enum ConnectionState {
 }
 
 #[derive(DataSize)]
-pub(crate) struct Network<REv, P> {
+pub struct Network<REv, P> {
     our_id: NodeId,
     #[data_size(skip)]
     peers: HashMap<NodeId, ConnectedPoint>,
@@ -388,6 +390,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
         self.our_id.clone()
+    }
+
+    /// Returns the set of known addresses.
+    #[cfg(test)]
+    pub(crate) fn known_addresses(&self) -> HashSet<Multiaddr> {
+        self.known_addresses.keys().cloned().collect()
     }
 }
 
