@@ -38,6 +38,7 @@ mod deploy_info;
 mod execution_result;
 #[cfg(any(feature = "gens", test))]
 pub mod gens;
+mod json_pretty_printer;
 mod key;
 pub mod mint;
 mod named_key;
@@ -72,6 +73,7 @@ pub use deploy_info::DeployInfo;
 pub use execution_result::{
     ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
 };
+pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{HashAddr, Key, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH};
 pub use named_key::NamedKey;

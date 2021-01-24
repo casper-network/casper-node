@@ -93,31 +93,31 @@ impl MockServerHandle {
     }
 
     fn get_balance(&self, state_root_hash: &str, purse_uref: &str) -> Result<(), ErrWrapper> {
-        casper_client::get_balance("1", &self.url(), false, state_root_hash, purse_uref)
+        casper_client::get_balance("1", &self.url(), 0, state_root_hash, purse_uref)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
 
     fn get_deploy(&self, deploy_hash: &str) -> Result<(), ErrWrapper> {
-        casper_client::get_deploy("1", &self.url(), false, deploy_hash)
+        casper_client::get_deploy("1", &self.url(), 0, deploy_hash)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
 
     fn get_state_root_hash(&self, maybe_block_id: &str) -> Result<(), ErrWrapper> {
-        casper_client::get_state_root_hash("1", &self.url(), false, maybe_block_id)
+        casper_client::get_state_root_hash("1", &self.url(), 0, maybe_block_id)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
 
     fn get_block(&self, maybe_block_id: &str) -> Result<(), ErrWrapper> {
-        casper_client::get_block("1", &self.url(), false, maybe_block_id)
+        casper_client::get_block("1", &self.url(), 0, maybe_block_id)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
 
     fn get_item(&self, state_root_hash: &str, key: &str, path: &str) -> Result<(), ErrWrapper> {
-        casper_client::get_item("1", &self.url(), false, state_root_hash, key, path)
+        casper_client::get_item("1", &self.url(), 0, state_root_hash, key, path)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
@@ -132,7 +132,7 @@ impl MockServerHandle {
         casper_client::transfer(
             "1",
             &self.url(),
-            false,
+            0,
             amount,
             maybe_target_account,
             "",
@@ -152,7 +152,7 @@ impl MockServerHandle {
         casper_client::put_deploy(
             "1",
             &self.url(),
-            false,
+            0,
             deploy_params,
             session_params,
             payment_params,
@@ -162,13 +162,13 @@ impl MockServerHandle {
     }
 
     fn send_deploy_file(&self, input_path: &str) -> Result<(), ErrWrapper> {
-        casper_client::send_deploy_file("1", &self.url(), false, input_path)
+        casper_client::send_deploy_file("1", &self.url(), 0, input_path)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
 
     fn get_auction_info(&self) -> Result<(), ErrWrapper> {
-        casper_client::get_auction_info("1", &self.url(), false)
+        casper_client::get_auction_info("1", &self.url(), 0)
             .map(|_| ())
             .map_err(ErrWrapper)
     }
