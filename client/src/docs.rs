@@ -30,9 +30,9 @@ impl<'a, 'b> ClientCommand<'a, 'b> for ListRpcs {
     fn run(matches: &ArgMatches<'_>) {
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let verbose = common::verbose::get(matches);
+        let verbosity_level = common::verbose::get(matches);
 
-        let response = casper_client::list_rpcs(maybe_rpc_id, node_address, verbose)
+        let response = casper_client::list_rpcs(maybe_rpc_id, node_address, verbosity_level)
             .unwrap_or_else(|error| panic!("response error: {}", error));
         println!(
             "{}",

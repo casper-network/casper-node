@@ -255,7 +255,7 @@ pub extern "C" fn casper_get_last_error(buf: *mut c_uchar, len: usize) -> usize 
 pub extern "C" fn casper_put_deploy(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     deploy_params: *const casper_deploy_params_t,
     session_params: *const casper_session_params_t,
     payment_params: *const casper_payment_params_t,
@@ -273,7 +273,7 @@ pub extern "C" fn casper_put_deploy(
         let result = super::put_deploy(
             maybe_rpc_id,
             node_address,
-            verbose,
+            verbosity_level,
             deploy_params,
             session_params,
             payment_params,
@@ -333,7 +333,7 @@ pub extern "C" fn casper_sign_deploy_file(
 pub extern "C" fn casper_send_deploy_file(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     input_path: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
@@ -344,7 +344,8 @@ pub extern "C" fn casper_send_deploy_file(
     let node_address = try_unsafe_arg!(node_address);
     let input_path = try_unsafe_arg!(input_path);
     runtime.block_on(async move {
-        let result = super::send_deploy_file(maybe_rpc_id, node_address, verbose, input_path);
+        let result =
+            super::send_deploy_file(maybe_rpc_id, node_address, verbosity_level, input_path);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -358,7 +359,7 @@ pub extern "C" fn casper_send_deploy_file(
 pub extern "C" fn casper_transfer(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     amount: *const c_char,
     maybe_target_account: *const c_char,
     maybe_id: *const c_char,
@@ -380,7 +381,7 @@ pub extern "C" fn casper_transfer(
         let result = super::transfer(
             maybe_rpc_id,
             node_address,
-            verbose,
+            verbosity_level,
             amount,
             maybe_target_account,
             maybe_id,
@@ -400,7 +401,7 @@ pub extern "C" fn casper_transfer(
 pub extern "C" fn casper_get_deploy(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     deploy_hash: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
@@ -411,7 +412,7 @@ pub extern "C" fn casper_get_deploy(
     let node_address = try_unsafe_arg!(node_address);
     let deploy_hash = try_unsafe_arg!(deploy_hash);
     runtime.block_on(async move {
-        let result = super::get_deploy(maybe_rpc_id, node_address, verbose, deploy_hash);
+        let result = super::get_deploy(maybe_rpc_id, node_address, verbosity_level, deploy_hash);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -425,7 +426,7 @@ pub extern "C" fn casper_get_deploy(
 pub extern "C" fn casper_get_block(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     maybe_block_id: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
@@ -436,7 +437,7 @@ pub extern "C" fn casper_get_block(
     let node_address = try_unsafe_arg!(node_address);
     let maybe_block_id = try_unsafe_arg!(maybe_block_id);
     runtime.block_on(async move {
-        let result = super::get_block(maybe_rpc_id, node_address, verbose, maybe_block_id);
+        let result = super::get_block(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -450,7 +451,7 @@ pub extern "C" fn casper_get_block(
 pub extern "C" fn casper_get_block_transfers(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     maybe_block_id: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
@@ -462,7 +463,7 @@ pub extern "C" fn casper_get_block_transfers(
     let maybe_block_id = try_unsafe_arg!(maybe_block_id);
     runtime.block_on(async move {
         let result =
-            super::get_block_transfers(maybe_rpc_id, node_address, verbose, maybe_block_id);
+            super::get_block_transfers(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -476,7 +477,7 @@ pub extern "C" fn casper_get_block_transfers(
 pub extern "C" fn casper_get_state_root_hash(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     maybe_block_id: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
@@ -488,7 +489,7 @@ pub extern "C" fn casper_get_state_root_hash(
     let maybe_block_id = try_unsafe_arg!(maybe_block_id);
     runtime.block_on(async move {
         let result =
-            super::get_state_root_hash(maybe_rpc_id, node_address, verbose, maybe_block_id);
+            super::get_state_root_hash(maybe_rpc_id, node_address, verbosity_level, maybe_block_id);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -502,7 +503,7 @@ pub extern "C" fn casper_get_state_root_hash(
 pub extern "C" fn casper_get_item(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     state_root_hash: *const c_char,
     key: *const c_char,
     path: *const c_char,
@@ -520,7 +521,7 @@ pub extern "C" fn casper_get_item(
         let result = super::get_item(
             maybe_rpc_id,
             node_address,
-            verbose,
+            verbosity_level,
             state_root_hash,
             key,
             path,
@@ -538,7 +539,7 @@ pub extern "C" fn casper_get_item(
 pub extern "C" fn casper_get_balance(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     state_root_hash: *const c_char,
     purse: *const c_char,
     response_buf: *mut c_uchar,
@@ -551,8 +552,13 @@ pub extern "C" fn casper_get_balance(
     let state_root_hash = try_unsafe_arg!(state_root_hash);
     let purse = try_unsafe_arg!(purse);
     runtime.block_on(async move {
-        let result =
-            super::get_balance(maybe_rpc_id, node_address, verbose, state_root_hash, purse);
+        let result = super::get_balance(
+            maybe_rpc_id,
+            node_address,
+            verbosity_level,
+            state_root_hash,
+            purse,
+        );
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
@@ -566,7 +572,7 @@ pub extern "C" fn casper_get_balance(
 pub extern "C" fn casper_get_era_info_by_switch_block(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     maybe_block_id: *const c_char,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
@@ -580,7 +586,7 @@ pub extern "C" fn casper_get_era_info_by_switch_block(
         let result = super::get_era_info_by_switch_block(
             maybe_rpc_id,
             node_address,
-            verbose,
+            verbosity_level,
             maybe_block_id,
         );
         let response = try_unwrap_rpc!(result);
@@ -596,7 +602,7 @@ pub extern "C" fn casper_get_era_info_by_switch_block(
 pub extern "C" fn casper_get_auction_info(
     maybe_rpc_id: *const c_char,
     node_address: *const c_char,
-    verbose: bool,
+    verbosity_level: u64,
     response_buf: *mut c_uchar,
     response_buf_len: usize,
 ) -> casper_error_t {
@@ -605,7 +611,7 @@ pub extern "C" fn casper_get_auction_info(
     let maybe_rpc_id = try_unsafe_arg!(maybe_rpc_id);
     let node_address = try_unsafe_arg!(node_address);
     runtime.block_on(async move {
-        let result = super::get_auction_info(maybe_rpc_id, node_address, verbose);
+        let result = super::get_auction_info(maybe_rpc_id, node_address, verbosity_level);
         let response = try_unwrap_rpc!(result);
         copy_str_to_buf(&response, response_buf, response_buf_len);
         casper_error_t::CASPER_SUCCESS
