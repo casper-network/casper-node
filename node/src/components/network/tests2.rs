@@ -138,7 +138,7 @@ async fn send_large_message_across_network() {
     // At this point each node has at least one other peer. Assuming no split, we can now start
     // gossiping a large payloads. We gossip one on each node.
     let node_ids: Vec<_> = net.nodes().keys().cloned().collect();
-    for sender in &node_ids {
+    for (index, sender) in node_ids.iter().enumerate() {
         let dummy_payload = DummyPayload::random_with_size(&mut rng, large_size);
 
         // Calling `broadcast_message` actually triggers libp2p gossping.
@@ -149,7 +149,7 @@ async fn send_large_message_across_network() {
         })
         .await;
 
-        info!(?sender, payload = %dummy_payload,
+        info!(?sender, payload = %dummy_payload, round=index, total=node_ids.len(),
               "Started broadcast/gossip of payload, waiting for all nodes to receive it");
         net.settle_on(
             &mut rng,
