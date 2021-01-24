@@ -11,7 +11,6 @@ mod tests;
 
 use std::{
     collections::{HashMap, HashSet},
-    convert::Infallible,
     env,
     fmt::{self, Debug, Display, Formatter},
     io,
@@ -763,7 +762,7 @@ impl<REv, P> Debug for Network<REv, P> {
 
 impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
     type Event = Event<P>;
-    type ConstructionError = Infallible;
+    type ConstructionError = Error;
 
     fn handle_event(
         &mut self,
