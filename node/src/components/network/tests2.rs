@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use libp2p::kad::kbucket::K_VALUE;
 use rand::{distributions::Standard, Rng};
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -95,8 +96,11 @@ async fn send_large_message_across_network() {
         return;
     }
 
-    let node_count: usize = 20;
-    let timeout = Duration::from_secs(5);
+    let node_count: usize = 30;
+
+    // Fully connecting a 20 node network takes ~ 3 seconds. This should be ample time for gossip
+    // and connecting.
+    let timeout = Duration::from_secs(20);
     let large_size: usize = 512;
 
     let mut rng = crate::new_rng();
@@ -129,6 +133,7 @@ async fn send_large_message_across_network() {
 
     info!("Network setup, waiting for discovery to complete");
     net.settle_on(&mut rng, network_online, timeout).await;
+    info!("Discovery complete");
 
     // At this point each node has at least one other peer. Assuming no split, we can now start
     // gossiping a large payloads. We gossip one on each node.
@@ -144,10 +149,15 @@ async fn send_large_message_across_network() {
         })
         .await;
 
-        info!(payload = %dummy_payload,
-              "Started gossip of payload, waiting for all nodes to receive it");
-        net.settle_on(&mut rng, everyone_received(&dummy_payload), timeout)
-            .await;
+        info!(?sender, payload = %dummy_payload,
+              "Started broadcast/gossip of payload, waiting for all nodes to receive it");
+        net.settle_on(
+            &mut rng,
+            others_received(&dummy_payload, sender.clone()),
+            timeout,
+        )
+        .await;
+        info!(?sender, "Completed gossip test for sender")
     }
 }
 
@@ -156,29 +166,42 @@ pub fn network_online(
     nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<LoadTestingReactor>>>,
 ) -> bool {
     assert!(
-        nodes.len() >= 3,
+        nodes.len() >= 2,
         "cannot check for an online network with less than 3 nodes"
     );
 
-    // If we have no isolated nodes, the network is online. Note that we do not check for a split
-    // here.
-    !nodes
+    let k_value = usize::from(K_VALUE);
+
+    // Sanity check of K_VALUE.
+    assert!(
+        k_value >= 7,
+        "K_VALUE is really small, expected it to be at least 7"
+    );
+
+    // The target of known nodes to go for. This has a hard bound of `K_VALUE`, since if all nodes
+    // end up in the same bucket, we will start evicting them. In general, we go for K_VALUE/2 for
+    // reasonable interconnection, or the network size - 1, which is another bound.
+    let known_nodes_target = (k_value / 2).min(nodes.len() - 1);
+
+    // Checks if all nodes have reached the known nodes target.
+    nodes
         .values()
-        .any(|runner| dbg!(runner.reactor().inner().net.known_addresses().len()) == 3)
+        .all(|runner| runner.reactor().inner().net.seen_peers().len() >= known_nodes_target)
 }
 
-/// Checks whether or not every node on the network received the provied payload.
-pub fn everyone_received<'a>(
+/// Checks whether or not every node except `sender` on the network received the given payload.
+pub fn others_received<'a>(
     payload: &'a DummyPayload,
+    sender: NodeId,
 ) -> impl Fn(&HashMap<NodeId, Runner<ConditionCheckReactor<LoadTestingReactor>>>) -> bool + 'a {
     move |nodes| {
-        nodes.values().all(|runner| {
-            runner
-                .reactor()
-                .inner()
-                .collector
-                .payloads
-                .contains(payload)
-        })
+        nodes
+            .values()
+            // We're only interested in the inner reactor.
+            .map(|runner| runner.reactor().inner())
+            // Skip the sender.
+            .filter(|reactor| reactor.node_id() != sender)
+            // Ensure others all have received the payload.
+            .all(|reactor| reactor.collector.payloads.contains(payload))
     }
 }
