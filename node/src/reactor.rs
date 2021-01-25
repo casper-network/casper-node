@@ -43,6 +43,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
+use jemalloc_ctl::{epoch, stats};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
 use quanta::IntoNanoseconds;
@@ -59,6 +60,9 @@ use crate::{
 };
 use quanta::Clock;
 pub use queue_kind::QueueKind;
+
+/// Default threshold for amount of total ram remaining before dumping queues to disk.
+const MEM_DUMP_THRESHOLD: f32 = 0.25;
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -223,6 +227,9 @@ where
 
     /// An accurate, possible TSC-supporting clock.
     clock: Clock,
+
+    /// Last queue dump timestamp
+    last_queue_dump: Option<Timestamp>,
 }
 
 /// Metric data for the Runner
@@ -348,6 +355,7 @@ where
             event_metrics_min_delay: Duration::from_secs(30),
             event_metrics_threshold: 1000,
             clock: Clock::new(),
+            last_queue_dump: None,
         })
     }
 
@@ -391,6 +399,19 @@ where
             {
                 self.reactor.update_metrics(event_queue);
                 self.last_metrics = now;
+            }
+
+            if self.last_queue_dump.is_none() {
+                if let Some((available, total)) = Self::get_allocated_memory() {
+                    if available <= (total as f32 * MEM_DUMP_THRESHOLD) as u64 {
+                        tracing::info!(
+                            %available,
+                            %total,
+                            "node has allocated enough memory to trigger queue dump"
+                        );
+                        self.dump_queues().await;
+                    }
+                }
             }
         }
 
@@ -443,9 +464,42 @@ where
         self.event_count += 1;
     }
 
+    /// Get both the allocated and total memory from sys-info + jemalloc
+    fn get_allocated_memory() -> Option<(u64, u64)> {
+        let mem_info = match sys_info::mem_info() {
+            Ok(mem_info) => mem_info,
+            Err(error) => {
+                tracing::error!(%error, "unable to get mem_info using sys-info");
+                return None;
+            }
+        };
+
+        let total = mem_info.total;
+
+        match epoch::mib() {
+            Ok(mib) => {
+                mib.advance().unwrap();
+            }
+            Err(error) => {
+                tracing::error!(%error, "unable to get epoch::mib from jemalloc");
+                return None;
+            }
+        }
+        let allocated = match stats::allocated::mib() {
+            Ok(allocated_mib) => allocated_mib.read().unwrap(),
+            Err(error) => {
+                tracing::error!(%error, "unable to get active mib using jemalloc");
+                return None;
+            }
+        };
+
+        Some((allocated as u64, total))
+    }
+
     // Handles dumping queue contents to files in /tmp.
-    async fn dump_queues(&self) {
+    async fn dump_queues(&mut self) {
         let timestamp = Timestamp::now();
+        self.last_queue_dump = Some(timestamp);
         let output_fn = format!("/tmp/queue_dump-{}.json", timestamp);
         let mut serializer = serde_json::Serializer::pretty(match File::create(&output_fn) {
             Ok(file) => file,
