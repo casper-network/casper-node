@@ -9,7 +9,7 @@ mod protocol_id;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
-mod tests2;
+mod tests_bulk_gossip;
 
 use std::{
     collections::{HashMap, HashSet},
