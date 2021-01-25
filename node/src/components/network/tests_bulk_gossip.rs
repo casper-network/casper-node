@@ -1,8 +1,8 @@
 use std::{
     collections::HashMap,
     convert::TryFrom,
-    env,
-    fmt::{Debug, Display},
+    env, fmt,
+    fmt::{Debug, Display, Formatter},
     time::Duration,
 };
 
@@ -102,7 +102,7 @@ impl Collectable for DummyPayload {
 }
 
 impl Debug for DummyPayload {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "payload ({} bytes: {:?}...)",
@@ -113,7 +113,7 @@ impl Debug for DummyPayload {
 }
 
 impl Display for DummyPayload {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Debug::fmt(self, f)
     }
 }
@@ -169,7 +169,7 @@ async fn send_large_message_across_network() {
     info!("Discovery complete");
 
     // At this point each node has at least one other peer. Assuming no split, we can now start
-    // gossiping a large payloads. We gossip one on each node.
+    // gossiping large payloads. We gossip one on each node.
     let node_ids: Vec<_> = net.nodes().keys().cloned().collect();
     for (index, sender) in node_ids.iter().enumerate() {
         let dummy_payload = DummyPayload::random_with_size(&mut rng, large_size);
@@ -195,7 +195,7 @@ async fn send_large_message_across_network() {
 }
 
 /// Checks if all nodes are connected to at least one other node.
-pub fn network_online(
+fn network_online(
     nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<LoadTestingReactor>>>,
 ) -> bool {
     assert!(
@@ -223,7 +223,7 @@ pub fn network_online(
 }
 
 /// Checks whether or not every node except `sender` on the network received the given payload.
-pub fn others_received(
+fn others_received(
     payload_id: DummyPayloadId,
     sender: NodeId,
 ) -> impl Fn(&HashMap<NodeId, Runner<ConditionCheckReactor<LoadTestingReactor>>>) -> bool {
