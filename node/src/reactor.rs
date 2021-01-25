@@ -402,10 +402,10 @@ where
             }
 
             if self.last_queue_dump.is_none() {
-                if let Some((available, total)) = Self::get_allocated_memory() {
-                    if available <= (total as f32 * MEM_DUMP_THRESHOLD) as u64 {
+                if let Some((allocated, total)) = Self::get_allocated_memory() {
+                    if allocated >= (total as f32 * MEM_DUMP_THRESHOLD) as u64 {
                         tracing::info!(
-                            %available,
+                            %allocated,
                             %total,
                             "node has allocated enough memory to trigger queue dump"
                         );
