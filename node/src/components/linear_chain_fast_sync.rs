@@ -154,7 +154,6 @@ impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
                 ..
             } if highest_block_seen == block_height => {
                 // TODO: Fail gracefully in these cases
-                assert_eq!(highest_block_seen, block_height);
                 match latest_block.as_ref() {
                     Some(expected) => assert_eq!(
                         expected, &block_header,
