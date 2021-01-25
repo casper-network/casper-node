@@ -97,15 +97,8 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
     pub(crate) fn purge_vertices(&mut self) {
         let timeout = self.pending_vertex_timeout;
         self.vertices_to_be_added.retain(|pv| !pv.expired(timeout));
-        for pvs in self
-            .vertices_to_be_added_later
-            .values_mut()
-            .chain(self.vertex_deps.values_mut())
-        {
-            pvs.retain(|pv| !pv.expired(timeout));
-        }
-        Self::remove_empty(&mut self.vertices_to_be_added_later);
-        Self::remove_empty(&mut self.vertex_deps);
+        Self::remove_expired(&mut self.vertices_to_be_added_later, timeout);
+        Self::remove_expired(&mut self.vertex_deps, timeout);
     }
 
     /// Store a (pre-validated) vertex which will be added later.  This creates a timer to be sent
@@ -240,8 +233,14 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .unzip()
     }
 
-    /// Removes all empty entries from a `BTreeMap` of `Vec`s.
-    fn remove_empty<T: Ord + Clone>(map: &mut BTreeMap<T, Vec<PendingVertex<I, C>>>) {
+    /// Removes all expired entries from a `BTreeMap` of `Vec`s.
+    fn remove_expired<T: Ord + Clone>(
+        map: &mut BTreeMap<T, Vec<PendingVertex<I, C>>>,
+        timeout: TimeDiff,
+    ) {
+        for pvs in map.values_mut() {
+            pvs.retain(|pv| !pv.expired(timeout));
+        }
         let keys = map
             .iter()
             .filter(|(_, pvs)| pvs.is_empty())
