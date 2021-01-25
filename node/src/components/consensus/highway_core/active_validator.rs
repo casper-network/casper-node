@@ -1,6 +1,6 @@
 use std::{
     fmt::{self, Debug},
-    fs::File,
+    fs::{self, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},
 };
@@ -128,13 +128,23 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     fn write_last_unit(&mut self, hash: C::Hash) -> io::Result<()> {
+        // If there is no unit_hash_file set, do not write to it
         let unit_hash_file = if let Some(file) = self.unit_hash_file.as_ref() {
             file
         } else {
             return Ok(());
         };
+
+        // Otherwise, set own_last_unit to the specified hash
         self.own_last_unit = Some(hash);
+
+        // Create the file (and its parents) as necessary
+        if let Some(parent_directory) = unit_hash_file.parent() {
+            fs::create_dir_all(parent_directory)?;
+        }
         let mut file = File::create(unit_hash_file)?;
+
+        // Finally, write the data to file we created
         let bytes = serde_json::to_vec(&hash)?;
         file.write_all(&bytes)
     }

@@ -51,20 +51,6 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
-            FunctionIndex::ReadLocalFuncIndex => {
-                // args(0) = pointer to key in Wasm memory
-                // args(1) = size of key in Wasm memory
-                // args(2) = pointer to output size (output param)
-                let (key_ptr, key_size, output_size_ptr) = Args::parse(args)?;
-                self.charge_host_function_call(
-                    &host_function_costs.read_value_local,
-                    [key_ptr, key_size, output_size_ptr],
-                )?;
-                scoped_instrumenter.add_property("key_size", key_size);
-                let ret = self.read_local(key_ptr, key_size, output_size_ptr)?;
-                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
-            }
-
             FunctionIndex::LoadNamedKeysFuncIndex => {
                 // args(0) = pointer to amount of keys (output)
                 // args(1) = pointer to amount of serialized bytes (output)
@@ -93,22 +79,6 @@ where
                 )?;
                 scoped_instrumenter.add_property("value_size", value_size);
                 self.write(key_ptr, key_size, value_ptr, value_size)?;
-                Ok(None)
-            }
-
-            FunctionIndex::WriteLocalFuncIndex => {
-                // args(0) = pointer to key in Wasm memory
-                // args(1) = size of key
-                // args(2) = pointer to value
-                // args(3) = size of value
-                let (key_bytes_ptr, key_bytes_size, value_ptr, value_size) = Args::parse(args)?;
-                self.charge_host_function_call(
-                    &host_function_costs.write_local,
-                    [key_bytes_ptr, key_bytes_size, value_ptr, value_size],
-                )?;
-                scoped_instrumenter.add_property("key_bytes_size", key_bytes_size);
-                scoped_instrumenter.add_property("value_size", value_size);
-                self.write_local(key_bytes_ptr, key_bytes_size, value_ptr, value_size)?;
                 Ok(None)
             }
 

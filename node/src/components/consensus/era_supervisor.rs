@@ -135,6 +135,7 @@ where
         let (root, config) = config.into_parts();
         let secret_signing_key = Rc::new(config.secret_key_path.clone().load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
+        info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let bonded_eras: u64 = protocol_config.unbonding_delay - protocol_config.auction_delay;
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
@@ -263,10 +264,10 @@ where
             info!(era = era_id.0, %our_id, "not voting; not a validator");
             false
         } else if !self.finished_joining {
-            info!(era = era_id.0, "not voting; still joining");
+            info!(era = era_id.0, %our_id, "not voting; still joining");
             false
         } else {
-            info!(era = era_id.0, "start voting");
+            info!(era = era_id.0, %our_id, "start voting");
             true
         };
 
