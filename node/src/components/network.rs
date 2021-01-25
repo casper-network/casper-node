@@ -35,7 +35,7 @@ use libp2p::{
     request_response::{RequestResponseEvent, RequestResponseMessage},
     swarm::{SwarmBuilder, SwarmEvent},
     tcp::TokioTcpConfig,
-    yamux::Config as YamuxConfig,
+    yamux::{Config as YamuxConfig, WindowUpdateMode},
     Multiaddr, PeerId, Swarm, Transport,
 };
 use rand::seq::IteratorRandom;
@@ -202,13 +202,18 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             .into_authentic(&our_id_keys)
             .map_err(Error::StaticKeypairSigning)?;
 
+        let mut yamux_config = YamuxConfig::default();
+
+        // TODO: Document why this is here.
+        yamux_config.set_window_update_mode(WindowUpdateMode::OnRead);
+
         // Create a tokio-based TCP transport.  Use `noise` for authenticated encryption and `yamux`
         // for multiplexing of substreams on a TCP stream.
         let transport = TokioTcpConfig::new()
             .nodelay(true)
             .upgrade(upgrade::Version::V1)
             .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-            .multiplex(YamuxConfig::default())
+            .multiplex(yamux_config)
             .timeout(config.connection_setup_timeout.into())
             .boxed();
 
