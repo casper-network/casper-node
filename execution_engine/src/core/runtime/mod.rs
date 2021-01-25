@@ -22,8 +22,8 @@ use casper_types::{
     auction::{self, Auction, EraId, EraInfo},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
-        self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
-        EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
+        self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
+        DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
     mint::{self, Mint},
     proof_of_stake::{self, ProofOfStake},
@@ -52,7 +52,6 @@ use crate::{
     },
     storage::{global_state::StateReader, protocol_data::ProtocolData},
 };
-use casper_types::contracts::ContractPackageStatus;
 
 pub struct Runtime<'a, R> {
     system_contract_cache: SystemContractCache,

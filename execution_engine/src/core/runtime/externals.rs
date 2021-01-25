@@ -8,7 +8,7 @@ use casper_types::{
     api_error,
     auction::{EraId, EraInfo},
     bytesrepr::{self, ToBytes},
-    contracts::{EntryPoints, NamedKeys},
+    contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
     ContractHash, ContractPackageHash, ContractVersion, Group, Key, URef, U512,
 };
 
@@ -18,7 +18,6 @@ use crate::{
     shared::{gas::Gas, host_function_costs::Cost, stored_value::StoredValue},
     storage::global_state::StateReader,
 };
-use casper_types::contracts::ContractPackageStatus;
 
 impl<'a, R> Externals for Runtime<'a, R>
 where

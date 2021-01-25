@@ -26,7 +26,9 @@ use casper_types::{
         VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, FromBytes, ToBytes},
-    contracts::{ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters},
+    contracts::{
+        ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
+    },
     mint::{
         ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE, ARG_TARGET,
         METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
@@ -68,7 +70,6 @@ use crate::{
         protocol_data::ProtocolData,
     },
 };
-use casper_types::contracts::ContractPackageStatus;
 
 pub const PLACEHOLDER_KEY: Key = Key::Hash([0u8; 32]);
 pub const POS_PAYMENT_PURSE: &str = "pos_payment_purse";
