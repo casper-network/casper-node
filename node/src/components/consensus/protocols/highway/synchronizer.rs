@@ -17,7 +17,7 @@ use crate::{
 
 use super::{ProtocolOutcomes, ACTION_ID_VERTEX};
 
-/// An incoming vertex that we haven't added to the protocol state yet.
+/// An incoming pre-validated vertex that we haven't added to the protocol state yet.
 #[derive(DataSize, Debug)]
 pub(crate) struct PendingVertex<I, C>
 where
@@ -41,6 +41,7 @@ impl<I, C: Context> PendingVertex<I, C> {
         }
     }
 
+    /// Returns the peer from which we received this vertex.
     pub(crate) fn sender(&self) -> &I {
         &self.sender
     }
@@ -50,6 +51,7 @@ impl<I, C: Context> PendingVertex<I, C> {
         self.pvv.inner()
     }
 
+    /// Returns the pre-validated vertex.
     pub(crate) fn pvv(&self) -> &PreValidatedVertex<C> {
         &self.pvv
     }
@@ -84,6 +86,7 @@ where
 }
 
 impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
+    /// Creates a new synchronizer with the specified timeout for pending vertices.
     pub(crate) fn new(pending_vertex_timeout: TimeDiff) -> Self {
         Synchronizer {
             vertex_deps: BTreeMap::new(),
@@ -153,6 +156,8 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         }
     }
 
+    /// Moves all vertices whose known missing dependency is now satisfied into the
+    /// `vertices_to_be_added` queue.
     pub(crate) fn remove_satisfied_deps(&mut self, highway: &Highway<C>) -> ProtocolOutcomes<I, C> {
         let satisfied_deps = self
             .vertex_deps
@@ -167,6 +172,9 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         self.schedule_add_vertices(pvs)
     }
 
+    /// Pops and returns the next entry from `vertices_to_be_added` that is not yet in the protocol
+    /// state. Also returns a `ProtocolOutcome` that schedules the next action to add a vertex,
+    /// unless the queue is empty.
     pub(crate) fn pop_vertex_to_add(
         &mut self,
         highway: &Highway<C>,
@@ -188,26 +196,36 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         }
     }
 
+    /// Adds a vertex with a known missing dependency to the queue.
     pub(crate) fn add_missing_dependency(&mut self, dep: Dependency<C>, pv: PendingVertex<I, C>) {
         self.vertex_deps.entry(dep).or_default().push(pv)
     }
 
+    /// Returns `true` if no vertices are in the queues.
     pub(crate) fn is_empty(&self) -> bool {
         self.vertex_deps.is_empty()
             && self.vertices_to_be_added.is_empty()
             && self.vertices_to_be_added_later.is_empty()
     }
 
+    /// Returns `true` if there are any vertices waiting for the specified dependency.
     pub(crate) fn is_dependency(&self, dep: &Dependency<C>) -> bool {
         self.vertex_deps.contains_key(dep)
     }
 
+    /// Returns the timeout for pending vertices: Entries older than this are purged periodically.
     pub(crate) fn pending_vertex_timeout(&self) -> TimeDiff {
         self.pending_vertex_timeout
     }
 
-    pub(crate) fn drop_dependent_vertices(&mut self, mut vertices: Vec<Dependency<C>>) -> Vec<I> {
-        let mut senders = Vec::new();
+    /// Drops all vertices that (directly or indirectly) have the specified dependencies, and
+    /// returns the set of their senders. If the specified dependencies are known to be invalid,
+    /// those senders must be faulty.
+    pub(crate) fn drop_dependent_vertices(
+        &mut self,
+        mut vertices: Vec<Dependency<C>>,
+    ) -> HashSet<I> {
+        let mut senders = HashSet::new();
         while !vertices.is_empty() {
             let (new_vertices, new_senders) = self.do_drop_dependent_vertices(vertices);
             vertices = new_vertices;
@@ -216,6 +234,8 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         senders
     }
 
+    /// Drops all vertices that have the specified direct dependencies, and returns their IDs and
+    /// senders.
     fn do_drop_dependent_vertices(
         &mut self,
         vertices: Vec<Dependency<C>>,
