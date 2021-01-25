@@ -127,12 +127,14 @@ async fn send_large_message_across_network() {
         return;
     }
 
-    let node_count: usize = 30;
+    // This can, on a decent machine, be set to 30, 50, maybe even 100 nodes. The default is set to
+    // 5 to avoid overloading CI.
+    let node_count: usize = 5;
 
     // Fully connecting a 20 node network takes ~ 3 seconds. This should be ample time for gossip
     // and connecting.
-    let timeout = Duration::from_secs(20);
-    let large_size: usize = 512;
+    let timeout = Duration::from_secs(60);
+    let large_size: usize = 1024 * 1024 * 4;
 
     let mut rng = crate::new_rng();
 
