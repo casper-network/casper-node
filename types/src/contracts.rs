@@ -557,6 +557,17 @@ pub enum ContractPackageStatus {
     Unlocked,
 }
 
+impl ContractPackageStatus {
+    /// Create a new status flag based on a boolean value
+    pub fn new(is_locked: bool) -> Self {
+        if is_locked {
+            ContractPackageStatus::Locked
+        } else {
+            ContractPackageStatus::Unlocked
+        }
+    }
+}
+
 impl Default for ContractPackageStatus {
     fn default() -> Self {
         Self::Unlocked
@@ -584,11 +595,8 @@ impl ToBytes for ContractPackageStatus {
 impl FromBytes for ContractPackageStatus {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (val, bytes) = bool::from_bytes(bytes)?;
-        if val {
-            Ok((ContractPackageStatus::Locked, bytes))
-        } else {
-            Ok((ContractPackageStatus::Unlocked, bytes))
-        }
+        let status = ContractPackageStatus::new(val);
+        Ok((status, bytes))
     }
 }
 

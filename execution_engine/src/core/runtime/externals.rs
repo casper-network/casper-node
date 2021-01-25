@@ -561,11 +561,10 @@ where
                     &host_function_costs.create_contract_package_at_hash,
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
-                let (hash_addr, access_addr) = if is_locked {
-                    self.create_contract_package_at_hash(ContractPackageStatus::Locked)?
-                } else {
-                    self.create_contract_package_at_hash(ContractPackageStatus::Unlocked)?
-                };
+                let package_status = ContractPackageStatus::new(is_locked);
+                let (hash_addr, access_addr) =
+                    self.create_contract_package_at_hash(package_status)?;
+
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;
                 Ok(None)

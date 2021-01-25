@@ -4,13 +4,12 @@ use std::{
 };
 
 use casper_types::{
-    contracts::{ContractVersions, DisabledVersions, Groups},
+    contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups},
     ContractPackage, ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, Group,
     Parameter,
 };
 
 use crate::engine_server::{mappings::ParsingError, state};
-use casper_types::contracts::ContractPackageStatus;
 
 impl From<ContractPackage> for state::ContractPackage {
     fn from(value: ContractPackage) -> state::ContractPackage {
@@ -53,11 +52,7 @@ impl TryFrom<state::ContractPackage> for ContractPackage {
     type Error = ParsingError;
     fn try_from(mut value: state::ContractPackage) -> Result<ContractPackage, Self::Error> {
         let access_uref = value.take_access_key().try_into()?;
-        let lock_status = if value.get_lock_status() {
-            ContractPackageStatus::Locked
-        } else {
-            ContractPackageStatus::Unlocked
-        };
+        let lock_status = ContractPackageStatus::new(value.get_lock_status());
         let mut contract_package = ContractPackage::new(
             access_uref,
             ContractVersions::default(),
