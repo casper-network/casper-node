@@ -198,6 +198,7 @@ impl From<u64> for Timestamp {
 /// A time difference between two timestamps.
 #[derive(
     Debug,
+    Default,
     Clone,
     Copy,
     DataSize,
