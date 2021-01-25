@@ -478,7 +478,7 @@ where
 
         match epoch::mib() {
             Ok(mib) => {
-                // jemalloc_ctl requires you to advance the epoch to update it's stats
+                // jemalloc_ctl requires you to advance the epoch to update its stats
                 mib.advance().unwrap();
             }
             Err(error) => {
