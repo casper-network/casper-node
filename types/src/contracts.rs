@@ -548,6 +548,58 @@ impl JsonSchema for ContractPackageHash {
     }
 }
 
+/// A enum to determine the lock status of the contract package.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum ContractPackageStatus {
+    /// The package is locked and cannot be versioned.
+    Locked,
+    /// The package is unlocked and can be versioned.
+    Unlocked,
+}
+
+impl ContractPackageStatus {
+    /// Create a new status flag based on a boolean value
+    pub fn new(is_locked: bool) -> Self {
+        if is_locked {
+            ContractPackageStatus::Locked
+        } else {
+            ContractPackageStatus::Unlocked
+        }
+    }
+}
+
+impl Default for ContractPackageStatus {
+    fn default() -> Self {
+        Self::Unlocked
+    }
+}
+
+impl ToBytes for ContractPackageStatus {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        match self {
+            ContractPackageStatus::Unlocked => result.append(&mut false.to_bytes()?),
+            ContractPackageStatus::Locked => result.append(&mut true.to_bytes()?),
+        }
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        match self {
+            ContractPackageStatus::Unlocked => false.serialized_length(),
+            ContractPackageStatus::Locked => true.serialized_length(),
+        }
+    }
+}
+
+impl FromBytes for ContractPackageStatus {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (val, bytes) = bool::from_bytes(bytes)?;
+        let status = ContractPackageStatus::new(val);
+        Ok((status, bytes))
+    }
+}
+
 /// Contract definition, metadata, and security container.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct ContractPackage {
@@ -562,6 +614,8 @@ pub struct ContractPackage {
     /// version of the contract. A method is callable by any context which
     /// "knows" any of the URefs assoicated with the mthod's user group.
     groups: Groups,
+    /// A flag that determines whether a contract is locked
+    lock_status: ContractPackageStatus,
 }
 
 impl ContractPackage {
@@ -571,12 +625,14 @@ impl ContractPackage {
         versions: ContractVersions,
         disabled_versions: DisabledVersions,
         groups: Groups,
+        lock_status: ContractPackageStatus,
     ) -> Self {
         ContractPackage {
             access_key,
             versions,
             disabled_versions,
             groups,
+            lock_status,
         }
     }
 
@@ -721,6 +777,19 @@ impl ContractPackage {
             None => None,
         }
     }
+
+    /// Return the lock status of the contract package.
+    pub fn is_locked(&self) -> bool {
+        match self.lock_status {
+            ContractPackageStatus::Unlocked => false,
+            ContractPackageStatus::Locked => true,
+        }
+    }
+
+    /// Return the package status itself
+    pub fn get_lock_status(&self) -> ContractPackageStatus {
+        self.lock_status.clone()
+    }
 }
 
 impl ToBytes for ContractPackage {
@@ -731,6 +800,7 @@ impl ToBytes for ContractPackage {
         result.append(&mut self.versions.to_bytes()?);
         result.append(&mut self.disabled_versions.to_bytes()?);
         result.append(&mut self.groups.to_bytes()?);
+        result.append(&mut self.lock_status.to_bytes()?);
 
         Ok(result)
     }
@@ -740,6 +810,7 @@ impl ToBytes for ContractPackage {
             + self.versions.serialized_length()
             + self.disabled_versions.serialized_length()
             + self.groups.serialized_length()
+            + self.lock_status.serialized_length()
     }
 }
 
@@ -749,11 +820,13 @@ impl FromBytes for ContractPackage {
         let (versions, bytes) = ContractVersions::from_bytes(bytes)?;
         let (disabled_versions, bytes) = DisabledVersions::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
+        let (lock_status, bytes) = ContractPackageStatus::from_bytes(bytes)?;
         let result = ContractPackage {
             access_key,
             versions,
             disabled_versions,
             groups,
+            lock_status,
         };
 
         Ok((result, bytes))
@@ -1310,6 +1383,7 @@ mod tests {
             ContractVersions::default(),
             DisabledVersions::default(),
             Groups::default(),
+            ContractPackageStatus::default(),
         );
 
         // add groups
@@ -1371,6 +1445,7 @@ mod tests {
             ContractVersions::default(),
             DisabledVersions::default(),
             Groups::default(),
+            ContractPackageStatus::default(),
         );
         assert_eq!(contract_package.next_contract_version_for(major), 1);
 

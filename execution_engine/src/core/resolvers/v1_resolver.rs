@@ -153,7 +153,7 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 FunctionIndex::ReadHostBufferIndex.into(),
             ),
             "casper_create_contract_package_at_hash" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 2][..], None),
+                Signature::new(&[ValueType::I32; 3][..], None),
                 FunctionIndex::CreateContractPackageAtHash.into(),
             ),
             "casper_create_contract_user_group" => FuncInstance::alloc_host(

@@ -66,6 +66,7 @@ message ContractPackage {
         repeated Key.URef urefs = 2;
     }
     Key.URef access_key = 1;
+    bool lock_status = 5;
     repeated Version active_versions = 2;
     repeated ContractVersionKey disabled_versions = 3;
     repeated Group groups = 4;

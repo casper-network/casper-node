@@ -22,8 +22,8 @@ use casper_types::{
     auction::{self, Auction, EraId, EraInfo},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
-        self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
-        EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
+        self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
+        DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
     mint::{self, Mint},
     proof_of_stake::{self, ProofOfStake},
@@ -2273,21 +2273,28 @@ where
         Ok(Ok(()))
     }
 
-    fn create_contract_package(&mut self) -> Result<(ContractPackage, URef), Error> {
+    fn create_contract_package(
+        &mut self,
+        is_locked: ContractPackageStatus,
+    ) -> Result<(ContractPackage, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = ContractPackage::new(
             access_key,
             ContractVersions::default(),
             DisabledVersions::default(),
             Groups::default(),
+            is_locked,
         );
 
         Ok((contract_package, access_key))
     }
 
-    fn create_contract_package_at_hash(&mut self) -> Result<([u8; 32], [u8; 32]), Error> {
+    fn create_contract_package_at_hash(
+        &mut self,
+        lock_status: ContractPackageStatus,
+    ) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
-        let (contract_package, access_key) = self.create_contract_package()?;
+        let (contract_package, access_key) = self.create_contract_package(lock_status)?;
         self.context
             .metered_write_gs_unsafe(addr, contract_package)?;
         Ok((addr, access_key.addr()))
@@ -2381,6 +2388,13 @@ where
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
+        let version = contract_package.current_contract_version();
+
+        // Return an error if the contract is locked and has some version associated with it.
+        if contract_package.is_locked() && version.is_some() {
+            return Err(Error::LockedContract(contract_package_hash));
+        }
+
         let contract_wasm_hash = self.context.new_hash_address()?;
         let contract_wasm = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
@@ -2464,6 +2478,11 @@ where
         let mut contract_package: ContractPackage = self
             .context
             .get_validated_contract_package(contract_package_hash)?;
+
+        // Return an error in trying to disable the (singular) version of a locked contract.
+        if contract_package.is_locked() {
+            return Err(Error::LockedContract(contract_package_hash));
+        }
 
         if let Err(err) = contract_package.disable_contract_version(contract_hash) {
             return Ok(Err(err.into()));
