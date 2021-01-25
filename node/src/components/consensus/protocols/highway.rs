@@ -442,18 +442,17 @@ where
                     None => false,
                 };
 
+                if is_faulty && !self.synchronizer.is_dependency(&pvv.inner().id()) {
+                    trace!("received a vertex from a faulty validator; dropping");
+                    return vec![];
+                }
+
                 let now = Timestamp::now();
                 match pvv.timestamp() {
                     Some(timestamp)
                         if timestamp > now + self.synchronizer.pending_vertex_timeout() =>
                     {
                         trace!("received a vertex with a timestamp far in the future; dropping");
-                        vec![]
-                    }
-                    Some(timestamp) if timestamp > now && is_faulty => {
-                        trace!(
-                            "received a vertex from the future from a faulty validator; dropping"
-                        );
                         vec![]
                     }
                     Some(timestamp) if timestamp > now => {
@@ -464,19 +463,12 @@ where
                         let timer_id = TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP;
                         vec![ProtocolOutcome::ScheduleTimer(timestamp, timer_id)]
                     }
-                    _ if !is_faulty || self.synchronizer.is_dependency(&pvv.inner().id()) => {
+                    _ => {
                         // If it's not from an equivocator or it is a transitive dependency, add the
                         // vertex
                         trace!("received a valid vertex");
                         let pv = PendingVertex::new(sender, pvv);
                         self.synchronizer.schedule_add_vertices(iter::once(pv))
-                    }
-                    _ => {
-                        trace!(
-                            "received a vertex from a faulty validator that is not a \
-                                dependency; dropping"
-                        );
-                        vec![]
                     }
                 }
             }
