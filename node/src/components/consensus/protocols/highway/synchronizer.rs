@@ -229,11 +229,8 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         self.pending_vertex_timeout
     }
 
-    pub(crate) fn drop_dependent_vertices(
-        &mut self,
-        mut vertices: Vec<Dependency<C>>,
-    ) -> HashSet<I> {
-        let mut senders = HashSet::new();
+    pub(crate) fn drop_dependent_vertices(&mut self, mut vertices: Vec<Dependency<C>>) -> Vec<I> {
+        let mut senders = Vec::new();
         while !vertices.is_empty() {
             let (new_vertices, new_senders) = self.do_drop_dependent_vertices(vertices);
             vertices = new_vertices;
@@ -247,7 +244,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         vertices: Vec<Dependency<C>>,
     ) -> (Vec<Dependency<C>>, HashSet<I>) {
         // collect the vertices that depend on the ones we got in the argument and their senders
-        let (senders, mut dropped_vertices): (HashSet<I>, Vec<Dependency<C>>) = vertices
+        vertices
             .into_iter()
             // filtering by is_unit, so that we don't drop vertices depending on invalid evidence
             // or endorsements - we can still get valid ones from someone else and eventually
@@ -255,33 +252,7 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .filter(|dep| dep.is_unit())
             .flat_map(|vertex| self.vertex_deps.remove(&vertex))
             .flatten()
-            .map(|pv| (pv.sender, pv.pvv.inner().id()))
-            .unzip();
-
-        dropped_vertices.extend(self.drop_by_senders(senders.clone()));
-        (dropped_vertices, senders)
-    }
-
-    fn drop_by_senders(&mut self, senders: HashSet<I>) -> Vec<Dependency<C>> {
-        let mut dropped_vertices = Vec::new();
-        let mut keys_to_drop = Vec::new();
-        for (key, dependent_vertices) in self.vertex_deps.iter_mut() {
-            dependent_vertices.retain(|pv| {
-                if senders.contains(&pv.sender) {
-                    // remember the deps we drop
-                    dropped_vertices.push(pv.vertex().id());
-                    false
-                } else {
-                    true
-                }
-            });
-            if dependent_vertices.is_empty() {
-                keys_to_drop.push(key.clone());
-            }
-        }
-        for key in keys_to_drop {
-            self.vertex_deps.remove(&key);
-        }
-        dropped_vertices
+            .map(|pv| (pv.pvv.inner().id(), pv.sender))
+            .unzip()
     }
 }
