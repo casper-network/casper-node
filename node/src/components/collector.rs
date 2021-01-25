@@ -61,6 +61,7 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
+        #[allow(clippy::single_match)]
         match event {
             Event::NetworkAnnouncement(NetworkAnnouncement::MessageReceived {
                 payload, ..
