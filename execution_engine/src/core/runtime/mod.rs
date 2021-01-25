@@ -22,8 +22,8 @@ use casper_types::{
     auction::{self, Auction, EraId, EraInfo},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
-        self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
-        EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
+        self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
+        DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
     mint::{self, Mint},
     proof_of_stake::{self, ProofOfStake},
@@ -2273,21 +2273,28 @@ where
         Ok(Ok(()))
     }
 
-    fn create_contract_package(&mut self) -> Result<(ContractPackage, URef), Error> {
+    fn create_contract_package(
+        &mut self,
+        is_locked: ContractPackageStatus,
+    ) -> Result<(ContractPackage, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = ContractPackage::new(
             access_key,
             ContractVersions::default(),
             DisabledVersions::default(),
             Groups::default(),
+            is_locked,
         );
 
         Ok((contract_package, access_key))
     }
 
-    fn create_contract_package_at_hash(&mut self) -> Result<([u8; 32], [u8; 32]), Error> {
+    fn create_contract_package_at_hash(
+        &mut self,
+        lock_status: ContractPackageStatus,
+    ) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
-        let (contract_package, access_key) = self.create_contract_package()?;
+        let (contract_package, access_key) = self.create_contract_package(lock_status)?;
         self.context
             .metered_write_gs_unsafe(addr, contract_package)?;
         Ok((addr, access_key.addr()))
@@ -2381,6 +2388,13 @@ where
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
+        let version = contract_package.current_contract_version();
+
+        // Return an error if the contract is locked and has some version associated with it.
+        if contract_package.is_locked() && version.is_some() {
+            return Err(Error::LockedContract(contract_package_hash));
+        }
+
         let contract_wasm_hash = self.context.new_hash_address()?;
         let contract_wasm = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
@@ -2465,6 +2479,11 @@ where
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
+        // Return an error in trying to disable the (singular) version of a locked contract.
+        if contract_package.is_locked() {
+            return Err(Error::LockedContract(contract_package_hash));
+        }
+
         if let Err(err) = contract_package.disable_contract_version(contract_hash) {
             return Ok(Err(err.into()));
         }
@@ -2505,22 +2524,6 @@ where
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
         self.context
             .metered_write_gs(key, cl_value)
-            .map_err(Into::into)
-    }
-
-    /// Writes `value` under a key derived from `key` in the "local cluster" of
-    /// GlobalState
-    fn write_local(
-        &mut self,
-        key_ptr: u32,
-        key_size: u32,
-        value_ptr: u32,
-        value_size: u32,
-    ) -> Result<(), Trap> {
-        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-        let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
-        self.context
-            .write_ls(&key_bytes, cl_value)
             .map_err(Into::into)
     }
 
@@ -2606,39 +2609,6 @@ where
         let key = self.key_from_mem(key_ptr, key_size)?;
         let cl_value = match self.context.read_gs(&key)? {
             Some(stored_value) => CLValue::try_from(stored_value).map_err(Error::TypeMismatch)?,
-            None => return Ok(Err(ApiError::ValueNotFound)),
-        };
-
-        let value_size = cl_value.inner_bytes().len() as u32;
-        if let Err(error) = self.write_host_buffer(cl_value) {
-            return Ok(Err(error));
-        }
-
-        let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(output_size_ptr, &value_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
-        }
-
-        Ok(Ok(()))
-    }
-
-    /// Similar to `read`, this function is for reading from the "local cluster"
-    /// of global state
-    fn read_local(
-        &mut self,
-        key_ptr: u32,
-        key_size: u32,
-        output_size_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Trap> {
-        if !self.can_write_to_host_buffer() {
-            // Exit early if the host buffer is already occupied
-            return Ok(Err(ApiError::HostBufferFull));
-        }
-
-        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-
-        let cl_value = match self.context.read_ls(&key_bytes)? {
-            Some(cl_value) => cl_value,
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
 
@@ -3039,9 +3009,7 @@ where
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        let key = purse.addr();
-
-        let uref_key = match self.context.read_ls(&key)? {
+        let balance_uref_key = match self.context.read_purse_uref(&purse)? {
             Some(cl_value) => {
                 let key: Key = cl_value.into_t()?;
                 if key.as_uref().is_none() {
@@ -3051,8 +3019,7 @@ where
             }
             None => return Ok(None),
         };
-
-        let ret = match self.context.read_gs_direct(&uref_key)? {
+        let ret = match self.context.read_gs_direct(&balance_uref_key)? {
             Some(StoredValue::CLValue(cl_value)) => {
                 let balance: U512 = cl_value.into_t()?;
                 Some(balance)
@@ -3060,7 +3027,6 @@ where
             Some(_) => return Err(Error::UnexpectedStoredValueVariant),
             None => None,
         };
-
         Ok(ret)
     }
 

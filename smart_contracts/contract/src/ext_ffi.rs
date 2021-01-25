@@ -15,22 +15,6 @@ extern "C" {
     /// * `key_size` - size of the serialized key (in bytes)
     /// * `output_size` - pointer to a value where host will write size of bytes read from given key
     pub fn casper_read_value(key_ptr: *const u8, key_size: usize, output_size: *mut usize) -> i32;
-    /// The bytes in wasm memory from offset `key_ptr` to `key_ptr + key_size`
-    /// will be used together with the current context’s seed to form a local key.
-    /// The value at that local key is read from the global state, serialized and
-    /// buffered in the runtime. This result can be obtained via the [`casper_read_host_buffer`]
-    /// function.
-    ///
-    /// # Arguments
-    ///
-    /// * `key_ptr` - pointer to bytes representing the user-defined key
-    /// * `key_size` - size of the key (in bytes)
-    /// * `output_size` - pointer to a value where host will write size of bytes read from given key
-    pub fn casper_read_value_local(
-        key_ptr: *const u8,
-        key_size: usize,
-        output_size: *mut usize,
-    ) -> i32;
     /// This function writes the provided value (read via de-serializing the bytes
     /// in wasm memory from offset `value_ptr` to `value_ptr + value_size`) under
     /// the provided key (read via de-serializing the bytes in wasm memory from
@@ -45,26 +29,6 @@ extern "C" {
     /// * `value_ptr` - pointer to bytes representing the value to write at the key
     /// * `value_size` - size of the value (in bytes)
     pub fn casper_write(
-        key_ptr: *const u8,
-        key_size: usize,
-        value_ptr: *const u8,
-        value_size: usize,
-    );
-
-    /// The bytes in wasm memory from offset `key_ptr` to `key_ptr + key_size`
-    /// will be used together with the current context’s seed to form a local key.
-    /// This function writes the provided value (read via de-serializing the bytes
-    /// in wasm memory from offset `value_ptr` to `value_ptr + value_size`) under
-    /// that local key in the global state. This function will cause a `Trap` if
-    /// the value fails to de-serialize.
-    ///
-    /// # Arguments
-    ///
-    /// * `key_ptr` - pointer to bytes representing the user-defined key to write to
-    /// * `key_size` - size of the key (in bytes)
-    /// * `value_ptr` - pointer to bytes representing the value to write at the key
-    /// * `value_size` - size of the value (in bytes)
-    pub fn casper_write_local(
         key_ptr: *const u8,
         key_size: usize,
         value_ptr: *const u8,
@@ -509,7 +473,11 @@ extern "C" {
     /// Creates new contract package at hash. Returns both newly generated
     /// [`casper_types::ContractPackageHash`] and a [`casper_types::URef`] for further
     /// modifying access.
-    pub fn casper_create_contract_package_at_hash(hash_addr_ptr: *mut u8, access_addr_ptr: *mut u8);
+    pub fn casper_create_contract_package_at_hash(
+        hash_addr_ptr: *mut u8,
+        access_addr_ptr: *mut u8,
+        is_locked: bool,
+    );
     /// Creates new named contract user group under a contract package.
     ///
     /// # Arguments
