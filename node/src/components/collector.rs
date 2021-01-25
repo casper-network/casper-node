@@ -19,11 +19,11 @@ use super::Component;
 ///
 /// Stores each received payload.
 #[derive(Debug)]
-pub struct Collector<P> {
-    pub payloads: Vec<P>,
+pub struct Collector<P: Collectable> {
+    pub payloads: Vec<P::CollectedType>,
 }
 
-impl<P> Collector<P> {
+impl<P: Collectable> Collector<P> {
     /// Creates a new collector.
     pub fn new() -> Self {
         Collector {
@@ -50,7 +50,7 @@ where
 
 impl<REv, P> Component<REv> for Collector<P>
 where
-    P: Display + Debug,
+    P: Display + Debug + Collectable,
 {
     type Event = Event<P>;
     type ConstructionError = Infallible;
@@ -66,10 +66,20 @@ where
                 payload, ..
             }) => {
                 debug!("collected {}", payload);
-                self.payloads.push(payload);
+                self.payloads.push(payload.into_collectable());
             }
             _ => {}
         }
         Effects::new()
     }
+}
+
+/// Collectable item trait.
+///
+/// Some items may be collected not by themselves, but in a modified form (e.g. hash only).
+pub trait Collectable {
+    type CollectedType;
+
+    /// Transforms the item into the ultimately collected item.
+    fn into_collectable(self) -> Self::CollectedType;
 }

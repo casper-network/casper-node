@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    convert::TryFrom,
     env,
     fmt::{Debug, Display},
     time::Duration,
@@ -11,7 +12,8 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::{
-    effect::EffectExt, reactor::Runner, testing, testing::TestRng, types::NodeId, Chainspec,
+    components::collector::Collectable, effect::EffectExt, reactor::Runner, testing,
+    testing::TestRng, types::NodeId, Chainspec,
 };
 use casper_node_macros::reactor;
 use testing::{init_logging, network::NetworkedReactor, ConditionCheckReactor};
@@ -64,9 +66,38 @@ pub struct TestReactorConfig {
 #[derive(Clone, Eq, Deserialize, PartialEq, Serialize)]
 pub struct DummyPayload(Vec<u8>);
 
+const DUMMY_PAYLOAD_ID_LEN: usize = 16;
+
+/// ID of a dummy payload.
+type DummyPayloadId = [u8; DUMMY_PAYLOAD_ID_LEN];
+
 impl DummyPayload {
+    /// Creates a new randomly generated payload.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `sz` is less than `DUMMY_PAYLOAD_ID_LEN` bytes.
     fn random_with_size(rng: &mut TestRng, sz: usize) -> Self {
+        assert!(
+            sz >= DUMMY_PAYLOAD_ID_LEN,
+            "payload must be large enough to derive ID"
+        );
+
         DummyPayload(rng.sample_iter(Standard).take(sz).collect())
+    }
+
+    /// Returns the ID of the payload.
+    fn id(&self) -> DummyPayloadId {
+        TryFrom::try_from(&self.0[..DUMMY_PAYLOAD_ID_LEN])
+            .expect("could not get ID data from buffer slice")
+    }
+}
+
+impl Collectable for DummyPayload {
+    type CollectedType = DummyPayloadId;
+
+    fn into_collectable(self) -> Self::CollectedType {
+        self.id()
     }
 }
 
@@ -153,7 +184,7 @@ async fn send_large_message_across_network() {
               "Started broadcast/gossip of payload, waiting for all nodes to receive it");
         net.settle_on(
             &mut rng,
-            others_received(&dummy_payload, sender.clone()),
+            others_received(dummy_payload.id(), sender.clone()),
             timeout,
         )
         .await;
@@ -190,10 +221,10 @@ pub fn network_online(
 }
 
 /// Checks whether or not every node except `sender` on the network received the given payload.
-pub fn others_received<'a>(
-    payload: &'a DummyPayload,
+pub fn others_received(
+    payload_id: DummyPayloadId,
     sender: NodeId,
-) -> impl Fn(&HashMap<NodeId, Runner<ConditionCheckReactor<LoadTestingReactor>>>) -> bool + 'a {
+) -> impl Fn(&HashMap<NodeId, Runner<ConditionCheckReactor<LoadTestingReactor>>>) -> bool {
     move |nodes| {
         nodes
             .values()
@@ -202,6 +233,6 @@ pub fn others_received<'a>(
             // Skip the sender.
             .filter(|reactor| reactor.node_id() != sender)
             // Ensure others all have received the payload.
-            .all(|reactor| reactor.collector.payloads.contains(payload))
+            .all(|reactor| reactor.collector.payloads.contains(&payload_id))
     }
 }
