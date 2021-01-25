@@ -708,17 +708,17 @@ where
                 ?dropped_vertices,
                 "consensus value is invalid; dropping dependent vertices"
             );
-            let faulty_senders = self.drop_dependent_vertices(
+            let _faulty_senders = self.drop_dependent_vertices(
                 dropped_vertices
                     .into_iter()
                     .flatten()
                     .map(|vv| vv.inner().id())
                     .collect(),
             );
-            faulty_senders
-                .into_iter()
-                .map(ProtocolOutcome::Disconnect)
-                .collect()
+            // We don't disconnect from the faulty senders here: The block validator considers the
+            // value "invalid" even if it just couldn't download the deploys, which could just be
+            // because the original sender went offline.
+            vec![]
         }
     }
 

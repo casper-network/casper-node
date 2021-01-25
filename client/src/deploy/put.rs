@@ -26,7 +26,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
 
         let maybe_rpc_id = common::rpc_id::get(matches);
         let node_address = common::node_address::get(matches);
-        let verbose = common::verbose::get(matches);
+        let mut verbosity_level = common::verbose::get(matches);
 
         let secret_key = common::secret_key::get(matches);
         let timestamp = creation_common::timestamp::get(matches);
@@ -41,7 +41,7 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
         let response = casper_client::put_deploy(
             maybe_rpc_id,
             node_address,
-            verbose,
+            verbosity_level,
             DeployStrParams {
                 secret_key,
                 timestamp,
@@ -54,9 +54,10 @@ impl<'a, 'b> ClientCommand<'a, 'b> for PutDeploy {
             payment_str_params,
         )
         .unwrap_or_else(|err| panic!("unable to put deploy {:?}", err));
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&response).expect("should encode to JSON")
-        );
+
+        if verbosity_level == 0 {
+            verbosity_level += 1
+        }
+        casper_client::pretty_print_at_level(&response, verbosity_level);
     }
 }

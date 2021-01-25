@@ -1,31 +1,11 @@
-//! Linear chain synchronizer.
-//!
-//! Synchronizes the linear chain when node joins the network.
-//!
-//! Steps are:
-//! 1. Fetch blocks up to initial, trusted hash (blocks are downloaded starting from trusted hash up
-//! until Genesis).
-//! 2. Fetch deploys of the lowest height block.
-//! 3. Execute that block.
-//! 4. Repeat steps 2-3 until trusted hash is reached.
-//! 5. Transition to `SyncingDescendants` state.
-//! 6. Fetch child block of highest block.
-//! 7. Fetch deploys of that block.
-//! 8. Execute that block.
-//! 9. Repeat steps 6-8 as long as there's a child in the linear chain.
-//!
-//! The order of "download block – download deploys – execute" block steps differ,
-//! in order to increase the chances of catching up with the linear chain quicker.
-//! When synchronizing linear chain up to the trusted hash we cannot execute later blocks without
-//! earlier ones. When we're syncing descendants, on the other hand, we can and we want to do it
-//! ASAP so that we can start participating in consensus. That's why deploy fetching and block
-//! execution is interleaved. If we had downloaded the whole chain, and then deploys, and then
-//! execute (as we do in the first, SynchronizeTrustedHash, phase) it would have taken more time and
-//! we might miss more eras.
-
+//! Fast linear chain synchronizer.
+#[allow(dead_code)]
 mod event;
+#[allow(dead_code)]
 mod metrics;
+#[allow(dead_code)]
 mod peers;
+#[allow(dead_code)]
 mod state;
 mod traits;
 
@@ -53,14 +33,15 @@ pub use state::State;
 pub use traits::ReactorEventT;
 
 #[derive(DataSize, Debug)]
-pub(crate) struct LinearChainSync<I> {
+pub(crate) struct LinearChainFastSync<I> {
     peers: PeersState<I>,
     state: State,
     #[data_size(skip)]
     metrics: LinearChainSyncMetrics,
 }
 
-impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
+#[allow(dead_code)]
+impl<I: Clone + PartialEq + 'static> LinearChainFastSync<I> {
     pub fn new(
         registry: &Registry,
         init_hash: Option<BlockHash>,
@@ -69,7 +50,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
         let state = init_hash.map_or(State::None, |init_hash| {
             State::sync_trusted_hash(init_hash, genesis_validator_weights)
         });
-        Ok(LinearChainSync {
+        Ok(LinearChainFastSync {
             peers: PeersState::new(),
             state,
             metrics: LinearChainSyncMetrics::new(registry)?,
@@ -288,7 +269,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     }
 }
 
-impl<I, REv> Component<REv> for LinearChainSync<I>
+impl<I, REv> Component<REv> for LinearChainFastSync<I>
 where
     I: Display + Clone + Send + PartialEq + 'static,
     REv: ReactorEventT<I>,

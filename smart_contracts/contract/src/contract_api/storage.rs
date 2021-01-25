@@ -43,32 +43,6 @@ pub fn read_or_revert<T: CLTyped + FromBytes>(uref: URef) -> T {
         .unwrap_or_revert_with(ApiError::ValueNotFound)
 }
 
-/// Reads the value under `key` in the context-local partition of global state.
-pub fn read_local<K: ToBytes, V: CLTyped + FromBytes>(
-    key: &K,
-) -> Result<Option<V>, bytesrepr::Error> {
-    let key_bytes = key.to_bytes()?;
-
-    let value_size = {
-        let mut value_size = MaybeUninit::uninit();
-        let ret = unsafe {
-            ext_ffi::casper_read_value_local(
-                key_bytes.as_ptr(),
-                key_bytes.len(),
-                value_size.as_mut_ptr(),
-            )
-        };
-        match api_error::result_from(ret) {
-            Ok(_) => unsafe { value_size.assume_init() },
-            Err(ApiError::ValueNotFound) => return Ok(None),
-            Err(e) => runtime::revert(e),
-        }
-    };
-
-    let value_bytes = runtime::read_host_buffer(value_size).unwrap_or_revert();
-    Ok(Some(bytesrepr::deserialize(value_bytes)?))
-}
-
 /// Writes `value` under `uref` in the global state.
 pub fn write<T: CLTyped + ToBytes>(uref: URef, value: T) {
     let key = Key::from(uref);
@@ -79,18 +53,6 @@ pub fn write<T: CLTyped + ToBytes>(uref: URef, value: T) {
 
     unsafe {
         ext_ffi::casper_write(key_ptr, key_size, cl_value_ptr, cl_value_size);
-    }
-}
-
-/// Writes `value` under `key` in the context-local partition of global state.
-pub fn write_local<K: ToBytes, V: CLTyped + ToBytes>(key: K, value: V) {
-    let (key_ptr, key_size, _bytes1) = contract_api::to_ptr(key);
-
-    let cl_value = CLValue::from_t(value).unwrap_or_revert();
-    let (cl_value_ptr, cl_value_size, _bytes) = contract_api::to_ptr(cl_value);
-
-    unsafe {
-        ext_ffi::casper_write_local(key_ptr, key_size, cl_value_ptr, cl_value_size);
     }
 }
 

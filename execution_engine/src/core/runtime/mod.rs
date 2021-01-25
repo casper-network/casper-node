@@ -2528,22 +2528,6 @@ where
             .map_err(Into::into)
     }
 
-    /// Writes `value` under a key derived from `key` in the "local cluster" of
-    /// GlobalState
-    fn write_local(
-        &mut self,
-        key_ptr: u32,
-        key_size: u32,
-        value_ptr: u32,
-        value_size: u32,
-    ) -> Result<(), Trap> {
-        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-        let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
-        self.context
-            .write_ls(&key_bytes, cl_value)
-            .map_err(Into::into)
-    }
-
     /// Records a transfer.
     fn record_transfer(
         &mut self,
@@ -2626,39 +2610,6 @@ where
         let key = self.key_from_mem(key_ptr, key_size)?;
         let cl_value = match self.context.read_gs(&key)? {
             Some(stored_value) => CLValue::try_from(stored_value).map_err(Error::TypeMismatch)?,
-            None => return Ok(Err(ApiError::ValueNotFound)),
-        };
-
-        let value_size = cl_value.inner_bytes().len() as u32;
-        if let Err(error) = self.write_host_buffer(cl_value) {
-            return Ok(Err(error));
-        }
-
-        let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(output_size_ptr, &value_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
-        }
-
-        Ok(Ok(()))
-    }
-
-    /// Similar to `read`, this function is for reading from the "local cluster"
-    /// of global state
-    fn read_local(
-        &mut self,
-        key_ptr: u32,
-        key_size: u32,
-        output_size_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Trap> {
-        if !self.can_write_to_host_buffer() {
-            // Exit early if the host buffer is already occupied
-            return Ok(Err(ApiError::HostBufferFull));
-        }
-
-        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-
-        let cl_value = match self.context.read_ls(&key_bytes)? {
-            Some(cl_value) => cl_value,
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
 
@@ -3059,9 +3010,7 @@ where
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        let key = purse.addr();
-
-        let uref_key = match self.context.read_ls(&key)? {
+        let balance_uref_key = match self.context.read_purse_uref(&purse)? {
             Some(cl_value) => {
                 let key: Key = cl_value.into_t()?;
                 if key.as_uref().is_none() {
@@ -3071,8 +3020,7 @@ where
             }
             None => return Ok(None),
         };
-
-        let ret = match self.context.read_gs_direct(&uref_key)? {
+        let ret = match self.context.read_gs_direct(&balance_uref_key)? {
             Some(StoredValue::CLValue(cl_value)) => {
                 let balance: U512 = cl_value.into_t()?;
                 Some(balance)
@@ -3080,7 +3028,6 @@ where
             Some(_) => return Err(Error::UnexpectedStoredValueVariant),
             None => None,
         };
-
         Ok(ret)
     }
 
