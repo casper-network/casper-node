@@ -104,24 +104,8 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
         {
             pvs.retain(|pv| !pv.expired(timeout));
         }
-        let keys = self
-            .vertices_to_be_added_later
-            .iter()
-            .filter(|(_, pvs)| pvs.is_empty())
-            .map(|(key, _)| *key)
-            .collect_vec();
-        for key in keys {
-            self.vertices_to_be_added_later.remove(&key);
-        }
-        let keys = self
-            .vertex_deps
-            .iter()
-            .filter(|(_, pvs)| pvs.is_empty())
-            .map(|(key, _)| key.clone())
-            .collect_vec();
-        for key in keys {
-            self.vertex_deps.remove(&key);
-        }
+        Self::remove_empty(&mut self.vertices_to_be_added_later);
+        Self::remove_empty(&mut self.vertex_deps);
     }
 
     /// Store a (pre-validated) vertex which will be added later.  This creates a timer to be sent
@@ -254,5 +238,17 @@ impl<I: NodeIdT, C: Context + 'static> Synchronizer<I, C> {
             .flatten()
             .map(|pv| (pv.pvv.inner().id(), pv.sender))
             .unzip()
+    }
+
+    /// Removes all empty entries from a `BTreeMap` of `Vec`s.
+    fn remove_empty<T: Ord + Clone>(map: &mut BTreeMap<T, Vec<PendingVertex<I, C>>>) {
+        let keys = map
+            .iter()
+            .filter(|(_, pvs)| pvs.is_empty())
+            .map(|(key, _)| key.clone())
+            .collect_vec();
+        for key in keys {
+            map.remove(&key);
+        }
     }
 }
