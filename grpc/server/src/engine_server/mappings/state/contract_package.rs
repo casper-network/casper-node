@@ -4,7 +4,7 @@ use std::{
 };
 
 use casper_types::{
-    contracts::{ContractVersions, DisabledVersions, Groups},
+    contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups},
     ContractPackage, ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, Group,
     Parameter,
 };
@@ -15,6 +15,7 @@ impl From<ContractPackage> for state::ContractPackage {
     fn from(value: ContractPackage) -> state::ContractPackage {
         let mut contract_package = state::ContractPackage::new();
         contract_package.set_access_key(value.access_key().into());
+        contract_package.set_lock_status(value.is_locked());
 
         for &disabled_version in value.disabled_versions().iter() {
             contract_package
@@ -51,11 +52,13 @@ impl TryFrom<state::ContractPackage> for ContractPackage {
     type Error = ParsingError;
     fn try_from(mut value: state::ContractPackage) -> Result<ContractPackage, Self::Error> {
         let access_uref = value.take_access_key().try_into()?;
+        let lock_status = ContractPackageStatus::new(value.get_lock_status());
         let mut contract_package = ContractPackage::new(
             access_uref,
             ContractVersions::default(),
             DisabledVersions::default(),
             Groups::default(),
+            lock_status,
         );
         for mut active_version in value.take_active_versions().into_iter() {
             let version = active_version.take_version().try_into()?;

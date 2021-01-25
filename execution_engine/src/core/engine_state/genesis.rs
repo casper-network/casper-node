@@ -26,7 +26,9 @@ use casper_types::{
         VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, FromBytes, ToBytes},
-    contracts::{ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters},
+    contracts::{
+        ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
+    },
     mint::{
         ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_ROUND_SEIGNIORAGE_RATE, ARG_SOURCE, ARG_TARGET,
         METHOD_BALANCE, METHOD_CREATE, METHOD_MINT, METHOD_READ_BASE_ROUND_REWARD,
@@ -929,12 +931,15 @@ where
             entry_points,
             protocol_version,
         );
+
+        // Genesis contracts can be versioned contracts.
         let contract_package = {
             let mut contract_package = ContractPackage::new(
                 access_key,
                 ContractVersions::default(),
                 DisabledVersions::default(),
                 Groups::default(),
+                ContractPackageStatus::default(),
             );
             contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
             contract_package

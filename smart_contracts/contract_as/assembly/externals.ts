@@ -175,7 +175,7 @@ export declare function remove_contract_user_group_urefs(
 ): i32;
 /** @hidden */
 @external("env", "casper_create_contract_package_at_hash")
-export declare function create_contract_package_at_hash(hash_addr_ptr: usize, access_addr_ptr: usize): void;
+export declare function create_contract_package_at_hash(hash_addr_ptr: usize, access_addr_ptr: usize, is_locked: boolean): void;
 /** @hidden */
 @external("env", "casper_add_contract_version")
 export declare function add_contract_version(
