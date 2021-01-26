@@ -3,9 +3,11 @@
 
 extern crate alloc;
 
-use auction::DelegationRate;
 use casper_contract::contract_api::{runtime, system};
-use casper_types::{auction, runtime_args, PublicKey, RuntimeArgs, U512};
+use casper_types::{
+    auction::{self, DelegationRate},
+    runtime_args, PublicKey, RuntimeArgs, U512,
+};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_DELEGATION_RATE: &str = "delegation_rate";

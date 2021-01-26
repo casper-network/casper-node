@@ -14,7 +14,7 @@ use casper_types::{
         METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
         METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
     },
-    runtime_args, ApiError, PublicKey, RuntimeArgs, URef, U512,
+    runtime_args, ApiError, PublicKey, RuntimeArgs, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -34,18 +34,22 @@ pub extern "C" fn call() {
     let command: String = runtime::get_named_arg(ARG_ENTRY_POINT);
 
     match command.as_str() {
-        ARG_DELEGATE => delegate(),
-        ARG_UNDELEGATE => undelegate(),
+        ARG_DELEGATE => {
+            delegate();
+        }
+        ARG_UNDELEGATE => {
+            undelegate();
+        }
         ARG_RUN_AUCTION => run_auction(),
         ARG_READ_SEIGNIORAGE_RECIPIENTS => read_seigniorage_recipients(),
         METHOD_DISTRIBUTE => distribute(),
         METHOD_WITHDRAW_DELEGATOR_REWARD => withdraw_delegator_reward(),
         METHOD_WITHDRAW_VALIDATOR_REWARD => withdraw_validator_reward(),
         _ => runtime::revert(ApiError::User(Error::UnknownCommand as u16)),
-    }
+    };
 }
 
-fn delegate() {
+fn delegate() -> U512 {
     let auction = system::get_auction();
     let delegator: PublicKey = runtime::get_named_arg(ARG_DELEGATOR);
     let validator: PublicKey = runtime::get_named_arg(ARG_VALIDATOR);
@@ -56,10 +60,10 @@ fn delegate() {
         ARG_AMOUNT => amount,
     };
 
-    let (_purse, _amount): (URef, U512) = runtime::call_contract(auction, METHOD_DELEGATE, args);
+    runtime::call_contract(auction, METHOD_DELEGATE, args)
 }
 
-fn undelegate() {
+fn undelegate() -> U512 {
     let auction = system::get_auction();
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
     let delegator: PublicKey = runtime::get_named_arg(ARG_DELEGATOR);
@@ -71,8 +75,7 @@ fn undelegate() {
         ARG_DELEGATOR => delegator,
     };
 
-    let (_purse, _remaining_bid): (URef, U512) =
-        runtime::call_contract(auction, METHOD_UNDELEGATE, args);
+    runtime::call_contract(auction, METHOD_UNDELEGATE, args)
 }
 
 fn run_auction() {

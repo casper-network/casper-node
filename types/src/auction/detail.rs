@@ -153,7 +153,7 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(provider: &mut P) -> 
                     });
 
                 // Move funds from bid purse to unbonding purse
-                let _transferred_to = provider
+                provider
                     .transfer_purse_to_account(
                         *unbonding_purse.bonding_purse(),
                         account_hash,
