@@ -76,7 +76,7 @@ fn should_raise_auth_failure_with_invalid_key() {
 
     let deploy_result = result
         .builder()
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
         .expect("should have at least one deploy result");
@@ -126,7 +126,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
 
     let deploy_result = result
         .builder()
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
         .expect("should have at least one deploy result");
@@ -225,7 +225,7 @@ fn should_raise_deploy_authorization_failure() {
     {
         let deploy_result = result2
             .builder()
-            .get_exec_response(0)
+            .get_exec_result(0)
             .expect("should have exec response")
             .get(0)
             .expect("should have at least one deploy result");
@@ -289,7 +289,7 @@ fn should_raise_deploy_authorization_failure() {
     {
         let deploy_result = result4
             .builder()
-            .get_exec_response(0)
+            .get_exec_result(0)
             .expect("should have exec response")
             .get(0)
             .expect("should have at least one deploy result");
@@ -448,7 +448,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
         .finish();
     let deploy_result = final_result
         .builder()
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
         .expect("should have at least one deploy result");
@@ -535,7 +535,7 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
     builder.exec(transfer_request_1).commit();
 
     let response = builder
-        .get_exec_response(3)
+        .get_exec_result(3)
         .expect("should have response")
         .first()
         .expect("should have first result");

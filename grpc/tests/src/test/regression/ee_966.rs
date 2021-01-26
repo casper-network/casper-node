@@ -112,7 +112,7 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
     builder.exec(exec_request).commit();
 
     let exec_response = &builder
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have exec response")[0];
     let error = exec_response.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
@@ -164,7 +164,7 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
     builder.exec(exec_request).commit();
 
     let exec_response = &builder
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have exec response")[0];
     let error = exec_response.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
@@ -187,7 +187,7 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
     builder.exec(exec_request).commit();
 
     let exec_response = &builder
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have exec response")[0];
     let error = exec_response.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
@@ -208,7 +208,7 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
     builder.exec(exec_request).commit();
 
     let exec_response = &builder
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have exec response")[0];
     let error = exec_response.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
@@ -231,7 +231,7 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
     builder.exec(exec_request).commit();
 
     let results = &builder
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have exec response")[0];
     let error = results.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Revert(ApiError::OutOfMemory)));
@@ -258,7 +258,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
     //
 
     let results = &builder
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have exec response")[0];
     let error = results.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Revert(ApiError::OutOfMemory)));

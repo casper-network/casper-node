@@ -120,7 +120,7 @@ fn should_fail_to_overflow_gas_counter() {
 
     builder.exec(exec_request).commit();
 
-    let responses = builder.get_exec_response(0).expect("should have response");
+    let responses = builder.get_exec_result(0).expect("should have response");
     let response = responses.get(0).expect("should have first element");
 
     let lhs = response.as_error().expect("should have error");

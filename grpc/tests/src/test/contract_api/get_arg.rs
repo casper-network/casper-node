@@ -29,7 +29,7 @@ fn call_get_arg(args: RuntimeArgs) -> Result<(), String> {
 
     let response = result
         .builder()
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have a response");
 
     let error_message = utils::get_error_message(response);

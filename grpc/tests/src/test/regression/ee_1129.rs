@@ -84,7 +84,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
     builder.exec(exec_request).commit();
 
     let error = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have results")
         .get(0)
@@ -149,7 +149,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
     builder.exec(exec_request).commit();
 
     let error = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have results")
         .get(0)
@@ -197,7 +197,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
     builder.exec(exec_request).commit();
 
     let error = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have results")
         .get(0)
@@ -245,7 +245,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
     builder.exec(exec_request).commit();
 
     let error = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have results")
         .get(0)
@@ -291,7 +291,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
     builder.exec(exec_request).commit();
 
     let error = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have results")
         .get(0)
@@ -344,7 +344,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
     builder.exec(exec_request).commit();
 
     let error = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have results")
         .get(0)
@@ -395,7 +395,7 @@ fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     builder.exec(exec_request).commit();
 
     let error = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have results")
         .get(0)
@@ -450,7 +450,7 @@ fn should_not_panic_when_calling_module_without_memory() {
     builder.exec(exec_request).commit();
 
     let error = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have results")
         .get(0)

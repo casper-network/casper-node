@@ -191,9 +191,6 @@ fn main() {
     let node = Package::cargo("node", &*regex_data::node::DEPENDENT_FILES);
     node.update();
 
-    let grpc_server = Package::cargo("grpc/server", &*regex_data::grpc_server::DEPENDENT_FILES);
-    grpc_server.update();
-
     let client = Package::cargo("client", &*regex_data::client::DEPENDENT_FILES);
     client.update();
 

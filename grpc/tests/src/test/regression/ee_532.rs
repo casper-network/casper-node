@@ -28,7 +28,7 @@ fn should_run_ee_532_get_uref_regression_test() {
 
     let deploy_result = result
         .builder()
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have exec response")
         .get(0)
         .expect("should have at least one deploy result");

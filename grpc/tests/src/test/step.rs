@@ -3,11 +3,11 @@ use std::convert::TryFrom;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::internal::{
-    utils, InMemoryWasmTestBuilder, RewardItem, SlashItem, StepRequestBuilder, WasmTestBuilder,
-    DEFAULT_ACCOUNTS,
+    utils, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{
-    core::engine_state::genesis::GenesisAccount, shared::motes::Motes,
+    core::engine_state::{genesis::GenesisAccount, RewardItem, SlashItem},
+    shared::motes::Motes,
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{

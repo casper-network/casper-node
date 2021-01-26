@@ -48,7 +48,7 @@
 //!     .with_authorization_keys(&[account_addr])
 //!     .build();
 //!
-//! let result_of_query: Result<Value, Error> = context.run(session).query(account_addr, &[KEY]);
+//! let result_of_query: Result<Value, Error> = context.run(session).query(account_addr, &[KEY.to_string()]);
 //!
 //! let returned_value = result_of_query.expect("should be a value");
 //!

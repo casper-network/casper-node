@@ -41,7 +41,6 @@ CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
-	grpc/server \
 	grpc/test_support \
 	node \
 	smart_contracts/contract \
@@ -153,7 +152,6 @@ check: \
 	build \
 	check-format \
 	lint \
-	audit \
 	test \
 	test-contracts
 
@@ -169,16 +167,8 @@ build-for-packaging: build-client-contracts
 
 .PHONY: deb
 deb: setup build-for-packaging
-	cd grpc/server && $(CARGO) deb -p casper-engine-grpc-server --no-build
 	cd node && $(CARGO) deb -p casper-node --no-build
 	cd client && $(CARGO) deb -p casper-client --no-build
-
-grpc/server/.rpm:
-	cd grpc/server && $(CARGO) rpm init
-
-.PHONY: rpm
-rpm: grpc/server/.rpm
-	cd grpc/server && $(CARGO) rpm build
 
 .PHONY: package
 package:

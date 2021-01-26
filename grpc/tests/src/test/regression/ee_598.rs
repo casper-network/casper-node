@@ -84,7 +84,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
 
     let response = result
         .builder()
-        .get_exec_response(1)
+        .get_exec_result(1)
         .expect("should have a response")
         .to_owned();
     let error_message = utils::get_error_message(response);

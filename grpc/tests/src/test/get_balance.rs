@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -59,10 +57,7 @@ fn get_balance_should_work() {
 
     assert_eq!(alice_balance, *TRANSFER_AMOUNT_1);
 
-    let state_root_hash = {
-        let post_state_hash = builder.get_post_state_hash();
-        Blake2bHash::try_from(post_state_hash.as_slice()).expect("should convert")
-    };
+    let state_root_hash = builder.get_post_state_hash();
 
     let (purse_proof, balance_proof) = alice_balance_result.proofs().expect("should have proofs");
 
@@ -156,10 +151,7 @@ fn get_balance_should_work() {
 
     let alice_balance_result_new = builder.get_purse_balance_result(alice_main_purse);
 
-    let state_root_hash = {
-        let post_state_hash = builder.get_post_state_hash();
-        Blake2bHash::try_from(post_state_hash.as_slice()).expect("should convert")
-    };
+    let state_root_hash = builder.get_post_state_hash();
 
     let (_purse_proof_new, balance_proof_new) = alice_balance_result_new
         .proofs()

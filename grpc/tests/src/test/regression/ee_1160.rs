@@ -44,7 +44,7 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
         .expect_success()
         .commit();
 
-    let last_result = builder.get_exec_response(0).unwrap().clone();
+    let last_result = builder.get_exec_result(0).unwrap().clone();
     let last_result = &last_result[0];
 
     assert!(last_result.as_error().is_none(), "{:?}", last_result);
@@ -100,7 +100,7 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
 
     assert_eq!(balance_after, balance_before,);
 
-    let last_result = builder.get_exec_response(0).unwrap().clone();
+    let last_result = builder.get_exec_result(0).unwrap().clone();
     let last_result = &last_result[0];
 
     assert!(
@@ -150,7 +150,7 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
 
     assert_eq!(balance_after, balance_before,);
 
-    let last_result = builder.get_exec_response(0).unwrap().clone();
+    let last_result = builder.get_exec_result(0).unwrap().clone();
     let last_result = &last_result[0];
 
     assert!(

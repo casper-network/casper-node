@@ -1,11 +1,10 @@
-use std::{cell::RefCell, collections::BTreeSet, convert::TryInto, rc::Rc};
+use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
-use casper_engine_grpc_server::engine_server::ipc_grpc::ExecutionEngineService;
 use casper_execution_engine::{
     core::{
         engine_state::{
             executable_deploy_item::ExecutableDeployItem, execution_effect::ExecutionEffect,
-            EngineConfig, EngineState,
+            EngineConfig,
         },
         execution::{self, AddressGenerator},
         runtime::{self, Runtime},
@@ -22,6 +21,7 @@ use casper_types::{
 use crate::internal::{utils, WasmTestBuilder, DEFAULT_WASM_CONFIG};
 
 use super::DEFAULT_SYSTEM_CONFIG;
+use casper_execution_engine::core::engine_state;
 
 /// This function allows executing the contract stored in the given `wasm_file`, while capturing the
 /// output. It is essentially the same functionality as `Executor::exec`, but the return value of
@@ -41,15 +41,12 @@ pub fn exec<S, T>(
 ) -> Option<(T, Vec<URef>, ExecutionEffect)>
 where
     S: StateProvider,
+    engine_state::Error: From<S::Error>,
     S::Error: Into<execution::Error>,
-    EngineState<S>: ExecutionEngineService,
     T: FromBytes + CLTyped,
 {
-    let prestate = builder
-        .get_post_state_hash()
-        .as_slice()
-        .try_into()
-        .expect("should be able to make Blake2bHash from post-state hash");
+    let prestate = builder.get_post_state_hash();
+
     let tracking_copy = Rc::new(RefCell::new(
         builder
             .get_engine_state()

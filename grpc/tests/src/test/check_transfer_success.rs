@@ -128,7 +128,7 @@ fn test_check_transfer_success_with_source_and_target() {
 
     // retrieve newly created purse URef
     test_context
-        .query(*DEFAULT_ACCOUNT_ADDR, &[NEW_PURSE_NAME])
+        .query(*DEFAULT_ACCOUNT_ADDR, &[NEW_PURSE_NAME.to_string()])
         .expect("new purse should exist");
 }
 

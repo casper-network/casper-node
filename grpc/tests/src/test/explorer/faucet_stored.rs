@@ -110,7 +110,7 @@ fn should_fail_if_already_funded() {
     builder.exec(exec_request_2);
 
     let exec_response = builder
-        .get_exec_response(2)
+        .get_exec_result(2)
         .expect("Expected to be called after run()");
 
     let error_message = utils::get_error_message(exec_response);

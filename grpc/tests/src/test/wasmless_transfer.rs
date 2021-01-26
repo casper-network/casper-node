@@ -477,7 +477,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
     builder.exec(no_wasm_transfer_request);
 
     let result = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("Expected to be called after run()")
         .get(0)
@@ -711,7 +711,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
 
     builder.exec(no_wasm_transfer_request_2).commit();
 
-    let exec_result = &builder.get_exec_responses().last().unwrap()[0];
+    let exec_result = &builder.get_exec_results().last().unwrap()[0];
     let error = exec_result
         .as_error()
         .unwrap_or_else(|| panic!("should have error {:?}", exec_result));
@@ -859,7 +859,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 
     builder.exec(no_wasm_transfer_request_1).commit();
 
-    let exec_result = &builder.get_exec_responses().last().unwrap()[0];
+    let exec_result = &builder.get_exec_results().last().unwrap()[0];
     let error = exec_result.as_error().expect("should have error");
     assert!(
         matches!(error, CoreError::InsufficientPayment),

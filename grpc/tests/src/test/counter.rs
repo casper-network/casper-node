@@ -55,7 +55,11 @@ fn should_run_counter_example_contract() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let value: i32 = builder
-        .query(None, counter_contract_hash_key, &[COUNTER_VALUE_UREF])
+        .query(
+            None,
+            counter_contract_hash_key,
+            &[COUNTER_VALUE_UREF.to_string()],
+        )
         .expect("should have counter value")
         .as_cl_value()
         .expect("should be CLValue")
@@ -77,7 +81,11 @@ fn should_run_counter_example_contract() {
     builder.exec(exec_request_3).expect_success().commit();
 
     let value: i32 = builder
-        .query(None, counter_contract_hash_key, &[COUNTER_VALUE_UREF])
+        .query(
+            None,
+            counter_contract_hash_key,
+            &[COUNTER_VALUE_UREF.to_string()],
+        )
         .expect("should have counter value")
         .as_cl_value()
         .expect("should be CLValue")
@@ -131,7 +139,11 @@ fn should_default_contract_hash_arg() {
             .expect("should have counter contract hash key");
 
         builder
-            .query(None, counter_contract_hash_key, &[COUNTER_VALUE_UREF])
+            .query(
+                None,
+                counter_contract_hash_key,
+                &[COUNTER_VALUE_UREF.to_string()],
+            )
             .expect("should have counter value")
             .as_cl_value()
             .expect("should be CLValue")
@@ -184,7 +196,11 @@ fn should_call_counter_contract_directly() {
             .expect("should have counter contract hash key");
 
         builder
-            .query(None, counter_contract_hash_key, &[COUNTER_VALUE_UREF])
+            .query(
+                None,
+                counter_contract_hash_key,
+                &[COUNTER_VALUE_UREF.to_string()],
+            )
             .expect("should have counter value")
             .as_cl_value()
             .expect("should be CLValue")

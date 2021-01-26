@@ -49,7 +49,7 @@ fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
 
     let response = result
         .builder()
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have a response")
         .to_owned();
 

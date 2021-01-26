@@ -12,10 +12,8 @@ license-file = "../../LICENSE"
 
 [dependencies]
 casper-contract = { version = "0.7.0", path = "../../smart_contracts/contract", features = ["std"] }
-casper-engine-grpc-server = { version = "0.7.0", path = "../server" }
-casper-execution-engine = { version = "0.7.0", path = "../../execution_engine" }
+casper-execution-engine = { version = "0.7.0", path = "../../execution_engine", features = ["gens"] }
 casper-types = { version = "0.7.0", path = "../../types", features = ["std"] }
-grpc = "0.6.1"
 lmdb = "0.8.0"
 log = "0.4.8"
 num-rational = "0.3.0"
@@ -29,5 +27,5 @@ version-sync = "0.9"
 
 [features]
 use-as-wasm = []
-test-support = ["casper-engine-grpc-server/test-support", "casper-contract/test-support"]
+test-support = ["casper-contract/test-support"]
 

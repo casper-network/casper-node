@@ -692,7 +692,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
         builder.exec(exec_request).commit();
 
         let _error = builder
-            .get_exec_responses()
+            .get_exec_results()
             .last()
             .expect("should have results")
             .get(0)

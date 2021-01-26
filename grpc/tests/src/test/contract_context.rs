@@ -124,7 +124,7 @@ fn should_enforce_intended_execution_contexts() {
         .query(
             None,
             Key::Account(*DEFAULT_ACCOUNT_ADDR),
-            &[CONTRACT_VERSION],
+            &[CONTRACT_VERSION.to_string()],
         )
         .expect("should query account")
         .as_cl_value()
@@ -367,7 +367,7 @@ fn should_not_call_session_from_contract() {
     builder.exec(exec_request_2).commit();
 
     let response = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have last response");
     assert_eq!(response.len(), 1);

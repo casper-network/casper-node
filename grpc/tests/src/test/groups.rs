@@ -232,7 +232,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
         .expect("should be account");
 
     let response = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
@@ -314,7 +314,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
         .expect("should be account");
 
     let response = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
@@ -457,7 +457,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
     builder.exec(exec_request_3).commit();
 
     let response = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
@@ -728,7 +728,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
     builder.exec(exec_request_3).commit();
 
     let response = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
@@ -796,7 +796,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
 
     builder.exec(exec_request_2).commit();
     let response = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
@@ -886,7 +886,7 @@ fn should_not_call_uncallable_session_from_deploy() {
 
     builder.exec(exec_request_2).commit();
     let response = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have last response");
     assert_eq!(response.len(), 1);

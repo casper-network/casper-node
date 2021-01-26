@@ -81,13 +81,9 @@ fn should_upgrade_only_protocol_version() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     let upgraded_protocol_data = builder
         .get_engine_state()
@@ -124,13 +120,9 @@ fn should_allow_only_wasm_costs_patch_version() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     let upgraded_protocol_data = builder
         .get_engine_state()
@@ -167,17 +159,9 @@ fn should_allow_only_wasm_costs_minor_version() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(
-        upgrade_response.has_success(),
-        "expected success {:?}",
-        upgrade_response
-    );
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     let upgraded_protocol_data = builder
         .get_engine_state()
@@ -209,17 +193,9 @@ fn should_not_downgrade() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(
-        upgrade_response.has_success(),
-        "expected success but received {:?}",
-        upgrade_response
-    );
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     let upgraded_protocol_data = builder
         .get_engine_state()
@@ -243,11 +219,13 @@ fn should_not_downgrade() {
 
     builder.upgrade_with_upgrade_request(&mut downgrade_request);
 
-    let upgrade_response = builder
-        .get_upgrade_response(1)
-        .expect("should have response");
+    let maybe_upgrade_result = builder.get_upgrade_result(1).expect("should have response");
 
-    assert!(!upgrade_response.has_success(), "expected failure");
+    assert!(
+        maybe_upgrade_result.is_err(),
+        "expected failure got {:?}",
+        maybe_upgrade_result
+    );
 }
 
 #[ignore]
@@ -272,11 +250,9 @@ fn should_not_skip_major_versions() {
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
+    let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
-    assert!(!upgrade_response.has_success(), "expected failure");
+    assert!(maybe_upgrade_result.is_err(), "expected failure");
 }
 
 #[ignore]
@@ -301,11 +277,9 @@ fn should_not_skip_minor_versions() {
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
+    let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
-    assert!(!upgrade_response.has_success(), "expected failure");
+    assert!(maybe_upgrade_result.is_err(), "expected failure");
 }
 
 #[ignore]
@@ -344,13 +318,9 @@ fn should_upgrade_only_validator_slots() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     let after_validator_slots: u32 = builder
         .query(None, valdiator_slot_key, &[])
@@ -403,13 +373,9 @@ fn should_upgrade_only_auction_delay() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     let after_auction_delay: u64 = builder
         .query(None, auction_delay_key, &[])
@@ -462,13 +428,9 @@ fn should_upgrade_only_locked_funds_period() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     let after_locked_funds_period: EraId = builder
         .query(None, locked_funds_period_key, &[])
@@ -521,13 +483,9 @@ fn should_upgrade_only_round_seigniorage_rate() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     let after_round_seigniorage_rate: Ratio<U512> = builder
         .query(None, round_seigniorage_rate_key, &[])
@@ -587,13 +545,9 @@ fn should_upgrade_only_unbonding_delay() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     let after_unbonding_delay: EraId = builder
         .query(None, unbonding_delay_key, &[])

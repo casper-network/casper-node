@@ -115,10 +115,9 @@ impl TestContext {
     /// Queries for a [`Value`] stored under the given `key` and `path`.
     ///
     /// Returns an [`Error`] if not found.
-    pub fn query<T: AsRef<str>>(&self, key: AccountHash, path: &[T]) -> Result<Value> {
-        let path = path.iter().map(AsRef::as_ref).collect::<Vec<_>>();
+    pub fn query(&self, key: AccountHash, path: &[String]) -> Result<Value> {
         self.inner
-            .query(None, Key::Account(key), &path)
+            .query(None, Key::Account(key), path)
             .map(Value::new)
             .map_err(Error::from)
     }

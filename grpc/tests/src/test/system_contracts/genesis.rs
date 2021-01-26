@@ -16,7 +16,7 @@ use casper_execution_engine::{
     },
     shared::{motes::Motes, stored_value::StoredValue},
 };
-use casper_types::{mint::TOTAL_SUPPLY_KEY, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{ProtocolVersion, PublicKey, SecretKey, U512};
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
 const ACCOUNT_1_BONDED_AMOUNT: u64 = 1_000_000;
@@ -150,15 +150,8 @@ fn should_track_total_token_supply_in_mint() {
 
     builder.run_genesis(&run_genesis_request);
 
-    let mint_contract_hash = builder.get_mint_contract_hash();
+    let total_supply = builder.total_supply(None);
 
-    let result = builder.query(None, mint_contract_hash.into(), &[TOTAL_SUPPLY_KEY]);
-
-    let total_supply: U512 = if let Ok(StoredValue::CLValue(total_supply)) = result {
-        total_supply.into_t().expect("total supply should be U512")
-    } else {
-        panic!("mint should track total supply");
-    };
     let expected_balance: U512 = accounts.iter().map(|item| item.balance().value()).sum();
     let expected_bonded_amount: U512 = accounts
         .iter()

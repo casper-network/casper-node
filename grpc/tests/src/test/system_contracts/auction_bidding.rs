@@ -237,7 +237,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     builder.exec(exec_request_2).commit();
 
     let response = builder
-        .get_exec_response(1)
+        .get_exec_result(1)
         .expect("should have a response")
         .to_owned();
 
@@ -286,7 +286,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
     builder.exec(exec_request_2).commit();
 
     let response = builder
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have a response")
         .to_owned();
 
@@ -323,7 +323,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
     builder.exec(exec_request).commit();
 
     let response = builder
-        .get_exec_response(0)
+        .get_exec_result(0)
         .expect("should have a response")
         .to_owned();
 

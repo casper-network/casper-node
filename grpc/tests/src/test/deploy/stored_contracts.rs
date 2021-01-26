@@ -659,13 +659,9 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     // next make another deploy that USES stored payment logic
     let exec_request_stored_payment = {
@@ -679,14 +675,6 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
                     ARG_AMOUNT => payment_purse_amount,
                 },
             )
-            // .with_stored_versioned_payment_contract_by_name(
-            //     STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME,
-            //                   Some(CONTRACT_INITIAL_VERSION),
-            //     PAY,
-            //     runtime_args! {
-            //         ARG_AMOUNT => payment_purse_amount,
-            //     },
-            // )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([2; 32])
             .build();
@@ -754,17 +742,9 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(
-        upgrade_response.has_success(),
-        "expected success: {:?}",
-        upgrade_response
-    );
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     // next make another deploy that USES stored payment logic
     let exec_request_stored_payment = {
@@ -838,13 +818,9 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     // Call stored session code
 
@@ -928,13 +904,9 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     // Call stored session code
 
@@ -1006,13 +978,9 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(upgrade_response.has_success(), "expected success");
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     // Call stored session code
 
@@ -1073,17 +1041,9 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
 
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
-
-    let upgrade_response = builder
-        .get_upgrade_response(0)
-        .expect("should have response");
-
-    assert!(
-        upgrade_response.has_success(),
-        "expected success but {:?}",
-        upgrade_response
-    );
+    builder
+        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .expect_upgrade_success();
 
     // first, store payment contract for v2.0.0
 

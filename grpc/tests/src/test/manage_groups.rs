@@ -502,7 +502,7 @@ fn should_limit_max_urefs_while_extending() {
     builder.exec(exec_request_4).commit();
 
     let response = builder
-        .get_exec_responses()
+        .get_exec_results()
         .last()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
