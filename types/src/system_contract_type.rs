@@ -28,7 +28,7 @@ pub const MINT: &str = "mint";
 /// Name of proof of stake system contract
 pub const PROOF_OF_STAKE: &str = "proof of stake";
 /// Name of standard payment system contract
-const STANDARD_PAYMENT: &str = "standard payment";
+pub const STANDARD_PAYMENT: &str = "standard payment";
 /// Name of auction system contract
 pub const AUCTION: &str = "auction";
 

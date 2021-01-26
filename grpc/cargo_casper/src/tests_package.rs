@@ -1,7 +1,7 @@
 //! Consts and functions used to generate the files comprising the "tests" package when running the
 //! tool.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use once_cell::sync::Lazy;
 
@@ -12,11 +12,6 @@ use crate::{
 };
 
 const PACKAGE_NAME: &str = "tests";
-const MINT_INSTALL: &str = "mint_install.wasm";
-const POS_INSTALL: &str = "pos_install.wasm";
-const STANDARD_PAYMENT: &str = "standard_payment.wasm";
-const STANDARD_PAYMENT_INSTALL: &str = "standard_payment_install.wasm";
-const AUCTION_INSTALL: &str = "auction_install.wasm";
 
 const INTEGRATION_TESTS_RS_CONTENTS: &str = r#"#[cfg(test)]
 mod tests {
@@ -118,7 +113,7 @@ static INTEGRATION_TESTS_RS: Lazy<PathBuf> = Lazy::new(|| {
         .join("src/integration_tests.rs")
 });
 static ENGINE_TEST_SUPPORT: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-engine-test-support", "0.6.0", "grpc/test_support"));
+    Lazy::new(|| Dependency::new("casper-engine-test-support", "0.7.0", "grpc/test_support"));
 static CARGO_TOML_ADDITIONAL_CONTENTS: Lazy<String> = Lazy::new(|| {
     format!(
         r#"
@@ -136,25 +131,13 @@ default = ["casper-contract/std", "casper-types/std", "casper-engine-test-suppor
         *CL_CONTRACT, *CL_TYPES, *ENGINE_TEST_SUPPORT,
     )
 });
-static WASM_SRC_DIR: Lazy<PathBuf> =
-    Lazy::new(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("wasm"));
-static WASM_DEST_DIR: Lazy<PathBuf> =
-    Lazy::new(|| ARGS.root_path().join(PACKAGE_NAME).join("wasm"));
 
 pub fn run_cargo_new() {
     common::run_cargo_new(PACKAGE_NAME);
 }
 
-pub fn update_cargo_toml(use_system_contracts: bool) {
-    let cargo_toml_additional_contents = format!(
-        "{}{}\n",
-        &*CARGO_TOML_ADDITIONAL_CONTENTS,
-        if use_system_contracts {
-            ", \"casper-engine-test-support/use-system-contracts\"]"
-        } else {
-            "]"
-        }
-    );
+pub fn update_cargo_toml() {
+    let cargo_toml_additional_contents = format!("{}{}\n", &*CARGO_TOML_ADDITIONAL_CONTENTS, "]");
     common::append_to_file(&*CARGO_TOML, cargo_toml_additional_contents);
 }
 
@@ -169,30 +152,6 @@ pub fn add_build_rs() {
 pub fn replace_main_rs() {
     common::remove_file(&*MAIN_RS);
     common::write_file(&*INTEGRATION_TESTS_RS, INTEGRATION_TESTS_RS_CONTENTS);
-}
-
-pub fn copy_wasm_files() {
-    common::create_dir_all(&*WASM_DEST_DIR);
-    common::copy_file(
-        WASM_SRC_DIR.join(MINT_INSTALL),
-        WASM_DEST_DIR.join(MINT_INSTALL),
-    );
-    common::copy_file(
-        WASM_SRC_DIR.join(POS_INSTALL),
-        WASM_DEST_DIR.join(POS_INSTALL),
-    );
-    common::copy_file(
-        WASM_SRC_DIR.join(STANDARD_PAYMENT),
-        WASM_DEST_DIR.join(STANDARD_PAYMENT),
-    );
-    common::copy_file(
-        WASM_SRC_DIR.join(STANDARD_PAYMENT_INSTALL),
-        WASM_DEST_DIR.join(STANDARD_PAYMENT_INSTALL),
-    );
-    common::copy_file(
-        WASM_SRC_DIR.join(AUCTION_INSTALL),
-        WASM_DEST_DIR.join(AUCTION_INSTALL),
-    );
 }
 
 #[cfg(test)]

@@ -4,7 +4,11 @@ use anyhow::Error;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::{components::consensus::traits::Context, types::Timestamp, NodeRng};
+use crate::{
+    components::consensus::{traits::Context, ActionId, TimerId},
+    types::Timestamp,
+    NodeRng,
+};
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
@@ -66,7 +70,8 @@ pub(crate) enum ProtocolOutcome<I, C: Context> {
     CreatedGossipMessage(Vec<u8>),
     CreatedTargetedMessage(Vec<u8>, I),
     InvalidIncomingMessage(Vec<u8>, I, Error),
-    ScheduleTimer(Timestamp),
+    ScheduleTimer(Timestamp, TimerId),
+    QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
     CreateNewBlock {
         block_context: BlockContext,
@@ -116,6 +121,14 @@ pub(crate) trait ConsensusProtocol<I, C: Context> {
     fn handle_timer(
         &mut self,
         timestamp: Timestamp,
+        timer_id: TimerId,
+        rng: &mut NodeRng,
+    ) -> Vec<ProtocolOutcome<I, C>>;
+
+    /// Triggers a queued action.
+    fn handle_action(
+        &mut self,
+        action_id: ActionId,
         rng: &mut NodeRng,
     ) -> Vec<ProtocolOutcome<I, C>>;
 

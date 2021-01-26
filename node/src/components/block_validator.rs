@@ -68,9 +68,10 @@ pub(crate) struct BlockValidationState<T> {
     responders: SmallVec<[Responder<(bool, T)>; 2]>,
 }
 
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct BlockValidatorReady<T, I> {
     /// Chainspec loaded for deploy validation.
+    #[data_size(skip)]
     chainspec: Arc<Chainspec>,
     /// State of validation of a specific block.
     validation_states: HashMap<T, BlockValidationState<T>>,
@@ -147,7 +148,7 @@ where
                                 // ...then request it.
                                 let deploy_hash = *deploy_hash;
                                 let validate_deploy =
-                                    move |result: FetchResult<Deploy>| match result {
+                                    move |result: FetchResult<Deploy, I>| match result {
                                         FetchResult::FromStorage(deploy)
                                         | FetchResult::FromPeer(deploy, _) => {
                                             if deploy.header().is_valid(
@@ -226,8 +227,9 @@ where
 }
 
 /// Block validator states.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) enum BlockValidatorState<T, I> {
+    #[data_size(skip)]
     Loading(Vec<Event<T, I>>),
     Ready(BlockValidatorReady<T, I>),
 }
@@ -235,7 +237,6 @@ pub(crate) enum BlockValidatorState<T, I> {
 /// Block validator.
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockValidator<T, I> {
-    #[data_size(skip)]
     state: BlockValidatorState<T, I>,
 }
 

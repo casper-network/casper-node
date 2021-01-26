@@ -3,20 +3,15 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
+        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{Error as EngineError, CONV_RATE},
-        execution::Error,
-    },
-    shared::motes::Motes,
-};
+use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
 use casper_types::{
-    account::AccountHash, runtime_args, system_contract_errors::mint, ApiError, RuntimeArgs, U512,
+    account::AccountHash, proof_of_stake, runtime_args, system_contract_errors::mint, ApiError,
+    RuntimeArgs, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -37,7 +32,6 @@ const ARG_AMOUNT: &str = "amount";
 #[ignore]
 #[test]
 fn should_transfer_to_account() {
-    let initial_genesis_amount: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
     let transfer_amount: U512 = *TRANSFER_1_AMOUNT;
 
     // Run genesis
@@ -52,9 +46,7 @@ fn should_transfer_to_account() {
     let default_account_purse = default_account.main_purse();
 
     // Check genesis account balance
-    let genesis_balance = builder.get_purse_balance(default_account_purse);
-
-    assert_eq!(genesis_balance, initial_genesis_amount,);
+    let initial_account_balance = builder.get_purse_balance(default_account_purse);
 
     // Exec transfer contract
 
@@ -65,30 +57,30 @@ fn should_transfer_to_account() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    let account = builder
-        .get_account(ACCOUNT_1_ADDR)
-        .expect("should get account");
-    let account_purse = account.main_purse();
+    builder.exec(exec_request_1).expect_success().commit();
 
     // Check genesis account balance
 
-    let genesis_balance = builder.get_purse_balance(default_account_purse);
+    let modified_balance = builder.get_purse_balance(default_account_purse);
 
-    let gas_cost =
-        Motes::from_gas(builder.exec_costs(0)[0], CONV_RATE).expect("should convert gas to motes");
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     assert_eq!(
-        genesis_balance,
-        initial_genesis_amount - gas_cost.value() - transfer_amount
+        modified_balance,
+        initial_account_balance - transaction_fee - transfer_amount
     );
 
-    // Check account 1 balance
-
-    let account_1_balance = builder.get_purse_balance(account_purse);
-
-    assert_eq!(account_1_balance, transfer_amount,);
+    let pos = builder.get_pos_contract();
+    let payment_purse = pos
+        .named_keys()
+        .get(proof_of_stake::PAYMENT_PURSE_KEY)
+        .unwrap()
+        .clone()
+        .into_uref()
+        .unwrap();
+    assert_eq!(builder.get_purse_balance(payment_purse), U512::zero());
 }
 
 #[ignore]
@@ -123,18 +115,16 @@ fn should_transfer_from_account_to_account() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    let exec_1_response = builder
-        .get_exec_response(0)
-        .expect("should have exec response");
+    builder.exec(exec_request_1).expect_success().commit();
 
     let modified_balance = builder.get_purse_balance(default_account_purse);
 
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_1_response)[0], CONV_RATE)
-        .expect("should convert");
+    let transaction_fee_1 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
-    let expected_balance = initial_genesis_amount - gas_cost.value() - transfer_1_amount;
+    let expected_balance = initial_genesis_amount - transaction_fee_1 - transfer_1_amount;
 
     assert_eq!(modified_balance, expected_balance);
 
@@ -156,11 +146,12 @@ fn should_transfer_from_account_to_account() {
     )
     .build();
 
+    let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
+
     builder.exec(exec_request_2).expect_success().commit();
 
-    let exec_2_response = builder
-        .get_exec_response(1)
-        .expect("should have exec response");
+    let transaction_fee_2 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
     let account_2 = builder
         .get_account(ACCOUNT_2_ADDR)
@@ -172,12 +163,9 @@ fn should_transfer_from_account_to_account() {
 
     let account_1_balance = builder.get_purse_balance(account_1_purse);
 
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_2_response)[0], CONV_RATE)
-        .expect("should convert");
-
     assert_eq!(
         account_1_balance,
-        transfer_1_amount - gas_cost.value() - transfer_2_amount
+        transfer_1_amount - transaction_fee_2 - transfer_2_amount
     );
 
     let account_2_balance = builder.get_purse_balance(account_2_purse);
@@ -217,6 +205,8 @@ fn should_transfer_to_existing_account() {
     )
     .build();
 
+    let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
+
     builder.exec(exec_request_1).expect_success().commit();
 
     // Exec transfer contract
@@ -231,12 +221,12 @@ fn should_transfer_to_existing_account() {
 
     let genesis_balance = builder.get_purse_balance(default_account_purse);
 
-    let gas_cost =
-        Motes::from_gas(builder.exec_costs(0)[0], CONV_RATE).expect("should convert gas to motes");
+    let transaction_fee_1 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
 
     assert_eq!(
         genesis_balance,
-        initial_genesis_amount - gas_cost.value() - transfer_1_amount
+        initial_genesis_amount - transaction_fee_1 - transfer_1_amount
     );
 
     // Check account 1 balance
@@ -253,6 +243,9 @@ fn should_transfer_to_existing_account() {
         runtime_args! { ARG_TARGET => ACCOUNT_2_ADDR, ARG_AMOUNT => *TRANSFER_2_AMOUNT },
     )
     .build();
+
+    let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
+
     builder.exec(exec_request_2).expect_success().commit();
 
     let account_2 = builder
@@ -265,12 +258,12 @@ fn should_transfer_to_existing_account() {
 
     let account_1_balance = builder.get_purse_balance(account_1_purse);
 
-    let gas_cost =
-        Motes::from_gas(builder.exec_costs(1)[0], CONV_RATE).expect("should convert gas to motes");
+    let transaction_fee_2 =
+        builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
     assert_eq!(
         account_1_balance,
-        transfer_1_amount - gas_cost.value() - transfer_2_amount,
+        transfer_1_amount - transaction_fee_2 - transfer_2_amount,
     );
 
     // Check account 2 balance

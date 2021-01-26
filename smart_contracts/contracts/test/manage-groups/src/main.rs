@@ -37,7 +37,8 @@ const TOTAL_EXISTING_UREFS_ARG: &str = "total_existing_urefs";
 pub extern "C" fn create_group() {
     let package_hash_key: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY)
         .and_then(Key::into_hash)
-        .unwrap_or_revert();
+        .unwrap_or_revert()
+        .into();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
     let total_urefs: u64 = runtime::get_named_arg(TOTAL_NEW_UREFS_ARG);
     let total_existing_urefs: u64 = runtime::get_named_arg(TOTAL_EXISTING_UREFS_ARG);
@@ -56,7 +57,8 @@ pub extern "C" fn create_group() {
 pub extern "C" fn remove_group() {
     let package_hash_key: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY)
         .and_then(Key::into_hash)
-        .unwrap_or_revert();
+        .unwrap_or_revert()
+        .into();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
     storage::remove_contract_user_group(package_hash_key, &group_name).unwrap_or_revert();
 }
@@ -65,7 +67,8 @@ pub extern "C" fn remove_group() {
 pub extern "C" fn extend_group_urefs() {
     let package_hash_key: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY)
         .and_then(Key::into_hash)
-        .unwrap_or_revert();
+        .unwrap_or_revert()
+        .into();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
     let new_urefs_count: u64 = runtime::get_named_arg(TOTAL_NEW_UREFS_ARG);
 
@@ -80,7 +83,8 @@ pub extern "C" fn extend_group_urefs() {
 pub extern "C" fn remove_group_urefs() {
     let package_hash_key: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY)
         .and_then(Key::into_hash)
-        .unwrap_or_revert();
+        .unwrap_or_revert()
+        .into();
     let _package_access_key: URef = runtime::get_key(PACKAGE_ACCESS_KEY)
         .unwrap_or_revert()
         .try_into()

@@ -33,8 +33,8 @@ void test_should_get_last_error_after_bad_request(void) {
     payment_params.payment_args_simple_len = 2;
 
     casper_session_params_t session_params = {0};
-    session_params.session_path =
-        "target/wasm32-unknown-unknown/release/standard_payment.wasm";
+    session_params.session_name = "standard_payment";
+    session_params.session_entry_point = "session_entry_point";
 
     unsigned char response_buffer[1024] = {0};
 

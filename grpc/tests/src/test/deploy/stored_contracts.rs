@@ -1,17 +1,16 @@
 use std::collections::BTreeMap;
 
-use casper_engine_grpc_server::engine_server::ipc::DeployCode;
 use casper_engine_test_support::{
     internal::{
-        utils, AdditiveMapDiff, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+        AdditiveMapDiff, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
         UpgradeRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{upgrade::ActivationPoint, CONV_RATE},
-    shared::{account::Account, motes::Motes, stored_value::StoredValue, transform::Transform},
+    core::engine_state::upgrade::ActivationPoint,
+    shared::{account::Account, stored_value::StoredValue, transform::Transform},
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -27,8 +26,6 @@ const DO_NOTHING_CONTRACT_PACKAGE_HASH_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_CONTRACT_HASH_NAME: &str = "do_nothing_hash";
 const INITIAL_VERSION: ContractVersion = CONTRACT_INITIAL_VERSION;
 const ENTRY_FUNCTION_NAME: &str = "delegate";
-const MODIFIED_MINT_UPGRADER_CONTRACT_NAME: &str = "modified_mint_upgrader.wasm";
-const MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME: &str = "modified_system_upgrader.wasm";
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const STORED_PAYMENT_CONTRACT_NAME: &str = "test_payment_stored.wasm";
 const STORED_PAYMENT_CONTRACT_HASH_NAME: &str = "test_payment_hash";
@@ -46,22 +43,11 @@ const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
 
 /// Prepares a upgrade request with pre-loaded deploy code, and new protocol version.
-fn make_upgrade_request(
-    new_protocol_version: ProtocolVersion,
-    code: &str,
-) -> UpgradeRequestBuilder {
-    let installer_code = {
-        let bytes = utils::read_wasm_file_bytes(code);
-        let mut deploy_code = DeployCode::new();
-        deploy_code.set_code(bytes);
-        deploy_code
-    };
-
+fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequestBuilder {
     UpgradeRequestBuilder::new()
         .with_current_protocol_version(PROTOCOL_VERSION)
         .with_new_protocol_version(new_protocol_version)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
-        .with_installer_code(installer_code)
 }
 
 fn store_payment_to_account_context(
@@ -87,7 +73,8 @@ fn store_payment_to_account_context(
         .get(STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME)
         .expect("key should exist")
         .into_hash()
-        .expect("should be a hash");
+        .expect("should be a hash")
+        .into();
 
     (default_account, hash)
 }
@@ -125,7 +112,11 @@ fn should_exec_non_stored_code() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
-    let test_result = builder.exec_commit_finish(exec_request);
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -139,16 +130,7 @@ fn should_exec_non_stored_code() {
         "balance should be less than initial balance"
     );
 
-    let response = test_result
-        .builder()
-        .get_exec_response(0)
-        .expect("there should be a response")
-        .clone();
-
-    let success_result = utils::get_success_result(&response);
-    let gas = success_result.cost();
-    let motes = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
-    let tally = motes.value() + U512::from(transferred_amount) + modified_balance;
+    let tally = transaction_fee + U512::from(transferred_amount) + modified_balance;
 
     assert_eq!(
         initial_balance, tally,
@@ -166,6 +148,8 @@ fn should_exec_stored_code_by_hash() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // store payment
+    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
+
     let (default_account, hash) = store_payment_to_account_context(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
@@ -174,20 +158,17 @@ fn should_exec_stored_code_by_hash() {
         // get modified balance
         let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
 
-        // get cost
-        let response = builder
-            .get_exec_response(0)
-            .expect("there should be a response")
-            .clone();
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        let motes_alpha = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
-        (motes_alpha, modified_balance_alpha)
+        let transaction_fee_alpha =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
+        (transaction_fee_alpha, modified_balance_alpha)
     };
 
     let transferred_amount = 1;
 
     // next make another deploy that USES stored payment logic
+
+    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
+
     {
         let exec_request_stored_payment = {
             let account_1_account_hash = ACCOUNT_1_ADDR;
@@ -198,7 +179,7 @@ fn should_exec_stored_code_by_hash() {
                     runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
                 )
                 .with_stored_versioned_payment_contract_by_hash(
-                    hash,
+                    hash.value(),
                     Some(CONTRACT_INITIAL_VERSION),
                     PAY,
                     runtime_args! {
@@ -218,16 +199,10 @@ fn should_exec_stored_code_by_hash() {
     let (motes_bravo, modified_balance_bravo) = {
         let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
 
-        let response = builder
-            .get_exec_response(1)
-            .expect("there should be a response")
-            .clone();
+        let transaction_fee_bravo =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
 
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        let motes_bravo = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
-
-        (motes_bravo, modified_balance_bravo)
+        (transaction_fee_bravo, modified_balance_bravo)
     };
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -242,10 +217,7 @@ fn should_exec_stored_code_by_hash() {
         "second modified balance should be less than first modified balance"
     );
 
-    let tally = motes_alpha.value()
-        + motes_bravo.value()
-        + U512::from(transferred_amount)
-        + modified_balance_bravo;
+    let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
 
     assert_eq!(
         initial_balance, tally,
@@ -263,6 +235,8 @@ fn should_exec_stored_code_by_named_hash() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // store payment
+    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
+
     let (default_account, _) = store_payment_to_account_context(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
@@ -272,19 +246,17 @@ fn should_exec_stored_code_by_named_hash() {
         let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
 
         // get cost
-        let response = builder
-            .get_exec_response(0)
-            .expect("there should be a response")
-            .clone();
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        let motes_alpha = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
-        (motes_alpha, modified_balance_alpha)
+        let transaction_fee_alpha =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
+
+        (transaction_fee_alpha, modified_balance_alpha)
     };
 
     let transferred_amount = 1;
 
     // next make another deploy that USES stored payment logic
+    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
+
     {
         let exec_request_stored_payment = {
             let account_1_account_hash = ACCOUNT_1_ADDR;
@@ -315,16 +287,10 @@ fn should_exec_stored_code_by_named_hash() {
     let (motes_bravo, modified_balance_bravo) = {
         let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
 
-        let response = builder
-            .get_exec_response(1)
-            .expect("there should be a response")
-            .clone();
+        let transaction_fee_bravo =
+            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
 
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        let motes_bravo = Motes::from_gas(gas, CONV_RATE).expect("should have motes");
-
-        (motes_bravo, modified_balance_bravo)
+        (transaction_fee_bravo, modified_balance_bravo)
     };
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -339,10 +305,7 @@ fn should_exec_stored_code_by_named_hash() {
         "second modified balance should be less than first modified balance"
     );
 
-    let tally = motes_alpha.value()
-        + motes_bravo.value()
-        + U512::from(transferred_amount)
-        + modified_balance_bravo;
+    let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
 
     assert_eq!(
         initial_balance, tally,
@@ -360,22 +323,14 @@ fn should_exec_payment_and_session_stored_code() {
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
     // store payment
+    // get cost
+    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
+
     store_payment_to_account_context(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
 
-    let motes_alpha = {
-        // get modified balance
-
-        // get cost
-        let response = builder
-            .get_exec_response(0)
-            .expect("there should be a response")
-            .clone();
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        Motes::from_gas(gas, CONV_RATE).expect("should have motes")
-    };
+    let motes_alpha = builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
 
     // next store transfer contract
     let exec_request_store_transfer = {
@@ -400,19 +355,14 @@ fn should_exec_payment_and_session_stored_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let test_result = builder.exec_commit_finish(exec_request_store_transfer);
+    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
 
-    let motes_bravo = {
-        let response = test_result
-            .builder()
-            .get_exec_response(1)
-            .expect("there should be a response")
-            .clone();
+    builder
+        .exec(exec_request_store_transfer)
+        .commit()
+        .expect_success();
 
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        Motes::from_gas(gas, CONV_RATE).expect("should have motes")
-    };
+    let motes_bravo = builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
 
     let transferred_amount = 1;
 
@@ -445,19 +395,14 @@ fn should_exec_payment_and_session_stored_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    let test_result = builder.exec_commit_finish(exec_request_stored_only);
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    let motes_charlie = {
-        let response = test_result
-            .builder()
-            .get_exec_response(2)
-            .expect("there should be a response")
-            .clone();
+    builder
+        .exec(exec_request_stored_only)
+        .commit()
+        .expect_success();
 
-        let result = utils::get_success_result(&response);
-        let gas = result.cost();
-        Motes::from_gas(gas, CONV_RATE).expect("should have motes")
-    };
+    let motes_charlie = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let modified_balance: U512 = {
         let default_account = builder
@@ -468,9 +413,9 @@ fn should_exec_payment_and_session_stored_code() {
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
 
-    let tally = motes_alpha.value()
-        + motes_bravo.value()
-        + motes_charlie.value()
+    let tally = motes_alpha
+        + motes_bravo
+        + motes_charlie
         + U512::from(transferred_amount)
         + modified_balance;
 
@@ -712,8 +657,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -808,8 +752,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -829,7 +772,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(&format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_hash(
-                stored_payment_contract_hash,
+                stored_payment_contract_hash.into(),
                 DEFAULT_ENTRY_POINT_NAME,
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )
@@ -893,8 +836,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -984,8 +926,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -1063,8 +1004,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_MINT_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -1131,8 +1071,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
 
-    let mut upgrade_request =
-        make_upgrade_request(new_protocol_version, MODIFIED_SYSTEM_UPGRADER_CONTRACT_NAME).build();
+    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
@@ -1198,7 +1137,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
                 RuntimeArgs::new(),
             )
             .with_stored_payment_hash(
-                test_payment_stored_hash,
+                test_payment_stored_hash.into(),
                 "pay",
                 runtime_args! { ARG_AMOUNT => payment_purse_amount },
             )

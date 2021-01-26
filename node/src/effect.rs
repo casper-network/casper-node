@@ -89,8 +89,11 @@ use casper_execution_engine::{
         step::{StepRequest, StepResult},
         BalanceRequest, BalanceResult, QueryRequest, QueryResult, MAX_PAYMENT,
     },
-    shared::{additive_map::AdditiveMap, stored_value::StoredValue, transform::Transform},
-    storage::{global_state::CommitResult, protocol_data::ProtocolData},
+    shared::{
+        additive_map::AdditiveMap, newtypes::Blake2bHash, stored_value::StoredValue,
+        transform::Transform,
+    },
+    storage::{global_state::CommitResult, protocol_data::ProtocolData, trie::Trie},
 };
 use casper_types::{
     auction::{EraValidators, ValidatorWeights},
@@ -404,7 +407,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Run and end effect immediately.
     ///
-    /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
+    /// Can be used to trigger events from effects when combined with `.event`. Do not use this to
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
     #[allow(clippy::manual_async_fn)]
@@ -725,6 +728,21 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Read a trie by its hash key
+    pub(crate) async fn read_trie(self, trie_key: Blake2bHash) -> Option<Trie<Key, StoredValue>>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::ReadTrie {
+                trie_key,
+                responder,
+            },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     /// Puts the given deploy into the deploy store.
     pub(crate) async fn put_deploy_to_storage(self, deploy: Box<Deploy>) -> bool
     where
@@ -798,7 +816,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         deploy_hash: DeployHash,
         peer: I,
-    ) -> Option<FetchResult<Deploy>>
+    ) -> Option<FetchResult<Deploy, I>>
     where
         REv: From<FetcherRequest<I, Deploy>>,
         I: Send + 'static,
@@ -819,7 +837,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_hash: BlockHash,
         peer: I,
-    ) -> Option<FetchResult<Block>>
+    ) -> Option<FetchResult<Block, I>>
     where
         REv: From<FetcherRequest<I, Block>>,
         I: Send + 'static,
@@ -840,7 +858,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_height: u64,
         peer: I,
-    ) -> Option<FetchResult<BlockByHeight>>
+    ) -> Option<FetchResult<BlockByHeight, I>>
     where
         REv: From<FetcherRequest<I, BlockByHeight>>,
         I: Send + 'static,
@@ -1088,8 +1106,10 @@ impl<REv> EffectBuilder<REv> {
         .transpose()
         .unwrap_or_else(|err| {
             let type_name = type_name::<T>();
-            warn!(%type_name, %err, "could not deserialize state from storage");
-            None
+            panic!(
+                "could not deserialize state from storage type name {:?} err {:?}",
+                type_name, err
+            );
         })
     }
 

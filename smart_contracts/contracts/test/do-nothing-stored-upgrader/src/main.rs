@@ -12,7 +12,7 @@ use core::convert::TryInto;
 
 use casper_types::{
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    CLType, Key, URef,
+    CLType, ContractPackageHash, Key, URef,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";
@@ -43,19 +43,20 @@ pub extern "C" fn call() {
         entry_points
     };
 
-    let do_nothing_package_hash =
-        runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME).unwrap_or_revert();
+    let do_nothing_package_hash: ContractPackageHash =
+        runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
+            .unwrap_or_revert()
+            .into_hash()
+            .unwrap()
+            .into();
 
     let _do_nothing_uref: URef = runtime::get_key(DO_NOTHING_ACCESS_KEY_NAME)
         .unwrap_or_revert()
         .try_into()
         .unwrap_or_revert();
 
-    let (contract_hash, contract_version) = storage::add_contract_version(
-        do_nothing_package_hash.into_hash().unwrap(),
-        entry_points,
-        NamedKeys::new(),
-    );
+    let (contract_hash, contract_version) =
+        storage::add_contract_version(do_nothing_package_hash, entry_points, NamedKeys::new());
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
     runtime::put_key("end of upgrade", contract_hash.into());
 }

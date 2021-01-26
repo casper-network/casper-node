@@ -6,8 +6,7 @@ use casper_execution_engine::core::engine_state::{
     deploy_item::DeployItem, execute_request::ExecuteRequest,
 };
 use casper_types::{
-    account::AccountHash, contracts::ContractVersion, runtime_args, ContractHash, ProtocolVersion,
-    RuntimeArgs,
+    account::AccountHash, runtime_args, ContractHash, ContractVersion, ProtocolVersion, RuntimeArgs,
 };
 
 use crate::internal::{

@@ -2,14 +2,13 @@ use std::convert::TryInto;
 
 use casper_engine_test_support::{
     internal::{
-        utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
+        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
-    core::engine_state::{genesis::POS_PAYMENT_PURSE, CONV_RATE},
-    shared::{account::Account, motes::Motes},
+    core::engine_state::genesis::POS_PAYMENT_PURSE, shared::account::Account,
 };
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 
@@ -126,25 +125,19 @@ fn finalize_payment_should_refund_to_specified_purse() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
+
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     builder.exec(exec_request).expect_success().commit();
 
-    let spent_amount: U512 = {
-        let response = builder
-            .get_exec_response(0)
-            .expect("there should be a response");
-
-        let success_result = utils::get_success_result(response);
-        Motes::from_gas(success_result.cost(), CONV_RATE)
-            .expect("should have motes")
-            .value()
-    };
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let payment_post_balance = get_pos_payment_purse_balance(&builder);
     let rewards_post_balance = builder.get_proposer_purse_balance();
     let refund_post_balance =
         get_named_account_balance(&builder, *DEFAULT_ACCOUNT_ADDR, LOCAL_REFUND_PURSE)
             .expect("should have refund balance");
-    let expected_amount = rewards_pre_balance + spent_amount;
+    let expected_amount = rewards_pre_balance + transaction_fee;
     assert_eq!(
         expected_amount, rewards_post_balance,
         "validators should get paid; expected: {}, actual: {}",
@@ -153,7 +146,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
 
     // user gets refund
     assert_eq!(
-        refund_pre_balance + payment_amount - spent_amount,
+        refund_pre_balance + payment_amount - transaction_fee,
         refund_post_balance,
         "user should get refund"
     );

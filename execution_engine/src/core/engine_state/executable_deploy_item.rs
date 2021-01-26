@@ -1,11 +1,16 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::fmt::{self, Debug, Display, Formatter};
+use std::{
+    cell::RefCell,
+    fmt::{self, Debug, Display, Formatter},
+    rc::Rc,
+};
 
 use datasize::DataSize;
 use hex_buffer_serde::{Hex, HexForm};
 use hex_fmt::HexFmt;
+use parity_wasm::elements::Module;
 use rand::{
     distributions::{Alphanumeric, Distribution, Standard},
     Rng,
@@ -14,13 +19,25 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    bytesrepr::{self, Bytes, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, DEFAULT_ENTRY_POINT_NAME},
-    ContractHash, ContractPackageHash, Key, RuntimeArgs,
+    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey, EntryPoint,
+    EntryPointType, Key, Phase, ProtocolVersion, RuntimeArgs,
 };
 
 use super::error;
-use crate::{core::execution, shared::account::Account};
+use crate::{
+    core::{
+        engine_state::{Error, ExecError},
+        execution,
+        tracking_copy::{TrackingCopy, TrackingCopyExt},
+    },
+    shared::{
+        account::Account, newtypes::CorrelationId, stored_value::StoredValue, wasm_prep,
+        wasm_prep::Preprocessor,
+    },
+    storage::{global_state::StateReader, protocol_data::ProtocolData},
+};
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const MODULE_BYTES_TAG: u8 = 0;
@@ -40,34 +57,19 @@ pub enum ExecutableDeployItem {
         #[schemars(with = "String", description = "Hex-encoded raw Wasm bytes.")]
         module_bytes: Bytes,
         // assumes implicit `call` noarg entrypoint
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
     StoredContractByHash {
         #[serde(with = "HexForm")]
         #[schemars(with = "String", description = "Hex-encoded hash.")]
         hash: ContractHash,
         entry_point: String,
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
     StoredContractByName {
         name: String,
         entry_point: String,
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
     StoredVersionedContractByHash {
         #[serde(with = "HexForm")]
@@ -75,43 +77,27 @@ pub enum ExecutableDeployItem {
         hash: ContractPackageHash,
         version: Option<ContractVersion>, // defaults to highest enabled version
         entry_point: String,
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
     StoredVersionedContractByName {
         name: String,
         version: Option<ContractVersion>, // defaults to highest enabled version
         entry_point: String,
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
     Transfer {
-        #[serde(with = "HexForm")]
-        #[schemars(
-            with = "String",
-            description = "Hex-encoded contract args, serialized using ToBytes."
-        )]
-        args: Bytes,
+        args: RuntimeArgs,
     },
 }
 
 impl ExecutableDeployItem {
-    pub(crate) fn to_contract_hash_key(
-        &self,
-        account: &Account,
-    ) -> Result<Option<Key>, error::Error> {
+    pub(crate) fn to_contract_hash_key(&self, account: &Account) -> Result<Option<Key>, Error> {
         match self {
-            ExecutableDeployItem::StoredContractByHash { hash, .. }
-            | ExecutableDeployItem::StoredVersionedContractByHash { hash, .. } => {
-                Ok(Some(Key::from(*hash)))
+            ExecutableDeployItem::StoredContractByHash { hash, .. } => {
+                Ok(Some(Key::from(hash.value())))
+            }
+            ExecutableDeployItem::StoredVersionedContractByHash { hash, .. } => {
+                Ok(Some(Key::from(hash.value())))
             }
             ExecutableDeployItem::StoredContractByName { name, .. }
             | ExecutableDeployItem::StoredVersionedContractByName { name, .. } => {
@@ -122,20 +108,6 @@ impl ExecutableDeployItem {
             }
             ExecutableDeployItem::ModuleBytes { .. } | ExecutableDeployItem::Transfer { .. } => {
                 Ok(None)
-            }
-        }
-    }
-
-    pub fn into_runtime_args(self) -> Result<RuntimeArgs, Error> {
-        match self {
-            ExecutableDeployItem::ModuleBytes { args, .. }
-            | ExecutableDeployItem::StoredContractByHash { args, .. }
-            | ExecutableDeployItem::StoredContractByName { args, .. }
-            | ExecutableDeployItem::StoredVersionedContractByHash { args, .. }
-            | ExecutableDeployItem::StoredVersionedContractByName { args, .. }
-            | ExecutableDeployItem::Transfer { args } => {
-                let runtime_args: RuntimeArgs = bytesrepr::deserialize(args.into())?;
-                Ok(runtime_args)
             }
         }
     }
@@ -152,7 +124,7 @@ impl ExecutableDeployItem {
         }
     }
 
-    pub fn args(&self) -> &Bytes {
+    pub fn args(&self) -> &RuntimeArgs {
         match self {
             ExecutableDeployItem::ModuleBytes { args, .. }
             | ExecutableDeployItem::StoredContractByHash { args, .. }
@@ -166,10 +138,174 @@ impl ExecutableDeployItem {
     pub fn is_transfer(&self) -> bool {
         matches!(self, ExecutableDeployItem::Transfer { .. })
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn get_deploy_metadata<R>(
+        &self,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        account: &Account,
+        correlation_id: CorrelationId,
+        preprocessor: &Preprocessor,
+        protocol_version: &ProtocolVersion,
+        protocol_data: &ProtocolData,
+        phase: Phase,
+    ) -> Result<DeployMetadata, Error>
+    where
+        R: StateReader<Key, StoredValue>,
+        R::Error: Into<ExecError>,
+    {
+        let (contract_package, contract, contract_hash, base_key) = match self {
+            ExecutableDeployItem::ModuleBytes { module_bytes, .. } => {
+                let is_payment = matches!(phase, Phase::Payment);
+                if is_payment && module_bytes.is_empty() {
+                    return Ok(DeployMetadata::System {
+                        base_key: account.account_hash().into(),
+                        contract: Contract::default(),
+                        contract_package: ContractPackage::default(),
+                        entry_point: EntryPoint::default(),
+                    });
+                }
+
+                let module = preprocessor.preprocess(&module_bytes.as_ref())?;
+                return Ok(DeployMetadata::Session {
+                    module,
+                    contract_package: ContractPackage::default(),
+                    entry_point: EntryPoint::default(),
+                });
+            }
+            ExecutableDeployItem::StoredContractByHash { .. }
+            | ExecutableDeployItem::StoredContractByName { .. } => {
+                // NOTE: `to_contract_hash_key` ensures it returns valid value only for
+                // ByHash/ByName variants
+                let stored_contract_key = self.to_contract_hash_key(&account)?.unwrap();
+
+                let contract_hash = stored_contract_key
+                    .into_hash()
+                    .ok_or(Error::InvalidKeyVariant)?;
+
+                let contract = tracking_copy
+                    .borrow_mut()
+                    .get_contract(correlation_id, contract_hash.into())?;
+
+                if !contract.is_compatible_protocol_version(*protocol_version) {
+                    let exec_error = execution::Error::IncompatibleProtocolMajorVersion {
+                        expected: protocol_version.value().major,
+                        actual: contract.protocol_version().value().major,
+                    };
+                    return Err(error::Error::Exec(exec_error));
+                }
+
+                let contract_package = tracking_copy
+                    .borrow_mut()
+                    .get_contract_package(correlation_id, contract.contract_package_hash())?;
+
+                (
+                    contract_package,
+                    contract,
+                    contract_hash,
+                    stored_contract_key,
+                )
+            }
+            ExecutableDeployItem::StoredVersionedContractByName { version, .. }
+            | ExecutableDeployItem::StoredVersionedContractByHash { version, .. } => {
+                // NOTE: `to_contract_hash_key` ensures it returns valid value only for
+                // ByHash/ByName variants
+                let contract_package_key = self.to_contract_hash_key(&account)?.unwrap();
+                let contract_package_hash = contract_package_key
+                    .into_hash()
+                    .ok_or(Error::InvalidKeyVariant)?;
+
+                let contract_package = tracking_copy
+                    .borrow_mut()
+                    .get_contract_package(correlation_id, contract_package_hash.into())?;
+
+                let maybe_version_key =
+                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
+
+                let contract_version_key = maybe_version_key
+                    .or_else(|| contract_package.current_contract_version())
+                    .ok_or_else(|| {
+                        error::Error::Exec(execution::Error::NoActiveContractVersions(
+                            contract_package_hash.into(),
+                        ))
+                    })?;
+
+                if !contract_package.is_version_enabled(contract_version_key) {
+                    return Err(error::Error::Exec(
+                        execution::Error::InvalidContractVersion(contract_version_key),
+                    ));
+                }
+
+                let contract_hash = *contract_package
+                    .lookup_contract_hash(contract_version_key)
+                    .ok_or(error::Error::Exec(
+                        execution::Error::InvalidContractVersion(contract_version_key),
+                    ))?;
+
+                let contract = tracking_copy
+                    .borrow_mut()
+                    .get_contract(correlation_id, contract_hash)?;
+
+                (
+                    contract_package,
+                    contract,
+                    contract_hash.value(),
+                    contract_package_key,
+                )
+            }
+            ExecutableDeployItem::Transfer { .. } => {
+                return Err(error::Error::InvalidDeployItemVariant(String::from(
+                    "Transfer",
+                )))
+            }
+        };
+
+        let entry_point_name = self.entry_point_name();
+
+        let entry_point = contract
+            .entry_point(entry_point_name)
+            .cloned()
+            .ok_or_else(|| {
+                error::Error::Exec(execution::Error::NoSuchMethod(entry_point_name.to_owned()))
+            })?;
+
+        if protocol_data
+            .system_contracts()
+            .contains(&contract_hash.into())
+        {
+            return Ok(DeployMetadata::System {
+                base_key,
+                contract,
+                contract_package,
+                entry_point,
+            });
+        }
+
+        let contract_wasm = tracking_copy
+            .borrow_mut()
+            .get_contract_wasm(correlation_id, contract.contract_wasm_hash())?;
+
+        let module = wasm_prep::deserialize(contract_wasm.bytes())?;
+
+        match entry_point.entry_point_type() {
+            EntryPointType::Session => Ok(DeployMetadata::Session {
+                module,
+                contract_package,
+                entry_point,
+            }),
+            EntryPointType::Contract => Ok(DeployMetadata::Contract {
+                module,
+                base_key,
+                contract,
+                contract_package,
+                entry_point,
+            }),
+        }
+    }
 }
 
 impl ToBytes for ExecutableDeployItem {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         match self {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
@@ -281,7 +417,7 @@ impl ToBytes for ExecutableDeployItem {
 }
 
 impl FromBytes for ExecutableDeployItem {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             MODULE_BYTES_TAG => {
@@ -352,7 +488,7 @@ impl FromBytes for ExecutableDeployItem {
                 let (args, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((ExecutableDeployItem::Transfer { args }, remainder))
             }
-            _ => Err(Error::Formatting),
+            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
@@ -415,7 +551,7 @@ impl Display for ExecutableDeployItem {
                 "stored-versioned-contract: {}, version: latest, entry-point: {}",
                 name, entry_point,
             ),
-            ExecutableDeployItem::Transfer { args } => write!(f, "transfer-args {}", HexFmt(&args)),
+            ExecutableDeployItem::Transfer { .. } => write!(f, "transfer"),
         }
     }
 }
@@ -426,7 +562,7 @@ impl Debug for ExecutableDeployItem {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => f
                 .debug_struct("ModuleBytes")
                 .field("module_bytes", &format!("[{} bytes]", module_bytes.len()))
-                .field("args", &HexFmt(&args))
+                .field("args", args)
                 .finish(),
             ExecutableDeployItem::StoredContractByHash {
                 hash,
@@ -436,7 +572,7 @@ impl Debug for ExecutableDeployItem {
                 .debug_struct("StoredContractByHash")
                 .field("hash", &HexFmt(hash))
                 .field("entry_point", &entry_point)
-                .field("args", &HexFmt(&args))
+                .field("args", args)
                 .finish(),
             ExecutableDeployItem::StoredContractByName {
                 name,
@@ -446,7 +582,7 @@ impl Debug for ExecutableDeployItem {
                 .debug_struct("StoredContractByName")
                 .field("name", &name)
                 .field("entry_point", &entry_point)
-                .field("args", &HexFmt(&args))
+                .field("args", args)
                 .finish(),
             ExecutableDeployItem::StoredVersionedContractByHash {
                 hash,
@@ -458,7 +594,7 @@ impl Debug for ExecutableDeployItem {
                 .field("hash", &HexFmt(hash))
                 .field("version", version)
                 .field("entry_point", &entry_point)
-                .field("args", &HexFmt(&args))
+                .field("args", args)
                 .finish(),
             ExecutableDeployItem::StoredVersionedContractByName {
                 name,
@@ -470,12 +606,11 @@ impl Debug for ExecutableDeployItem {
                 .field("name", &name)
                 .field("version", version)
                 .field("entry_point", &entry_point)
-                .field("args", &HexFmt(&args))
+                .field("args", args)
                 .finish(),
-            ExecutableDeployItem::Transfer { args } => f
-                .debug_struct("Transfer")
-                .field("args", &HexFmt(&args))
-                .finish(),
+            ExecutableDeployItem::Transfer { args } => {
+                f.debug_struct("Transfer").field("args", args).finish()
+            }
         }
     }
 }
@@ -492,37 +627,71 @@ impl Distribution<ExecutableDeployItem> for Standard {
             rng.sample_iter(&Alphanumeric).take(20).collect()
         }
 
-        let args = random_bytes(rng);
+        let mut args = RuntimeArgs::new();
+        let _ = args.insert(random_string(rng), Bytes::from(random_bytes(rng)));
 
         match rng.gen_range(0, 6) {
             0 => ExecutableDeployItem::ModuleBytes {
                 module_bytes: random_bytes(rng).into(),
-                args: args.into(),
+                args,
             },
             1 => ExecutableDeployItem::StoredContractByHash {
-                hash: rng.gen(),
+                hash: ContractHash::new(rng.gen()),
                 entry_point: random_string(rng),
-                args: args.into(),
+                args,
             },
             2 => ExecutableDeployItem::StoredContractByName {
                 name: random_string(rng),
                 entry_point: random_string(rng),
-                args: args.into(),
+                args,
             },
             3 => ExecutableDeployItem::StoredVersionedContractByHash {
-                hash: rng.gen(),
+                hash: ContractPackageHash::new(rng.gen()),
                 version: rng.gen(),
                 entry_point: random_string(rng),
-                args: args.into(),
+                args,
             },
             4 => ExecutableDeployItem::StoredVersionedContractByName {
                 name: random_string(rng),
                 version: rng.gen(),
                 entry_point: random_string(rng),
-                args: args.into(),
+                args,
             },
-            5 => ExecutableDeployItem::Transfer { args: args.into() },
+            5 => ExecutableDeployItem::Transfer { args },
             _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum DeployMetadata {
+    Session {
+        module: Module,
+        contract_package: ContractPackage,
+        entry_point: EntryPoint,
+    },
+    Contract {
+        // Contract hash
+        base_key: Key,
+        module: Module,
+        contract: Contract,
+        contract_package: ContractPackage,
+        entry_point: EntryPoint,
+    },
+    System {
+        base_key: Key,
+        contract: Contract,
+        contract_package: ContractPackage,
+        entry_point: EntryPoint,
+    },
+}
+
+impl DeployMetadata {
+    pub fn take_module(self) -> Option<Module> {
+        match self {
+            DeployMetadata::System { .. } => None,
+            DeployMetadata::Session { module, .. } => Some(module),
+            DeployMetadata::Contract { module, .. } => Some(module),
         }
     }
 }

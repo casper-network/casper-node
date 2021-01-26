@@ -10,7 +10,7 @@
     not(feature = "no-unstable-features"),
     feature(min_specialization, try_reserve)
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/0.6.0")]
+#![doc(html_root_url = "https://docs.rs/casper-types/0.7.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -38,6 +38,7 @@ mod deploy_info;
 mod execution_result;
 #[cfg(any(feature = "gens", test))]
 pub mod gens;
+mod json_pretty_printer;
 mod key;
 pub mod mint;
 mod named_key;
@@ -61,21 +62,20 @@ pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
-pub use contract_wasm::ContractWasm;
+pub use contract_wasm::{ContractWasm, ContractWasmHash};
 pub use contracts::{
-    Contract, ContractPackage, ContractVersion, ContractVersionKey, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Group, Parameter,
+    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
+    ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group,
+    Parameter,
 };
 pub use crypto::*;
 pub use deploy_info::DeployInfo;
 pub use execution_result::{
     ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
 };
+pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
-pub use key::{
-    ContractHash, ContractPackageHash, ContractWasmHash, HashAddr, Key, BLAKE2B_DIGEST_LENGTH,
-    KEY_HASH_LENGTH,
-};
+pub use key::{HashAddr, Key, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH};
 pub use named_key::NamedKey;
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};

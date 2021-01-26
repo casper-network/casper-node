@@ -44,7 +44,8 @@ fn should_measure_gas_cost() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     //
     // Measure do nothing
@@ -138,7 +139,8 @@ fn should_measure_nested_host_function_call_cost() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     //
     // Measure level 1 - nested call to 'do nothing'
@@ -215,7 +217,8 @@ fn should_measure_argument_size_in_host_function_call() {
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
         .into_hash()
-        .expect("should be hash");
+        .expect("should be hash")
+        .into();
 
     //
     // Measurement 1 - empty vector (argument with 0 bytes value)

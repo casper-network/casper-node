@@ -4,7 +4,6 @@ use casper_execution_engine::{
     core::engine_state::{
         genesis::{GenesisAccount, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
-        CONV_RATE,
     },
     shared::motes::Motes,
 };
@@ -51,10 +50,14 @@ impl TestContext {
                 let source_initial_balance = self
                     .maybe_purse_balance(Some(session_transfer_info.source_purse))
                     .expect("source purse balance");
+
+                let proposer_reward_starting_balance = self.inner.get_proposer_purse_balance();
+
                 let maybe_target_initial_balance =
                     self.maybe_purse_balance(session_transfer_info.maybe_target_purse);
 
                 let builder = self.inner.exec(session.inner);
+
                 if session.expect_success {
                     builder.expect_success();
                 }
@@ -62,7 +65,9 @@ impl TestContext {
                     builder.commit();
                 }
 
-                let gas_cost = builder.last_exec_gas_cost();
+                let transaction_fee =
+                    builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+
                 match maybe_target_initial_balance {
                     None => (),
                     Some(target_initial_balance) => {
@@ -82,7 +87,8 @@ impl TestContext {
 
                 let expected_source_ending_balance = source_initial_balance
                     - Motes::new(session_transfer_info.transfer_amount)
-                    - Motes::from_gas(gas_cost, CONV_RATE).expect("motes from gas");
+                    - Motes::new(transaction_fee);
+
                 let actual_source_ending_balance = self
                     .maybe_purse_balance(Some(session_transfer_info.source_purse))
                     .expect("source ending balance");

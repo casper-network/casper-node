@@ -2,12 +2,11 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
-        utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
+        ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_PAYMENT,
         DEFAULT_RUN_GENESIS_REQUEST,
     },
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::{core::engine_state::CONV_RATE, shared::motes::Motes};
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_EE_599_REGRESSION: &str = "ee_599_regression.wasm";
@@ -86,14 +85,11 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()
     };
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     let result_2 = builder.exec(exec_request_3).commit().finish();
 
-    let exec_3_response = result_2
-        .builder()
-        .get_exec_response(0)
-        .expect("should have response");
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], CONV_RATE)
-        .expect("should convert");
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let error_msg = result_2
         .builder()
@@ -110,7 +106,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
         .get_purse_balance(victim_account.main_purse());
 
     assert_eq!(
-        *VICTIM_INITIAL_FUNDS - gas_cost.value(),
+        *VICTIM_INITIAL_FUNDS - transaction_fee,
         victim_balance_after
     );
 
@@ -157,44 +153,30 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()
     };
 
-    let result_2 = builder.exec(exec_request_3).commit().finish();
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    let exec_3_response = result_2
-        .builder()
-        .get_exec_response(0)
-        .expect("should have response");
+    builder.exec(exec_request_3).commit();
 
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], CONV_RATE)
-        .expect("should convert");
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = result_2
-        .builder()
-        .exec_error_message(0)
-        .expect("should have error");
+    let error_msg = builder.exec_error_message(0).expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",
         error_msg
     );
 
-    let victim_balance_after = result_2
-        .builder()
-        .get_purse_balance(victim_account.main_purse());
+    let victim_balance_after = builder.get_purse_balance(victim_account.main_purse());
 
     assert_eq!(
-        *VICTIM_INITIAL_FUNDS - gas_cost.value(),
+        *VICTIM_INITIAL_FUNDS - transaction_fee,
         victim_balance_after
     );
     // In this variant of test `donation_purse` is left unchanged i.e. zero balance
-    assert_eq!(
-        result_2.builder().get_purse_balance(donation_purse_copy),
-        U512::zero(),
-    );
+    assert_eq!(builder.get_purse_balance(donation_purse_copy), U512::zero(),);
 
     // Main purse of the contract owner is unchanged
-    let updated_default_account_balance = result_2
-        .builder()
-        .get_purse_balance(default_account.main_purse());
+    let updated_default_account_balance = builder.get_purse_balance(default_account.main_purse());
 
     assert_eq!(
         updated_default_account_balance - default_account_balance,
@@ -239,15 +221,11 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()
     };
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     let result_2 = builder.exec(exec_request_3).commit().finish();
 
-    let exec_3_response = result_2
-        .builder()
-        .get_exec_response(0)
-        .expect("should have response");
-
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], CONV_RATE)
-        .expect("should convert");
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let error_msg = result_2
         .builder()
@@ -264,7 +242,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
         .get_purse_balance(victim_account.main_purse());
 
     assert_eq!(
-        *VICTIM_INITIAL_FUNDS - gas_cost.value(),
+        *VICTIM_INITIAL_FUNDS - transaction_fee,
         victim_balance_after
     );
 
@@ -315,15 +293,11 @@ fn should_not_be_able_to_get_main_purse_in_invalid_context() {
 
     let victim_balance_before = builder.get_purse_balance(victim_account.main_purse());
 
+    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+
     let result_2 = builder.exec(exec_request_3).commit().finish();
 
-    let exec_3_response = result_2
-        .builder()
-        .get_exec_response(0)
-        .expect("should have response");
-
-    let gas_cost = Motes::from_gas(utils::get_exec_costs(exec_3_response)[0], CONV_RATE)
-        .expect("should convert");
+    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let error_msg = result_2
         .builder()
@@ -340,7 +314,7 @@ fn should_not_be_able_to_get_main_purse_in_invalid_context() {
         .get_purse_balance(victim_account.main_purse());
 
     assert_eq!(
-        victim_balance_before - gas_cost.value(),
+        victim_balance_before - transaction_fee,
         victim_balance_after
     );
 }

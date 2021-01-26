@@ -104,12 +104,6 @@ const ARG_THREAD_COUNT_VALUE: &str = "NUM";
 const ARG_THREAD_COUNT_HELP: &str = "Worker thread count";
 const ARG_THREAD_COUNT_EXPECT: &str = "expected valid thread count";
 
-// use system contracts
-const ARG_USE_SYSTEM_CONTRACTS: &str = "use-system-contracts";
-const ARG_USE_SYSTEM_CONTRACTS_SHORT: &str = "z";
-const ARG_USE_SYSTEM_CONTRACTS_HELP: &str =
-    "Use system contracts instead of host-side logic for Mint, Proof of Stake and Standard Payment";
-
 // runnable
 const SIGINT_HANDLE_EXPECT: &str = "Error setting Ctrl-C handler";
 const RUNNABLE_CHECK_INTERVAL_SECONDS: u64 = 3;
@@ -248,12 +242,6 @@ fn get_args() -> ArgMatches<'static> {
                 .help(ARG_THREAD_COUNT_HELP),
         )
         .arg(
-            Arg::with_name(ARG_USE_SYSTEM_CONTRACTS)
-                .short(ARG_USE_SYSTEM_CONTRACTS_SHORT)
-                .long(ARG_USE_SYSTEM_CONTRACTS)
-                .help(ARG_USE_SYSTEM_CONTRACTS_HELP),
-        )
-        .arg(
             Arg::with_name(ARG_SOCKET)
                 .required(true)
                 .help(ARG_SOCKET_HELP)
@@ -323,10 +311,9 @@ fn get_thread_count(arg_matches: &ArgMatches) -> usize {
 }
 
 /// Returns an [`EngineConfig`].
-fn get_engine_config(arg_matches: &ArgMatches) -> EngineConfig {
+fn get_engine_config(_arg_matches: &ArgMatches) -> EngineConfig {
     // feature flags go here
-    let use_system_contracts = arg_matches.is_present(ARG_USE_SYSTEM_CONTRACTS);
-    EngineConfig::new().with_use_system_contracts(use_system_contracts)
+    EngineConfig::new()
 }
 
 /// Builds and returns a gRPC server.

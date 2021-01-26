@@ -22,8 +22,8 @@ use casper_types::{
     auction::{self, Auction, EraId, EraInfo},
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
-        self, Contract, ContractPackage, ContractVersion, ContractVersions, DisabledVersions,
-        EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
+        self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
+        DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
     },
     mint::{self, Mint},
     proof_of_stake::{self, ProofOfStake},
@@ -1243,15 +1243,15 @@ where
     }
 
     pub fn is_mint(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.protocol_data().mint())
+        key.into_hash() == Some(self.protocol_data().mint().value())
     }
 
     pub fn is_proof_of_stake(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.protocol_data().proof_of_stake())
+        key.into_hash() == Some(self.protocol_data().proof_of_stake().value())
     }
 
     pub fn is_auction(&self, key: Key) -> bool {
-        key.into_hash() == Some(self.protocol_data().auction())
+        key.into_hash() == Some(self.protocol_data().auction().value())
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(
@@ -1554,7 +1554,7 @@ where
         Ok(ret)
     }
 
-    pub fn call_host_standard_payment(&mut self, _entry_point_name: &str) -> Result<(), Error> {
+    pub fn call_host_standard_payment(&mut self) -> Result<(), Error> {
         // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
         // context.
         let gas_counter = self.gas_counter();
@@ -1945,13 +1945,6 @@ where
         }
     }
 
-    pub(crate) fn access_rights_extend(
-        &mut self,
-        access_rights: HashMap<Address, HashSet<AccessRights>>,
-    ) {
-        self.context.access_rights_extend(access_rights)
-    }
-
     fn execute_contract(
         &mut self,
         key: Key,
@@ -1995,32 +1988,30 @@ where
                 }
             }
 
-            if !self.config.use_system_contracts() {
-                if self.is_mint(key) {
-                    return self.call_host_mint(
-                        self.context.protocol_version(),
-                        entry_point.name(),
-                        &mut named_keys,
-                        &args,
-                        &extra_keys,
-                    );
-                } else if self.is_proof_of_stake(key) {
-                    return self.call_host_proof_of_stake(
-                        self.context.protocol_version(),
-                        entry_point.name(),
-                        &mut named_keys,
-                        &args,
-                        &extra_keys,
-                    );
-                } else if self.is_auction(key) {
-                    return self.call_host_auction(
-                        self.context.protocol_version(),
-                        entry_point.name(),
-                        &mut named_keys,
-                        &args,
-                        &extra_keys,
-                    );
-                }
+            if self.is_mint(key) {
+                return self.call_host_mint(
+                    self.context.protocol_version(),
+                    entry_point.name(),
+                    &mut named_keys,
+                    &args,
+                    &extra_keys,
+                );
+            } else if self.is_proof_of_stake(key) {
+                return self.call_host_proof_of_stake(
+                    self.context.protocol_version(),
+                    entry_point.name(),
+                    &mut named_keys,
+                    &args,
+                    &extra_keys,
+                );
+            } else if self.is_auction(key) {
+                return self.call_host_auction(
+                    self.context.protocol_version(),
+                    entry_point.name(),
+                    &mut named_keys,
+                    &args,
+                    &extra_keys,
+                );
             }
 
             extra_keys
@@ -2029,7 +2020,7 @@ where
         let module = {
             let maybe_module = key
                 .into_hash()
-                .and_then(|hash_addr| self.system_contract_cache.get(hash_addr));
+                .and_then(|hash_addr| self.system_contract_cache.get(hash_addr.into()));
             let wasm_key = contract.contract_wasm_key();
 
             let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
@@ -2282,21 +2273,28 @@ where
         Ok(Ok(()))
     }
 
-    fn create_contract_package(&mut self) -> Result<(ContractPackage, URef), Error> {
+    fn create_contract_package(
+        &mut self,
+        is_locked: ContractPackageStatus,
+    ) -> Result<(ContractPackage, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = ContractPackage::new(
             access_key,
             ContractVersions::default(),
             DisabledVersions::default(),
             Groups::default(),
+            is_locked,
         );
 
         Ok((contract_package, access_key))
     }
 
-    fn create_contract_package_at_hash(&mut self) -> Result<([u8; 32], [u8; 32]), Error> {
+    fn create_contract_package_at_hash(
+        &mut self,
+        lock_status: ContractPackageStatus,
+    ) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
-        let (contract_package, access_key) = self.create_contract_package()?;
+        let (contract_package, access_key) = self.create_contract_package(lock_status)?;
         self.context
             .metered_write_gs_unsafe(addr, contract_package)?;
         Ok((addr, access_key.addr()))
@@ -2390,6 +2388,13 @@ where
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
+        let version = contract_package.current_contract_version();
+
+        // Return an error if the contract is locked and has some version associated with it.
+        if contract_package.is_locked() && version.is_some() {
+            return Err(Error::LockedContract(contract_package_hash));
+        }
+
         let contract_wasm_hash = self.context.new_hash_address()?;
         let contract_wasm = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
@@ -2412,13 +2417,14 @@ where
 
         let contract = Contract::new(
             contract_package_hash,
-            contract_wasm_hash,
+            contract_wasm_hash.into(),
             named_keys,
             entry_points,
             protocol_version,
         );
 
-        let insert_contract_result = contract_package.insert_contract_version(major, contract_hash);
+        let insert_contract_result =
+            contract_package.insert_contract_version(major, contract_hash.into());
 
         self.context
             .metered_write_gs_unsafe(contract_wasm_hash, contract_wasm)?;
@@ -2473,6 +2479,11 @@ where
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
+        // Return an error in trying to disable the (singular) version of a locked contract.
+        if contract_package.is_locked() {
+            return Err(Error::LockedContract(contract_package_hash));
+        }
+
         if let Err(err) = contract_package.disable_contract_version(contract_hash) {
             return Ok(Err(err.into()));
         }
@@ -2513,22 +2524,6 @@ where
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
         self.context
             .metered_write_gs(key, cl_value)
-            .map_err(Into::into)
-    }
-
-    /// Writes `value` under a key derived from `key` in the "local cluster" of
-    /// GlobalState
-    fn write_local(
-        &mut self,
-        key_ptr: u32,
-        key_size: u32,
-        value_ptr: u32,
-        value_size: u32,
-    ) -> Result<(), Trap> {
-        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-        let cl_value = self.cl_value_from_mem(value_ptr, value_size)?;
-        self.context
-            .write_ls(&key_bytes, cl_value)
             .map_err(Into::into)
     }
 
@@ -2614,39 +2609,6 @@ where
         let key = self.key_from_mem(key_ptr, key_size)?;
         let cl_value = match self.context.read_gs(&key)? {
             Some(stored_value) => CLValue::try_from(stored_value).map_err(Error::TypeMismatch)?,
-            None => return Ok(Err(ApiError::ValueNotFound)),
-        };
-
-        let value_size = cl_value.inner_bytes().len() as u32;
-        if let Err(error) = self.write_host_buffer(cl_value) {
-            return Ok(Err(error));
-        }
-
-        let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
-        if let Err(error) = self.memory.set(output_size_ptr, &value_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
-        }
-
-        Ok(Ok(()))
-    }
-
-    /// Similar to `read`, this function is for reading from the "local cluster"
-    /// of global state
-    fn read_local(
-        &mut self,
-        key_ptr: u32,
-        key_size: u32,
-        output_size_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Trap> {
-        if !self.can_write_to_host_buffer() {
-            // Exit early if the host buffer is already occupied
-            return Ok(Err(ApiError::HostBufferFull));
-        }
-
-        let key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-
-        let cl_value = match self.context.read_ls(&key_bytes)? {
-            Some(cl_value) => cl_value,
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
 
@@ -3047,9 +3009,7 @@ where
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        let key = purse.addr();
-
-        let uref_key = match self.context.read_ls(&key)? {
+        let balance_uref_key = match self.context.read_purse_uref(&purse)? {
             Some(cl_value) => {
                 let key: Key = cl_value.into_t()?;
                 if key.as_uref().is_none() {
@@ -3059,8 +3019,7 @@ where
             }
             None => return Ok(None),
         };
-
-        let ret = match self.context.read_gs_direct(&uref_key)? {
+        let ret = match self.context.read_gs_direct(&balance_uref_key)? {
             Some(StoredValue::CLValue(cl_value)) => {
                 let balance: U512 = cl_value.into_t()?;
                 Some(balance)
@@ -3068,7 +3027,6 @@ where
             Some(_) => return Err(Error::UnexpectedStoredValueVariant),
             None => None,
         };
-
         Ok(ret)
     }
 
@@ -3129,7 +3087,7 @@ where
             Err(error) => return Ok(Err(error)),
         };
 
-        match self.memory.set(dest_ptr, &contract_hash) {
+        match self.memory.set(dest_ptr, contract_hash.as_ref()) {
             Ok(_) => Ok(Ok(())),
             Err(error) => Err(Error::Interpreter(error.into()).into()),
         }

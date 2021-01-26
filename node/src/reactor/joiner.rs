@@ -1,5 +1,7 @@
 //! Reactor used to join the network.
 
+mod memory_metrics;
+
 use std::{
     collections::BTreeMap,
     env,
@@ -14,6 +16,14 @@ use tracing::{error, info, warn};
 
 use casper_types::{PublicKey, U512};
 
+#[cfg(not(feature = "fast-sync"))]
+use crate::components::linear_chain_sync::{self, LinearChainSync};
+#[cfg(feature = "fast-sync")]
+use crate::components::{
+    linear_chain_fast_sync as linear_chain_sync,
+    linear_chain_fast_sync::LinearChainFastSync as LinearChainSync,
+};
+
 use crate::{
     components::{
         block_executor::{self, BlockExecutor},
@@ -27,7 +37,6 @@ use crate::{
         fetcher::{self, Fetcher},
         gossiper::{self, Gossiper},
         linear_chain,
-        linear_chain_sync::{self, LinearChainSync},
         metrics::Metrics,
         network::{self, Network, ENABLE_LIBP2P_ENV_VAR},
         rest_server::{self, RestServer},
@@ -60,6 +69,8 @@ use crate::{
     utils::{Source, WithDir},
     NodeRng,
 };
+
+use memory_metrics::MemoryMetrics;
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -340,6 +351,9 @@ pub struct Reactor {
     pub(super) rest_server: RestServer,
     #[data_size(skip)]
     pub(super) event_stream_server: EventStreamServer,
+    // Attach memory metrics for the joiner.
+    #[data_size(skip)] // Never allocates data on the heap.
+    pub(super) memory_metrics: MemoryMetrics,
 }
 
 impl reactor::Reactor for Reactor {
@@ -367,6 +381,8 @@ impl reactor::Reactor for Reactor {
 
         // TODO: Remove wrapper around Reactor::Config instead.
         let (_, config) = config.into_parts();
+
+        let memory_metrics = MemoryMetrics::new(registry.clone())?;
 
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
@@ -451,7 +467,8 @@ impl reactor::Reactor for Reactor {
             .map(|(pk, motes)| (pk, motes.value()))
             .collect();
 
-        let linear_chain_sync = LinearChainSync::new(init_hash, validator_weights.clone());
+        let linear_chain_sync =
+            LinearChainSync::new(registry, init_hash, validator_weights.clone())?;
 
         // Used to decide whether era should be activated.
         let timestamp = Timestamp::now();
@@ -493,6 +510,7 @@ impl reactor::Reactor for Reactor {
                 event_queue_metrics,
                 rest_server,
                 event_stream_server,
+                memory_metrics,
             },
             effects,
         ))
@@ -841,8 +859,9 @@ impl reactor::Reactor for Reactor {
     }
 
     fn update_metrics(&mut self, event_queue_handle: EventQueueHandle<Self::Event>) {
+        self.memory_metrics.estimate(&self);
         self.event_queue_metrics
-            .record_event_queue_counts(&event_queue_handle)
+            .record_event_queue_counts(&event_queue_handle);
     }
 }
 

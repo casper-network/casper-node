@@ -37,6 +37,8 @@ secret_key_path = 'secret_key.pem'
 # The folder in which the files with per-era latest unit hashes will be stored.
 unit_hashes_folder = "../node-storage"
 
+# The duration for which incoming vertices with missing dependencies should be kept in a queue.
+pending_vertex_timeout = '30min'
 
 # ====================================
 # Configuration options for networking
@@ -215,10 +217,6 @@ verify_accounts = true
 # Configuration options for the contract runtime component
 # ========================================================
 [contract_runtime]
-
-# Optional setting to use system contracts or not.  If unset, defaults to false.
-#use_system_contracts = false
-
 # Optional setting to enable bonding or not.  If unset, defaults to false.
 #enable_bonding = false
 
