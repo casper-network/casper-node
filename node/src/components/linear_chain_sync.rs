@@ -143,7 +143,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     {
         let height = block_header.height();
         let hash = block_header.hash();
-        trace!(%hash, %height, "Downloaded linear chain block.");
+        trace!(%hash, %height, "downloaded linear chain block.");
         // Reset peers before creating new requests.
         self.peers.reset(rng);
         let block_height = block_header.height();
@@ -502,8 +502,9 @@ where
             Event::BlockHandled(header) => {
                 let block_height = header.height();
                 let block_hash = header.hash();
+                let effects = self.block_handled(rng, effect_builder, *header);
                 trace!(%block_height, %block_hash, "block handled.");
-                self.block_handled(rng, effect_builder, *header)
+                effects
             }
         }
     }
