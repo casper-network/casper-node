@@ -49,7 +49,7 @@ use prometheus::{self, Histogram, HistogramOpts, IntCounter, Registry};
 use quanta::IntoNanoseconds;
 use serde::Serialize;
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, error, info, trace, warn};
+use tracing::{debug, debug_span, info, trace, warn};
 use tracing_futures::Instrument;
 
 use crate::{
@@ -61,8 +61,20 @@ use crate::{
 use quanta::Clock;
 pub use queue_kind::QueueKind;
 
-/// Lower threshold for percentage of total RAM allocated before dumping queues to disk.
-const MEM_DUMP_THRESHOLD: f32 = 75.0;
+/// Optional upper threshold for total RAM allocated in mB before dumping queues to disk.
+const MEM_DUMP_THRESHOLD_MB_ENV_VAR: &str = "CL_MEM_DUMP_THRESHOLD_MB";
+static MEM_DUMP_THRESHOLD_MB: Lazy<Option<u64>> = Lazy::new(|| {
+    env::var(MEM_DUMP_THRESHOLD_MB_ENV_VAR)
+        .map(|threshold_str| {
+            u64::from_str(&threshold_str).unwrap_or_else(|error| {
+                panic!(
+                    "can't parse env var {}={} as a u64: {}",
+                    MEM_DUMP_THRESHOLD_MB_ENV_VAR, threshold_str, error
+                )
+            })
+        })
+        .ok()
+});
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
@@ -195,8 +207,11 @@ pub trait Finalize: Sized {
     }
 }
 
+/// Represents memory statistics in bytes.
 struct AllocatedMem {
+    /// Total allocated memory in bytes.
     allocated: u64,
+    /// Total system memory in bytes.
     total: u64,
 }
 
@@ -408,15 +423,17 @@ where
 
             if let Some(AllocatedMem { allocated, total }) = Self::get_allocated_memory() {
                 debug!(%allocated, %total, "memory allocated");
-                if self.last_queue_dump.is_none()
-                    && allocated as f32 >= total as f32 * MEM_DUMP_THRESHOLD / 100.0
-                {
-                    info!(
-                        %allocated,
-                        %total,
-                        "node has allocated enough memory to trigger queue dump"
-                    );
-                    self.dump_queues().await;
+                if let Some(threshold_mb) = *MEM_DUMP_THRESHOLD_MB {
+                    let threshold_bytes = threshold_mb * 1024 * 1024;
+                    if allocated >= threshold_bytes && self.last_queue_dump.is_none() {
+                        info!(
+                            %allocated,
+                            %total,
+                            %threshold_bytes,
+                            "node has allocated enough memory to trigger queue dump"
+                        );
+                        self.dump_queues().await;
+                    }
                 }
             }
         }
@@ -475,23 +492,24 @@ where
         let mem_info = match sys_info::mem_info() {
             Ok(mem_info) => mem_info,
             Err(error) => {
-                error!(%error, "unable to get mem_info using sys-info");
+                warn!(%error, "unable to get mem_info using sys-info");
                 return None;
             }
         };
 
-        // mem_info gives us kb
+        // mem_info gives us kB
         let total = mem_info.total * 1024;
 
+        // whereas jemalloc_ctl gives us the numbers in bytes
         match jemalloc_epoch::mib() {
             Ok(mib) => {
                 // jemalloc_ctl requires you to advance the epoch to update its stats
                 if let Err(advance_error) = mib.advance() {
-                    error!(%advance_error, "unable to advance jemalloc epoch");
+                    warn!(%advance_error, "unable to advance jemalloc epoch");
                 }
             }
             Err(error) => {
-                error!(%error, "unable to get epoch::mib from jemalloc");
+                warn!(%error, "unable to get epoch::mib from jemalloc");
                 return None;
             }
         }
@@ -499,12 +517,12 @@ where
             Ok(allocated_mib) => match allocated_mib.read() {
                 Ok(value) => value as u64,
                 Err(error) => {
-                    error!(%error, "unable to read allocated mib using jemalloc");
+                    warn!(%error, "unable to read allocated mib using jemalloc");
                     return None;
                 }
             },
             Err(error) => {
-                error!(%error, "unable to get allocated mib using jemalloc");
+                warn!(%error, "unable to get allocated mib using jemalloc");
                 return None;
             }
         };
@@ -520,13 +538,13 @@ where
         let mut serializer = serde_json::Serializer::pretty(match File::create(&output_fn) {
             Ok(file) => file,
             Err(error) => {
-                error!(%error, "could not create output file ({}) for queue snapshot", output_fn);
+                warn!(%error, "could not create output file ({}) for queue snapshot", output_fn);
                 return;
             }
         });
 
         if let Err(error) = self.scheduler.snapshot(&mut serializer).await {
-            error!(%error, "could not serialize snapshot to {}", output_fn);
+            warn!(%error, "could not serialize snapshot to {}", output_fn);
             return;
         }
 
@@ -534,12 +552,12 @@ where
         let mut file = match File::create(&debug_dump_filename) {
             Ok(file) => file,
             Err(error) => {
-                error!(%error, "could not create debug output file ({}) for queue snapshot", debug_dump_filename);
+                warn!(%error, "could not create debug output file ({}) for queue snapshot", debug_dump_filename);
                 return;
             }
         };
         if let Err(error) = self.scheduler.debug_dump(&mut file).await {
-            error!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
+            warn!(%error, "could not serialize debug snapshot to {}", debug_dump_filename);
             return;
         }
     }
