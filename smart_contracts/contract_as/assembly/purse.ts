@@ -228,7 +228,6 @@ export function transferFromPurseToPurse(sourcePurse: URef, targetPurse: URef, a
  * @returns This function will return a [[TransferredTo.TransferError]] in
  * case of transfer error, in case of any other variant the transfer itself
  * can be considered successful.
- * @hidden
  */
 export function transferToAccount(targetAccount: Uint8Array, amount: U512, id: Ref<u64> | null = null): TransferResult {
     let targetBytes = new Array<u8>(targetAccount.length);
