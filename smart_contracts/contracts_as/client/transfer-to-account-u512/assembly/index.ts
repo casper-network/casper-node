@@ -1,8 +1,7 @@
 import * as CL from "../../../../contract_as/assembly";
 import {Error, ErrorCode} from "../../../../contract_as/assembly/error";
 import {U512} from "../../../../contract_as/assembly/bignum";
-import {getMainPurse} from "../../../../contract_as/assembly/account";
-import {transferFromPurseToAccount, TransferredTo} from "../../../../contract_as/assembly/purse";
+import {transferToAccount, TransferredTo} from "../../../../contract_as/assembly/purse";
 
 const ARG_TARGET = "target";
 const ARG_AMOUNT = "amount";
@@ -17,9 +16,8 @@ export function call(): void {
         return;
     }
     let amount = amountResult.value;
-    const mainPurse = getMainPurse();
 
-    const result = transferFromPurseToAccount(mainPurse, accountBytes, amount);
+    const result = transferToAccount(accountBytes, amount);
     if (result.isErr) {
         result.err.revert();
         return;
