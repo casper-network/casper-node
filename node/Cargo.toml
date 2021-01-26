@@ -42,7 +42,7 @@ http = "0.2.1"
 humantime = "2.0.1"
 hyper = "0.13.7"
 itertools = "0.9.0"
-jemallocator-global = "0.3.2"
+jemallocator = "0.3.2"
 jemalloc-ctl = "0.3.3"
 k256 = { version = "0.4.2", features = ["ecdsa", "zeroize"] }
 libc = "0.2.66"

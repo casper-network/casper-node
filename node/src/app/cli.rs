@@ -21,6 +21,9 @@ use casper_node::{
 };
 use prometheus::Registry;
 
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 // Note: The docstring on `Cli` is the help shown when calling the binary with `--help`.
 #[derive(Debug, StructOpt)]
 #[structopt(version = casper_node::VERSION_STRING_COLOR.as_str())]
