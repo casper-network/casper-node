@@ -713,8 +713,14 @@ where
             ));
 
             let wasmless_transfer_cost =
-                Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price)
-                    .expect("gas overflow");
+                match Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price) {
+                    Some(motes) => motes,
+                    None => {
+                        return Ok(ExecutionResult::precondition_failure(
+                            Error::InsufficientPayment,
+                        ))
+                    }
+                };
 
             if source_purse_balance < wasmless_transfer_cost {
                 // We can't continue if the minimum funds in source purse are lower than the
@@ -875,8 +881,14 @@ where
             // (a) payment purse should be empty before the payment operation
             // (b) after executing payment code it's balance has to be equal to the wasmless gas
             // cost price
-            let payment_gas = Gas::from_motes(payment_purse_balance, deploy_item.gas_price)
-                .expect("gas overflow");
+            let payment_gas = match Gas::from_motes(payment_purse_balance, deploy_item.gas_price) {
+                Some(gas) => gas,
+                None => {
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::InsufficientPayment,
+                    ))
+                }
+            };
 
             debug_assert_eq!(payment_gas, wasmless_transfer_gas_cost);
 
@@ -951,9 +963,15 @@ where
 
             let proof_of_stake_args = {
                 // Gas spent during payment code execution
-                let finalize_cost_motes: Motes =
-                    Motes::from_gas(payment_result.cost(), deploy_item.gas_price)
-                        .expect("motes overflow");
+                let finalize_cost_motes =
+                    match Motes::from_gas(payment_result.cost(), deploy_item.gas_price) {
+                        Some(motes) => motes,
+                        None => {
+                            return Ok(ExecutionResult::precondition_failure(
+                                Error::InsufficientPayment,
+                            ))
+                        }
+                    };
 
                 let account = deploy_item.address;
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
@@ -1196,8 +1214,14 @@ where
         let payment_result = {
             // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
             // gas_price)
-            let payment_gas_limit =
-                Gas::from_motes(max_payment_cost, deploy_item.gas_price).unwrap_or_default();
+            let payment_gas_limit = match Gas::from_motes(max_payment_cost, deploy_item.gas_price) {
+                Some(gas) => gas,
+                None => {
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::InsufficientPayment,
+                    ))
+                }
+            };
 
             // Create payment code module from bytes
             // validation_spec_1: valid wasm bytes
@@ -1396,11 +1420,21 @@ where
                     .take_error()
                     .unwrap_or(Error::InsufficientPayment),
             };
+
+            let gas_cost = match Gas::from_motes(max_payment_cost, deploy_item.gas_price) {
+                Some(gas) => gas,
+                None => {
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::InsufficientPayment,
+                    ))
+                }
+            };
+
             match ExecutionResult::new_payment_code_error(
                 error,
                 max_payment_cost,
                 account_main_purse_balance,
-                deploy_item.gas_price,
+                gas_cost,
                 account_main_purse_balance_key,
                 proposer_main_purse_balance_key,
             ) {
@@ -1474,8 +1508,16 @@ where
             // session_code_spec_1: gas limit = ((balance of PoS payment purse) / gas_price)
             // - (gas spent during payment execution)
             let session_gas_limit: Gas =
-                Gas::from_motes(payment_purse_balance, deploy_item.gas_price).unwrap_or_default()
-                    - payment_result_cost;
+                match Gas::from_motes(payment_purse_balance, deploy_item.gas_price)
+                    .and_then(|gas| gas.checked_sub(payment_result_cost))
+                {
+                    Some(gas) => gas,
+                    None => {
+                        return Ok(ExecutionResult::precondition_failure(
+                            Error::InsufficientPayment,
+                        ))
+                    }
+                };
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
 
             executor.exec(
@@ -1537,9 +1579,10 @@ where
 
             let proof_of_stake_args = {
                 //((gas spent during payment code execution) + (gas spent during session code execution)) * gas_price
-                let finalize_cost_motes: Motes =
-                    Motes::from_gas(execution_result_builder.total_cost(), deploy_item.gas_price)
-                        .expect("motes overflow");
+                let finalize_cost_motes = match Motes::from_gas(execution_result_builder.total_cost(), deploy_item.gas_price) {
+                        Some(motes) => motes,
+                        None => return Ok(ExecutionResult::precondition_failure(Error::InsufficientPayment))
+                    };
 
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
                     args.insert(proof_of_stake::ARG_AMOUNT, finalize_cost_motes.value())?;
