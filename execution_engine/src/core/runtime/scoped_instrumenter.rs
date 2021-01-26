@@ -88,9 +88,7 @@ impl Drop for ScopedInstrumenter {
         let host_function = match self.function_index {
             FunctionIndex::GasFuncIndex => return,
             FunctionIndex::WriteFuncIndex => "host_function_write",
-            FunctionIndex::WriteLocalFuncIndex => "host_function_write_local",
             FunctionIndex::ReadFuncIndex => "host_function_read_value",
-            FunctionIndex::ReadLocalFuncIndex => "host_function_read_value_local",
             FunctionIndex::AddFuncIndex => "host_function_add",
             FunctionIndex::NewFuncIndex => "host_function_new_uref",
             FunctionIndex::RetFuncIndex => "host_function_ret",

@@ -407,7 +407,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Run and end effect immediately.
     ///
-    /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
+    /// Can be used to trigger events from effects when combined with `.event`. Do not use this to
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
     #[allow(clippy::manual_async_fn)]
@@ -1106,8 +1106,10 @@ impl<REv> EffectBuilder<REv> {
         .transpose()
         .unwrap_or_else(|err| {
             let type_name = type_name::<T>();
-            warn!(%type_name, %err, "could not deserialize state from storage");
-            None
+            panic!(
+                "could not deserialize state from storage type name {:?} err {:?}",
+                type_name, err
+            );
         })
     }
 

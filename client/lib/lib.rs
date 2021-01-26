@@ -25,6 +25,7 @@ mod validation;
 use std::{convert::TryInto, fs::File};
 
 use jsonrpc_lite::JsonRpc;
+use serde::Serialize;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_node::types::Deploy;
@@ -46,7 +47,11 @@ pub use validation::ValidateResponseError;
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
 /// * `deploy` contains deploy-related options for this `Deploy`. See
 ///   [`DeployStrParams`](struct.DeployStrParams.html) for more details.
 /// * `session` contains session-related options for this `Deploy`. See
@@ -56,7 +61,7 @@ pub use validation::ValidateResponseError;
 pub fn put_deploy(
     maybe_rpc_id: &str,
     node_address: &str,
-    verbose: bool,
+    verbosity_level: u64,
     deploy: DeployStrParams<'_>,
     session: SessionStrParams<'_>,
     payment: PaymentStrParams<'_>,
@@ -66,7 +71,7 @@ pub fn put_deploy(
         payment.try_into()?,
         session.try_into()?,
     );
-    RpcCall::new(maybe_rpc_id, node_address, verbose).put_deploy(deploy)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).put_deploy(deploy)
 }
 
 /// Creates a `Deploy` and outputs it to a file or stdout.
@@ -142,15 +147,19 @@ pub fn sign_deploy_file(input_path: &str, secret_key: &str, maybe_output_path: &
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
 /// * `input_path` specifies the path to the previously-saved `Deploy` file.
 pub fn send_deploy_file(
     maybe_rpc_id: &str,
     node_address: &str,
-    verbose: bool,
+    verbosity_level: u64,
     input_path: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose).send_deploy_file(input_path)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).send_deploy_file(input_path)
 }
 
 /// Transfers funds between purses.
@@ -160,7 +169,11 @@ pub fn send_deploy_file(
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
 /// * `amount` specifies the amount to be transferred.
 /// * `maybe_source_purse` is the purse `URef` from which the funds will be transferred, formatted
 ///   as e.g. `uref-0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20-007`. If it is
@@ -181,7 +194,7 @@ pub fn send_deploy_file(
 pub fn transfer(
     maybe_rpc_id: &str,
     node_address: &str,
-    verbose: bool,
+    verbosity_level: u64,
     amount: &str,
     maybe_target_account: &str,
     maybe_id: &str,
@@ -197,7 +210,7 @@ pub fn transfer(
 
     let maybe_id = parsing::transfer_id(maybe_id)?;
 
-    RpcCall::new(maybe_rpc_id, node_address, verbose).transfer(
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).transfer(
         amount,
         source_purse,
         target,
@@ -214,15 +227,19 @@ pub fn transfer(
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
 /// * `deploy_hash` must be a hex-encoded, 32-byte hash digest.
 pub fn get_deploy(
     maybe_rpc_id: &str,
     node_address: &str,
-    verbose: bool,
+    verbosity_level: u64,
     deploy_hash: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose).get_deploy(deploy_hash)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_deploy(deploy_hash)
 }
 
 /// Retrieves a `Block` from the network.
@@ -232,16 +249,20 @@ pub fn get_deploy(
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, the latest `Block` will be retrieved.
 pub fn get_block(
     maybe_rpc_id: &str,
     node_address: &str,
-    verbose: bool,
+    verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose).get_block(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_block(maybe_block_id)
 }
 
 /// Retrieves all `Transfer` items for a `Block` from the network.
@@ -251,16 +272,20 @@ pub fn get_block(
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, the latest `Block` transfers will be retrieved.
 pub fn get_block_transfers(
     maybe_rpc_id: &str,
     node_address: &str,
-    verbose: bool,
+    verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose).get_block_transfers(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_block_transfers(maybe_block_id)
 }
 
 /// Retrieves a state root hash at a given `Block`.
@@ -270,16 +295,20 @@ pub fn get_block_transfers(
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, the latest `Block` will be used.
 pub fn get_state_root_hash(
     maybe_rpc_id: &str,
     node_address: &str,
-    verbose: bool,
+    verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose).get_state_root_hash(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_state_root_hash(maybe_block_id)
 }
 
 /// Retrieves a stored value from the network.
@@ -289,7 +318,11 @@ pub fn get_state_root_hash(
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
 /// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
 /// * `key` must be a formatted [`PublicKey`](https://docs.rs/casper-node/latest/casper-node/crypto/asymmetric_key/enum.PublicKey.html)
 ///   or [`Key`](https://docs.rs/casper-types/latest/casper-types/enum.PublicKey.html). This will
@@ -306,12 +339,12 @@ pub fn get_state_root_hash(
 pub fn get_item(
     maybe_rpc_id: &str,
     node_address: &str,
-    verbose: bool,
+    verbosity_level: u64,
     state_root_hash: &str,
     key: &str,
     path: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose).get_item(state_root_hash, key, path)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_item(state_root_hash, key, path)
 }
 
 /// Retrieves a purse's balance from the network.
@@ -321,7 +354,11 @@ pub fn get_item(
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
 /// * `state_root_hash` must be a hex-encoded, 32-byte hash digest.
 /// * `purse` is a URef, formatted as e.g.
 /// ```text
@@ -330,11 +367,11 @@ pub fn get_item(
 pub fn get_balance(
     maybe_rpc_id: &str,
     node_address: &str,
-    verbose: bool,
+    verbosity_level: u64,
     state_root_hash: &str,
     purse: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose).get_balance(state_root_hash, purse)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_balance(state_root_hash, purse)
 }
 
 /// Retrieves era information from the network.
@@ -344,17 +381,22 @@ pub fn get_balance(
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
 /// * `maybe_block_id` must be a hex-encoded, 32-byte hash digest or a `u64` representing the
 ///   `Block` height or empty. If empty, era information from the latest block will be returned if
 ///   available.
 pub fn get_era_info_by_switch_block(
     maybe_rpc_id: &str,
     node_address: &str,
-    verbose: bool,
+    verbosity_level: u64,
     maybe_block_id: &str,
 ) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose).get_era_info_by_switch_block(maybe_block_id)
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level)
+        .get_era_info_by_switch_block(maybe_block_id)
 }
 
 /// Retrieves the bids and validators as of the most recently added `Block`.
@@ -364,9 +406,17 @@ pub fn get_era_info_by_switch_block(
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
-pub fn get_auction_info(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose).get_auction_info()
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
+pub fn get_auction_info(
+    maybe_rpc_id: &str,
+    node_address: &str,
+    verbosity_level: u64,
+) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).get_auction_info()
 }
 
 /// Retrieves information and examples for all currently supported RPCs.
@@ -376,9 +426,13 @@ pub fn get_auction_info(maybe_rpc_id: &str, node_address: &str, verbose: bool) -
 ///   random `i64` will be assigned. Otherwise the provided string will be used verbatim.
 /// * `node_address` is the hostname or IP and port of the node on which the HTTP service is
 ///   running, e.g. `"http://127.0.0.1:7777"`.
-/// * When `verbose` is `true`, the JSON-RPC request will be printed to `stdout`.
-pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbose: bool) -> Result<JsonRpc> {
-    RpcCall::new(maybe_rpc_id, node_address, verbose).list_rpcs()
+/// * When `verbosity_level` is `1`, the JSON-RPC request will be printed to `stdout` with long
+///   string fields (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char
+///   count of the field.  When `verbosity_level` is greater than `1`, the request will be printed
+///   to `stdout` with no abbreviation of long fields.  When `verbosity_level` is `0`, the request
+///   will not be printed to `stdout`.
+pub fn list_rpcs(maybe_rpc_id: &str, node_address: &str, verbosity_level: u64) -> Result<JsonRpc> {
+    RpcCall::new(maybe_rpc_id, node_address, verbosity_level).list_rpcs()
 }
 
 /// Container for `Deploy` construction options.
@@ -850,6 +904,29 @@ impl<'a> SessionStrParams<'a> {
             session_args_simple,
             session_args_complex,
             ..Default::default()
+        }
+    }
+}
+
+/// When `verbosity_level` is `1`, the value will be printed to `stdout` with long string fields
+/// (e.g. hex-formatted raw Wasm bytes) shortened to a string indicating the char count of the
+/// field.  When `verbosity_level` is greater than `1`, the value will be printed to `stdout` with
+/// no abbreviation of long fields.  When `verbosity_level` is `0`, the value will not be printed to
+/// `stdout`.
+pub fn pretty_print_at_level<T: ?Sized + Serialize>(value: &T, verbosity_level: u64) {
+    match verbosity_level {
+        0 => (),
+        1 => {
+            println!(
+                "{}",
+                casper_types::json_pretty_print(value).expect("should encode to JSON")
+            );
+        }
+        _ => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(value).expect("should encode to JSON")
+            );
         }
     }
 }
