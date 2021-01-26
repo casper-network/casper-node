@@ -21,6 +21,8 @@ use casper_node::{
 };
 use prometheus::Registry;
 
+// We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
+// env var.
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
