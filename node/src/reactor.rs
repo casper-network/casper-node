@@ -474,7 +474,8 @@ where
             }
         };
 
-        let total = mem_info.total;
+        // mem_info gives us kb
+        let total = mem_info.total * 1024;
 
         match epoch::mib() {
             Ok(mib) => {
