@@ -716,15 +716,23 @@ where
                 Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price)
                     .expect("gas overflow");
 
-            if source_purse_balance < wasmless_transfer_cost {
-                // We can't continue if the minimum funds in source purse are lower than the
-                // required cost.
-                return Ok(ExecutionResult::Failure {
-                    error: Error::InsufficientPayment,
-                    effect: Default::default(),
-                    transfers: Vec::default(),
-                    cost: Gas::default(),
-                });
+            let transfer_amount_motes = Motes::new(transfer_args.amount());
+
+            match wasmless_transfer_cost.checked_add(transfer_amount_motes) {
+                Some(total_amount) if source_purse_balance < total_amount => {
+                    // We can't continue if the minimum funds in source purse are lower than the
+                    // required cost.
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::InsufficientPayment,
+                    ));
+                }
+                None => {
+                    // When trying to send too much that could cause an overflow.
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::InsufficientPayment,
+                    ));
+                }
+                Some(_) => {}
             }
 
             let (payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
