@@ -15,8 +15,7 @@ use casper_types::{
     auction::{
         Bid, Bids, DelegationRate, EraId, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS,
-        ARG_SOURCE_PURSE, ARG_TARGET_PURSE, ARG_UNBOND_PURSE, ARG_VALIDATOR,
+        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
         ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY, DELEGATOR_REWARD_PURSE_KEY,
         ERA_ID_KEY, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ADD_BID, METHOD_DELEGATE,
         METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
@@ -1104,7 +1103,6 @@ where
             METHOD_ADD_BID,
             vec![
                 Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
-                Parameter::new(ARG_SOURCE_PURSE, URef::cl_type()),
                 Parameter::new(ARG_DELEGATION_RATE, DelegationRate::cl_type()),
                 Parameter::new(ARG_AMOUNT, U512::cl_type()),
             ],
@@ -1119,7 +1117,6 @@ where
             vec![
                 Parameter::new(ARG_PUBLIC_KEY, AccountHash::cl_type()),
                 Parameter::new(ARG_AMOUNT, U512::cl_type()),
-                Parameter::new(ARG_UNBOND_PURSE, URef::cl_type()),
             ],
             U512::cl_type(),
             EntryPointAccess::Public,
@@ -1131,7 +1128,6 @@ where
             METHOD_DELEGATE,
             vec![
                 Parameter::new(ARG_DELEGATOR, PublicKey::cl_type()),
-                Parameter::new(ARG_SOURCE_PURSE, URef::cl_type()),
                 Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
                 Parameter::new(ARG_AMOUNT, U512::cl_type()),
             ],
@@ -1147,7 +1143,6 @@ where
                 Parameter::new(ARG_DELEGATOR, AccountHash::cl_type()),
                 Parameter::new(ARG_VALIDATOR, AccountHash::cl_type()),
                 Parameter::new(ARG_AMOUNT, U512::cl_type()),
-                Parameter::new(ARG_UNBOND_PURSE, URef::cl_type()),
             ],
             U512::cl_type(),
             EntryPointAccess::Public,
@@ -1193,7 +1188,6 @@ where
             vec![
                 Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey),
                 Parameter::new(ARG_DELEGATOR_PUBLIC_KEY, CLType::PublicKey),
-                Parameter::new(ARG_TARGET_PURSE, CLType::URef),
             ],
             CLType::Unit,
             EntryPointAccess::Public,
@@ -1203,10 +1197,7 @@ where
 
         let entry_point = EntryPoint::new(
             METHOD_WITHDRAW_VALIDATOR_REWARD,
-            vec![
-                Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey),
-                Parameter::new(ARG_TARGET_PURSE, CLType::URef),
-            ],
+            vec![Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey)],
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Contract,

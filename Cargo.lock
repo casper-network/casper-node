@@ -1855,14 +1855,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ee-803-regression"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "ee-966-regression"
 version = "0.1.0"
 
