@@ -55,8 +55,8 @@ use casper_types::{
     },
     bytesrepr::{self},
     mint::TOTAL_SUPPLY_KEY,
-    runtime_args, CLTyped, CLValue, Contract, ContractHash, ContractWasm, DeployHash, DeployInfo,
-    Key, RuntimeArgs, Transfer, TransferAddr, URef, U512,
+    runtime_args, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    ContractWasm, DeployHash, DeployInfo, Key, RuntimeArgs, Transfer, TransferAddr, URef, U512,
 };
 
 use crate::internal::{
@@ -786,6 +786,21 @@ where
 
         if let StoredValue::ContractWasm(contract_wasm) = contract_value {
             Some(contract_wasm)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_contract_package(
+        &self,
+        contract_package_hash: ContractPackageHash,
+    ) -> Option<ContractPackage> {
+        let contract_value: StoredValue = self
+            .query(None, contract_package_hash.into(), &[])
+            .expect("should have package value");
+
+        if let StoredValue::ContractPackage(package) = contract_value {
+            Some(package)
         } else {
             None
         }

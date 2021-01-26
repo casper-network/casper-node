@@ -37,7 +37,7 @@ use crate::{
         },
         metrics::ConsensusMetrics,
         traits::NodeIdT,
-        Config, ConsensusMessage, Event, ReactorEventT,
+        ActionId, Config, ConsensusMessage, Event, ReactorEventT, TimerId,
     },
     crypto::hash::Digest,
     effect::{EffectBuilder, EffectExt, Effects, Responder},
@@ -61,10 +61,14 @@ type ConsensusConstructor<I> = dyn Fn(
     BTreeMap<PublicKey, U512>,                    // validator weights
     &HashSet<PublicKey>,                          // slashed validators that are banned in this era
     &ProtocolConfig,                              // the network's chainspec
+    &Config,                                      // The consensus part of the node config.
     Option<&dyn ConsensusProtocol<I, ClContext>>, // previous era's consensus instance
     Timestamp,                                    // start time for this era
     u64,                                          // random seed
-) -> Box<dyn ConsensusProtocol<I, ClContext>>;
+) -> (
+    Box<dyn ConsensusProtocol<I, ClContext>>,
+    Vec<ProtocolOutcome<I, ClContext>>,
+);
 
 #[derive(DataSize)]
 pub struct EraSupervisor<I> {
@@ -74,10 +78,11 @@ pub struct EraSupervisor<I> {
     /// This map always contains exactly `2 * bonded_eras + 1` entries, with the last one being the
     /// current one.
     active_eras: HashMap<EraId, Era<I>>,
-    pub(super) secret_signing_key: Rc<SecretKey>,
+    secret_signing_key: Rc<SecretKey>,
     pub(super) public_signing_key: PublicKey,
     current_era: EraId,
     protocol_config: ProtocolConfig,
+    config: Config,
     #[data_size(skip)] // Negligible for most closures, zero for functions.
     new_consensus: Box<ConsensusConstructor<I>>,
     node_start_time: Timestamp,
@@ -128,8 +133,9 @@ where
     ) -> Result<(Self, Effects<Event<I>>), Error> {
         let unit_hashes_folder = config.with_dir(config.value().unit_hashes_folder.clone());
         let (root, config) = config.into_parts();
-        let secret_signing_key = Rc::new(config.secret_key_path.load(root)?);
+        let secret_signing_key = Rc::new(config.secret_key_path.clone().load(root)?);
         let public_signing_key = PublicKey::from(secret_signing_key.as_ref());
+        info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
         let bonded_eras: u64 = protocol_config.unbonding_delay - protocol_config.auction_delay;
         let metrics = ConsensusMetrics::new(registry)
             .expect("failure to setup and register ConsensusMetrics");
@@ -141,6 +147,7 @@ where
             public_signing_key,
             current_era: EraId(0),
             protocol_config,
+            config,
             new_consensus,
             node_start_time: Timestamp::now(),
             bonded_eras,
@@ -257,10 +264,10 @@ where
             info!(era = era_id.0, %our_id, "not voting; not a validator");
             false
         } else if !self.finished_joining {
-            info!(era = era_id.0, "not voting; still joining");
+            info!(era = era_id.0, %our_id, "not voting; still joining");
             false
         } else {
-            info!(era = era_id.0, "start voting");
+            info!(era = era_id.0, %our_id, "start voting");
             true
         };
 
@@ -268,27 +275,31 @@ where
             .checked_sub(1)
             .and_then(|last_era_id| self.active_eras.get(&last_era_id));
 
-        let mut consensus = (self.new_consensus)(
+        let (mut consensus, mut outcomes) = (self.new_consensus)(
             instance_id,
             validators.clone(),
             &slashed,
             &self.protocol_config,
+            &self.config,
             prev_era.map(|era| &*era.consensus),
             start_time,
             seed,
         );
 
-        let results = if should_activate {
+        if should_activate {
             let secret = Keypair::new(Rc::clone(&self.secret_signing_key), our_id);
             let unit_hash_file = self.unit_hashes_folder.join(format!(
                 "unit_hash_{:?}_{}.dat",
                 instance_id,
                 self.public_signing_key.to_hex()
             ));
-            consensus.activate_validator(our_id, secret, timestamp, Some(unit_hash_file))
-        } else {
-            Vec::new()
-        };
+            outcomes.extend(consensus.activate_validator(
+                our_id,
+                secret,
+                timestamp,
+                Some(unit_hash_file),
+            ))
+        }
 
         let era = Era::new(
             consensus,
@@ -307,7 +318,7 @@ where
             self.active_eras.remove(&obsolete_era_id);
         }
 
-        results
+        outcomes
     }
 
     /// Returns `true` if the specified era is active and bonded.
@@ -400,9 +411,20 @@ where
         &mut self,
         era_id: EraId,
         timestamp: Timestamp,
+        timer_id: TimerId,
     ) -> Effects<Event<I>> {
         self.delegate_to_era(era_id, move |consensus, rng| {
-            consensus.handle_timer(timestamp, rng)
+            consensus.handle_timer(timestamp, timer_id, rng)
+        })
+    }
+
+    pub(super) fn handle_action(
+        &mut self,
+        era_id: EraId,
+        action_id: ActionId,
+    ) -> Effects<Event<I>> {
+        self.delegate_to_era(era_id, move |consensus, rng| {
+            consensus.handle_action(action_id, rng)
         })
     }
 
@@ -679,12 +701,20 @@ where
                 .effect_builder
                 .send_message(to, era_id.message(out_msg).into())
                 .ignore(),
-            ProtocolOutcome::ScheduleTimer(timestamp) => {
+            ProtocolOutcome::ScheduleTimer(timestamp, timer_id) => {
                 let timediff = timestamp.saturating_sub(Timestamp::now());
                 self.effect_builder
                     .set_timeout(timediff.into())
-                    .event(move |_| Event::Timer { era_id, timestamp })
+                    .event(move |_| Event::Timer {
+                        era_id,
+                        timestamp,
+                        timer_id,
+                    })
             }
+            ProtocolOutcome::QueueAction(action_id) => self
+                .effect_builder
+                .immediately()
+                .event(move |()| Event::Action { era_id, action_id }),
             ProtocolOutcome::CreateNewBlock {
                 block_context,
                 past_values,
