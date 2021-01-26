@@ -228,6 +228,7 @@ impl ExecutionResult {
         let payment_result_cost = match Motes::from_gas(self.cost(), gas_price) {
             Some(cost) => cost,
             // Multiplying cost by gas_price overflowed the U512 range
+            // TODO: Add a specific error variant to represent gas to motes conversion overflow.
             None => return Some(ForcedTransferResult::InsufficientPayment),
         };
         // payment_code_spec_3_b_ii: if (balance of PoS pay purse) < (gas spent during

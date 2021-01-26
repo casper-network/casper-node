@@ -716,9 +716,11 @@ where
                 match Motes::from_gas(wasmless_transfer_gas_cost, deploy_item.gas_price) {
                     Some(motes) => motes,
                     None => {
+                        // TODO: Add a specific error variant to represent gas to motes conversion
+                        // overflow.
                         return Ok(ExecutionResult::precondition_failure(
                             Error::InsufficientPayment,
-                        ))
+                        ));
                     }
                 };
 
@@ -884,9 +886,11 @@ where
             let payment_gas = match Gas::from_motes(payment_purse_balance, deploy_item.gas_price) {
                 Some(gas) => gas,
                 None => {
+                    // TODO: Add a specific error variant to represent motes to gas conversion
+                    // underflow.
                     return Ok(ExecutionResult::precondition_failure(
                         Error::InsufficientPayment,
-                    ))
+                    ));
                 }
             };
 
@@ -967,9 +971,11 @@ where
                     match Motes::from_gas(payment_result.cost(), deploy_item.gas_price) {
                         Some(motes) => motes,
                         None => {
+                            // TODO: Add a specific error variant to represent gas to motes
+                            // conversion overflow.
                             return Ok(ExecutionResult::precondition_failure(
                                 Error::InsufficientPayment,
-                            ))
+                            ));
                         }
                     };
 
@@ -1217,9 +1223,11 @@ where
             let payment_gas_limit = match Gas::from_motes(max_payment_cost, deploy_item.gas_price) {
                 Some(gas) => gas,
                 None => {
+                    // TODO: Add a specific error variant to represent motes to gas conversion
+                    // underflow
                     return Ok(ExecutionResult::precondition_failure(
                         Error::InsufficientPayment,
-                    ))
+                    ));
                 }
             };
 
@@ -1424,9 +1432,11 @@ where
             let gas_cost = match Gas::from_motes(max_payment_cost, deploy_item.gas_price) {
                 Some(gas) => gas,
                 None => {
+                    // TODO: Add a specific error variant to represent motes to gas conversion
+                    // underflow
                     return Ok(ExecutionResult::precondition_failure(
                         Error::InsufficientPayment,
-                    ))
+                    ));
                 }
             };
 
@@ -1513,9 +1523,11 @@ where
                 {
                     Some(gas) => gas,
                     None => {
+                        // TODO: Add a specific error variant to represent motes to gas conversion
+                        // underflow
                         return Ok(ExecutionResult::precondition_failure(
                             Error::InsufficientPayment,
-                        ))
+                        ));
                     }
                 };
             let system_contract_cache = SystemContractCache::clone(&self.system_contract_cache);
@@ -1581,7 +1593,10 @@ where
                 //((gas spent during payment code execution) + (gas spent during session code execution)) * gas_price
                 let finalize_cost_motes = match Motes::from_gas(execution_result_builder.total_cost(), deploy_item.gas_price) {
                         Some(motes) => motes,
-                        None => return Ok(ExecutionResult::precondition_failure(Error::InsufficientPayment))
+                        None => {
+                            // TODO: Add a specific error variant to represent gas to motes conversion overflow.
+                            return Ok(ExecutionResult::precondition_failure(Error::InsufficientPayment))
+                        }
                     };
 
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
