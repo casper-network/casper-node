@@ -1,6 +1,8 @@
 use std::convert::{TryFrom, TryInto};
 
-use casper_execution_engine::core::engine_state::step::{RewardItem, SlashItem, StepRequest};
+use casper_execution_engine::core::engine_state::step::{
+    DisableItem, RewardItem, SlashItem, StepRequest,
+};
 use casper_types::{bytesrepr, bytesrepr::ToBytes, PublicKey};
 
 use crate::engine_server::{
@@ -11,6 +13,7 @@ use crate::engine_server::{
 const PARENT_STATE_HASH: &str = "parent_state_hash";
 const REWARD_ITEMS: &str = "reward_items";
 const SLASH_ITEMS: &str = "slash_items";
+const DISABLE_ITEMS: &str = "disable_items";
 const VALIDATOR_ID: &str = "validator_id";
 
 impl TryFrom<ipc::SlashItem> for SlashItem {
@@ -68,6 +71,33 @@ impl TryFrom<RewardItem> for ipc::RewardItem {
     }
 }
 
+impl TryFrom<ipc::DisableItem> for DisableItem {
+    type Error = MappingError;
+
+    fn try_from(pb_disable_item: ipc::DisableItem) -> Result<Self, Self::Error> {
+        let bytes: Vec<u8> = pb_disable_item
+            .get_validator_id()
+            .try_into()
+            .map_err(|_| MappingError::Parsing(ParsingError(VALIDATOR_ID.to_string())))?;
+
+        let validator_id: PublicKey =
+            bytesrepr::deserialize(bytes).map_err(MappingError::Serialization)?;
+
+        Ok(DisableItem::new(validator_id))
+    }
+}
+
+impl TryFrom<DisableItem> for ipc::DisableItem {
+    type Error = bytesrepr::Error;
+
+    fn try_from(disable_item: DisableItem) -> Result<Self, Self::Error> {
+        let mut result = ipc::DisableItem::new();
+        let bytes = disable_item.validator_id.to_bytes()?;
+        result.set_validator_id(bytes);
+        Ok(result)
+    }
+}
+
 impl TryFrom<ipc::StepRequest> for StepRequest {
     type Error = MappingError;
 
@@ -101,6 +131,17 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
             ret
         };
 
+        let disable_items = {
+            let mut ret: Vec<DisableItem> = vec![];
+            for item in pb_step_request.take_disable_items().into_iter() {
+                let disable_item: DisableItem = item
+                    .try_into()
+                    .map_err(|_| MappingError::Parsing(ParsingError(DISABLE_ITEMS.to_string())))?;
+                ret.push(disable_item);
+            }
+            ret
+        };
+
         let run_auction = pb_step_request.get_run_auction();
 
         let next_era_id = pb_step_request.get_next_era_id();
@@ -110,6 +151,7 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
             protocol_version,
             slash_items,
             reward_items,
+            disable_items,
             run_auction,
             next_era_id,
         ))
@@ -143,6 +185,16 @@ impl TryFrom<StepRequest> for ipc::StepRequest {
             ret
         };
         result.set_reward_items(reward_items.into());
+
+        let disable_items = {
+            let mut ret: Vec<ipc::DisableItem> = vec![];
+            for item in step_request.disable_items.into_iter() {
+                let ipc = item.try_into()?;
+                ret.push(ipc);
+            }
+            ret
+        };
+        result.set_disable_items(disable_items.into());
 
         Ok(result)
     }

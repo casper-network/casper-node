@@ -40,12 +40,24 @@ impl RewardItem {
 }
 
 #[derive(Debug)]
+pub struct DisableItem {
+    pub validator_id: PublicKey,
+}
+
+impl DisableItem {
+    pub fn new(validator_id: PublicKey) -> Self {
+        Self { validator_id }
+    }
+}
+
+#[derive(Debug)]
 pub struct StepRequest {
     pub pre_state_hash: Blake2bHash,
     pub protocol_version: ProtocolVersion,
 
     pub slash_items: Vec<SlashItem>,
     pub reward_items: Vec<RewardItem>,
+    pub disable_items: Vec<DisableItem>,
     pub run_auction: bool,
     pub next_era_id: EraId,
 }
@@ -56,6 +68,7 @@ impl StepRequest {
         protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
         reward_items: Vec<RewardItem>,
+        disable_items: Vec<DisableItem>,
         run_auction: bool,
         next_era_id: EraId,
     ) -> Self {
@@ -64,6 +77,7 @@ impl StepRequest {
             protocol_version,
             slash_items,
             reward_items,
+            disable_items,
             run_auction,
             next_era_id,
         }
