@@ -123,6 +123,7 @@ use announcements::{
     BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,
     GossiperAnnouncement, LinearChainAnnouncement, NetworkAnnouncement, RpcServerAnnouncement,
 };
+use casper_execution_engine::core::engine_state::put_trie::InsertedTrieKeyAndMissingDescendants;
 use requests::{
     BlockExecutorRequest, BlockProposerRequest, BlockValidationRequest, ChainspecLoaderRequest,
     ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MetricsRequest, NetworkInfoRequest,
@@ -738,6 +739,22 @@ impl<REv> EffectBuilder<REv> {
                 trie_key,
                 responder,
             },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Puts a trie into the trie store and asynchronously returns any missing descendant trie keys.
+    #[allow(unused)]
+    pub(crate) async fn put_trie_and_find_missing_descendant_trie_keys(
+        self,
+        trie: Box<Trie<Key, StoredValue>>,
+    ) -> Result<InsertedTrieKeyAndMissingDescendants, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::PutTrie { trie, responder },
             QueueKind::Regular,
         )
         .await

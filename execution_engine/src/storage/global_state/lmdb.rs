@@ -200,16 +200,17 @@ impl StateProvider for LmdbGlobalState {
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<Blake2bHash, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
-        put_trie::<Key, StoredValue, lmdb::RwTransaction, LmdbTrieStore, Self::Error>(
-            correlation_id,
-            &mut txn,
-            &self.trie_store,
-            trie,
-        )?;
+        let trie_hash = put_trie::<
+            Key,
+            StoredValue,
+            lmdb::RwTransaction,
+            LmdbTrieStore,
+            Self::Error,
+        >(correlation_id, &mut txn, &self.trie_store, trie)?;
         txn.commit()?;
-        Ok(())
+        Ok(trie_hash)
     }
 
     /// Finds all of the keys of missing descendant `Trie<K,V>` values

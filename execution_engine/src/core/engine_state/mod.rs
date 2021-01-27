@@ -9,6 +9,7 @@ pub mod execution_effect;
 pub mod execution_result;
 pub mod genesis;
 pub mod op;
+pub mod put_trie;
 pub mod query;
 pub mod run_genesis_request;
 pub mod step;
@@ -59,6 +60,7 @@ use crate::{
             executable_deploy_item::DeployMetadata,
             execution_result::ExecutionResultBuilder,
             genesis::GenesisInstaller,
+            put_trie::InsertedTrieKeyAndMissingDescendants,
             step::{StepRequest, StepResult},
             upgrade::SystemUpgrader,
         },
@@ -1635,17 +1637,26 @@ where
             .map_err(Error::from)
     }
 
-    pub fn put_trie(
+    pub fn put_trie_and_find_missing_descendant_trie_keys(
         &self,
         correlation_id: CorrelationId,
         trie: &Trie<Key, StoredValue>,
-    ) -> Result<(), Error>
+    ) -> Result<InsertedTrieKeyAndMissingDescendants, Error>
     where
         Error: From<S::Error>,
     {
-        self.state
+        let inserted_trie_key = self
+            .state
             .put_trie(correlation_id, trie)
-            .map_err(Error::from)
+            .map_err(Error::from)?;
+        let missing_descendant_trie_keys = self
+            .state
+            .missing_trie_keys(correlation_id, inserted_trie_key)
+            .map_err(Error::from)?;
+        Ok(InsertedTrieKeyAndMissingDescendants::new(
+            inserted_trie_key,
+            missing_descendant_trie_keys,
+        ))
     }
 
     pub fn missing_trie_keys(
