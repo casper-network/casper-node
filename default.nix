@@ -16,6 +16,7 @@ in pkgs.stdenv.mkDerivation {
     # Dependencies just used in makefile
     which
     rustup
+    cargo
 
     # Required to build openssl
     perl
