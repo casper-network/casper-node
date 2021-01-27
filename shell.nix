@@ -26,12 +26,21 @@ in pkgs.stdenv.mkDerivation {
   nativeBuildInputs = with pkgs; [ pkg-config perl which protobuf ];
   buildInputs = with pkgs;
     [ cmake pkg-config openssl.dev zlib.dev rustup ]
-    ++ lib.lists.optionals ops [ kubectl python skopeo ]
+    ++ lib.lists.optionals ops [ kubectl python skopeo git nix ]
     ++ lib.lists.optionals dev [ black ];
 
   # Enable SSL support in pure shells
   SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+  NIX_SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
 
   # `protoc` is required but not found by the `prost` crate, unless this envvar is set
   PROTOC = "${pkgs.protobuf}/bin/protoc";
+
+  # Convenient setup when working with k3s clusters.
+  shellHook = ''
+    if [ -e nix/k3s.yaml ]; then
+      echo "Found k3s.yaml in nix folder, setting KUBECONFIG envvar.";
+      export KUBECONFIG=$(pwd)/k3s.yaml
+    fi;
+  '';
 }

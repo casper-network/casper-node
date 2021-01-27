@@ -4,6 +4,8 @@
 
 set -eu
 
+cd $(dirname $0)
+
 TAG=$(git describe --always --dirty)
 TARGET_REPO=clmarc
 

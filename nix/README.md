@@ -8,11 +8,11 @@ $ curl -L https://nixos.org/nix/install | sh
 
 ## Building a docker image of a node
 
-To build your current source into a container image, enter a nix-shell in the same folder as this `README.md`, then run `build-node.sh`.
+To build your current source into a container image, enter a nix-shell in *root folder* of the repository, then run `nix/build-node.sh`.
 
 ```console
 $ nix-shell
-$ ./build-node.sh
+$ nix/build-node.sh
 [...]
 Created new docker image casper-node:f2b9cd7a-dirty.
 
