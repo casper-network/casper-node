@@ -274,7 +274,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             }
         }
 
-        let _ = self.peers.insert(peer_id.clone(), endpoint);
+        let _ = self.peers.insert(peer_id, endpoint);
         // TODO - see if this can be removed.  The announcement is only used by the joiner reactor.
         effect_builder.announce_new_peer(peer_id).ignore()
     }
@@ -370,7 +370,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         }
 
         for &peer_id in &peer_ids {
-            self.send_message(peer_id.clone(), payload.clone());
+            self.send_message(*peer_id, payload.clone());
         }
 
         peer_ids.into_iter().cloned().collect()
@@ -389,7 +389,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     /// Returns the node id of this network node.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
-        self.our_id.clone()
+        self.our_id
     }
 }
 
@@ -881,7 +881,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                     .peers
                     .iter()
                     .map(|(node_id, endpoint)| {
-                        (node_id.clone(), endpoint.get_remote_address().to_string())
+                        (*node_id, endpoint.get_remote_address().to_string())
                     })
                     .collect();
                 responder.respond(peers).ignore()

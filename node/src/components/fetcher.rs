@@ -77,7 +77,7 @@ pub trait ItemFetcher<T: Item + 'static> {
         responders
             .entry(id)
             .or_default()
-            .entry(peer.clone())
+            .entry(peer)
             .or_default()
             .push(responder);
 
@@ -113,7 +113,7 @@ pub trait ItemFetcher<T: Item + 'static> {
     ) -> Effects<Event<T>> {
         match Message::new_get_request::<T>(&id) {
             Ok(message) => {
-                let mut effects = effect_builder.send_message(peer.clone(), message).ignore();
+                let mut effects = effect_builder.send_message(peer, message).ignore();
 
                 effects.extend(
                     effect_builder
@@ -326,11 +326,9 @@ where
             },
             Event::GotRemotely { item, source } => {
                 match source {
-                    Source::Peer(peer) => self.signal(
-                        item.id(),
-                        Some(FetchResult::FromPeer(item, peer.clone())),
-                        peer,
-                    ),
+                    Source::Peer(peer) => {
+                        self.signal(item.id(), Some(FetchResult::FromPeer(item, peer)), peer)
+                    }
                     Source::Client => {
                         // TODO - we could possibly also handle this case
                         Effects::new()

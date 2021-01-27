@@ -8,15 +8,13 @@ use libp2p::{
     },
     PeerId,
 };
-use once_cell::sync::Lazy;
 
-use super::{Config, Error, PayloadT};
+use super::{Config, Error, PayloadT, ProtocolId};
+use crate::components::chainspec_loader::Chainspec;
 
 /// The inner portion of the `ProtocolId` for the gossip behavior.  A standard prefix and suffix
 /// will be applied to create the full protocol name.
 const PROTOCOL_NAME_INNER: &str = "validator/gossip";
-
-pub(super) static TOPIC: Lazy<IdentTopic> = Lazy::new(|| IdentTopic::new("all"));
 
 pub(super) struct GossipMessage(pub Vec<u8>);
 
@@ -43,7 +41,11 @@ impl From<GossipMessage> for Vec<u8> {
 }
 
 /// Constructs a new libp2p behavior suitable for gossiping.
-pub(super) fn new_behavior(config: &Config, our_public_key: PublicKey) -> Result<Gossipsub, Error> {
+pub(super) fn new_behavior(
+    config: &Config,
+    chainspec: &Chainspec,
+    our_public_key: PublicKey,
+) -> Result<(Gossipsub, IdentTopic), Error> {
     let gossipsub_config = GossipsubConfigBuilder::default()
         .protocol_id_prefix(PROTOCOL_NAME_INNER)
         .heartbeat_interval(config.gossip_heartbeat_interval.into())
@@ -55,6 +57,8 @@ pub(super) fn new_behavior(config: &Config, our_public_key: PublicKey) -> Result
     let our_peer_id = PeerId::from(our_public_key);
     let mut gossipsub = Gossipsub::new(MessageAuthenticity::Author(our_peer_id), gossipsub_config)
         .map_err(|error| Error::Behavior(error.to_owned()))?;
-    gossipsub.subscribe(&TOPIC.clone())?;
-    Ok(gossipsub)
+    let protocol_id = ProtocolId::new(chainspec, PROTOCOL_NAME_INNER);
+    let topic = IdentTopic::new(protocol_id.id());
+    gossipsub.subscribe(&topic)?;
+    Ok((gossipsub, topic))
 }

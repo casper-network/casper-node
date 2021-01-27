@@ -49,11 +49,11 @@ pub enum Error {
 
     /// Subscription error.
     #[error("subscription error")]
-    Subscription,
+    Subscription(String),
 }
 
 impl From<SubscriptionError> for Error {
-    fn from(_error: SubscriptionError) -> Self {
-        Error::Subscription
+    fn from(error: SubscriptionError) -> Self {
+        Error::Subscription(format!("{:?}", error))
     }
 }

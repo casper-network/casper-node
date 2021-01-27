@@ -11,7 +11,6 @@ use libp2p::PeerId;
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::{Rng, RngCore};
-
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 #[cfg(test)]
@@ -19,7 +18,7 @@ use crate::testing::TestRng;
 use crate::{rpcs::docs::DocExample, tls::KeyFingerprint};
 
 /// The network identifier for a node.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, DataSize)]
 pub enum NodeId {
     Tls(KeyFingerprint),
     #[data_size(skip)]
