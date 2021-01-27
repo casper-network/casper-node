@@ -105,7 +105,7 @@ use crate::{
         chainspec_loader::ChainspecInfo,
         consensus::{BlockContext, EraId},
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
-        deploy_acceptor::Error,
+        deploy_acceptor,
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
@@ -598,7 +598,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_deploy_received(
         self,
         deploy: Box<Deploy>,
-        responder: Option<Responder<Result<(), Error>>>,
+        responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
     ) where
         REv: From<RpcServerAnnouncement>,
     {
