@@ -17,7 +17,8 @@ use tracing::{info, trace, warn};
 
 use super::{
     gossip::{self, TOPIC},
-    one_way_messaging, peer_discovery, Config, GossipMessage, OneWayCodec, OneWayOutgoingMessage,
+    one_way_messaging, peer_discovery, Config, Error, GossipMessage, OneWayCodec,
+    OneWayOutgoingMessage,
 };
 use crate::{components::chainspec_loader::Chainspec, types::NodeId};
 
@@ -48,22 +49,26 @@ pub(super) struct Behavior {
 }
 
 impl Behavior {
-    pub(super) fn new(config: &Config, chainspec: &Chainspec, our_public_key: PublicKey) -> Self {
+    pub(super) fn new(
+        config: &Config,
+        chainspec: &Chainspec,
+        our_public_key: PublicKey,
+    ) -> Result<Self, Error> {
         let one_way_message_behavior = one_way_messaging::new_behavior(config, chainspec);
 
-        let gossip_behavior = gossip::new_behavior(config, chainspec, our_public_key.clone());
+        let gossip_behavior = gossip::new_behavior(config, our_public_key.clone())?;
 
         let (kademlia_behavior, identify_behavior) =
             peer_discovery::new_behaviors(config, chainspec, our_public_key.clone());
 
-        Behavior {
+        Ok(Behavior {
             one_way_message_behavior,
             gossip_behavior,
             kademlia_behavior,
             identify_behavior,
             our_id: NodeId::P2p(PeerId::from(our_public_key)),
             events: VecDeque::new(),
-        }
+        })
     }
 
     /// Sends the given message out.
@@ -112,9 +117,7 @@ impl Behavior {
     /// Performs a random kademlia lookup in order to refresh the routing table.
     pub(super) fn discover_peers(&mut self) {
         let random_address = PeerId::random();
-        let query_id = self
-            .kademlia_behavior
-            .get_closest_peers(random_address.clone());
+        let query_id = self.kademlia_behavior.get_closest_peers(random_address);
         info!(
             "{}: random kademlia lookup for peers closest to {} with {:?}",
             self.our_id, random_address, query_id
@@ -123,7 +126,7 @@ impl Behavior {
 
     /// Initiates gossiping the given message.
     pub(super) fn gossip(&mut self, message: GossipMessage) {
-        if let Err(error) = self.gossip_behavior.publish(&*TOPIC, message) {
+        if let Err(error) = self.gossip_behavior.publish(TOPIC.clone(), message) {
             warn!(?error, "{}: failed to gossip new message", self.our_id);
         }
     }

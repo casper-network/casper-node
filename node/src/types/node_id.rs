@@ -5,10 +5,13 @@ use std::{
 
 use datasize::DataSize;
 use hex_fmt::HexFmt;
+#[cfg(test)]
+use libp2p::multihash::Multihash;
 use libp2p::PeerId;
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::{Rng, RngCore};
+
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 #[cfg(test)]
@@ -45,7 +48,8 @@ impl NodeId {
     pub(crate) fn random_p2p(rng: &mut TestRng) -> Self {
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes[..]);
-        let multihash = multihash::wrap(multihash::Code::Identity, &bytes);
+        let multihash =
+            Multihash::wrap(multihash::Code::Identity as u64, &bytes).expect("should wrap bytes");
         let peer_id = PeerId::from_multihash(multihash).expect("should construct from multihash");
         NodeId::P2p(peer_id)
     }
@@ -53,9 +57,9 @@ impl NodeId {
 
 /// Used to serialize and deserialize `NodeID` where the (de)serializer isn't a human-readable type.
 #[derive(Serialize, Deserialize)]
-enum NodeIdAsBytes<'a> {
+enum NodeIdAsBytes {
     Tls(KeyFingerprint),
-    P2p(&'a [u8]),
+    P2p(Vec<u8>),
 }
 
 /// Used to serialize and deserialize `NodeID` where the (de)serializer is a human-readable type.
@@ -79,7 +83,7 @@ impl Serialize for NodeId {
 
         let helper = match self {
             NodeId::Tls(key_fingerprint) => NodeIdAsBytes::Tls(*key_fingerprint),
-            NodeId::P2p(peer_id) => NodeIdAsBytes::P2p(peer_id.as_ref()),
+            NodeId::P2p(peer_id) => NodeIdAsBytes::P2p(peer_id.to_bytes()),
         };
         helper.serialize(serializer)
     }
@@ -110,8 +114,8 @@ impl<'de> Deserialize<'de> for NodeId {
         match helper {
             NodeIdAsBytes::Tls(key_fingerprint) => Ok(NodeId::Tls(key_fingerprint)),
             NodeIdAsBytes::P2p(bytes) => {
-                let peer_id = PeerId::from_bytes(bytes.to_vec())
-                    .map_err(|_| D::Error::custom("invalid PeerId"))?;
+                let peer_id =
+                    PeerId::from_bytes(&bytes).map_err(|_| D::Error::custom("invalid PeerId"))?;
                 Ok(NodeId::P2p(peer_id))
             }
         }
