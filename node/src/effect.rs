@@ -1202,7 +1202,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn is_verified_account(self, account_key: Key) -> bool
+    pub(crate) async fn is_verified_account(self, account_key: Key) -> Option<bool>
     where
         REv: From<ContractRuntimeRequest>,
         REv: From<StorageRequest>,
@@ -1218,13 +1218,13 @@ impl<REv> EffectBuilder<REv> {
                     let balance_request = BalanceRequest::new(state_hash, purse_uref);
                     if let Ok(balance_result) = self.get_balance(balance_request).await {
                         if let Some(motes) = balance_result.motes() {
-                            return motes >= &*MAX_PAYMENT;
+                            return Some(motes >= &*MAX_PAYMENT);
                         }
                     }
                 }
             }
         }
-        false
+        None
     }
 
     /// Requests a query be executed on the Contract Runtime component.

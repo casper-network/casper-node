@@ -31,9 +31,12 @@ pub enum Error {
     /// An invalid deploy was received from the client.
     #[error("invalid deploy: {0}")]
     InvalidDeploy(DeployValidationFailure),
-    /// An invalid account sent a deploy
+    /// An invalid account sent a deploy.
     #[error("invalid account")]
     InvalidAccount,
+    /// A deploy was sent from account with insufficient balance.
+    #[error("insufficient balance")]
+    InsufficientBalance,
 }
 
 /// A helper trait constraining `DeployAcceptor` compatible reactor events.
@@ -133,43 +136,58 @@ impl DeployAcceptor {
         deploy: Box<Deploy>,
         source: Source<NodeId>,
         account_key: Key,
-        verified: bool,
+        verified: Option<bool>,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
         let mut effects = Effects::new();
-        if !verified {
-            info! {
-                "Received deploy from invalid account using {}", account_key
-            };
-            // The client has submitted an invalid deploy. Return an error message to the RPC
-            // component via the responder.
-            if let Some(responder) = maybe_responder {
-                effects.extend(responder.respond(Err(Error::InvalidAccount)).ignore());
-            }
-            effects.extend(
-                effect_builder
-                    .announce_invalid_deploy(deploy, source)
-                    .ignore(),
-            );
-            return effects;
-        }
 
-        // The client submitted a valid deploy. Return an Ok status to the RPC component via the
-        // responder.
-        if let Some(responder) = maybe_responder {
-            effects.extend(responder.respond(Ok(())).ignore());
+        match verified {
+            Some(true) => {
+                // The client submitted a valid deploy. Return an Ok status to the RPC component via
+                // the responder.
+                if let Some(responder) = maybe_responder {
+                    effects.extend(responder.respond(Ok(())).ignore());
+                }
+
+                effects.extend(effect_builder.put_deploy_to_storage(deploy.clone()).event(
+                    move |is_new| Event::PutToStorageResult {
+                        deploy,
+                        source,
+                        is_new,
+                    },
+                ));
+
+                return effects;
+            }
+
+            Some(false) => {
+                info! {
+                    "Received deploy from account {} that does not have minimum balance required", account_key
+                };
+                // The client has submitted a deploy from an account that does not have minimum
+                // balance required. Return an error message to the RPC component via the responder.
+                if let Some(responder) = maybe_responder {
+                    effects.extend(responder.respond(Err(Error::InsufficientBalance)).ignore());
+                }
+            }
+
+            None => {
+                // The client has submitted an invalid deploy. Return an error message to the RPC
+                // component via the responder.
+                info! {
+                    "Received deploy from invalid account using {}", account_key
+                };
+                if let Some(responder) = maybe_responder {
+                    effects.extend(responder.respond(Err(Error::InvalidAccount)).ignore());
+                }
+            }
         }
 
         effects.extend(
             effect_builder
-                .put_deploy_to_storage(deploy.clone())
-                .event(move |is_new| Event::PutToStorageResult {
-                    deploy,
-                    source,
-                    is_new,
-                }),
+                .announce_invalid_deploy(deploy, source)
+                .ignore(),
         );
-
         effects
     }
 
@@ -210,7 +228,7 @@ impl DeployAcceptor {
                     deploy,
                     source,
                     account_key,
-                    verified: true,
+                    verified: Some(true),
                     maybe_responder,
                 });
         }
