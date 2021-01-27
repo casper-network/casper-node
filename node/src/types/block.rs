@@ -22,7 +22,6 @@ use hex_fmt::{HexFmt, HexList};
 use once_cell::sync::Lazy;
 #[cfg(test)]
 use rand::Rng;
-use rand::SeedableRng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -106,17 +105,13 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         Some(next_era_validator_weights)
     };
 
-    let mut block = Block::new(
+    Block::new(
         parent_hash,
         parent_seed,
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
-    );
-    let mut rng = NodeRng::seed_from_u64(0);
-    let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, &mut rng);
-    block.append_proof(public_key, signature);
-    block
+    )
 });
 
 /// Error returned from constructing or validating a `Block`.
@@ -780,6 +775,36 @@ impl From<bytesrepr::Error> for BlockValidationError {
     }
 }
 
+/// A storage representation of finality signatures with the associated block hash.
+#[derive(Debug, Serialize, Deserialize, Clone, DataSize)]
+pub struct BlockSignatures {
+    /// The block hash for a given block.
+    pub block_hash: BlockHash,
+    /// The era id for the given set of finality signatures
+    pub era_id: EraId,
+    /// The signatures associated with the block hash.
+    pub proofs: BTreeMap<PublicKey, Signature>,
+}
+
+impl BlockSignatures {
+    pub(crate) fn new(block_hash: BlockHash, era_id: EraId) -> Self {
+        BlockSignatures {
+            block_hash,
+            era_id,
+            proofs: BTreeMap::new(),
+        }
+    }
+
+    pub(crate) fn append_proof(
+        &mut self,
+        public_key: PublicKey,
+        signature: Signature,
+    ) -> Option<Signature> {
+        self.proofs.insert(public_key, signature)
+    }
+}
+
+
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
 #[derive(DataSize, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -787,7 +812,6 @@ pub struct Block {
     hash: BlockHash,
     header: BlockHeader,
     body: (), // TODO: implement body of block
-    proofs: BTreeMap<PublicKey, Signature>,
 }
 
 impl Block {
@@ -833,24 +857,7 @@ impl Block {
 
         let hash = header.hash();
 
-        Block {
-            hash,
-            header,
-            body,
-            proofs: BTreeMap::new(),
-        }
-    }
-
-    /// Creates an instance of the block from the block header.
-    pub(crate) fn from_header(header: BlockHeader) -> Self {
-        let body = ();
-        let hash = header.hash();
-        Block {
-            hash,
-            header,
-            body,
-            proofs: BTreeMap::new(),
-        }
+        Block { hash, header, body }
     }
 
     pub(crate) fn header(&self) -> &BlockHeader {
@@ -878,21 +885,6 @@ impl Block {
     /// The height of a block.
     pub fn height(&self) -> u64 {
         self.header.height()
-    }
-
-    /// Appends the given signature to this block's proofs.  It should have been validated prior to
-    /// this via `BlockHash::verify()`.
-    pub(crate) fn append_proof(
-        &mut self,
-        pub_key: PublicKey,
-        proof: Signature,
-    ) -> Option<Signature> {
-        self.proofs.insert(pub_key, proof)
-    }
-
-    /// Provide proofs for an OpenRPC compatible representation.
-    pub fn proofs(&self) -> &BTreeMap<PublicKey, Signature> {
-        &self.proofs
     }
 
     fn serialize_body(body: &()) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -934,23 +926,13 @@ impl Block {
         let finalized_block = FinalizedBlock::random(rng);
         let parent_seed = Digest::random(rng);
 
-        let mut block = Block::new(
+        Block::new(
             parent_hash,
             parent_seed,
             state_root_hash,
             finalized_block,
             None,
-        );
-
-        let signatures_count = rng.gen_range(0, 11);
-        for _ in 0..signatures_count {
-            let secret_key = SecretKey::random(rng);
-            let public_key = PublicKey::from(&secret_key);
-            let signature = crypto::sign(block.hash.inner(), &secret_key, &public_key, rng);
-            block.append_proof(public_key, signature);
-        }
-
-        block
+        )
     }
 }
 
@@ -965,7 +947,7 @@ impl Display for Block {
         write!(
             formatter,
             "executed block {}, parent hash {}, post-state hash {}, body hash {}, deploys [{}], \
-            transfers [{}], random bit {}, timestamp {}, era_id {}, height {}, proofs count {}",
+            transfers [{}], random bit {}, timestamp {}, era_id {}, height {}",
             self.hash.inner(),
             self.header.parent_hash.inner(),
             self.header.state_root_hash,
@@ -976,7 +958,6 @@ impl Display for Block {
             self.header.timestamp,
             self.header.era_id.0,
             self.header.height,
-            self.proofs.len()
         )?;
         if let Some(ee) = &self.header.era_end {
             write!(formatter, ", era_end: {}", ee)?;
@@ -990,14 +971,11 @@ impl ToBytes for Block {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.hash.to_bytes()?);
         buffer.extend(self.header.to_bytes()?);
-        buffer.extend(self.proofs.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.hash.serialized_length()
-            + self.header.serialized_length()
-            + self.proofs.serialized_length()
+        self.hash.serialized_length() + self.header.serialized_length()
     }
 }
 
@@ -1005,12 +983,10 @@ impl FromBytes for Block {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
         let (header, remainder) = BlockHeader::from_bytes(remainder)?;
-        let (proofs, remainder) = BTreeMap::<PublicKey, Signature>::from_bytes(remainder)?;
         let block = Block {
             hash,
             header,
             body: (),
-            proofs,
         };
         Ok((block, remainder))
     }
@@ -1227,6 +1203,18 @@ pub(crate) mod json_compatibility {
     }
 
     impl JsonBlock {
+        /// Create a new JSON Block with a Linear chain block and its associated signatures.
+        pub fn new(block: Block, signatures: BlockSignatures) -> Self {
+            let mut proto_block = JsonBlock::from(block);
+            proto_block.proofs = signatures.proofs.iter()
+                .map(|(pub_key, signature)|  JsonProof::new(
+                    *pub_key,
+                    *signature,
+                ))
+                .collect();
+            proto_block
+        }
+
         /// Returns the hashes of the `Deploy`s included in the `Block`.
         pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
             &self.header.deploy_hashes
@@ -1244,7 +1232,7 @@ pub(crate) mod json_compatibility {
                 hash: block.hash,
                 header: JsonBlockHeader::from(block.header),
                 body: block.body,
-                proofs: block.proofs.into_iter().map(JsonProof::from).collect(),
+                proofs: vec![],
             }
         }
     }
@@ -1255,7 +1243,6 @@ pub(crate) mod json_compatibility {
                 hash: block.hash,
                 header: BlockHeader::from(block.header),
                 body: block.body,
-                proofs: block.proofs.into_iter().map(JsonProof::into).collect(),
             }
         }
     }
@@ -1266,6 +1253,15 @@ pub(crate) mod json_compatibility {
     pub struct JsonProof {
         public_key: PublicKey,
         signature: Signature,
+    }
+
+    impl JsonProof {
+        pub fn new(public_key: PublicKey, signature: Signature) -> Self {
+            JsonProof {
+                public_key,
+                signature
+            }
+        }
     }
 
     impl From<(PublicKey, Signature)> for JsonProof {
