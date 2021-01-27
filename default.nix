@@ -1,4 +1,6 @@
 # TODO: Download rust version and targets via nix expression instead of rustup.
+#
+# Enables `make build build-contracts-rs`, not `all`, as we do not include assembly script compiler.
 
 let
   pkgs = import <nixpkgs> { };
