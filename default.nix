@@ -1,6 +1,7 @@
-# TODO: Download rust version and targets via nix expression instead of rustup.
+# This is an unsupported development environment, instantly enabling `make build
+# build-contracts-rs`. There is no official support for this nix derivation.
 #
-# Enables `make build build-contracts-rs`, not `all`, as we do not include assembly script compiler.
+# Do not use this, but follow instructions in the `README.md` instead.
 
 let
   pkgs = import <nixpkgs> { };
@@ -15,7 +16,6 @@ in pkgs.stdenv.mkDerivation {
     openssl.dev
     protobuf
 
-    # Dependencies just used in makefile
     which
     rustup
     cargo
@@ -23,6 +23,7 @@ in pkgs.stdenv.mkDerivation {
     # Required to build openssl
     perl
   ];
+
   shellHook = ''
     export LD_LIBRARY_PATH=${pkgs.zlib}/lib
 
