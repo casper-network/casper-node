@@ -301,7 +301,9 @@ impl ToBytes for EraEnd {
     }
 
     fn serialized_length(&self) -> usize {
-        self.equivocators.serialized_length() + self.rewards.serialized_length()
+        self.equivocators.serialized_length()
+            + self.rewards.serialized_length()
+            + self.inactive_validators.serialized_length()
     }
 }
 
