@@ -228,6 +228,7 @@ impl ExecutionResult {
         let payment_result_cost = match Motes::from_gas(self.cost(), gas_price) {
             Some(cost) => cost,
             // Multiplying cost by gas_price overflowed the U512 range
+            // TODO: Add a specific error variant to represent gas to motes conversion overflow.
             None => return Some(ForcedTransferResult::InsufficientPayment),
         };
         // payment_code_spec_3_b_ii: if (balance of PoS pay purse) < (gas spent during
@@ -254,7 +255,7 @@ impl ExecutionResult {
         error: error::Error,
         max_payment_cost: Motes,
         account_main_purse_balance: Motes,
-        gas_price: u64,
+        gas_cost: Gas,
         account_main_purse_balance_key: Key,
         proposer_main_purse_balance_key: Key,
     ) -> Result<ExecutionResult, CLValueError> {
@@ -264,13 +265,12 @@ impl ExecutionResult {
             account_main_purse_balance_key,
             proposer_main_purse_balance_key,
         )?;
-        let cost = Gas::from_motes(max_payment_cost, gas_price).expect("gas overflow");
         let transfers = Vec::default();
         Ok(ExecutionResult::Failure {
             error,
             effect,
             transfers,
-            cost,
+            cost: gas_cost,
         })
     }
 
