@@ -23,6 +23,7 @@ const KEY_1: AccountHash = AccountHash::new([254; 32]);
 const KEY_2: AccountHash = AccountHash::new([253; 32]);
 const KEY_3: AccountHash = AccountHash::new([252; 32]);
 
+#[ignore]
 #[test]
 fn should_deploy_with_authorized_identity_key() {
     let exec_request = ExecuteRequestBuilder::standard(
