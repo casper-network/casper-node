@@ -441,8 +441,6 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
-    // success: identity key weight + KEY_1 weight + KEY_2 weight >= deployment
-    // threshold
     let final_result = InMemoryWasmTestBuilder::from_result(result1)
         .exec(exec_request_3)
         .commit()
