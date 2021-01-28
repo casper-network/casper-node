@@ -24,8 +24,7 @@ const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 const DEFAULT_AUCTION_DELAY: u64 = 3;
 
 /// Default lock-in period of 90 days
-/// <https://www.wolframalpha.com/input/?i=convert+90+days+to+milliseconds>
-const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 7776000000; // 90 days
+const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * 24 * 60 * 60 * 1000;
 
 /// Round seigniorage rate represented as a fractional number
 ///

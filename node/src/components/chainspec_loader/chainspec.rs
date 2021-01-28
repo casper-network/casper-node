@@ -209,7 +209,7 @@ pub struct GenesisConfig {
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
     /// auction_delay + 1
     pub(crate) auction_delay: u64,
-    /// Number of days (in milliseconds) after genesis that a genesis validator's bid is locked
+    /// Number of milliseconds after genesis that a genesis validator's bid is locked
     pub(crate) locked_funds_period_millis: u64,
     /// Round seigniorage rate represented as a fractional number.
     #[data_size(skip)]
@@ -277,7 +277,7 @@ impl GenesisConfig {
         let timestamp = Timestamp::random(rng);
         let validator_slots = rng.gen::<u32>();
         let auction_delay = rng.gen::<u64>();
-        let locked_funds_period: EraId = rng.gen::<u64>();
+        let locked_funds_period_millis: u64 = rng.gen::<u64>();
         let round_seigniorage_rate = Ratio::new(
             rng.gen_range(1, 1_000_000_000),
             rng.gen_range(1, 1_000_000_000),
@@ -299,7 +299,7 @@ impl GenesisConfig {
             timestamp,
             validator_slots,
             auction_delay,
-            locked_funds_period_millis: locked_funds_period,
+            locked_funds_period_millis,
             round_seigniorage_rate,
             unbonding_delay,
             protocol_version,

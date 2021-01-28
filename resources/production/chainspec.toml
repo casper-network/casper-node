@@ -16,7 +16,7 @@ accounts_path = '/etc/casper/accounts.csv'
 validator_slots = 200
 # Amount of auction delay
 auction_delay = 3
-# Number of days (in milliseconds) after genesis that a genesis validator's bid is locked
+# Number of milliseconds after genesis that a genesis validator's bid is locked
 locked_funds_period_millis = 7776000000
 # Default number of eras that need to pass to be able to withdraw unbonded funds.
 unbonding_delay = 14

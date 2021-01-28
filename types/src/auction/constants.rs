@@ -50,7 +50,7 @@ pub const ARG_AUCTION_DELAY: &str = "auction_delay";
 pub const ARG_LOCKED_FUNDS_PERIOD: &str = "locked_funds_period";
 /// Named constant for `unbonding_delay`
 pub const ARG_UNBONDING_DELAY: &str = "unbonding_delay";
-/// Named constant for `era_end_timestamp_mills`;
+/// Named constant for `era_end_timestamp_millis`;
 pub const ARG_ERA_END_TIMESTAMP_MILLIS: &str = "era_end_timestamp_millis";
 
 /// Named constant for method `get_era_validators`.
