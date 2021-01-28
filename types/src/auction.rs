@@ -16,21 +16,23 @@ use num_rational::Ratio;
 use crate::{
     account::AccountHash,
     system_contract_errors::auction::{Error, Result},
-    PublicKey, URef, U512,
+    PublicKey, U512,
 };
 
 pub use bid::Bid;
 pub use constants::*;
 pub use delegator::Delegator;
 pub use era_info::*;
-pub use providers::{MintProvider, RuntimeProvider, StorageProvider, SystemProvider};
+pub use providers::{
+    AccountProvider, MintProvider, RuntimeProvider, StorageProvider, SystemProvider,
+};
 pub use seigniorage_recipient::SeigniorageRecipient;
 pub use types::*;
 pub use unbonding_purse::UnbondingPurse;
 
 /// Bonding auction contract interface
 pub trait Auction:
-    StorageProvider + SystemProvider + RuntimeProvider + MintProvider + Sized
+    StorageProvider + SystemProvider + RuntimeProvider + MintProvider + AccountProvider + Sized
 {
     /// Returns era_validators.
     ///
@@ -72,7 +74,6 @@ pub trait Auction:
     fn add_bid(
         &mut self,
         public_key: PublicKey,
-        source: URef,
         delegation_rate: DelegationRate,
         amount: U512,
     ) -> Result<U512> {
@@ -84,6 +85,8 @@ pub trait Auction:
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
         }
+
+        let source = self.get_main_purse()?;
 
         // Update bids or stakes
         let mut validators = detail::get_bids(self)?;
@@ -116,12 +119,7 @@ pub trait Auction:
     ///
     /// The function returns a the new amount of motes remaining in the bid. If the target bid
     /// does not exist, the function call returns an error.
-    fn withdraw_bid(
-        &mut self,
-        public_key: PublicKey,
-        amount: U512,
-        unbonding_purse: URef,
-    ) -> Result<U512> {
+    fn withdraw_bid(&mut self, public_key: PublicKey, amount: U512) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
@@ -137,7 +135,6 @@ pub trait Auction:
             public_key,
             public_key, // validator is the unbonder
             *bid.bonding_purse(),
-            unbonding_purse,
             amount,
         )?;
 
@@ -161,7 +158,6 @@ pub trait Auction:
     fn delegate(
         &mut self,
         delegator_public_key: PublicKey,
-        source: URef,
         validator_public_key: PublicKey,
         amount: U512,
     ) -> Result<U512> {
@@ -173,6 +169,8 @@ pub trait Auction:
         if amount.is_zero() {
             return Err(Error::BondTooSmall);
         }
+
+        let source = self.get_main_purse()?;
 
         let mut bids = detail::get_bids(self)?;
 
@@ -217,7 +215,6 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-        unbonding_purse: URef,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
@@ -241,7 +238,6 @@ pub trait Auction:
                     validator_public_key,
                     delegator_public_key,
                     *delegator.bonding_purse(),
-                    unbonding_purse,
                     amount,
                 )?;
                 let updated_stake = delegator.decrease_stake(amount)?;
@@ -516,7 +512,6 @@ pub trait Auction:
         &mut self,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
-        target_purse: URef,
     ) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
@@ -547,7 +542,7 @@ pub trait Auction:
             .into_uref()
             .ok_or(Error::InvalidKeyVariant)?;
 
-        self.transfer_purse_to_purse(source_purse, target_purse, reward_amount)
+        self.transfer_purse_to_account(source_purse, account_hash, reward_amount)
             .map_err(|_| Error::WithdrawDelegatorReward)?;
 
         delegator.zero_reward();
@@ -559,11 +554,7 @@ pub trait Auction:
 
     /// Allows validators to withdraw the seigniorage rewards they have earned.
     /// Pays out the entire accumulated amount to the destination purse.
-    fn withdraw_validator_reward(
-        &mut self,
-        validator_public_key: PublicKey,
-        target_purse: URef,
-    ) -> Result<U512> {
+    fn withdraw_validator_reward(&mut self, validator_public_key: PublicKey) -> Result<U512> {
         let account_hash = AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
         if self.get_caller() != account_hash {
             return Err(Error::InvalidPublicKey);
@@ -588,7 +579,7 @@ pub trait Auction:
             .into_uref()
             .ok_or(Error::InvalidKeyVariant)?;
 
-        self.transfer_purse_to_purse(source_purse, target_purse, reward_amount)
+        self.transfer_purse_to_account(source_purse, account_hash, reward_amount)
             .map_err(|_| Error::WithdrawValidatorReward)?;
 
         bid.zero_reward();

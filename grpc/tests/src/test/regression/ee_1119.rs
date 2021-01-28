@@ -11,12 +11,11 @@ use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, share
 use casper_types::{
     account::AccountHash,
     auction::{
-        Bids, UnbondingPurses, ARG_DELEGATOR, ARG_UNBOND_PURSE, ARG_VALIDATOR,
-        ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY, METHOD_RUN_AUCTION, METHOD_SLASH,
-        UNBONDING_PURSES_KEY,
+        Bids, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
+        METHOD_RUN_AUCTION, METHOD_SLASH, UNBONDING_PURSES_KEY,
     },
     mint::TOTAL_SUPPLY_KEY,
-    runtime_args, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -135,7 +134,6 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => *VALIDATOR_1,
             ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
-            ARG_UNBOND_PURSE => Option::<URef>::None,
         },
     )
     .build();
@@ -154,7 +152,6 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         runtime_args! {
             ARG_AMOUNT => unbond_amount,
             ARG_PUBLIC_KEY => *VALIDATOR_1,
-            ARG_UNBOND_PURSE => Option::<URef>::None,
         },
     )
     .build();

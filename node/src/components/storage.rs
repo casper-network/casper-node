@@ -568,7 +568,7 @@ impl Storage {
                 let signatures =  match self
                     .get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, highest_block.header().era_id())
+                    None => BlockSignatures::new(*hash, highest_block.header().era_id()),
                 };
                 responder.respond(Some((highest_block, signatures))).ignore()
             }
@@ -592,10 +592,9 @@ impl Storage {
                 let outcome = txn.put_value(
                     self.block_metadata_db,
                     &signatures.block_hash,
-                    &signatures.proofs,
+                    &signatures,
                     true,
                 )?;
-                info!("ELECTRIC BOOGALOO");
                 txn.commit()?;
                 responder.respond(outcome).ignore()
             }

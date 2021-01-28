@@ -105,7 +105,7 @@ use crate::{
         chainspec_loader::ChainspecInfo,
         consensus::{BlockContext, EraId},
         contract_runtime::{EraValidatorsRequest, ValidatorWeightsByEraIdRequest},
-        deploy_acceptor::Error,
+        deploy_acceptor,
         fetcher::FetchResult,
         small_network::GossipedAddress,
     },
@@ -599,7 +599,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn announce_deploy_received(
         self,
         deploy: Box<Deploy>,
-        responder: Option<Responder<Result<(), Error>>>,
+        responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
     ) where
         REv: From<RpcServerAnnouncement>,
     {
@@ -1284,7 +1284,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn is_verified_account(self, account_key: Key) -> bool
+    pub(crate) async fn is_verified_account(self, account_key: Key) -> Option<bool>
     where
         REv: From<ContractRuntimeRequest>,
         REv: From<StorageRequest>,
@@ -1300,13 +1300,13 @@ impl<REv> EffectBuilder<REv> {
                     let balance_request = BalanceRequest::new(state_hash, purse_uref);
                     if let Ok(balance_result) = self.get_balance(balance_request).await {
                         if let Some(motes) = balance_result.motes() {
-                            return motes >= &*MAX_PAYMENT;
+                            return Some(motes >= &*MAX_PAYMENT);
                         }
                     }
                 }
             }
         }
-        false
+        None
     }
 
     /// Requests a query be executed on the Contract Runtime component.

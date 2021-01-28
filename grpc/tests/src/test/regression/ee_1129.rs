@@ -59,20 +59,13 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 
     let auction = builder.get_auction_contract_hash();
 
-    let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-
     let bid_amount = U512::one();
 
     let deploy_hash = [42; 32];
 
-    let source_purse = account.main_purse();
-
     let args = runtime_args! {
         auction::ARG_DELEGATOR => *DEFAULT_ACCOUNT_PUBLIC_KEY,
         auction::ARG_VALIDATOR => *VALIDATOR_1,
-        auction::ARG_SOURCE_PURSE => source_purse,
         auction::ARG_AMOUNT => bid_amount,
     };
 
@@ -129,21 +122,14 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 
     let auction = builder.get_auction_contract_hash();
 
-    let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-
     let amount = U512::one();
 
     let deploy_hash = [42; 32];
-
-    let unbond_purse = account.main_purse();
 
     let delegation_rate: DelegationRate = 10;
 
     let args = runtime_args! {
             auction::ARG_PUBLIC_KEY => *VALIDATOR_1,
-            auction::ARG_SOURCE_PURSE => unbond_purse,
             auction::ARG_AMOUNT => amount,
             auction::ARG_DELEGATION_RATE => delegation_rate,
     };

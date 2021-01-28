@@ -172,9 +172,9 @@ impl SignatureCache {
             for (pub_key, sig) in &block_signature.proofs {
                 entry.insert(*pub_key, *sig);
             }
-            self.signatures
-                .insert(block_signature.block_hash, block_signature);
         }
+        self.signatures
+            .insert(block_signature.block_hash, block_signature);
     }
 
     fn get_signatures(&self, block_hash: &BlockHash) -> BlockSignatures {
@@ -387,7 +387,7 @@ where
                     block.header().era_id(),
                     effect_builder,
                 );
-                // Cache the block as we expect more finality signatures to arrive soon.
+                // Cache the signature as we expect more finality signatures to arrive soon.
                 self.signature_cache.insert(signatures);
                 effects.extend(effect_builder.put_block_to_storage(block.clone()).event(
                     move |_| Event::PutBlockResult {
@@ -429,7 +429,6 @@ where
                     public_key,
                     ..
                 } = *fs;
-                info!("NEW FINALITY");
                 if let Err(err) = fs.verify() {
                     warn!(%block_hash, %public_key, %err, "received invalid finality signature");
                     return Effects::new();
@@ -453,7 +452,6 @@ where
                 }
             }
             Event::GetStoredFinalitySignaturesResult(fs, maybe_signatures) => {
-                info!("IN STORED");
                 if let Some(signatures) = &maybe_signatures {
                     if signatures.era_id != fs.era_id {
                         warn!(public_key=%fs.public_key, "Finality signature with invalid era id.");
@@ -461,7 +459,7 @@ where
                         return Effects::new();
                     }
                     // Populate cache
-                    self.signature_cache.insert(*signatures.clone())
+                    self.signature_cache.insert(*signatures.clone());
                 }
                 // Check if the validator is bonded.
                 effect_builder
@@ -527,11 +525,18 @@ where
                 if signature_known {
                     Effects::new()
                 } else {
-                    let mut effects = broadcast_new_fs(effect_builder, fs.clone());
+                    let message = Message::FinalitySignature(fs.clone());
+                    let mut effects = effect_builder.broadcast_message(message).ignore();
+                    effects.extend(
+                        effect_builder
+                            .announce_finality_signature(fs.clone())
+                            .ignore(),
+                    );
                     signature.append_proof(fs.public_key, fs.signature);
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
                     self.signature_cache.insert(*signature.clone());
+                    info!(hash=%signature.hash, "storing finality signatures");
                     effects.extend(
                         effect_builder
                             .put_signatures_to_storage(*signature)
@@ -540,11 +545,17 @@ where
                     effects
                 }
             }
-            Event::IsBonded(None, _, true) => {
+            Event::IsBonded(None, fs, true) => {
                 // Unknown block but validator is bonded.
                 // We should finalize the same block eventually. Either in this or in the
                 // next era.
-                Effects::new()
+                // Store the signatures.
+                let mut effects = Effects::new();
+                let mut signatures = BlockSignatures::new(fs.block_hash, fs.era_id);
+                signatures.append_proof(fs.public_key, fs.signature);
+                effects.extend(effect_builder.put_signatures_to_storage(signatures.clone()).ignore());
+                self.signature_cache.insert(signatures);
+                effects
             }
             Event::IsBonded(Some(_), fs, false) | Event::IsBonded(None, fs, false) => {
                 self.remove_from_pending_fs(&fs);
@@ -564,22 +575,4 @@ where
             }
         }
     }
-}
-
-// Constructs a network message and gossips the finality signature.
-fn broadcast_new_fs<I, REv>(
-    effect_builder: EffectBuilder<REv>,
-    fs: Box<FinalitySignature>,
-) -> Effects<Event<I>>
-where
-    REv: From<StorageRequest>
-        + From<ConsensusRequest>
-        + From<NetworkRequest<I, Message>>
-        + From<LinearChainAnnouncement>
-        + From<ContractRuntimeRequest>
-        + Send,
-    I: Display + Send + 'static,
-{
-    let message = Message::FinalitySignature(fs);
-    effect_builder.broadcast_message(message).ignore()
 }
