@@ -13,6 +13,8 @@ pub enum State {
     SyncingTrustedHash {
         /// Linear chain block to start sync from.
         trusted_hash: BlockHash,
+        /// Block header corresponding to the trusted hash
+        trusted_header: Option<Box<BlockHeader>>,
         /// During synchronization we might see new eras being created.
         /// Track the highest height and wait until it's handled by consensus.
         highest_block_seen: u64,
@@ -28,6 +30,8 @@ pub enum State {
     /// Synchronizing the descendants of the trusted hash.
     SyncingDescendants {
         trusted_hash: BlockHash,
+        /// Block header corresponding to the trusted hash
+        trusted_header: Box<BlockHeader>,
         /// The most recent block we started to execute. This is updated whenever we start
         /// downloading deploys for the next block to be executed.
         latest_block: Box<BlockHeader>,
@@ -71,16 +75,19 @@ impl State {
             linear_chain: Vec::new(),
             latest_block: Box::new(None),
             validator_weights,
+            trusted_header: None,
         }
     }
 
     pub fn sync_descendants(
         trusted_hash: BlockHash,
+        trusted_header: Box<BlockHeader>,
         latest_block: BlockHeader,
         validators_for_latest_block: BTreeMap<PublicKey, U512>,
     ) -> Self {
         State::SyncingDescendants {
             trusted_hash,
+            trusted_header,
             latest_block: Box::new(latest_block),
             highest_block_seen: 0,
             validators_for_latest_block,

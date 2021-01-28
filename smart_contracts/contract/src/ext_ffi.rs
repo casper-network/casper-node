@@ -473,7 +473,11 @@ extern "C" {
     /// Creates new contract package at hash. Returns both newly generated
     /// [`casper_types::ContractPackageHash`] and a [`casper_types::URef`] for further
     /// modifying access.
-    pub fn casper_create_contract_package_at_hash(hash_addr_ptr: *mut u8, access_addr_ptr: *mut u8);
+    pub fn casper_create_contract_package_at_hash(
+        hash_addr_ptr: *mut u8,
+        access_addr_ptr: *mut u8,
+        is_locked: bool,
+    );
     /// Creates new named contract user group under a contract package.
     ///
     /// # Arguments

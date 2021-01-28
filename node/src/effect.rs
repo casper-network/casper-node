@@ -407,7 +407,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Run and end effect immediately.
     ///
-    /// Can be used to trigger events from effects when combined with `.event`. Do not use this do
+    /// Can be used to trigger events from effects when combined with `.event`. Do not use this to
     /// "do nothing", as it will still cause a task to be spawned.
     #[inline(always)]
     #[allow(clippy::manual_async_fn)]

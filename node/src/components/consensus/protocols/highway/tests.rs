@@ -9,6 +9,7 @@ use crate::{
     components::consensus::{
         candidate_block::CandidateBlock,
         cl_context::{ClContext, Keypair},
+        config::Config,
         consensus_protocol::{ConsensusProtocol, ProtocolOutcome},
         highway_core::{
             highway::{SignedWireUnit, Vertex, WireUnit},
@@ -17,7 +18,7 @@ use crate::{
             validators::ValidatorIndex,
             State,
         },
-        protocols::highway::HighwayMessage,
+        protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
         tests::utils::{new_test_chainspec, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_PUBLIC_KEY},
         traits::Context,
         HighwayProtocol,
@@ -67,15 +68,25 @@ where
         .map(|(pk, w)| (pk, w.into()))
         .collect::<Vec<_>>();
     let chainspec = new_test_chainspec(weights.clone());
-    HighwayProtocol::<NodeId, ClContext>::new_boxed(
+    let config = Config {
+        secret_key_path: Default::default(),
+        unit_hashes_folder: Default::default(),
+        pending_vertex_timeout: "1min".parse().unwrap(),
+    };
+    let (hw_proto, outcomes) = HighwayProtocol::<NodeId, ClContext>::new_boxed(
         ClContext::hash(INSTANCE_ID_DATA),
         weights.into_iter().collect(),
         &init_slashed.into_iter().collect(),
         &(&chainspec).into(),
+        &config,
         None,
         0.into(),
         0,
-    )
+    );
+    // We expect only the vertex purge timer outcome. If there are more, the tests might need to
+    // handle them.
+    assert_eq!(1, outcomes.len());
+    hw_proto
 }
 
 #[test]
@@ -190,11 +201,15 @@ fn send_a_valid_wire_unit() {
     let sender = NodeId(123);
     let msg = bincode::serialize(&highway_message).unwrap();
 
-    let outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
-
-    match &outcomes[..] {
-        &[ProtocolOutcome::CreatedGossipMessage(_), ProtocolOutcome::FinalizedBlock(_)] => (),
-        outcomes => panic!("Unexpected outcomes: {:?}", outcomes),
+    let mut outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
+    while let Some(outcome) = outcomes.pop() {
+        match outcome {
+            ProtocolOutcome::CreatedGossipMessage(_) | ProtocolOutcome::FinalizedBlock(_) => (),
+            ProtocolOutcome::QueueAction(ACTION_ID_VERTEX) => {
+                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX, &mut rng))
+            }
+            outcome => panic!("Unexpected outcome: {:?}", outcome),
+        }
     }
 }
 
@@ -237,9 +252,15 @@ fn detect_doppelganger() {
     // "Send" a message created by ALICE to an instance of Highway where she's an active validator.
     // An incoming unit, created by the same validator, should be properly detected as a
     // doppelganger.
-    let outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
-    assert!(outcomes
-        .iter()
-        .any(|eff| matches!(eff, ProtocolOutcome::DoppelgangerDetected)));
-    assert_eq!(highway_protocol.is_active(), false);
+    let mut outcomes = highway_protocol.handle_message(sender, msg, false, &mut rng);
+    while let Some(outcome) = outcomes.pop() {
+        match outcome {
+            ProtocolOutcome::DoppelgangerDetected => return,
+            ProtocolOutcome::QueueAction(ACTION_ID_VERTEX) => {
+                outcomes.extend(highway_protocol.handle_action(ACTION_ID_VERTEX, &mut rng))
+            }
+            _ => (),
+        }
+    }
+    panic!("failed to return DoppelgangerDetected effect");
 }
