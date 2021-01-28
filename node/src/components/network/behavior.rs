@@ -13,7 +13,7 @@ use libp2p::{
     swarm::{NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters},
     Multiaddr, NetworkBehaviour, PeerId,
 };
-use tracing::{info, trace, warn};
+use tracing::{debug, trace, warn};
 
 use super::{
     gossip::{self, TOPIC},
@@ -99,7 +99,7 @@ impl Behavior {
         }
 
         if should_bootstrap {
-            info!("{}: bootstrapping kademlia", self.our_id);
+            debug!("{}: bootstrapping kademlia", self.our_id);
             if self.kademlia_behavior.bootstrap().is_err() {
                 warn!(
                     "{}: could not bootstrap kademlia due to lost connection leaving no peers",
@@ -115,7 +115,7 @@ impl Behavior {
         let query_id = self
             .kademlia_behavior
             .get_closest_peers(random_address.clone());
-        info!(
+        debug!(
             "{}: random kademlia lookup for peers closest to {} with {:?}",
             self.our_id, random_address, query_id
         );
