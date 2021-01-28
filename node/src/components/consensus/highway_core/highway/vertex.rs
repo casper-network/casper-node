@@ -7,8 +7,9 @@ use crate::{
         highway_core::{
             endorsement::SignedEndorsement,
             evidence::Evidence,
+            highway::{PingError, VertexError},
             state::{self, Panorama},
-            validators::ValidatorIndex,
+            validators::{ValidatorIndex, Validators},
         },
         traits::{Context, ValidatorSecret},
     },
@@ -26,6 +27,7 @@ pub(crate) enum Dependency<C: Context> {
     Unit(C::Hash),
     Evidence(ValidatorIndex),
     Endorsement(C::Hash),
+    Ping(ValidatorIndex, Timestamp),
 }
 
 impl<C: Context> Dependency<C> {
@@ -47,6 +49,7 @@ pub(crate) enum Vertex<C: Context> {
     Unit(SignedWireUnit<C>),
     Evidence(Evidence<C>),
     Endorsements(Endorsements<C>),
+    Ping(Ping<C>),
 }
 
 impl<C: Context> Vertex<C> {
@@ -59,7 +62,7 @@ impl<C: Context> Vertex<C> {
     pub(crate) fn value(&self) -> Option<&C::ConsensusValue> {
         match self {
             Vertex::Unit(swunit) => swunit.wire_unit().value.as_ref(),
-            Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
+            Vertex::Evidence(_) | Vertex::Endorsements(_) | Vertex::Ping(_) => None,
         }
     }
 
@@ -67,24 +70,21 @@ impl<C: Context> Vertex<C> {
     pub(crate) fn unit_hash(&self) -> Option<C::Hash> {
         match self {
             Vertex::Unit(swunit) => Some(swunit.hash()),
-            Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
+            Vertex::Evidence(_) | Vertex::Endorsements(_) | Vertex::Ping(_) => None,
         }
     }
 
     /// Returns whether this is evidence, as opposed to other types of vertices.
     pub(crate) fn is_evidence(&self) -> bool {
-        match self {
-            Vertex::Unit(_) | Vertex::Endorsements(_) => false,
-            Vertex::Evidence(_) => true,
-        }
+        matches!(self, Vertex::Evidence(_))
     }
 
     /// Returns a `Timestamp` provided the vertex is a `Vertex::Unit`
     pub(crate) fn timestamp(&self) -> Option<Timestamp> {
         match self {
             Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit.wire_unit().timestamp),
-            Vertex::Evidence(_) => None,
-            Vertex::Endorsements(_) => None,
+            Vertex::Ping(ping) => Some(ping.timestamp()),
+            Vertex::Evidence(_) | Vertex::Endorsements(_) => None,
         }
     }
 
@@ -100,6 +100,7 @@ impl<C: Context> Vertex<C> {
             Vertex::Unit(signed_wire_unit) => Dependency::Unit(signed_wire_unit.hash()),
             Vertex::Evidence(evidence) => Dependency::Evidence(evidence.perpetrator()),
             Vertex::Endorsements(endorsement) => Dependency::Endorsement(endorsement.unit),
+            Vertex::Ping(ping) => Dependency::Ping(ping.creator(), ping.timestamp()),
         }
     }
 }
@@ -275,5 +276,66 @@ impl<C: Context> Endorsements<C> {
     /// Returns an iterator over validator indexes that endorsed the `unit`.
     pub fn validator_ids(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.endorsers.iter().map(|(v, _)| *v)
+    }
+}
+
+/// A ping sent by a validator to signal that it is online but has not created new units in a
+/// while.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub(crate) struct Ping<C>
+where
+    C: Context,
+{
+    creator: ValidatorIndex,
+    timestamp: Timestamp,
+    signature: C::Signature,
+}
+
+impl<C: Context> Ping<C> {
+    /// Creates a new signed ping.
+    pub(crate) fn new(
+        creator: ValidatorIndex,
+        timestamp: Timestamp,
+        sk: &C::ValidatorSecret,
+        rng: &mut NodeRng,
+    ) -> Self {
+        Ping {
+            creator,
+            timestamp,
+            signature: sk.sign(&Self::hash(creator, timestamp), rng),
+        }
+    }
+
+    /// The creator who signals that it is online.
+    pub(crate) fn creator(&self) -> ValidatorIndex {
+        self.creator
+    }
+
+    /// The timestamp when the ping was created.
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.timestamp
+    }
+
+    /// Validates the ping and returns an error if it is not signed by the creator.
+    pub(crate) fn validate(
+        &self,
+        validators: &Validators<C::ValidatorId>,
+    ) -> Result<(), VertexError> {
+        let v_id = validators.id(self.creator).ok_or(PingError::Creator)?;
+        let hash = Self::hash(self.creator, self.timestamp);
+        if !C::verify_signature(&hash, v_id, &self.signature) {
+            return Err(PingError::Signature.into());
+        }
+        Ok(())
+    }
+
+    /// Computes the hash of a ping, i.e. of the creator and timestamp.
+    fn hash(creator: ValidatorIndex, timestamp: Timestamp) -> C::Hash {
+        let bytes = bincode::serialize(&(creator, timestamp)).expect("serialize Ping");
+        <C as Context>::hash(&bytes)
     }
 }

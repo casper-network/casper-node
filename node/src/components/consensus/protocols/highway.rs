@@ -657,9 +657,10 @@ where
         timestamp: Timestamp,
         unit_hash_file: Option<PathBuf>,
     ) -> ProtocolOutcomes<I, C> {
-        let av_effects = self
-            .highway
-            .activate_validator(our_id, secret, timestamp, unit_hash_file);
+        let ftt = self.finality_detector.fault_tolerance_threshold();
+        let av_effects =
+            self.highway
+                .activate_validator(our_id, secret, timestamp, unit_hash_file, ftt);
         self.process_av_effects(av_effects)
     }
 
