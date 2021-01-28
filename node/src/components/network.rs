@@ -67,8 +67,8 @@ use crate::{
     NodeRng,
 };
 
-/// Env var which, if it's defined at runtime, enables the libp2p server.
-pub(crate) const ENABLE_LIBP2P_ENV_VAR: &str = "CASPER_ENABLE_LIBP2P";
+/// Env var which, if it's defined at runtime, enables the small_network component.
+pub(crate) const ENABLE_SMALL_NET_ENV_VAR: &str = "CASPER_ENABLE_LEGACY_NET";
 
 /// A helper trait whose bounds represent the requirements for a payload that `Network` can
 /// work with.
@@ -167,8 +167,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         let (gossip_message_sender, gossip_message_receiver) = mpsc::unbounded_channel();
         let (server_shutdown_sender, server_shutdown_receiver) = watch::channel(());
 
-        // If the env var "CASPER_ENABLE_LIBP2P" is not defined, exit without starting the server.
-        if env::var(ENABLE_LIBP2P_ENV_VAR).is_err() {
+        // If the env var "CASPER_ENABLE_LEGACY_NET" is defined, exit without starting the server.
+        if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
             let network = Network {
                 our_id,
                 peers: HashMap::new(),
@@ -742,7 +742,7 @@ impl<REv: Send + 'static, P: Send + 'static> Finalize for Network<REv, P> {
                     Ok(_) => debug!("{}: server exited cleanly", self.our_id),
                     Err(err) => error!(%err, "{}: could not join server task cleanly", self.our_id),
                 }
-            } else if env::var(ENABLE_LIBP2P_ENV_VAR).is_ok() {
+            } else if env::var(ENABLE_SMALL_NET_ENV_VAR).is_err() {
                 warn!("{}: server shutdown while already shut down", self.our_id)
             }
         }
