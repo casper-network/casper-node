@@ -492,8 +492,8 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUTHORIZED_KEYS,
         runtime_args! {
-            ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(6),
-            ARG_DEPLOY_THRESHOLD => Weight::new(6),
+            ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(5),
+            ARG_DEPLOY_THRESHOLD => Weight::new(5),
         },
     )
     .build();
