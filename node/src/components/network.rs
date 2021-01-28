@@ -33,7 +33,7 @@ use libp2p::{
     request_response::{RequestResponseEvent, RequestResponseMessage},
     swarm::{SwarmBuilder, SwarmEvent},
     tcp::TokioTcpConfig,
-    yamux::Config as YamuxConfig,
+    yamux::YamuxConfig,
     Multiaddr, PeerId, Swarm, Transport,
 };
 use rand::seq::IteratorRandom;
@@ -145,7 +145,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         // Create a new Ed25519 keypair for this session.
         let our_id_keys = Keypair::generate_ed25519();
         let our_peer_id = PeerId::from(our_id_keys.public());
-        let our_id = NodeId::from(our_peer_id.clone());
+        let our_id = NodeId::from(our_peer_id);
 
         // Convert the known addresses to multiaddr format and prepare the shutdown signal.
         let known_addresses = config
@@ -206,7 +206,8 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             .boxed();
 
         // Create a Swarm to manage peers and events.
-        let behavior = Behavior::new(&config, chainspec, our_id_keys.public());
+        let behavior = Behavior::new(&config, chainspec, our_id_keys.public())?;
+
         let mut swarm = SwarmBuilder::new(transport, behavior, our_peer_id)
             .executor(Box::new(|future| {
                 tokio::spawn(future);
@@ -273,7 +274,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
             }
         }
 
-        let _ = self.peers.insert(peer_id.clone(), endpoint);
+        let _ = self.peers.insert(peer_id, endpoint);
         // TODO - see if this can be removed.  The announcement is only used by the joiner reactor.
         effect_builder.announce_new_peer(peer_id).ignore()
     }
@@ -369,7 +370,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
         }
 
         for &peer_id in &peer_ids {
-            self.send_message(peer_id.clone(), payload.clone());
+            self.send_message(*peer_id, payload.clone());
         }
 
         peer_ids.into_iter().cloned().collect()
@@ -388,12 +389,12 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Network<REv, P> {
     /// Returns the node id of this network node.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
-        self.our_id.clone()
+        self.our_id
     }
 }
 
 fn our_id(swarm: &Swarm<Behavior>) -> NodeId {
-    NodeId::P2p(Swarm::local_peer_id(swarm).clone())
+    NodeId::P2p(*Swarm::local_peer_id(swarm))
 }
 
 async fn server_task<REv: ReactorEventT<P>, P: PayloadT>(
@@ -614,6 +615,7 @@ async fn handle_one_way_messaging_event<REv: ReactorEventT<P>, P: PayloadT>(
                 our_id(swarm)
             )
         }
+        RequestResponseEvent::ResponseSent { .. } => {}
     }
 }
 
@@ -623,13 +625,17 @@ async fn handle_gossip_event<REv: ReactorEventT<P>, P: PayloadT>(
     event: GossipsubEvent,
 ) {
     match event {
-        GossipsubEvent::Message(_sender, _message_id, message) => {
+        GossipsubEvent::Message {
+            propagation_source: sender,
+            message,
+            ..
+        } => {
             // We've received a gossiped message: announce it via the reactor on the
             // `NetworkIncoming` queue.
             let sender = match message.source {
                 Some(source) => NodeId::from(source),
                 None => {
-                    warn!(%_sender, ?message, "{}: libp2p gossiped message without source", our_id(swarm));
+                    warn!(%sender, ?message, "{}: libp2p gossiped message without source", our_id(swarm));
                     return;
                 }
             };
@@ -875,7 +881,7 @@ impl<REv: ReactorEventT<P>, P: PayloadT> Component<REv> for Network<REv, P> {
                     .peers
                     .iter()
                     .map(|(node_id, endpoint)| {
-                        (node_id.clone(), endpoint.get_remote_address().to_string())
+                        (*node_id, endpoint.get_remote_address().to_string())
                     })
                     .collect();
                 responder.respond(peers).ignore()

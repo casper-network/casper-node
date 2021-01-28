@@ -27,6 +27,10 @@ impl ProtocolId {
 
         ProtocolId { id }
     }
+
+    pub(super) fn id(&self) -> String {
+        self.id.clone()
+    }
 }
 
 impl ProtocolName for ProtocolId {

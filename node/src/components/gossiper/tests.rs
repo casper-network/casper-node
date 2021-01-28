@@ -440,7 +440,7 @@ async fn should_get_from_alternate_source() {
     debug!("removed node {}", &node_ids[0]);
 
     // Run node 2 until it receives and responds to the gossip request from node 0.
-    let node_id_0 = node_ids[0].clone();
+    let node_id_0 = node_ids[0];
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
             Event::NetworkRequest(NetworkRequest::SendMessage {

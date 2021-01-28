@@ -1,6 +1,9 @@
 use std::io;
 
-use libp2p::{core::connection::ConnectionLimit, noise::NoiseError, Multiaddr, TransportError};
+use libp2p::{
+    core::connection::ConnectionLimit, gossipsub::error::SubscriptionError, noise::NoiseError,
+    Multiaddr, TransportError,
+};
 use thiserror::Error;
 
 /// Error type returned by the `Network` component.
@@ -39,4 +42,18 @@ pub enum Error {
     /// Message too large.
     #[error("message of {actual_size} bytes exceeds limit of {max_size} bytes")]
     MessageTooLarge { max_size: u32, actual_size: u64 },
+
+    /// Behavior error.
+    #[error("unable to create new behavior {0}")]
+    Behavior(String),
+
+    /// Subscription error.
+    #[error("subscription error")]
+    Subscription(String),
+}
+
+impl From<SubscriptionError> for Error {
+    fn from(error: SubscriptionError) -> Self {
+        Error::Subscription(format!("{:?}", error))
+    }
 }
