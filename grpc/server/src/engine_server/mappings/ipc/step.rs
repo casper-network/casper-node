@@ -105,6 +105,8 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
 
         let next_era_id = pb_step_request.get_next_era_id();
 
+        let era_end_timestamp_millis = pb_step_request.get_era_end_timestamp_millis();
+
         Ok(StepRequest::new(
             parent_state_hash,
             protocol_version,
@@ -112,6 +114,7 @@ impl TryFrom<ipc::StepRequest> for StepRequest {
             reward_items,
             run_auction,
             next_era_id,
+            era_end_timestamp_millis,
         ))
     }
 }
@@ -143,6 +146,8 @@ impl TryFrom<StepRequest> for ipc::StepRequest {
             ret
         };
         result.set_reward_items(reward_items.into());
+
+        result.set_era_end_timestamp_millis(step_request.era_end_timestamp_millis);
 
         Ok(result)
     }

@@ -291,13 +291,15 @@ message ChainSpec {
             // The amount of auction delay. 
             uint64 auction_delay = 8;
             // the default_locked funds period. 
-            uint64 locked_funds_period = 10;
+            uint64 locked_funds_period_millis = 10;
             // Round seigniorage rate expressed as a fraction.
             Ratio round_seigniorage_rate = 11;
             // Unbonding delay expressed in eras.
             uint64 unbonding_delay = 12;
             // costs associated with the system
             SystemConfig system_config = 13;
+            // genesis timestamp
+            uint64 genesis_timestamp_millis = 14;
 
             message GenesisAccount {
                 bytes public_key_bytes = 1;
@@ -600,6 +602,7 @@ message StepRequest {
     repeated RewardItem reward_items = 4;
     bool run_auction = 5;
     uint64 next_era_id = 6;
+    uint64 era_end_timestamp_millis = 7;
 }
 
 message SlashItem{

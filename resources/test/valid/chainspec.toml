@@ -5,7 +5,7 @@ protocol_version = '0.1.0'
 accounts_path = 'accounts.csv'
 validator_slots = 5
 auction_delay = 3
-locked_funds_period = 0
+locked_funds_period_millis = 7776000000
 # (1+0.02)^((2^14)/31536000000)-1 is expressed as a fractional number below.
 round_seigniorage_rate = [6_414, 623_437_335_209]
 unbonding_delay = 14

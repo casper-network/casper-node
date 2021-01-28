@@ -51,7 +51,8 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        EraId, EraValidators, ValidatorWeights, AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION,
+        EraId, EraValidators, ValidatorWeights, ARG_ERA_END_TIMESTAMP_MILLIS, AUCTION_DELAY_KEY,
+        ERA_ID_KEY, METHOD_RUN_AUCTION,
     },
     bytesrepr::{self},
     mint::TOTAL_SUPPLY_KEY,
@@ -555,16 +556,14 @@ where
         self
     }
 
-    pub fn run_auction(&mut self) -> &mut Self {
-        const ARG_ENTRY_POINT: &str = "entry_point";
+    pub fn run_auction(&mut self, era_end_timestamp_millis: u64) -> &mut Self {
         const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
-        const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
-        let run_request = ExecuteRequestBuilder::standard(
+        let auction = self.get_auction_contract_hash();
+        let run_request = ExecuteRequestBuilder::contract_call_by_hash(
             SYSTEM_ADDR,
-            CONTRACT_AUCTION_BIDS,
-            runtime_args! {
-                ARG_ENTRY_POINT => METHOD_RUN_AUCTION
-            },
+            auction,
+            METHOD_RUN_AUCTION,
+            runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => era_end_timestamp_millis },
         )
         .build();
         self.exec(run_request).commit().expect_success()

@@ -3,8 +3,9 @@ use assert_matches::assert_matches;
 use casper_engine_test_support::{
     internal::{
         utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-        DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-        DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY,
+        DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_RUN_GENESIS_REQUEST, DEFAULT_UNBONDING_DELAY, TIMESTAMP_MILLIS_INCREMENT,
     },
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
@@ -18,8 +19,9 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     auction::{
-        Bids, DelegationRate, EraId, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
-        INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH, UNBONDING_PURSES_KEY,
+        Bids, DelegationRate, EraId, UnbondingPurses, ARG_ERA_END_TIMESTAMP_MILLIS,
+        ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION, METHOD_SLASH,
+        UNBONDING_PURSES_KEY,
     },
     runtime_args,
     system_contract_errors::auction,
@@ -30,7 +32,6 @@ const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_AUCTION_BIDDING: &str = "auction_bidding.wasm";
-const CONTRACT_AUCTION_BIDS: &str = "auction_bids.wasm";
 
 const GENESIS_VALIDATOR_STAKE: u64 = 50_000;
 const GENESIS_ACCOUNT_STAKE: u64 = 100_000;
@@ -43,7 +44,6 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";
 const ARG_ENTRY_POINT: &str = "entry_point";
 const ARG_ACCOUNT_HASH: &str = "account_hash";
-const ARG_RUN_AUCTION: &str = "run_auction";
 const ARG_DELEGATION_RATE: &str = "delegation_rate";
 
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -140,16 +140,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     let unbond_era_1 = unbond_list[0].era_of_creation();
 
-    let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ADDR,
-        auction,
-        METHOD_RUN_AUCTION,
-        runtime_args! {},
-    )
-    .build();
-
-    builder.exec(exec_request_4).expect_success().commit();
-
+    builder.run_auction(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS);
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
@@ -344,6 +335,9 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 fn should_run_successful_bond_and_unbond_with_release() {
     let default_public_key_arg = *DEFAULT_ACCOUNT_PUBLIC_KEY;
 
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
 
@@ -398,20 +392,8 @@ fn should_run_successful_bond_and_unbond_with_release() {
     //
     // Advance era by calling run_auction
     //
-    let run_auction_request_1 = ExecuteRequestBuilder::standard(
-        SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => ARG_RUN_AUCTION,
-        },
-    )
-    .build();
-
-    builder
-        .exec(run_auction_request_1)
-        .commit()
-        .expect_success();
-
+    builder.run_auction(timestamp_millis);
+    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     //
     // Partial unbond
     //
@@ -449,16 +431,8 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     let account_balance_before_auction = builder.get_purse_balance(unbonding_purse);
 
-    let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ADDR,
-        auction,
-        METHOD_RUN_AUCTION,
-        runtime_args! {},
-    )
-    .build();
-
-    builder.exec(exec_request_3).expect_success().commit();
-
+    builder.run_auction(timestamp_millis);
+    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     let unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
     assert_eq!(unbond_purses.len(), 1);
 
@@ -484,35 +458,13 @@ fn should_run_successful_bond_and_unbond_with_release() {
     //
     // Advance state to hit the unbonding period
     //
-
     for _ in 0..DEFAULT_UNBONDING_DELAY {
-        let run_auction_request_1 = ExecuteRequestBuilder::standard(
-            SYSTEM_ADDR,
-            CONTRACT_AUCTION_BIDS,
-            runtime_args! {
-                ARG_ENTRY_POINT => ARG_RUN_AUCTION,
-            },
-        )
-        .build();
-
-        builder
-            .exec(run_auction_request_1)
-            .commit()
-            .expect_success();
+        builder.run_auction(timestamp_millis);
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     // Should pay out
-
-    let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
-        SYSTEM_ADDR,
-        auction,
-        METHOD_RUN_AUCTION,
-        runtime_args! {},
-    )
-    .build();
-
-    builder.exec(exec_request_4).expect_success().commit();
-
+    builder.run_auction(timestamp_millis);
     assert_eq!(
         builder.get_purse_balance(unbonding_purse),
         account_balance_before_auction + unbond_amount
@@ -539,6 +491,9 @@ fn should_run_successful_bond_and_unbond_with_release() {
 #[test]
 fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     let default_public_key_arg = *DEFAULT_ACCOUNT_PUBLIC_KEY;
+
+    let mut timestamp_millis =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST);
@@ -615,12 +570,11 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     //
     // Advance era by calling run_auction
     //
-    let run_auction_request_1 = ExecuteRequestBuilder::standard(
+    let run_auction_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
         SYSTEM_ADDR,
-        CONTRACT_AUCTION_BIDS,
-        runtime_args! {
-            ARG_ENTRY_POINT => ARG_RUN_AUCTION,
-        },
+        auction,
+        METHOD_RUN_AUCTION,
+        runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => timestamp_millis },
     )
     .with_protocol_version(new_protocol_version)
     .build();
@@ -672,7 +626,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         SYSTEM_ADDR,
         auction,
         METHOD_RUN_AUCTION,
-        runtime_args! {},
+        runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => timestamp_millis },
     )
     .with_protocol_version(new_protocol_version)
     .build();
@@ -706,17 +660,17 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     //
 
     for _ in 0..DEFAULT_UNBONDING_DELAY {
-        let run_auction_request = ExecuteRequestBuilder::standard(
+        let run_auction_request = ExecuteRequestBuilder::contract_call_by_hash(
             SYSTEM_ADDR,
-            CONTRACT_AUCTION_BIDS,
-            runtime_args! {
-                ARG_ENTRY_POINT => ARG_RUN_AUCTION,
-            },
+            auction,
+            METHOD_RUN_AUCTION,
+            runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => timestamp_millis },
         )
         .with_protocol_version(new_protocol_version)
         .build();
 
         builder.exec(run_auction_request).commit().expect_success();
+        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
     // Won't pay out (yet) as we increased unbonding period
@@ -724,7 +678,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         SYSTEM_ADDR,
         auction,
         METHOD_RUN_AUCTION,
-        runtime_args! {},
+        runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => timestamp_millis },
     )
     .with_protocol_version(new_protocol_version)
     .build();
@@ -733,6 +687,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         .exec(run_auction_request_1)
         .expect_success()
         .commit();
+    timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
 
     // Not paid yet
     assert_eq!(
@@ -747,7 +702,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             SYSTEM_ADDR,
             auction,
             METHOD_RUN_AUCTION,
-            runtime_args! {},
+            runtime_args! { ARG_ERA_END_TIMESTAMP_MILLIS => timestamp_millis },
         )
         .with_protocol_version(new_protocol_version)
         .build();

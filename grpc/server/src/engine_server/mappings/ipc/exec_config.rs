@@ -19,18 +19,20 @@ impl TryFrom<ipc::ChainSpec_GenesisConfig_ExecConfig> for ExecConfig {
         let system_config = pb_exec_config.take_system_config().try_into()?;
         let validator_slots = pb_exec_config.get_validator_slots();
         let auction_delay = pb_exec_config.get_auction_delay();
-        let locked_funds_period = pb_exec_config.get_locked_funds_period();
+        let locked_funds_period_millis = pb_exec_config.get_locked_funds_period_millis();
         let round_seigniorage_rate = pb_exec_config.take_round_seigniorage_rate().into();
         let unbonding_delay = pb_exec_config.get_unbonding_delay();
+        let genesis_timestamp_millis = pb_exec_config.get_genesis_timestamp_millis();
         Ok(ExecConfig::new(
             accounts,
             wasm_config,
             system_config,
             validator_slots,
             auction_delay,
-            locked_funds_period,
+            locked_funds_period_millis,
             round_seigniorage_rate,
             unbonding_delay,
+            genesis_timestamp_millis,
         ))
     }
 }
@@ -51,9 +53,10 @@ impl From<ExecConfig> for ipc::ChainSpec_GenesisConfig_ExecConfig {
         pb_exec_config.set_system_config(exec_config.system_config().clone().into());
         pb_exec_config.set_validator_slots(exec_config.validator_slots());
         pb_exec_config.set_auction_delay(exec_config.auction_delay());
-        pb_exec_config.set_locked_funds_period(exec_config.locked_funds_period());
+        pb_exec_config.set_locked_funds_period_millis(exec_config.locked_funds_period_millis());
         pb_exec_config.set_round_seigniorage_rate(exec_config.round_seigniorage_rate().into());
         pb_exec_config.set_unbonding_delay(exec_config.unbonding_delay());
+        pb_exec_config.set_genesis_timestamp_millis(exec_config.genesis_timestamp_millis());
         pb_exec_config
     }
 }

@@ -209,10 +209,8 @@ pub struct GenesisConfig {
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
     /// auction_delay + 1
     pub(crate) auction_delay: u64,
-    /// The delay for the payout of funds, in eras. If a withdraw request is included in a block in
-    /// era N (other than the last one), they are paid out in the last block of era N +
-    /// locked_funds_period.
-    pub(crate) locked_funds_period: EraId,
+    /// Number of days (in milliseconds) after genesis that a genesis validator's bid is locked
+    pub(crate) locked_funds_period_millis: u64,
     /// Round seigniorage rate represented as a fractional number.
     #[data_size(skip)]
     pub(crate) round_seigniorage_rate: Ratio<u64>,
@@ -301,7 +299,7 @@ impl GenesisConfig {
             timestamp,
             validator_slots,
             auction_delay,
-            locked_funds_period,
+            locked_funds_period_millis: locked_funds_period,
             round_seigniorage_rate,
             unbonding_delay,
             protocol_version,
@@ -406,15 +404,17 @@ impl Chainspec {
 
 impl Into<ExecConfig> for Chainspec {
     fn into(self) -> ExecConfig {
+        let genesis_timestamp = self.genesis.timestamp.millis();
         ExecConfig::new(
             self.genesis.accounts,
             self.genesis.wasm_config,
             self.genesis.system_config,
             self.genesis.validator_slots,
             self.genesis.auction_delay,
-            self.genesis.locked_funds_period,
+            self.genesis.locked_funds_period_millis,
             self.genesis.round_seigniorage_rate,
             self.genesis.unbonding_delay,
+            genesis_timestamp,
         )
     }
 }

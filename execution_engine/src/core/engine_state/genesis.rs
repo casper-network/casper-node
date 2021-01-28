@@ -15,14 +15,14 @@ use casper_types::{
     auction::{
         Bid, Bids, DelegationRate, EraId, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurses, ValidatorWeights, ARG_DELEGATION_RATE,
-        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_PUBLIC_KEY, ARG_REWARD_FACTORS, ARG_VALIDATOR,
-        ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY, DELEGATOR_REWARD_PURSE_KEY,
-        ERA_ID_KEY, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY, METHOD_ADD_BID, METHOD_DELEGATE,
-        METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID,
-        METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH, METHOD_UNDELEGATE,
-        METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD, METHOD_WITHDRAW_VALIDATOR_REWARD,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, UNBONDING_PURSES_KEY,
-        VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
+        ARG_DELEGATOR, ARG_DELEGATOR_PUBLIC_KEY, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_PUBLIC_KEY,
+        ARG_REWARD_FACTORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEY, AUCTION_DELAY_KEY, BIDS_KEY,
+        DELEGATOR_REWARD_PURSE_KEY, ERA_ID_KEY, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
+        METHOD_ADD_BID, METHOD_DELEGATE, METHOD_DISTRIBUTE, METHOD_GET_ERA_VALIDATORS,
+        METHOD_READ_ERA_ID, METHOD_READ_SEIGNIORAGE_RECIPIENTS, METHOD_RUN_AUCTION, METHOD_SLASH,
+        METHOD_UNDELEGATE, METHOD_WITHDRAW_BID, METHOD_WITHDRAW_DELEGATOR_REWARD,
+        METHOD_WITHDRAW_VALIDATOR_REWARD, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
+        UNBONDING_PURSES_KEY, VALIDATOR_REWARD_PURSE_KEY, VALIDATOR_SLOTS_KEY,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     contracts::{
@@ -309,9 +309,10 @@ pub struct ExecConfig {
     system_config: SystemConfig,
     validator_slots: u32,
     auction_delay: u64,
-    locked_funds_period: EraId,
+    locked_funds_period_millis: u64,
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: EraId,
+    genesis_timestamp_millis: u64,
 }
 
 impl ExecConfig {
@@ -322,9 +323,10 @@ impl ExecConfig {
         system_config: SystemConfig,
         validator_slots: u32,
         auction_delay: u64,
-        locked_funds_period: EraId,
+        locked_funds_period_millis: u64,
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: EraId,
+        genesis_timestamp_millis: u64,
     ) -> ExecConfig {
         ExecConfig {
             accounts,
@@ -332,9 +334,10 @@ impl ExecConfig {
             system_config,
             validator_slots,
             auction_delay,
-            locked_funds_period,
+            locked_funds_period_millis,
             round_seigniorage_rate,
             unbonding_delay,
+            genesis_timestamp_millis,
         }
     }
 
@@ -368,8 +371,8 @@ impl ExecConfig {
         self.auction_delay
     }
 
-    pub fn locked_funds_period(&self) -> EraId {
-        self.locked_funds_period
+    pub fn locked_funds_period_millis(&self) -> u64 {
+        self.locked_funds_period_millis
     }
 
     pub fn round_seigniorage_rate(&self) -> Ratio<u64> {
@@ -378,6 +381,10 @@ impl ExecConfig {
 
     pub fn unbonding_delay(&self) -> EraId {
         self.unbonding_delay
+    }
+
+    pub fn genesis_timestamp_millis(&self) -> u64 {
+        self.genesis_timestamp_millis
     }
 }
 
@@ -395,14 +402,16 @@ impl Distribution<ExecConfig> for Standard {
 
         let auction_delay = rng.gen();
 
-        let locked_funds_period: EraId = rng.gen();
-
-        let unbonding_delay = rng.gen();
+        let locked_funds_period_millis = rng.gen();
 
         let round_seigniorage_rate = Ratio::new(
             rng.gen_range(1, 1_000_000_000),
             rng.gen_range(1, 1_000_000_000),
         );
+
+        let unbonding_delay = rng.gen();
+
+        let genesis_timestamp_millis = rng.gen();
 
         ExecConfig {
             accounts,
@@ -410,9 +419,10 @@ impl Distribution<ExecConfig> for Standard {
             system_config,
             validator_slots,
             auction_delay,
-            locked_funds_period,
+            locked_funds_period_millis,
             round_seigniorage_rate,
             unbonding_delay,
+            genesis_timestamp_millis,
         }
     }
 }
@@ -602,8 +612,9 @@ where
     }
 
     pub(crate) fn create_auction(&self) -> Result<ContractHash, GenesisError> {
-        let locked_funds_period = self.exec_config.locked_funds_period();
+        let locked_funds_period_millis = self.exec_config.locked_funds_period_millis();
         let auction_delay: u64 = self.exec_config.auction_delay();
+        let genesis_timestamp_millis: u64 = self.exec_config.genesis_timestamp_millis();
 
         let mut named_keys = NamedKeys::new();
 
@@ -652,8 +663,10 @@ where
                     *staked_amount,
                     DeployHash::new(public_key.to_account_hash().value()),
                 )?;
+                let release_timestamp_millis =
+                    genesis_timestamp_millis + locked_funds_period_millis;
                 let founding_validator =
-                    Bid::locked(purse_uref, *staked_amount, locked_funds_period);
+                    Bid::locked(purse_uref, *staked_amount, release_timestamp_millis);
                 validators.insert(*public_key, founding_validator);
             }
             validators
@@ -750,7 +763,7 @@ where
         self.tracking_copy.borrow_mut().write(
             locked_funds_period_uref.into(),
             StoredValue::CLValue(
-                CLValue::from_t(locked_funds_period)
+                CLValue::from_t(locked_funds_period_millis)
                     .map_err(|_| GenesisError::CLValue(LOCKED_FUNDS_PERIOD_KEY.to_string()))?,
             ),
         );
@@ -1152,7 +1165,7 @@ where
 
         let entry_point = EntryPoint::new(
             METHOD_RUN_AUCTION,
-            vec![],
+            vec![Parameter::new(ARG_ERA_END_TIMESTAMP_MILLIS, u64::cl_type())],
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Contract,

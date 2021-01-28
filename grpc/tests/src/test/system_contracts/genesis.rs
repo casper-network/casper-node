@@ -2,9 +2,9 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     internal::{
-        InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_LOCKED_FUNDS_PERIOD,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-        DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+        InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
+        DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
     },
     AccountHash,
 };
@@ -63,9 +63,10 @@ fn should_run_genesis() {
     let system_config = *DEFAULT_SYSTEM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
-    let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
+    let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+    let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
 
     let exec_config = ExecConfig::new(
         GENESIS_CUSTOM_ACCOUNTS.clone(),
@@ -76,6 +77,7 @@ fn should_run_genesis() {
         locked_funds_period,
         round_seigniorage_rate,
         unbonding_delay,
+        genesis_timestamp,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, exec_config);
@@ -130,9 +132,10 @@ fn should_track_total_token_supply_in_mint() {
     let protocol_version = ProtocolVersion::V1_0_0;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
-    let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD;
+    let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
+    let genesis_tiemstamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
     let ee_config = ExecConfig::new(
         accounts.clone(),
         wasm_config,
@@ -142,6 +145,7 @@ fn should_track_total_token_supply_in_mint() {
         locked_funds_period,
         round_seigniorage_rate,
         unbonding_delay,
+        genesis_tiemstamp,
     );
     let run_genesis_request =
         RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);
