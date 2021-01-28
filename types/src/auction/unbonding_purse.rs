@@ -11,8 +11,6 @@ use crate::{
 pub struct UnbondingPurse {
     /// Bonding Purse
     bonding_purse: URef,
-    /// Unbonding Purse.
-    unbonding_purse: URef,
     /// Validators public key.
     validator_public_key: PublicKey,
     /// Unbonders public key.
@@ -27,7 +25,6 @@ impl UnbondingPurse {
     /// Creates [`UnbondingPurse`] instance for an unbonding request.
     pub const fn new(
         bonding_purse: URef,
-        unbonding_purse: URef,
         validator_public_key: PublicKey,
         unbonder_public_key: PublicKey,
         era_of_creation: EraId,
@@ -35,7 +32,6 @@ impl UnbondingPurse {
     ) -> Self {
         Self {
             bonding_purse,
-            unbonding_purse,
             validator_public_key,
             unbonder_public_key,
             era_of_creation,
@@ -52,11 +48,6 @@ impl UnbondingPurse {
     /// Returns bonding purse used to make this unbonding request.
     pub fn bonding_purse(&self) -> &URef {
         &self.bonding_purse
-    }
-
-    /// Returns unbonding purse which will be used to deliver funds.
-    pub fn unbonding_purse(&self) -> &URef {
-        &self.unbonding_purse
     }
 
     /// Returns public key of validator.
@@ -88,7 +79,6 @@ impl ToBytes for UnbondingPurse {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
         result.extend(&self.bonding_purse.to_bytes()?);
-        result.extend(&self.unbonding_purse.to_bytes()?);
         result.extend(&self.validator_public_key.to_bytes()?);
         result.extend(&self.unbonder_public_key.to_bytes()?);
         result.extend(&self.era_of_creation.to_bytes()?);
@@ -97,7 +87,6 @@ impl ToBytes for UnbondingPurse {
     }
     fn serialized_length(&self) -> usize {
         self.bonding_purse.serialized_length()
-            + self.unbonding_purse.serialized_length()
             + self.validator_public_key.serialized_length()
             + self.unbonder_public_key.serialized_length()
             + self.era_of_creation.serialized_length()
@@ -108,7 +97,6 @@ impl ToBytes for UnbondingPurse {
 impl FromBytes for UnbondingPurse {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (bonding_purse, bytes) = FromBytes::from_bytes(bytes)?;
-        let (unbonding_purse, bytes) = FromBytes::from_bytes(bytes)?;
         let (validator_public_key, bytes) = FromBytes::from_bytes(bytes)?;
         let (unbonder_public_key, bytes) = FromBytes::from_bytes(bytes)?;
         let (era_of_creation, bytes) = FromBytes::from_bytes(bytes)?;
@@ -116,7 +104,6 @@ impl FromBytes for UnbondingPurse {
         Ok((
             UnbondingPurse {
                 bonding_purse,
-                unbonding_purse,
                 validator_public_key,
                 unbonder_public_key,
                 era_of_creation,
@@ -143,7 +130,6 @@ mod tests {
     };
 
     const BONDING_PURSE: URef = URef::new([41; 32], AccessRights::READ_ADD_WRITE);
-    const UNBONDING_PURSE: URef = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
     const ERA_OF_WITHDRAWAL: EraId = EraId::max_value();
 
     static VALIDATOR_PUBLIC_KEY: Lazy<PublicKey> =
@@ -156,7 +142,6 @@ mod tests {
     fn serialization_roundtrip() {
         let unbonding_purse = UnbondingPurse {
             bonding_purse: BONDING_PURSE,
-            unbonding_purse: UNBONDING_PURSE,
             validator_public_key: *VALIDATOR_PUBLIC_KEY,
             unbonder_public_key: *UNBONDER_PUBLIC_KEY,
             era_of_creation: ERA_OF_WITHDRAWAL,
@@ -169,7 +154,6 @@ mod tests {
     fn should_be_validator_condition() {
         let validator_unbonding_purse = UnbondingPurse::new(
             BONDING_PURSE,
-            UNBONDING_PURSE,
             *VALIDATOR_PUBLIC_KEY,
             *VALIDATOR_PUBLIC_KEY,
             ERA_OF_WITHDRAWAL,
@@ -182,7 +166,6 @@ mod tests {
     fn should_be_delegator_condition() {
         let delegator_unbonding_purse = UnbondingPurse::new(
             BONDING_PURSE,
-            UNBONDING_PURSE,
             *VALIDATOR_PUBLIC_KEY,
             *UNBONDER_PUBLIC_KEY,
             ERA_OF_WITHDRAWAL,

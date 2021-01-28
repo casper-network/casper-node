@@ -10,10 +10,10 @@ use casper_execution_engine::{core::engine_state::genesis::GenesisAccount, share
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     auction::{
-        Bids, UnbondingPurses, ARG_DELEGATOR, ARG_UNBOND_PURSE, ARG_VALIDATOR,
-        ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY, METHOD_SLASH, UNBONDING_PURSES_KEY,
+        Bids, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, BIDS_KEY,
+        METHOD_SLASH, UNBONDING_PURSES_KEY,
     },
-    runtime_args, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -167,7 +167,6 @@ fn should_run_ee_1120_slash_delegators() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => *VALIDATOR_1,
             ARG_DELEGATOR => *DELEGATOR_1,
-            ARG_UNBOND_PURSE => Option::<URef>::None,
         },
     )
     .build();
@@ -180,7 +179,6 @@ fn should_run_ee_1120_slash_delegators() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_2),
             ARG_VALIDATOR => *VALIDATOR_2,
             ARG_DELEGATOR => *DELEGATOR_1,
-            ARG_UNBOND_PURSE => Option::<URef>::None,
         },
     )
     .build();
@@ -193,7 +191,6 @@ fn should_run_ee_1120_slash_delegators() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_3),
             ARG_VALIDATOR => *VALIDATOR_1,
             ARG_DELEGATOR => *VALIDATOR_2,
-            ARG_UNBOND_PURSE => Option::<URef>::None,
         },
     )
     .build();

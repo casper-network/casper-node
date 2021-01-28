@@ -143,7 +143,7 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
     {
         let height = block_header.height();
         let hash = block_header.hash();
-        trace!(%hash, %height, "Downloaded linear chain block.");
+        trace!(%hash, %height, "downloaded linear chain block.");
         // Reset peers before creating new requests.
         self.peers.reset(rng);
         let block_height = block_header.height();
@@ -153,9 +153,17 @@ impl<I: Clone + PartialEq + 'static> LinearChainSync<I> {
             // Keep syncing from genesis if we haven't reached the trusted block hash
             State::SyncingTrustedHash {
                 highest_block_seen,
+                ref latest_block,
                 ref mut validator_weights,
                 ..
             } if highest_block_seen != block_height => {
+                match latest_block.as_ref() {
+                    Some(expected) => assert_eq!(
+                        expected, &block_header,
+                        "Block execution result doesn't match received block."
+                    ),
+                    None => panic!("Unexpected block execution results."),
+                }
                 if let Some(validator_weights_for_new_era) =
                     block_header.next_era_validator_weights()
                 {
@@ -494,8 +502,9 @@ where
             Event::BlockHandled(header) => {
                 let block_height = header.height();
                 let block_hash = header.hash();
+                let effects = self.block_handled(rng, effect_builder, *header);
                 trace!(%block_height, %block_hash, "block handled.");
-                self.block_handled(rng, effect_builder, *header)
+                effects
             }
         }
     }

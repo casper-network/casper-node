@@ -59,6 +59,10 @@ impl TransferArgs {
     pub fn arg_id(&self) -> Option<u64> {
         self.arg_id
     }
+
+    pub fn amount(&self) -> U512 {
+        self.amount
+    }
 }
 
 impl TryFrom<TransferArgs> for RuntimeArgs {

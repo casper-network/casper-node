@@ -28,6 +28,10 @@ impl Gas {
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)
     }
+
+    pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
+        self.0.checked_sub(rhs.value()).map(Self::new)
+    }
 }
 
 impl fmt::Display for Gas {

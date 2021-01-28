@@ -17,10 +17,10 @@ use casper_types::{
     auction::{
         Bids, DelegationRate, EraId, EraValidators, SeigniorageRecipients, UnbondingPurses,
         ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
-        ARG_UNBOND_PURSE, ARG_VALIDATOR, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION,
+        ARG_VALIDATOR, BIDS_KEY, ERA_ID_KEY, INITIAL_ERA_ID, METHOD_RUN_AUCTION,
         UNBONDING_PURSES_KEY,
     },
-    runtime_args, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    runtime_args, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -31,7 +31,6 @@ const CONTRACT_ADD_BID: &str = "add_bid.wasm";
 const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
-const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 const SYSTEM_ADDR: AccountHash = AccountHash::new([0u8; 32]);
@@ -85,10 +84,6 @@ static BID_ACCOUNT_2_PK: Lazy<PublicKey> =
 static BID_ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BID_ACCOUNT_2_PK));
 const BID_ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const BID_ACCOUNT_2_BOND: u64 = 0;
-
-const UNBONDING_PURSE_NAME_1: &str = "unbonding_purse_1";
-const UNBONDING_PURSE_NAME_2: &str = "unbonding_purse_2";
-const ARG_PURSE_NAME: &str = "purse_name";
 
 #[ignore]
 #[test]
@@ -162,26 +157,6 @@ fn should_run_add_bid() {
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_2);
 
-    // 3a. create purse for unbonding purposes
-    let exec_request_2 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_CREATE_PURSE_01,
-        runtime_args! {
-            ARG_PURSE_NAME => UNBONDING_PURSE_NAME_1,
-        },
-    )
-    .build();
-
-    builder.exec(exec_request_2).expect_success().commit();
-    let unbonding_purse = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account")
-        .named_keys()
-        .get(UNBONDING_PURSE_NAME_1)
-        .expect("should have unbonding purse")
-        .into_uref()
-        .expect("unbonding purse should be an uref");
-
     // 3. withdraw some amount
     let exec_request_3 = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -189,7 +164,6 @@ fn should_run_add_bid() {
         runtime_args! {
             ARG_PUBLIC_KEY => *BID_ACCOUNT_1_PK,
             ARG_AMOUNT => U512::from(WITHDRAW_BID_AMOUNT_2),
-            ARG_UNBOND_PURSE => Some(unbonding_purse),
         },
     )
     .build();
@@ -210,14 +184,10 @@ fn should_run_add_bid() {
         .get(&BID_ACCOUNT_1_PK)
         .expect("should have unbond");
     assert_eq!(unbond_list.len(), 1);
+    assert_eq!(unbond_list[0].unbonder_public_key(), &*BID_ACCOUNT_1_PK);
     assert_eq!(unbond_list[0].validator_public_key(), &*BID_ACCOUNT_1_PK);
     // `WITHDRAW_BID_AMOUNT_2` is in unbonding list
 
-    assert_eq!(
-        &unbonding_purse,
-        unbond_list[0].unbonding_purse(),
-        "unbonding queue should have account's unbonding purse"
-    );
     assert_eq!(unbond_list[0].amount(), &U512::from(WITHDRAW_BID_AMOUNT_2),);
 
     assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID,);
@@ -350,7 +320,6 @@ fn should_run_delegate_and_undelegate() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
             ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
-            ARG_UNBOND_PURSE => Option::<URef>::None,
         },
     )
     .build();
@@ -702,42 +671,9 @@ fn should_release_founder_stake() {
 
     builder.run_genesis(&run_genesis_request);
 
-    let create_purse_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_CREATE_PURSE_01,
-        runtime_args! {
-            ARG_PURSE_NAME => UNBONDING_PURSE_NAME_1,
-        },
-    )
-    .build();
-    let create_purse_2 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_CREATE_PURSE_01,
-        runtime_args! {
-            ARG_PURSE_NAME => UNBONDING_PURSE_NAME_2,
-        },
-    )
-    .build();
-
-    builder.exec(create_purse_1).expect_success().commit();
-    builder.exec(create_purse_2).expect_success().commit();
-
-    let unbonding_purse_1 = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account")
-        .named_keys()
-        .get(UNBONDING_PURSE_NAME_1)
-        .expect("should have unbonding purse")
-        .into_uref()
-        .expect("unbonding purse should be an uref");
-    let unbonding_purse_2 = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account")
-        .named_keys()
-        .get(UNBONDING_PURSE_NAME_2)
-        .expect("should have unbonding purse")
-        .into_uref()
-        .expect("unbonding purse should be an uref");
+    let account_1 = builder
+        .get_account(*ACCOUNT_1_ADDR)
+        .expect("should have account 1");
 
     let auction = builder.get_auction_contract_hash();
 
@@ -789,7 +725,6 @@ fn should_release_founder_stake() {
         runtime_args! {
             ARG_PUBLIC_KEY => *ACCOUNT_1_PK,
             ARG_AMOUNT => U512::from(ACCOUNT_1_WITHDRAW_1),
-            ARG_UNBOND_PURSE => Some(unbonding_purse_1),
         },
     )
     .build();
@@ -799,7 +734,6 @@ fn should_release_founder_stake() {
         runtime_args! {
             ARG_PUBLIC_KEY => *ACCOUNT_1_PK,
             ARG_AMOUNT => U512::from(ACCOUNT_1_WITHDRAW_2),
-            ARG_UNBOND_PURSE => Some(unbonding_purse_2),
         },
     )
     .build();
@@ -869,15 +803,17 @@ fn should_release_founder_stake() {
     assert_eq!(pre_unbond_list[1].amount(), &ACCOUNT_1_WITHDRAW_2.into());
 
     // Funds are not transferred yet from the original bonding purse
-    assert_eq!(
-        builder.get_purse_balance(*pre_unbond_list[0].unbonding_purse()),
-        U512::zero(),
-    );
-    assert_eq!(
-        builder.get_purse_balance(*pre_unbond_list[1].unbonding_purse()),
-        U512::zero(),
-    );
+    // assert_eq!(
+    //     builder.get_purse_balance(*pre_unbond_list[0].unbonding_purse()),
+    //     U512::zero(),
+    // );
+    // assert_eq!(
+    //     builder.get_purse_balance(*pre_unbond_list[1].unbonding_purse()),
+    //     U512::zero(),
+    // );
     // check that bids are updated for given validator
+
+    let account_1_balance_before = builder.get_purse_balance(account_1.main_purse());
 
     for _ in 0..DEFAULT_UNBONDING_DELAY {
         let run_auction_request_1 = ExecuteRequestBuilder::standard(
@@ -897,16 +833,18 @@ fn should_release_founder_stake() {
 
     // Should pay out withdraw_bid request from INITIAL_ERA_ID
 
+    let account_1_unlocked_funds_1 = account_1_balance_before + U512::from(ACCOUNT_1_WITHDRAW_1);
+
     //
     // Funds are transferred from the original bonding purse to the unbonding purses
     //
     assert_eq!(
-        builder.get_purse_balance(*pre_unbond_list[0].unbonding_purse()), // still valid
-        ACCOUNT_1_WITHDRAW_1.into(),
+        builder.get_purse_balance(account_1.main_purse()), // still valid
+        account_1_unlocked_funds_1,
     );
     assert_eq!(
-        builder.get_purse_balance(*pre_unbond_list[1].unbonding_purse()), // still valid
-        U512::zero(),
+        builder.get_purse_balance(account_1.main_purse()), // still valid
+        account_1_unlocked_funds_1,
     );
 
     let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
@@ -922,13 +860,15 @@ fn should_release_founder_stake() {
     //
     builder.exec(exec_request_4).expect_success().commit();
 
+    let account_1_unlocked_funds_2 = account_1_unlocked_funds_1 + U512::from(ACCOUNT_1_WITHDRAW_2);
+
     assert_eq!(
-        builder.get_purse_balance(*pre_unbond_list[0].unbonding_purse()), // still valid ref
-        ACCOUNT_1_WITHDRAW_1.into(),
+        builder.get_purse_balance(account_1.main_purse()), // still valid ref
+        account_1_unlocked_funds_2,
     );
     assert_eq!(
-        builder.get_purse_balance(*pre_unbond_list[1].unbonding_purse()), // still valid ref
-        ACCOUNT_1_WITHDRAW_2.into(),
+        builder.get_purse_balance(account_1.main_purse()), // still valid ref
+        account_1_unlocked_funds_2,
     );
 
     let post_unbond_purses: UnbondingPurses = builder.get_value(auction, UNBONDING_PURSES_KEY);
@@ -1231,27 +1171,10 @@ fn undelegated_funds_should_be_released() {
         super::run_auction(&mut builder);
     }
 
-    let create_purse_request_1 = ExecuteRequestBuilder::standard(
-        *BID_ACCOUNT_1_ADDR,
-        CONTRACT_CREATE_PURSE_01,
-        runtime_args! {
-            ARG_PURSE_NAME => UNBONDING_PURSE_NAME_1,
-        },
-    )
-    .build();
-
-    builder
-        .exec(create_purse_request_1)
-        .expect_success()
-        .commit();
     let delegator_1_undelegate_purse = builder
         .get_account(*BID_ACCOUNT_1_ADDR)
         .expect("should have default account")
-        .named_keys()
-        .get(UNBONDING_PURSE_NAME_1)
-        .expect("should have unbonding purse")
-        .into_uref()
-        .expect("unbonding purse should be an uref");
+        .main_purse();
 
     let delegator_1_undelegate_request = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -1260,7 +1183,6 @@ fn undelegated_funds_should_be_released() {
             ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1),
             ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
             ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
-            ARG_UNBOND_PURSE => Some(delegator_1_undelegate_purse),
         },
     )
     .build();
@@ -1270,10 +1192,16 @@ fn undelegated_funds_should_be_released() {
         .commit()
         .expect_success();
 
+    let delegator_1_purse_balance_before = builder.get_purse_balance(delegator_1_undelegate_purse);
+
     for _ in 0..=DEFAULT_UNBONDING_DELAY {
         let delegator_1_undelegate_purse_balance =
             builder.get_purse_balance(delegator_1_undelegate_purse);
-        assert_eq!(delegator_1_undelegate_purse_balance, U512::zero());
+        assert_eq!(
+            delegator_1_purse_balance_before,
+            delegator_1_undelegate_purse_balance
+        );
+
         super::run_auction(&mut builder);
     }
 
@@ -1281,7 +1209,7 @@ fn undelegated_funds_should_be_released() {
         builder.get_purse_balance(delegator_1_undelegate_purse);
     assert_eq!(
         delegator_1_undelegate_purse_balance,
-        U512::from(UNDELEGATE_AMOUNT_1)
+        delegator_1_purse_balance_before + U512::from(UNDELEGATE_AMOUNT_1)
     )
 }
 
@@ -1362,27 +1290,10 @@ fn fully_undelegated_funds_should_be_released() {
         super::run_auction(&mut builder);
     }
 
-    let create_purse_request_1 = ExecuteRequestBuilder::standard(
-        *BID_ACCOUNT_1_ADDR,
-        CONTRACT_CREATE_PURSE_01,
-        runtime_args! {
-            ARG_PURSE_NAME => UNBONDING_PURSE_NAME_1,
-        },
-    )
-    .build();
-
-    builder
-        .exec(create_purse_request_1)
-        .expect_success()
-        .commit();
     let delegator_1_undelegate_purse = builder
         .get_account(*BID_ACCOUNT_1_ADDR)
         .expect("should have default account")
-        .named_keys()
-        .get(UNBONDING_PURSE_NAME_1)
-        .expect("should have unbonding purse")
-        .into_uref()
-        .expect("unbonding purse should be an uref");
+        .main_purse();
 
     let delegator_1_undelegate_request = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -1391,7 +1302,6 @@ fn fully_undelegated_funds_should_be_released() {
             ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
             ARG_VALIDATOR => *NON_FOUNDER_VALIDATOR_1_PK,
             ARG_DELEGATOR => *BID_ACCOUNT_1_PK,
-            ARG_UNBOND_PURSE => Some(delegator_1_undelegate_purse),
         },
     )
     .build();
@@ -1401,17 +1311,23 @@ fn fully_undelegated_funds_should_be_released() {
         .commit()
         .expect_success();
 
+    let delegator_1_purse_balance_before = builder.get_purse_balance(delegator_1_undelegate_purse);
+
     for _ in 0..=DEFAULT_UNBONDING_DELAY {
         let delegator_1_undelegate_purse_balance =
             builder.get_purse_balance(delegator_1_undelegate_purse);
-        assert_eq!(delegator_1_undelegate_purse_balance, U512::zero());
+        assert_eq!(
+            delegator_1_undelegate_purse_balance,
+            delegator_1_purse_balance_before
+        );
         super::run_auction(&mut builder);
     }
 
-    let delegator_1_undelegate_purse_balance =
+    let delegator_1_undelegate_purse_after =
         builder.get_purse_balance(delegator_1_undelegate_purse);
+
     assert_eq!(
-        delegator_1_undelegate_purse_balance,
+        delegator_1_undelegate_purse_after - delegator_1_purse_balance_before,
         U512::from(DELEGATE_AMOUNT_1)
     )
 }
