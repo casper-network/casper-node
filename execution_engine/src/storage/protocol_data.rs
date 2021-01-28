@@ -8,7 +8,7 @@ use casper_types::{
 use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
-pub const DEFAULT_WASMLESS_TRANSFER_COST: u64 = 10_000;
+pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 10_000;
 
 /// Represents a protocol's data. Intended to be associated with a given protocol version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

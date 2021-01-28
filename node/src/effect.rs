@@ -111,11 +111,11 @@ use crate::{
     effect::requests::LinearChainRequest,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Deploy, DeployHash, DeployHeader,
-        DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock, Timestamp,
+        Block, BlockByHeight, BlockHash, BlockHeader, BlockLike, Chainspec, Deploy, DeployHash,
+        DeployHeader, DeployMetadata, FinalitySignature, FinalizedBlock, Item, ProtoBlock,
+        Timestamp,
     },
     utils::Source,
-    Chainspec,
 };
 use announcements::{
     BlockExecutorAnnouncement, ConsensusAnnouncement, DeployAcceptorAnnouncement,

@@ -29,8 +29,8 @@ use crate::{
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, EffectOptionExt, Effects, Responder,
     },
-    types::{BlockLike, Deploy, DeployHash},
-    Chainspec, NodeRng,
+    types::{BlockLike, Chainspec, Deploy, DeployHash},
+    NodeRng,
 };
 use keyed_counter::KeyedCounter;
 
@@ -151,10 +151,10 @@ where
                                     move |result: FetchResult<Deploy, I>| match result {
                                         FetchResult::FromStorage(deploy)
                                         | FetchResult::FromPeer(deploy, _) => {
-                                            if deploy.header().is_valid(
-                                                &chainspec.genesis.deploy_config,
-                                                block_timestamp,
-                                            ) {
+                                            if deploy
+                                                .header()
+                                                .is_valid(&chainspec.deploy_config, block_timestamp)
+                                            {
                                                 Event::DeployFound(deploy_hash)
                                             } else {
                                                 Event::DeployMissing(deploy_hash)

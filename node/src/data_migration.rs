@@ -10,10 +10,10 @@ use casper_execution_engine::shared::newtypes::Blake2bHash;
 use casper_types::{PublicKey, SecretKey, Signature};
 
 use crate::{
-    components::chainspec_loader,
     crypto,
     reactor::validator::Config,
-    utils::{LoadError, WithDir},
+    types::{chainspec, Chainspec},
+    utils::{LoadError, Loadable, WithDir},
     NodeRng,
 };
 
@@ -84,7 +84,7 @@ pub enum Error {
 
     /// Error loading the chainspec.
     #[error("error loading chainspec: {0}")]
-    LoadChainspec(LoadError<chainspec_loader::Error>),
+    LoadChainspec(chainspec::Error),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -204,12 +204,10 @@ pub fn migrate_data(
     new_config: WithDir<Config>,
 ) -> Result<(), Error> {
     let (new_root, new_config) = new_config.into_parts();
-    let new_protocol_version = new_config
-        .node
-        .chainspec_config_path
-        .load(&new_root)
+    let new_protocol_version = Chainspec::from_path(&new_root)
         .map_err(Error::LoadChainspec)?
-        .latest_protocol_version();
+        .protocol_config
+        .version;
     let secret_key = new_config
         .consensus
         .secret_key_path

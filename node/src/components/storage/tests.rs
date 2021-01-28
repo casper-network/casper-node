@@ -16,9 +16,8 @@ use crate::{
         Multiple,
     },
     testing::{ComponentHarness, TestRng},
-    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
+    types::{Block, BlockHash, Chainspec, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
-    Chainspec,
 };
 
 /// Storage component test fixture.

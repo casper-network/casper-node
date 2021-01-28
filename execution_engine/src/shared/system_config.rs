@@ -18,7 +18,7 @@ use crate::storage::protocol_data::DEFAULT_WASMLESS_TRANSFER_COST;
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
 pub struct SystemConfig {
     /// Wasmless transfer cost expressed in gas.
-    wasmless_transfer_cost: u64,
+    wasmless_transfer_cost: u32,
 
     /// Configuration of auction entrypoint costs.
     auction_costs: AuctionCosts,
@@ -35,7 +35,7 @@ pub struct SystemConfig {
 
 impl SystemConfig {
     pub fn new(
-        wasmless_transfer_cost: u64,
+        wasmless_transfer_cost: u32,
         auction_costs: AuctionCosts,
         mint_costs: MintCosts,
         proof_of_stake_costs: ProofOfStakeCosts,
@@ -50,7 +50,7 @@ impl SystemConfig {
         }
     }
 
-    pub fn wasmless_transfer_cost(&self) -> u64 {
+    pub fn wasmless_transfer_cost(&self) -> u32 {
         self.wasmless_transfer_cost
     }
 
@@ -149,7 +149,7 @@ pub mod gens {
 
     prop_compose! {
         pub fn system_config_arb()(
-            wasmless_transfer_cost in num::u64::ANY,
+            wasmless_transfer_cost in num::u32::ANY,
             auction_costs in auction_costs_arb(),
             mint_costs in mint_costs_arb(),
             proof_of_stake_costs in proof_of_stake_costs_arb(),

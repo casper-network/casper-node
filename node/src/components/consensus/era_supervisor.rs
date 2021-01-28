@@ -230,7 +230,7 @@ where
         }
         self.current_era = era_id;
         self.metrics.current_era.set(self.current_era.0 as i64);
-        let instance_id = instance_id(&self.protocol_config, state_root_hash, start_height);
+        let instance_id = instance_id(&self.protocol_config, state_root_hash);
 
         info!(
             ?validators,
@@ -888,25 +888,13 @@ where
 }
 
 /// Computes the instance ID for an era, given the state root hash, block height and chainspec.
-fn instance_id(
-    protocol_config: &ProtocolConfig,
-    state_root_hash: Digest,
-    block_height: u64,
-) -> Digest {
+fn instance_id(protocol_config: &ProtocolConfig, state_root_hash: Digest) -> Digest {
     let mut result = [0; Digest::LENGTH];
     let mut hasher = VarBlake2b::new(Digest::LENGTH).expect("should create hasher");
 
     hasher.update(&protocol_config.name);
     hasher.update(protocol_config.timestamp.millis().to_le_bytes());
     hasher.update(state_root_hash);
-
-    for upgrade_point in protocol_config
-        .upgrades
-        .iter()
-        .take_while(|up| up.activation_point.height <= block_height)
-    {
-        hasher.update(upgrade_point.activation_point.height.to_le_bytes());
-    }
 
     hasher.finalize_variable(|slice| {
         result.copy_from_slice(slice);

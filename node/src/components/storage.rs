@@ -71,9 +71,9 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{Block, BlockHash, Deploy, DeployHash, DeployMetadata},
+    types::{Block, BlockHash, Chainspec, Deploy, DeployHash, DeployMetadata},
     utils::WithDir,
-    Chainspec, NodeRng,
+    NodeRng,
 };
 use casper_types::{ExecutionResult, Transfer, Transform};
 use lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
@@ -97,7 +97,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 5;
+const MAX_DB_COUNT: u32 = 6;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]

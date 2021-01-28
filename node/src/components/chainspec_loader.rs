@@ -1,18 +1,16 @@
 //! Chainspec loader component.
 //!
-//! The chainspec loader initializes a node by reading information from the chainspec, running
-//! initial system contracts and storing the result in the permanent storage. This kind of
-//! initialization only happens at genesis.
+//! The chainspec loader initializes a node by reading information from the chainspec, and
+//! committing it to the permanent storage.
 //!
 //! See
 //! <https://casperlabs.atlassian.net/wiki/spaces/EN/pages/135528449/Genesis+Process+Specification>
 //! for full details.
 
-mod chainspec;
-mod config;
-mod error;
-
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    path::{Path, PathBuf},
+};
 
 use datasize::DataSize;
 use derive_more::From;
@@ -23,6 +21,8 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::core::engine_state::{self, genesis::GenesisResult};
 
+#[cfg(test)]
+use crate::utils::RESOURCES_PATH;
 use crate::{
     components::Component,
     crypto::hash::Digest,
@@ -31,11 +31,10 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     rpcs::docs::DocExample,
+    types::{chainspec::Error, Chainspec},
+    utils::Loadable,
     NodeRng,
 };
-pub use chainspec::Chainspec;
-pub(crate) use chainspec::{DeployConfig, HighwayConfig, UpgradePoint};
-pub use error::Error;
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| ChainspecInfo {
     name: String::from("casper-example"),
@@ -101,41 +100,81 @@ impl DocExample for ChainspecInfo {
 impl From<ChainspecLoader> for ChainspecInfo {
     fn from(chainspec_loader: ChainspecLoader) -> Self {
         ChainspecInfo::new(
-            chainspec_loader.chainspec.genesis.name.clone(),
+            chainspec_loader.chainspec.network_config.name.clone(),
             chainspec_loader.genesis_state_root_hash,
         )
     }
 }
 
-#[derive(Clone, DataSize, Debug, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug)]
 pub struct ChainspecLoader {
     chainspec: Chainspec,
-    // If `Some`, we're finished.  The value of the bool indicates success (true) or not.
+    /// The path to the folder where all chainspec and upgrade_point files will be stored in
+    /// subdirs corresponding to their versions.
+    root_dir: PathBuf,
+    /// If `Some`, we're finished.  The value of the bool indicates success (true) or not.
     completed_successfully: Option<bool>,
-    // If `Some` then genesis process returned a valid state root hash.
+    /// If `Some` then genesis process returned a valid state root hash.
     genesis_state_root_hash: Option<Digest>,
 }
 
 impl ChainspecLoader {
-    pub(crate) fn new<REv>(
+    pub(crate) fn new<P, REv>(
+        chainspec_dir: P,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<(Self, Effects<Event>), Error>
+    where
+        P: AsRef<Path>,
+        REv: From<Event> + From<StorageRequest> + Send,
+    {
+        Ok(Self::new_with_chainspec_and_path(
+            Chainspec::from_path(&chainspec_dir.as_ref())?,
+            chainspec_dir,
+            effect_builder,
+        ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_chainspec<REv>(
         chainspec: Chainspec,
         effect_builder: EffectBuilder<REv>,
     ) -> (Self, Effects<Event>)
     where
         REv: From<Event> + From<StorageRequest> + Send,
     {
-        let version = chainspec.genesis.protocol_version.clone();
+        Self::new_with_chainspec_and_path(chainspec, &RESOURCES_PATH.join("local"), effect_builder)
+    }
+
+    fn new_with_chainspec_and_path<P, REv>(
+        chainspec: Chainspec,
+        chainspec_dir: P,
+        effect_builder: EffectBuilder<REv>,
+    ) -> (Self, Effects<Event>)
+    where
+        P: AsRef<Path>,
+        REv: From<Event> + From<StorageRequest> + Send,
+    {
+        chainspec.validate_config();
+        let root_dir = chainspec_dir
+            .as_ref()
+            .parent()
+            .unwrap_or_else(|| {
+                panic!("chainspec dir must have a parent");
+            })
+            .to_path_buf();
+
+        let version = chainspec.protocol_config.version.clone();
         let effects = effect_builder
             .put_chainspec(chainspec.clone())
             .event(|_| Event::PutToStorage { version });
-        (
-            ChainspecLoader {
-                chainspec,
-                completed_successfully: None,
-                genesis_state_root_hash: None,
-            },
-            effects,
-        )
+        let chainspec_loader = ChainspecLoader {
+            chainspec,
+            root_dir,
+            completed_successfully: None,
+            genesis_state_root_hash: None,
+        };
+
+        (chainspec_loader, effects)
     }
 
     pub(crate) fn is_stopped(&self) -> bool {
@@ -192,7 +231,7 @@ where
                             post_state_hash,
                             effect,
                         } => {
-                            info!("chainspec name {}", self.chainspec.genesis.name);
+                            info!("chainspec name {}", self.chainspec.network_config.name);
                             info!("genesis state root hash {}", post_state_hash);
                             trace!(%post_state_hash, ?effect);
                             self.completed_successfully = Some(true);
