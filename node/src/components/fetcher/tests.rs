@@ -294,7 +294,7 @@ async fn should_fetch_from_local() {
     network
         .process_injected_effect_on(
             node_id,
-            fetch_deploy(deploy_hash, *node_id, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, node_id.clone(), Arc::clone(&fetched)),
         )
         .await;
 
@@ -340,11 +340,14 @@ async fn should_fetch_from_peer() {
     network
         .process_injected_effect_on(
             node_without_deploy,
-            fetch_deploy(deploy_hash, *node_with_deploy, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, node_with_deploy.clone(), Arc::clone(&fetched)),
         )
         .await;
 
-    let expected_result = Some(FetchResult::FromPeer(Box::new(deploy), *node_with_deploy));
+    let expected_result = Some(FetchResult::FromPeer(
+        Box::new(deploy),
+        node_with_deploy.clone(),
+    ));
     assert_settled(
         node_without_deploy,
         deploy_hash,
@@ -375,8 +378,8 @@ async fn should_timeout_fetch_from_peer() {
     let deploy = Deploy::random(&mut rng);
     let deploy_hash = *deploy.id();
 
-    let holding_node = node_ids[0];
-    let requesting_node = node_ids[1];
+    let holding_node = node_ids[0].clone();
+    let requesting_node = node_ids[1].clone();
 
     // Store deploy on holding node.
     store_deploy(&deploy, &holding_node, &mut network, None, &mut rng).await;
@@ -386,7 +389,7 @@ async fn should_timeout_fetch_from_peer() {
     network
         .process_injected_effect_on(
             &requesting_node,
-            fetch_deploy(deploy_hash, holding_node, Arc::clone(&fetched)),
+            fetch_deploy(deploy_hash, holding_node.clone(), Arc::clone(&fetched)),
         )
         .await;
 

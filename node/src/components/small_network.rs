@@ -332,7 +332,7 @@ where
     /// Queues a message to be sent to all nodes.
     fn broadcast_message(&self, msg: Message<P>) {
         for peer_id in self.outgoing.keys() {
-            self.send_message(*peer_id, msg.clone());
+            self.send_message(peer_id.clone(), msg.clone());
         }
     }
 
@@ -363,7 +363,7 @@ where
         }
 
         for &peer_id in &peer_ids {
-            self.send_message(*peer_id, msg.clone());
+            self.send_message(peer_id.clone(), msg.clone());
         }
 
         peer_ids.into_iter().cloned().collect()
@@ -427,7 +427,7 @@ where
                 .ignore::<Event<P>>();
 
                 let _ = self.incoming.insert(
-                    peer_id,
+                    peer_id.clone(),
                     IncomingConnection {
                         peer_address,
                         times_seen_asymmetric: 0,
@@ -435,15 +435,15 @@ where
                 );
 
                 // If the connection is now complete, announce the new peer before starting reader.
-                effects.extend(self.check_connection_complete(effect_builder, peer_id));
+                effects.extend(self.check_connection_complete(effect_builder, peer_id.clone()));
 
                 effects.extend(
                     message_reader(
                         self.event_queue,
                         stream,
                         self.shutdown_receiver.clone(),
-                        self.our_id,
-                        peer_id,
+                        self.our_id.clone(),
+                        peer_id.clone(),
                     )
                     .event(move |result| Event::IncomingClosed {
                         result,
@@ -505,19 +505,19 @@ where
             sender,
             times_seen_asymmetric: 0,
         };
-        if self.outgoing.insert(peer_id, connection).is_some() {
+        if self.outgoing.insert(peer_id.clone(), connection).is_some() {
             // We assume that for a reconnect to have happened, the outgoing entry must have
             // been either non-existent yet or cleaned up by the handler of the connection
             // closing event. If this is not the case, an assumed invariant has been violated.
             error!(our_id=%self.our_id, %peer_id, "did not expect leftover channel in outgoing map");
         }
 
-        let mut effects = self.check_connection_complete(effect_builder, peer_id);
+        let mut effects = self.check_connection_complete(effect_builder, peer_id.clone());
 
         let handshake = Message::Handshake {
             genesis_config_hash: self.genesis_config_hash,
         };
-        let peer_id_cloned = peer_id;
+        let peer_id_cloned = peer_id.clone();
         effects.extend(
             message_sender(receiver, sink, handshake).event(move |result| Event::OutgoingFailed {
                 peer_id: Some(peer_id),
@@ -529,7 +529,7 @@ where
             handshake_reader(
                 self.event_queue,
                 stream,
-                self.our_id,
+                self.our_id.clone(),
                 peer_id_cloned,
                 peer_address,
             )
@@ -612,7 +612,7 @@ where
         for (node_id, conn) in self.incoming.iter_mut() {
             if !self.outgoing.contains_key(node_id) {
                 if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    remove.push(*node_id);
+                    remove.push(node_id.clone());
                 } else {
                     conn.times_seen_asymmetric += 1;
                 }
@@ -623,7 +623,7 @@ where
         for (node_id, conn) in self.outgoing.iter_mut() {
             if !self.incoming.contains_key(node_id) {
                 if conn.times_seen_asymmetric >= MAX_ASYMMETRIC_CONNECTION_SEEN {
-                    remove.push(*node_id);
+                    remove.push(node_id.clone());
                 } else {
                     conn.times_seen_asymmetric += 1;
                 }
@@ -743,10 +743,10 @@ where
     pub(crate) fn peers(&self) -> BTreeMap<NodeId, String> {
         let mut ret = BTreeMap::new();
         for (node_id, connection) in &self.outgoing {
-            ret.insert(*node_id, connection.peer_address.to_string());
+            ret.insert(node_id.clone(), connection.peer_address.to_string());
         }
         for (node_id, connection) in &self.incoming {
-            ret.entry(*node_id)
+            ret.entry(node_id.clone())
                 .or_insert_with(|| connection.peer_address.to_string());
         }
         ret
@@ -764,7 +764,7 @@ where
     /// - Used in validator test.
     #[cfg(test)]
     pub(crate) fn node_id(&self) -> NodeId {
-        self.our_id
+        self.our_id.clone()
     }
 }
 
@@ -930,6 +930,7 @@ async fn server_task<P, REv>(
     // stay open, preventing reuse.
 
     // We first create a future that never terminates, handling incoming connections:
+    let cloned_our_id = our_id.clone();
     let accept_connections = async move {
         loop {
             // We handle accept errors here, since they can be caused by a temporary resource
@@ -954,7 +955,7 @@ async fn server_task<P, REv>(
                 //       The code in its current state will consume 100% CPU if local resource
                 //       exhaustion happens, as no distinction is made and no delay introduced.
                 Err(err) => {
-                    warn!(%our_id, %err, "dropping incoming connection during accept")
+                    warn!(our_id=%cloned_our_id, %err, "dropping incoming connection during accept")
                 }
             }
         }
@@ -1047,21 +1048,26 @@ where
     P: DeserializeOwned + Send + Display,
     REv: From<Event<P>>,
 {
+    let our_id_ref = &our_id;
+    let peer_id_cloned = peer_id.clone();
     let read_messages = async move {
         while let Some(msg_result) = stream.next().await {
             match msg_result {
                 Ok(msg) => {
-                    debug!(%our_id, %msg, %peer_id, "message received");
+                    debug!(our_id=%our_id_ref, %msg, peer_id=%peer_id_cloned, "message received");
                     // We've received a message, push it to the reactor.
                     event_queue
                         .schedule(
-                            Event::IncomingMessage { peer_id, msg },
+                            Event::IncomingMessage {
+                                peer_id: peer_id_cloned.clone(),
+                                msg,
+                            },
                             QueueKind::NetworkIncoming,
                         )
                         .await;
                 }
                 Err(err) => {
-                    warn!(%our_id, %err, %peer_id, "receiving message failed, closing connection");
+                    warn!(our_id=%our_id_ref, %err, peer_id=%peer_id_cloned, "receiving message failed, closing connection");
                     return Err(err);
                 }
             }
@@ -1075,7 +1081,7 @@ where
     // while loop to terminate.
     match select(Box::pin(shutdown_messages), Box::pin(read_messages)).await {
         Either::Left(_) => info!(
-            %our_id,
+            our_id=%our_id,
             %peer_id,
             "shutting down incoming connection message reader"
         ),

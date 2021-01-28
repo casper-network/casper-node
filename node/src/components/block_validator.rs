@@ -18,7 +18,7 @@ use std::{
 };
 
 use datasize::DataSize;
-use derive_more::Display;
+use derive_more::{Display, From};
 use semver::Version;
 use smallvec::{smallvec, SmallVec};
 use tracing::error;
@@ -37,10 +37,11 @@ use keyed_counter::KeyedCounter;
 use super::fetcher::FetchResult;
 
 /// Block validator component event.
-#[derive(Debug, Display)]
+#[derive(Debug, From, Display)]
 pub enum Event<T, I> {
     /// A request made of the block validator component.
-    Request(Box<BlockValidationRequest<T, I>>),
+    #[from]
+    Request(BlockValidationRequest<T, I>),
 
     /// A deploy has been successfully found.
     #[display(fmt = "deploy {} found", _0)]
@@ -54,12 +55,6 @@ pub enum Event<T, I> {
     /// loaded.
     #[display(fmt = "block validator loaded")]
     Loaded { chainspec: Arc<Chainspec> },
-}
-
-impl<T, I> From<BlockValidationRequest<T, I>> for Event<T, I> {
-    fn from(request: BlockValidationRequest<T, I>) -> Self {
-        Event::Request(Box::new(request))
-    }
 }
 
 /// State of the current process of block validation.
@@ -105,14 +100,12 @@ where
     {
         let mut effects = Effects::new();
         match event {
-            Event::Request(request) => {
-                let BlockValidationRequest {
-                    block,
-                    sender,
-                    responder,
-                    block_timestamp,
-                } = *request;
-
+            Event::Request(BlockValidationRequest {
+                block,
+                sender,
+                responder,
+                block_timestamp,
+            }) => {
                 let block_deploys = block
                     .deploys()
                     .iter()
@@ -307,7 +300,10 @@ where
                 }
                 self.state = BlockValidatorState::Ready(new_ready_state);
             }
-            (BlockValidatorState::Loading(requests), request @ Event::Request(_)) => {
+            (
+                BlockValidatorState::Loading(requests),
+                request @ Event::Request(BlockValidationRequest { .. }),
+            ) => {
                 requests.push(request);
             }
             (BlockValidatorState::Loading(_), _deploy_found_or_missing) => {
