@@ -3,10 +3,9 @@
 
 use std::{
     array::TryFromSliceError,
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     error::Error as StdError,
     fmt::{self, Debug, Display, Formatter},
-    iter::FromIterator,
 };
 
 use datasize::DataSize;
@@ -753,13 +752,19 @@ impl Display for Deploy {
 
 impl From<Deploy> for DeployItem {
     fn from(deploy: Deploy) -> Self {
-        let account_hash = deploy.header().account().to_account_hash();
+        let address = deploy.header().account().to_account_hash();
+        let authorization_keys = deploy
+            .approvals()
+            .iter()
+            .map(|approval| approval.signer().to_account_hash())
+            .collect();
+
         DeployItem::new(
-            account_hash,
+            address,
             deploy.session().clone(),
             deploy.payment().clone(),
             deploy.header().gas_price(),
-            BTreeSet::from_iter(vec![account_hash]),
+            authorization_keys,
             casper_types::DeployHash::new(deploy.id().inner().to_array()),
         )
     }

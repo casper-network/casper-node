@@ -703,8 +703,8 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests block at height.
-    pub(crate) async fn get_block_at_height(self, height: u64) -> Option<Block>
+    /// Requests the block at the given height.
+    pub(crate) async fn get_block_at_height_from_storage(self, height: u64) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
@@ -716,12 +716,43 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests the highest block.
-    pub(crate) async fn get_highest_block(self) -> Option<Block>
+    pub(crate) async fn get_highest_block_from_storage(self) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetHighestBlock { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the switch block at the given era ID.
+    // TODO - remove once used.
+    #[allow(unused)]
+    pub(crate) async fn get_switch_block_at_era_id_from_storage(
+        self,
+        era_id: EraId,
+    ) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSwitchBlockAtEraId { era_id, responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    /// Requests the highest switch block.
+    // TODO - remove once used.
+    #[allow(unused)]
+    pub(crate) async fn get_highest_switch_block_from_storage(self) -> Option<Block>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetHighestSwitchBlock { responder },
             QueueKind::Regular,
         )
         .await
@@ -1206,7 +1237,7 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest>,
         REv: From<StorageRequest>,
     {
-        if let Some(block) = self.get_highest_block().await {
+        if let Some(block) = self.get_highest_block_from_storage().await {
             let state_hash = (*block.state_root_hash()).into();
             let query_request = QueryRequest::new(state_hash, account_key, vec![]);
             if let Ok(QueryResult::Success { value, .. }) =
@@ -1308,8 +1339,8 @@ impl<REv> EffectBuilder<REv> {
     where
         REv: From<ContractRuntimeRequest> + From<StorageRequest>,
     {
-        let future_booking_block = self.get_block_at_height(booking_block_height);
-        let future_key_block = self.get_block_at_height(key_block_height);
+        let future_booking_block = self.get_block_at_height_from_storage(booking_block_height);
+        let future_key_block = self.get_block_at_height_from_storage(key_block_height);
         join!(future_booking_block, future_key_block)
     }
 
