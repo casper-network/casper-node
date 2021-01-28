@@ -18,7 +18,7 @@ use crate::{
 use casper_node_macros::reactor;
 use testing::{init_logging, network::NetworkedReactor, ConditionCheckReactor};
 
-use super::ENABLE_LIBP2P_ENV_VAR;
+use super::ENABLE_SMALL_NET_ENV_VAR;
 
 // Reactor for load testing, whose networking component just sends dummy payloads around.
 reactor!(LoadTestingReactor {
@@ -122,8 +122,8 @@ impl Display for DummyPayload {
 async fn send_large_message_across_network() {
     init_logging();
 
-    if env::var(ENABLE_LIBP2P_ENV_VAR).is_err() {
-        eprintln!("{} not set, skipping test", ENABLE_LIBP2P_ENV_VAR);
+    if env::var(ENABLE_SMALL_NET_ENV_VAR).is_ok() {
+        eprintln!("{} set, skipping test", ENABLE_SMALL_NET_ENV_VAR);
         return;
     }
 
