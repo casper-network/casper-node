@@ -536,7 +536,7 @@ where
                     // Cache the results in case we receive the same finality signature before we
                     // manage to store it in the database.
                     self.signature_cache.insert(*signature.clone());
-                    info!(hash=%signature.hash, "storing finality signatures");
+                    info!(hash=%signature.block_hash, "storing finality signatures");
                     effects.extend(
                         effect_builder
                             .put_signatures_to_storage(*signature)
@@ -553,7 +553,11 @@ where
                 let mut effects = Effects::new();
                 let mut signatures = BlockSignatures::new(fs.block_hash, fs.era_id);
                 signatures.append_proof(fs.public_key, fs.signature);
-                effects.extend(effect_builder.put_signatures_to_storage(signatures.clone()).ignore());
+                effects.extend(
+                    effect_builder
+                        .put_signatures_to_storage(signatures.clone())
+                        .ignore(),
+                );
                 self.signature_cache.insert(signatures);
                 effects
             }

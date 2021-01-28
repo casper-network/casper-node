@@ -809,11 +809,15 @@ impl BlockSignatures {
 
 impl Display for BlockSignatures {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "Block signature for Hash: {} in era_id: {} with proofs of lenght: {}", self.block_hash, self.era_id, self.proofs.len())
+        write!(
+            formatter,
+            "Block signature for Hash: {} in era_id: {} with proofs of lenght: {}",
+            self.block_hash,
+            self.era_id,
+            self.proofs.len()
+        )
     }
 }
-
-
 
 /// A proto-block after execution, with the resulting post-state-hash.  This is the core component
 /// of the Casper linear blockchain.
@@ -1219,11 +1223,10 @@ pub(crate) mod json_compatibility {
         /// Create a new JSON Block with a Linear chain block and its associated signatures.
         pub fn new(block: Block, signatures: BlockSignatures) -> Self {
             let mut proto_block = JsonBlock::from(block);
-            proto_block.proofs = signatures.proofs.iter()
-                .map(|(pub_key, signature)|  JsonProof::new(
-                    *pub_key,
-                    *signature,
-                ))
+            proto_block.proofs = signatures
+                .proofs
+                .iter()
+                .map(|(pub_key, signature)| JsonProof::new(*pub_key, *signature))
                 .collect();
             proto_block
         }
@@ -1272,7 +1275,7 @@ pub(crate) mod json_compatibility {
         pub fn new(public_key: PublicKey, signature: Signature) -> Self {
             JsonProof {
                 public_key,
-                signature
+                signature,
             }
         }
     }

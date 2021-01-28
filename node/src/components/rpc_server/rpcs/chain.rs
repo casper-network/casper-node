@@ -127,17 +127,18 @@ impl RpcWithOptionalParamsExt for GetBlock {
         async move {
             // Get the block.
             let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-            let (block, signatures) = match get_block_with_metadata(maybe_block_id, effect_builder).await {
-                Ok(Some((block, signatures))) => (block, signatures),
-                Ok(None) => {
-                    let error =  warp_json_rpc::Error::custom(
-                        ErrorCode::NoSuchBlock as i64,
-                        "block not known",
-                    );
-                    return Ok(response_builder.error(error)?)
-                },
-                Err(error) => return Ok(response_builder.error(error)?),
-            };
+            let (block, signatures) =
+                match get_block_with_metadata(maybe_block_id, effect_builder).await {
+                    Ok(Some((block, signatures))) => (block, signatures),
+                    Ok(None) => {
+                        let error = warp_json_rpc::Error::custom(
+                            ErrorCode::NoSuchBlock as i64,
+                            "block not known",
+                        );
+                        return Ok(response_builder.error(error)?);
+                    }
+                    Err(error) => return Ok(response_builder.error(error)?),
+                };
 
             let json_block = JsonBlock::new(block, signatures);
 

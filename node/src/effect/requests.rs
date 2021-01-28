@@ -366,11 +366,19 @@ impl Display for StorageRequest {
             StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {
                 write!(formatter, "get deploy and metadata for {}", deploy_hash)
             }
-            StorageRequest::GetBlockAndMetadataByHash {block_hash, .. } => {
-                write!(formatter, "get block and metadata for block with hash: {}", block_hash)
+            StorageRequest::GetBlockAndMetadataByHash { block_hash, .. } => {
+                write!(
+                    formatter,
+                    "get block and metadata for block with hash: {}",
+                    block_hash
+                )
             }
-            StorageRequest::GetBlockAndMetadataByHeight {block_height, .. } => {
-                write!(formatter, "get block and metadata for block at height: {}", block_height)
+            StorageRequest::GetBlockAndMetadataByHeight { block_height, .. } => {
+                write!(
+                    formatter,
+                    "get block and metadata for block at height: {}",
+                    block_height
+                )
             }
             StorageRequest::GetHighestBlockWithMetadata { .. } => {
                 write!(formatter, "get highest block with metadata")

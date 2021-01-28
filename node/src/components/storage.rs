@@ -523,10 +523,9 @@ impl Storage {
                     return Ok(responder.respond(None).ignore());
                 };
                 let hash = block.hash();
-                let signatures =  match self
-                    .get_finality_signatures(&mut txn, hash)? {
+                let signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.header().era_id())
+                    None => BlockSignatures::new(*hash, block.header().era_id()),
                 };
                 responder.respond(Some((block, signatures))).ignore()
             }
@@ -544,10 +543,9 @@ impl Storage {
                     };
 
                 let hash = block.hash();
-                let signatures =  match self
-                    .get_finality_signatures(&mut txn, hash)? {
+                let signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.header().era_id())
+                    None => BlockSignatures::new(*hash, block.header().era_id()),
                 };
                 responder.respond(Some((block, signatures))).ignore()
             }
@@ -565,12 +563,13 @@ impl Storage {
                     return Ok(responder.respond(None).ignore());
                 };
                 let hash = highest_block.hash();
-                let signatures =  match self
-                    .get_finality_signatures(&mut txn, hash)? {
+                let signatures = match self.get_finality_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(*hash, highest_block.header().era_id()),
                 };
-                responder.respond(Some((highest_block, signatures))).ignore()
+                responder
+                    .respond(Some((highest_block, signatures)))
+                    .ignore()
             }
             StorageRequest::PutChainspec {
                 chainspec,
