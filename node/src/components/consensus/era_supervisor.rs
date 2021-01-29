@@ -25,7 +25,7 @@ use prometheus::Registry;
 use rand::Rng;
 use tracing::{info, trace, warn};
 
-use casper_types::{AsymmetricType, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{AsymmetricType, PublicKey, SecretKey, U512};
 
 use crate::{
     components::consensus::{
@@ -50,9 +50,7 @@ use crate::{
 };
 
 pub use self::era::{Era, EraId};
-use crate::components::{
-    consensus::config::ProtocolConfig, contract_runtime::ValidatorWeightsByEraIdRequest,
-};
+use crate::components::consensus::config::ProtocolConfig;
 
 mod era;
 
@@ -514,30 +512,22 @@ where
             // if the block is a switch block, we have to get the validators for the new era and
             // create it, before we can say we handled the block
             let new_era_id = era_id.successor();
-            let request = ValidatorWeightsByEraIdRequest::new(
-                (*block_header.state_root_hash()).into(),
-                new_era_id,
-                ProtocolVersion::V1_0_0,
-            );
             let key_block_height = self
                 .era_supervisor
                 .key_block_height(new_era_id, block_header.height() + 1);
             let booking_block_height = self.era_supervisor.booking_block_height(new_era_id);
             let effect = self
                 .effect_builder
-                .create_new_era(request, booking_block_height, key_block_height)
-                .event(
-                    move |(validators, booking_block, key_block)| Event::CreateNewEra {
-                        block_header: Box::new(block_header),
-                        booking_block_hash: booking_block
-                            .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
-                        key_block_seed: key_block.map_or_else(
-                            || Err(key_block_height),
-                            |block| Ok(block.header().accumulated_seed()),
-                        ),
-                        get_validators_result: validators,
-                    },
-                );
+                .create_new_era(booking_block_height, key_block_height)
+                .event(move |(booking_block, key_block)| Event::CreateNewEra {
+                    block_header: Box::new(block_header),
+                    booking_block_hash: booking_block
+                        .map_or_else(|| Err(booking_block_height), |block| Ok(*block.hash())),
+                    key_block_seed: key_block.map_or_else(
+                        || Err(key_block_height),
+                        |block| Ok(block.header().accumulated_seed()),
+                    ),
+                });
             effects.extend(effect);
         } else {
             // if it's not a switch block, we can already declare it handled
@@ -582,13 +572,23 @@ where
         block_header: BlockHeader,
         booking_block_hash: BlockHash,
         key_block_seed: Digest,
-        validators: BTreeMap<PublicKey, U512>,
     ) -> Effects<Event<I>> {
-        let newly_slashed = block_header
-            .era_end()
-            .expect("switch block must have era_end")
-            .equivocators
-            .clone();
+        let (era_end, next_era_validators_weights) = match (
+            block_header.era_end(),
+            block_header.next_era_validator_weights(),
+        ) {
+            (Some(era_end), Some(next_era_validator_weights)) => {
+                (era_end, next_era_validator_weights)
+            }
+            _ => {
+                return fatal!(
+                    self.effect_builder,
+                    "attempted to create a new era with a non-switch block header: {}",
+                    block_header
+                )
+            }
+        };
+        let newly_slashed = era_end.equivocators.clone();
         let era_id = block_header.era_id().successor();
         info!(era = era_id.0, "era created");
         let seed = EraSupervisor::<I>::era_seed(booking_block_hash, key_block_seed);
@@ -596,7 +596,7 @@ where
         let results = self.era_supervisor.new_era(
             era_id,
             Timestamp::now(), // TODO: This should be passed in.
-            validators,
+            next_era_validators_weights.clone(),
             newly_slashed,
             seed,
             block_header.timestamp(),
