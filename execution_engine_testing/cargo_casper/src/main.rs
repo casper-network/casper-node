@@ -141,7 +141,7 @@ mod tests {
 
     use super::TOOLCHAIN;
 
-    const PATH_PREFIX: &str = "/grpc/cargo_casper";
+    const PATH_PREFIX: &str = "/execution_engine_testing/cargo_casper";
 
     #[test]
     fn check_toolchain_version() {

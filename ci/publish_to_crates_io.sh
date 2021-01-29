@@ -82,5 +82,5 @@ publish node_macros
 publish node
 publish client
 publish smart_contracts/contract --features=std
-publish grpc/test_support
-publish grpc/cargo_casper --allow-dirty
+publish execution_engine_testing/test_support
+publish execution_engine_testing/cargo_casper --allow-dirty

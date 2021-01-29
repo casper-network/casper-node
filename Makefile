@@ -41,7 +41,7 @@ CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 
 CRATES_WITH_DOCS_RS_MANIFEST_TABLE = \
-	grpc/test_support \
+	execution_engine_testing/test_support \
 	node \
 	smart_contracts/contract \
 	types
@@ -108,7 +108,7 @@ test-contracts-rs: build-contracts-rs
 .PHONY: test-contracts-as
 test-contracts-as: build-contracts-rs build-contracts-as
 	@# see https://github.com/rust-lang/cargo/issues/5015#issuecomment-515544290
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "grpc/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) --manifest-path "execution_engine_testing/tests/Cargo.toml" --features "use-as-wasm" -- --ignored
 
 .PHONY: test-contracts
 test-contracts: test-contracts-rs test-contracts-as

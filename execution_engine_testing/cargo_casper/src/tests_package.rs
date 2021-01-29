@@ -112,8 +112,13 @@ static INTEGRATION_TESTS_RS: Lazy<PathBuf> = Lazy::new(|| {
         .join(PACKAGE_NAME)
         .join("src/integration_tests.rs")
 });
-static ENGINE_TEST_SUPPORT: Lazy<Dependency> =
-    Lazy::new(|| Dependency::new("casper-engine-test-support", "0.7.0", "grpc/test_support"));
+static ENGINE_TEST_SUPPORT: Lazy<Dependency> = Lazy::new(|| {
+    Dependency::new(
+        "casper-engine-test-support",
+        "0.7.0",
+        "execution_engine_testing/test_support",
+    )
+});
 static CARGO_TOML_ADDITIONAL_CONTENTS: Lazy<String> = Lazy::new(|| {
     format!(
         r#"
@@ -158,7 +163,7 @@ pub fn replace_main_rs() {
 pub mod tests {
     use super::*;
 
-    const ENGINE_TEST_SUPPORT_TOML_PATH: &str = "grpc/test_support/Cargo.toml";
+    const ENGINE_TEST_SUPPORT_TOML_PATH: &str = "execution_engine_testing/test_support/Cargo.toml";
 
     #[test]
     fn check_engine_test_support_version() {

@@ -117,7 +117,7 @@ pub mod tests {
     const CL_TYPES_TOML_PATH: &str = "types/Cargo.toml";
     const PACKAGE_FIELD_NAME: &str = "package";
     const VERSION_FIELD_NAME: &str = "version";
-    const PATH_PREFIX: &str = "/grpc/cargo_casper";
+    const PATH_PREFIX: &str = "/execution_engine_testing/cargo_casper";
 
     /// Returns the absolute path of `relative_path` where this is relative to "casper-node".
     /// Panics if the current working directory is not within "casper-node".

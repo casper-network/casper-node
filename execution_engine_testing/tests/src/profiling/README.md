@@ -28,7 +28,7 @@ To profile `simple-transfer` using `perf` and open the flamegraph in Firefox, fo
     ```bash
     cd casper-node/
     make build-contracts-rs
-    cd grpc/tests/
+    cd execution_engine_testing/tests/
     cargo build --release --bin state-initializer
     cargo build --release --bin simple-transfer
     ../../target/release/state-initializer --data-dir=../../target | perf record -g --call-graph dwarf ../../target/release/simple-transfer --data-dir=../../target
@@ -75,56 +75,6 @@ sysctl -p /etc/sysctl.conf
 
 ---
 
-# `concurrent-executor`
-
-This is a minimal client which repeatedly sends an `execute` request for a transfer to an instance of the `casper-engine-grpc-server`.  It runs a threadpool to parallelize sending the requests, and it's designed to allow testing the effects of varying the worker thread count in the server.
-
-## Example usage
-
-First build the contracts and run `state-initializer`:
-
-```bash
-cd casper-node/
-make build-contracts-rs
-cd grpc/tests/
-HASH=$(cargo run --release --bin=state-initializer -- --data-dir=/tmp/Casper/DataDir)
-```
-
-In a new terminal, run the server, using the same data directory populated by the `state-initializer`:
-
-```bash
-cd casper-node/
-cargo run --release --bin=casper-engine-grpc-server -- \
-    /tmp/Casper/Socket --data-dir=/tmp/Casper/DataDir --threads=8
-```
-
-**Note: to tell the server to use Wasm system contracts rather than host-side implementations, append ` -z` to the above command.**
-
-Then in the first terminal, run the client:
-
-```bash
-RUST_LOG=concurrent_executor=info cargo run --release --bin=concurrent-executor -- \
-    --socket=/tmp/Casper/Socket --pre-state-hash=$HASH --threads=8 --requests=200
-```
-
-**Note: by default, the wasmless transfer option is used. However the original wasm based transfer can be opted into by appending `-m=WASM` to the above command.**
-
-There is a bash script which automates this process, and which allows specifying the number of server threadpool threads, the number of client threadpool threads, the number of messages the client should send, and whether to use system contracts or not.
-
-```bash
-cd casper-node/tests/src/profiling/
-./concurrent_executor.sh 8 8 200     # without system contracts
-./concurrent_executor.sh 8 8 200 -z  # using system contracts
-```
-
-For logging, again set the `RUST_LOG` env var:
-
-```bash
-RUST_LOG=concurrent_executor=info ./concurrent_executor.sh 8 8 200
-```
-
----
-
 # `host-function-metrics`
 
 This tool generates CSV files containing metrics for the host functions callable by Wasm smart contracts and which are currently unmetered.
@@ -134,7 +84,7 @@ Note that running the tool with the default 10,000 repetitions can take in exces
 ```bash
 cd casper-node/
 make build-contracts-rs
-cd grpc/tests/
+cd execution_engine_testing/tests/
 cargo build --release --bin state-initializer
 cargo build --release --bin host-function-metrics
 ../../target/release/state-initializer --data-dir=../../target | ../../target/release/host-function-metrics --data-dir=../../target --output-dir=../../target/host-function-metrics
