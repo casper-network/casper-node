@@ -143,8 +143,7 @@ where
             Err(error) => return Err(error),
         };
 
-        let wasm_config = ee_config.wasm_config();
-        let preprocessor = Preprocessor::new(*wasm_config);
+        let preprocessor = Preprocessor::new(*ee_config.wasm_config());
 
         let system_module = tracking_copy
             .borrow_mut()
@@ -182,7 +181,7 @@ where
         // Associate given CostTable with given ProtocolVersion.
         {
             let protocol_data = ProtocolData::new(
-                *wasm_config,
+                *ee_config.wasm_config(),
                 *system_config,
                 mint_hash,
                 proof_of_stake_hash,
@@ -522,10 +521,7 @@ where
     ) -> Result<ExecutionResult, RootNotFound> {
         let protocol_data: ProtocolData = protocol_data!(self.state, protocol_version);
 
-        let preprocessor = {
-            let wasm_config = protocol_data.wasm_config();
-            Preprocessor::new(*wasm_config)
-        };
+        let preprocessor = Preprocessor::new(*protocol_data.wasm_config());
 
         // Create tracking copy (which functions as a deploy context)
         // validation_spec_2: prestate_hash check
@@ -1072,10 +1068,7 @@ where
         // do this first, as there is no reason to proceed if protocol version is invalid
         let protocol_data: ProtocolData = protocol_data!(self.state, protocol_version);
 
-        let preprocessor = {
-            let wasm_config = protocol_data.wasm_config();
-            Preprocessor::new(*wasm_config)
-        };
+        let preprocessor = Preprocessor::new(*protocol_data.wasm_config());
 
         // Create tracking copy (which functions as a deploy context)
         // validation_spec_2: prestate_hash check
@@ -1799,10 +1792,7 @@ where
 
         let executor = Executor::new(self.config);
 
-        let preprocessor = {
-            let wasm_config = protocol_data.wasm_config();
-            Preprocessor::new(*wasm_config)
-        };
+        let preprocessor = Preprocessor::new(*protocol_data.wasm_config());
 
         let auction_hash = protocol_data.auction();
 
