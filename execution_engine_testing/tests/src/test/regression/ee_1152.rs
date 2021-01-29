@@ -106,7 +106,6 @@ fn should_run_ee_1152_regression_test() {
     .build();
 
     builder.exec(delegate_request_1).expect_success().commit();
-    // builder.exec(delegate_request_2).expect_success().commit();
 
     // In reality a step request is made, but to simplify the test I'm just calling the auction part
     // only.
