@@ -602,7 +602,8 @@ message StepRequest {
     repeated RewardItem reward_items = 4;
     bool run_auction = 5;
     uint64 next_era_id = 6;
-    uint64 era_end_timestamp_millis = 7;
+    repeated EvictItem evict_items = 7;
+    uint64 era_end_timestamp_millis = 8;
 }
 
 message SlashItem{
@@ -612,6 +613,10 @@ message SlashItem{
 message RewardItem {
     bytes validator_id = 1;
     uint64 value = 2;
+}
+
+message EvictItem{
+    bytes validator_id = 1;
 }
 
 message StepResponse {

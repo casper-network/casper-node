@@ -189,15 +189,8 @@ impl DeployItemBuilder {
         self
     }
 
-    pub fn with_authorization_keys<T: Clone + Into<AccountHash>>(
-        mut self,
-        authorization_keys: &[T],
-    ) -> Self {
-        self.deploy_item.authorization_keys = authorization_keys
-            .iter()
-            .cloned()
-            .map(|v| v.into())
-            .collect();
+    pub fn with_authorization_keys(mut self, authorization_keys: &[AccountHash]) -> Self {
+        self.deploy_item.authorization_keys = authorization_keys.iter().copied().collect();
         self
     }
 

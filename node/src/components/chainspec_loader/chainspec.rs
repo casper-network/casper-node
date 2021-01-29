@@ -390,6 +390,14 @@ impl Chainspec {
         });
         hash::hash(&serialized_chainspec)
     }
+
+    /// Returns the latest protocol version, taking into account upgrades.
+    pub fn latest_protocol_version(&self) -> Version {
+        self.upgrades
+            .last()
+            .map(|upgrade| upgrade.protocol_version.clone())
+            .unwrap_or_else(|| self.genesis.protocol_version.clone())
+    }
 }
 
 #[cfg(test)]

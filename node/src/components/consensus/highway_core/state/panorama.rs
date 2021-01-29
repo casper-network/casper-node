@@ -66,6 +66,13 @@ impl<C: Context> Observation<C> {
         }
     }
 
+    pub(crate) fn is_none(&self) -> bool {
+        match self {
+            Self::None => true,
+            Self::Faulty | Self::Correct(_) => false,
+        }
+    }
+
     /// Returns whether `self` can come later in time than `other`.
     fn geq(&self, state: &State<C>, other: &Observation<C>) -> bool {
         match (self, other) {
@@ -119,6 +126,13 @@ impl<C: Context> Panorama<C> {
     pub(crate) fn iter_faulty(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.enumerate()
             .filter(|(_, obs)| obs.is_faulty())
+            .map(|(i, _)| i)
+    }
+
+    /// Returns an iterator over all faulty validators' indices.
+    pub(crate) fn iter_none(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+        self.enumerate()
+            .filter(|(_, obs)| obs.is_none())
             .map(|(i, _)| i)
     }
 
