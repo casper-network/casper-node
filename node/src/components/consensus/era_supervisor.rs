@@ -741,7 +741,7 @@ where
                 value,
                 timestamp,
                 height,
-                rewards,
+                terminal_block_data,
                 equivocators,
                 proposer,
             }) => {
@@ -750,9 +750,10 @@ where
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets slashed.
-                let era_end = rewards.map(|rewards| EraEnd {
-                    rewards,
+                let era_end = terminal_block_data.map(|tbd| EraEnd {
+                    rewards: tbd.rewards,
                     equivocators: era.accusations(),
+                    inactive_validators: tbd.inactive_validators,
                 });
                 let finalized_block = FinalizedBlock::new(
                     value.proto_block().clone(),

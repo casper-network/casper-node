@@ -1,6 +1,6 @@
 use casper_execution_engine::{
     core::engine_state::{
-        step::{RewardItem, SlashItem},
+        step::{EvictItem, RewardItem, SlashItem},
         StepRequest,
     },
     shared::newtypes::Blake2bHash,
@@ -13,6 +13,7 @@ pub struct StepRequestBuilder {
     protocol_version: ProtocolVersion,
     slash_items: Vec<SlashItem>,
     reward_items: Vec<RewardItem>,
+    evict_items: Vec<EvictItem>,
     run_auction: bool,
     next_era_id: u64,
 }
@@ -42,6 +43,11 @@ impl StepRequestBuilder {
         self
     }
 
+    pub fn with_evict_item(mut self, evict_item: EvictItem) -> Self {
+        self.evict_items.push(evict_item);
+        self
+    }
+
     pub fn with_run_auction(mut self, run_auction: bool) -> Self {
         self.run_auction = run_auction;
         self
@@ -58,6 +64,7 @@ impl StepRequestBuilder {
             self.protocol_version,
             self.slash_items,
             self.reward_items,
+            self.evict_items,
             self.run_auction,
             self.next_era_id,
         )
@@ -71,6 +78,7 @@ impl Default for StepRequestBuilder {
             protocol_version: Default::default(),
             slash_items: Default::default(),
             reward_items: Default::default(),
+            evict_items: Default::default(),
             next_era_id: Default::default(),
             run_auction: true, //<-- run_auction by default
         }
